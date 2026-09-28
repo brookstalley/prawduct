@@ -85,7 +85,7 @@ def test_the_surface_names_the_free_interval_answer(path: Path, tokens):
 def test_the_next_action_text_does_not_prescribe_an_unconditional_round():
     """The clean-review arms must keep their condition.
 
-    `_next_action` has three arms. The BLOCKING arm's "then run ONE
+    `_next_action` has three arms. The BLOCKING arm's "then run one
     verify-resolutions" is CORRECT and deliberately untouched: a blocking
     finding is cleared only by the resolution facts a verify pass records, which
     is exactly why the refusal predicate's second conjunct exists — refusing
@@ -95,12 +95,12 @@ def test_the_next_action_text_does_not_prescribe_an_unconditional_round():
     the condition survives, phrased against the two tokens that carry it.
     """
     # Read from the composed constants, not the module's source text: the
-    # clause is built from string pieces (`_FIX_ORDER` and its neighbours), so a
+    # clause is built from string pieces (`gates.FIX_ORDER` and its neighbours), so a
     # source grep sees it split across literals and cannot find it.
     from lib import critic_consolidate as cc
 
     text = cc._IF_YOU_FIX_SOME + (PLUGIN / "lib" / "critic_consolidate.py").read_text()
-    assert "ONLY if the fixes touch judgeable files" in cc._IF_YOU_FIX_SOME, (
+    assert "exits 3 (`no review needed`) when the fixes touch nothing judgeable" in cc._IF_YOU_FIX_SOME, (
         "the 0-blocking arm lost its condition — it now prescribes a "
         "re-cover round regardless of whether the commit moved any coverage"
     )

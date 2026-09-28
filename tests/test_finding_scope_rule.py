@@ -330,14 +330,18 @@ def test_the_directive_has_a_size_ceiling() -> None:
     trying to improve. Two numbers, two jobs: the pin fails on any drift and
     carries the new figure; the ceiling says how much drift is allowed before a
     clause has to move out.
+
+    148 -> 122 on 2026-09-28: the closing "spend this on the finding whose fix
+    looks most obvious" sentence was removed as coaching; the ceiling came down
+    by the same amount.
     """
     tokens = _estimate(DIRECTIVE)
-    assert tokens == 148, (
-        f"FINDING_SCOPE_DIRECTIVE is ~{tokens} tokens; this pin says 148. "
+    assert tokens == 122, (
+        f"FINDING_SCOPE_DIRECTIVE is ~{tokens} tokens; this pin says 122. "
         f"Update it to {tokens} and say in the docstring what paid for the "
         "change — the ceiling below is not a budget to spend."
     )
-    assert tokens < 200, (
+    assert tokens < 175, (
         f"the directive is ~{tokens} tokens. It rides every chunk dispatch, "
         "which targets 1-2 minutes end to end. Trim, or move a clause to the "
         "file that owns it."

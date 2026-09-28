@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.2-dev.4
+## v3.6.2-dev.5
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
@@ -22,6 +22,14 @@ parallel track shortens wall clock without colliding with your files. The stance
 own work before done" is now "show evidence for done". Newly scaffolded
 `.claude/rules/learnings/core.md` files open with "apply a rule where it bears; cite it where it
 changed what you did". Existing repos keep their current header, and it still lints clean.
+
+**`opus-55-w2-hook-gate-text`**: **gate and review output is shorter and plainer.** The
+NEXT-ACTION line after a review states the decision, the command and the cost, without capitals
+or re-argued rules. When the Stop hook blocks, the waiver recipe appears once, after the list of
+blockers. It writes one `.gates-waived` object holding the blocking gates' keys plus any waivers
+already in the file; drop the key of any gate you can satisfy. Previously each blocker printed its
+own `echo … >` line, and running two kept only the last. The session briefing's advisory relay
+now says to carry on with what you asked after relaying.
 
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
 of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:

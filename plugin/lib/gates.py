@@ -2261,6 +2261,24 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
     )
 
 
+#: The fix order, stated once. Every directive that tells a builder how to land
+#: fixes composes it — :func:`blocking_remedy_lines` here and the review-close
+#: directives in ``critic_consolidate`` — so no carrier can state a different
+#: order: fix in the working tree, verify the UNCOMMITTED fixes, then commit. Committing first
+#: leaves a clean tree, and mid-plan inference then has no uncommitted fix to
+#: anchor a verify pass on.
+FIX_ORDER = (
+    "make the fixes in the working tree, run one `/prawduct:critic"
+    " verify-resolutions` over the uncommitted fixes, then land them in one commit"
+)
+#: The one exception to :data:`FIX_ORDER`, kept beside it: after a boundary
+#: `cumulative`, inference's rule 1b recognizes a committed fix.
+FIX_ORDER_AFTER_CUMULATIVE = (
+    "(A fix committed after a `cumulative` still infers that pass, but committing"
+    " first re-anchors it on committed HEAD.)"
+)
+
+
 def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     """The whole remedy a blocking verdict prescribes, as unindented lines.
 
@@ -2274,8 +2292,9 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     each commit extends HEAD, so each one buys a fresh round whose demoted
     observations tempt the next fix. Fixing everything in the working tree and
     verifying once is sound — a verify pass reads the dirty tree so long as no
-    commit has moved its anchor, which is what the no-commit-between-fixes line
-    below buys — and the verified tree is what gets committed.
+    commit has moved its anchor, which is what the fix order buys — and the
+    verified tree is what gets committed. The order is composed from
+    :data:`FIX_ORDER`, its one home, not restated here.
 
     Three cases, because the standard remedy is *wrong* for a superseded
     blocker: one carried by a review fact no verify-resolutions pass will
@@ -2294,14 +2313,14 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     other, and no exit code moves.
     """
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
+    # The fix-order line is never wrapped: it carries a backticked command, and
+    # a wrap inside it hands the reader half a command.
     standard = [
-        "Fix ALL of them in the working tree first — do not commit between fixes.",
-        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree",
-        "BECAUSE nothing was committed first), and commit that verified tree",
-        "verbatim: it records the resolution facts, so this same evidence passes",
-        "with no full re-review. Commit CONTENT the review has not seen and the",
-        "pass anchors HEAD instead, leaving any uncommitted fix outside it",
-        "(review-cycle.md § Verify-resolutions anchoring and demotion).",
+        f"Fix them: {FIX_ORDER}.",
+        "The pass records the resolution facts, so this same evidence then passes",
+        "with no full re-review. Commit the tree it verified verbatim: content it",
+        "has not seen leaves the fix outside what it anchored (review-cycle.md",
+        "§ Verify-resolutions anchoring and demotion).",
     ]
     n = sum(1 for e in entries if e.get("superseded"))
     if not n:

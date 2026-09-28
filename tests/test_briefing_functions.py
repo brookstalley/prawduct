@@ -1468,6 +1468,9 @@ class TestAdvisoryRelayDirective:
         assert "owner →" in text and "agent →" in text
         assert "never hand them a command to type" in text
         assert "after →" in text, "sequencing must survive the relay"
+        # A relay that ends the reply turns every advisory into an early stop:
+        # the user's own request goes ahead after it.
+        assert "carry on with what they asked" in text
 
     def test_no_active_advisories_is_silent(self, tmp_path, monkeypatch):
         self._state(tmp_path, "")

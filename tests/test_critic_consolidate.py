@@ -762,8 +762,8 @@ class TestCostLeadAnswersTheMechanicalQuestion:
 
     def test_already_judgeable_says_the_fix_is_free(self):
         lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
-        assert "AT REVIEW TIME you were already making a judgeable commit" in lead
-        assert "bought NO extra round" in lead
+        assert "At review time you were already making a judgeable commit" in lead
+        assert "bought no extra round" in lead
         # R-7 renegotiated this contract: the clause is FROZEN into
         # `.critic-findings.json` and replayed by the briefing after the tree
         # has moved, so it states when it was true and how to re-ask.
@@ -776,7 +776,7 @@ class TestCostLeadAnswersTheMechanicalQuestion:
 
     def test_clean_tree_says_the_first_fix_buys_a_round(self):
         lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
-        assert "AT REVIEW TIME you were not making a judgeable commit" in lead
+        assert "At review time you were not making a judgeable commit" in lead
         assert "your tree was clean" in lead
         assert "bought a whole review round" in lead
         assert "Recommended while that holds: accept these" in lead
@@ -789,7 +789,7 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         come apart — an implementation keying on `paths` rather than
         `judgeable` inverts this one and passes the clean-tree test above."""
         lead = cc.cost_lead({"paths": ["x.md"], "judgeable": [], "free": ["x.md"]})
-        assert "AT REVIEW TIME you were not making a judgeable commit" in lead
+        assert "At review time you were not making a judgeable commit" in lead
         assert "nothing judgeable was uncommitted" in lead
         assert "your tree was clean" not in lead
 
@@ -807,7 +807,7 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         assert "that is a missing number, not a small one" in lead
         # The conservative read, not the cheap one.
         assert "as if a fix buys a round" in lead
-        assert "buys NO extra round" not in lead
+        assert "buys no extra round" not in lead
 
     def test_absent_cost_renders_exactly_the_prior_message(self):
         """A caller that did not compute the verdict gets the message it got
@@ -850,15 +850,15 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         batch of fixes was free; it bought a full round.
         """
         dirty = {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}
-        assert "bought NO extra round" in cc.cost_lead(dirty, False)
+        assert "bought no extra round" in cc.cost_lead(dirty, False)
         anchored = cc.cost_lead(dirty, True)
-        assert "COVERS your working tree" in anchored
-        assert "opens a NEW delta" in anchored
+        assert "covers your working tree" in anchored
+        assert "opens a new delta" in anchored
         assert "judgeable or not" in anchored, (
             "the whole point is that judgeability stops being the question "
             "once a review has anchored here"
         )
-        assert "bought NO extra round" not in anchored
+        assert "bought no extra round" not in anchored
 
     def test_the_anchored_arm_precedes_both_ordinary_arms(self):
         """It has to win over BOTH, not just the dirty one: a clean tree that a
@@ -868,7 +868,7 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         for cost in ({"paths": [], "judgeable": [], "free": []},
                      {"paths": ["x.md"], "judgeable": [], "free": ["x.md"]},
                      {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}):
-            assert "COVERS your working tree" in cc.cost_lead(cost, True)
+            assert "covers your working tree" in cc.cost_lead(cost, True)
 
     def test_the_anchored_arm_does_not_tell_a_clean_tree_to_commit(self):
         """Same conclusion, reachable advice. The operative half — the next
@@ -887,7 +887,7 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         # arm disappearing altogether.
         assert "nothing left to pay for" in clean
         for rendered in (clean, dirty):
-            assert "opens a NEW delta" in rendered, (
+            assert "opens a new delta" in rendered, (
                 "the operative conclusion must survive in BOTH arms — it is "
                 "the whole point of the message"
             )
@@ -896,7 +896,7 @@ class TestCostLeadAnswersTheMechanicalQuestion:
         """Fail soft in the safe direction. If the capture failed, the caller
         passes False and the lead renders its ordinary advice — never a
         coverage claim it could not verify."""
-        assert "COVERS your working tree" not in cc.cost_lead(
+        assert "covers your working tree" not in cc.cost_lead(
             {"paths": [], "judgeable": [], "free": []}, False
         )
 
@@ -1009,7 +1009,7 @@ class TestNextActionLine:
             cost=cc.cost_lead({"paths": [], "judgeable": [], "free": []}),
         )
         assert "prawduct-hook cost-of-commit" in line
-        assert "ONLY if the fixes touch judgeable files" in line
+        assert "when the fixes touch nothing judgeable" in line
         # The enumeration is what was deleted; its return would reintroduce the
         # drift this delegation removes.
         for carve_out in ("`.prawduct/` prose", "`.claude/settings.json`", "`templates/`"):
@@ -1039,17 +1039,17 @@ class TestNextActionLine:
     def test_blocking_names_one_commit_and_one_verify_pass(self):
         line = cc.next_action_line("rev-1", 2, 5, 3)
         assert "2 BLOCKING" in line
-        assert "ONE commit" in line
-        assert "ONE `/prawduct:critic verify-resolutions`" in line
+        assert "one commit" in line
+        assert "one `/prawduct:critic verify-resolutions`" in line
         # Verify the uncommitted fixes, THEN commit — the order `building.md`
         # states. Commit-first leaves a clean tree mid-plan, where inference has
         # no uncommitted fix to anchor a verify pass on.
         assert line.index("verify-resolutions` over the uncommitted fixes") < line.index(
-            "in ONE commit"
+            "in one commit"
         )
         # The non-blocking findings are decided in the SAME pass — deferring
         # them to a later round is the pump this field exists to stop.
-        assert "SAME pass" in line
+        assert "same pass" in line
 
     def test_the_blocking_arm_reaches_parity_with_the_zero_blocking_arm(self):
         """Reporter failure 1, read against the two arms: *"it stated a rule,
@@ -1103,22 +1103,16 @@ class TestNextActionLine:
 
         Both arms carry it — a builder with a blocking finding still has
         WARNING/NOTE companions to decide, and deferring one IS a decision made
-        in that same pass. It ships with its condition ("if this branch has more
-        judgeable work coming") because it is not universally right, and with
-        its failure mode named, because an unwritten deferral is a drop.
+        in that same pass. It ships with its condition ("if more judgeable work
+        is coming on this branch") because it is not universally right, and with
+        where to write it, because an unwritten deferral is a drop.
         """
         for counts in ((2, 1, 1), (0, 1, 1)):
             line = cc.next_action_line("rev-9", *counts)
-            assert "carry the fix into the NEXT chunk's commit" in line, counts
-            assert "if this branch has more judgeable work coming" in line.lower(), counts
-            assert "it is not a deferral, it is a drop" in line, counts
-            # And it distinguishes itself from the deferral the same message
-            # warns against two sentences earlier. Without that, the blocking
-            # arm says "deferring turns one review into several" and then
-            # offers a deferral — a reader resolves the contradiction by
-            # ignoring one of them, and there is no telling which.
-            assert "NOT the deferral" in line, counts
-            assert "buys a second round" in line and "buys none" in line, counts
+            assert cc._RIDE_ALONG_ROUTE in line, counts
+            assert "ride the next chunk's commit" in line, counts
+            assert "if more judgeable work is coming on this branch" in line.lower(), counts
+            assert "`.prawduct/.handoff-notes.md`" in line, counts
 
     def test_the_clean_arm_names_the_observations_it_can_answer(self):
         """`verify-resolutions` demotes everything below BLOCKING, so "0
@@ -1129,7 +1123,7 @@ class TestNextActionLine:
         that produces most of the items it was built for."""
         line = cc.next_action_line("rev-9", 0, 0, 0, observations=3)
         assert "nothing to disposition" not in line
-        assert "3 item(s) were demoted to observations" in line
+        assert "Its 3 observation(s) gate nothing" in line
         assert 'prawduct-hook disposition rev-9 <oid> --accept "<reason>"' in line
 
     def test_the_observations_close_prices_fixing_like_the_warnings_close(self):
@@ -1163,7 +1157,7 @@ class TestNextActionLine:
         # that itemizes one and not the other teaches that the other is not
         # answerable.
         line = cc.next_action_line("rev-9", 0, 2, 1, observations=4)
-        assert "4 demoted observation(s) answer to the same command" in line
+        assert "nor do its 4 observation(s) (answer them by `O-n` id)" in line
 
     def test_no_observations_reads_exactly_as_it_did(self):
         # Every non-verify mode passes 0, and demotion is a verify-mode rule —
@@ -1191,24 +1185,24 @@ class TestNextActionLine:
         # 0/0/0 has nothing to carry anywhere; a deferral route on a review with
         # no findings reads as work the builder does not have.
         line = cc.next_action_line("rev-9", 0, 0, 0)
-        assert "NEXT chunk's commit" not in line
+        assert "next chunk's commit" not in line
 
     def test_zero_blocking_says_the_review_is_over_and_names_disposition(self):
         line = cc.next_action_line("rev-abc", 0, 4, 7)
-        assert "THE REVIEW IS OVER" in line
-        assert "gate NOTHING" in line
+        assert "the review is over" in line
+        assert "gate nothing" in line
         # The command arrives with this review's own id already substituted —
         # an operator who has to go find the id is one who will not run it.
         # `<fid|oid>`, not `<fid>`: the id domain is findings PLUS observations,
         # and this is the line a verify-mode builder actually reads.
         assert "prawduct-hook disposition rev-abc <fid|oid> --accept" in line
-        assert "4 warning + 7 note" in line
+        assert "4 warning(s) and 7 note(s)" in line
         # And the stale-gate-output trap is named where the decision is made.
-        assert "re-run the gate" in line
+        assert "Judge by the gate after the commit" in line
 
     def test_clean_pass_has_nothing_to_disposition(self):
         line = cc.next_action_line("rev-1", 0, 0, 0)
-        assert "THE REVIEW IS OVER" in line
+        assert "the review is over" in line
         assert "nothing" in line
         assert "disposition" not in line.split("nothing to disposition")[-1]
 
@@ -1235,10 +1229,10 @@ class TestNextActionLine:
         # Renegotiated 2026-09-25 (review-friction): the condition used to be
         # phrased on the commit ("if that commit touched"), because this arm
         # prescribed commit-then-verify. The order is now one constant
-        # (`_FIX_ORDER`: verify the uncommitted fixes, then commit), so the same
+        # (`gates.FIX_ORDER`: verify the uncommitted fixes, then commit), so the same
         # condition is phrased on the fixes. The property pinned is unchanged:
         # the pass is conditional, never an unconditional round.
-        assert "ONLY if the fixes touch judgeable files" in line
+        assert "when the fixes touch nothing judgeable" in line
 
     def test_missing_fact_id_degrades_to_a_placeholder(self):
         # A record with no id must still produce a runnable-shaped instruction
@@ -1253,8 +1247,8 @@ class TestSpanClause:
     one breath.
 
     The defect these pin is a true sentence read as a claim it does not make.
-    `verify-resolutions` covers its own delta; on a clean close it says THE
-    REVIEW IS OVER, and on one measured consumer branch that was relayed
+    `verify-resolutions` covers its own delta; on a clean close it says the
+    review is over, and on one measured consumer branch that was relayed
     upward as "the branch is clean" after round 3. Round 4's cumulative found a
     BLOCKING defect present since chunk 1 — invisible to every verify round
     because it never sat inside one of their diffs. Both facts were true and
@@ -1283,7 +1277,7 @@ class TestSpanClause:
 
     def test_an_uncovered_branch_is_stated_not_left_to_be_asked_about(self):
         clause = cc.span_clause(self.UNCOVERED, 12)
-        assert "NOT covered" in clause
+        assert "not covered" in clause
         assert "12 commit(s) since develop" in clause
         # The point of the change: the answer replaces the invitation to ask.
         assert cc._COVERAGE_IS_A_SEPARATE_QUESTION not in clause
@@ -1293,7 +1287,7 @@ class TestSpanClause:
         # the delta IS clean, and a builder told only that the branch is not
         # covered learns nothing about the round it just spent.
         clause = cc.span_clause(self.UNCOVERED, 12)
-        assert "THIS delta only" in clause
+        assert "this delta only" in clause
         assert "Both facts are true at once" in clause
 
     def test_an_uncovered_branch_is_not_ordered_to_buy_a_round(self):
@@ -1308,8 +1302,8 @@ class TestSpanClause:
 
     def test_a_covered_branch_says_so_and_manufactures_no_warning(self):
         clause = cc.span_clause(self.COVERED, 12)
-        assert "BRANCH was covered" in clause
-        assert "NOT covered" not in clause
+        assert "branch was covered" in clause
+        assert "not covered" not in clause
         # A caveat on the branch that IS covered trains the reader to discount
         # the clause on the branch where it is load-bearing.
         for alarm in ("CAUTION", "WARNING", "may not", "cannot be sure"):
@@ -1346,7 +1340,7 @@ class TestSpanClause:
         # verdict, and a reader deciding what to report upward needs the
         # difference.
         clause = cc.span_clause({**self.COVERED, "status": "transferred"}, 3)
-        assert "BRANCH was covered" in clause
+        assert "branch was covered" in clause
         assert "base advance" in clause
 
     def test_a_blocked_span_names_the_count_and_not_the_ids(self):
@@ -1389,7 +1383,7 @@ class TestSpanClause:
 
     def test_both_zero_blocking_arms_carry_it(self):
         # The clean pass and the warnings-and-notes pass are the two closes that
-        # say THE REVIEW IS OVER, so both are read as clearance and both need
+        # say the review is over, so both are read as clearance and both need
         # the correction. A constant each arm remembers to repeat is how the
         # caveat got dropped from one of them once already.
         clause = cc.span_clause(self.UNCOVERED, 12)
@@ -1407,7 +1401,7 @@ class TestSpanClause:
         # With blocking findings the next move is to fix them; the branch
         # question is moot and a span clause there is payload nobody acts on.
         line = cc.next_action_line("rev-1", 2, 1, 0, span=cc.span_clause(self.UNCOVERED, 12))
-        assert "BRANCH is NOT covered" not in line
+        assert "branch is not covered" not in line
 
     def test_the_findings_cache_and_the_relayed_line_say_the_same_thing(self):
         # Two carriers of one sentence: the builder reads `.critic-findings.json`
@@ -1936,28 +1930,28 @@ class TestBatchFixDirective:
         # rather than reflexively fixing", on the surface with the most
         # authority at the moment the builder decides.
         d = cc._BATCH_FIX_DIRECTIVE
-        assert "Disposition them ALL in ONE pass" in d
-        assert "accept or file the rest" in d
+        assert "Decide every finding in one pass" in d
+        assert "accept or file what you won't fix" in d
         assert "Fix them ALL" not in d
-        assert "ONE commit" in d
-        assert "ONE `/prawduct:critic verify-resolutions`" in d
+        assert "one commit" in d
+        assert "one `/prawduct:critic verify-resolutions`" in d
         # The verify pass is a coverage consequence, not an obligation.
         assert "if the fixes touch judgeable files" in d
         # The chunk-close order: fix, verify the UNCOMMITTED fixes, then commit.
         # Commit-first is stated only as the post-`cumulative` case rule 1b
         # recognizes — mid-plan it leaves inference nothing to anchor a verify on.
         assert d.index("verify-resolutions` over the uncommitted fixes") < d.index(
-            "land them in ONE commit"
+            "land them in one commit"
         )
         assert "after a `cumulative`" in d
 
     #: Where the directive stops claiming things are free. NOT "Everything else"
     #: — that marks the costly *sentence*, but the free sentence already turns
-    #: negative before it: "`.md` files OUTSIDE `skills/`, `methodology/`,
+    #: negative before it: "`.md` files outside `skills/`, `methodology/`,
     #: `templates/` and a root `CLAUDE.md`". Those four are named inside the free
     #: clause as EXCLUSIONS, so a naive split reads them as free claims. Every
-    #: token from `OUTSIDE` onward is a costly claim.
-    _FREE_CLAUSE_ENDS_AT = "OUTSIDE"
+    #: token from `outside` onward is a costly claim.
+    _FREE_CLAUSE_ENDS_AT = "outside"
     _COSTLY_SENTENCE_MARKER = "Everything else"
 
     def _clause_says_free(self, token: str) -> bool:
@@ -2290,15 +2284,19 @@ class TestResolutionIsAClaimDirective:
         estimator every budgeted file in this repo uses. Two numbers, two jobs:
         the pin fails on any drift and carries the new figure; the ceiling says
         how much drift is allowed before a clause has to move out.
+
+        280 -> 243 on 2026-09-28: the closing "spend this on the finding you feel
+        surest about" sentence was removed as coaching the reviewer does not need;
+        the ceiling came down by the same amount.
         """
         tokens = int(len(cc.RESOLUTION_IS_A_CLAIM_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 280, (
+        assert tokens == 243, (
             f"RESOLUTION_IS_A_CLAIM_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 280. Update it to {tokens} and say in the docstring what paid "
+            f"says 243. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
-        assert tokens < 400, (
+        assert tokens < 365, (
             f"the directive is ~{tokens} tokens. It is delivered on every "
             f"verify dispatch, immediately before the reviewer writes the one "
             f"output that weakens a gate, and it competes with the review for "
@@ -2582,15 +2580,20 @@ class TestVerifyRatesBlockingOnlyDirective:
         chunk's own review). PAID FOR by the two "no list" clauses it replaced;
         the set sentence itself is the norm's, stated once here so the four
         carriers can be pinned identical (`TestInnerBlockingSetIsOneSentence`).
+
+        843 -> 809 on 2026-09-28: the closing "apply all of this to the one you
+        are surest deserves a WARNING" sentence was removed as coaching, and the
+        record-gap sentence it followed became the imperative close. The
+        ceiling came down by the same amount.
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 843, (
+        assert tokens == 809, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 843. Update it to {tokens} and say in the docstring what paid "
+            f"says 809. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
-        assert tokens < 900, (
+        assert tokens < 865, (
             f"the directive is ~{tokens} tokens. It is delivered on every verify "
             f"dispatch and competes with the review for attention. Trim, or move "
             f"a clause to the protocol file that owns it."
@@ -3463,7 +3466,7 @@ class TestRestoreRefusalDescribesTheDisk:
 
 
 class TestConsolidateIntegration:
-    ANCHORED = "COVERS your working tree"
+    ANCHORED = "covers your working tree"
 
     def _anchored_scenario(self, tmp_path, *, mode=VERIFY_MODE, dirty=False):
         """The #851 arm end to end, from REAL artifacts only.
@@ -3652,7 +3655,7 @@ class TestConsolidateIntegration:
         # clean-pass variant while every prose pin stayed green, so the producer
         # is asserted against real stdout rather than against source text.
         assert "NEXT-ACTION: " in result.stdout
-        assert "THE REVIEW IS OVER" in result.stdout
+        assert "the review is over" in result.stdout
 
     def test_already_consolidated_noop_reports_the_recorded_findings(self, tmp_path):
         """The COORDINATOR path's normal case. The SubagentStop trigger
@@ -4191,7 +4194,7 @@ class TestResolutionFacts:
 
 def _clean_verify(repo: Path, head: str) -> subprocess.CompletedProcess:
     """One clean `verify-resolutions` consolidation: no findings, no
-    resolutions, nothing blocking. The close that says THE REVIEW IS OVER."""
+    resolutions, nothing blocking. The close that says the review is over."""
     _set_marker(repo)
     _write_manifest(repo, head, id="rev-verify-0002", mode=VERIFY_MODE,
                     roster=["reviewer"])
@@ -4220,12 +4223,12 @@ class TestTheSpanVerdictRidesTheCleanVerifyClose:
         head = _commit_file(repo, "src/feature.py", "y = 2\n", "f1")
 
         result = _clean_verify(repo, head)
-        assert "BRANCH is NOT covered" in result.stdout
+        assert "branch is not covered" in result.stdout
         assert "1 commit(s) since main" in result.stdout
         # Both carriers, because the builder meets one or the other depending on
         # which path the review took.
         cache = json.loads((repo / ".prawduct" / ".critic-findings.json").read_text())
-        assert "BRANCH is NOT covered" in cache["next_action"]
+        assert "branch is not covered" in cache["next_action"]
 
     def test_a_covered_branch_says_so_instead(self, tmp_path):
         # A REAL span, with a review fact across it. The empty-span shape is a
@@ -4248,9 +4251,9 @@ class TestTheSpanVerdictRidesTheCleanVerifyClose:
         )["status"] == "appended"
 
         result = _clean_verify(repo, head)
-        assert "BRANCH was covered" in result.stdout
+        assert "branch was covered" in result.stdout
         assert "1 commit(s) since main" in result.stdout
-        assert "NOT covered" not in result.stdout
+        assert "not covered" not in result.stdout
 
     def test_an_empty_span_gets_the_empty_span_sentence(self, tmp_path):
         # HEAD on the base branch itself. Composition says covered because
@@ -4262,7 +4265,7 @@ class TestTheSpanVerdictRidesTheCleanVerifyClose:
 
         result = _clean_verify(repo, head)
         assert "nothing on this branch for a review to span" in result.stdout
-        assert "BRANCH was covered" not in result.stdout
+        assert "branch was covered" not in result.stdout
 
     def test_every_other_mode_still_ships_the_text_it_shipped_before(self, tmp_path):
         # Scope: a `final` close is read as clearance too, but this chunk
@@ -4280,7 +4283,19 @@ class TestTheSpanVerdictRidesTheCleanVerifyClose:
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "separate questions about coverage" in result.stdout
-        assert "BRANCH is" not in result.stdout
+        # Derived from the renderer rather than typed: a `not in` on a phrase
+        # nothing prints any more passes forever, so a typed literal goes
+        # vacuous the moment the clause is reworded. Each arm's opening
+        # sentence is what a widening would print.
+        answer = {
+            "resolved": {"base_branch": "main"},
+            "verdict": {"path": ["t"], "unresolved": [{"fid": "R-1"}]},
+        }
+        for status in ("covered", "transferred", "blocked", "uncovered"):
+            clause = cc.span_clause({**answer, "status": status}, 1)
+            opening = clause.strip().split(":")[0]
+            assert opening and opening in clause, status
+            assert opening not in result.stdout, status
 
 
 # ---------------------------------------------------------------------------
@@ -7363,7 +7378,7 @@ class TestCarriedBlockersReachTheirReaders:
         record = json.loads(
             (repo / ".prawduct" / ".critic-findings.json").read_text()
         )
-        assert "THE REVIEW IS OVER" not in record["next_action"]
+        assert "the review is over" not in record["next_action"]
         assert f"{prior_id}/R-2" in record["next_action"]
         # The one it DID name must not be reported as outstanding.
         assert f"{prior_id}/R-1" not in record["next_action"]
@@ -7396,7 +7411,7 @@ class TestCarriedBlockersReachTheirReaders:
         record = json.loads(
             (repo / ".prawduct" / ".critic-findings.json").read_text()
         )
-        assert "THE REVIEW IS OVER" in record["next_action"]
+        assert "the review is over" in record["next_action"]
         assert "NOT DONE" not in result.stdout
 
     def test_a_non_verify_consolidation_carries_nothing(self, tmp_path):
@@ -8133,10 +8148,10 @@ class TestTheCostLeadReachesBothCarriers:
                          "findings": [], "roster": [{"model": "m"}]}}
         lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
         persisted = cc.fact_to_cache_record(fact, None, None, None, lead)["next_action"]
-        assert "AT REVIEW TIME" in persisted
+        assert "At review time" in persisted
         assert "Re-derive with `prawduct-hook cost-of-commit`" in persisted
         for present_tense in ("You are ALREADY", "You are NOT currently",
-                              "is clean", "buys NO extra round"):
+                              "is clean", "buys no extra round"):
             assert present_tense not in persisted, (
                 f"{present_tense!r} is a present-tense claim about the working "
                 "tree, frozen into a record the briefing replays after the tree "
@@ -8412,23 +8427,23 @@ class TestIntervalExtension:
 class TestOneFixOrderEverywhere:
     """Every carrier of the fix order states ONE order: verify the uncommitted
     fixes, then commit. The exception after a `cumulative` is stated only in
-    `_FIX_ORDER_AFTER_CUMULATIVE`. Built by composition from `_FIX_ORDER`, and
+    `gates.FIX_ORDER_AFTER_CUMULATIVE`. Built by composition from `gates.FIX_ORDER`, and
     pinned here on the OUTPUT, because a carrier paraphrasing the order (the way
     `_IF_YOU_FIX_SOME` once said "ONE commit — and re-cover") is invisible to a
     grep for the constant."""
 
     @staticmethod
     def _order_violations(text: str) -> list[str]:
-        text = text.replace(cc._FIX_ORDER_AFTER_CUMULATIVE, "")
+        text = text.replace(gates.FIX_ORDER_AFTER_CUMULATIVE, "")
         bad = []
         for sentence in re.split(r"(?<=[.!?])\s+", text):
-            if "ONE commit" in sentence and "verify-resolutions" in sentence:
-                if sentence.index("verify-resolutions") > sentence.index("ONE commit"):
+            if "one commit" in sentence and "verify-resolutions" in sentence:
+                if sentence.index("verify-resolutions") > sentence.index("one commit"):
                     bad.append(sentence.strip())
             for forbidden in ("AFTER committing", "commit, then re-run", "ONE commit — and re-cover"):
                 if forbidden in sentence:
                     bad.append(sentence.strip())
-            # "land" means commit in `_FIX_ORDER`, so a sentence using it for "be
+            # "land" means commit in `gates.FIX_ORDER`, so a sentence using it for "be
             # in the tree before the pass" states the second, opposite order.
             if re.search(r"\bland\b[^.]*\bbefore\b[^.]*\bverify", sentence, re.IGNORECASE):
                 bad.append(sentence.strip())
@@ -8443,7 +8458,7 @@ class TestOneFixOrderEverywhere:
     def test_every_carrier_composes_the_one_order(self):
         for carrier in (cc._BATCH_FIX_DIRECTIVE, cc._IF_YOU_FIX_SOME,
                         cc.next_action_line("rev-1", 2, 1, 0)):
-            assert cc._FIX_ORDER in carrier, carrier
+            assert gates.FIX_ORDER in carrier, carrier
 
     def test_the_check_can_fail(self):
         # Positive control: the old zero-blocking wording must be caught.

@@ -74,7 +74,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, gitstate, ledger
+from . import coverage_algebra, critic_marker, evidence, gates, gitstate, ledger
 from .core import atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -288,22 +288,6 @@ _CACHE_WARM_DIRECTIVE = (
     " expire and re-reads its whole context when the partials land."
 )
 
-#: The fix order, stated once. Every directive that tells a builder how to land
-#: fixes composes it, so no carrier can state a different order: fix in the
-#: working tree, verify the UNCOMMITTED fixes, then commit. Committing first
-#: leaves a clean tree, and mid-plan inference then has no uncommitted fix to
-#: anchor a verify pass on.
-_FIX_ORDER = (
-    "make the fixes in the working tree, run ONE `/prawduct:critic"
-    " verify-resolutions` over the uncommitted fixes, then land them in ONE commit"
-)
-#: The one exception to :data:`_FIX_ORDER`, kept beside it: after a boundary
-#: `cumulative`, inference's rule 1b recognizes a committed fix.
-_FIX_ORDER_AFTER_CUMULATIVE = (
-    "(A fix committed after a `cumulative` still infers that pass, but committing"
-    " first re-anchors it on committed HEAD.)"
-)
-
 #: Appended wherever a caller meets a review that HAS findings — the moment the
 #: fix strategy is chosen, and the only moment at which stating it changes what
 #: happens next.
@@ -344,25 +328,20 @@ _FIX_ORDER_AFTER_CUMULATIVE = (
 #: follows with the ``NEXT-ACTION:`` line, while
 #: :func:`_already_consolidated_note` follows with nothing at all — and that is
 #: the coordinator path's normal case, where the reviewing fork has already
-#: returned. A clause pointing at "the line below" is therefore true on one path
-#: and a dangling pointer on the other, which is worse than the hardcoded
-#: "5-10 minute rounds" it briefly replaced. Anything this text needs the reader
-#: to have must be inside it.
+#: returned. A clause pointing at "the line below", or naming NEXT-ACTION as
+#: where an answer lives, is therefore true on one path and a dangling pointer on
+#: the other. Anything this text needs the reader to have must be inside it.
 _BATCH_FIX_DIRECTIVE = (
-    " Disposition them ALL in ONE pass — accept or file the rest, and for every"
-    " fix you are going to make, " + _FIX_ORDER + ". Only unresolved BLOCKING"
-    " findings gate anything, and the verify pass is owed only if the fixes"
-    " touch judgeable files and no later review the plan owes will carry them"
-    " (NEXT-ACTION says which). " + _FIX_ORDER_AFTER_CUMULATIVE + " A fix-commit-verify"
-    " cycle per finding multiplies whole review rounds, and each round reviews the"
-    " prose the previous fix wrote. Free to write at any time (they do not move"
-    " coverage): everything under `.prawduct/` — change-log, backlog,"
-    " project-state and build plans — plus"
-    " `.claude/settings.json` and `.md` files OUTSIDE `skills/`,"
-    " `methodology/`, `templates/` and a root `CLAUDE.md`. Everything else"
-    " moves the tree and must be in the working tree before the verify pass: code, config, data,"
-    " tests, and those governance-protected `.md` files (a comment-only edit to"
-    " a code file counts)."
+    " Decide every finding in one pass: accept or file what you won't fix, and"
+    " for what you will, " + gates.FIX_ORDER + ". Only unresolved BLOCKING findings"
+    " gate anything; the verify pass is owed only if the fixes touch judgeable"
+    " files and no later review the plan owes will carry them. "
+    + gates.FIX_ORDER_AFTER_CUMULATIVE +
+    " Free to write at any time: everything under `.prawduct/` (change-log,"
+    " backlog, project-state, build plans), `.claude/settings.json`, and `.md`"
+    " files outside `skills/`, `methodology/`, `templates/` and a root"
+    " `CLAUDE.md`. Everything else moves the tree: code, config, data, tests and"
+    " those protected `.md` files (a comment-only edit to a code file counts)."
 )
 
 
@@ -430,7 +409,7 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
     clean ``verify-resolutions`` round.
 
     **The defect it answers.** A verify pass covers its own delta and nothing
-    else, and on a clean close it says ``THE REVIEW IS OVER``. Both halves of
+    else, and on a clean close it says ``the review is over``. Both halves of
     that are true and the second is routinely read as branch clearance: on one
     measured consumer branch the author relayed "the branch is clean" after
     round 3, and round 4's cumulative found a BLOCKING defect that had been
@@ -511,7 +490,7 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
         # from that state is the very misread this whole clause exists to stop,
         # arriving one minute later by the other door.
         return (
-            f" The BRANCH was covered too{how}, at the HEAD this review saw:"
+            f" The branch was covered too{how}, at the HEAD this review saw:"
             f" composed review evidence spanned {width} with no blocking findings"
             " outstanding — work you had not committed yet is not in that span."
             " Re-derive with `prawduct-hook check-cumulative-critic` if the"
@@ -522,15 +501,15 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
     if status == "blocked":
         unresolved = len(((answer or {}).get("verdict") or {}).get("unresolved", []))
         return (
-            " This verdict covers THIS delta only, and the BRANCH is not clear:"
+            " This verdict covers this delta only, and the branch is not clear:"
             f" evidence spans {width} but carries {unresolved} unresolved BLOCKING"
-            " finding(s) from earlier round(s). Do not report the branch clean —"
+            " finding(s) from earlier round(s). Don't report the branch clean:"
             " `prawduct-hook check-cumulative-critic` names them and how each one"
             " clears." + _WORK_CYCLE_STILL_OWES
         )
 
     return (
-        " This verdict covers THIS delta only. The BRANCH is NOT covered: no"
+        " This verdict covers this delta only. The branch is not covered: no"
         f" composed review evidence spans {width} end to end, so anything changed"
         " outside the deltas these rounds looked at has been reviewed by nothing."
         " Both facts are true at once and only one of them is about the branch —"
@@ -555,21 +534,10 @@ def span_clause(answer: "dict | None", commits: "int | None" = None) -> str:
 #: with no further judgeable work has nothing to ride. And stated with its
 #: failure mode: an unwritten deferral is a drop, not a deferral, so the route
 #: names where to write it.
-#:
-#: **It must distinguish itself from the deferral the blocking arm warns
-#: against**, or it reads as the message contradicting itself one sentence
-#: later. The two are genuinely different and the difference is the whole
-#: point: deferring a finding to a later ROUND buys a second round, while
-#: riding a commit that is being made anyway buys none. A reader who cannot
-#: see that distinction resolves it by ignoring one of the two sentences, and
-#: there is no telling which.
 _RIDE_ALONG_ROUTE = (
-    " If this branch has more judgeable work coming, there is a third route:"
-    " carry the fix into the NEXT chunk's commit. That is NOT the deferral"
-    " warned against above — deferring to a later ROUND buys a second round;"
-    " riding a commit that is being made anyway buys none. Write it where that"
-    " chunk will meet it (the build plan or `.prawduct/.handoff-notes.md`), or"
-    " it is not a deferral, it is a drop."
+    " If more judgeable work is coming on this branch, a fix can instead ride"
+    " the next chunk's commit; record it in the build plan or"
+    " `.prawduct/.handoff-notes.md` so that chunk meets it."
 )
 
 
@@ -583,9 +551,9 @@ _RIDE_ALONG_ROUTE = (
 #: an exception trailing advice that still leads with "a fix buys a round".
 _RIDES_NEXT_REVIEW_LEAD = (
     "This plan still owes a later review, and it will start from the tree this"
-    " review just covered once that tree is a commit — so commit it as it"
-    " stands FIRST, then fix what is worth fixing and commit that separately:"
-    " the next chunk's review covers the fix, not a round of its own. Do NOT"
+    " review just covered once that tree is a commit. So commit it as it"
+    " stands first, then fix what is worth fixing and commit that separately:"
+    " the next chunk's review covers the fix, not a round of its own. Don't"
     " run `verify-resolutions` for it. "
 )
 
@@ -605,14 +573,10 @@ _RIDES_NEXT_REVIEW_LEAD = (
 #: its own fix. The re-derivation pointer still ships, once, inside the clause
 #: that makes the claim needing re-deriving.
 _IF_YOU_FIX_SOME = (
-    " If you do choose to fix some, " + _FIX_ORDER + " — the pass is owed ONLY if"
-    " the fixes touch judgeable files, and you do not have to judge that:"
-    " dispatch asks the same predicate and exits 3 (`no review needed`, under a"
-    " second, no session state written) rather than spending a reviewer on a free"
-    " interval, so asking costs nothing, and a refusal is the answer, not a reason"
-    " to retry in another mode. Do not infer that you need a round from gate"
-    " output printed before your fix; re-run the gate after the commit and let it"
-    " answer."
+    " If you fix some, " + gates.FIX_ORDER + ". Dispatch exits 3 (`no review"
+    " needed`) when the fixes touch nothing judgeable, so dispatching is how you"
+    " find out, and exit 3 is the answer, not a cue to retry in another mode."
+    " Judge by the gate after the commit, not by output printed before it."
 )
 
 
@@ -744,16 +708,16 @@ def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
             else "Recommended: stop here;"
         )
         return (
-            f"This review COVERS your working tree as it stands, {carry} — and"
-            " the next edit after it, judgeable or not, opens a NEW delta that"
+            f"This review covers your working tree as it stands, {carry}, and"
+            " the next edit after it, judgeable or not, opens a new delta that"
             " needs its own `/prawduct:critic verify-resolutions`."
             f" {act} fix anything further only if it is worth a round of its own."
         )
     if judgeable:
         return (
-            f"AT REVIEW TIME you were already making a judgeable commit"
+            f"At review time you were already making a judgeable commit"
             f" ({len(judgeable)} uncommitted judgeable file(s)), so a fix"
-            " batched into it bought NO extra round."
+            " batched into it bought no extra round."
             f" {_REDERIVE_COST} Recommended while that holds: fix what is worth"
             " fixing, accept the rest."
         )
@@ -763,7 +727,7 @@ def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
         else "your tree was clean"
     )
     return (
-        f"AT REVIEW TIME you were not making a judgeable commit ({tree}), so the"
+        f"At review time you were not making a judgeable commit ({tree}), so the"
         " first judgeable fix bought a whole review round."
         f" {_REDERIVE_COST} Recommended while that holds: accept these unless a"
         " fix is worth that."
@@ -778,7 +742,7 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     **The failure this exists for.** A verify pass can discharge one finding by
     reference to another — "R-12 is implicitly closed by R-1's fix, same class"
     — and write a resolution fact for R-1 only. Its own counts are then 0
-    blocking, so it reports THE REVIEW IS OVER, and the operator relays that.
+    blocking, so it reports the review is over, and the operator relays that.
     The gate disagrees: R-12 has no resolution fact and still blocks. Worse, by
     then R-12 sits on a superseded round that no later verify pass will name
     again, so the only remaining route is a full ``cumulative`` — a whole review
@@ -903,35 +867,33 @@ def next_action_line(
             + (f" — {c['title']}" if c.get("title") else "")
             for c in carried
         )
-        # Ordered ABOVE the plain blocking arm on purpose. That arm says
-        # "nothing else here does", which is false the moment a blocker was
-        # inherited — and the builder who believes it fixes only this round's
-        # findings, re-verifies, and anchors the next pass on THIS review, whose
-        # findings do not include the inherited id. It is then orphaned onto a
-        # superseded round and clearable only by a spanning `cumulative`, which
-        # is #711 arriving one hop later by a different door.
+        # Ordered ABOVE the plain blocking arm on purpose. That arm tells the
+        # builder to fix this round's findings, and a builder who fixes only
+        # those, re-verifies, and anchors the next pass on THIS review loses the
+        # inherited id: this review's findings do not include it. It is then
+        # orphaned onto a superseded round and clearable only by a spanning
+        # `cumulative`, which is #711 arriving one hop later by a different door.
         own = (
-            f"{blocking} BLOCKING finding(s) of its own AND "
+            f"{blocking} BLOCKING finding(s) of its own and "
             if blocking
             else "no blocking findings of its own, but "
         )
         return (
             f"NOT DONE. This review has {own}{len(carried)} BLOCKING finding(s)"
-            f" from the review it verifies are still unresolved: {named}."
-            " A verify pass records a resolution only for a finding it NAMES in"
-            " `resolutions`. One discharged in prose alone — \"implicitly closed"
-            " by\", \"same class as\", \"recorded via\" — got no fact, and the"
+            f" from the review it verifies that are still unresolved: {named}."
+            " A verify pass records a resolution only for a finding it names in"
+            " `resolutions`. One discharged in prose alone (\"implicitly closed"
+            " by\", \"same class as\", \"recorded via\") got no fact, and the"
             " gate reads facts, so it still blocks."
             + (
                 " Fix this review's findings, then re-run"
                 if blocking
                 else " Re-run"
             )
-            + " `/prawduct:critic verify-resolutions` and give EACH finding above"
+            + " `/prawduct:critic verify-resolutions` and give each finding above"
             " its own entry in `resolutions` (a fix verified by the same edit is"
-            " still its own entry), or leave it out deliberately because it is"
-            " genuinely still broken — in which case say so, and do not report"
-            " the review complete."
+            " still its own entry). Leave one out only if it is still broken, and"
+            " then say so rather than reporting the review complete."
             " Act now: once a newer review supersedes that round, no verify pass"
             " will name these again and only a spanning `/prawduct:critic"
             " cumulative` can clear them."
@@ -939,14 +901,10 @@ def next_action_line(
 
     if blocking:
         return (
-            f"{blocking} BLOCKING finding(s) gate this work — nothing else here does."
-            " For these and EVERY other fix you are going to make, " + _FIX_ORDER
-            + ". Decide the WARNING/NOTE"
-            " findings in that SAME pass (fix / accept / file) — deferring them to a"
-            " later round is what turns one review into several. Accept is the"
-            " default for anything nobody will realistically action:"
-            f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"` needs no'
-            " review and moves no tree."
+            f"{blocking} BLOCKING finding(s) gate this work. Fix them, and decide"
+            " every warning and note in the same pass (fix, or accept with"
+            f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`,'
+            " which needs no review and moves no tree): " + gates.FIX_ORDER + "."
             + _RIDE_ALONG_ROUTE
             + price
         )
@@ -962,12 +920,11 @@ def next_action_line(
         if observations:
             return (
                 lead
-                + f"0 blocking, 0 findings — THE REVIEW IS OVER and nothing in THIS"
-                f" review requires another round. {observations} item(s) were"
-                " demoted to observations, and each can be answered on the record"
-                " instead of fixed:"
+                + f"0 blocking, 0 findings — the review is over. Its"
+                f" {observations} observation(s) gate nothing; answer each on the"
+                " record instead of fixing it with"
                 f' `prawduct-hook disposition {ref} <oid> --accept "<reason>"`'
-                " (the ids are in `.critic-findings.json` under `observations`),"
+                " (the ids are under `observations` in `.critic-findings.json`),"
                 " which needs no review and moves no tree."
                 + coverage_clause
                 # This is the one clean close that still carries actionable
@@ -978,26 +935,22 @@ def next_action_line(
                 + fix_tail
             )
         return (
-            "0 blocking, 0 other findings — THE REVIEW IS OVER and there is nothing"
-            " to disposition. Nothing in THIS review requires another round."
+            "0 blocking, 0 other findings — the review is over, and there is"
+            " nothing to disposition."
             + coverage_clause
         )
+    obs = (
+        f", nor do its {observations} observation(s) (answer them by `O-n` id)"
+        if observations
+        else ""
+    )
     return (
         lead
-        + f"0 blocking — THE REVIEW IS OVER. The {warning} warning + {note} note"
-        " finding(s) gate NOTHING: no gate reads them, so nothing in THIS review"
-        " requires another round."
+        + f"0 blocking — the review is over. Its {warning} warning(s) and {note}"
+        f" note(s) gate nothing{obs}. Decide each: accept by default with"
+        f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"` (no'
+        " review, no tree move), or fix."
         + coverage_clause
-        + " Disposition each finding instead of reflexively fixing it —"
-        " accept is the default for anything nobody will realistically action:"
-        f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`, which needs'
-        " no review and moves no tree."
-        + (
-            f" The {observations} demoted observation(s) answer to the same"
-            " command by their `O-n` ids."
-            if observations
-            else ""
-        )
         + fix_tail
     )
 
@@ -1040,10 +993,10 @@ def next_action_line(
 #: loses all of its effect there: a reader agrees with "a resolution is a claim"
 #: and writes the same unchecked ``fixed`` it was going to write, because
 #: nothing made it recognize THIS disposition as an instance. So the general
-#: sentence is followed by the act to perform ("name the evidence you read"),
-#: instances concrete enough to pattern-match against, and an explicit
-#: instruction to spend it on the case in hand — aimed at the finding the
-#: reader is surest about, which is the one a general rule never reaches.
+#: sentence is followed by the act to perform ("name the evidence you read")
+#: and instances concrete enough to pattern-match against. The act and the
+#: instances carry the rule; where the reviewer spends its attention is left to
+#: the reviewer.
 RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
     "PRAWDUCT: a resolution is a claim about the tree, and it WEAKENS a gate —"
     " `fixed` and `waived` BOTH lift a blocking finding out of"
@@ -1059,9 +1012,7 @@ RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
     " a CLASS but was closed at the sites it happened to name: re-run the"
     " finding's own reason as a search before you write `fixed`, because the"
     " members that survive are the ones outside this delta, and a longer list of"
-    " names is not a resolution. Spend this on the"
-    " finding you feel surest about: a rule you agree with and do not apply to"
-    " the disposition actually in front of you has done nothing."
+    " names is not a resolution."
 )
 
 
@@ -1178,9 +1129,7 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: reviewer agrees that re-reviews should not manufacture work and then records
 #: the WARNING in front of it, because nothing made it recognize THIS finding as
 #: the instance. So the general sentence is followed by the act, by instances
-#: concrete enough to pattern-match against, and by an instruction to spend it
-#: on the finding the reader is surest about — which is the one a general rule
-#: never reaches.
+#: concrete enough to pattern-match against.
 VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     "PRAWDUCT: this pass answers ONE question — were the prior findings"
     " resolved? A NEW finding here is one of the inner BLOCKING set, or it is"
@@ -1229,12 +1178,9 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " because a reviewer who has just reasoned 'this rides the commit already"
     " owed' and then rates it BLOCKING has contradicted itself, and the gates"
     " read the severity, not the sentence. The five classes above are exempt"
-    " and stay BLOCKING: each of them means the tree is ALREADY wrong. A record"
-    " gap met while the chunk is CLOSING, with no further commit to ride,"
-    " blocks that close — rate it BLOCKING and say so."
-    " Apply all of this to the one you are surest deserves a WARNING: that"
-    " finding is the next round's first item, and demoting it is the whole"
-    " point."
+    " and stay BLOCKING: each of them means the tree is ALREADY wrong. Rate a"
+    " record gap BLOCKING, and say so, when you meet it while the chunk is"
+    " CLOSING with no further commit to ride: it blocks that close."
 )
 
 
@@ -1283,9 +1229,8 @@ GOALS_1_3_MODES = frozenset({"chunk", "verify-resolutions"})
 #: :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE`'s docstring gives at length.** A
 #: reviewer agrees that findings should name their breadth and then writes the
 #: two file paths in front of it, because nothing made it recognize THIS
-#: finding as the instance. So the rule is followed by the act, by the test
-#: that decides it, and by an instruction to spend it on the finding whose fix
-#: looks most obvious — which is the one a general rule never reaches.
+#: finding as the instance. So the rule is followed by the act and by the test
+#: that decides it.
 FINDING_SCOPE_DIRECTIVE = (
     "PRAWDUCT: a site-naming finding answers `instance` or `class` FIRST in its"
     " `recommendation`. Say why it broke in one sentence — a sentence that does"
@@ -1294,8 +1239,7 @@ FINDING_SCOPE_DIRECTIVE = (
     " fixed; an unbounded class closes only by a CONSTRUCTION — one owner every"
     " member passes through, or a check derived from the source of truth —"
     " never by a longer list of names. A mandated cross-check carrying no"
-    " defect to bound answers `none`. Spend this on the finding whose fix looks"
-    " most obvious: that is the one whose siblings nobody goes looking for."
+    " defect to bound answers `none`."
 )
 
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
@@ -2670,7 +2614,6 @@ def working_tree_interval_base(
     ``why`` collects ``gates.covered_frontier``'s could-not-look sentences, so
     the caller can say why an interval was not extended.
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     frontier_why: list[str] = []
     absent: list[str] = []
@@ -2708,7 +2651,6 @@ def merge_base_start_reason(absent: "str | None") -> str:
     different actions. An open blocker is named with its only remedy, since a
     ``chunk`` review records no resolutions and will not clear it.
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     if absent == gates.FRONTIER_ABSENT_BLOCKED:
         return (
@@ -3781,7 +3723,6 @@ def validate_manifest(data) -> tuple[bool, str]:
     manifest can no longer produce something consolidation trusts (CRT-W2NV
     regression pin).
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     if not isinstance(data, dict):
         return False, "manifest is not a JSON object"
@@ -5173,7 +5114,6 @@ def consolidate(project_dir: Path) -> int:
         complete; the manifest is left in place so the fix can retry (fact
         appends already made are healed by the id-idempotency probe).
     """
-    from . import gates  # noqa: PLC0415 — lazy; gates is heavy
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)
@@ -5453,7 +5393,7 @@ def consolidate(project_dir: Path) -> int:
 
     # The delta verdict and the span verdict, in one breath — on the one close
     # where the delta verdict is routinely read as branch clearance. A clean
-    # `verify-resolutions` pass says THE REVIEW IS OVER about a diff it chose,
+    # `verify-resolutions` pass says the review is over about a diff it chose,
     # and the branch it was run on may never have been reviewed end to end.
     #
     # Scoped to that close on purpose. With blocking findings the next move is
