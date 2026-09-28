@@ -37,7 +37,7 @@ withholds one because acting on it would cost a review round. Accepting stays th
 costs nothing. The Critic reviewer no longer gets depth coaching by work size, or a warning
 against inventing findings. Reviewers no longer read copies of rules their protocol already
 states, issue numbers and dates, or harness-version notes. Critic review routes load
-566 to 1,334 fewer tokens, depending on the route. The builder's `/prawduct:pr` skill is about 1,400 words shorter, with a
+570 to 1,330 fewer tokens, depending on the route. The builder's `/prawduct:pr` skill is about 1,400 words shorter, with a
 plainer register. The Critic now applies a norm departure as BLOCKING wherever a product has
 *adopted* norms, as `norms.md` § Severity defines them. It used to say "ratified".
 

@@ -309,7 +309,7 @@ MUST unless marked SHOULD.
   (the backlog-dumping regression this item must not reproduce; its measurement, "open items went
   50 → 180 in 26 days", is in that file's "Why the default moved" paragraph at `a078edc9`), and its
   "Severity does not exempt" paragraph.
-- `plugin/skills/pr/review-protocol.md:161-163` (PR reviewer's severity contract).
+- `plugin/skills/pr/review-protocol.md` § Severity Levels (PR reviewer's severity contract).
 - `documentation/release-process.md:127-145` (release checklist, Step 0 = `check-releasability`).
 - `plugin/templates/project-preferences.md:40-52` (`## Workflow`), `:60-87` (`## Enforcement`) — the
   natural home for a posture setting, if design decides one is needed.

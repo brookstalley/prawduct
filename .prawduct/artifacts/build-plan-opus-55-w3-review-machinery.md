@@ -127,6 +127,11 @@ split below.
   "its `Bash(...)` patterns are a contract you keep, not a fence the harness enforces" | the ruling
   applies replacement text unless that makes a sentence false, and this one did (R-6) | owner can
   veto]
+- [DECISION: Chunk 01 is ticked although its done-when's Sonnet 5.5 probe ran on Sonnet 5 | the
+  Agent tool's alias could not reach 5.5 from this session. The owed rerun of both reviewer-surface
+  probes is scheduled in the audit's § Rulings (F5 note) to ride W4's probe session, rather than
+  holding a reviewed wave open for a model this session cannot select | owner can veto and hold the
+  tick]
 - [ASSUMPTION: the Agent tool's `sonnet` alias resolves to Sonnet 5.5, which the owner reports
   shipped 2026-09-28. The probe records the model id that actually ran | LOW impact | owner can
   correct]

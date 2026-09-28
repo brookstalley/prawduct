@@ -99,11 +99,14 @@ as written. Two rulings carry notes that change how the waves apply:
   Sonnet 5.5 discovery probe, which W4's plan carries.
 - **The Sonnet 5.5 probe is not yet reachable from the Agent tool (found in W3, 2026-09-28).** Its
   `sonnet` alias ran `claude-sonnet-5` in all four W3 probe runs. W3's probe therefore ran on Sonnet
-  5, and F1's Sonnet 5.5 floor probe is still owed. W4's probe, which releases B-21 and B-22, must
-  confirm the model id it actually ran on before it counts.
+  5, and F1's Sonnet 5.5 floor probe is still owed. That includes a rerun of W3's two reviewer-surface
+  probes (the scenarios are in W3's plan), which should ride W4's probe session. W4's probe, which
+  releases B-21 and B-22, must confirm the model id it actually ran on before it counts.
 - **F2, F3, F6 and F7: take.** F6 carries its measurement: compare `review-stats` rounds per PR
   before and after W3.
-- **W1–W6: take.** They run in order, W1 first, one plan and one feature branch each.
+- **W1–W6: take.** They run in order, W1 first, one plan and one feature branch each. W3's plan split
+  C-8 and C-20 into **W3b**, which runs after W3 and before W4 (a vetoable decision in
+  `build-plan-opus-55-w3-review-machinery.md`).
 - **#181 bookkeeping: take every row.**
   - Close #297 and #318 as not planned.
   - Record "retire" on #301, which stays open as mechanism-half work.
@@ -251,7 +254,10 @@ That measurement is the one that answers the wall-clock question.
 
 **Baseline, recorded 2026-09-28 before W3 (ledger through PR #921).** `review-stats` has no
 rounds-per-PR view, so the numbers come from
-`opus-55-prompt-audit-2026-09/rounds_per_pr.py <since> [<until>]`. The baseline windows end at
+`opus-55-prompt-audit-2026-09/rounds_per_pr.py <since> [<until>]`. It reads the
+**primary checkout's** `.prawduct/.governance-ledger.jsonl` (`/Users/brookstalley/source/prawduct`).
+The ledger is gitignored and kept per worktree, so a PR reviewed in another worktree is not in it.
+Run the after window from the same checkout, or the two windows count different PR sets. The baseline windows end at
 W3's plan commit (`7cec305a`, 2026-09-28T21:41Z). For the after window, pass W3's merge date to `develop` as `since` and
 leave `until` off. A rerun with the baseline's own `since` would mix the before and after data. It groups `review.pr` events by branch, and counts the `review.critic` events that
 share the branch's scope. A scope reused across branches inflates the Critic count, and the "after"
@@ -290,7 +296,7 @@ norms). Fork-dependent decisions ride the wave that owns their file.
 |---|---|---|
 | **W1 Always-on** | digest, root `CLAUDE.md`, `principles.md`, learnings | A-1, A-2, A-3, A-4, A-17, A-18, A-19, A-20, A-23, A-24, A-25, A-26, A-39 · [F2: A-8–A-16, A-31–A-38] · [F3: A-22] · [F4: A-21] |
 | **W2 Hook and gate text** | `lib/critic_consolidate.py`, `lib/gates.py`, `lib/briefing.py`, `bin/prawduct-hook`, their tests | A-5, A-6, A-7, A-27, A-28, A-30 · [F6: A-29] |
-| **W3 Review machinery** | `skills/critic/*`, `skills/pr/*`, `agents/*` | C-2 to C-16, C-18 to C-21, C-24; also the Critic goal files' "where ratified norms exist" wording, aligned to `norms.md` § Severity (slice E's outside-slice note) · [F6: C-1, C-17, C-22, C-23]. The two `move` decisions are structural, with test re-pointing, and could be their own plan. |
+| **W3 Review machinery** | `skills/critic/*`, `skills/pr/*`, `agents/*` | C-2 to C-16, C-18 to C-21, C-24; also the Critic goal files' "where ratified norms exist" wording, aligned to `norms.md` § Severity (slice E's outside-slice note) · [F6: C-1, C-17, C-22, C-23]. The two `move` decisions (C-8, C-20) are structural, with test re-pointing, and are their own plan, **W3b**, after W3. |
 | **W4 Methodology and templates** | `methodology/*` (except the digest), `templates/*` | B-3 to B-9, B-16, B-17, B-18, B-20, B-24, B-27 to B-35, B-37 to B-40 · [F3: B-1, B-10–B-12, B-19, B-36] · [F4: B-2, B-13–B-15] · [F5: B-23, B-25, B-26]. Closes #341. |
 | **W5 Operational skills** | `skills/*` except `critic` and `pr` | D-1 to D-25, D-27 to D-39, D-41 to D-58, D-60, D-61; also the runbook skill's copies of the overstated length claim and the dated hallucination rates (slice E's outside-slice notes) · [F3: D-40] · [F4: D-26, D-59] |
 | **W6 Reference docs** | `plugin/docs/*` | E-1 to E-4, E-6 to E-19 · [F3: E-5] |

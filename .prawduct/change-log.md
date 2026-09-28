@@ -39,7 +39,10 @@ to move `commit_reviewed` is restated in `/prawduct:pr`, and `critic-reviewer.md
 inside your `tools:` line" contract. C-5's and C-10's trims had dropped both. Two `_NOT_GRANTED` exemption rows are removed, because the skill
 no longer names those commands. The two structural moves, C-8 and C-20, go to their own plan, W3b.
 F6's rounds-per-PR baseline is recorded in the audit artifact. The PR-side half was built by one
-isolated-worktree delegate and merged here. Plan: `build-plan-opus-55-w3-review-machinery.md`.
+isolated-worktree delegate and merged here. `documentation/issues/712-design.md` and
+`830-requirements.md` stop citing text this wave rewrote. The probe ran on Sonnet 5, not 5.5,
+because the Agent tool's alias could not select it. The Sonnet 5.5 rerun is owed with W4's probe.
+Plan: `build-plan-opus-55-w3-review-machinery.md`.
 
 ## 2026-09-28: develop opens 3.6.2-dev.5
 
