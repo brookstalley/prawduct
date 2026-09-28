@@ -1004,8 +1004,7 @@ def update_item(
     # against the human text and the labels as they now stand. A body it did not
     # write is not reported on, for the same containment reason as the stored
     # title above. When the body was written `lint` is always present, so `[]`
-    # reads as "checked and clean" and an absent `lint` as "not checked" — before
-    # this the two were one output, and a clean update looked like a pass.
+    # reads as "checked and clean" and an absent `lint` as "not checked".
     body_findings: list | None = None
     if "body" in fields:
         body_findings = issuefmt.lint_body(

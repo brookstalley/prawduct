@@ -235,6 +235,20 @@ class TestUpdateBodyStandard:
         rules = {f["rule"] for f in result["lint"]}
         assert {"title-too-long", "body-too-long"} <= rules
 
+    def test_sections_are_judged_against_the_kind_the_write_leaves(self, fake):
+        """`kind` picks the §2 template, so a `kind` set in the same call as the
+        body is the one the body answers to. Linting the labels read BEFORE the
+        facet swap would judge this bug body by the task template."""
+        ref = self._filed(fake)
+
+        result = core.update_item(
+            fake, id_raw=ref, fields={"body": "Prose with no sections at all.", "kind": "bug"}
+        )
+
+        assert result["status"] == "ok"
+        rules = {f["rule"] for f in result["lint"]}
+        assert "bug-missing-env" in rules, "only the bug template emits this nudge"
+
 
 class TestAttribution:
     """SEC-3 — actor is the API identity, resolved once across a sweep."""
