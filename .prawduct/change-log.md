@@ -5,6 +5,28 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-29: the operational skills are retuned for Opus 5.5 (audit wave W5)
+
+<!-- prawduct: type=feature | scope=opus-55-w5-operational-skills -->
+
+Wave W5 of `opus-55-prompt-audit-2026-09.md`, ruled in full on 2026-09-28. It applies slice D's
+61 decisions to every skill except `critic` and `pr`. Doctor states "degraded because ungraded"
+once instead of seven times, and its checks keep their statuses and lose the history of why each was
+built (D-1 to D-8, D-30 to D-33). The migration scrub keeps every command, gate and ordering and
+loses its incident stories, version pins, spec ids and a misplaced, duplicated `duplicate_alias`
+remedy (D-9 to D-14, D-35 to D-40). The backlog files drop an envelope no code emits (D-15),
+prohibitions naming retired ops, and second copies of facts that have a home elsewhere (D-24, D-25,
+D-45, D-51). `add` lists delegation last (D-26, F4). `pick` ranks by value per effort and flags
+unassessed items, where it used to compute a score (D-28). The janitor points at
+`/prawduct:methodology` instead of a product `CLAUDE.md` that no longer carries planning guidance
+(D-18). Shouted headings lose their caps (D-54, D-58, D-61). The runbook skill and template lose
+their copies of the overstated "best-evidenced finding" claim and the dated hallucination rate
+(E-1, E-8). The backlog half was built by one worktree delegate. D-23's and D-29's maintainer
+rationale moved into test docstrings, and D-29's two sentence asserts went with it. The
+writable-block-field guard follows D-25's moved sentence to `adapter-mode.md`, and was
+red-verified there. One regression probe (D-28, Opus 5.5) found no regression. No token ceiling
+moved, because no file in this wave has one.
+
 ## 2026-09-29: the methodology guides and templates are retuned for Opus 5.5 (audit wave W4)
 
 <!-- prawduct: type=feature | scope=opus-55-w4-methodology-templates -->

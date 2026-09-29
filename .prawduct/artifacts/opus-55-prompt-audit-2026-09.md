@@ -1,7 +1,7 @@
 ---
 artifact: research
 scope: opus-55-prompt-audit
-status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; W1–W4 applied (one build plan each, `build-plan-opus-55-w*.md`), W5–W6 pending
+status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; W1–W5 applied (one build plan each, `build-plan-opus-55-w*.md`), W6 pending
 created: 2026-09-28
 depends_on: [framework-efficiency-review-2026-07-02.md, program-purpose-and-cession.md]
 absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
@@ -14,7 +14,7 @@ absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
 This is a disposition list for prawduct's **prompt surface**, meaning every piece of text that
 reaches a model as instructions. Each decision is re-priced against Anthropic's guidance for
 Claude Opus 5.5. The owner picks decisions in one sitting. Each apply wave then gets its own plan
-and a Critic review. W1 to W4 (with W3b) are applied, and W5 and W6 are pending (§ Rulings, § Found while applying).
+and a Critic review. W1 to W5 (with W3b) are applied, and W6 is pending (§ Rulings, § Found while applying).
 
 **Why now.** `program-purpose-and-cession.md` sorts what prawduct hedges into three piles, and
 says the *runtime judgment* pile "depreciates via model releases". Opus 5.5 is such a release.
@@ -183,6 +183,21 @@ only in that session's scratchpad.
 - **Closing #341 moved `architecture.md`'s "goals bind; method is advice" norm to steady-state.**
   Its Status and Stopgap lines go, and its Retroactivity line records the migrated sites. This is
   a recorded decision in W4's plan.
+
+## Found while applying (W5, 2026-09-29)
+
+The details are in `build-plan-opus-55-w5-operational-skills.md`.
+
+- **The W5 regression probe (D-28, `pick` ranking, Opus 5.5): no regression.** Both arms ranked a
+  nine-item backlog the same way and flagged every unassessed item. The control did not fail, so
+  this is not evidence D-28 helps. That makes five waves where the control has not shown the
+  targeted failure, apart from W4's P3.
+- **E-1's overstated length claim had a third copy** in `plugin/templates/runbook.md`, owned by no
+  remaining wave. W5 corrected it along with the skill's copy. W6's E-1 still owes the home,
+  `runbook-authoring.md`.
+- **Three ruled replacements needed a minimal departure,** each recorded in the plan: D-18 (a
+  short plan's review timing), D-25 (a test guard followed the moved sentence to its home) and
+  D-57 (a command named in a skill that doesn't grant it).
 
 ## Decisions for the owner
 

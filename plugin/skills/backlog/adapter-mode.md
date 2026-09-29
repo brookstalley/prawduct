@@ -245,8 +245,9 @@ Route by what changed:
 - **editorial block field** (`refs:`/`revisit:`/`closed-by:`) → `update <id> --refs V`,
   `--revisit V`, `--closed-by V` — each takes a value, and an **empty** value clears the field, so
   an expired `revisit:` can be removed rather than blanked. `file` also takes `--refs` so a new item
-  can carry its governing-doc link from birth. With `--affected`, `--working-branch` and `--tags`
-  above, these are the only writable block fields; **`--body` is not a route into the block** — a
+  can carry its governing-doc link from birth. The only writable block fields are `--affected`,
+  `--working-branch`, `--refs`, `--revisit`, `--closed-by` and the multi-valued `--tags`;
+  **`--body` is not a route into the block** — a
   pasted block is stripped and the existing one re-appended, so a block edit sent that way changes
   nothing. It does not do so silently: a pasted block asking for something the write did not land (compared against the block as it finally stands, after the flags layer on — not against the stored one) comes back
   with a warning naming the differing fields, so check `warnings` rather than reading `ok` as "the

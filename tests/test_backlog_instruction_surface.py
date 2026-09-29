@@ -933,11 +933,14 @@ def test_the_capability_guard_does_not_flag_a_writable_field(tmp_path):
 # regex's fault rather than the prose's. A false alarm here is worse than none —
 # it is the "probe that misfires trains its reader to ignore it" failure this
 # module's own docstring names.
-_WRITABLE_PROSE = re.compile(r"block fields are writable[^.]*")
+_WRITABLE_PROSE = re.compile(r"only writable block fields are[^;.]*")
 
 
 def test_skill_prose_field_list_matches_the_derived_writable_set():
-    """SKILL.md states the writable block fields in prose; that list must be true.
+    """adapter-mode.md states the writable block fields in prose; that list must be true.
+
+    It is the one home: `SKILL.md`'s `update` points there rather than keeping a
+    second, differently worded copy.
 
     The guards above check that no instruction names an UNWRITABLE field. They do
     not check the converse — a sentence enumerating "only these are writable"
@@ -959,17 +962,17 @@ def test_skill_prose_field_list_matches_the_derived_writable_set():
         f"--{name}"
         for name in core._UPDATE_BLOCK + core._UPDATE_BLOCK_FIELDS + core._UPDATE_MULTI_FACETS
     }
-    skill = (PLUGIN / "skills" / "backlog" / "SKILL.md").read_text(encoding="utf-8")
-    claims = _WRITABLE_PROSE.findall(skill)
+    skill = (PLUGIN / "skills" / "backlog" / "adapter-mode.md").read_text(encoding="utf-8")
+    claims = _WRITABLE_PROSE.findall(" ".join(skill.split()))
     assert claims, (
-        "SKILL.md no longer states which block fields are writable — if the "
+        "adapter-mode.md no longer states which block fields are writable — if the "
         "sentence moved, retarget this guard; if it was deleted, the skill lost "
         "the one place a reader learns the write surface"
     )
     for claim in claims:
         named = set(re.findall(r"`(--[a-z-]+)`", claim))
         assert named == expected, (
-            f"SKILL.md's writable-field list {sorted(named)} disagrees with the "
+            f"adapter-mode.md's writable-field list {sorted(named)} disagrees with the "
             f"adapter's actual set {sorted(expected)} — update the prose, or the "
             "closed-world claim 'only these are writable' is false"
         )

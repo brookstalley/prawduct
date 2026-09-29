@@ -46,6 +46,20 @@ anything the command can do.
 
 `_covers` enforces the difference, so a starred-only grant paired with a bare
 call is now a red test rather than a silent runtime prompt (#730).
+
+## Readers of the backlog cache hold both spellings
+
+`skills/backlog/cache-reads.md` names two spellings of `backlog cache-query`:
+the bare one a governed product uses and `python3 plugin/bin/prawduct-hook …`
+for this repo. Every reader that runs under a restricted tool list — the Critic
+skill, the `critic-reviewer` agent, the janitor, and the `pr-reviewer` agent —
+is granted both, because a reader that silently falls back to a prompt gets
+neither an answer nor an exit 6. So whenever a reader of that file is narrowed,
+the `cache-query` grant goes in the same edit: a narrowed reader without it
+meets a permission prompt instead of an answer, and the PR reviewer's R-2 has no
+other owner in the pipeline. This module and
+`test_pr_reviewer_agent.py::test_the_backlog_cache_read_survives_the_narrowing`
+are where that rule is enforced; the runtime file no longer argues it.
 """
 
 from __future__ import annotations

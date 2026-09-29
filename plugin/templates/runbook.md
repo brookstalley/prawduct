@@ -28,8 +28,8 @@
      Start short: this template is a menu, not a form to complete.
      ────────────────────────────────────────────────────────────────────
      The most common way to ruin a runbook is to fill in every section.
-     Length is the best-evidenced defect in the whole literature: as a
-     procedure grows, readers skip it or execute it badly. A section with
+     The sources agree on the direction: as a procedure grows, readers
+     risk skipping it or executing it badly. A section with
      nothing product-specific in it does not add rigor — it dilutes the
      steps that matter.
 

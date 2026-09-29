@@ -145,9 +145,7 @@ Propose two candidate sets:
      obsolete. Group with a one-line "why this looks stale."
    - **Duplicate / overlapping** — cluster by area + title/body overlap. For
      each cluster name the **survivor** (the item others fold into) and the
-     duplicates. (Lexical `search --like` is a post-cache accelerator, not
-     available in the cacheless service — surface duplicates by reading the
-     `list` output directly.)
+     duplicates, reading the source or the `list` output directly.
    - **One fix, many items (the altitude question)** — ask of the whole corpus:
      **"would a SINGLE change close all of these?"** That is a *shared-root-cause*
      test, not the duplicate test above, and it must run **corpus-wide, before
@@ -179,7 +177,7 @@ mints new IDs and is an owner scrub decision; 1 PFX = 1 issue).
 **The `area:` prefix is the import's job, not the plan's.** `import` normalizes
 every title to the §1 `area: summary` shape from the item's own `area:` facet,
 whether or not the plan names that item — so a plan that retitles only
-the lint-failing items no longer yields a half-prefixed issue list, and you
+the lint-failing items does not yield a half-prefixed issue list, and you
 never need a `title` entry whose only purpose is to add the prefix. Write plan
 titles as the summary you want; the prefix arrives either way, and
 `normalize_title` never adds a second one. Every title the import changes keeps
@@ -433,7 +431,7 @@ live.** Setting the scalar changes what the *tooling* reads; it changes nothing 
 human sees when they open `.prawduct/backlog.md`, which still carries a "managed via
 the backlog skill" header and a `## Open (pickable)` section under it. Write a
 frozen-history banner at the head of the source naming the cutover date, the live
-tracker URL, and the read commands. Three constraints, all learned the hard way:
+tracker URL, and the read commands. Three constraints:
 
 - **It must be visible when RENDERED.** An HTML comment is invisible in GitHub's
   rendered view — a reader browsing the file sees a heading and a list of open items

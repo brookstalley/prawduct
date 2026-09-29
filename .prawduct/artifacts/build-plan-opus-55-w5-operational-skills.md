@@ -111,7 +111,71 @@ Every decision has replacement text and a ruling. These are the inferences:
 
 ## Found while applying
 
-(filled in during the build)
+- **The template carries a third copy of E-1's overstated claim** (`plugin/templates/runbook.md`,
+  "Length is the best-evidenced defect in the whole literature"). E-1 names it as a `dup_of`, but W4
+  did not take it and W6 owns only `plugin/docs/`, so nobody else would.
+  [DECISION: corrected here to the same hedged direction the skill now states | a correction is not
+  deferred to a wave that doesn't own the file | owner can veto]
+- **D-57's replacement named `prawduct-hook print-install-reference` in onboard**, which grants
+  nothing by that name, so `test_every_instructed_command_is_granted[onboard]` went red. The mention
+  is a cross-reference to doctor's check, not an instruction to run it.
+  [DECISION: onboard says "grades it against the plugin's published contract" instead of naming the
+  command | granting a command onboard never runs would widen its tool list for a pointer | owner
+  can veto]
+- **D-18's ruled "Run `/prawduct:critic` after each chunk" is false on a short plan**, which defers
+  per-chunk reviews to one boundary run.
+  [DECISION: janitor says "as each chunk's "Done when" directs", the wording `methodology/SKILL.md`
+  already uses | the ruled text was as wrong as the text it replaced | owner can veto]
+- **D-25 moved a guarded sentence.** `test_skill_prose_field_list_matches_the_derived_writable_set`
+  pinned SKILL.md's closed-world list of writable block fields, which D-25 replaced with a pointer to
+  `adapter-mode.md`. That file's list was split across a clause ("With `--affected`, … above, these
+  are the only writable block fields") that no single-sentence regex can read.
+  [DECISION: `adapter-mode.md` states the list in one sentence, and the guard now reads it there.
+  Red-verified by dropping `--closed-by` from the sentence | the guard protects a closed-world claim
+  against the CLI, and it has to sit on the claim's one home | owner can veto]
+- **D-23 and D-29's rationale moved into test docstrings as ruled**
+  (`test_skill_command_grants.py`, `test_cutover_prose_coherence.py`). D-29's two asserts
+  (`"blanket"`, `"rejected"`) are dropped.
+- **The delegate's recorded departures,** all vetoable. Its diff was read in full after the merge,
+  not taken from the summary.
+  - [DECISION: D-24 — adapter-mode's write-operations intro points `file-upstream`'s preview at
+    `/prawduct:report-bug` | the block below no longer describes preview]
+  - [DECISION: D-40 — step 7's "the check *Spot-check* could not yet make" names "the step 5 rollup"
+    | D-40 renamed step 5 and removed its checks]
+  - [DECISION: D-35 — also drops "(#728)" and names "the Step 1 export backup" for "the MG2 export
+    backup" | the audit's line list missed both]
+  - [DECISION: D-25 — the Claims paragraph's "`--working-branch` (see above)" points at
+    `adapter-mode.md` § update | "above" pointed at the list D-25 removed]
+- **Four stale sentences the delegate found and no decision covers,** fixed here because they are
+  in this wave's files:
+  - `migration-scrub.md` step 2 said "`search --like` is a post-cache accelerator, not available in
+    the cacheless service". No `--like` exists in `plugin/`, and the service has a cache. The
+    instruction now just says to read the source or the `list` output.
+  - "no longer yields" and "all learned the hard way" (D-38's class) and SKILL.md's "MG4/G1"
+    (D-35's class).
+  - SKILL.md's `lib/backlog_probes.py` citation resolves, so it stays.
+- **No other surface restates what this wave deleted.** A sweep of `plugin/` and `documentation/`
+  for the queued envelope, the retired flags, the incident names and the dated rates found only
+  `documentation/backlog-service-api-contract.md` and its test spec. They describe the queue as an
+  optional layer, which is still true.
+- **The negative-pin scan came back clean.** Of the `"<lit>" not in` literals this wave removed from
+  its files, every one asserts against runtime output (stderr, probe evidence), not these files.
+
+**P1 outcome (2026-09-29, D-28, Opus 5.5).** Each subject ran `claude -p --model claude-opus-5-5
+--setting-sources project --strict-mcp-config --settings
+'{"enabledPlugins":{"prawduct@prawduct":false}}'`, with the arm's `SKILL.md` appended to the
+system prompt. The new arm differed from the old only in the Score step (the diff was checked). The
+fixture was a nine-item markdown backlog: two items with no `impact:`/`effort:`, one of them a
+data-loss bug with a one-line fix, and one low-value/high-effort item. The criteria were fixed
+before the runs. All four runs have `modelUsage` = `claude-opus-5-5` (re-derived from the raw
+JSON), and none quotes the digest.
+- **Both arms, 2 of 2:** the same top 3, with the data-loss bug first, the low-value/high-effort
+  item never in the top 3, and every unassessed item flagged as missing its fields.
+- **Differences:** the old arm printed numeric scores (3.0, 2.0, 0.33), and one old run said the
+  formula put the data-loss bug "only around fifth" before overriding it. The new arm computed no
+  score. Mean output was about 2,470 characters new, 2,900 old.
+- **Result: no regression.** The control did not fail either, so this is not evidence that D-28
+  helps.
 
 ## Status
 

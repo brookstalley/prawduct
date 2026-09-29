@@ -11,9 +11,9 @@ You are turning Prawduct **off in the current repo only**. Prawduct installs at 
 opens. A per-repo `enabledPlugins` override disables it just here — it beats the
 user-scope enable in Claude Code's settings hierarchy.
 
-(As of v2.0.11 the SessionStart hooks are already silent in a repo with no
-`.prawduct/`. This skill goes further: it removes the `/prawduct:*` commands and the
-version banner too, by disabling the plugin outright for this repo.)
+(SessionStart hooks are silent in a repo with no `.prawduct/`. This skill goes
+further: it removes the `/prawduct:*` commands and the version banner too, by disabling
+the plugin outright for this repo.)
 
 ## Flow
 
@@ -50,7 +50,7 @@ other plugins, and prawduct's own marketplace reference — left intact so re-en
 is a one-line edit). It aborts without writing if the file exists but isn't valid
 JSON.
 
-### 4. Tell the user what happens next — REQUIRED
+### 4. Tell the user what happens next
 After applying, relay both of these clearly:
 
 - **It takes effect after `/reload-plugins` (this session) or a restart.** Until
