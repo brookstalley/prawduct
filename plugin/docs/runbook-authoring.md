@@ -34,9 +34,9 @@ the [Invariants](#the-invariants), which hold regardless of technology. Then wor
 6. [Authoring protocol](#authoring-protocol--when-a-model-writes-the-runbook) — the parts specific to
    a model doing the writing, above all *derive commands, never generate them*
 
-Before you call it done, run the [rejection criteria](#self-review--rejection-criteria) against your
-own output. If you are short on time, the two rules that recover most of the value are: **every
-verification step names an observed value**, and **every command is derived from the repository**.
+The [rejection criteria](#self-review--rejection-criteria) are the bar a finished runbook meets. If
+you are short on time, the two rules that recover most of the value are: **every verification step
+names an observed value**, and **every command is derived from the repository**.
 
 ---
 
@@ -45,14 +45,14 @@ verification step names an observed value**, and **every command is derived from
 **This guide is a diagnostic set, not a checklist to satisfy.** It is long because it catalogues the
 many ways procedures fail. The runbooks it produces must be **short**.
 
-If you apply everything here to every procedure, you will produce a thorough, complete, exhaustively
-cross-referenced document that **no tired human will read** — and you will have failed, while
-appearing to succeed. That failure mode is not a hypothetical risk of over-application. It is the
-single most strongly evidenced finding in the entire literature below:
+If you apply everything here to every procedure, you will produce a thorough, exhaustively
+cross-referenced document that **no tired human will read**, which is a failure that looks like
+success. The sources agree on the direction:
 
-> As a list grows, the probability of overlooking any given item rises, and length itself drives
-> operators to skip the procedure or execute it poorly ✓. Observed crews facing a long checklist
-> degraded it into a hurried read-through, destroying the very redundancy it existed to provide.
+> As a list grows there may be a higher probability of overlooking any given item, and length
+> carries the risk that operators skip the procedure or execute it poorly ✓. Observed crews facing a
+> long checklist degraded it into a hurried read-through, losing the redundancy it existed to
+> provide.
 
 A runbook padded with sections that do not apply is not "comprehensive." It is **diluted** — every
 unnecessary line lowers the odds that a necessary one is read.
@@ -110,7 +110,7 @@ A four-step runbook that does those things is a good runbook. Ship it.
 ### What good and short actually looks like
 
 This is a complete runbook. Not an excerpt — the whole document. It satisfies all four
-non-negotiables and would pass the self-review, and it is under a page.
+non-negotiables and meets the rejection criteria, and it is under a page.
 
 ```markdown
 # DiskSpaceLow — payments-db
@@ -333,7 +333,7 @@ control, which is the whole argument for cutting.
 
 **Surprise and interruption destroy place-keeping specifically** ✓○. Startled operators lose track of
 where they were in a procedure, and interruptions of a few seconds measurably wreck the steps that
-follow. This is the most actionable finding here, and it produces a hard rule:
+follow. It produces a hard rule:
 
 > **The reader's place must be recoverable from the page, never from memory.** Stable step numbers
 > that never renumber, one action per step, short named blocks with an explicit state-checkpoint at
@@ -385,9 +385,8 @@ These hold for every product, language, and substrate. If you remember nothing e
 
 ### 1. A verification step reports an observed value, not an acknowledgment
 
-This is the most strongly evidenced rule in the entire literature ✓, and it converges from two
-independent directions: aviation human factors, and the largest empirical study of real software
-runbooks.
+This rule is well-evidenced ✓ and converges from two independent directions: aviation human
+factors, and the largest empirical study of real software runbooks.
 
 Aviation checklist doctrine names responses like "checked", "set", and "completed" as a failure
 mode, because — quoting the incident report that motivated the guideline — they "can be said too
@@ -782,12 +781,11 @@ Step-level craft. The most thoroughly codified rules come from US nuclear emerge
 procedure guidance ✓ — the most mature body of written-procedure design in existence — and they
 agree with modern software documentation style guides on the essentials.
 
-One honesty note about that pedigree, because it is easy to overstate and this guide was corrected
-on exactly this point: NUREG-0899 is **guidance, not regulation**. It presents its rules "in terms
-of goals, intent and importance, rather than as specific requirements," and its foreword states
-that "compliance will not be required" ✓. Read the rules below as very well-considered
-recommendations from a domain with catastrophic consequences — which is a strong reason to adopt
-them, and not a claim that anyone is legally bound by them.
+One honesty note about that pedigree, because it is easy to overstate: NUREG-0899 is **guidance, not
+regulation**. It presents its rules "in terms of goals, intent and importance, rather than as
+specific requirements," and its foreword states that "compliance will not be required" ✓. Read the
+rules below as very well-considered recommendations from a domain with catastrophic consequences —
+which is a strong reason to adopt them, and not a claim that anyone is legally bound by them.
 
 **Voice and grammar**
 - Imperative mood, verb first: "Restart the worker", not "The worker should be restarted" or "You
@@ -1064,12 +1062,11 @@ consequence that cannot be reversed." Apply that test literally to every step an
 
 ### Close out what the procedure introduced
 
-This is the most commonly omitted section in software runbooks, and it is mandatory in the mature
-standards ○. OSHA requires an explicit sequence *before* equipment returns to service: inspect the
-work area for leftover artifacts, confirm the system is reassembled and intact, confirm all people
-are clear. Military technical-manual and S1000D standards go further — the S1000D procedural schema
-makes preliminary requirements and **close-out requirements structurally required elements**, so a
-procedure is *invalid* without them.
+The mature standards make this section mandatory ○. OSHA requires an explicit sequence *before*
+equipment returns to service: inspect the work area for leftover artifacts, confirm the system is
+reassembled and intact, confirm all people are clear. Military technical-manual and S1000D standards
+go further — the S1000D procedural schema makes preliminary requirements and **close-out
+requirements structurally required elements**, so a procedure is *invalid* without them.
 
 > **Rule.** *Where a procedure leaves state behind*, end it with a close-out block executed before
 > the system is handed back:
@@ -1200,8 +1197,7 @@ benefit seen in the original pilot study **did not appear**: 0.71% versus 0.65% 
 endpoint is common enough that the study had ample power to detect a real effect.
 
 What that study measured was the *date a checklist came into force* — not whether it was used, or
-used well. This is the most important negative result in the procedure literature, and the lesson
-transfers exactly: **having a correct document is not the intervention.**
+used well. The lesson transfers exactly: **having a correct document is not the intervention.**
 
 The follow-up work explains the gap and turns it into authoring rules ○:
 
@@ -1247,21 +1243,10 @@ in a characteristic, measurable way that human-written ones do not.
 
 ### Derive commands; do not generate them
 
-**This is the highest-leverage rule in this guide.**
-
-Models still emit install and import references to packages that **do not exist**. A 2026
-replication across five frontier models measured overall rates of **4.62% to 6.10%** ✓ — improved
-over earlier cohorts, but nowhere near zero. And 127 package names were hallucinated by *all five
-models tested* ✓, so cross-model agreement leaks: it is a weaker filter than it looks, not a
-sound existence check. (Be precise about what that second figure does and does not show — the
-all-five overlap is a small fraction of any one model's hallucinated set, so consensus filtering
-would still catch most of them. It is evidence that consensus is unsound as a *guarantee*, not
-evidence that it is useless.)
-
-The same defect appears in operational commands specifically: when an agent generates a command on
-the fly instead of invoking a stored exact template, the dominant failure modes are **instruction
-drift** (rewriting the template it was given), **structural omissions** (silently dropping
-sub-conditions), and **syntax errors** ✓.
+Models emit references to packages, flags, and endpoints that do not exist, at measured rates well
+above zero ✓, and cross-model agreement is not an existence check. An agent that generates an
+operational command on the fly instead of invoking a stored exact template drifts from the template,
+silently drops sub-conditions, and makes syntax errors ✓.
 
 The conclusion both lines support: verification must terminate at the authoritative system — the
 registry, the repository, the running service — and never at a second model's agreement.
@@ -1335,57 +1320,27 @@ stated expected values, unambiguous commands. Where the two genuinely diverge �
 markup, embedded machine directives — **the human wins.** The runbook's purpose is the 3 a.m.
 reader.
 
-### The measured failure modes, in one place
+### Name every target
 
-Pin identifiers literally rather than trusting recall — the evidence for why is unusually direct ○:
-
-| Failure mode | What was measured |
-|---|---|
-| Invented package names | Across 2.23M package references from 16 models, 19.7% hallucinated; **43% of hallucinated names recurred across runs** — these are repeatable, not random noise, which is what makes them exploitable |
-| Rare/internal APIs | On a low-frequency API benchmark, GPT-4o produced only **38.58%** valid invocations; supplying documentation raised it to 47.94% |
-| Outdated syntax | Across 270 real API updates, only **42.55%** of generated examples were executable *even with the correct current spec in context* — memorized older syntax leaks through anyway |
-| Underspecification | On 2,208 DevOps prompt variants, agents violated action boundaries in **55.8–67.8%** of runs when instructions were underspecified but benign |
-
-That last row is the one to internalize: **ambiguity in a procedure does not produce a question from
-an agent — it produces an invented answer.** Naming the target of every state-changing step
-unambiguously (which host, which namespace, which cluster, which table) is therefore among the
-highest-value things you can do while authoring.
-
-The third row is the one that humbles the obvious fix: writing the correct current syntax into the
-procedure is *necessary but demonstrably not sufficient*. Which is the argument for deriving from
-the repo and for rehearsal, not for trying harder to remember.
+**Ambiguity in a procedure does not produce a question from an agent; it produces an invented
+answer** ○. Name the target of every state-changing step unambiguously: which host, which namespace,
+which cluster, which table. Writing the correct current syntax into the procedure is necessary but
+not sufficient, because memorized older syntax leaks through even with the current spec in context
+○. That is the argument for deriving from the repo and for rehearsal, not for trying harder to
+remember.
 
 ### Gate steps by reversibility, not by difficulty
 
-The convergent guidance from agent-safety work is to couple the review mechanism to
-**reversibility** ○: actions reviewed only after the fact should be the reversible ones; irreversible
-actions require authorization *before* they run. Anthropic's own agent harness implements this as a
-default-deny architecture — read-only by default, explicit approval for anything state-changing, and
-unmatched commands failing closed to manual approval rather than proceeding on a guess.
-
-NIST's generative-AI profile names **confabulation** as a distinct risk requiring monitoring in
-consequential decision-making, and warns that outputs may include confabulated logic or citations
-that appear sound ○. The operational consequence: treat any rationale an agent produces during
-execution as unverified. Go/no-go thresholds and the abort path must be **written before execution**,
-not judged at runtime by the thing executing.
+An agent executing a procedure produces rationale that may be confabulated ○, so go/no-go thresholds
+and the abort path are **written before execution**, not judged at runtime by the thing executing.
 
 > **Rule.** Split every procedure into an **observe** phase (read-only: inspect, query, measure) and
-> an **act** phase (state-changing), and require the observe phase to complete first. Mark each act
-> step reversible or irreversible. Reversible steps may run and be logged for after-the-fact review;
-> irreversible steps stop and require explicit human authorization. Anything unrecognized fails
-> closed to a human.
-
-### Know the ceiling on autonomous execution
-
-On the current SRE incident-diagnosis benchmark, no frontier model reaches 50% accuracy, and longer
-agent trajectories correlate with *worse* results, because over-investigating agents surface
-co-occurring symptoms as false root causes ✓. That benchmark measures diagnosis only — it contains
-no remediation — so it is not evidence that agents can safely *execute* operational steps.
-
-> **Rule.** Write runbooks assuming a human authorizes consequential and irreversible steps. Mark
-> each step as agent-safe or human-required. A step that is destructive, irreversible, or
-> user-visible is human-authorized by default — an assumption a product may relax deliberately and
-> in writing, never silently.
+> an **act** phase (state-changing), and complete the observe phase first. Mark each act step
+> reversible or irreversible, using the critical-step test in
+> [Branching](#branching-and-steps-that-cannot-be-undone). Reversible steps may run and be logged for
+> after-the-fact review. Irreversible, destructive, or user-visible steps require explicit human
+> authorization before they run, an assumption a product may relax deliberately and in writing,
+> never silently. Anything unrecognized fails closed to a human.
 
 ### Confidence, honestly
 
@@ -1398,7 +1353,8 @@ that fails.
 
 ## Self-review — rejection criteria
 
-Run this against your own draft before calling it done: six restraint checks, then 26 criteria.
+These are the bar a finished runbook meets, and the rubric `/prawduct:runbook review` applies: six
+restraint checks, then 26 criteria.
 
 Scope it by tier. The restraint checks and criteria 1–12, 19–22 and 23–26 apply to **every** runbook
 including Tier 1. Criteria 13–18 (findability, interruption survival) apply from Tier 2 up. Within
@@ -1495,10 +1451,8 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 26. Can any step be satisfied by *recording* it rather than *doing* something observable? If so,
     rewrite it — that step will be discharged on paper.
 
-**The final test — four postures, one document.**
-
-Read your draft once as each. They fail it in different directions, and one that survives all four
-is finished. None of them is curious: every one is trying to get work done.
+**Four readers, one document.** A finished runbook serves all four, and they fail it in different
+directions. None of them is curious: every one is trying to get work done.
 
 *Paged at 3 a.m., not the usual owner, unfamiliar tooling, no attention left.* Can they tell where
 to start, and see at a glance what to type versus what to read? A wall of prose is unread text.
@@ -1573,41 +1527,20 @@ fabrication — it was *hedge-hardening*, the exact failure this guide warns abo
 | Rationale "raised adherence" | Raised **one of two** adherence measures; timed-wait adherence did not improve |
 | 127 shared names "falsify model consensus" | The source argues attack surface, and notes the overlap is a small fraction of each model's hallucinations |
 
-Two of those corrections were live defects in an earlier draft of this very guide. That is the
-argument for the whole approach: the claims were plausible, well-sourced, directionally right, and
-wrong in their strength.
-
 ### Sourced but not adversarially challenged ○
 
-A further investigation covering eight lines — public postmortems, domain variation, aviation
-selection rules and memory items, checklist implementation evidence, interruption and place-keeping
-research, alert-to-procedure linkage, irreversible-operation standards, and agent-execution
-safety — completed its research but was cut off before its adversarial challenge phase ran. Its
-findings are quoted from primary documents (OSHA 29 CFR 1910.147, MIL-STD-40051-2A, S1000D Issue 5.0,
-NIST SP 800-193, RFC 9019, DOE-HDBK-1028-2009, FAA AC 120-71B, NASA/TM-2014-218382, WCAG 2.2,
-official postmortems from AWS/GitLab/Cloudflare/Atlassian, the SEC order on Knight Capital, TSB
-A98H0003, the CSB Texas City report, and the Deepwater Horizon commission report), and every one is
-marked ○ here.
-
-Treat those as directionally sound and specifically unconfirmed. Given that the verification pass
-corrected roughly half of what it examined — almost entirely by softening overstated modality — the
-prudent reading is that these findings are *real but probably stated a little too strongly*. Before
-quoting any of them as a mandate, check the source.
-
-One further caveat disclosed by the researchers themselves: that investigation ran with its web
-search budget exhausted, so it worked from primary documents it could reach directly and could not
-run discovery searches. Absence of a finding there is not evidence of absence.
+Findings marked ○ are quoted from primary documents (OSHA 29 CFR 1910.147, MIL-STD-40051-2A, S1000D
+Issue 5.0, NIST SP 800-193, RFC 9019, DOE-HDBK-1028-2009, FAA AC 120-71B, NASA/TM-2014-218382,
+WCAG 2.2, official postmortems from AWS/GitLab/Cloudflare/Atlassian, the SEC order on Knight
+Capital, TSB A98H0003, the CSB Texas City report, and the Deepwater Horizon commission report) but
+were not put through adversarial challenge. The challenged set was corrected about half the time,
+almost always by softening overstated modality, so read ○ findings as directionally sound and
+probably stated a little too strongly. Check the source before quoting one as a mandate.
 
 Genuinely unaddressed: regulated-environment procedure requirements (FDA/GxP, ISO 13485), a
 systematic treatment of machine-vs-human documentation audiences, and any empirical evidence that a
-particular runbook *field set* improves outcomes — that last one appears to be convention
-everywhere, including here.
-
-Raw research, verdicts, provenance, and resume instructions live in the prawduct repository at
-`.prawduct/research/runbook-authoring/CHECKPOINT.md` —
-[on GitHub](https://github.com/brookstalley/prawduct/blob/main/.prawduct/research/runbook-authoring/CHECKPOINT.md).
-It is **not** part of the installed plugin: `.prawduct/` is prawduct's own development state and is
-excluded from what ships, so do not look for it inside the installed plugin.
+particular runbook *field set* improves outcomes. That last one appears to be convention everywhere,
+including here.
 
 ### Refuted — do not reintroduce ✗
 

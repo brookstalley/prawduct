@@ -5,6 +5,26 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-29: the reference docs are retuned for Opus 5.5 (audit wave W6)
+
+<!-- prawduct: type=feature | scope=opus-55-w6-reference-docs -->
+
+Wave W6 of `opus-55-prompt-audit-2026-09.md`, ruled in full on 2026-09-28, and the audit's last.
+It applies slice E's 19 decisions to `plugin/docs/`. `runbook-authoring.md` no longer calls length
+the best-evidenced finding in the literature, which its own evidence section contradicted, and
+drops five competing superlatives (E-1, E-6). Its three self-review passes become the bar a
+finished runbook meets; the subtraction pass stays (E-5, F3). Dated model statistics, a volatile
+benchmark and the guide's research history give way to the rules they supported (E-7 to E-9).
+`norms.md`'s enforcement table points at § Severity instead of restating it as "ratified", the
+threshold the Critic protocol had already dropped in W3 (E-4), and loses a correctness proof and
+three history clauses (E-3, E-10 to E-13). `waivers.md` loses its argument against the retired
+per-rule literals and no longer names a region form it does not parse (E-14, E-15).
+`test-report-contract.md` stops addressing prawduct's maintainers and trims the reviewer-talk
+comments consumers paste (E-2, E-16, E-17). `governance-telemetry.md` and `discipline.md` lose
+ticket ids, audit citations and row history (E-18, E-19). The runbook skill's three copies of
+E-5's self-review instruction are aligned with the guide. No parsed table changed shape, and no
+token ceiling applies to these files.
+
 ## 2026-09-29: develop opens 3.7.0-dev.1
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.1 -->
