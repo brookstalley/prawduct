@@ -120,7 +120,7 @@ against the current tree.
 
 ## Status
 
-- [ ] Chunk 01: split review-cycle.md and move the Coordinator Pattern (C-8, C-20)
+- [x] Chunk 01: split review-cycle.md and move the Coordinator Pattern (C-8, C-20)
 
 ## Chunk 01: split review-cycle.md and move the Coordinator Pattern
 

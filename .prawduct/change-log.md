@@ -5,6 +5,14 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-29: develop opens 3.6.2-dev.7
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.7 -->
+
+The dev track's version moves from `3.6.2-dev.6` to `3.6.2-dev.7` in the four carriers, so repos
+on the develop track pick up `opus-55-w3b-review-cycle-split`. Owner-directed, 2026-09-28. It rides
+this PR.
+
 ## 2026-09-28: the Critic's reviewer payload loses the builder lifecycle (audit wave W3b)
 
 <!-- prawduct: type=feature | scope=opus-55-w3b-review-cycle-split -->
