@@ -25,6 +25,17 @@ ticket ids, audit citations and row history (E-18, E-19). The runbook skill's th
 E-5's self-review instruction are aligned with the guide. No parsed table changed shape, and no
 token ceiling applies to these files.
 
+The Fable final-coherence pass the audit owed ran over the whole cycle (W1 to W6) before this wave
+lands, and its fixes ride here. It found seams between waves, not disagreements of intent. The
+chunk-boundary review exception in `session-hygiene.md` and root `CLAUDE.md` now allows for a short
+plan's single boundary review. `review-cycle.md` no longer quotes a `building.md` sentence that is
+gone, or claims the close directive prints its paragraph verbatim. The backlog skill names the
+change-log's `release=` tag, not the inert `status=shipped`. Two pointers to a nonexistent
+"Coverage Evidence" section, and the preferences template's Goal 4 for norms (it is Goal 3), are
+corrected. The pr skill loses its issue ids, and the backlog and janitor skills their pointers to spec decisions D4 and D14. A `reviews.md` rule loses its
+whole-diff self-scrub, and a `core.md` Tell no longer assumes file-list deliverables.
+`review-cycle.md`'s and the injected footprint's ceilings ratchet down with their readings.
+
 ## 2026-09-29: develop opens 3.7.0-dev.1
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.1 -->

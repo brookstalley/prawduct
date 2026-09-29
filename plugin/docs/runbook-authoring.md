@@ -1243,8 +1243,8 @@ in a characteristic, measurable way that human-written ones do not.
 
 ### Derive commands; do not generate them
 
-Models emit references to packages, flags, and endpoints that do not exist, at measured rates well
-above zero ✓, and cross-model agreement is not an existence check. An agent that generates an
+Models emit references to packages that do not exist and API calls that are not valid, at measured
+rates well above zero ✓, and cross-model agreement is not an existence check. An agent that generates an
 operational command on the fly instead of invoking a stored exact template drifts from the template,
 silently drops sub-conditions, and makes syntax errors ✓.
 
@@ -1512,8 +1512,7 @@ A dedicated verification pass re-checked 19 further claims against their primary
 independent refuters each. **Confirmed:** aviation QRH branch typography · AWS peer-execution
 validation and the game-day anti-pattern · Urbach et al. (*NEJM* 2014;370:1029–1038) null
 replication · the Microsoft StepFly defect taxonomy, dual-compatibility requirement, and on-the-fly
-generation failure modes · the troubleshooting-guide time-to-mitigate figure · the ITBench-AA
-diagnosis ceiling.
+generation failure modes · the troubleshooting-guide time-to-mitigate figure.
 
 **Eleven were killed, and every kill improved this document.** The pattern was almost never
 fabrication — it was *hedge-hardening*, the exact failure this guide warns about:

@@ -998,7 +998,7 @@ def next_action_line(
 #: instances carry the rule; where the reviewer spends its attention is left to
 #: the reviewer.
 RESOLUTION_IS_A_CLAIM_DIRECTIVE = (
-    "PRAWDUCT: a resolution is a claim about the tree, and it WEAKENS a gate —"
+    "PRAWDUCT: a resolution is a claim about the tree, and it weakens a gate —"
     " `fixed` and `waived` BOTH lift a blocking finding out of"
     " `unresolved_blocking`, and nothing downstream re-checks either. For each"
     " prior finding, name the evidence you read before writing the disposition:"
@@ -1131,7 +1131,7 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #: the instance. So the general sentence is followed by the act, by instances
 #: concrete enough to pattern-match against.
 VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
-    "PRAWDUCT: this pass answers ONE question — were the prior findings"
+    "PRAWDUCT: this pass answers one question — were the prior findings"
     " resolved? A NEW finding here is one of the inner BLOCKING set, or it is"
     " not a finding: a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency."
     " **The test is membership in that set, never the severity a table"
@@ -1232,7 +1232,7 @@ GOALS_1_3_MODES = frozenset({"chunk", "verify-resolutions"})
 #: finding as the instance. So the rule is followed by the act and by the test
 #: that decides it.
 FINDING_SCOPE_DIRECTIVE = (
-    "PRAWDUCT: a site-naming finding answers `instance` or `class` FIRST in its"
+    "PRAWDUCT: a site-naming finding answers `instance` or `class` first in its"
     " `recommendation`. Say why it broke in one sentence — a sentence that does"
     " not name the site you found names a CLASS: bound it, say what to search"
     " for, and expect members outside this delta. An instance closes by being"

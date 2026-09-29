@@ -106,9 +106,68 @@ Every decision has replacement text and a ruling. These are the inferences:
 - **E-7's replacement cites the critical-step test in Branching** by its existing anchor, which
   the table of contents already uses.
 
+**P1 outcome (2026-09-29, E-5, Opus 5.5).** Each subject ran `claude -p --model claude-opus-5-5
+--setting-sources project --strict-mcp-config --settings
+'{"enabledPlugins":{"prawduct@prawduct":false}}'` from a scratch repo for a `ledger-worker` service,
+with the skill and the arm's guide appended to the system prompt. The skill was the pre-W6 copy in
+both arms, so the new arm was still told to self-review by the skill's Step 5. The probe measures the
+guide change alone. The diff between arms was checked, and the criteria (the guide's four
+non-negotiables) were fixed before the runs. All four runs have `modelUsage` = `claude-opus-5-5`,
+and none quotes the digest.
+- **Both arms, 2 of 2:** every non-negotiable met. The weakest run was in the control (old-2: a
+  verification step expecting only "an `Active:` line").
+- **Differences:** runbooks were 8 to 11 steps, 3,960 to 4,919 characters, the new arm slightly
+  shorter. No run narrated a self-review. Only one old run revised its draft after writing it.
+- **Result: no regression.** The control did not fail, so this is not evidence E-5 helps. C3
+  (irreversible steps) was barely exercised: every subject correctly kept the destructive
+  dead-letter purge out of the procedure.
+
+**Cumulative review (`rev-20260929T171037Z-407e81b6`): 0 blocking, 2 warnings, 8 notes.** Fixed in
+the working tree with the coherence-pass fixes below, then one `verify-resolutions`:
+- **R-2:** two copies of rewritten facts outside the edited docs: the runbook template's "most
+  commonly omitted section" superlative (E-6's class) and `lib/norm_probes.py`'s comment calling
+  the stall window "configurable" (E-12's class).
+- **R-4, R-5/R-7, R-8:** Step 5's "Fix, don't annotate." restored; the evidence appendix no longer
+  confirms the ITBench-AA ceiling the body stopped citing; E-8's ✓ sentence says packages and API
+  calls, which is what was measured, not "flags, and endpoints".
+- **R-1:** the declared suite is recorded again over the fixed tree.
+- **Accepted:** R-3 (P1 is recorded; the review ran beside the probe to save wall clock), R-6 (the
+  `#self-review--rejection-criteria` anchor is linked from the shipped template), R-9 (#181 and
+  #342 get a "prose half shipped" comment at merge, not before), R-10 (#818 is probe behaviour
+  this wave does not touch).
+
+**Fable final-coherence pass (2026-09-29).** `claude -p --model claude-fable-5-1`, from a scratch
+directory with the prawduct plugin disabled, over the whole cycle's result (`git diff 0bbc5a61
+HEAD -- plugin/ CLAUDE.md .claude/rules/`, final files read). `modelUsage` = `claude-fable-5-1`.
+The model was set at spawn, which `project-preferences.md` § Model floor admits alongside `/model`.
+Result: 0 blocking, 8 warnings, 9 notes, all seams between waves; verdict "one coherent whole on
+its four aims". Every quote was re-checked against the files before fixing.
+- **Fixed (all eight warnings):** W-1, the chunk-boundary review exception, false on a short plan
+  (`session-hygiene.md`, root `CLAUDE.md`); W-2 and W-3, `review-cycle.md` claiming the close
+  directive prints its paragraph verbatim and quoting a `building.md` sentence that no longer
+  exists; W-4, the backlog skill naming the inert change-log `status=shipped` as a release step (it
+  is the `release=` tag); W-5, the runbook skill's copy of E-8's overclaim; W-6, a `reviews.md` rule
+  telling the builder to scrub the whole diff before review (B-1's class; the grep-a-ban half
+  stays); W-7, two pointers to a `building.md` "Coverage Evidence" section that does not exist;
+  W-8, the preferences template routing norms to Goal 4 (it is Goal 3).
+- **Fixed (notes):** N-1, three reviewer directives in `critic_consolidate.py` lose their capitals;
+  N-2 and N-3, issue and spec ids (STH-4K7N, REL-6C3W, D4, D14, § refs) leave runtime prose;
+  N-5, a `core.md` Tell that assumed file-list deliverables; N-6, the methodology index's
+  between-phase validation (B-19's class); N-8, a mode-inference pointer; N-9, this bookkeeping.
+- **Accepted:** N-4 (`building.md`'s "research subagent" for high-impact decisions; unruled, and
+  a test pins it as behaviour, so changing it is a decision for the owner, not a coherence fix);
+  N-7 (the chunk reviewer's "ACCEPT is the default" coaching; unruled reviewer behaviour,
+  and nothing is filtered).
+- **Verify pass (`rev-20260929T173826Z-ea3cccf8`, run as `final` over the batch): 0 blocking,
+  0 warnings, 3 notes, 7 observations.** O-1 (the change-log overstated which ids left the skills)
+  and O-2 (this repo's own `project-preferences.md` still routed norms to Goal 4) are fixed in the
+  records. The rest are accepted on the record.
+- **Budgets:** `review-cycle.md` 7469 → 7460 and the framework injected footprint 3145 → 3142, each
+  ceiling ratcheted to one over its reading. `session-hygiene.md` holds at 3040.
+
 ## Status
 
-- [ ] Chunk 01: reference docs (E-1 to E-19, P1)
+- [x] Chunk 01: reference docs (E-1 to E-19, P1)
 
 ## Chunk 01: reference docs
 

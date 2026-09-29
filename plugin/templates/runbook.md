@@ -382,8 +382,8 @@ triggers:                  # every signal that should lead a responder here
 
 <!-- Rules: #close-out-what-the-procedure-introduced
      Required whenever this procedure left state behind, and executed before
-     handing the system back. This is the most commonly omitted section in
-     software runbooks. If the procedure introduced nothing, delete this section. -->
+     handing the system back. If the procedure introduced nothing, delete this
+     section. -->
 
 - [ ] Re-enable anything this procedure disabled (alerts, monitors, health checks)
 - [ ] Remove what this procedure introduced (feature flags, scaled capacity,

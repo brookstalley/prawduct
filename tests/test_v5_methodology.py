@@ -892,7 +892,9 @@ LAST_MEASURED_TOKENS = {
     # +3 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -3231 on 2026-09-28 (opus-55-w3b), C-8: the reviewer-facing Type selector and cross-checks move to cross-checks.md; the ceiling lowered with it.
-    "skills/critic/review-cycle.md": 7469,
+    # -9 on 2026-09-29 (opus-55-w6, the Fable coherence pass): a quote of a building.md sentence
+    # that no longer exists, and a claim the close directive prints this paragraph verbatim, cut.
+    "skills/critic/review-cycle.md": 7460,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1799,7 +1801,9 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # tick bullet gains "a short plan's earlier chunks at commit". Without it the
     # bullet contradicts the inference, which reads unticked boxes, and a short
     # plan never infers its boundary review. Owner-confirmed in session.
-    "framework": 3145,
+    # -3 framework on 2026-09-29 (opus-55-w6, the Fable coherence pass): CLAUDE.md's Critic
+    # timing sentence now also covers a short plan's single boundary review, in fewer words.
+    "framework": 3142,
     "product": 2202,
 }
 
@@ -1953,7 +1957,8 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # cut in the reading table, one over each reading, nothing banked.
     # 3135 -> 3146, 2192 -> 2203 on 2026-09-28 (short-plan-tick): the declared
     # raise in the reading table, one over each reading.
-    "framework": 3146,
+    # 3146 -> 3143 framework on 2026-09-29 (opus-55-w6): ratcheted with the reading's cut.
+    "framework": 3143,
     "product": 2203,
 }
 
@@ -5833,7 +5838,7 @@ class TestReviewCycle:
         # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 7470, f"review-cycle.md is ~{tokens} tokens, should be <7470"
+        assert tokens < 7461, f"review-cycle.md is ~{tokens} tokens, should be <7461"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

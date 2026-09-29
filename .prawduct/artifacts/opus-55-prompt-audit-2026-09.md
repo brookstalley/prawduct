@@ -1,7 +1,7 @@
 ---
 artifact: research
 scope: opus-55-prompt-audit
-status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; W1–W5 applied (one build plan each, `build-plan-opus-55-w*.md`), W6 pending
+status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; W1–W6 applied (one build plan each, `build-plan-opus-55-w*.md`); Fable coherence pass run 2026-09-29
 created: 2026-09-28
 depends_on: [framework-efficiency-review-2026-07-02.md, program-purpose-and-cession.md]
 absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
@@ -14,7 +14,7 @@ absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
 This is a disposition list for prawduct's **prompt surface**, meaning every piece of text that
 reaches a model as instructions. Each decision is re-priced against Anthropic's guidance for
 Claude Opus 5.5. The owner picks decisions in one sitting. Each apply wave then gets its own plan
-and a Critic review. W1 to W5 (with W3b) are applied, and W6 is pending (§ Rulings, § Found while applying).
+and a Critic review. W1 to W6 (with W3b) are applied, and the Fable final-coherence pass has run (§ Rulings, § Found while applying).
 
 **Why now.** `program-purpose-and-cession.md` sorts what prawduct hedges into three piles, and
 says the *runtime judgment* pile "depreciates via model releases". Opus 5.5 is such a release.
@@ -197,6 +197,26 @@ The details are in `build-plan-opus-55-w5-operational-skills.md`.
 - **Some ruled replacements needed a minimal departure,** each recorded in the plan, among them
   D-18 (a short plan's review timing), D-25 (a test guard followed the moved sentence to its home)
   and D-57 (a command named in a skill that doesn't grant it).
+
+## Found while applying (W6, 2026-09-29)
+
+The details are in `build-plan-opus-55-w6-reference-docs.md`.
+
+- **The W6 regression probe (E-5, the runbook guide's self-review passes, Opus 5.5): no
+  regression.** Both arms met all four of the guide's non-negotiables in both samples. The control
+  did not fail, so this is not evidence E-5 helps.
+- **E-5's instruction had three more copies in the runbook skill,** owned by no remaining wave.
+  W6 aligned them with the guide, as a recorded departure.
+- **The Fable final-coherence pass ran** before this last wave lands, as § Assumptions and binding
+  norms requires. It ran as a `claude -p` subprocess with the model set at spawn, and `modelUsage`
+  confirms `claude-fable-5-1`. It found 0 blocking, 8 warnings and 9 notes, all seams between
+  waves: a later fix falsifying an earlier ruled sentence (the short-plan tick against B-35's
+  chunk-boundary exception), second and third copies of a rewritten fact left unfollowed, and stale
+  pointers next to edited lines. W6 fixed every warning and seven notes. N-4 (`building.md`'s
+  mandated research subagent) and N-7 (the chunk reviewer's disposition coaching) are unruled
+  behaviour changes, recorded for the owner rather than applied.
+- **F6's rounds-per-PR comparison is still owed.** Run `rounds_per_pr.py` with W3's merge date as
+  `since` once enough PRs have merged after W3 to compare with the 2026-09-01 baseline.
 
 ## Decisions for the owner
 

@@ -60,8 +60,8 @@ steps and a longer one covering more ground, choose the shorter one.
 
 > **Derive every command from the repository. Never generate one.**
 
-Models emit references to packages, flags and endpoints that do not exist, at measured rates well
-above zero, and when an agent generates an operational command on the fly instead of using a stored
+Models emit references to packages that do not exist and API calls that are not valid, at measured
+rates well above zero, and when an agent generates an operational command on the fly instead of using a stored
 exact one, it drifts from the template, drops conditions, and mangles escaping. A plausible invented command is worse
 than a missing one: it makes a broken runbook look finished.
 
@@ -163,6 +163,7 @@ Non-negotiables while drafting:
 nothing product-specific in it. The guide's rejection criteria are the bar the finished runbook
 meets; its **Restraint** block (R1–R6) is the part that deletes work. The two that matter most:
 every verification step names an observed value, and every command traces to a file you can name.
+Fix, don't annotate.
 
 If the draft exceeds 20 steps, do not ship it long — split it into separate runbooks, each with its
 own entry condition.

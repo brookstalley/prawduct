@@ -12,7 +12,7 @@ The independent PR review is this skill's core value. Never create a PR without 
 
 ## Context Detection
 
-All commands here operate on the current worktree — `git` reports the worktree's branch and `prawduct-hook` resolves `.prawduct/` state to the worktree (STH-4K7N), so creating/updating/merging a PR for a worktree branch works in place; no primary-checkout or raw-`gh` workaround is needed.
+All commands here operate on the current worktree — `git` reports the worktree's branch and `prawduct-hook` resolves `.prawduct/` state to the worktree, so creating/updating/merging a PR for a worktree branch works in place; no primary-checkout or raw-`gh` workaround is needed.
 
 Check git state to determine the action:
 
@@ -63,12 +63,12 @@ Verify on a feature branch (not main/master/develop). Verify commits ahead of ba
 > A `Type: trivial` chunk does not waive the cumulative-Critic or PR-reviewer gates here: fileset bounds are necessary, not sufficient, for triviality, so code PRs always take the full review below.
 
 ### Step 1c: Change-log entry probe
-**Run `prawduct-hook check-change-log-entry`.** A branch carrying judgeable work in `merge-base...HEAD` must ADD a change-log entry — a branch merged with no entry is invisible to the release flow and surfaces only at release reconstruction (REL-6C3W). Empty diffs and diffs with no judgeable file are exempt (exit 0).
+**Run `prawduct-hook check-change-log-entry`.** A branch carrying judgeable work in `merge-base...HEAD` must ADD a change-log entry — a branch merged with no entry is invisible to the release flow and surfaces only at release reconstruction. Empty diffs and diffs with no judgeable file are exempt (exit 0).
 
 > Judgeable is the same predicate Step 1b uses (`coverage_algebra.is_judgeable_path`), not "is it `.md`" — so `.prawduct/` session metadata is exempt even though it is not `.md`, and governance-protected prose (`skills/`, `methodology/`, `templates/`, root `CLAUDE.md`) needs an entry even though it *is* `.md`.
 
 - **Exit 0 with `entry-present`, `doc-only` or `empty-diff`**: proceed.
-- **Exit 0 with `entry-present-untracked`**: the log is untracked (gitignored, or never added), so git cannot say whether this branch added an entry — only that the copy on disk holds a release-pending one. That is a weaker check and it passed; the gate's real question went unanswered. **Confirm by hand that this branch's work has an entry, and note the manual check in the PR description** — the same treatment `no-base`/`git-failed` get below, for the same reason. REL-6C3W is precisely a branch merging with no entry, so an unconfirmed pass here reopens it in the repos this verdict exists for. To restore the real check, track the log: `.prawduct/*` plus `!.prawduct/change-log.md` — a bare `.prawduct/` cannot be negated, because git will not re-include a file under an excluded directory.
+- **Exit 0 with `entry-present-untracked`**: the log is untracked (gitignored, or never added), so git cannot say whether this branch added an entry — only that the copy on disk holds a release-pending one. That is a weaker check and it passed; the gate's real question went unanswered. **Confirm by hand that this branch's work has an entry, and note the manual check in the PR description** — the same treatment `no-base`/`git-failed` get below, for the same reason. An unconfirmed pass here is exactly a branch merging with no entry, in the repos this verdict exists for. To restore the real check, track the log: `.prawduct/*` plus `!.prawduct/change-log.md` — a bare `.prawduct/` cannot be negated, because git will not re-include a file under an excluded directory.
 - **Exit 1 with `no-entry` or `entry-edited-not-added`**: **STOP** — write the change-log entry for this branch's work (tag line with `scope=` and no `release=` — that absence IS the release-pending state), commit it, then re-run the probe.
 - **Exit 1 with `no-base` or `git-failed`**: the probe couldn't evaluate — check the change-log by hand and note the manual check in the PR description.
 

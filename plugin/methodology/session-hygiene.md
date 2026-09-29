@@ -54,7 +54,7 @@ What each line owes:
 
 **Choosing the label is a procedure, and its first step is not a label at all:**
 
-1. **Is there work you can do right now with what you have? Then do it — do not end the turn.** Handing back to ask permission you do not need costs a round-trip and, if they stepped away, a context replay into a cold cache. The one exception is a chunk boundary whose review has not run: run that review before starting more work.
+1. **Is there work you can do right now with what you have? Then do it — do not end the turn.** Handing back to ask permission you do not need costs a round-trip and, if they stepped away, a context replay into a cold cache. The one exception: an owed chunk review not yet run (a short plan owes only its boundary's) runs first.
 2. Is a machine event pending that will produce the next turn? → `RUNNING`, naming it and what you do if it does not land.
 3. Is everything finished, with nothing outstanding on disk or in flight? → `COMPLETE`.
 4. Otherwise → `YOUR TURN`.

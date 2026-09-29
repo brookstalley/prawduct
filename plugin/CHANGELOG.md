@@ -70,7 +70,10 @@ for short procedures, and states its rejection criteria as the bar a finished ru
 rather than as passes to re-run over your draft. Dated model statistics and research history give
 way to the rules they supported. `norms.md`'s enforcement table now points at § Severity, where
 BLOCKING is scoped to *adopted* norms, instead of restating it as "ratified". `waivers.md` says
-plainly that there is no region form. No rule, gate or parsed table changed.
+plainly that there is no region form. A whole-cycle coherence pass corrected seams between the
+waves: the chunk-boundary review rule now allows for a short plan's single boundary review, and
+stale pointers and restated facts in the Critic, backlog, doctor and janitor text agree with their
+homes. No rule, gate or parsed table changed.
 
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
 of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:
