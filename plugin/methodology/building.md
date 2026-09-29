@@ -34,7 +34,7 @@ There are no phases. The depth of governance scales with two dimensions:
 - **Debt paydown**: Scope discipline, architecture freshness.
 - **Emergency hotfix**: Minimal path — fix + test + verify. Artifacts can follow.
 
-Classification heuristic: file count is a proxy for risk. 1-2 files = trivial/small; 5+ files = medium; new directory structure or API surface = large. Whatever the count, a change that crosses a contract surface, adds a dependency, or touches state outliving the process is at least medium.
+Classification heuristic: file count is a proxy for risk. 1-2 files = trivial/small; 3-4 files = small; 5+ files = medium; new directory structure or API surface = large. Whatever the count, a change that crosses a contract surface, adds a dependency, or touches state outliving the process is at least medium.
 
 ## Before You Build: Confidence Check
 

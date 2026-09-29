@@ -92,7 +92,7 @@ This produces change-log entries and may trigger methodology updates.
 
 ## Post-Fix Reflection
 
-When fixing a bug or recovering from an error, root-cause it (Step 3) before implementing. First classify it — product bug, or framework/methodology issue (those get deeper analysis) — and treat a reported cause as a hypothesis until you reproduce it against live data; the report's own evidence often carries the disproof. Where the same cause shows up elsewhere inside this change's scope, fix those instances too; file the rest. Capture it as Step 4 says.
+When fixing a bug or recovering from an error, root-cause it (Step 3) before implementing. First classify it — product bug, or framework/methodology issue (those get deeper analysis) — and treat a reported cause as a hypothesis until you reproduce it against live data; the report's own evidence often carries the disproof. Where the same cause shows up elsewhere, fix the class through the one place that owns it when you can change that here; file what you cannot. Capture it as Step 4 says.
 
 ## Learning Lifecycle
 

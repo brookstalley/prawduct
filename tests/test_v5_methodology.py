@@ -466,8 +466,9 @@ LAST_MEASURED_TOKENS = {
     # during review (B-1), the consumer-grep subagent (B-2), the separate
     # artifacts-current step (B-36) and the coordinator's re-derivation of a
     # delegate's sweep (B-10) cut; bold emphasis trimmed (B-27). B-16's rule for
-    # when a chunk boundary ends the turn was paid for from those cuts.
-    "methodology/building.md": 5073,
+    # when a chunk boundary ends the turn was paid for from those cuts, and so
+    # was the 3-4-file size the cumulative review found B-25 had dropped (-43 net).
+    "methodology/building.md": 5079,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1202,13 +1203,14 @@ LAST_MEASURED_TOKENS = {
     # +57 on 2026-09-28 (short-plan-tick): the tick definition admits a short
     # plan's deferred chunks, and the short-plan bullet says to tick them at
     # commit and why. A READING, no ceiling.
-    # -127 on 2026-09-28 (opus-55-w4): phase choreography and its between-phase
+    # -152 on 2026-09-28 (opus-55-w4): phase choreography and its between-phase
     # self-review (B-19), chunk shape restated as advice (B-17), the API
     # deferral rule's second copy (B-39), prawduct's own surface list moved to
     # this repo's learnings (B-20), bold emphasis trimmed (B-28). B-17's line now
     # also states #341's acceptance criterion (a builder who finds a better
-    # route takes it and records why), paid from those cuts.
-    "methodology/planning.md": 5734,
+    # route takes it and records why), paid from those cuts; the partition
+    # paragraph now points at the delegation test rather than restating it.
+    "methodology/planning.md": 5709,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1285,10 +1287,12 @@ LAST_MEASURED_TOKENS = {
     # replaced. A READING, no ceiling.
     # -9 on 2026-09-28 (opus-55-w1): the learnings-header sentence stopped
     # describing an obligation A-16 removed. A READING, no ceiling.
-    # -203 on 2026-09-28 (opus-55-w4): the root-cause stopping rule in one
+    # -191 on 2026-09-28 (opus-55-w4): the root-cause stopping rule in one
     # sentence (B-23), Post-Fix Reflection no longer restates Steps 3-4 (B-24),
     # the product-feedback scan every product could not run (B-40). A CUT.
-    "methodology/reflection.md": 2640,
+    # Post-Fix now fixes a cause's class through its one owner, not only
+    # in-scope instances, to agree with the learnings rule.
+    "methodology/reflection.md": 2652,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -2215,9 +2219,12 @@ class TestBuildingMethodology:
         above the rule saying warnings and notes gate nothing, so both halves
         are asserted together and the pair is what fails.
         """
-        # The rule's own sentence, in W2's register (it mirrors
-        # `gates.FIX_ORDER`, which the runtime directive composes).
-        assert "Disposition every finding in one pass" in self.content
+        # Render consistency with the runtime half: the guide carries
+        # `gates.FIX_ORDER` verbatim, the string `_BATCH_FIX_DIRECTIVE` composes.
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from lib import gates
+        assert gates.FIX_ORDER in self.content
         assert "Warnings and notes gate nothing" in self.content
         # The exact phrasings the runtime's own comment records rejecting.
         assert "Fix them all in ONE commit" not in self.content
@@ -3245,7 +3252,9 @@ class TestBuildingMethodology:
         # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5094 -> 5117 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5117 -> 5123 (clear-verdict-coherence, 2026-09-27) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5123, f"building.md is ~{tokens} tokens, should be <5123"
+        # LOWERED 5123 -> 5080 (opus-55-w4, 2026-09-28): slice B's cuts, one over
+        # the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5080, f"building.md is ~{tokens} tokens, should be <5080"
 
 
 # =============================================================================

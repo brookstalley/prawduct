@@ -77,7 +77,8 @@ and the replacement text are in `opus-55-prompt-audit-2026-09/slice-B.md`, and t
   - After each deletion, `plugin/` and `documentation/` are grepped for the deleted section's
     heading and lead phrases, and for any other surface stating the same rule (by the state, not
     the words). A sentence another wave owns is fixed now only if this wave made it false.
-- **#341 is closed** (`/prawduct:backlog update 341 status=shipped`) when this wave merges.
+- **#341 and #779 are closed** (`/prawduct:backlog update <id> status=shipped`) when this wave
+  merges. #779 is the scaffolded backlog legend's chunk-id `closed-by:`, fixed by B-5.
 - **The probes have run, each confirming the model id it ran on** from `modelUsage` in
   `claude -p --output-format json`. The Agent tool's `sonnet` alias cannot reach Sonnet 5.5, and
   `claude -p --model claude-sonnet-5-5` can (checked 2026-09-28). Each probe has an old-text
@@ -221,6 +222,32 @@ from a constant, and a literal grep can't see it. So far the grep finds these:
   `test_critic_consolidate.py`, `test_cutover_prose_coherence.py`,
   `test_plugin_methodology_digest.py`, `test_path_reference_resolution.py`, and every other test
   the run turns red.
+
+**Cumulative review (`rev-20260929T013200Z-3de15477`): 1 blocking, 3 warnings, 8 notes.** Every
+fix was made in one pass.
+- **R-1 (blocking):** `building.md` also has a hard ceiling (`TestBuildingMethodology`), and it
+  wasn't lowered. It now is. No other W4 guide has one.
+- **R-2/R-4:** the template `project-state.yaml` still carried B-22's quotas. It now points at
+  `discovery.md` "Risk Calibration".
+- **R-5:** the fix-order pin now asserts `gates.FIX_ORDER` verbatim, which is render consistency
+  with the runtime directive, and was red-verified. The negative pin I added on a phrase that never
+  existed is gone.
+- **R-6:** the build-plan template's chunk-shape comment is advice now, as in `planning.md`.
+- **R-7:** B-25's replacement had dropped the 3-4-file size. It's restored as small, and the risk
+  sentence still lifts it to medium.
+  [DECISION: departs from the ruled text, because the ruled text left a size with no answer,
+  which decides whether a Critic review runs | owner can veto]
+- **R-8:** `planning.md`'s partition paragraph points at the delegation test instead of
+  restating it without B-15's size qualifier.
+- **R-9:** the template's version fossils are cut. "v1.7 ships only legacy-backlog-format" was also
+  false, because the backlog probes exist.
+- **R-10:** B-24's "file the rest" contradicted `core.md`'s fix-the-class rule. Post-Fix now
+  fixes the class through its one owner when it can be changed here.
+  [DECISION: departs from the ruled text, because two rules the builder reads disagreed | owner
+  can veto]
+- **Accepted:** R-3 (record-lint relay, correct), R-11 and R-12. #341 and #779 close at merge.
+  R-1's suggestion to derive every hard ceiling from its recorded reading is not taken here: it
+  changes a mechanism across eight Critic-file tests W4 doesn't own.
 
 **P1–P3 outcome (2026-09-28, Sonnet 5.5).** Each subject ran `claude -p --model
 claude-sonnet-5-5 --setting-sources project --strict-mcp-config`. That drops the user-level

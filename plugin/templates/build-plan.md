@@ -124,8 +124,9 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 
 ## Build Chunks
 
-<!-- Chunks are vertical slices, dependency-ordered, each reviewable in one Critic pass;
-     Chunk 01 is a thin slice through every layer. `Deliverables:` states what the chunk
+<!-- Chunks usually work best as vertical slices in dependency order; one Critic pass per
+     chunk is the firm limit (methodology/planning.md). Here Chunk 01 is a thin slice
+     through every layer. `Deliverables:` states what the chunk
      delivers. Backtick a path only when that file existing is itself the requirement —
      every backticked path in the current chunk's section is existence-checked, BLOCKING
      when missing; prefix a path the chunk CREATES with "new".

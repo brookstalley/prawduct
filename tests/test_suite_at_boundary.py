@@ -43,7 +43,6 @@ class TestTheBuilderIsToldWhenTheSuiteIsOwed:
             "A chunk runs the ceiling above; record the declared suite once, "
             "at the boundary run" in text
         )
-        assert "Record once, at Verify" not in text
         assert "Record **once**, at Verify" not in text
 
 

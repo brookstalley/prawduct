@@ -29,8 +29,11 @@ build-plan template's worked example states deliverables as outcomes, and its ca
 at the short-plan rule. The template half was built by one isolated-worktree delegate. Carried
 from the W3 handoff: `building.md`'s fix-order sentence takes W2's register, and a delegate brief
 names the budgets its files sit under. Token readings drop on five guides. `delegation.md` rises
-by 14, a recorded raise. Two sentence pins follow their rewritten sentences, and
-`docs/discipline.md`'s anchors for rows 4 and 9 follow B-2 and B-24. The owed Sonnet 5.5 probes
+by 14, a recorded raise. The fix-order pin now asserts `gates.FIX_ORDER` verbatim, the suite-at-boundary pin follows
+its de-bolded sentence, and
+`docs/discipline.md`'s anchors for rows 4 and 9 follow B-2 and B-24. The template
+`project-state.yaml` loses the removed question quotas, its version fossils, and a claim that
+the backlog probes were unbuilt. The owed Sonnet 5.5 probes
 ran through `claude -p`, because the Agent tool's alias cannot select that model:
 - W3's reviewer surfaces showed no regression.
 - B-12 is the first decision whose control failed and whose treatment fixed it.

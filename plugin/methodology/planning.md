@@ -96,7 +96,7 @@ An assumption is a decision made on the user's behalf, surfaced for correction �
 
 ### Partition: Serial or Delegated
 
-Chunk boundaries are where the delegation decision is drawn: the last moment before any brief exists at which the whole partition is visible at once. Ask it of each chunk: *what would prove this chunk on its own?* A chunk you cannot answer that for is not scoped tightly enough to hand to anyone, which is a finding about the chunk rather than about delegation. Then apply the default (`/prawduct:methodology delegation`): delegate when the same work finishes in less wall clock and the delegates will not fight each other.
+Chunk boundaries are where the delegation decision is drawn: the last moment before any brief exists at which the whole partition is visible at once. Ask it of each chunk: *what would prove this chunk on its own?* A chunk you cannot answer that for is not scoped tightly enough to hand to anyone, which is a finding about the chunk rather than about delegation. Then apply `/prawduct:methodology delegation`'s test.
 
 **Record the decision either way**, in the plan's `partition:` frontmatter field, on one line. `serial — 02 and 03 both edit the store module` is an answer; `02-04 delegated, isolated worktrees` is an answer. Serial is very often right — *unexamined* is what the field catches, and a plan with independent chunks and no partition line is the guide's **serial by default** anti-pattern in its plan-time form.
 
