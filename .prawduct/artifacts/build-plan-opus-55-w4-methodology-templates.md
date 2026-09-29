@@ -191,7 +191,7 @@ Every decision has replacement text and a ruling. These are the inferences:
 
 ## Status
 
-- [ ] Chunk 01: methodology and templates (B-1 to B-20, B-23 to B-40, the handoff's W4 items, P1 to P4)
+- [x] Chunk 01: methodology and templates (B-1 to B-20, B-23 to B-40, the handoff's W4 items, P1 to P4)
 
 ## Chunk 01: methodology and templates
 
