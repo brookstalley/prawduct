@@ -190,14 +190,13 @@ The details are in `build-plan-opus-55-w5-operational-skills.md`.
 
 - **The W5 regression probe (D-28, `pick` ranking, Opus 5.5): no regression.** Both arms ranked a
   nine-item backlog the same way and flagged every unassessed item. The control did not fail, so
-  this is not evidence D-28 helps. That makes five waves where the control has not shown the
-  targeted failure, apart from W4's P3.
+  this is not evidence D-28 helps.
 - **E-1's overstated length claim had a third copy** in `plugin/templates/runbook.md`, owned by no
   remaining wave. W5 corrected it along with the skill's copy. W6's E-1 still owes the home,
   `runbook-authoring.md`.
-- **Three ruled replacements needed a minimal departure,** each recorded in the plan: D-18 (a
-  short plan's review timing), D-25 (a test guard followed the moved sentence to its home) and
-  D-57 (a command named in a skill that doesn't grant it).
+- **Some ruled replacements needed a minimal departure,** each recorded in the plan, among them
+  D-18 (a short plan's review timing), D-25 (a test guard followed the moved sentence to its home)
+  and D-57 (a command named in a skill that doesn't grant it).
 
 ## Decisions for the owner
 

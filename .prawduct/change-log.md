@@ -27,6 +27,12 @@ writable-block-field guard follows D-25's moved sentence to `adapter-mode.md`, a
 red-verified there. One regression probe (D-28, Opus 5.5) found no regression. No token ceiling
 moved, because no file in this wave has one.
 
+Two changes are more than prose. The janitor's neglected-hygiene check (Backlog Health check 5)
+now runs on the Issues backend too, over `in-progress` rows whose `working_branch` appears merged;
+it had been off there since #529 (now #729), which has shipped. And a test now checks the
+cache-query grant on all four agents that read the backlog cache, where before only the PR
+reviewer's grant was tested.
+
 ## 2026-09-29: the methodology guides and templates are retuned for Opus 5.5 (audit wave W4)
 
 <!-- prawduct: type=feature | scope=opus-55-w4-methodology-templates -->

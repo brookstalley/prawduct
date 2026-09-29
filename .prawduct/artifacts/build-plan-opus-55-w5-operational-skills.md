@@ -13,14 +13,14 @@ governed_by:
       - "the plugin writes nothing into a governed repo except… → conforms: only plugin-shipped skill prose changes"
       - "goals and verification bind; prescribed method is advice → conforms: D-28 and D-46 turn a scoring script and a five-step choreography into the goal they served"
       - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer surface changes. D-23 and D-45 trim `cache-reads.md`, which reviewers read, without changing its contract"
-      - "authority fails closed; advice fails soft → inapplicable, because no gate verdict, exit code or advisory changes; only prose and its test pins move"
+      - "authority fails closed; advice fails soft → inapplicable, because no gate verdict, exit code or advisory changes. Beyond prose and its test pins, the janitor's check 5 runs on the Issues backend again (an advisory survey, its blocker #729 shipped), and one test now checks every cache reader's grant"
       - "prawduct guides and reviews, it never implements → inapplicable"
       - "local-first governance coordination → inapplicable"
       - "written in Python, never specific to Python → inapplicable"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall clock is P0 → conforms: one chunk, one boundary review"
-      - "proportionality ratchets both ways → conforms: the wave deletes text and adds no control"
+      - "proportionality ratchets both ways → conforms: the wave deletes text; its one added control is a test of grants the cache readers already hold, and check 5 on Issues restores a survey that was off only while its blocker was open"
       - "review rigor is stage-keyed → inapplicable, because no severity rule changes"
       - "state-file growth is an advisory, never a block → inapplicable"
   - artifact: program-purpose-and-cession
