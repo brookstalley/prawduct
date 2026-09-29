@@ -34,9 +34,7 @@ Don't fix the symptom — ask "what about the system allowed this?" and chain th
 
 Fixing a shallow cause patches one instance; fixing a deep cause prevents a class of problems.
 
-**The stopping rule, stated so it survives being applied in a hurry.** Stop at the *shallowest* cause that satisfies all three: (1) you can change it **here**, in this repo, with the access you have; (2) changing it would have prevented **this** instance; (3) changing it would prevent instances that **do not look like this one**. Two of three is not a stop. Fail (3) and you have the symptom's parent rather than the class — keep chaining. Fail (1) and you have a cause you can only report: record it as a learning or a backlog item, and take the deepest cause you *can* change as the fix.
-
-Three whys is typical, and the chain is short by default because most chains are. What signals it stopped **early** is a terminal that restates the failure instead of explaining it — "the model made a mistake", "we were in a hurry", "nobody reviewed it". None of those is something you can change, so none of them is a stop.
+**Where to stop.** At the shallowest cause you can change here that would have prevented this instance *and* instances that don't look like this one. A cause you can only report becomes a learning or a backlog item, and the fix goes to the deepest cause you can change. A terminal that restates the failure — "the model made a mistake", "we were in a hurry", "nobody reviewed it" — is not a cause.
 
 ### Step 4: Capture — route what you learned to the one place it fires
 
@@ -90,17 +88,11 @@ At natural milestones (finishing discovery, planning, a build or subsystem), ref
 - **Concern completeness**: Any cross-cutting concerns not surfaced anywhere in the pipeline? Check `.prawduct/cross-cutting-concerns.md`, and think about what's missing from the registry itself.
 - **Learning completeness**: Were observations captured for everything significant?
 
-This produces change-log entries and may trigger methodology updates. **Product feedback review**: periodically scan product repos' `.claude/rules/learnings/` for methodology feedback that should have gone upstream — the reverse channel; products discover gaps the framework can't see from inside.
+This produces change-log entries and may trigger methodology updates.
 
 ## Post-Fix Reflection
 
-When fixing a bug or recovering from an error, apply root-cause discipline before implementing:
-
-1. **Classify**: product bug or framework/methodology issue? Framework issues get deeper analysis.
-2. **Root cause**: chain the whys to something structural — don't stop at "the code was wrong." A reported cause is a hypothesis until you reproduce it against live data; the report's own evidence often carries the disproof.
-3. **Fix scope**: fix the root cause, not the symptom. If it's in the methodology, update the methodology.
-4. **Meta-check**: could the same root cause manifest elsewhere? Fix those too.
-5. **Capture**: route it as Step 4 says — failures are the richest source.
+When fixing a bug or recovering from an error, root-cause it (Step 3) before implementing. First classify it — product bug, or framework/methodology issue (those get deeper analysis) — and treat a reported cause as a hypothesis until you reproduce it against live data; the report's own evidence often carries the disproof. Where the same cause shows up elsewhere, fix the class through the one place that owns it when you can change that here; file what you cannot. Capture it as Step 4 says.
 
 ## Learning Lifecycle
 

@@ -1,6 +1,4 @@
 <!-- Data Model Template
-     Tier: 1 (Source of Truth)
-     Owner: Artifact Generator (C3)
 
      Usage: Copy this template to your project's artifacts/ directory.
      Derive entities from the core flows and personas in the Product Brief.
@@ -17,16 +15,11 @@ last_validated: null
 
 # Data Model
 
-<!-- OPTIONAL norm home ("Direction"). To record a norm, add a `## Direction` heading here with
-     entries — each: a bold **Statement.**, then `Why:` (required), `Status:` (steady-state |
-     in-transition + its tracking item), and optional `Retroactivity:` / `Rulings:` lines.
-     Normative statements BIND future work — not descriptions of current behavior. Norms bind;
-     descriptions track — see /prawduct:methodology norms for the anatomy, the
-     normative-vs-descriptive test, and the lifecycle rules. Add the heading ONLY with a real
-     entry: a bare `## Direction` heading reads as ratified norms to the advisory probes. A
-     product with no norms to declare leaves this comment as-is — "none to ratify" is recorded
-     owner-confirmed through the doctor's Norm Ratification Flow (/prawduct:doctor), never as a
-     side effect of authoring this artifact. Don't restate the rules here. -->
+<!-- OPTIONAL norm home. To record a norm, add a `## Direction` heading with entries (a bold
+     **Statement.**, then `Why:`, `Status:`, optional `Retroactivity:` / `Rulings:`) — anatomy
+     and rules: /prawduct:methodology norms. Add the heading only with a real entry: the
+     advisory probes read a bare `## Direction` heading as ratified norms. With no norms, leave
+     this comment; "none to ratify" is recorded through /prawduct:doctor, not here. -->
 
 ## Entities
 

@@ -462,7 +462,13 @@ LAST_MEASURED_TOKENS = {
     # is still working. Paid in part by dropping the digest sentence's "so they reach you whether or
     # not you opened this guide", which restated what "injects them into every session" already
     # says. DECLARED for the remainder: the obligation is new, not a restatement.
-    "methodology/building.md": 5122,
+    # -49 on 2026-09-28 (opus-55-w4, slice B of the prompt audit): builder self-scrub
+    # during review (B-1), the consumer-grep subagent (B-2), the separate
+    # artifacts-current step (B-36) and the coordinator's re-derivation of a
+    # delegate's sweep (B-10) cut; bold emphasis trimmed (B-27). B-16's rule for
+    # when a chunk boundary ends the turn was paid for from those cuts, and so
+    # was the 3-4-file size the cumulative review found B-25 had dropped (-43 net).
+    "methodology/building.md": 5079,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1085,7 +1091,12 @@ LAST_MEASURED_TOKENS = {
     # DISCOVERY NOT CAPTURED nudge — the old sentence said nothing backfills the
     # state, which onboard now does. Unfunded; declared growth (#688).
     # Both landed together: 5116 - 529 + 16.
-    "methodology/discovery.md": 4603,
+    # -356 on 2026-09-28 (opus-55-w4): the API deferral rule's copy becomes a
+    # pointer to planning.md "Exposed API" (B-39); the domain-concern table,
+    # which restated each characteristic's Implications, goes (B-21), and so do
+    # the per-risk question and search quotas (B-22). B-21 and B-22 were held
+    # until a Sonnet 5.5 discovery probe showed no lost critical concern. A CUT.
+    "methodology/discovery.md": 4247,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1192,7 +1203,14 @@ LAST_MEASURED_TOKENS = {
     # +57 on 2026-09-28 (short-plan-tick): the tick definition admits a short
     # plan's deferred chunks, and the short-plan bullet says to tick them at
     # commit and why. A READING, no ceiling.
-    "methodology/planning.md": 5861,
+    # -152 on 2026-09-28 (opus-55-w4): phase choreography and its between-phase
+    # self-review (B-19), chunk shape restated as advice (B-17), the API
+    # deferral rule's second copy (B-39), prawduct's own surface list moved to
+    # this repo's learnings (B-20), bold emphasis trimmed (B-28). B-17's line now
+    # also states #341's acceptance criterion (a builder who finds a better
+    # route takes it and records why), paid from those cuts; the partition
+    # paragraph now points at the delegation test rather than restating it.
+    "methodology/planning.md": 5709,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1269,7 +1287,12 @@ LAST_MEASURED_TOKENS = {
     # replaced. A READING, no ceiling.
     # -9 on 2026-09-28 (opus-55-w1): the learnings-header sentence stopped
     # describing an obligation A-16 removed. A READING, no ceiling.
-    "methodology/reflection.md": 2843,
+    # -191 on 2026-09-28 (opus-55-w4): the root-cause stopping rule in one
+    # sentence (B-23), Post-Fix Reflection no longer restates Steps 3-4 (B-24),
+    # the product-feedback scan every product could not run (B-40). A CUT.
+    # Post-Fix now fixes a cause's class through its one owner, not only
+    # in-scope instances, to agree with the learnings rule.
+    "methodology/reflection.md": 2652,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -1286,7 +1309,11 @@ LAST_MEASURED_TOKENS = {
     # the pair; the "outstanding" paragraph scopes `YOUR TURN` to work a clear
     # leaves alone, and the wrong-label list gains the pair. The guide had
     # taught the pair it now forbids. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3198,
+    # -158 on 2026-09-28 (opus-55-w4): the live-review deadline paragraph points
+    # at `MIN_PRICED_SAMPLE` instead of copying its value (B-34); the "just go"
+    # shade and the hard stop that read as licences to end the turn rewritten
+    # (B-9, B-35). A CUT.
+    "methodology/session-hygiene.md": 3040,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1389,7 +1416,12 @@ LAST_MEASURED_TOKENS = {
     # is the moment this rule has to fire.
     # -4 on 2026-09-03 (learnings-v2-docs Chunk 04 resolutions): the clear-verdict
     # pointer names `session-hygiene` instead of a section of reflection.md. A CUT.
-    "methodology/delegation.md": 2762,
+    # +14 on 2026-09-28 (opus-55-w4): a delegate's Done on a sweep now ARRIVES
+    # with its evidence, so the brief's return clause asks for it (B-12), and the
+    # ownership bullet names the budgets the delegate's files sit under (a W3
+    # delegate met its ceilings only as red tests). Mostly paid in place by
+    # cutting two incident stories (B-33); the rest is a RAISE, on-demand class.
+    "methodology/delegation.md": 2776,
 }
 
 
@@ -2187,7 +2219,12 @@ class TestBuildingMethodology:
         above the rule saying warnings and notes gate nothing, so both halves
         are asserted together and the pair is what fails.
         """
-        assert "Disposition them ALL in ONE pass" in self.content
+        # Render consistency with the runtime half: the guide carries
+        # `gates.FIX_ORDER` verbatim, the string `_BATCH_FIX_DIRECTIVE` composes.
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from lib import gates
+        assert gates.FIX_ORDER in self.content
         assert "Warnings and notes gate nothing" in self.content
         # The exact phrasings the runtime's own comment records rejecting.
         assert "Fix them all in ONE commit" not in self.content
@@ -3215,7 +3252,9 @@ class TestBuildingMethodology:
         # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5094 -> 5117 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5117 -> 5123 (clear-verdict-coherence, 2026-09-27) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5123, f"building.md is ~{tokens} tokens, should be <5123"
+        # LOWERED 5123 -> 5080 (opus-55-w4, 2026-09-28): slice B's cuts, one over
+        # the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5080, f"building.md is ~{tokens} tokens, should be <5080"
 
 
 # =============================================================================

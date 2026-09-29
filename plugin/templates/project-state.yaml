@@ -45,7 +45,7 @@ classification:
   # Risk and complexity profile.
   risk_profile:
     # Overall risk: low, medium, high.
-    # Drives discovery depth (low: 5-8 questions, medium: 8-15, high: 15-25).
+    # Drives discovery depth (methodology/discovery.md "Risk Calibration").
     overall: null
     # Specific risk factors identified during classification.
     # Each: { factor, level (low/medium/high), rationale }
@@ -361,7 +361,7 @@ build_state:
 #     key: package.version
 
 # =============================================================================
-# COVERAGE EVIDENCE (opt-in, v1.4+)
+# COVERAGE EVIDENCE (opt-in)
 # =============================================================================
 # When true, the Critic requires every changed file the verifier can judge to
 # appear in `.test-evidence.json`'s `changes_referenced` list (files it can't
@@ -371,7 +371,7 @@ build_state:
 # verifier at `bin/test-reference-verify` emits the floor; products with
 # non-trivial coverage concerns should plug in a stronger verifier. See
 # `/prawduct:methodology building` "Coverage Evidence".
-# Default off in v1.4 — schema is checked but content is not enforced.
+# Default off — schema is checked but content is not enforced.
 
 coverage_required: false
 
@@ -442,15 +442,15 @@ coverage_required: false
 #   inside quotes: quote any reason containing a `#`.
 
 # =============================================================================
-# OPERATOR VERIFICATION (opt-in, v1.4+)
+# OPERATOR VERIFICATION (opt-in)
 # =============================================================================
-# When true, `/pr create` BLOCKS if `.prawduct/operator-verification.md`
+# When true, `/prawduct:pr create` BLOCKS if `.prawduct/operator-verification.md`
 # has any entry with `**Status:** pending`. The queue records pre-merge
 # human-verification items for visual / live-integration changes that
 # automated tests can't fully cover. Drain via
 # `prawduct-hook verify-operator-verification <VRF-id>` or
-# override per-PR with `/pr create --accept-pending-verification "rationale"`.
-# Default off in v1.4 — opt-in by setting `operator_verification_required: true`.
+# override per-PR with `/prawduct:pr create --accept-pending-verification "rationale"`.
+# Default off — opt in by setting `operator_verification_required: true`.
 
 operator_verification_required: false
 
@@ -501,7 +501,7 @@ operator_verification_required: false
 review_round_budget: 6
 
 # =============================================================================
-# API VERSIONING DECISION (advisory resolution fact, v2.2+)
+# API VERSIONING DECISION (advisory resolution fact)
 # =============================================================================
 # The committed "answer store" fact the `api-versioning` sync probe consults.
 # When the product exposes a programmatic interface (detected from the code —
@@ -515,18 +515,18 @@ review_round_budget: 6
 # api_versioning_decided:
 
 # =============================================================================
-# BACKLOG (structured backlog resolution conditions, v1.7+)
+# BACKLOG (structured backlog resolution conditions)
 # =============================================================================
 # The shared "answer store" (committed) that backlog sync probes consult to
 # know whether a migration nudge is still needed. The per-clone nag log lives
 # in .prawduct/.advisories.json; these committed facts auto-resolve a
 # teammate's advisory on next sync (see post-sync-advisory-spec.md §3.5, §7.1).
 #
-#   backlog_format_version  — set to 2 once `/backlog migrate` has converted
+#   backlog_format_version  — set to 2 once `/prawduct:backlog migrate` has converted
 #                             items to the [PFX-XXXX] structured format. Unset
 #                             (or absent) means legacy/unmigrated; the
 #                             `legacy-backlog-format` probe may nudge.
-#   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /backlog
+#   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /prawduct:backlog
 #                             validation (e.g. [STH, CRT, SYN]). Emergent by
 #                             default; declare only if you want validation.
 #   backlog_backend         — set to `markdown` to declare that this product is
@@ -548,10 +548,10 @@ review_round_budget: 6
 #                             are set — having migrated beats declaring you
 #                             never will.
 #
-# Reserved for deferred backlog probes (v1.7 ships only legacy-backlog-format):
+# Also read by the backlog probes:
 #   backlog_external_imports — list of external backlog files already audited
-#                              via `/backlog import` (resolves external-detected).
-#   backlog_last_groomed_at  — ISO-8601 of the last /backlog list|pick (resolves
+#                              via `/prawduct:backlog import` (resolves external-detected).
+#   backlog_last_groomed_at  — ISO-8601 of the last /prawduct:backlog list|pick (resolves
 #                              overdue-grooming).
 
 # backlog_format_version:
