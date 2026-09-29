@@ -73,7 +73,8 @@ BLOCKING is scoped to *adopted* norms, instead of restating it as "ratified". `w
 plainly that there is no region form. A whole-cycle coherence pass corrected seams between the
 waves: the chunk-boundary review rule now allows for a short plan's single boundary review, and
 stale pointers and restated facts in the Critic, backlog, doctor and janitor text agree with their
-homes. No rule, gate or parsed table changed.
+homes. The methodology index no longer asks for a validation pass between artifact phases, and three
+Critic reviewer directives lose their capitals. No gate or parsed table changed.
 
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
 of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:

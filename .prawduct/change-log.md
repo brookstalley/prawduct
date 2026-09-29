@@ -33,7 +33,9 @@ gone, or claims the close directive prints its paragraph verbatim. The backlog s
 change-log's `release=` tag, not the inert `status=shipped`. Two pointers to a nonexistent
 "Coverage Evidence" section, and the preferences template's Goal 4 for norms (it is Goal 3), are
 corrected. The pr skill loses its issue ids, and the backlog and janitor skills their pointers to spec decisions D4 and D14. A `reviews.md` rule loses its
-whole-diff self-scrub, and a `core.md` Tell no longer assumes file-list deliverables.
+whole-diff self-scrub, and a `core.md` Tell no longer assumes file-list deliverables. The
+methodology index drops its between-phase validation (B-19's class), and three reviewer directives
+in `critic_consolidate.py` lose their capitals, as A-5 did for NEXT-ACTION.
 `review-cycle.md`'s and the injected footprint's ceilings ratchet down with their readings.
 
 ## 2026-09-29: develop opens 3.7.0-dev.1
