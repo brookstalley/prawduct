@@ -27,8 +27,9 @@ fork reads it, rather than `SKILL.md` as the slice proposed, because `SKILL.md` 
 `chunk`/`verify` route (a vetoable decision in the plan).
 
 The dispatched-reviewer payload drops by 7,843 tokens, about 23.5k per three-reviewer review.
-Single-pass `final`/`cumulative` drops by 7,855. Every citation of a moved section points at its
-new file. That covers the Critic and PR protocols, `critic-reviewer.md`, `backlog/cache-reads.md`,
+Single-pass `final`/`cumulative` drops by 7,855. Every reviewer- and builder-facing citation of a moved
+section points at its new file. Two inert comments in `backlog/cli.py` and `test_backlog_cli.py`
+still say "the Critic's review-cycle"; they were accepted as O-2. That covers the Critic and PR protocols, `critic-reviewer.md`, `backlog/cache-reads.md`,
 `planning.md`, the build-plan template and `governance-telemetry.md`. Tests that read a moved
 section now read it from its new home. The Critic's surface-grants map and the bare-command
 sweep are now derived from the files on disk rather than hand-listed, and every `skills/critic/*.md`
