@@ -5,6 +5,14 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-29: develop opens 3.7.0-dev.1
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.1 -->
+
+The dev track's version moves from `3.6.2-dev.7` to `3.7.0-dev.1` in the four carriers, so repos
+on the develop track pick up `opus-55-w5-operational-skills`. The track now heads for a minor
+release rather than a patch. Owner-directed, 2026-09-29. It rides this PR.
+
 ## 2026-09-29: the operational skills are retuned for Opus 5.5 (audit wave W5)
 
 <!-- prawduct: type=feature | scope=opus-55-w5-operational-skills -->
