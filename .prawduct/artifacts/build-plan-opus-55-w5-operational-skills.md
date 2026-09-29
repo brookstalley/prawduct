@@ -179,7 +179,7 @@ JSON), and none quotes the digest.
 
 ## Status
 
-- [ ] Chunk 01: operational skills (D-1 to D-61, the runbook skill's E-1 and E-8 copies, P1)
+- [x] Chunk 01: operational skills (D-1 to D-61, the runbook skill's E-1 and E-8 copies, P1)
 
 ## Chunk 01: operational skills
 
@@ -204,6 +204,21 @@ JSON), and none quotes the digest.
 and each rewritten phrase, then run what the grep finds **without `-x`**. A pin can be built from a
 constant, and a literal grep can't see it. `opus-55-prompt-audit-2026-09/pins_D.txt` is the audit's
 cross-check of test literals against these files.
+
+**Cumulative review (`rev-20260929T151553Z-d97c0bcb`): 0 blocking, 3 warnings (2 distinct), 10
+notes.** Fixed in one pass, then one `verify-resolutions` (`rev-20260929T152314Z-f0e0aaa0`: 0
+blocking, all three warnings resolved):
+- **R-1/R-9:** the moved D-23 docstring claimed a test enforced the cache-query grant for four
+  readers, and only the PR reviewer's was tested.
+  `test_every_cache_reader_admits_both_cache_query_spellings` now covers all four. It was
+  red-verified by dropping the janitor's and the critic-reviewer's grants.
+- **R-6:** janitor check 5 said the Issues backend has no `promoted` state. Its `in-progress`
+  status is that state, and `cache-query open` returns it, so the check now runs on both backends.
+- **Notes fixed:** doctor's could-not-run rule names #12 and #17's exceptions (R-2). #14's reason
+  is true now (R-3). The D-29 test's name matches what it checks (R-4/R-8). The guard's comment
+  says it is bounded at the clause (R-5).
+- **Accepted:** R-7 (the pinned "not being a third" still states the rule), R-10 (D-32's ruled
+  deletion; nothing renumbers the checks), R-11 to R-13 (informational).
 
 **Done when:**
 1. Each Success bullet holds, and the suite passes.

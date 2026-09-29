@@ -57,9 +57,9 @@ is granted both, because a reader that silently falls back to a prompt gets
 neither an answer nor an exit 6. So whenever a reader of that file is narrowed,
 the `cache-query` grant goes in the same edit: a narrowed reader without it
 meets a permission prompt instead of an answer, and the PR reviewer's R-2 has no
-other owner in the pipeline. This module and
-`test_pr_reviewer_agent.py::test_the_backlog_cache_read_survives_the_narrowing`
-are where that rule is enforced; the runtime file no longer argues it.
+other owner in the pipeline.
+`test_every_cache_reader_admits_both_cache_query_spellings` below enforces it
+for all four readers; the runtime file no longer argues it.
 """
 
 from __future__ import annotations
@@ -731,3 +731,52 @@ def test_an_agent_self_hosted_hook_grant_never_stands_alone(agent_path: Path) ->
         f"plugin in its own tree. In a governed product the plugin installs elsewhere "
         f"and the bare spelling is the only one that runs."
     )
+
+
+# --- Readers of the backlog cache hold both spellings -------------------------
+
+#: Every reader of `skills/backlog/cache-reads.md` that runs under a restricted
+#: tool list, with the frontmatter key its list lives under (see the module
+#: docstring, "Readers of the backlog cache hold both spellings").
+_CACHE_READERS = (
+    ("skills/critic/SKILL.md", "allowed-tools:"),
+    ("agents/critic-reviewer.md", "tools:"),
+    ("skills/janitor/SKILL.md", "allowed-tools:"),
+    ("agents/pr-reviewer.md", "tools:"),
+)
+
+
+def _tool_list(rel: str, key: str) -> list[str]:
+    text = (SKILLS_DIR.parent / rel).read_text(encoding="utf-8")
+    line = next(l for l in text.splitlines() if l.startswith(key))
+    return [t.strip() for t in line[len(key):].split(",") if t.strip()]
+
+
+def _admits(tools: list[str], cmd: str) -> bool:
+    """A literal-prefix reading of `Bash(<pattern>)`: a trailing star admits any
+    continuation of what precedes it, and a starless pattern admits only itself."""
+    for tool in tools:
+        if not (tool.startswith("Bash(") and tool.endswith(")")):
+            continue
+        pattern = tool[len("Bash("):-1]
+        if pattern.endswith("*"):
+            if cmd.startswith(pattern[:-1]):
+                return True
+        elif cmd == pattern:
+            return True
+    return False
+
+
+@pytest.mark.parametrize("rel,key", _CACHE_READERS, ids=[r for r, _ in _CACHE_READERS])
+def test_every_cache_reader_admits_both_cache_query_spellings(rel: str, key: str) -> None:
+    """A narrowed reader of the backlog cache without the grant meets a permission
+    prompt instead of an answer — and reports "reconciled" having read nothing."""
+    tools = _tool_list(rel, key)
+    for cmd in (
+        "prawduct-hook backlog cache-query open --repo o/r --json",
+        "python3 plugin/bin/prawduct-hook backlog cache-query resolve 249 --repo o/r --json",
+    ):
+        assert _admits(tools, cmd), (
+            f"{rel} reads `skills/backlog/cache-reads.md` under a restricted tool list "
+            f"but does not admit `{cmd}` — grant both spellings of `backlog cache-query`"
+        )

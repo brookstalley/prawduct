@@ -238,7 +238,7 @@ class TestDirectReadRuleIsOneRule:
             f"its reason is a rule the next editor deletes as redundant."
         )
 
-    def test_owner_states_the_rule_and_records_the_rejected_alternative(self):
+    def test_owner_states_the_rule(self):
         """`skills/backlog/SKILL.md` owns the file, so it owns the rule.
 
         The rejected alternative is recorded here, not in the skill, because

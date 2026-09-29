@@ -927,8 +927,8 @@ def test_the_capability_guard_does_not_flag_a_writable_field(tmp_path):
 
 # --- The prose enumeration must match the derived set ------------------------
 
-# Bounded at the SENTENCE, not the line: the surrounding paragraph goes on to
-# discuss `--body` (which is a real flag, but not a block field), and a
+# Bounded at the CLAUSE (`;` or `.`), not the line: the list ends at a `;` and the
+# same sentence goes on to discuss `--body` (a real flag, but not a block field). A
 # to-end-of-line span swept it in and reported a disagreement that was the
 # regex's fault rather than the prose's. A false alarm here is worse than none —
 # it is the "probe that misfires trains its reader to ignore it" failure this
