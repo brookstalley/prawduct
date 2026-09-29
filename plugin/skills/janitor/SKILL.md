@@ -105,12 +105,7 @@ When the session briefing shows template drift advisories, or when running a ful
 - boundary-patterns.md — Are there new contract surface types to consider?
 - test-specifications.md — Are there new testing strategies (e.g., property-based testing) in the template that this product's specs don't address? Compare by reading the plugin template directly at `${CLAUDE_SKILL_DIR}/../../templates/test-specifications.md`.
 
-For each difference between the template and the product's version:
-1. Read the current framework template from `${CLAUDE_SKILL_DIR}/../../templates/<file>`
-2. Read the product's version of the file
-3. Identify sections or fields in the template that are absent from the product's version
-4. Assess whether each missing section is relevant to this product's domain and structural characteristics
-5. Recommend additions where appropriate, noting "not applicable" where not
+For each template (`${CLAUDE_SKILL_DIR}/../../templates/<file>`), compare it with the product's version and recommend the missing sections that fit this product's domain and structural characteristics; mark the rest "not applicable".
 
 This is advisory, not mechanical — a CLI tool doesn't need property-based testing guidance just because the template now includes it. Use the product's structural characteristics and domain to judge relevance.
 
@@ -201,7 +196,7 @@ Understand the project before investigating. Read `project-state.yaml` to learn 
 
 Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to understand the project's declared conventions — language idioms, code style, testing approach, architecture patterns, and workflow preferences. These preferences are the project's stated standards, but they may not reflect current practice. Note them for comparison during the survey.
 
-**Framework health pre-check.** Confirm the plugin runtime is reachable — `${CLAUDE_SKILL_DIR}/../../templates/` is readable. The plugin ships templates read-only; there is no per-product sync manifest. If the plugin root or its templates are unreachable, the janitor is running outside the plugin runtime — advise checking the plugin install (and `/prawduct:doctor`) before relying on Template Currency checks.
+**Framework health pre-check.** If `${CLAUDE_SKILL_DIR}/../../templates/` is unreadable, the janitor is running outside the plugin runtime; advise checking the plugin install (`/prawduct:doctor`) before relying on Template Currency.
 
 Run `prawduct-hook review-stats` for the project's review cost / actionable-finding history (`docs/governance-telemetry.md`) — findings-dense paths and low-yield review tiers are maintenance signals.
 
@@ -228,14 +223,12 @@ Emit a **Backlog Health** block in the findings report (all counts derived on re
 2. **Dedup candidates** (`search <title text> --area A`, on each cluster) — title/body overlap within an area → suggest a `/prawduct:backlog dedup` merge (operator confirms; never auto-merge). *Yield: duplicate items competing for the same fix.*
 3. **Stale items** (`stale`, the query's own default horizon unless you pass `--older-than`) — propose re-confirm, update, or `status=dropped`. The date is the provider's `updated_at`, which moves on any edit; an item somebody touched last week is not neglected whatever its review history says. *Yield: items nobody has looked at in a quarter.*
 4. **Unstaged items** (`unstaged`) — `status: open` with no `stage:` → flag for a `stage:` backfill (an unstaged item won't be picked for implementation). *Yield: items invisible to `pick`.*
-5. **Neglected hygiene** — **still dormant, and not on the cache's account.** Items in the `promoted` state whose owning chunk shipped: the `promoted` status value has no GitHub-Issues equivalent, so the query has nothing to ask for (blocked on #529). Say so in the block; restoring it would ship a check that silently matches nothing. On the markdown backend, survey `## Promoted` items whose owning chunk appears shipped and surface "should this be `status=shipped`?" (never inferred — D4).
+5. **Neglected hygiene** — survey in-flight items whose work appears shipped and ask "should this be `status=shipped`?" (never inferred — D4). On the markdown backend these are `## Promoted` items whose owning chunk appears shipped; on the Issues backend, `open` rows whose `status` is `in-progress` (the service's form of `promoted`) and whose `working_branch` appears merged. *Yield: finished work still counted as in flight.*
 
 Two more checks are **scoped to the markdown backend**, and only there. Run them when `backlog_service_repo` is unset; skip them silently when it is set — not as a dormancy, but because their subject does not exist on that backend:
 
 6. **Unstructured items** — count legacy items (no metadata bar); propose `/prawduct:backlog migrate` if many. *Yield: items predating the structured format, which no filter can see.*
 7. **Archive growth (Q2 split)** — when `## Archive` exceeds ~200 entries, propose splitting it to `backlog-archive.md` (`find` spans both files). *Yield: a working file heavy enough to slow every read of it.*
-
-*Why scoped rather than retired.* Both are meaningless **once Issues is system of record** — there is nothing to migrate and closed issues *are* the archive, so post-cutover they would be advice a reader could act on to no effect. That argument names one backend, and an earlier pass in this work let it reach the other: on the markdown backend check 7 is the *only* surface that proposes a split and check 6 is the janitor half of the `migrate` nudge, so retiring them outright would have taken a live control from every markdown-backend product to suit a cut-over one. A retirement is one act per substrate the thing lives on.
 
 Triage *findings* feed Step 4; the backlog edits themselves run via `/prawduct:backlog` (the framework never infers status — D4).
 
@@ -255,7 +248,7 @@ You cannot determine which without the user. For each divergence, use the infer-
 3. **Recommend** a resolution: "I'd update preferences to note this exception rather than renaming 47 functions"
 4. **Confirm**: "Does that match your intent?"
 
-**Surface by exception — never a flat confirm-or-correct wall.** A single grouped block was the whole instruction here, and on a real survey it is a wall: a mature codebase yields dozens of divergences, most of them obvious, and a flat dump buries the two that carry a real decision under the twenty that do not. The owner bounces off it or answers "yes" to the lot — and a blanket yes to a list they did not read is indistinguishable from having asked nothing. This is the same taxonomy `/prawduct:doctor`'s **Norm Ratification Flow** uses, under the same names on purpose: one vocabulary, so a reader who has met it once recognises it here.
+**Surface by exception — never a flat confirm-or-correct wall.** A mature codebase yields dozens of divergences, most of them obvious. A flat dump buries the few that carry a decision, and a blanket yes to an unread list is the same as not asking. This is the same two-tier taxonomy as `/prawduct:doctor`'s Norm Ratification Flow.
 
 Tag every reconcilable finding into one of two tiers **before** presenting anything:
 
@@ -295,7 +288,7 @@ Present the complete findings to the user, organized by theme, with severity and
 
 ### Step 5: Plan
 
-After the user approves the scope, write a build plan to `.prawduct/artifacts/build-plan.md` (or update the existing one) following Prawduct methodology. Review the chunking and planning guidance in this project's CLAUDE.md.
+After the user approves the scope, write a build plan under `.prawduct/artifacts/` following `/prawduct:methodology planning`.
 
 **Chunking strategy for maintenance work:**
 - Bundle quick fixes into a single "quick wins" chunk
@@ -307,12 +300,12 @@ After the user approves the scope, write a build plan to `.prawduct/artifacts/bu
 
 ### Step 6: Execute
 
-Review the build cycle in this project's CLAUDE.md before writing any code. Follow the standard build cycle for each chunk:
+Read `/prawduct:methodology building` before writing any code, and follow its build cycle for each chunk:
 
 - Establish the baseline the build cycle describes (`test-status` first)
 - Build: understand the chunk spec → implement → verify
 - Verify each chunk with the narrowest tests that prove it; the declared suite runs at the boundary, before the work lands
-- Invoke the Critic as a separate agent after each chunk (mandatory for medium+ changes)
+- Run `/prawduct:critic` as each chunk's "Done when" directs (medium+ changes)
 - Update artifacts as you go — if your cleanup changes something an artifact describes, update the artifact
 - If `project-preferences.md` specifies PR preferences, follow them; otherwise, wait for the user to request a PR via `/prawduct:pr`
 
@@ -321,7 +314,7 @@ Review the build cycle in this project's CLAUDE.md before writing any code. Foll
 
 After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
-- If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates. Plugin templates are read-only and there is no per-product hash store to write back — Template Currency is a live comparison against `${CLAUDE_SKILL_DIR}/../../templates/`, so updating the product artifact is itself the resolution.
+- If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates; updating the product artifact is itself the resolution.
 - Reconcile the backlog via `/prawduct:backlog` — which routes to whichever backend is live, so this step runs on both: `update status=shipped` items maintenance resolved (on the markdown backend that moves them to Archive — never delete, never strikethrough), and `add` items discovered. Status is always an explicit `/prawduct:backlog update` call, never inferred (D4). The stale/dedup/stage findings come from Step 2.5, so there are none to action when that block reported the cache unreadable — closing the loop on findings that were never produced is not a gap.
 - Capture learnings in `.claude/rules/learnings/` as one-line rules (the `<area>.md` whose `paths:` cover what you touched, or `core.md` if every session needs it) if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?
@@ -329,8 +322,5 @@ After all approved work is complete:
 ## Important
 
 - This is maintenance, not feature work. Do not add new functionality or refactor for taste.
-- The survey is the most valuable phase. Resist the urge to fix things as you find them.
-- Adapt themes to the project. The themes are prompts for investigation, not a fixed taxonomy of concerns.
 - When removing code (dead code, backcompat shims, migrations), verify the paths are truly unreachable before deleting.
 - If a finding requires significant redesign, flag it for a dedicated work cycle. The janitor cleans; it doesn't renovate.
-- Follow the full Prawduct methodology: build plan, Critic review, reflection, learning capture. Maintenance work is real work and gets full governance.

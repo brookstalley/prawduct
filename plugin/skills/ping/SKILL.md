@@ -5,9 +5,8 @@ user-invocable: true
 disable-model-invocation: true
 ---
 
-This skill exists only to prove that plugin skills resolve under the
-`/prawduct:ping` namespace (Chunk 1, v2.0.0 plugin distribution). It performs no
-file access and changes no state.
+This skill proves that plugin skills resolve under the `/prawduct:ping` namespace.
+It performs no file access and changes no state.
 
 Respond with exactly this, and nothing else:
 

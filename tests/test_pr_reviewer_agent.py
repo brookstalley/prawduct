@@ -258,8 +258,9 @@ class TestAgentToolsAreRestricted:
     def test_the_backlog_cache_read_survives_the_narrowing(self):
         """R-2 has no other owner anywhere in the pipeline.
 
-        Scoping an allow-list is where a capability silently disappears, and
-        `skills/backlog/cache-reads.md` wrote the warning for exactly this move.
+        Scoping an allow-list is where a capability silently disappears
+        (`test_skill_command_grants.py`, "Readers of the backlog cache hold both
+        spellings").
         The payload resolves the ids it can see; this grant is what lets the
         reviewer resolve one it meets inside a diff hunk instead of guessing.
         """

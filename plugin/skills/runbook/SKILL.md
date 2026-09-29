@@ -31,8 +31,8 @@ The blank artifact is `${CLAUDE_SKILL_DIR}/../../templates/runbook.md`.
 The guide is long because it catalogues how procedures fail. **The runbooks you write must be
 short.** The most common way an agent ruins a runbook is by treating that guide as a checklist and
 dutifully filling in every section — producing a thorough, complete document no tired human will
-read. That is a failure that looks like success, and it contradicts the best-evidenced finding in
-the whole literature: length itself drives people to skip a procedure or execute it badly.
+read. That is a failure that looks like success. The sources agree on the direction: length carries
+the risk that people skip a procedure or execute it badly.
 
 **Default to the minimal shape.** For most procedures this is the entire document:
 
@@ -51,10 +51,6 @@ the whole literature: length itself drives people to skip a procedure or execute
 Add a section only when the procedure actually needs it. **Budgets: ≤20 steps, 5–15 per phase,
 action lines under ~25 words.** Real production runbooks run ~5–15 steps.
 
-**Do a subtraction pass before you finish** — one read whose only purpose is deletion. Cut
-background the reader doesn't need to act, rationale on steps nobody would skip, sections carried
-from the template with nothing product-specific in them, and anything said twice.
-
 It has to work for two readers: someone doing this routinely on a Tuesday who needs it to be *fast*,
 and someone doing it at 3 a.m. for the first time who needs it to be *unambiguous*. Concision serves
 both; padding serves neither. When choosing between a shorter runbook with excellent verification
@@ -64,9 +60,9 @@ steps and a longer one covering more ground, choose the shorter one.
 
 > **Derive every command from the repository. Never generate one.**
 
-Models emit references to packages that do not exist at measured rates of 4.6–6.1%, and when an
-agent generates an operational command on the fly instead of using a stored exact one, it drifts
-from the template, drops conditions, and mangles escaping. A plausible invented command is worse
+Models emit references to packages, flags and endpoints that do not exist, at measured rates well
+above zero, and when an agent generates an operational command on the fly instead of using a stored
+exact one, it drifts from the template, drops conditions, and mangles escaping. A plausible invented command is worse
 than a missing one: it makes a broken runbook look finished.
 
 You have the repository. Use it. **Verification terminates at the authoritative system — the repo,

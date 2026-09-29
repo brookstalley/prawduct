@@ -12,17 +12,17 @@ You are onboarding a repo onto Prawduct under the **plugin** distribution model.
 
 ## Onboard Flow
 
-Onboarding under the plugin model is plugin-native — there is no file-sync setup script. Pick the shape by inspecting the target:
+Pick the shape by inspecting the target:
 
 ### A. New or existing repo with no `.prawduct/` yet → **scaffold it**
 
-`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, backlog.md, change-log.md, artifacts/), the starter rules corpus at `.claude/rules/learnings/core.md`, the thin static CLAUDE.md anchor, and the committed install reference — and **none** of the file-sync machinery (no `tools/`, no committed skills, no sync-manifest). It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
+`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, backlog.md, change-log.md, artifacts/), the starter rules corpus at `.claude/rules/learnings/core.md`, the thin static CLAUDE.md anchor, and the committed install reference. It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
 
 1. Confirm the target directory with the user (it should be a git repo), and note whether it is **this session's own working directory** — that decides how onboarding ends (see Finish).
 2. **Settle the backlog backend** — GitHub Issues unless there's a reason not to (*Choosing the backlog backend*, below). It has to be settled *before* the scaffold, because that is the only time `--backlog-repo` is honored.
 3. **Dry-run** the scaffold and present the plan: `prawduct-hook init-product <target> --name "<Product Name>" [--backlog-repo <owner/repo>] --json` (no `--apply`). Surface that it creates only product-owned state + the install reference, and which backlog backend it records. Note which paths in the result's `edited` list `git -C <target> status --porcelain --ignored -- <those paths>` already lists in any state (modified, staged, untracked or ignored) — they hold the owner's own content, and the commit step needs to know. Name the paths: a bare `status` shows a wholly untracked `.claude/` only as `?? .claude/`, so its `settings.json` reads clean, and without `--ignored` an ignored file is not listed at all.
 4. **Confirm**, then apply with the same flags plus `--apply`. On the Issues backend, provision the labels next (that section's step 2).
-5. **Check that the plugin will load there** (the mandatory step below).
+5. **Check that the plugin will load there** (below).
 6. **Offer to commit the scaffold** — one ask, one commit (Finish).
 7. **Go into discovery, or hand over the one step to it** (Finish).
 
@@ -39,7 +39,7 @@ State what each choice costs before the owner picks — the price is qualitative
 - **GitHub Issues** needs a GitHub repo the owner can file issues in and `gh` authenticated. Items are real issues, visible to everyone who can see that repo — **a public repo means a public backlog** — and GitHub has no ordinary issue delete. Backlog reads go through a local cache that syncs from GitHub. From the first session, the advisories that watch the markdown file stand down, since there is no live file for them to watch. A backlog check with no Issues-backend path says so where it runs, rather than going quiet. The scaffolded `.prawduct/backlog.md` stays in the repo inert — the backlog skill never reads it on this backend.
 - **Markdown** (`.prawduct/backlog.md`) needs no GitHub, no `gh`, not even a git remote, and works entirely offline. It is the right call when the product has no GitHub home (another forge, air-gapped, no remote) or the owner does not want an Issues tracker. If that is permanent, it gets recorded with `/prawduct:backlog decline-migration <reason>`, which must run in the target's own session. When onboarding runs there, run it before the commit so the record lands in it. From another directory, it goes in the closing report. Without it, the migration warning above starts once the backlog holds structured items, and it can never resolve.
 
-For Issues, onboard **owns provisioning for this entry path** (scrub owns it at migration; doctor owns the reconcile-as-repair) — two steps, in order:
+For Issues, onboard provisions the labels — two steps, in order:
 
 1. **Record the backend** as part of the scaffold — pass the confirmed target to `init-product`:
    `prawduct-hook init-product <target> --name "<Product Name>" --backlog-repo <owner/repo> --apply --json`
@@ -50,18 +50,13 @@ For Issues, onboard **owns provisioning for this entry path** (scrub owns it at 
 
 ### Either way
 
-- The committed install *reference* (project scope) in `.claude/settings.json` is the only prawduct content the repo commits, and it never drifts — `init-product` writes it for new repos, `/prawduct:migrate` for existing file-sync ones:
-  ```json
-  {
-    "extraKnownMarketplaces": { "prawduct": { "source": { "source": "github", "repo": "brookstalley/prawduct", "ref": "main" }, "autoUpdate": true } },
-    "enabledPlugins": { "prawduct@prawduct": true }
-  }
-  ```
+- The committed install *reference* (project scope) in `.claude/settings.json` is the only prawduct content the repo commits. `init-product` writes it for new repos, and `/prawduct:migrate` for existing file-sync ones; `/prawduct:doctor` Check #1 grades it against the plugin's published contract.
+
   On first trusted open, Claude Code adds the marketplace from this reference without prompting — but it **does not install the plugin**, because it never auto-installs one sourced from a repository. So tell the owner plainly: **every contributor runs `claude plugin install prawduct@prawduct` once**, and until they do, their clone runs with no hooks, no `/prawduct:*` and no gates, and Claude Code says nothing about it. The `CLAUDE.md` anchor is what tells such a session to raise it — do not describe onboarding as making governance automatic for the next person, because it does not.
 - **Integration base branch.** When the target's `origin/HEAD` names a branch outside `main`/`master` — a repo whose remote default is `develop` — the scaffold (and `/prawduct:migrate`) records `base_branch: <b>` in `project-state.yaml`, and reports it as `base_branch` in the JSON result. That scalar is what every diff-base gate anchors to: coverage, the cumulative Critic, and the PR gates. A trunk repo gets no key and needs none; a branch the remote names but has never fetched is deliberately not recorded (an unresolvable `base_branch:` fails those gates closed). **The remote's default is a good guess, not the truth.** If features merge onto a branch the remote does not default to — `origin/HEAD` says `main` while the team integrates on `develop`, the case detection cannot see — say so and have the owner set `base_branch:` by hand. Unset, the gates guess `main`, and a gitflow repo then reviews the whole `develop..main` promotion delta on every feature.
 - `/prawduct:doctor` health-checks the install anytime after onboarding.
 
-### Prove the plugin will actually load there — MANDATORY
+### Prove the plugin will actually load there
 
 **Run `prawduct-hook check-plugin-active --path <target>` before you report success.**
 
@@ -81,11 +76,6 @@ Route on the status, not on the exit code alone — there are three answers, and
 | `active` | Continue to Finish. |
 | `inactive` (exit 1) | **Do not report success.** Relay the command's own output — it names the consequence, the exact `claude plugin install` line, and which other paths the plugin *is* installed for. The operator runs it; onboarding is not finished until they do. |
 | `unknown` (exit 3) | The check could not run — a harness-internal file was missing or unreadable. Say that it **was not established**, never that it passed. Tell them to confirm by opening the target and looking for the prawduct session briefing. |
-
-**Exit 3 is not a failure of onboarding** — it is the same *unverified* sentinel `check-released`
-carries, and it means the question went unanswered rather than answered badly. Do not treat it as
-`inactive` and do not treat it as `active`; relay the command's own text, which says both what was
-attempted and what remains unknown.
 
 ## Finish: commit, then discovery
 

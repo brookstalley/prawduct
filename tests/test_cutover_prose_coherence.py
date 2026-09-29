@@ -238,14 +238,21 @@ class TestDirectReadRuleIsOneRule:
             f"its reason is a rule the next editor deletes as redundant."
         )
 
-    def test_owner_states_the_rule_and_records_the_rejected_alternative(self):
-        """`skills/backlog/SKILL.md` owns the file, so it owns the rule. The
-        blanket-ban alternative is recorded there because it is the obvious
-        simplification someone will otherwise re-propose."""
+    def test_owner_states_the_rule(self):
+        """`skills/backlog/SKILL.md` owns the file, so it owns the rule.
+
+        The rejected alternative is recorded here, not in the skill, because
+        its only reader is the next editor: a blanket "never read the file
+        directly" was considered and rejected. It would retire the janitor's
+        full-body overlap read with no live replacement, which is exactly the
+        bespoke per-reader projection the read-through cache exists to avoid.
+        The gate is the rule; each reader states it inline rather than pointing
+        at the skill for it, so a reader that loads one file still gets the
+        whole contract. `LITERAL_BAN` and the shape match below keep the
+        blanket form from coming back."""
         flat = " ".join(_read("skills/backlog/SKILL.md").split())
         assert "Direct reads of `.prawduct/backlog.md`" in flat
         assert "Writes never bypass this skill" in flat
-        assert "blanket" in flat and "rejected" in flat
 
     # The exact wording `skills/pr/SKILL.md` carried from `ef34dfc` (which
     # introduced it — its predecessor had an *ungated direct read*, not a ban)
