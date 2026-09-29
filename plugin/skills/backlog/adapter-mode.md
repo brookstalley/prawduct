@@ -40,7 +40,7 @@ class:
 | 5 | auth | not authenticated, or a write withheld |
 | 6 | unavailable | the backend (`gh` / network) is unreachable |
 
-The stdout envelope is one of three shapes:
+The stdout envelope is one of two shapes:
 
 - **`{"status":"ok","data":…,"warnings":[…]}`** — render `data` for the operation. If `warnings[]`
   is non-empty, surface each to the user as a `NOTE:` line — they are advisory (unknown soft-enum, a
@@ -49,11 +49,6 @@ The stdout envelope is one of three shapes:
   (name the `code`) to the user, per the exit class. **Also surface any `warnings[]` present on the
   error envelope** — the error path can still carry advisory audit lines, and those are one-shot;
   dropping them loses information permanently.
-- **`{"status":"queued","data":{"provisional_id":…}}`** — an *optional* offline-queue layer that is
-  **not built today**. If a future build queues a write while GitHub is unreachable, report the
-  `provisional_id` and that it reconciles on reconnect. **In the current state there is no queue: an
-  unreachable backend returns `unavailable` (exit 6) instead** — handle it per the error discipline
-  below.
 
 A `file` result may also carry **`"lint":[{"rule","message","severity":"warn"}]`** — surface these
 as `WARNING:` issue-standard hints. These body/label findings never change `status` or the exit
@@ -128,9 +123,8 @@ onto the adapter flags. **Items someone is already on are excluded by rendering,
 each item carries `working_branch`, so drop the ones that have it unless the user asked for
 `--include-working`, and show the branch in the row when you do. There is no server-side filter for
 it — it is a body-block field, so the provider cannot select on it, and post-filtering a page would
-make the returned `count` disagree with the page it came from. `--assignee` is still a filter, but
-assignment no longer means anything to prawduct: `claim` is retired and nothing writes assignees.
-Keep the render lean — a handful of rows, most-relevant first.
+make the returned `count` disagree with the page it came from. `--assignee` filters on GitHub
+assignees, which prawduct never writes. Keep the render lean — a handful of rows, most-relevant first.
 
 `--untriaged` **inverts** the scope filter: it returns only the issues `list` normally drops (the
 ones `counts.untriaged` counts), so it is how you show an operator what needs triage without
@@ -138,11 +132,6 @@ sending them to the GitHub web UI. It scans every page and **refuses** `--per-pa
 (re-run without them); every other filter still applies. These are not items yet — they have no
 stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
 missing data.
-
-This set is a **superset of the security model's `quarantine`**, which is the *non-collaborator*
-half of it (Security §6/F7). The author predicate is not implemented, so `--untriaged` is what
-reaches an anonymous filing today — over-including the owner's own unlabeled issues rather than
-missing one. Do not describe the two as the same query.
 
 ### get <id> — view one item
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
@@ -167,7 +156,7 @@ prints, each with its own crash-safety
 contract (idempotent/resumable `import`, redirect-before-close `merge`). No generic preview-or-apply flag
 sits over those mutations: the two preview-before-write paths are op-specific. `restructure-preview`
 renders the deterministic before/after a bulk `import` would produce, approved in aggregate; and
-`file-upstream` is preview-by-default — its own block below.
+`file-upstream` is preview-by-default, a protocol `/prawduct:report-bug` owns (block below).
 
 ### Status vocabulary bridge
 The markdown skill's statuses are **not** the adapter's. Map before calling `status --to`:
@@ -198,7 +187,7 @@ duplicates found".
 **Then run `SKILL.md`'s `add` step 2 before filing — the three-way offer.** It is the one step of
 that procedure this section does not replace, because the question is about the work rather than
 about where the item lands: when the item describes work in this repo that is **ready to build**,
-say the three options out loud — *delegate it, do it now, or backlog it* — with the delegate's cost
+say the three options out loud — *do it now, backlog it, or delegate it* — with the delegate's cost
 attached. Read it there; it is not restated here. What this backend has to translate is the
 in-flight mark: on *delegate it*, `status <id> --to in-progress` (the bridge above) plus
 `update <id> --working-branch owner/repo@branch` once that branch is pushed — there is no
@@ -227,15 +216,9 @@ field rather than a missing one; it is not permission to write the block.
 ### update `<id>`
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
-  no-op). A close records `closed_by` natively **only on close-on-merge** (the timeline close-ref);
-  a bare `status --to shipped` carries no handle, so pass a `closed-by=<scope>` argument through as
-  `update <id> --closed-by <scope>` in the same breath or the ship handle is simply lost. GitHub's own timeline holds *who*
-  closed the issue (and the closing PR or commit when the close rides a merge), but the adapter
-  neither stamps nor surfaces it, and the *scope* is not recoverable from it. `update` **does** take
-  a `--closed-by` flag writing a queryable block field (#550/#564) — the comment workaround this
-  paragraph used to prescribe is retired. `status` itself still takes none, which is why the scope
-  rides the paired `update` above rather than the close. Never hand-write it into a `prawduct:`
-  block: that block is adapter-owned.
+  no-op). `status` takes no scope, and a close records `closed_by` only on close-on-merge, so pass a
+  `closed-by=<scope>` argument through as `update <id> --closed-by <scope>` in the same breath, or
+  the ship handle is lost. Never hand-write it into a `prawduct:` block: that block is adapter-owned.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
   wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
@@ -257,10 +240,8 @@ Route by what changed:
   no code path rewrites the field when a branch is merged or deleted, and none should — a merged
   item's branch is the record of what shipped it. A merge makes the marker *inert* (the item leaves
   ready-work on its status), it does not remove it. Do not "tidy" one away after a merge.
-  **This is how an item is taken. There is no `claim` op** — it is retired, along with `unclaim`,
-  the TTL and the assignee stamp. Setting the branch is the whole of taking an item, and `pick`
-  excludes on it, so nothing else has to be recorded. Nothing expires it: the branch's last commit
-  is the activity signal, which is why there is no TTL to configure and no reap to wait for.
+  Setting the branch is how an item is taken: `pick` excludes on it, and nothing expires it,
+  because the branch's last commit is the activity signal.
 - **editorial block field** (`refs:`/`revisit:`/`closed-by:`) → `update <id> --refs V`,
   `--revisit V`, `--closed-by V` — each takes a value, and an **empty** value clears the field, so
   an expired `revisit:` can be removed rather than blanked. `file` also takes `--refs` so a new item
@@ -281,27 +262,10 @@ already holds that timestamp from elsewhere; the skill's normal path omits it. I
 whole `update` op, not to any one field above.
 
 ### file-upstream
-
-```
-prawduct-hook backlog file-upstream --title <t> --body <b> [--component <c>] [--approve <digest>]
-```
-
-**Do not call it from here.** It is the data plane for `/prawduct:report-bug`, which is its only
-caller: that skill carries the recomposition and the verbatim human review that are the whole reason
-the payload is safe to send, and calling the op directly skips both. Route a prawduct bug to
-`/prawduct:report-bug` instead. **A product's own work is filed with `add`, never here** — this op
-writes into a foreign public repo and the write is irreversible.
-
-**Preview-by-default, send on a second call.** With no `--approve` it renders the exact outbound
-payload plus a `payload_digest` and sends nothing; sending repeats the call with
-`--approve sha256:<the digest the preview printed>` and the same payload flags. The full refusal set
-and the two-call recipe live in `documentation/backlog-service-upstream-filing.md` §5 — read them
-there rather than from a copy here, so the refusal vocabulary keeps one home.
-
-**Every refusal files nothing.** That is the guarantee to surface when you see one: an error from
-this op never leaves a partial upstream write behind. The preview names each refusal it can predict
-without a network call, so a `filing would refuse (…)` line means the send will not succeed until you
-fix what it names.
+Do not call it from here. It is the data plane for `/prawduct:report-bug`, its only caller, which
+carries the recomposition and the verbatim human review that make the payload safe to send. Route a
+prawduct bug there. A product's own work is filed with `add`: this op writes into a foreign public
+repo, irreversibly.
 
 ### pick
 `prawduct-hook backlog pick --repo <r> [--limit N] [--include-working]` → the adapter returns
