@@ -1,7 +1,7 @@
 ---
 artifact: research
 scope: opus-55-prompt-audit
-status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; W1 applied 2026-09-28, W2–W6 pending
+status: ruled 2026-09-28 — every fork, wave and bookkeeping item taken; W1–W4 applied (one build plan each, `build-plan-opus-55-w*.md`), W5–W6 pending
 created: 2026-09-28
 depends_on: [framework-efficiency-review-2026-07-02.md, program-purpose-and-cession.md]
 absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
@@ -14,7 +14,7 @@ absorbs: ["#181 (prose half)", "#341", "#342 (prose half)"]
 This is a disposition list for prawduct's **prompt surface**, meaning every piece of text that
 reaches a model as instructions. Each decision is re-priced against Anthropic's guidance for
 Claude Opus 5.5. The owner picks decisions in one sitting. Each apply wave then gets its own plan
-and a Critic review. W1 applied on 2026-09-28; W2–W6 are pending (§ Rulings, § Found while applying).
+and a Critic review. W1 to W4 (with W3b) are applied, and W5 and W6 are pending (§ Rulings, § Found while applying).
 
 **Why now.** `program-purpose-and-cession.md` sorts what prawduct hedges into three piles, and
 says the *runtime judgment* pile "depreciates via model releases". Opus 5.5 is such a release.
@@ -151,6 +151,38 @@ fix-don't-file preference covers the rest. They are recorded here, where the own
   until review. `critic_mode._mid_plan_start` counts 2 or more unticked boxes as mid-plan, and on
   a short plan that answers `deferred`. W1 dispatched `cumulative` explicitly. Fixed on `fix/short-plan-tick-deadlock`, stacked on W1, with the owner-confirmed
   direction: a short plan's earlier chunks are ticked at commit.
+
+## Found while applying (W4, 2026-09-28)
+
+The probe results are in `build-plan-opus-55-w4-methodology-templates.md`, with raw runs kept
+only in that session's scratchpad.
+
+- **Sonnet 5.5 is reachable through `claude -p --model claude-sonnet-5-5`**, which reports the
+  model id it ran in `modelUsage`. The Agent tool's `sonnet` alias still is not. Isolate a probe
+  subject from the user's installed plugins, or the prawduct SessionStart digest reaches it:
+  `--setting-sources project`, or `--settings '{"enabledPlugins":{"prawduct@prawduct":false}}'`.
+  One W4 batch was confounded this way and discarded.
+- **F1's owed Sonnet 5.5 rerun of W3's reviewer probes: no regression.**
+  - C-1 found an unplanted rollback defect 4 of 4 times on the new text and 0 of 4 on the old.
+  - C-22 and C-23 held their WARNING rating on both texts.
+- **F5: B-21 and B-22 are released and applied in W4.** On Sonnet 5.5 the discovery probe's new
+  text raised every critical concern the old text did, and no low-risk interview ballooned.
+- **B-10 to B-12 are the first decision in four waves whose probe control failed.** On the old
+  brief, a Sonnet 5.5 delegate reported a removal done with no evidence and left a hidden caller
+  broken, twice. On the new brief it returned the grep output and found the caller, twice.
+- **Per-wave probing, re-examined as W4's handoff asked.** W4 ran the longer multi-step task
+  W1 could not. With Opus 5.5 on a three-chunk plan, even the full control (the pre-W1 digest
+  and the pre-W4 guides) built every chunk in one turn. So W1, W2, W3 and W4 have all failed to
+  make a prompt-only control show an early stop, a filtered report or a clean pass.
+  - **What the probes are good for:** catching a regression, and, when the control does fail
+    (P3), showing a benefit.
+  - **What they cannot do:** show that a cut helps a behaviour current models no longer exhibit.
+  - **Recommendation for W5 and W6:** keep one regression probe per wave, aimed at a decision
+    whose failure is observable in its output, as P3's was. Stop counting a non-failing control
+    as a reason to keep probing that decision. The owner can veto.
+- **Closing #341 moved `architecture.md`'s "goals bind; method is advice" norm to steady-state.**
+  Its Status and Stopgap lines go, and its Retroactivity line records the migrated sites. This is
+  a recorded decision in W4's plan.
 
 ## Decisions for the owner
 

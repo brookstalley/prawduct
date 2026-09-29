@@ -130,7 +130,63 @@ Every decision has replacement text and a ruling. These are the inferences:
 
 ## Found while applying
 
-(Filled while building.)
+- **Sonnet 5.5 is reachable, just not through the Agent tool.** `claude -p --model
+  claude-sonnet-5-5 --output-format json` ran it, and `modelUsage` confirmed the id (2026-09-28).
+  The owed floor probes run that way.
+- **B-14 keeps the tangent route.** Its replacement dropped every mention of mid-cycle work from
+  `building.md`'s delegation section. `TestAdHocDelegation` pins that concept: a builder mid-chunk
+  must be pointed at the guide.
+  [DECISION: the section names "a plan's chunks, or a tangent that arrives mid-cycle" as what the
+  guide judges. It drops the old push ("asked again of … anything you were about to backlog") and
+  keeps the route | the ruling applies replacement text unless it drops something a reader acts
+  on | owner can veto]
+- **B-17 states #341's acceptance criterion outright:** "a builder who finds a better route takes
+  it and records why". The slice's "a forecast, not a contract" implied it without saying it, and
+  F7 closes #341 on these rewrites.
+- **Closing #341 moves a norm.** `architecture.md`'s "Goals and verification bind; prescribed
+  method is advice" was `in-transition`, with #341 (GOV-4T9P) as its tracking ref and a stopgap
+  expiring 2026-12-01.
+  [DECISION: the migration completes on this branch, so the norm goes to steady-state in the same
+  change. The Status and Stopgap lines go. The Retroactivity line records the three migrated
+  sites and "no residual sites". The Enforcement row in `project-preferences.md` drops its
+  `in-transition` tag. The statement, Why, Scope and Decision are untouched: this is the
+  lifecycle step `norms.md` § Birth defines, not an amendment. The authority is the owner's F7
+  ruling ("#341 closes with wave 4") | owner can veto]
+- **B-27's bold cut stopped at 96 spans,** from 122 (planning.md: 80 from 96). The slice's "roughly
+  60" was an estimate. The rule it states (keep run-in labels and defined terms, drop mid-sentence
+  emphasis) is what was applied, and what remains is run-in labels, the Size and Type lists, and
+  the major-decision properties.
+- **The `building.md` FIX_ORDER de-shout broke two pins:**
+  - `test_resolve_findings_dispositions_rather_than_mandating_fixes` now pins the rule's new
+    sentence.
+  - `test_suite_at_boundary` pinned B-27's bold `**once**`. It now pins the plain form, and keeps
+    the old negative beside the new one.
+- **The template delegate's recorded departures,** all vetoable. Its report was re-derived: the
+  added text was read in the integrated diff, not taken from the summary.
+  - [DECISION: B-3 also covers `dependency-manifest.yaml`, which carries the same dead `Tier:` and
+    `Owner: Artifact Generator (C3)` lines the slice's site list missed]
+  - [DECISION: B-4 also namespaces the bare `/pr create` and `/backlog …` forms in
+    `project-state.yaml`'s comments]
+  - [DECISION: B-18's new sentence merges into the existing existence-check sentence of the
+    Build Chunks comment. Placed beside it, the comment said so twice]
+  - [DECISION: B-30 says `superseded_by: <what replaced it, or why it stopped>`, because a
+    descoped plan is also superseded. It also says "review before you tick it", because on a
+    short plan the earlier boxes are ticked at commit]
+  - [DECISION: B-38 also cuts the OSHA/S1000D and "AWS-prescribed" citations, which are the same
+    evidence class. `docs/runbook-authoring.md` holds them]
+  - [DECISION: the cadence line says the last chunk commits before its `cumulative`. The old
+    "commit per chunk after its Critic review passes" was false for Chunk 03]
+- **Found by the delegate:**
+  - `documentation/backlog-system-requirements.md:169` said `closed-by: <chunk-id|tag>`, which
+    disagreed with the skill before this wave. It is fixed here, because a pre-existing defect
+    gets no exception.
+  - `project-state.yaml`'s version fossils ("v1.4+") are B-4-class, but no decision lists them.
+- **`plugin/docs/discipline.md` anchored two rows on sentences this wave rewrote:** row 4 on B-2
+  and row 9 on B-24. The anchors now name the new sentences. The file is W6's, but this wave made
+  the anchors false, so this wave corrected them.
+- **The negative-pin scan came back clean.** Across 760 `"<lit>" not in` literals, the only ones
+  this wave removed from its files were common words asserted against runtime strings, not these
+  files.
 
 ## Status
 
@@ -142,7 +198,7 @@ Every decision has replacement text and a ruling. These are the inferences:
 **Decisions:**
 - **Methodology (main agent):** B-1, B-2, B-8, B-9, B-10, B-11, B-12, B-13, B-14, B-15, B-16,
   B-17, B-19, B-20, B-23, B-24, B-25, B-26, B-27, B-28, B-31, B-33, B-34, B-35, B-36, B-39, B-40,
-  and [B-21, B-22 on P2's result]. Also the handoff's `building.md` FIX_ORDER de-shout and
+  B-21 and B-22 (released by P2). Also the handoff's `building.md` FIX_ORDER de-shout and
   delegation budgets clause.
 - **Templates (delegate):** B-3, B-4, B-5, B-6, B-7, B-18, B-29, B-30, B-32, B-37, B-38, and the
   handoff's cadence-line pointer.
@@ -165,6 +221,66 @@ from a constant, and a literal grep can't see it. So far the grep finds these:
   `test_critic_consolidate.py`, `test_cutover_prose_coherence.py`,
   `test_plugin_methodology_digest.py`, `test_path_reference_resolution.py`, and every other test
   the run turns red.
+
+**P1–P3 outcome (2026-09-28, Sonnet 5.5).** Each subject ran `claude -p --model
+claude-sonnet-5-5 --setting-sources project --strict-mcp-config`. That drops the user-level
+prawduct plugin, which was checked: with it, a subject quotes the digest; with these flags, it
+quotes nothing. All 24 graded runs have `modelUsage` = `claude-sonnet-5-5`. There were two
+samples per arm, and each probe's grading criteria were fixed before its runs.
+- **P1, C-1 (PR reviewer).** Old text from `7cec305a`, new from `fa235fe0`. The bundle was
+  a 47-file rename interleaved with a currency split, plus a 95-file variant added after the
+  runs began.
+  - **Change-log entry that narrates branch history:** 4 of 4 in both arms.
+  - **Oversize:** old 0 of 4, new 1 of 4 (a partial NOTE). On a single-concern mechanical bundle,
+    neither text makes Sonnet 5.5 treat size as a defect.
+  - **An unplanted rollback defect** (a down-migration that drops the currency column): new 4 of
+    4, old 0 of 4. Two old-arm runs also routed findings to the backlog, which C-1 removed.
+  - **Result:** no regression, and a recall gain on the unplanted defect.
+- **P1, C-22/C-23 (Critic reviewer).** The case was a trivial-sized extraction with a
+  substring-only test.
+  - **Both arms:** 2 of 2 rated it WARNING, with no other finding.
+  - **Result:** no regression. W3's one new-text BLOCKING did not recur.
+- **P2, B-21/B-22 (discovery).** Ten critical concerns were fixed beforehand for a pediatric
+  SMS-reminder app.
+  - **High risk:** the old arm raised 9 and 10 of them, and the new arm 10 and 10.
+  - **Low risk** (a household chore rotation): first-round questions were old 5 and 6, new 6 and
+    4. Neither arm ballooned.
+  - **Result: released, and applied in this wave.** Both arms ran without tools, so B-22's
+    search-depth line was not exercised. The probed text lacked B-39's discovery edit, which does
+    not touch domain concerns.
+- **P3, B-10 to B-12 (delegate).** A removal of `legacy_parse` with one caller hidden behind a
+  `getattr` and a config default.
+  - **Old brief:** 2 of 2 reported Done with no evidence, and each left the hidden caller broken
+    (1 failed / 8 passed).
+  - **New brief:** 2 of 2 returned the grep output, found the caller, and left the suite at 9
+    passed.
+  - **Re-derived:** the main agent reran the four repos' suites.
+  - **Result: helps.** This is the first probe across W1–W4 where the control shows the targeted
+    failure and the treatment fixes it.
+- **Setup gaps:** the first P3 batch was void (two delegates wrote to one repo) and was rerun.
+  The Critic arms' prompt sizes differ (old about 16.4k words, new about 9.6k), because W3b split
+  the file.
+
+**P4 outcome (2026-09-28, early stop, Opus 5.5):**
+- **Setup.** A scratch repo carried a three-chunk short plan (a temperature-conversion CLI) and
+  the task "Let's build the plan". The arms:
+  - A: the pre-W1 digest and the pre-W4 guides, the full control.
+  - B: the current digest and the pre-W4 guides.
+  - C: the current digest and the W4 guides.
+- **All six isolated runs built all three chunks in one turn** (two per arm; `modelUsage`:
+  `claude-opus-5-5`). Each committed per chunk, ticked every box, and closed on
+  `YOUR TURN` / `SAFE TO CLEAR`, asking for a real decision (a PR, or the assumptions it had
+  made), not "shall I continue?".
+- **The control never stopped early, so the result is "no regression".** It is not evidence that
+  A-1, B-9, B-16 or B-35 help.
+- **A first batch was confounded and discarded.** The user's globally installed prawduct plugin
+  loaded into every `claude -p` subject: its SessionStart hook injected the current digest and
+  wrote `.prawduct/` markers, so arm A was not isolated. The rerun disabled the plugin with
+  `--settings '{"enabledPlugins":{"prawduct@prawduct":false}}'`. That batch also finished 6 of 6.
+- **This is the fourth wave whose control failed to show the targeted failure** (W1, W2, W3,
+  W4), and W4's was the longer multi-step task the handoff asked for. The audit's
+  "one behavioural probe per wave" is re-examined in its § Rulings: the probes can show a
+  regression, and they have not shown a benefit.
 
 **Done when:**
 1. Each Success bullet holds, and the suite passes.

@@ -12,7 +12,7 @@ Before you can build anything well, you need to understand what kind of thing yo
 
 - **Runs unattended** — Operates without humans watching. Signals: "automatically", "cron", "monitors", "runs in background". Implications: failure recovery, monitoring, alerting, scheduling. Silent failure is the default — design against it.
 
-- **Exposes programmatic interface** — Other systems call it: a network service, a library/SDK, an on-device/platform interface, or a CLI — not just HTTP. Signals: "API", "SDK", "webhook", "endpoint", "plugin", "CLI", "integration". Implications: an API contract (operations, inputs/outputs, error model) plus three *recorded* decisions — versioning scheme, deprecation/compatibility policy, and error model — since adding any later is a breaking change for every consumer. Record the decision (a deliberate "none — internal-only" counts) in `design_decisions.api_versioning_approach`; a deferral must be dated with a revisit trigger. If the surface carries authorization or sensitive data, also surface the OWASP API Top 10 *design* failures — object-level authz (BOLA), mass assignment, excessive data exposure (checklist: `templates/api-contract.md`).
+- **Exposes programmatic interface** — Other systems call it: a network service, a library/SDK, an on-device/platform interface, or a CLI — not just HTTP. Signals: "API", "SDK", "webhook", "endpoint", "plugin", "CLI", "integration". Implications: an API contract with recorded versioning, deprecation and error-model decisions (`methodology/planning.md` "Exposed API"). If the surface carries authorization or sensitive data, also surface the OWASP API Top 10 *design* failures — object-level authz (BOLA), mass assignment, excessive data exposure (checklist: `templates/api-contract.md`).
 
 - **Has multiple party types** — Different user types with different privileges. Signals: "buyers and sellers", "admin panel", "teachers and students". Implications: per-party specs, trust boundaries, data isolation.
 
@@ -26,13 +26,13 @@ These are independent dimensions, not categories — a product can have any comb
 
 ## Risk Calibration
 
-After detecting structural characteristics, assess risk. Risk drives how much discovery you do. The counts below are the **typical shape, not a quota** — concrete anchors, always governed by the pacing judgment in "Read the room on pacing" below:
+After detecting structural characteristics, assess risk; risk drives how much discovery you do, always under the pacing judgment in "Read the room on pacing" below:
 
-**Low risk** (family utility, personal tool, 1-3 users): 5-8 questions, 1-2 rounds. Infer aggressively. Move fast.
+**Low risk** (family utility, personal tool, 1-3 users): a round or two. Infer aggressively. Move fast.
 
-**Medium risk** (team tool, small marketplace, modest user base): 8-15 questions, 2-3 rounds. Confirm key assumptions. Cover structural implications.
+**Medium risk** (team tool, small marketplace, modest user base): confirm key assumptions; cover structural implications.
 
-**High risk** (financial data, health records, large user base, regulatory): 15-25 questions, 3-5 rounds. Deep exploration. Surface regulatory concerns. Challenge assumptions explicitly.
+**High risk** (financial data, health records, large user base, regulatory): deep exploration over several rounds. Surface regulatory concerns. Challenge assumptions explicitly.
 
 The right amount of discovery is the minimum that prevents building the wrong thing. Over-discovery wastes the user's patience; under-discovery leads to rework or missing entire requirement categories.
 
@@ -116,20 +116,7 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 
 **Ask the fewest questions that most change the project.** Every question has a cost (patience, time) and a value (decision impact). Questions that determine structural characteristics are high-value; icon colors are not. Front-load the high-value questions.
 
-**Detect domain-specific concerns dynamically.** Don't rely on hardcoded question lists — your domain knowledge is the source; structural characteristics tell you where to focus it. Some domains imply testing strategies — mathematical operations and data transforms suit property-based testing, event-driven systems suit state-machine testing, APIs suit contract testing. Surface these during discovery so they reach test-specifications.
-
-**Seed the sweep from the structure, so "dynamically" does not become "from memory".** Each characteristic you detected opens a fixed set of questions. Running them is the floor — the part a hardcoded list was standing in for:
-
-| The product… | ask about |
-|---|---|
-| has a human interface | the empty, loading, error and offline states; what a first-run user sees; the keyboard and screen-reader paths |
-| runs unattended | how a silent failure becomes visible; what a retry does twice; what a half-finished run leaves behind |
-| exposes a programmatic interface | who else calls it; what breaks a caller; how a caller learns a call failed, and what it is supposed to do then |
-| has multiple party types | what each party must never see; who may act on whose behalf; what an admin cannot undo |
-| handles sensitive data | what is collected and why; how long it is kept; who can read it; what a breach exposes |
-| is multi-process or distributed | what is durable vs. ephemeral; what happens while one side is absent; what orders the work |
-
-Then go past the table — it is the seed, not the checklist. A marketplace, a data pipeline and a healthcare app each have critical questions no general table can name, and finding those is the expertise the user came for (Principle 7). The table is the floor you are not allowed to fall below; the ceiling is yours.
+**Detect domain-specific concerns dynamically.** Don't rely on hardcoded question lists — your domain knowledge is the source; structural characteristics tell you where to focus it. Some domains imply testing strategies — mathematical operations and data transforms suit property-based testing, event-driven systems suit state-machine testing, APIs suit contract testing. Surface these during discovery so they reach test-specifications. Each characteristic's *Implications* above is where the sweep starts, not where it ends — a marketplace, a data pipeline and a healthcare app each have critical questions no general list names, and finding those is the expertise the user came for (Principle 7).
 
 **Read the room on pacing.** Patience is finite. Fatigue signals — shortening answers, repeated bare agreement ("yes", "sure"), explicit redirects ("just build it") — mean adapt: batch remaining questions into one confirm-or-correct pass, shift to confirmation mode, or infer more aggressively and move on. Under-discovery that preserves engagement beats thorough discovery that loses the user. This isn't a state machine with thresholds — it's a judgment call, and erring toward action is usually correct.
 
@@ -139,7 +126,7 @@ After you understand the concept and structural characteristics — typically af
 
 **What to search for.** Existing solutions to the same core problem; for medium-risk and above, also key libraries, established patterns, and standards. Use web search if available; otherwise draw on domain knowledge and say so. Per "Calibrate Rigor", a fast-moving or post-cutoff topic makes this search *mandatory*.
 
-**Scale search depth to risk.** Low: 1-2 quick searches. Medium: 2-3 covering solutions and libraries. High: 3-5 including standards and cautionary tales.
+**Scale search depth to risk** — at high risk, include standards and cautionary tales.
 
 **Present findings as expertise, not a report.** Weave them into the conversation ("I checked what exists — [X] and [Y] are the main options; given your needs I'd suggest [Z] because…"). Don't dump links; synthesize what matters for *this* decision.
 

@@ -444,12 +444,12 @@ coverage_required: false
 # =============================================================================
 # OPERATOR VERIFICATION (opt-in, v1.4+)
 # =============================================================================
-# When true, `/pr create` BLOCKS if `.prawduct/operator-verification.md`
+# When true, `/prawduct:pr create` BLOCKS if `.prawduct/operator-verification.md`
 # has any entry with `**Status:** pending`. The queue records pre-merge
 # human-verification items for visual / live-integration changes that
 # automated tests can't fully cover. Drain via
 # `prawduct-hook verify-operator-verification <VRF-id>` or
-# override per-PR with `/pr create --accept-pending-verification "rationale"`.
+# override per-PR with `/prawduct:pr create --accept-pending-verification "rationale"`.
 # Default off in v1.4 — opt-in by setting `operator_verification_required: true`.
 
 operator_verification_required: false
@@ -522,11 +522,11 @@ review_round_budget: 6
 # in .prawduct/.advisories.json; these committed facts auto-resolve a
 # teammate's advisory on next sync (see post-sync-advisory-spec.md §3.5, §7.1).
 #
-#   backlog_format_version  — set to 2 once `/backlog migrate` has converted
+#   backlog_format_version  — set to 2 once `/prawduct:backlog migrate` has converted
 #                             items to the [PFX-XXXX] structured format. Unset
 #                             (or absent) means legacy/unmigrated; the
 #                             `legacy-backlog-format` probe may nudge.
-#   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /backlog
+#   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /prawduct:backlog
 #                             validation (e.g. [STH, CRT, SYN]). Emergent by
 #                             default; declare only if you want validation.
 #   backlog_backend         — set to `markdown` to declare that this product is
@@ -550,8 +550,8 @@ review_round_budget: 6
 #
 # Reserved for deferred backlog probes (v1.7 ships only legacy-backlog-format):
 #   backlog_external_imports — list of external backlog files already audited
-#                              via `/backlog import` (resolves external-detected).
-#   backlog_last_groomed_at  — ISO-8601 of the last /backlog list|pick (resolves
+#                              via `/prawduct:backlog import` (resolves external-detected).
+#   backlog_last_groomed_at  — ISO-8601 of the last /prawduct:backlog list|pick (resolves
 #                              overdue-grooming).
 
 # backlog_format_version:

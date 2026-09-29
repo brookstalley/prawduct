@@ -29,10 +29,6 @@
                   `release=unreleased` — drops the whole scope out of the
                   release-pending set and silently unships the work.
 
-     Nothing else is read. `chunks=` and `status=` were retired along with the
-     derived views they fed; entries in older logs still carry them and are
-     parsed as inert — leave them. Which chunks an entry shipped belongs in
-     the entry BODY, where release notes and readers actually find it: a
-     deliverable omitted from the body ships invisibly, and no tag ever
-     caught that either. -->
-
+     Nothing else is read; any other key is inert. Which chunks an entry
+     shipped belongs in the entry BODY, where release notes and readers find
+     it — a deliverable omitted from the body ships invisibly. -->

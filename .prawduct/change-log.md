@@ -5,6 +5,40 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-29: the methodology guides and templates are retuned for Opus 5.5 (audit wave W4)
+
+<!-- prawduct: type=feature | scope=opus-55-w4-methodology-templates -->
+
+Wave W4 of `opus-55-prompt-audit-2026-09.md`, ruled in full on 2026-09-28. It applies slice B's
+decisions to the six methodology guides and the artifact templates: B-1 to B-40 except B-41, a
+flag. The guides no longer license ending a turn with work in hand (B-9, B-16, B-35): a chunk
+boundary ends the turn only when the plan is done, the next chunk needs the user, or the cycle
+has reached what one review covers. The builder is no longer told to scrub its own diff while the
+Critic runs, to review every artifact phase, or to redo a delegate's sweep (B-1, B-19, B-36,
+B-10 to B-12); instead a delegate's brief asks for the output that shows a removal or sweep
+complete. Delegation stops being the default for tangents and no longer requires a subagent for a
+consumer grep (B-2, B-13 to B-15); the delegate criterion is the owner's, wall clock gained
+without conflict. Chunk shape, file-list deliverables and phase choreography become advice
+(B-17 to B-19), which closes #341. `architecture.md`'s "goals bind; method is advice" norm
+therefore moves from `in-transition` to steady-state: its stopgap goes, and its Retroactivity
+line records the migrated sites. B-21 and B-22, discovery's domain-concern table and question
+quotas, were held until a Sonnet 5.5 probe and ship here. On the probe, the new text raised every
+critical concern the old text raised. Templates lose dead component headers, unnamespaced
+commands, incident stories and caps-lock register (B-3 to B-7, B-29 to B-32, B-37, B-38). The
+build-plan template's worked example states deliverables as outcomes, and its cadence line points
+at the short-plan rule. The template half was built by one isolated-worktree delegate. Carried
+from the W3 handoff: `building.md`'s fix-order sentence takes W2's register, and a delegate brief
+names the budgets its files sit under. Token readings drop on five guides. `delegation.md` rises
+by 14, a recorded raise. Two sentence pins follow their rewritten sentences, and
+`docs/discipline.md`'s anchors for rows 4 and 9 follow B-2 and B-24. The owed Sonnet 5.5 probes
+ran through `claude -p`, because the Agent tool's alias cannot select that model:
+- W3's reviewer surfaces showed no regression.
+- B-12 is the first decision whose control failed and whose treatment fixed it.
+- The longer early-stop probe on Opus 5.5 did not stop early, even on the pre-W1 text. The audit
+  records what that means for per-wave probing.
+
+Plan: `build-plan-opus-55-w4-methodology-templates.md`.
+
 ## 2026-09-29: develop opens 3.6.2-dev.7
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.7 -->

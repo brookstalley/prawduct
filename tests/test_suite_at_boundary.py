@@ -40,9 +40,10 @@ class TestTheBuilderIsToldWhenTheSuiteIsOwed:
     def test_verify_records_at_the_boundary_run(self):
         text = _read("methodology/building.md")
         assert (
-            "A chunk runs the ceiling above; record the declared suite **once**, "
+            "A chunk runs the ceiling above; record the declared suite once, "
             "at the boundary run" in text
         )
+        assert "Record once, at Verify" not in text
         assert "Record **once**, at Verify" not in text
 
 

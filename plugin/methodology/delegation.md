@@ -6,7 +6,7 @@ The dispatch mechanics — worktree isolation, the shared git index, what an iso
 
 ## When to delegate
 
-**Default: delegate when the same work finishes in less wall clock and the delegates will not fight each other.** A plan whose chunks are independent is the ordinary yes. Delegate regardless of the wall clock when **the user asks** (Principle 23), when a well-scoped chunk wants a clean context, or when the main context has grown large enough that the work would be done badly in it.
+**Default: delegate when the same work finishes in less wall clock and the delegates will not fight each other.** Independent chunks are the ordinary yes when delegating them shortens wall clock, which needs each to be large enough to repay a delegate's re-exploration; a chunk you could finish in a handful of tool calls does not. Delegate regardless of the wall clock when **the user asks** (Principle 23), when a well-scoped chunk wants a clean context, or when the main context has grown large enough that the work would be done badly in it.
 
 **Parallel is not automatically faster, and the wall clock to compare is the bounded one.** Three delegates each running the run *you* would do at integration is more machine load and more wall clock than doing it once yourself. This decision is usually made while a build plan is being drawn, before any brief exists — but the bound is a property of the *chunk*, not of the brief, and a chunk's deliverables are already declared. So ask what would prove each chunk on its own. **A chunk you cannot answer that for is not scoped tightly enough to hand to anyone**, which is worth more than the estimate you were trying to make. Plan-time partition is a default, not a commitment: re-check it at dispatch against what the machine is actually doing.
 
@@ -31,7 +31,7 @@ Questions, not rules. The answers differ by project, by machine, and by the mome
 - **What is this machine already doing?** Verification, not editing, is the wall clock. N delegates each running the coordinator's run is N times the load on one box, and the clamps that protect a box from *one* run are per-process — they do not compose across runs.
 - **What in this project's regime is expensive** — in time, in money, in credentials, or in dependence on something nobody here controls — **and does this delegate need any of it?**
 
-On that last question: a failure in a test that depends on an uncontrolled third party is not a signal about the delegate's change at all. One governed repo paid to learn it — a 403 from a video host failed a gate for a diff touching only that repo's visualization code, and the identical tree passed seven minutes later. Prawduct names the consideration; you decide what it means for your suite.
+On that last question: a failure in a test that depends on an uncontrolled third party (a video host returning 403) says nothing about the delegate's change. Prawduct names the consideration; you decide what it means for your suite.
 
 ## Anti-patterns
 
@@ -39,8 +39,8 @@ Each carries a **tell** — the thing you can catch yourself doing. A rule with 
 
 - **The delegate that verifies the whole product.** *Tell:* the brief names a command the *coordinator* would run at integration.
 - **N baselines.** *Tell:* the brief says "make sure tests pass before you start." A delegate inherits your baseline; re-establishing one N times buys nothing and costs N runs.
-- **The unattributable green.** *Tell:* you accepted a pass count without knowing what was collected, from a box running several agents. A test worker that dies under contention is typically not re-queued and does not fail the run — measured in one governed repo, three whole-suite runs of the same tree each reported a *different* total, none of them more than about half of what the suite collects, and all three exited 0. A green you cannot attribute to a known set of tests is not evidence — so record it as one: `test-evidence record --degraded "<what did not report>"`, which the gates read as stale rather than as a pass. Prawduct cannot detect this; the record carries what you saw.
-- **The Done taken on faith.** *Tell:* you accepted a delegate's completion report on a removal or a sweep without re-deriving it — the grep for the symbol it removed, the recount of the inventory it swept. These fail in the direction of looking finished, so the report reads identically either way.
+- **The unattributable green.** *Tell:* you accepted a pass count without knowing what was collected, from a box running several agents. A test worker that dies under contention is typically not re-queued and does not fail the run, so the same tree can report different totals, all exiting 0. A green you cannot attribute to a known set of tests is not evidence — record it as one: `test-evidence record --degraded "<what did not report>"`, which the gates read as stale rather than as a pass. Prawduct cannot detect this; the record carries what you saw.
+- **The Done taken on faith.** *Tell:* you accepted a delegate's completion report on a removal or a sweep that carried no evidence — no grep output for the removed symbol, no recount against the source you named. These fail in the direction of looking finished, so the report reads identically either way.
 - **Boundaryless fan-out.** *Tell:* you cannot say which files each delegate owns without reopening their briefs.
 - **The delegate that governs.** *Tell:* a delegate ran the Critic, updated project state, or ticked a Status box.
 - **The brief that costs more than the work.** *Tell:* the context you assembled exceeds what the chunk changes.
@@ -51,9 +51,9 @@ Each carries a **tell** — the thing you can catch yourself doing. A rule with 
 A list of what has to be said, in your own words — not a template, and not something to generate. A brief that could be copy-pasted from the last one has stopped carrying information.
 
 - **The work** — the chunk spec and the artifacts it references, or the task stated in full.
-- **The ownership boundary** — what this delegate owns, and what it must not touch.
+- **The ownership boundary** — what this delegate owns, what it must not touch, and any budget its files sit under (a size ceiling, a byte cap) that it would otherwise meet only as a red test.
 - **A verification ceiling** — the narrowest run that covers its own change, never the run you will do at integration. A cost bound, not a rigor discount. **Read `project-preferences.md`'s `Delegate verification` row first, where the project has one** — a ceiling you invent beside a ceiling the owner already ratified is the retyping this whole feature exists to end.
-- **What to return**, and in what form.
+- **What to return**, and in what form — for a removal or a sweep, the output of the command that shows it complete.
 - **Who integrates** — you. Say so, so the delegate doesn't try.
 
 If you cannot state the ownership boundary without re-reading the other delegates' briefs, the partition isn't ready and the fan-out will cost more than it saves.
@@ -64,7 +64,7 @@ The partition above is drawn at plan time. The other trigger is an interrupt —
 
 **A delegated tangent is never *done*.** You own integration, so what comes back is a branch plus an integration debt: a combined run, live verification, the Critic, a merge. Isolation stops delegates fighting *during* the run and does nothing about the merge, so that branch also ages against the line you are actively moving. And the reason you delegated — this context is full, or nearly — guarantees the agent that incurred the debt is not the one who will pay it. So coordination has to be **a role recorded on disk, not an agent held in memory**: a debt that lives only in your context evaporates at the next `/clear`, leaving an unmerged branch and a worktree nobody remembers creating.
 
-**The decision is three-way, made once, out loud: do it now, delegate it, or backlog it.** Delegation is offered first — and that default is a *policy* setting rather than a technical one. `project-preferences.md`'s `Delegation` row overrides it in the project's own words, and `off` means the proposal is never made. The question that sorts the three: *would you integrate this today if it came back green?* If not, the honest artifact is a backlog item.
+**The decision is three-way, made once, out loud: do it now, delegate it, or backlog it.** `project-preferences.md`'s `Delegation` row sets this project's policy, and `off` means delegation is never proposed. The question that sorts the three: *would you integrate this today if it came back green?* If not, backlog it; if it would take a handful of tool calls, do it now; delegate when running it beside your own work shortens wall clock and it touches nothing yours does.
 
 **Disclose before dispatching** (Principle 9, Visible Costs): what the delegate will do, what it will *not* do, that its result carries an integration debt and who is expected to pay it, and **how many ad-hoc branches already await integration**. A fifth outstanding branch is a different proposal from a first one, and the user should hear which one this is — unmerged branches are inventory, and this trigger is the one best at accumulating it.
 
