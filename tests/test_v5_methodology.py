@@ -1029,8 +1029,8 @@ LAST_MEASURED_TOKENS = {
     # prompt audit's slice C; the ceiling lowered with it.
     # -9 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
-    # -22 on 2026-09-28 (opus-55-w3b), C-20: the coordinator bullet points at coordinator.md instead of restating it; the ceiling lowered with it.
-    "skills/critic/SKILL.md": 3129,
+    # -12 on 2026-09-28 (opus-55-w3b), C-20: the coordinator bullet points at coordinator.md instead of restating it; the ceiling lowered with it.
+    "skills/critic/SKILL.md": 3139,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1038,7 +1038,7 @@ LAST_MEASURED_TOKENS = {
     # cycle (C-8), and coordinator.md holds the coordinator's dispatch steps (C-20). Each is loaded on
     # a reviewer route, so each carries a ceiling.
     "skills/critic/cross-checks.md": 3380,
-    "skills/critic/coordinator.md": 575,
+    "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -5212,7 +5212,7 @@ class TestCriticGoals13:
         prohibition instructs better than "don't read the others." So every line
         mentioning one must be that prohibition — which also means a future edit
         cannot smuggle a read-directive back in under the same filename."""
-        pointers = ("review-protocol.md", "review-cycle.md", "framework-checks.md")
+        pointers = ("review-protocol.md", "review-cycle.md", "framework-checks.md", "cross-checks.md", "coordinator.md")
         offenders = [
             ln for ln in self.content.split("\n")
             if any(p in ln for p in pointers) and "do not open" not in ln
@@ -5456,7 +5456,7 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3130, f"SKILL.md is ~{tokens} tokens, should be <3130"
+        assert tokens < 3140, f"SKILL.md is ~{tokens} tokens, should be <3140"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5491,7 +5491,7 @@ class TestCriticSkillRoutesByMode:
         unscoped = [
             ln.strip()[:110] for ln in header.split("\n")
             if ln.lstrip().startswith("- ")
-            and any(f in ln for f in ("review-protocol.md", "review-cycle.md", "framework-checks.md"))
+            and any(f in ln for f in ("review-protocol.md", "review-cycle.md", "framework-checks.md", "cross-checks.md", "coordinator.md"))
             and not any(m in ln for m in ("final", "cumulative"))
         ]
         assert not unscoped, f"header lists a final-only file without scoping it: {unscoped}"
@@ -5510,7 +5510,7 @@ class TestCriticSkillRoutesByMode:
             ln for ln in self.content.split("\n")
             if 'Roster `["reviewer"]`' in ln
         )
-        for cited in ("review-protocol.md", "review-cycle.md"):
+        for cited in ("review-protocol.md", "review-cycle.md", "cross-checks.md", "coordinator.md"):
             assert cited not in bullet, (
                 f"the single-pass bullet cites {cited} — that read is the payload "
                 f"the split removed, and goals-1-3.md already carries it"
@@ -5528,13 +5528,13 @@ class TestCriticSkillRoutesByMode:
         `final`/`cumulative`) but an escape hatch excusing anything later
         appended to that line, which is the same shape as the defect this test
         was written to catch. Its prose now qualifies its own citation
-        (`the final/cumulative "Coordinator Pattern" in review-protocol.md`), so
+        (it now reads "On that `final`/`cumulative` roster, read `coordinator.md`"), so
         the skip was deleted rather than documented."""
         steps = self.content.split("## Getting Started", 1)[1]
         offenders = []
         for ln in steps.split("\n"):
             for clause in re.split(r"(?<=\.)\s|[;()]", ln):
-                if "review-protocol.md" not in clause and "review-cycle.md" not in clause:
+                if not any(f in clause for f in ("review-protocol.md", "review-cycle.md", "cross-checks.md", "coordinator.md")):
                     continue
                 # "no reviewer loads" qualifies too: after C-8 no review mode opens
                 # review-cycle.md, so a clause saying so sends no one there.
@@ -5794,7 +5794,7 @@ class TestReviewCycle:
         # It exists so that text leaves every dispatched reviewer's payload
         # without landing in SKILL.md, which the cheap `chunk`/`verify` route loads.
         tokens = estimate_tokens(read_file("skills/critic/coordinator.md"))
-        assert tokens < 576, f"coordinator.md is ~{tokens} tokens, should be <576"
+        assert tokens < 595, f"coordinator.md is ~{tokens} tokens, should be <595"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -6486,10 +6486,12 @@ class TestSubjectAndOracleReachTheReviewer:
         builder section rather than left standing beside its replacement. Two
         stopping rules where one is false is the failure this whole plan exists
         to fix."""
-        cycle = read_file("skills/critic/review-cycle.md")
-        builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
+        # Since W3b (C-8) review-cycle.md IS the builder half, and the pass lives
+        # in cross-checks.md, so the pointer names that file.
+        builder_half = read_file("skills/critic/review-cycle.md")
         assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
-        assert "Records Pass** below" in builder_half
+        assert "`cross-checks.md`'s **Records Pass**" in builder_half
+        assert "### Records Pass" in read_file("skills/critic/cross-checks.md")
 
 
 class TestReviewerFileSetsRideTheManifest:

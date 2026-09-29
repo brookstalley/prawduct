@@ -233,22 +233,61 @@ _PLUGIN_CRITIC_REVIEWER = REPO_ROOT / "agents" / "critic-reviewer.md"
 #: mandate is only runnable if it is granted on the surface whose reader meets
 #: it, and the Critic has two readers with two different grant lists.
 #:
-#:   * the fork (`SKILL.md`'s `allowed-tools`) reads `SKILL.md`, `goals-1-3.md`,
-#:     `review-cycle.md`, `framework-checks.md`, and - in single-pass
-#:     `final`/`cumulative` - `review-protocol.md`;
-#:   * the dispatched `critic-reviewer` subagent (`critic-reviewer.md`'s
-#:     `tools:`) reads `review-protocol.md` and its own definition.
+#: Derived, never hand-listed, because a hand list went stale the moment
+#: `review-cycle.md` was split (opus-55 W3b): the new `cross-checks.md` was not
+#: in it and the builder-only half still was.
 #:
-#: `review-protocol.md` therefore binds BOTH, which is the case the original
-#: defect lived in: its Goal 1 `verify-coverage` mandate was granted to neither.
-_SURFACE_GRANTS: dict[str, tuple[Path, ...]] = {
-    "skills/critic/SKILL.md": (_PLUGIN_CRITIC_SKILL,),
-    "skills/critic/goals-1-3.md": (_PLUGIN_CRITIC_SKILL,),
-    "skills/critic/review-cycle.md": (_PLUGIN_CRITIC_SKILL,),
-    "skills/critic/framework-checks.md": (_PLUGIN_CRITIC_SKILL,),
-    "skills/critic/review-protocol.md": (_PLUGIN_CRITIC_SKILL, _PLUGIN_CRITIC_REVIEWER),
-    "agents/critic-reviewer.md": (_PLUGIN_CRITIC_REVIEWER,),
+#:   * the fork (`SKILL.md`'s `allowed-tools`) reads `SKILL.md` and every file
+#:     `SKILL.md` routes by `${CLAUDE_SKILL_DIR}/<file>.md`;
+#:   * the dispatched `critic-reviewer` (`critic-reviewer.md`'s `tools:`) reads
+#:     the `dispatched-reviewer` payload route, whose one home is
+#:     `test_reviewer_payload_budget.PAYLOAD_ROUTES`.
+#:
+#: A file on both lists (`review-protocol.md`, `cross-checks.md`) binds BOTH,
+#: which is the case the original defect lived in: `review-protocol.md`'s Goal 1
+#: `verify-coverage` mandate was granted to neither.
+def _derive_surface_grants() -> dict[str, tuple[Path, ...]]:
+    from test_reviewer_payload_budget import PAYLOAD_ROUTES  # noqa: PLC0415
+
+    skill_text = _PLUGIN_CRITIC_SKILL.read_text()
+    fork = {"skills/critic/SKILL.md"} | {
+        f"skills/critic/{m}"
+        for m in re.findall(r"\$\{CLAUDE_SKILL_DIR\}/([\w-]+\.md)", skill_text)
+    }
+    reviewer = set(PAYLOAD_ROUTES["dispatched-reviewer"])
+    grants: dict[str, tuple[Path, ...]] = {}
+    for surface in sorted(fork | reviewer):
+        grants[surface] = tuple(
+            g for g, readers in ((_PLUGIN_CRITIC_SKILL, fork), (_PLUGIN_CRITIC_REVIEWER, reviewer))
+            if surface in readers
+        )
+    return grants
+
+
+_SURFACE_GRANTS: dict[str, tuple[Path, ...]] = _derive_surface_grants()
+
+#: Critic files no reviewer loads, so their commands are the builder's to run
+#: and bind no reviewer grant. Named here so the completeness check below can
+#: tell a deliberate omission from a forgotten one.
+_NOT_A_REVIEWER_SURFACE = {
+    "skills/critic/review-cycle.md": "the builder's lifecycle; no review mode loads it since W3b",
 }
+
+
+def test_every_critic_file_is_a_surface_or_named_as_not_one():
+    """The unsliced set: every `skills/critic/*.md` is swept, or says why not."""
+    on_disk = {f"skills/critic/{p.name}" for p in (REPO_ROOT / "skills" / "critic").glob("*.md")}
+    assert on_disk, "found no Critic files - the glob went blind"
+    unaccounted = on_disk - set(_SURFACE_GRANTS) - set(_NOT_A_REVIEWER_SURFACE)
+    assert not unaccounted, (
+        f"{sorted(unaccounted)} is neither routed to a reviewer nor named in "
+        "_NOT_A_REVIEWER_SURFACE, so its mandates are swept against no grant list"
+    )
+    both = set(_SURFACE_GRANTS) & set(_NOT_A_REVIEWER_SURFACE)
+    assert not both, f"{sorted(both)} is routed to a reviewer AND named as not one"
+    for want in ("skills/critic/cross-checks.md", "skills/critic/coordinator.md"):
+        assert want in _SURFACE_GRANTS, f"{want} is not derived as a reviewer surface"
+
 
 #: A mandate this surface issues that the named grant list deliberately withholds.
 #: Keyed by (surface, grant-list stem, subcommand); the value is the reason, and
@@ -267,6 +306,12 @@ _MANDATE_NOT_GRANTED: dict[tuple[str, str, str], str] = {
     # BUILDER when backlog reconciliation is unavailable. It is remedy prose the
     # operator runs, and granting it would give a read-only review a network write.
     ("skills/critic/cross-checks.md", "critic", "backlog sync"): (
+        "remedy text reported to the builder, never run by the review"
+    ),
+    # The same remedy text, as the dispatched reviewer meets it: since W3b the
+    # sustainability reviewer reads cross-checks.md, and must not get a network
+    # write either.
+    ("skills/critic/cross-checks.md", "critic-reviewer", "backlog sync"): (
         "remedy text reported to the builder, never run by the review"
     ),
 }

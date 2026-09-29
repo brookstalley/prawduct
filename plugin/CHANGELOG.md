@@ -41,7 +41,7 @@ states, issue numbers and dates, or harness-version notes. Critic review routes 
 plainer register. The Critic now applies a norm departure as BLOCKING wherever a product has
 *adopted* norms, as `norms.md` § Severity defines them. It used to say "ratified".
 
-**`opus-55-w3b-review-cycle-split`**: **each Critic reviewer loads about 7,800 fewer tokens.** The
+**`opus-55-w3b-review-cycle-split`**: **each `final`/`cumulative` Critic reviewer loads about 7,800 fewer tokens** (`chunk` and `verify-resolutions` reviews are unchanged). The
 reviewer-facing half of `review-cycle.md` (the chunk-type selector and the final-mode cross-checks)
 is now `skills/critic/cross-checks.md`. The builder's lifecycle stays in `review-cycle.md`, which
 reviewers no longer load. The coordinator's dispatch steps are now `skills/critic/coordinator.md`,

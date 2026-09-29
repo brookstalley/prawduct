@@ -184,10 +184,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -4 in the same wave, DECLARED: fixes from the wave's own review: pointers into deleted
     # text repaired, goals-1-3.md's adopted-norm scope inlined so the file stays self-contained, and
     # critic-reviewer.md's "stay inside your tools: line" contract restored after the trim made it false.
-    # -22 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
+    # -12 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
-    "single-pass-inner": 5796,
+    "single-pass-inner": 5806,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -211,10 +211,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +4 in the same wave, DECLARED: fixes from the wave's own review: pointers into deleted
     # text repaired, goals-1-3.md's adopted-norm scope inlined so the file stays self-contained, and
     # critic-reviewer.md's "stay inside your tools: line" contract restored after the trim made it false.
-    # -7865 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
+    # -7855 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
-    "single-pass-full": 11420,
+    "single-pass-full": 11430,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -279,14 +279,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     "dispatched-reviewer": 10861,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
-    "coordinator-fork": 11995,
+    "coordinator-fork": 12024,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5797,
-    "single-pass-full": 11421,
+    "single-pass-inner": 5807,
+    "single-pass-full": 11431,
     "dispatched-reviewer": 10862,
-    "coordinator-fork": 11996,
+    "coordinator-fork": 12025,
 }
 
 
@@ -428,7 +428,7 @@ def test_the_cheap_protocol_route_stays_materially_cheaper():
     """
     # Bound moved from 1/2 to 11/20 on 2026-09-28 (opus-55-w3b), because the
     # DENOMINATOR moved, not the cheap route: C-8 took ~7.9k of builder lifecycle
-    # out of the full route, and the cheap route shrank too (5818 -> 5796). What
+    # out of the full route, and the cheap route shrank too (5818 -> 5806). What
     # must not move, the cheap route's own size, stays pinned by its exact
     # ratchet ceiling above. This relation still catches the cheap route
     # creeping toward the full one.

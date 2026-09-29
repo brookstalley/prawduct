@@ -35,7 +35,7 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 
 | Aspect | `chunk` | `final` | `cumulative` | `verify-resolutions` |
 |---|---|---|---|---|
-| **Protocol read** (SKILL step 2 — exactly one, and nothing else) | `goals-1-3.md` | `review-protocol.md` | `review-protocol.md` | `goals-1-3.md` |
+| **Protocol read** (SKILL step 2; `final`/`cumulative` also load `cross-checks.md` and `framework-checks.md`) | `goals-1-3.md` | `review-protocol.md` | `review-protocol.md` | `goals-1-3.md` |
 | **Stage** (derived by `critic-begin` from the mode's interval, recorded in the manifest as `stage`) | `inner` | `inner` | `boundary` | `inner` |
 | **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
 | **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Records Pass; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
@@ -302,7 +302,7 @@ otherwise; it is the gate's answer that binds.
 
 **The reviewer's half of the same rule is a separate pass, not a severity floor.** A record is not a
 per-round subject at all — the bars that decide when one is worth a finding, and the pass that
-applies them, are **Records Pass** below.
+applies them, are `cross-checks.md`'s **Records Pass**.
 
 **Yield does not decay — do not wait for it to.** Findings per full round *rise* — 13.5, 15.4, 15.5, 18.4 — 99% of them new. There is **no natural fixed point**: "stop when the yield drops" never fires.
 Later rounds do increasingly find defects in the *record of the previous round* — a signal to disposition what you have, never a bound. The

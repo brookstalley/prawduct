@@ -19,10 +19,12 @@ fork reads it, rather than `SKILL.md` as the slice proposed, because `SKILL.md` 
 `chunk`/`verify` route (a vetoable decision in the plan).
 
 The dispatched-reviewer payload drops by 7,843 tokens, about 23.5k per three-reviewer review.
-Single-pass `final`/`cumulative` drops by 7,865. Every citation of a moved section points at its
+Single-pass `final`/`cumulative` drops by 7,855. Every citation of a moved section points at its
 new file. That covers the Critic and PR protocols, `critic-reviewer.md`, `backlog/cache-reads.md`,
 `planning.md`, the build-plan template and `governance-telemetry.md`. Tests that read a moved
-section read it from its new home with their assertions unchanged. Both new files carry token
+section now read it from its new home. The Critic's surface-grants map and the bare-command
+sweep are now derived from the files on disk rather than hand-listed, and every `skills/critic/*.md`
+must be a reviewer surface or be named as not one. Both new files carry token
 ceilings, and a `coordinator-fork` payload route prices the fork. The cheap-route relation bound
 moves from 1/2 to 11/20, because the full route shrank beneath it. Plan:
 `build-plan-opus-55-w3b-review-cycle-split.md`.

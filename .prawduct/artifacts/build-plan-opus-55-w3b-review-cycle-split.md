@@ -99,17 +99,21 @@ against the current tree.
 - **Payload effect, from the route tests:**
   - A dispatched reviewer drops from 18,704 to 10,861 tokens, which is about 23.5k per
     three-reviewer review.
-  - Single-pass `final`/`cumulative` drops from 19,285 to 11,420.
-  - The cheap route drops from 5,818 to 5,796.
-  - The new coordinator-fork route is 11,995.
+  - Single-pass `final`/`cumulative` drops from 19,285 to 11,430.
+  - The cheap route drops from 5,818 to 5,806.
+  - The new coordinator-fork route is 12,024.
 - **The cheap-route relation test** asserted cheap < 1/2 of full. The full route shrank by 7.9k
   from C-8, so the ratio broke while the cheap route itself fell. The bound moves to 11/20, with the
   reason in the test. The cheap route's own exact ratchet still pins its size.
 - **The fast-path qualifier test** treated `review-cycle.md` as a final-only file. After C-8, no
   review mode opens it, so "no reviewer loads" now counts as a qualifier.
-- **The absence query came back clean.** No live pointer names a moved section's old file (grep of
-  each moved heading across `plugin/`, `documentation/`, `tests/` and `.claude/rules/`). The
-  negative-pin scan found no pin made vacuous by the move.
+- **The absence query was too narrow.** It grepped the moved *headings*, and it came back clean
+  while eight tests still read moved text by *file path*. The cumulative review found them (R-1/R-6),
+  and a file-path query (`git grep review-cycle.md review-protocol.md`) found the rest. Two
+  hand-kept file lists missed the new files: `_SURFACE_GRANTS` and the bare-command sweep's `DOCS`.
+  Both are now derived from disk. Deriving `_SURFACE_GRANTS` at once surfaced a real gap: the
+  dispatched reviewer now reads `cross-checks.md`'s `backlog sync` remedy text, and it is exempted
+  for the same reason as the fork. The negative-pin scan found no pin made vacuous by the move.
 
 ## Status
 

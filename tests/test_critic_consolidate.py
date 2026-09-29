@@ -1845,8 +1845,9 @@ class TestIncompleteNoopLiveness:
         # carry the path `started_path` reads. Asserting the old literal would
         # now pass on prose that names a path nothing writes.
         agent_doc = (ROOT / "agents" / "critic-reviewer.md").read_text()
-        protocol = (ROOT / "skills" / "critic" / "review-protocol.md").read_text()
-        for surface, text in (("agent definition", agent_doc), ("protocol", protocol)):
+        # The coordinator's dispatch template moved to coordinator.md (opus-55 W3b, C-20).
+        protocol = (ROOT / "skills" / "critic" / "coordinator.md").read_text()
+        for surface, text in (("agent definition", agent_doc), ("coordinator", protocol)):
             assert "rendezvous" in text, f"{surface} does not route through the manifest"
             assert "liveness marker" in text, f"{surface} no longer instructs the marker"
         assert "FIRST" in agent_doc
