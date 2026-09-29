@@ -143,9 +143,8 @@ PROBE_VERSION = 1
 # Stall window (docs/norms.md § Transitions). WHY 30: a declared-substrate
 # migration whose tracking item's backlog entry hasn't moved in a month is not
 # progressing — that is a forcing event (accelerate or record a stopgap), not
-# noise. The spec calls this "default 30 days, configurable"; no config surface
-# exists yet, so it is a module constant (the backlog probes' thresholds do the
-# same) — wire a config read here when one lands, don't relax the default.
+# noise. The spec states a fixed 30 days, so it is a module constant, as the
+# backlog probes' thresholds are.
 STALL_WINDOW_DAYS = 30
 
 # Norm Health sweep window (docs/norms.md § Trajectory). WHY 60: erosion/decay

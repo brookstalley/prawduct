@@ -10,7 +10,7 @@ This repo is governed by **Prawduct** — it turns product ideas into well-built
 **If `$ARGUMENTS` names a topic, open that guide with the Read tool, then apply it to the work at hand:**
 - `building` → `${CLAUDE_SKILL_DIR}/../../methodology/building.md` — read before writing any code against a build plan. Then match rigor to risk and run `/prawduct:critic` after medium+ work, as the plan's "Done when" steps direct.
 - `discovery` → `${CLAUDE_SKILL_DIR}/../../methodology/discovery.md` — ask the fewest questions that most change the outcome. If the repo has existing docs/code but a template-default `project-state.yaml` (the **DISCOVERY NOT CAPTURED** nudge), run the guide's reconciliation mode — backfill from the material, don't re-interview.
-- `planning` → `${CLAUDE_SKILL_DIR}/../../methodology/planning.md` — artifact templates ship at `${CLAUDE_SKILL_DIR}/../../templates/`; generate in dependency order and validate intermediate outputs before building on them.
+- `planning` → `${CLAUDE_SKILL_DIR}/../../methodology/planning.md` — artifact templates ship at `${CLAUDE_SKILL_DIR}/../../templates/`; generate in dependency order.
 - `reflection` → `${CLAUDE_SKILL_DIR}/../../methodology/reflection.md` — reflect at work boundaries, not only session end; close the loop from observation to changed behavior.
 - `session-hygiene` → `${CLAUDE_SKILL_DIR}/../../methodology/session-hygiene.md` — how a turn ends: the standing block (`STATE` / `RUNNING`·`YOUR TURN`·`COMPLETE` / `SAFE TO CLEAR`·`DO NOT CLEAR`), what a live review or an unreaped delegate does to the clear verdict, and the forward notes.
 - `delegation` → `${CLAUDE_SKILL_DIR}/../../methodology/delegation.md` — before splitting work across subagents, and when a tangent arrives mid-chunk.

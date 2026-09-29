@@ -264,9 +264,8 @@ NOTE is the most common severity.
 Reviewers are told never to name the backlog as a finding's destination (`cross-checks.md`).
 
 Why it has to be a rule. WARNING and NOTE **gate nothing** — the PR gate and the Stop gate both
-require only *coverage* plus *zero unresolved BLOCKING*. But `methodology/building.md` says warnings
-"should be addressed," which reads as must-fix, so an agent fixes them. Each fix is a commit; the
-commit extends HEAD; coverage no longer reaches HEAD; another pass runs; that pass reviews the records
+require only *coverage* plus *zero unresolved BLOCKING*. An agent that fixes them anyway commits
+each fix; the commit extends HEAD; coverage no longer reaches HEAD; another pass runs; that pass reviews the records
 just written and finds something true about them.
 
 **Before running another pass to "close coverage," re-run the gate and let it answer.** Never infer
@@ -279,13 +278,12 @@ prawduct-hook check-cumulative-critic   # PR path
 
 If it passes, you are done — stop; if it does not, the span is not free and the round is real.
 
-**Batch the fixes: fix in the working tree, ONE `verify-resolutions` over them, then ONE commit** (after a `cumulative`, a fix committed first still infers the pass: rule 1b) — and there, don't judge whether the
+**Batch the fixes: make them in the working tree, run one `verify-resolutions` over them, then land them in one commit** (after a `cumulative`, a fix committed first still infers the pass: rule 1b) — and there, don't judge whether the
 pass is warranted: ask. `critic-begin` exits 3 (`no review needed`, no session state written) when
 the post-fix delta is free, applying the same predicate the gate charges by.
-Fix-commit-verify per finding multiplies 5-10 minute rounds and hands each new round the prose the
-last fix wrote. `critic-consolidate` prints this verbatim whenever a review lands findings
-(`_BATCH_FIX_DIRECTIVE`), so the builder meets it holding the findings rather than remembering it
-from here.
+Fix-commit-verify per finding multiplies rounds and hands each new round the prose the last fix
+wrote. `critic-consolidate`'s close directive states the same order whenever a review lands
+findings, so the builder meets it holding the findings rather than remembering it from here.
 
 **Which writes are free while a review is in flight** — the question the builder actually has
 mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under

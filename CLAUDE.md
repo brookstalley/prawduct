@@ -44,8 +44,8 @@ The narrative guides live in `plugin/methodology/`: `discovery.md`, `planning.md
 
 ## The Critic — Independent Review
 
-Each build plan chunk includes `/prawduct:critic` in its "Done when" steps. Follow the plan — run
-the Critic after acceptance criteria pass, before marking the chunk complete.
+Each chunk's "Done when" says when to run `/prawduct:critic`: after acceptance criteria pass,
+before marking it complete, or once at a short plan's boundary.
 
 Two things bind you and are not restated by the skill you invoke. **Fix every blocking finding
 before the next chunk** — `/prawduct:critic verify-resolutions` records the resolution facts that

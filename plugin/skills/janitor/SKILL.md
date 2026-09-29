@@ -223,14 +223,14 @@ Emit a **Backlog Health** block in the findings report (all counts derived on re
 2. **Dedup candidates** (`search <title text> --area A`, on each cluster) — title/body overlap within an area → suggest a `/prawduct:backlog dedup` merge (operator confirms; never auto-merge). *Yield: duplicate items competing for the same fix.*
 3. **Stale items** (`stale`, the query's own default horizon unless you pass `--older-than`) — propose re-confirm, update, or `status=dropped`. The date is the provider's `updated_at`, which moves on any edit; an item somebody touched last week is not neglected whatever its review history says. *Yield: items nobody has looked at in a quarter.*
 4. **Unstaged items** (`unstaged`) — `status: open` with no `stage:` → flag for a `stage:` backfill (an unstaged item won't be picked for implementation). *Yield: items invisible to `pick`.*
-5. **Neglected hygiene** — survey in-flight items whose work appears shipped and ask "should this be `status=shipped`?" (never inferred — D4). On the markdown backend these are `## Promoted` items whose owning chunk appears shipped; on the Issues backend, `open` rows whose `status` is `in-progress` (the service's form of `promoted`) and whose `working_branch` appears merged. *Yield: finished work still counted as in flight.*
+5. **Neglected hygiene** — survey in-flight items whose work appears shipped and ask "should this be `status=shipped`?" (never inferred). On the markdown backend these are `## Promoted` items whose owning chunk appears shipped; on the Issues backend, `open` rows whose `status` is `in-progress` (the service's form of `promoted`) and whose `working_branch` appears merged. *Yield: finished work still counted as in flight.*
 
 Two more checks are **scoped to the markdown backend**, and only there. Run them when `backlog_service_repo` is unset; skip them silently when it is set — not as a dormancy, but because their subject does not exist on that backend:
 
 6. **Unstructured items** — count legacy items (no metadata bar); propose `/prawduct:backlog migrate` if many. *Yield: items predating the structured format, which no filter can see.*
 7. **Archive growth (Q2 split)** — when `## Archive` exceeds ~200 entries, propose splitting it to `backlog-archive.md` (`find` spans both files). *Yield: a working file heavy enough to slow every read of it.*
 
-Triage *findings* feed Step 4; the backlog edits themselves run via `/prawduct:backlog` (the framework never infers status — D4).
+Triage *findings* feed Step 4; the backlog edits themselves run via `/prawduct:backlog` (the framework never infers status).
 
 ### Step 3: Reconcile
 
@@ -315,7 +315,7 @@ Read `/prawduct:methodology building` before writing any code, and follow its bu
 After all approved work is complete:
 - Summarize what was changed, what was deferred, and why
 - If template drift advisories were addressed, record in `.prawduct/change-log.md` which artifacts were brought up to the current plugin templates; updating the product artifact is itself the resolution.
-- Reconcile the backlog via `/prawduct:backlog` — which routes to whichever backend is live, so this step runs on both: `update status=shipped` items maintenance resolved (on the markdown backend that moves them to Archive — never delete, never strikethrough), and `add` items discovered. Status is always an explicit `/prawduct:backlog update` call, never inferred (D4). The stale/dedup/stage findings come from Step 2.5, so there are none to action when that block reported the cache unreadable — closing the loop on findings that were never produced is not a gap.
+- Reconcile the backlog via `/prawduct:backlog` — which routes to whichever backend is live, so this step runs on both: `update status=shipped` items maintenance resolved (on the markdown backend that moves them to Archive — never delete, never strikethrough), and `add` items discovered. Status is always an explicit `/prawduct:backlog update` call, never inferred. The stale/dedup/stage findings come from Step 2.5, so there are none to action when that block reported the cache unreadable — closing the loop on findings that were never produced is not a gap.
 - Capture learnings in `.claude/rules/learnings/` as one-line rules (the `<area>.md` whose `paths:` cover what you touched, or `core.md` if every session needs it) if the maintenance surfaced patterns worth remembering
 - Reflect: did the maintenance reveal systemic issues that suggest process changes, new tooling, or methodology updates?
 

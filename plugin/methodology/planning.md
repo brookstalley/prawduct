@@ -151,7 +151,7 @@ error handling go missing one context at a time.
 
 ### Critic Mode Per Chunk
 
-`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is optional: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare it only to override inference.
+`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is optional: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `skills/critic/review-cycle.md` "Mode Selection"). Declare it only to override inference.
 
 **Heuristic — what inference will pick, and when to override:**
 - **Single-chunk plan** → inference picks `final` — unless the plan is short (next bullet), where the same plan owes only its boundary `cumulative`. No declaration needed.

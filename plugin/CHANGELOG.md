@@ -63,6 +63,19 @@ it no longer prints a numeric score. The janitor's neglected-hygiene check (Back
 now runs on the Issues backend too, over `in-progress` items whose working branch appears merged.
 The runbook skill and template drop an overstated evidence claim and a dated hallucination rate.
 
+**`opus-55-w6-reference-docs`**: **the reference docs are retuned for Opus 5.5**
+(`runbook-authoring.md`, `norms.md`, `waivers.md`, `test-report-contract.md`,
+`governance-telemetry.md` and `discipline.md`). The runbook guide no longer overstates the evidence
+for short procedures, and states its rejection criteria as the bar a finished runbook meets
+rather than as passes to re-run over your draft. Dated model statistics and research history give
+way to the rules they supported. `norms.md`'s enforcement table now points at § Severity, where
+BLOCKING is scoped to *adopted* norms, instead of restating it as "ratified". `waivers.md` says
+plainly that there is no region form. A whole-cycle coherence pass corrected seams between the
+waves: the chunk-boundary review rule now allows for a short plan's single boundary review, and
+stale pointers and restated facts in the Critic, backlog, doctor and janitor text agree with their
+homes. The methodology index no longer asks for a validation pass between artifact phases, and three
+Critic reviewer directives lose their capitals. No gate or parsed table changed.
+
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
 of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:
 its review is the boundary `cumulative`. Only the last box waits for that review. Previously the
