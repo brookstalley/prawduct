@@ -5,6 +5,39 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-29: develop opens 3.6.2-dev.7
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.7 -->
+
+The dev track's version moves from `3.6.2-dev.6` to `3.6.2-dev.7` in the four carriers, so repos
+on the develop track pick up `opus-55-w3b-review-cycle-split`. Owner-directed, 2026-09-28. It rides
+this PR.
+
+## 2026-09-28: the Critic's reviewer payload loses the builder lifecycle (audit wave W3b)
+
+<!-- prawduct: type=feature | scope=opus-55-w3b-review-cycle-split -->
+
+Wave W3b of `opus-55-prompt-audit-2026-09.md` (C-8, C-20), split out of W3 by its plan.
+`review-cycle.md`'s reviewer-facing half moves verbatim to a new `skills/critic/cross-checks.md`:
+the chunk `Type:` selector, the rule that a finding never names a destination, and the
+Final-Mode Cross-Checks. `critic/SKILL.md` now routes `final`/`cumulative` reviewers to it, and
+`review-cycle.md` stays as the builder's lifecycle, which no reviewer loads. The Coordinator Pattern
+moves out of `review-protocol.md` into a new `skills/critic/coordinator.md`. Only the coordinator
+fork reads it, rather than `SKILL.md` as the slice proposed, because `SKILL.md` is on the cheap
+`chunk`/`verify` route (a vetoable decision in the plan).
+
+The dispatched-reviewer payload drops by 7,843 tokens, about 23.5k per three-reviewer review.
+Single-pass `final`/`cumulative` drops by 7,855. Every reviewer- and builder-facing citation of a moved
+section points at its new file. Two inert comments in `backlog/cli.py` and `test_backlog_cli.py`
+still say "the Critic's review-cycle"; they were accepted as O-2. That covers the Critic and PR protocols, `critic-reviewer.md`, `backlog/cache-reads.md`,
+`planning.md`, the build-plan template and `governance-telemetry.md`. Tests that read a moved
+section now read it from its new home. The Critic's surface-grants map and the bare-command
+sweep are now derived from the files on disk rather than hand-listed, and every `skills/critic/*.md`
+must be a reviewer surface or be named as not one. Both new files carry token
+ceilings, and a `coordinator-fork` payload route prices the fork. The cheap-route relation bound
+moves from 1/2 to 11/20, because the full route shrank beneath it. Plan:
+`build-plan-opus-55-w3b-review-cycle-split.md`.
+
 ## 2026-09-28: develop opens 3.6.2-dev.6
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.6 -->

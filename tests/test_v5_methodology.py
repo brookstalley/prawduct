@@ -619,7 +619,8 @@ LAST_MEASURED_TOKENS = {
     # prompt audit's slice C; the ceiling lowered with it.
     # +10 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
-    "skills/critic/review-protocol.md": 4326,
+    # -523 on 2026-09-28 (opus-55-w3b), C-20: the Coordinator Pattern moves to coordinator.md; the ceiling lowered with it.
+    "skills/critic/review-protocol.md": 3803,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -884,7 +885,8 @@ LAST_MEASURED_TOKENS = {
     # prompt audit's slice C; the ceiling lowered with it.
     # +3 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
-    "skills/critic/review-cycle.md": 10700,
+    # -3231 on 2026-09-28 (opus-55-w3b), C-8: the reviewer-facing Type selector and cross-checks move to cross-checks.md; the ceiling lowered with it.
+    "skills/critic/review-cycle.md": 7469,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1027,10 +1029,16 @@ LAST_MEASURED_TOKENS = {
     # prompt audit's slice C; the ceiling lowered with it.
     # -9 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
-    "skills/critic/SKILL.md": 3151,
+    # -12 on 2026-09-28 (opus-55-w3b), C-20: the coordinator bullet points at coordinator.md instead of restating it; the ceiling lowered with it.
+    "skills/critic/SKILL.md": 3139,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
+    # New on 2026-09-28 (opus-55-w3b). cross-checks.md holds the reviewer-facing half of the review
+    # cycle (C-8), and coordinator.md holds the coordinator's dispatch steps (C-20). Each is loaded on
+    # a reviewer route, so each carries a ceiling.
+    "skills/critic/cross-checks.md": 3380,
+    "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -4710,9 +4718,11 @@ class TestCriticSkill:
         assert "encapsulation" in lower
         assert "coupling" in lower
         assert "coordinator" in lower
-        assert "correctness reviewer" in lower
-        assert "design reviewer" in lower
-        assert "sustainability reviewer" in lower
+        # The reviewer roster moved to coordinator.md (opus-55 W3b, C-20).
+        roster = read_file("skills/critic/coordinator.md").lower()
+        assert "correctness reviewer" in roster
+        assert "design reviewer" in roster
+        assert "sustainability reviewer" in roster
         assert "project-preferences.md" in self.content
         assert "boundary-patterns.md" in self.content or "contract surface" in lower
         assert "alternatives considered" in lower
@@ -4909,7 +4919,7 @@ class TestCriticSkill:
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 4327, f"review-protocol.md is ~{tokens} tokens, should be <4327"
+        assert tokens < 3804, f"review-protocol.md is ~{tokens} tokens, should be <3804"
 
 
 # =============================================================================
@@ -5202,7 +5212,7 @@ class TestCriticGoals13:
         prohibition instructs better than "don't read the others." So every line
         mentioning one must be that prohibition — which also means a future edit
         cannot smuggle a read-directive back in under the same filename."""
-        pointers = ("review-protocol.md", "review-cycle.md", "framework-checks.md")
+        pointers = _files_the_fast_path_must_not_open()
         offenders = [
             ln for ln in self.content.split("\n")
             if any(p in ln for p in pointers) and "do not open" not in ln
@@ -5298,7 +5308,7 @@ class TestCriticGoals13:
         cap above only limits the damage once one has.
 
         Asserted on BOTH carriers because the row exists twice — here (what a
-        chunk / verify-resolutions reviewer reads) and `review-cycle.md`'s
+        chunk / verify-resolutions reviewer reads) and `cross-checks.md`'s
         selector table (what every other reader consults). Dropping it from one
         leaves the other instructing the opposite, which is worse than leaving
         both: a reviewer that finds the surviving copy has an explicit mandate.
@@ -5309,11 +5319,11 @@ class TestCriticGoals13:
         )
         assert "Goal 1 prose only" in doc_only
         row = next(
-            ln for ln in read_file("skills/critic/review-cycle.md").split("\n")
+            ln for ln in read_file("skills/critic/cross-checks.md").split("\n")
             if ln.startswith("| `doc-only`")
         )
         assert "numeric counts" not in row, (
-            "review-cycle.md's Per-Chunk Type selector still asks for counts — "
+            "cross-checks.md's Per-Chunk Type selector still asks for counts — "
             "the two carriers now instruct opposite things"
         )
 
@@ -5374,6 +5384,21 @@ class TestCriticGoals13:
             "Framework-Specific Checks", "Backlog Reconciliation",
         ):
             assert absent not in self.content, f"goals-1-3.md regrew {absent!r} — that is final-mode payload"
+
+
+def _files_the_fast_path_must_not_open() -> tuple[str, ...]:
+    """Every Critic file a `chunk`/`verify-resolutions` reviewer must not be sent
+    to: each file `SKILL.md` routes by `${CLAUDE_SKILL_DIR}/` other than the fast
+    path's own `goals-1-3.md`, plus `review-cycle.md`, which no reviewer loads.
+
+    Derived rather than listed: the hand-kept tuples this replaced missed
+    `framework-checks.md` in two places and needed two new files added when the
+    review cycle was split (opus-55 W3b)."""
+    skill = read_file("skills/critic/SKILL.md")
+    routed = set(re.findall(r"\$\{CLAUDE_SKILL_DIR\}/([\w-]+\.md)", skill))
+    files = (routed - {"goals-1-3.md"}) | {"review-cycle.md"}
+    assert {"review-protocol.md", "cross-checks.md", "coordinator.md", "framework-checks.md"} <= files, files
+    return tuple(sorted(files))
 
 
 class TestCriticSkillRoutesByMode:
@@ -5446,7 +5471,7 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3152, f"SKILL.md is ~{tokens} tokens, should be <3152"
+        assert tokens < 3140, f"SKILL.md is ~{tokens} tokens, should be <3140"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5481,7 +5506,7 @@ class TestCriticSkillRoutesByMode:
         unscoped = [
             ln.strip()[:110] for ln in header.split("\n")
             if ln.lstrip().startswith("- ")
-            and any(f in ln for f in ("review-protocol.md", "review-cycle.md", "framework-checks.md"))
+            and any(f in ln for f in _files_the_fast_path_must_not_open())
             and not any(m in ln for m in ("final", "cumulative"))
         ]
         assert not unscoped, f"header lists a final-only file without scoping it: {unscoped}"
@@ -5500,7 +5525,7 @@ class TestCriticSkillRoutesByMode:
             ln for ln in self.content.split("\n")
             if 'Roster `["reviewer"]`' in ln
         )
-        for cited in ("review-protocol.md", "review-cycle.md"):
+        for cited in _files_the_fast_path_must_not_open():
             assert cited not in bullet, (
                 f"the single-pass bullet cites {cited} — that read is the payload "
                 f"the split removed, and goals-1-3.md already carries it"
@@ -5518,15 +5543,17 @@ class TestCriticSkillRoutesByMode:
         `final`/`cumulative`) but an escape hatch excusing anything later
         appended to that line, which is the same shape as the defect this test
         was written to catch. Its prose now qualifies its own citation
-        (`the final/cumulative "Coordinator Pattern" in review-protocol.md`), so
+        (it now reads "On that `final`/`cumulative` roster, read `coordinator.md`"), so
         the skip was deleted rather than documented."""
         steps = self.content.split("## Getting Started", 1)[1]
         offenders = []
         for ln in steps.split("\n"):
             for clause in re.split(r"(?<=\.)\s|[;()]", ln):
-                if "review-protocol.md" not in clause and "review-cycle.md" not in clause:
+                if not any(f in clause for f in _files_the_fast_path_must_not_open()):
                     continue
-                if any(q in clause for q in ("final", "cumulative", "goals-1-3.md")):
+                # "no reviewer loads" qualifies too: after C-8 no review mode opens
+                # review-cycle.md, so a clause saying so sends no one there.
+                if any(q in clause for q in ("final", "cumulative", "goals-1-3.md", "no reviewer loads")):
                     continue
                 offenders.append(clause.strip()[:110])
         assert not offenders, f"fast-path steps cite a final-only file unqualified: {offenders}"
@@ -5767,7 +5794,22 @@ class TestReviewCycle:
         # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 10701, f"review-cycle.md is ~{tokens} tokens, should be <10701"
+        assert tokens < 7470, f"review-cycle.md is ~{tokens} tokens, should be <7470"
+
+    def test_cross_checks_token_budget(self):
+        # cross-checks.md is the reviewer-facing half review-cycle.md used to
+        # carry (C-8). Every `final`/`cumulative` reviewer loads it, three times
+        # on a coordinator roster, so growth here is paid per reviewer. The next
+        # addition trims or relocates; it does not bump.
+        tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
+        assert tokens < 3381, f"cross-checks.md is ~{tokens} tokens, should be <3381"
+
+    def test_coordinator_token_budget(self):
+        # coordinator.md is read only by the fork on a coordinator roster (C-20).
+        # It exists so that text leaves every dispatched reviewer's payload
+        # without landing in SKILL.md, which the cheap `chunk`/`verify` route loads.
+        tokens = estimate_tokens(read_file("skills/critic/coordinator.md"))
+        assert tokens < 595, f"coordinator.md is ~{tokens} tokens, should be <595"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -5798,9 +5840,9 @@ class TestReviewCycle:
         """The four backlog-hygiene checks (CRT-3K9P) must stay in Backlog
         Reconciliation — guards against a silent trim deleting them (the same
         regression-guard pattern as the PR-reviewer dropped-goal test)."""
-        content = read_file("skills/critic/review-cycle.md")
+        content = read_file("skills/critic/cross-checks.md")
         for check in ("C-B1", "C-B2", "C-B3", "C-B4"):
-            assert check in content, f"review-cycle.md missing backlog check {check}"
+            assert check in content, f"cross-checks.md missing backlog check {check}"
 
     def test_the_per_mode_table_records_the_severity_narrowing(self):
         """`review-cycle.md` owns per-mode behavior, so the table is where a
@@ -6285,7 +6327,7 @@ class TestInnerBlockingSetIsOneSentence:
             "the dispatched reviewer's partial schema has no observations arm — at "
             "inner stage it has nowhere to put what it demotes"
         )
-        protocol = read_file("skills/critic/review-protocol.md")
+        protocol = read_file("skills/critic/coordinator.md")
         assert "Signals: <SIGNALS>" in protocol and "`signals` verbatim" in protocol, (
             "the coordinator prompt template no longer substitutes the manifest's "
             "code-rendered signals line — a coordinator composes one again"
@@ -6388,8 +6430,8 @@ class TestSubjectAndOracleReachTheReviewer:
             "the reviewer is left to infer that the narrowing swallowed it"
         )
 
-    def test_review_cycle_owns_the_records_pass(self):
-        content = read_file("skills/critic/review-cycle.md")
+    def test_cross_checks_owns_the_records_pass(self):
+        content = read_file("skills/critic/cross-checks.md")
         assert "### Records Pass" in content
         # The two bars moved here from the builder-facing severity paragraph;
         # they are the pass's whole contract, so both must survive the move.
@@ -6401,7 +6443,7 @@ class TestSubjectAndOracleReachTheReviewer:
         """Not a fourth reviewer role — adding lenses is what the measurement
         said drives finding count. It rides `sustainability`, which already
         owns the other two cross-checks."""
-        cycle = read_file("skills/critic/review-cycle.md")
+        cycle = read_file("skills/critic/cross-checks.md")
         header = cycle.split("## Final-Mode Cross-Checks", 1)[1]
         assert "### Records Pass" in header.split("\n## ", 1)[0], (
             "the Records Pass is not inside Final-Mode Cross-Checks"
@@ -6418,7 +6460,7 @@ class TestSubjectAndOracleReachTheReviewer:
         have no Records Pass to route it to. A reviewer obeying an absolute there
         swallows a machine-detected BLOCKING, which is the expensive direction.
         One statement owns the carve-out; the other surfaces point at it."""
-        cycle = read_file("skills/critic/review-cycle.md")
+        cycle = read_file("skills/critic/cross-checks.md")
         # Whitespace-normalized: these files are hard-wrapped, so a two-word
         # name legitimately straddles a line break and a literal substring test
         # would grade the wrapping rather than the rule.
@@ -6443,7 +6485,7 @@ class TestSubjectAndOracleReachTheReviewer:
         Making records oracle-only per round retired no severity — a Records Pass
         whose bars all read WARNING would have traded that class away silently,
         and nothing in the plan disposed of it."""
-        cycle = read_file("skills/critic/review-cycle.md")
+        cycle = read_file("skills/critic/cross-checks.md")
         pass_section = " ".join(
             cycle.split("### Records Pass", 1)[1].split("\n### ", 1)[0].split()
         )
@@ -6459,10 +6501,12 @@ class TestSubjectAndOracleReachTheReviewer:
         builder section rather than left standing beside its replacement. Two
         stopping rules where one is false is the failure this whole plan exists
         to fix."""
-        cycle = read_file("skills/critic/review-cycle.md")
-        builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
+        # Since W3b (C-8) review-cycle.md IS the builder half, and the pass lives
+        # in cross-checks.md, so the pointer names that file.
+        builder_half = read_file("skills/critic/review-cycle.md")
         assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
-        assert "Records Pass** below" in builder_half
+        assert "`cross-checks.md`'s **Records Pass**" in builder_half
+        assert "### Records Pass" in read_file("skills/critic/cross-checks.md")
 
 
 class TestReviewerFileSetsRideTheManifest:
@@ -6485,8 +6529,8 @@ class TestReviewerFileSetsRideTheManifest:
 
     @staticmethod
     def _template() -> str:
-        protocol = read_file("skills/critic/review-protocol.md")
-        section = protocol.split("### Coordinator Pattern", 1)[1].split("\n## ", 1)[0]
+        protocol = read_file("skills/critic/coordinator.md")
+        section = protocol.split("## Coordinator Pattern", 1)[1]
         lines = [ln for ln in section.splitlines() if ln.lstrip().startswith('> "Critic reviewer')]
         assert len(lines) == 1, "the coordinator prompt template is no longer one quoted line"
         return lines[0]
@@ -6509,7 +6553,7 @@ class TestReviewerFileSetsRideTheManifest:
         assert "<MANIFEST>" in template
         # The oracle half is what a narrowing silently loses, so both are named.
         assert "`files_reviewed`" in template and "`files_oracle`" in template
-        protocol = " ".join(read_file("skills/critic/review-protocol.md").split())
+        protocol = " ".join(read_file("skills/critic/coordinator.md").split())
         assert "`<MANIFEST>` as `[dir]` + `.prawduct/.critic-partials/manifest.json`" in protocol
 
     def test_the_reviewer_is_told_its_sets_come_from_the_manifest(self):

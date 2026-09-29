@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.2-dev.6
+## v3.6.2-dev.7
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
@@ -40,6 +40,12 @@ states, issue numbers and dates, or harness-version notes. Critic review routes 
 570 to 1,330 fewer tokens, depending on the route. The builder's `/prawduct:pr` skill is about 1,400 words shorter, with a
 plainer register. The Critic now applies a norm departure as BLOCKING wherever a product has
 *adopted* norms, as `norms.md` § Severity defines them. It used to say "ratified".
+
+**`opus-55-w3b-review-cycle-split`**: **each `final`/`cumulative` Critic reviewer loads about 7,800 fewer tokens** (`chunk` and `verify-resolutions` reviews are unchanged). The
+reviewer-facing half of `review-cycle.md` (the chunk-type selector and the final-mode cross-checks)
+is now `skills/critic/cross-checks.md`. The builder's lifecycle stays in `review-cycle.md`, which
+reviewers no longer load. The coordinator's dispatch steps are now `skills/critic/coordinator.md`,
+which only the coordinator reads. No review instruction changed wording.
 
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
 of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:

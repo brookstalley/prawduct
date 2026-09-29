@@ -43,7 +43,7 @@ CACHE_READS = "skills/backlog/cache-reads.md"
 # leads its unavailable-notice with. The subjects still differ per surface (each
 # names its own block); what must not differ is the rule behind them.
 NOTE_SURFACES = {
-    "skills/critic/review-cycle.md": "Backlog reconciliation unavailable",
+    "skills/critic/cross-checks.md": "Backlog reconciliation unavailable",
     "skills/pr/review-protocol.md": "Backlog reconciliation unavailable",
     "skills/janitor/SKILL.md": "Backlog Health unavailable",
 }
@@ -175,10 +175,10 @@ class TestTheThreeReadersShareOneContract:
 
     def test_the_reviewer_that_runs_the_walk_is_routed_to_the_gate(self):
         """`skills/critic/review-protocol.md` carries a one-line summary of the
-        gate and points at `review-cycle.md` for the walk itself. That is sound
+        gate and points at `cross-checks.md` for the walk itself. That is sound
         *only* because `agents/critic-reviewer.md` sends the one reviewer who
         runs Backlog Reconciliation — the sustainability reviewer — to
-        `review-cycle.md` explicitly. Break that routing and the gate sits behind
+        `cross-checks.md` explicitly. Break that routing and the gate sits behind
         a cross-reference nobody follows, so the routing is what gets pinned.
 
         (A cumulative Critic finding argued for restating the full rule in
@@ -189,8 +189,8 @@ class TestTheThreeReadersShareOneContract:
         """
         agent = " ".join(_read("agents/critic-reviewer.md").split())
         assert "Backlog Reconciliation" in agent
-        assert "review-cycle.md" in agent, (
-            "the sustainability reviewer is no longer routed to `review-cycle.md`, "
+        assert "cross-checks.md" in agent, (
+            "the sustainability reviewer is no longer routed to `cross-checks.md`, "
             "where the backend gate for Backlog Reconciliation lives."
         )
         protocol = " ".join(_read("skills/critic/review-protocol.md").split())

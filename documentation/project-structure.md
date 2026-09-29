@@ -25,7 +25,8 @@ prawduct/
 │   ├── skills/                        # framework skills → /prawduct:* (critic, pr, backlog, doctor, janitor,
 │   │   │                              #   methodology, migrate, onboard, report-bug, runbook, advisory, …)
 │   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,
-│   │   │                              #   review-cycle.md, goals-1-3.md, framework-checks.md)
+│   │   │                              #   cross-checks.md, coordinator.md, goals-1-3.md, framework-checks.md;
+│   │   │                              #   review-cycle.md is the builder's lifecycle, which no reviewer loads)
 │   │   └── pr/                        # bundled PR-reviewer protocol
 │   ├── agents/critic-reviewer.md      # the coordinator's subagent definition (its own restricted tools)
 │   ├── methodology/                   # Narrative guides (read via ${CLAUDE_PLUGIN_ROOT})

@@ -1192,8 +1192,8 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
 #: than a silent omission at a call site.
 #:
 #: **This is the CODE home of the mode→payload map, not its only one.** The
-#: reviewer's own instructions carry it too — ``review-cycle.md``'s
-#: ``Protocol read`` table row and ``SKILL.md`` step 2 — and a re-route edits
+#: prose carries it too — ``SKILL.md`` step 2 (what the reviewer reads) and
+#: ``review-cycle.md``'s ``Protocol read`` row (the builder's view) — and a re-route edits
 #: those, not this. ``tests/test_finding_scope_rule.py`` derives the map from
 #: the table and asserts it equals this set, so those two cannot drift; SKILL.md
 #: is not yet tied, and a re-route that edits only SKILL.md is the remaining

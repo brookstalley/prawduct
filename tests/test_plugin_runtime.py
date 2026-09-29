@@ -693,12 +693,13 @@ class TestPluginDocsNamespacing:
     (The file-sync copies under tools/ + templates/ that once kept the bare forms
     were deleted with the engine in M4 — only these plugin-bundled files remain.)"""
 
+    # The Critic's files are globbed, not listed: a hand list missed the two
+    # files the review-cycle split created (opus-55 W3b).
     DOCS = (
         "methodology/building.md",
         "methodology/planning.md",
         "methodology/reflection.md",
-        "skills/critic/review-cycle.md",
-        "skills/critic/review-protocol.md",
+        *sorted(f"skills/critic/{p.name}" for p in (ROOT / "skills" / "critic").glob("*.md")),
         "skills/pr/review-protocol.md",
     )
     # A genuine command-invocation token: a `/` that starts a command (NOT preceded

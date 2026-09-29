@@ -404,7 +404,7 @@ class TestTheLearningsReadListIsComputed:
 
     _SURFACES = (
         ("review-protocol.md", REPO_ROOT / "skills" / "critic" / "review-protocol.md"),
-        ("review-cycle.md", REPO_ROOT / "skills" / "critic" / "review-cycle.md"),
+        ("cross-checks.md", REPO_ROOT / "skills" / "critic" / "cross-checks.md"),
         ("critic-reviewer.md", REPO_ROOT / "agents" / "critic-reviewer.md"),
     )
 
@@ -448,15 +448,15 @@ class TestTheLearningsReadListIsComputed:
     def test_the_budget_finding_carries_its_severity_on_both_mode_paths(self):
         """`learnings-over-budget` is computed at dispatch for EVERY mode, so
         both reader shapes need its severity: `final`/`cumulative` read
-        `review-cycle.md`'s record-lint table, `chunk`/`verify-resolutions` read
+        `cross-checks.md`'s record-lint table, `chunk`/`verify-resolutions` read
         `goals-1-3.md`'s one-line mapping. A severity on one of them is a
         BLOCKING finding half the reviews rate for themselves."""
-        cycle = (REPO_ROOT / "skills" / "critic" / "review-cycle.md").read_text()
+        cycle = (REPO_ROOT / "skills" / "critic" / "cross-checks.md").read_text()
         row = next(
             (ln for ln in cycle.splitlines() if ln.startswith("| `learnings-over-budget`")),
             None,
         )
-        assert row is not None, "review-cycle.md's record-lint table has no budget row"
+        assert row is not None, "cross-checks.md's record-lint table has no budget row"
         assert "**BLOCKING**" in row
         goals = (REPO_ROOT / "skills" / "critic" / "goals-1-3.md").read_text()
         assert "`learnings-over-budget` → **BLOCKING**" in " ".join(goals.split())
@@ -466,5 +466,5 @@ class TestTheLearningsReadListIsComputed:
         file, or framework content that belongs upstream. Once: a goal stated
         twice is two goals to keep in step, and the second copy is where the
         drift lands."""
-        cycle = (REPO_ROOT / "skills" / "critic" / "review-cycle.md").read_text()
+        cycle = (REPO_ROOT / "skills" / "critic" / "cross-checks.md").read_text()
         assert cycle.count("Rules added or changed this cycle") == 1

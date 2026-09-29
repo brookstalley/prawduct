@@ -135,7 +135,7 @@ The format is lock-in, so the queries came before the fields:
    as a floor, not a census:** a rule fires only when a reviewer QUOTES it, so
    a rule that shaped a finding without being quoted reads here as never fired.
    The instruction to quote lives with the reviewers (`agents/critic-reviewer.md`,
-   and `review-cycle.md` for the cross-check), but nothing enforces it — so this
+   and `cross-checks.md` for the cross-check), but nothing enforces it — so this
    answer under-counts by however often reviewers paraphrase.
 4. **All of the above across a fleet** — key by the envelope's `project`.
 
