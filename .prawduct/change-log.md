@@ -5,6 +5,13 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-29: develop opens 3.7.0-dev.2
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.2 -->
+
+The dev track's version moves from `3.7.0-dev.1` to `3.7.0-dev.2` in the four carriers, so repos on
+the develop track pick up `opus-55-w6-reference-docs` (#926). Owner-directed, 2026-09-29.
+
 ## 2026-09-29: the reference docs are retuned for Opus 5.5 (audit wave W6)
 
 <!-- prawduct: type=feature | scope=opus-55-w6-reference-docs -->
