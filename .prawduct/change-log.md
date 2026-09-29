@@ -40,6 +40,21 @@ ran through `claude -p`, because the Agent tool's alias cannot select that model
 - The longer early-stop probe on Opus 5.5 did not stop early, even on the pre-W1 text. The audit
   records what that means for per-wave probing.
 
+Also shipping:
+- The scaffolded backlog legend's `closed-by:` names a scope, branch or release tag, never a bare
+  chunk id (B-5), which closes #779. `documentation/backlog-system-requirements.md` takes the
+  same fix.
+- `reflection.md`'s stopping rule and its bug-fix protocol are compressed into one statement each
+  and point at Step 3, rather than restating it.
+- `authoring.md` gains a learning: a new project-wide concept cascades to the product anchor, the
+  Critic and PR protocols, methodology, templates and their budget tests.
+
+Two departures from the owner's ruled text, both vetoable (the plan's cumulative-review record):
+- R-7: B-25's replacement dropped the 3-4-file size, which decides whether a Critic review runs.
+  It is restored as small.
+- R-10: B-24's "file the rest" contradicted `core.md`'s fix-the-class rule. Post-Fix now fixes
+  the class through its one owner when it can be changed here.
+
 Plan: `build-plan-opus-55-w4-methodology-templates.md`.
 
 ## 2026-09-29: develop opens 3.6.2-dev.7
