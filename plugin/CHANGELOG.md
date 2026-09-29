@@ -47,6 +47,22 @@ is now `skills/critic/cross-checks.md`. The builder's lifecycle stays in `review
 reviewers no longer load. The coordinator's dispatch steps are now `skills/critic/coordinator.md`,
 which only the coordinator reads. No review instruction changed wording.
 
+**`opus-55-w4-methodology-templates`**: **the methodology guides and artifact templates are
+retuned for Opus 5.5.** The guides no longer license ending a turn with work in hand: a chunk
+boundary ends the turn only when the plan is done, the next chunk needs you, or the cycle has
+reached what one review covers. The builder is no longer told to scrub its own diff while the
+Critic runs, or to redo a delegate's sweep; a delegate's brief asks instead for the output that
+shows the work complete. Delegation is no longer the default for tangents. Chunk shape, file-list
+deliverables and phase choreography are advice rather than rules.
+
+**`opus-55-w5-operational-skills`**: **the operational skills are retuned for Opus 5.5**
+(backlog, doctor, janitor, migrate, onboard, runbook and the smaller skills). They lose incident
+stories, version pins and second copies of facts that have a home elsewhere. Every command, gate
+and ordering stays. `/prawduct:backlog pick` ranks by value per effort and flags unassessed items;
+it no longer prints a numeric score. The janitor's neglected-hygiene check (Backlog Health check 5)
+now runs on the Issues backend too, over `in-progress` items whose working branch appears merged.
+The runbook skill and template drop an overstated evidence claim and a dated hallucination rate.
+
 **`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
 of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:
 its review is the boundary `cumulative`. Only the last box waits for that review. Previously the
