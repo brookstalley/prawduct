@@ -1511,7 +1511,7 @@ def lint_records(
     if chunk_gap:
         unchecked.append(chunk_gap)
     if chunk_graded is None:
-        # Agrees with `chunk_graded` by construction: `review-cycle.md` already
+        # Agrees with `chunk_graded` by construction: `cross-checks.md` already
         # reads a null subject as "nothing was checked at all", and the counter
         # said 0 in the same breath.
         no_answer.add("chunk-ref-missing")
@@ -1604,7 +1604,7 @@ def lint_records_safe(
             "plan_graded": None,
             "findings": [],
             # The `chunk-ref-missing unchecked` prefix is load-bearing:
-            # `review-cycle.md` grades that string BLOCKING, inheriting the
+            # `cross-checks.md` grades that string BLOCKING, inheriting the
             # retired `cannot-verify:` bar. A crash takes the deliverable check
             # down with everything else, so it must reach the reviewer at the
             # deliverable check's severity — not as a generic NOTE, which is the

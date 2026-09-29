@@ -109,7 +109,10 @@ against the current tree.
   review mode opens it, so "no reviewer loads" now counts as a qualifier.
 - **The absence query was too narrow.** It grepped the moved *headings*, and it came back clean
   while eight tests still read moved text by *file path*. The cumulative review found them (R-1/R-6),
-  and a file-path query (`git grep review-cycle.md review-protocol.md`) found the rest. Two
+  and a file-path query (`git grep review-cycle.md review-protocol.md`) found more. The first verify
+  pass still found six stale citations, in comments and a docstring, plus two hand-listed final-only
+  tuples. The citations are repointed, and the tuples are derived from `SKILL.md`'s routing and
+  red-verified. Two
   hand-kept file lists missed the new files: `_SURFACE_GRANTS` and the bare-command sweep's `DOCS`.
   Both are now derived from disk. Deriving `_SURFACE_GRANTS` at once surfaced a real gap: the
   dispatched reviewer now reads `cross-checks.md`'s `backlog sync` remedy text, and it is exempted

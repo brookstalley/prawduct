@@ -1022,7 +1022,7 @@ class TestUncheckedReporting:
         assert any("record-lint did not run" in r for r in result["unchecked"])
         assert any("git exploded" in r for r in result["unchecked"]), "the cause is named"
         # The crash must reach the reviewer at the DELIVERABLE check's severity:
-        # `review-cycle.md` grades this prefix BLOCKING, inheriting the retired
+        # `cross-checks.md` grades this prefix BLOCKING, inheriting the retired
         # `cannot-verify:` bar. A generic note is the BLD-5J8N habituation.
         assert any(
             r.startswith("chunk-ref-missing unchecked") for r in result["unchecked"]

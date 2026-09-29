@@ -5212,7 +5212,7 @@ class TestCriticGoals13:
         prohibition instructs better than "don't read the others." So every line
         mentioning one must be that prohibition — which also means a future edit
         cannot smuggle a read-directive back in under the same filename."""
-        pointers = ("review-protocol.md", "review-cycle.md", "framework-checks.md", "cross-checks.md", "coordinator.md")
+        pointers = _files_the_fast_path_must_not_open()
         offenders = [
             ln for ln in self.content.split("\n")
             if any(p in ln for p in pointers) and "do not open" not in ln
@@ -5308,7 +5308,7 @@ class TestCriticGoals13:
         cap above only limits the damage once one has.
 
         Asserted on BOTH carriers because the row exists twice — here (what a
-        chunk / verify-resolutions reviewer reads) and `review-cycle.md`'s
+        chunk / verify-resolutions reviewer reads) and `cross-checks.md`'s
         selector table (what every other reader consults). Dropping it from one
         leaves the other instructing the opposite, which is worse than leaving
         both: a reviewer that finds the surviving copy has an explicit mandate.
@@ -5323,7 +5323,7 @@ class TestCriticGoals13:
             if ln.startswith("| `doc-only`")
         )
         assert "numeric counts" not in row, (
-            "review-cycle.md's Per-Chunk Type selector still asks for counts — "
+            "cross-checks.md's Per-Chunk Type selector still asks for counts — "
             "the two carriers now instruct opposite things"
         )
 
@@ -5384,6 +5384,21 @@ class TestCriticGoals13:
             "Framework-Specific Checks", "Backlog Reconciliation",
         ):
             assert absent not in self.content, f"goals-1-3.md regrew {absent!r} — that is final-mode payload"
+
+
+def _files_the_fast_path_must_not_open() -> tuple[str, ...]:
+    """Every Critic file a `chunk`/`verify-resolutions` reviewer must not be sent
+    to: each file `SKILL.md` routes by `${CLAUDE_SKILL_DIR}/` other than the fast
+    path's own `goals-1-3.md`, plus `review-cycle.md`, which no reviewer loads.
+
+    Derived rather than listed: the hand-kept tuples this replaced missed
+    `framework-checks.md` in two places and needed two new files added when the
+    review cycle was split (opus-55 W3b)."""
+    skill = read_file("skills/critic/SKILL.md")
+    routed = set(re.findall(r"\$\{CLAUDE_SKILL_DIR\}/([\w-]+\.md)", skill))
+    files = (routed - {"goals-1-3.md"}) | {"review-cycle.md"}
+    assert {"review-protocol.md", "cross-checks.md", "coordinator.md", "framework-checks.md"} <= files, files
+    return tuple(sorted(files))
 
 
 class TestCriticSkillRoutesByMode:
@@ -5491,7 +5506,7 @@ class TestCriticSkillRoutesByMode:
         unscoped = [
             ln.strip()[:110] for ln in header.split("\n")
             if ln.lstrip().startswith("- ")
-            and any(f in ln for f in ("review-protocol.md", "review-cycle.md", "framework-checks.md", "cross-checks.md", "coordinator.md"))
+            and any(f in ln for f in _files_the_fast_path_must_not_open())
             and not any(m in ln for m in ("final", "cumulative"))
         ]
         assert not unscoped, f"header lists a final-only file without scoping it: {unscoped}"
@@ -5510,7 +5525,7 @@ class TestCriticSkillRoutesByMode:
             ln for ln in self.content.split("\n")
             if 'Roster `["reviewer"]`' in ln
         )
-        for cited in ("review-protocol.md", "review-cycle.md", "cross-checks.md", "coordinator.md"):
+        for cited in _files_the_fast_path_must_not_open():
             assert cited not in bullet, (
                 f"the single-pass bullet cites {cited} — that read is the payload "
                 f"the split removed, and goals-1-3.md already carries it"
@@ -5534,7 +5549,7 @@ class TestCriticSkillRoutesByMode:
         offenders = []
         for ln in steps.split("\n"):
             for clause in re.split(r"(?<=\.)\s|[;()]", ln):
-                if not any(f in clause for f in ("review-protocol.md", "review-cycle.md", "cross-checks.md", "coordinator.md")):
+                if not any(f in clause for f in _files_the_fast_path_must_not_open()):
                     continue
                 # "no reviewer loads" qualifies too: after C-8 no review mode opens
                 # review-cycle.md, so a clause saying so sends no one there.

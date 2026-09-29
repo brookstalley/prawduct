@@ -615,7 +615,7 @@ class TestTheCitationInstructionReachesReviewers:
     """`learning.fired` has exactly one input: a reviewer quoting the rule.
 
     So the instruction is the feature, and it is carried by two surfaces on
-    purpose — `review-cycle.md`'s Learnings Cross-Check, which only the
+    purpose — `cross-checks.md`'s Learnings Cross-Check, which only the
     sustainability reviewer opens, and `agents/critic-reviewer.md`, which every
     reviewer the coordinator dispatches reads at the moment it writes findings.
     One file's copy going missing is invisible from the other, so the pin lives
