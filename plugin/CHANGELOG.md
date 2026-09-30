@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.0-dev.2
+## v3.7.0-dev.3
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
@@ -215,6 +215,17 @@ they grow. From this release:
   learnings rules, linked from the norm. It now lives in the norm's own `Rulings:` field, named and
   stated in full. When compaction reaches a ruling in your `core.md`, it moves it there
   (`moved-to`, verified at the destination) rather than squeezing it into one line.
+
+**`sibling-hook-perf`**: **SessionStart and Stop no longer slow down as a repo ages.** Every
+hook re-listed each tree in the review-evidence store with one `git ls-tree`, so latency grew with
+the store: about 4 s of a 6 s Stop at 231 trees, and a p90 of about a minute at 1,700. Each tree is now
+keyed once per clone and remembered in `.git/prawduct/tree-keys.json`. The first hook after an
+upgrade pays the old cost once; later ones don't. SessionStart's API-versioning scan walks the
+tree once instead of four times. Four governance fixes ride along. The clear-verdict guidance says
+that a server or recorder you started survives a `/clear`. Ledger and review-stats label a repo
+by its product name or git remote instead of the directory, so devcontainers stop logging
+`venv`. A chunk's `Type: bugfix` (or `feature`, `refactor`, …) reads as `code`. The compliance
+canary's "code changed but no tests" check is removed; test adequacy is the Critic's to judge.
 
 ## v3.6.1
 
