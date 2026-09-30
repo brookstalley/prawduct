@@ -207,7 +207,9 @@ field home.)*
   BLOCK** — `file` and `update` refuse a non-conforming title with `validation` (exit 2) before
   writing, so a title finding never appears in `lint[]` for a title **this call wrote** — that arrived as
   an error instead. A successful non-title `update` DOES carry one, reporting that the item's
-  stored title was left unconformed on purpose. The body
+  stored title was left unconformed on purpose. An `update` that writes `--body` audits that body
+  exactly as `file` does (body lints only, WARN-only), and then always carries `lint` — `[]` means
+  checked and clean; an `update` that does not write the body does not lint it. The body
   is model/human-authored (the composer `render_body` assembles §2 sections for callers that want it,
   and the migration pre-pass); the linter guards whatever is authored.
 - **Collections** (`list`,`search`,`batch`) paginate by **cursor** (the Q2 changed-since primitive,

@@ -5,6 +5,54 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-27: a `Re-affirmed:` field answers dead-why for the ids it names
+
+<!-- prawduct: type=bugfix | scope=dead-why-reaffirmed -->
+
+Reported upstream (#818): `dead-why` kept naming a norm the owner had already re-affirmed, with
+its rationale rewritten to stand alone and the finished item's id kept only as a record of where
+the rule was exercised. The same question came back every session, and the only exits were
+dismissing the advisory or deleting the history.
+
+**Root cause (verified):** the probe fired on any backlog-id literal on a `Why:` or in-flight
+`Status:` line that resolved to a finished item. Nothing read an answer, and the scan had no
+per-citation suppression. Its only suppression arm dropped whole entries, and that arm belonged
+to stalled-transition.
+
+**Fix, per the owner ruling of 2026-09-27 (recorded on #818):** a per-id `Re-affirmed:` field in
+the Direction entry, `Re-affirmed: <date> (owner) — <id>: <why it holds>`. Any `Why:` citation
+it names in the same entry is already answered, so it is dropped before resolution. The answer
+is per-id and per-entry. A different id, or the same id named in another norm, is still asked,
+so no single re-affirmation silences a norm for good. Every id written on the field counts as
+answered, and there is no date check. It deliberately does not answer an in-transition
+`Status:` whose tracking item finished, because that line is stale and the repair is the status.
+The advisory therefore now names a separate remedy for each arm: re-affirm or retire for a
+`Why:` citation, and settle or re-point the status for a `Status:` one. Recommending
+`Re-affirmed:` for both would have re-asked the owner about every status citation, which is
+#818's loop one field over. The per-arm split lives in `trigger_summary`. The owner text is one
+literal naming both routes by the condition each answers, because the advisory copy lint reads
+only literal text at the construction site. `_scan_direction_citations` gains a `cited_wanted` hook, the
+per-citation twin of `entry_wanted`. The `docs/norms.md` Anatomy and Trajectory, the janitor's
+re-affirm-or-retire fork and the advisory's own copy now name the field.
+
+## 2026-09-27: backlog `update` lints the body it writes
+
+<!-- prawduct: type=bugfix | scope=update-body-lint -->
+
+Reported upstream (#898): on the Issues backend, `add` ran the §4 body lint and `update` never did.
+A body pushed far past the word budget by an edit returned `lint: None`, the same output as a
+conforming one, so a clean `update` looked like evidence of conformance when nothing had checked.
+
+**Root cause (verified):** `core.file_item` attached `issuefmt.lint(...)`. `core.update_item` only
+ran `lint_title` on the stored title, and the body lint was never wired to that path.
+
+**Fix.** `issuefmt.lint_body` is now public, as `lint_title` already was. When `update` writes
+`--body`, it lints the resulting human body against the labels as they now stand, WARN-only. It
+then always carries `lint`, so `[]` reads as "checked and clean" and an absent `lint` as "not
+checked". An `update` that leaves the body alone does not lint it. That is the same containment
+the 2026-08-06 stored-title ruling keeps, so editing an unrelated field never reports on prose the
+call didn't write. The API contract, the issue standard's implemented-note and the adapter-mode
+skill page now say so.
 ## 2026-09-30: develop opens 3.7.0-dev.3
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.3 -->

@@ -107,6 +107,21 @@ whose tags have four numeric parts can now stamp them (`release=v1.2.3.4`, with 
 two- or five-part values, are still refused. The refusal now tells you what to do in each case:
 if the entry shipped, correct the value; if it has not, delete the tag.
 
+**`update-body-lint`** (#898) — **backlog `update` now checks the body it writes.** On the
+Issues backend, `add` reported issue-standard body findings (the word budget, missing sections)
+and `update` never did, so an edit could push a body far past the standard and come back looking
+clean. `update --body` now returns the same findings in `lint`, as warnings that never block, and
+returns `lint: []` when the new body conforms. An `update` that doesn't touch the body still
+reports nothing about it.
+
+**`dead-why-reaffirmed`** (#818) — **a norm you have re-affirmed stops coming back.** The
+`dead-why` advisory flagged any norm whose `Why:` cited a finished backlog item, and asked again
+every session even after you had kept the norm. Record the answer in the Direction entry as
+`Re-affirmed: <date> (owner) — <id>: <why it still holds>` and that citation is no longer asked
+about. The answer covers only the ids it names in that entry. It does not answer an in-transition
+`Status:` line whose tracking item finished: settle that status or point it at the remaining work,
+which is what the advisory now tells you for that case.
+
 **`test-evidence-root-testcases`** (#912, #913) — **a failing top-level node:test case is no
 longer recorded as passing.** node:test writes a `test()` outside any `describe()` as a
 `<testcase>` directly under `<testsuites>`, and `test-evidence record` never counted those. A
