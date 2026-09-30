@@ -1436,6 +1436,20 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
             prawduct, "01", plan_path=plan
         ) == ("code", None)
 
+    @pytest.mark.parametrize(
+        "work_type",
+        ["bugfix", "feature", "refactor", "optimization", "hotfix", "debt-paydown", "Bugfix"],
+    )
+    def test_a_building_md_work_type_reads_as_code(self, tmp_path: Path, work_type: str):
+        """`building.md` sizes governance by work type (Feature, Bugfix, …) and
+        authors carry the word into `Type:`. Each reads as `code`, the full
+        protocol: reporting it as unknown was an error on a chunk that ran as
+        `code` anyway (a consumer's `bugfix` chunk, 2026-09-28)."""
+        prawduct, plan = _plan_with_chunk_body(tmp_path, f"- **Type:** {work_type}\n")
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
     def test_an_unknown_value_in_field_position_still_reports(self, tmp_path: Path):
         """The typo path is unchanged — that is the point of reading it first."""
         prawduct, plan = _plan_with_chunk_body(

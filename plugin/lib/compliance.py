@@ -2,8 +2,8 @@
 
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 4) — the lightweight
 failure-detection pass the Stop hook runs at session end: it inspects the
-session's changed files for code-without-tests, dependency-without-manifest,
-broad exception handling, and reason-less ``prawduct:allow`` waivers, returning
+session's changed files for dependency-without-manifest, broad exception
+handling, and reason-less ``prawduct:allow`` waivers, returning
 informational ``CANARY:`` findings. Best-effort by design — every probe fails
 open (never crashes, never blocks session end).
 
@@ -14,8 +14,13 @@ The hook calls ``compliance_canary`` lazily via ``_compliance()``, keeping its
 top level lib-free; the ``cmd_stop`` call site wraps it in a broad catch so a
 canary failure can never block session end.
 
-The file classifiers (``_is_source_file`` / ``_is_test_file`` /
-``_is_dependency_file``) move with the canary — it is their only caller.
+The file classifiers (``_is_source_file`` / ``_is_dependency_file``) move with
+the canary — it is their only caller.
+
+There is no code-without-tests check. It fired on every session that changed
+code without a test file, including throwaway research scripts, and could not
+recognise a test file outside Python and JS naming; test adequacy is Critic
+Goal 1's to judge (#164, which rules it deleted).
 """
 
 from __future__ import annotations
@@ -42,15 +47,6 @@ def _is_source_file(filepath: str) -> bool:
         return False
 
     return True
-
-
-def _is_test_file(filepath: str) -> bool:
-    """Check if a filepath looks like a test file."""
-    name = Path(filepath).name
-    return (
-        (name.startswith("test_") and name.endswith(".py"))
-        or name.endswith(("_test.py", ".test.js", ".test.ts", ".test.jsx", ".test.tsx", ".spec.js", ".spec.ts"))
-    )
 
 
 _DEPENDENCY_FILENAMES = frozenset({
@@ -179,17 +175,9 @@ def compliance_canary(project_dir: Path) -> list[str]:
         return findings
 
     source_changed = [f for f in changed if _is_source_file(f)]
-    test_changed = [f for f in changed if _is_test_file(f)]
     dep_changed = [f for f in changed if _is_dependency_file(f)]
 
-    # 1. Code changed but no tests
-    if source_changed and not test_changed:
-        preview = ", ".join(source_changed[:3])
-        findings.append(
-            f"CANARY: {len(source_changed)} source file(s) changed but no test files modified. Changed: {preview}"
-        )
-
-    # 2. Dependency file changed without manifest update
+    # Dependency file changed without manifest update
     if dep_changed:
         prawduct_dir = gitstate.get_prawduct_dir(project_dir)
         manifest_path = prawduct_dir / "artifacts" / "dependency-manifest.md"
@@ -200,7 +188,7 @@ def compliance_canary(project_dir: Path) -> list[str]:
                 f"but dependency-manifest.md was not updated."
             )
 
-    # 3. Broad exception handling in changed source files
+    # Broad exception handling in changed source files
     broad_except_files = _check_broad_exceptions(project_dir, source_changed)
     if broad_except_files:
         findings.append(
@@ -208,7 +196,7 @@ def compliance_canary(project_dir: Path) -> list[str]:
             f"Verify exceptions are specific and include logging/re-raising."
         )
 
-    # 4. Reason-less prawduct:allow waivers (malformed — a waiver must say why)
+    # Reason-less prawduct:allow waivers (malformed — a waiver must say why)
     invalid_waiver_files = _check_invalid_waivers(project_dir, source_changed)
     if invalid_waiver_files:
         findings.append(

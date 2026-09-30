@@ -94,13 +94,13 @@ bodies.
 The owner asked for every issue to be filed, prioritized and fixed on 2026-09-30. Each item
 carries its measured evidence. The only direction that changed after filing is #935: #164 already
 rules its check deleted, so that is the fix used here.
-[ASSUMPTION: the origin remote's repo name is the right project label | LOW impact | the label only groups telemetry]
+[ASSUMPTION: the origin remote's repo name is the right project label | LOW impact | the label only groups telemetry] Resolved at build: the committed `product_identity.name` comes first and the origin second. The label changes this causes for three checkouts are recorded as a [DECISION] in the change-log entry.
 
 ## Status
 
 - [x] Chunk 01: hook latency — persistent tree-key memo (#931) and a single pruned codebase walk (#936)
 - [ ] Chunk 02: friction — clear-verdict text (#932), ledger project name (#933), `bugfix` alias (#934), canary check 1 removed (#935, part of #164)
-Context: Chunk 01 committed 2026-09-30 (ticked at commit, as a short plan does). Chunk 02 is next. Both chunks get their review from the one cumulative review at the boundary (a short plan).
+Context: Chunk 01 committed 2026-09-30 (ticked at commit, as a short plan does). Chunk 02 is built and committed; its box waits for the boundary cumulative review, which is every chunk's review on this short plan. Both chunks get their review from the one cumulative review at the boundary (a short plan).
 
 ## Chunk 01: hook latency
 

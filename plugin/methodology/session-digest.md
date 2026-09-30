@@ -1,6 +1,5 @@
 This repo is governed by **Prawduct** (installed as a plugin). Apply its principles with
-judgment, not mechanically. This is a session-start reminder; the full methodology ships with
-the plugin and is read on demand.
+judgment, not mechanically.
 
 ## How work is governed here
 
@@ -125,8 +124,8 @@ committed?; suite green?) · what produces the next turn: `RUNNING` (a machine e
 what you do if it never lands) / `YOUR TURN` (only they can — lead with the ask) / `COMPLETE`
 (nothing, and no next action to propose) · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the
 verdict, the copy the reason). If they must speak it is `YOUR TURN` even when something also runs,
-unless a clear would kill it (then `RUNNING`, ask in the copy); never predict that they will need
-to — a running job may answer its own question. Work in flight — a dispatched review, an unread
+unless a clear would kill it (then `RUNNING`, ask in the copy) — a server or recorder running on
+its own survives one; never predict that they will need to — a running job may answer its own question. Work in flight — a dispatched review, an unread
 background agent — is `RUNNING`, never `COMPLETE`. Only `RUNNING` may say `DO NOT CLEAR`; a live
 review is `DO NOT CLEAR`, its copy giving a deadline from elapsed time and roster when priceable.
 A handed-over turn may sit for days: first persist a findings-only turn's or a delegate's output to

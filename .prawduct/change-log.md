@@ -5,6 +5,43 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-30: four governance frictions found in consumer transcripts
+
+<!-- prawduct: type=bugfix | scope=sibling-hook-perf | chunks=02 -->
+
+Found by the same investigation of consumer sessions as #931.
+
+**A process running on its own no longer reads as a reason for `DO NOT CLEAR` (#932).** The
+`clear-verdict` gate fired nine times across fabulous, discodon, puzzles and this repo. Every
+block was correct and each cost a turn. The cause was one belief: that a server or recorder the
+session had started would die with a `/clear`. The digest's precedence line, the verdict paragraph
+in `session-hygiene.md`, and the gate's own message now say that a clear ends the conversation,
+not the process. One test pins all three places. The digest pays for its clause in place by
+dropping an opening sentence that restated "Read on demand", so both injected totals fall and
+their ceilings ratchet down.
+
+**Telemetry labels a repo by its identity, not its directory (#933).** Discodon's devcontainer
+mounts every workspace at `/opt/venv`, so every ledger event since 09-21 read `project: "venv"`.
+`gitstate.project_label` is now the one owner, shared by the ledger and the review-stats header.
+It tries, in order: the committed `product_identity.name` (as a slug), the origin remote's
+repository name, the main checkout's directory (which a worktree shares), and only then the
+directory itself. `gitstate.declared_product_name` becomes the one reader of
+`product_identity.name`, and the briefing delegates to it.
+`[DECISION: clones of one repository share a label | identity is what the committed name and the origin carry, and no path survives a container | this changes future labels for three checkouts: samsung-frame-art-loader becomes curatarr (its origin), fabulous-tips becomes fabulous, and prawduct-learning becomes prawduct; worktrees take their main checkout's name; existing rows are not relabelled]`
+
+**`**Type:** bugfix` parses (#934).** `building.md` sizes governance by work type (feature,
+bugfix, refactor, …), and authors carried the word into a chunk's `Type:` field, which reported
+it as unknown on a chunk that ran as `code` anyway. The work types are now aliases for `code`,
+the full protocol, so an alias can never lighten a review. `planning.md` names them.
+
+**The code-without-tests canary check is deleted (#935, part of #164).** It fired on every
+session that changed code without a test file, a research spike under `docs/` included, and it
+could not recognise test files beyond Python and JS naming. #164, owner-ruled, deletes it with
+Critic Goal 1 as its covering surface. `_is_test_file` goes with it, and `architecture.md`'s
+retroactivity inventory no longer lists it. The surviving canary checks had no tests at all; they
+have them now, including a control showing that the canary still runs when the deleted check
+would have been its only finding. The rest of #164 is still open.
+
 ## 2026-09-30: hook latency no longer grows with the evidence store
 
 <!-- prawduct: type=bugfix | scope=sibling-hook-perf | chunks=01 -->

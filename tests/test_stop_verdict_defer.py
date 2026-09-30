@@ -467,6 +467,9 @@ class TestClearVerdictGate:
         assert "gate: clear-verdict" in blocked
         assert f"closes on `{label}` and `DO NOT CLEAR`" in blocked
         assert ".prawduct/.handoff-notes.md" in blocked
+        # The belief behind most of this gate's fires in consumer repos: that a
+        # server or recorder the session started would die with a clear.
+        assert "a clear ends the conversation, not the process" in blocked
 
     @pytest.mark.parametrize(
         "message",

@@ -1212,7 +1212,10 @@ LAST_MEASURED_TOKENS = {
     # also states #341's acceptance criterion (a builder who finds a better
     # route takes it and records why), paid from those cuts; the partition
     # paragraph now points at the delegation test rather than restating it.
-    "methodology/planning.md": 5709,
+    # +13 on 2026-09-30 (sibling-hook-perf): the Type field's allowed values
+    # name `building.md`'s work types as aliases read as `code` (#934), which
+    # authors wrote and the parser used to reject. A READING, no ceiling.
+    "methodology/planning.md": 5722,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1315,7 +1318,12 @@ LAST_MEASURED_TOKENS = {
     # at `MIN_PRICED_SAMPLE` instead of copying its value (B-34); the "just go"
     # shade and the hard stop that read as licences to end the turn rewritten
     # (B-9, B-35). A CUT.
-    "methodology/session-hygiene.md": 3040,
+    # +55 on 2026-09-30 (sibling-hook-perf): the verdict paragraph says a
+    # process running on its own is no reason for `DO NOT CLEAR`, since a clear
+    # ends the conversation and not the process. Consumers closed `YOUR TURN` +
+    # `DO NOT CLEAR` over exactly that belief, and the gate refused them nine
+    # times (#932). A READING, no ceiling.
+    "methodology/session-hygiene.md": 3095,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1803,8 +1811,12 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # plan never infers its boundary review. Owner-confirmed in session.
     # -3 framework on 2026-09-29 (opus-55-w6, the Fable coherence pass): CLAUDE.md's Critic
     # timing sentence now also covers a short plan's single boundary review, in fewer words.
-    "framework": 3142,
-    "product": 2202,
+    # 3142 -> 3134, 2202 -> 2194 on 2026-09-30 (sibling-hook-perf): the digest
+    # gains one clause (a server or recorder running on its own survives a
+    # clear, #932), paid in place by cutting its opening's second sentence,
+    # which restated what "Read on demand" says.
+    "framework": 3134,
+    "product": 2194,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1958,8 +1970,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # 3135 -> 3146, 2192 -> 2203 on 2026-09-28 (short-plan-tick): the declared
     # raise in the reading table, one over each reading.
     # 3146 -> 3143 framework on 2026-09-29 (opus-55-w6): ratcheted with the reading's cut.
-    "framework": 3143,
-    "product": 2203,
+    # 3143 -> 3135, 2203 -> 2195 on 2026-09-30 (sibling-hook-perf): ratcheted
+    # with the reading, one over each.
+    "framework": 3135,
+    "product": 2195,
 }
 
 
@@ -2607,6 +2621,23 @@ class TestBuildingMethodology:
             "never blind-append"
             in read_file("methodology/session-digest.md").lower()
         )
+
+    def test_a_process_running_on_its_own_is_no_reason_to_keep_the_session(self):
+        """Consumers closed `YOUR TURN` + `DO NOT CLEAR` because a server or
+        recorder they had started was running, and the gate refused them nine
+        times (#932). The rule's home says why such a process earns neither
+        label, and the digest, the one surface every session reads, carries
+        the trigger. Both are pinned: a rule reworded in one carrier is two
+        rules that no single-file guard sees."""
+        hygiene = read_file("methodology/session-hygiene.md")
+        verdict = hygiene[hygiene.index("**Only `RUNNING` may say `DO NOT CLEAR`.**"):]
+        verdict = verdict[: verdict.index("\n")]
+        assert "runs on its own" in verdict
+        assert "a clear ends the conversation, not the process" in verdict
+        digest = read_file("methodology/session-digest.md")
+        precedence = digest[digest.index("If they must speak it is `YOUR TURN`"):]
+        precedence = precedence[: precedence.index("never predict")]
+        assert "running on its own survives one" in " ".join(precedence.split())
 
     def test_a_findings_only_turn_must_persist_before_claiming_safe_to_clear(self):
         """The clear verdict is computed from disk and process state, so a turn
