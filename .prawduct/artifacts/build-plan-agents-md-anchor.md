@@ -13,7 +13,7 @@ governed_by:
       - "every fact has one home → conforms: the neutral anchor text, the Claude shim text and the install id each keep one definition in migrate_plugin.py; anchor_repair imports them"
   - artifact: security-model
     dispositions:
-      - "an edit to a product-owned file is offered with the exact bytes and applied under one informed confirmation → conforms: doctor offers the layout repair as a dry run, and --apply writes it (Chunk 03)"
+      - "an edit to a product-owned file is offered with the exact bytes and applied under one informed confirmation → conforms: doctor offers the layout repair as a dry run, and --apply writes it (the repair lands in Chunk 01; doctor surfaces it in Chunk 03)"
 partition: serial — 02 reads the constants and file layout 01 defines, and 03's repair composes 01's writers with 02's readers
 last_validated: 2026-09-30
 ---
