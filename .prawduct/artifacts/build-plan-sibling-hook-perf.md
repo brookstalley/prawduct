@@ -74,7 +74,7 @@ bodies.
   written under a different code identity gives a miss, never a grant.
 - `Codebase` walks the tree once, pruning `_SCAN_SKIP_DIRS` as it descends, and every scan
   primitive filters that one listing.
-- The ledger and review-stats label a devcontainer or worktree session with the origin remote's
+- The ledger and review-stats label a devcontainer or worktree session with the push remote's
   repo name.
 - `**Type:** bugfix`, and the other work types in `building.md`, parse as `code`.
 - Canary check 1 is gone. It had no tests; a test now pins its absence, and #935 closes under
@@ -94,13 +94,13 @@ bodies.
 The owner asked for every issue to be filed, prioritized and fixed on 2026-09-30. Each item
 carries its measured evidence. The only direction that changed after filing is #935: #164 already
 rules its check deleted, so that is the fix used here.
-[ASSUMPTION: the origin remote's repo name is the right project label | LOW impact | the label only groups telemetry] Resolved at build: the committed `product_identity.name` comes first and the origin second. The label changes this causes for three checkouts are recorded as a [DECISION] in the change-log entry.
+[ASSUMPTION: the origin remote's repo name is the right project label | LOW impact | the label only groups telemetry] Resolved at build: the committed `product_identity.name` comes first and the push remote's repository name second. The label changes this causes for three checkouts are recorded as a [DECISION] in the change-log entry.
 
 ## Status
 
 - [x] Chunk 01: hook latency — persistent tree-key memo (#931) and a single pruned codebase walk (#936)
-- [ ] Chunk 02: friction — clear-verdict text (#932), ledger project name (#933), `bugfix` alias (#934), canary check 1 removed (#935, part of #164)
-Context: Chunk 01 committed 2026-09-30 (ticked at commit, as a short plan does). Chunk 02 is built and committed; its box waits for the boundary cumulative review, which is every chunk's review on this short plan. Both chunks get their review from the one cumulative review at the boundary (a short plan).
+- [x] Chunk 02: friction — clear-verdict text (#932), ledger project name (#933), `bugfix` alias (#934), canary check 1 removed (#935, part of #164)
+Context: Chunk 01 committed 2026-09-30 (ticked at commit, as a short plan does). Chunk 02 committed; the boundary cumulative (rev-20260930T164841Z-0ca1680b: 0 blocking, 8 warnings, all fixed in c3f03d4b and verified by rev-20260930T171053Z-59f4a6dd) reviewed both chunks. Plan complete; a PR is on the owner's ask. Both chunks get their review from the one cumulative review at the boundary (a short plan).
 
 ## Chunk 01: hook latency
 

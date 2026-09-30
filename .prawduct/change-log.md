@@ -24,8 +24,8 @@ their ceilings ratchet down.
 **Telemetry labels a repo by its identity, not its directory (#933).** Discodon's devcontainer
 mounts every workspace at `/opt/venv`, so every ledger event since 09-21 read `project: "venv"`.
 `gitstate.project_label` is now the one owner, shared by the ledger and the review-stats header.
-It tries, in order: the committed `product_identity.name` (as a slug), the origin remote's
-repository name, the main checkout's directory (which a worktree shares), and only then the
+It tries, in order: the committed `product_identity.name` (as a slug), the push remote's
+repository name (so a lone remote not named `origin` counts), the main checkout's directory (which a worktree shares), and only then the
 directory itself. `gitstate.declared_product_name` becomes the one reader of
 `product_identity.name`, and the briefing delegates to it.
 `[DECISION: clones of one repository share a label | identity is what the committed name and the origin carry, and no path survives a container | this changes future labels for three checkouts: samsung-frame-art-loader becomes curatarr (its origin), fabulous-tips becomes fabulous, and prawduct-learning becomes prawduct; worktrees take their main checkout's name; existing rows are not relabelled]`
@@ -33,7 +33,9 @@ directory itself. `gitstate.declared_product_name` becomes the one reader of
 **`**Type:** bugfix` parses (#934).** `building.md` sizes governance by work type (feature,
 bugfix, refactor, …), and authors carried the word into a chunk's `Type:` field, which reported
 it as unknown on a chunk that ran as `code` anyway. The work types are now aliases for `code`,
-the full protocol, so an alias can never lighten a review. `planning.md` names them.
+the full protocol, so an alias can never lighten a review. `planning.md` names them. Aliases are
+case-sensitive, like the types: `Bugfix` is reported as unknown, as `Code` always was, and the
+error now lists the aliases beside the types.
 
 **The code-without-tests canary check is deleted (#935, part of #164).** It fired on every
 session that changed code without a test file, a research spike under `docs/` included, and it

@@ -170,7 +170,7 @@ Top-level keys, in order:
 ```
 schema_version   report schema (bumped on any key change — pinned by
                  tests/test_review_stats.py)
-project          the repo's identity: product_identity.name, else the origin
+project          the repo's identity: product_identity.name, else the push
                  remote's repository name, else the main checkout's directory
 generated_at     ISO-8601 UTC
 window           {since, until} — the bounds in force, stated even when both
