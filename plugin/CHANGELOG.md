@@ -218,7 +218,7 @@ they grow. From this release:
 
 **`sibling-hook-perf`**: **SessionStart and Stop no longer slow down as a repo ages.** Every
 hook re-listed each tree in the review-evidence store with one `git ls-tree`, so latency grew with
-the store: about 4 s of a 6 s Stop at 231 trees, and a minute or more at 1,700. Each tree is now
+the store: about 4 s of a 6 s Stop at 231 trees, and a p90 of about a minute at 1,700. Each tree is now
 keyed once per clone and remembered in `.git/prawduct/tree-keys.json`. The first hook after an
 upgrade pays the old cost once; later ones don't. SessionStart's API-versioning scan walks the
 tree once instead of four times. Four governance fixes ride along. The clear-verdict guidance says
