@@ -68,13 +68,19 @@ never reads it. Its text is also Claude-specific ("a Claude Code plugin", `/praw
 
 ## Status
 
-- [ ] Chunk 01 — Split the anchor and write both files
+- [ ] Chunk 01 — Split the anchor; writers and anchor_repair move together
 - [ ] Chunk 02 — Readers and the protected-path classifier know AGENTS.md
-- [ ] Chunk 03 — Doctor converts the old layout; docs; live check
+- [ ] Chunk 03 — Doctor text, release notes, live check
 
-Context: Plan drafted 2026-09-30 from the owner's #942 ruling. No code yet.
+Context: Plan drafted 2026-09-30 from the owner's #942 ruling. No code yet. Re-cut before any
+code: `anchor_repair.py` imports `STATIC_ANCHOR` as its "current" anchor, and
+`tests/test_anchor_repair.py` renders `STATIC_ANCHOR` out of every release tag's
+`migrate_plugin.py` to prove each shipped anchor is repairable. Changing the anchor's shape
+without moving the repair and that reader in the same chunk would ship a `check()` that grades
+every new-layout repo as broken, and blind the tag reader for the first tag cut after it. So the
+repair's core moved from Chunk 03 into Chunk 01.
 
-## Chunk 01 — Split the anchor and write both files
+## Chunk 01 — Split the anchor; writers and anchor_repair move together
 
 **Type:** code
 
@@ -98,6 +104,15 @@ created/edited. Amend `architecture.md` § Direction by recording a `[DECISION]`
 reconciled-files norm: `AGENTS.md`'s anchor block joins the enumeration, authority is the #942
 ruling. `security-model.md` gets the same if its enumeration names `CLAUDE.md`.
 
+In the same chunk, `plugin/lib/anchor_repair.py` learns the new layout. The pre-change
+`STATIC_ANCHOR` is frozen into `SUPERSEDED_ANCHORS`. `check()` grades the pair of files, and the
+two probes are read across both: the install notice lives in the shim, the stage-keyed rule in
+the neutral block. A new status, `legacy-layout`, covers an anchor in `CLAUDE.md` with no
+`AGENTS.md` block. `repair()` converts an exact match of any shipped `CLAUDE.md` anchor into the
+shim and writes the neutral block. `tests/test_anchor_repair.py`'s shipped-anchor reader learns
+the new constant names, so a tag cut after this change still yields its anchor and never reads
+as blind.
+
 **Acceptance criteria:**
 - Fresh onboard of an empty repo: `AGENTS.md` holds the neutral block, and `CLAUDE.md` holds
   `@AGENTS.md` and the shim.
@@ -107,7 +122,13 @@ ruling. `security-model.md` gets the same if its enumeration names `CLAUDE.md`.
 - Running either writer twice changes nothing.
 - A symlinked `CLAUDE.md` is refused, and nothing is written through it.
 - The neutral text contains no `claude`, `/prawduct:` or `Claude Code` token. A test pins this.
-- `tests/test_plugin_init.py` and the migrate tests cover each case above.
+- `anchor_repair.check()` reports `ok` for a freshly written new-layout repo and `legacy-layout`
+  for each shipped `CLAUDE.md` anchor. `repair(apply=True)` converts each one, and a second run
+  reports `ok`. An edited anchor still reports `stale-modified` and is left alone.
+- The shipped-anchor reader renders the anchor for the current tree under the new names. A test
+  proves it isn't blind.
+- `tests/test_plugin_init.py`, the migrate tests and `tests/test_anchor_repair.py` cover each
+  case above.
 
 **Done when:** tests pass, and `/prawduct:critic` has run on the chunk.
 
@@ -139,21 +160,12 @@ the claim ("anchor", "CLAUDE.md"), not just the tokens edited.
 
 **Done when:** tests pass, and `/prawduct:critic` has run on the chunk.
 
-## Chunk 03 — Doctor converts the old layout; docs; live check
+## Chunk 03 — Doctor text, release notes, live check
 
 **Type:** code
 
-**Description:** `plugin/lib/anchor_repair.py`:
-- **New status:** `legacy-layout`, for an anchor in `CLAUDE.md` with no `AGENTS.md` block.
-- **Repair:** swaps an exact match of the current or a superseded `CLAUDE.md` anchor for the
-  shim, and writes the neutral block into `AGENTS.md`. It stays a dry run by default and
-  applies only with `--apply`. The pre-change `STATIC_ANCHOR` joins `SUPERSEDED_ANCHORS` so it
-  matches byte for byte. An edited anchor still reports `stale-modified` and is left for the
-  owner.
-- **Substance checks:** read across both files. The install notice is in the shim; the
-  stage-keyed rule is in the neutral block.
-
-Doctor Check #4's text says what the new status means. Add a `plugin/CHANGELOG.md` rolling-notes
+**Description:** Doctor Check #4's text says what `legacy-layout` means and what the offered
+repair writes, and the `/prawduct:doctor` skill describes the repair as offered, never applied. Add a `plugin/CHANGELOG.md` rolling-notes
 entry and a `.prawduct/change-log.md` entry (`scope=agents-md-anchor`).
 
 Live check: in a scratch repo onboarded by the new writer, run `claude -p` in a fresh process
@@ -162,9 +174,8 @@ neutral notice and the shim both reach context. A same-session re-invocation pro
 because the harness caches what it loaded.
 
 **Acceptance criteria:**
-- Each old layout this repo has shipped converts to the new one under `--apply`, and a second
-  run reports `ok`.
-- An edited anchor is reported, not rewritten.
+- `/prawduct:doctor` on a legacy-layout repo prints the exact bytes the repair would write, and
+  applies nothing without `--apply`.
 - The live check's transcript excerpt is recorded in the chunk's reflection.
 
 **Done when:** tests pass; the boundary `/prawduct:critic` (final) has run; the suite is recorded
