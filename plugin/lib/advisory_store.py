@@ -34,13 +34,15 @@ sync can never crash on a malformed store.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable
 
 from .core import atomic_write_text
@@ -229,11 +231,33 @@ class Codebase:
                     return True
         return False
 
+    @functools.cached_property
+    def _source_files(self) -> "tuple[tuple[Path, PurePosixPath], ...]":
+        """Every file under ``root`` outside ``_SCAN_SKIP_DIRS``, walked ONCE per
+        Codebase and shared by every scan and every probe of a sync.
+
+        The skip set is pruned while descending. The walk this replaces ran an
+        ``rglob`` per pattern and filtered skipped parts afterwards, so each
+        call descended into ``.git``, ``.venv`` and ``node_modules`` only to
+        discard what it found there; four such calls cost about a second of
+        every SessionStart on a consumer repo. Symlinked directories are not
+        followed, which is what ``rglob`` did too.
+        """
+        found: list[tuple[Path, PurePosixPath]] = []
+        for dirpath, dirnames, filenames in os.walk(self.root):
+            dirnames[:] = [d for d in dirnames if d not in _SCAN_SKIP_DIRS]
+            base = Path(dirpath)
+            for name in filenames:
+                path = base / name
+                found.append((path, PurePosixPath(path.relative_to(self.root).as_posix())))
+        return tuple(found)
+
     def _iter_source_files(self, pattern: str):
-        for path in self.root.rglob(pattern):
-            if any(part in _SCAN_SKIP_DIRS for part in path.relative_to(self.root).parts):
-                continue
-            if path.is_file():
+        """Files whose root-relative path matches ``pattern`` the way ``rglob``
+        matches it: a bare name pattern at any depth, a pattern with separators
+        against the path's trailing components."""
+        for path, relative in self._source_files:
+            if relative.match(pattern) and path.is_file():
                 yield path
 
 

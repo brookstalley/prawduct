@@ -5,6 +5,40 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-30: hook latency no longer grows with the evidence store
+
+<!-- prawduct: type=bugfix | scope=sibling-hook-perf | chunks=01 -->
+
+**Root cause (verified by profile and A/B).** Every SessionStart and Stop composes a coverage
+verdict whose free-edge search keys every tree the evidence store mentions, one `git ls-tree`
+each. The keys were memoised only within the process, and the store is append-only and shared by
+every worktree, so hook latency grew with the store's age rather than with the work at hand. On a
+snapshot of the puzzles repo (231 trees), each cached plugin version from 3.5.1-dev.2 to
+3.7.0-dev.2 took about 6.4 s per Stop, of which 4 s was this keying. Field data from the
+transcripts shows the growth: the puzzles Stop p90 went from 3 s to 15 s as its store grew from 20
+trees to 231 between 09-12 and 09-30, and discodon (1,743 trees) reached a p90 of 62 s (#931).
+
+**Fix.** `lib/tree_key_memo.py` persists each computed key beside the evidence store, keyed by the
+tree and by the classifier's code identity (the plugin version, plus the plugin tree on a
+checkout). Each tree now costs one `git ls-tree` per clone and per code change. An unreadable tree
+is never remembered, so it still denies the free edge and is asked again next time. A second
+cost of the same kind: trees that git has collected, which the store keeps naming, cost a failed
+`ls-tree` apiece on every hook (198 of 1,326 here). One `git cat-file --batch-check` now answers
+all of them (`evidence.missing_objects`, reached through the key function's `prime`). The memo
+saves every 100 new keys and at exit, so a cold run that the harness kills keeps its progress.
+
+Measured on the same snapshot, with an edit before each Stop as in a real session: warm Stop hooks
+went from about 6.0 s to about 2.1 s, and the coverage verdict itself from 4.1 s to 0.05 s, with
+identical gate output. This repo's warm Stop went from 34 s to about 6.3 s. The rest is a fixed
+set of git calls spread across other gates, plus the base-advance diagnosis's per-candidate diffs,
+filed separately.
+
+**SessionStart's api-versioning probe (#936).** `Codebase` ran an `rglob` per pattern, four per
+sync, each descending into `.git`, `.venv` and `node_modules` before discarding what it found. It
+now walks once, pruning the skip set as it descends, and every scan filters that listing: about
+1.1 s down to 0.18 s on the snapshot, returning exactly the same files as before on puzzles and on
+this repo.
+
 ## 2026-09-29: develop opens 3.7.0-dev.2
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.2 -->

@@ -431,6 +431,11 @@ def _free_classes(nodes: "set[str]", key_fn: KeyFn) -> dict[str, list[str]]:
     must never buy a free pass; the fast path fails in the same direction as
     the slow one.
     """
+    # A key function may answer many trees in one call first (the production
+    # one resolves trees git no longer holds); optional, so any callable works.
+    prime = getattr(key_fn, "prime", None)
+    if prime is not None:
+        prime(sorted(nodes))
     classes: dict[str, list[str]] = {}
     for node in nodes:
         key = key_fn(node)

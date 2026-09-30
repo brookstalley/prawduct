@@ -53,6 +53,7 @@ from . import (
     gitstate,
     learnings_files,
     standing_block,
+    tree_key_memo,
     verdict_cache,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
@@ -1306,14 +1307,24 @@ def _tree_key_fn(project_dir: Path):
     by every worktree of the clone, so that degrades monotonically. Keying
     each tree once is linear in trees and asks the same question.
 
+    Linear is still the whole store on every gate call, and the store only
+    grows, so a computed key is also kept across processes
+    (:mod:`tree_key_memo`): each tree costs one ``git ls-tree`` per clone.
+
     ``None`` when the tree cannot be read, which denies a free edge rather
     than granting one — the fast path fails in the same direction as the slow
-    one, because this gate is authority and authority fails closed.
+    one, because this gate is authority and authority fails closed. A ``None``
+    is never persisted, so an unreadable tree is asked again next time.
     """
     cache: dict[str, "str | None"] = {}
+    memo = tree_key_memo.for_project(project_dir)
 
     def key_fn(tree: str) -> "str | None":
         if tree not in cache:
+            remembered = memo.get(tree)
+            if remembered is not None:
+                cache[tree] = remembered
+                return remembered
             entries = evidence.tree_entries(project_dir, tree)
             if entries is None:
                 cache[tree] = None
@@ -1326,8 +1337,31 @@ def _tree_key_fn(project_dir: Path):
                 cache[tree] = hashlib.sha256(
                     "\n".join(judgeable).encode("utf-8", "surrogateescape")
                 ).hexdigest()
+                memo.put(tree, cache[tree])
         return cache[tree]
 
+    def prime(trees) -> None:
+        """Answer every tree the memo lacks whose object git no longer holds,
+        in one call, before they are keyed one by one. Such a tree is never
+        remembered, so it would otherwise cost a failed ``git ls-tree`` on
+        every hook. When git cannot answer, nothing is primed and each tree
+        is asked the slow way."""
+        unknown = []
+        for tree in trees:
+            if tree in cache:
+                continue
+            remembered = memo.get(tree)
+            if remembered is not None:
+                cache[tree] = remembered
+            else:
+                unknown.append(tree)
+        if not unknown:
+            return
+        missing = evidence.missing_objects(project_dir, unknown)
+        for tree in missing or ():
+            cache[tree] = None
+
+    key_fn.prime = prime
     return key_fn
 
 
@@ -1753,7 +1787,8 @@ def _merge_base_verdict(
     Its cost lands on the failing path only, and lands small: the diagnosis's
     extra verdicts run through the ``diff_fn``/``key_fn`` caches this call
     already built, so the ``git ls-tree`` per tree — the expensive part — is
-    paid once for the whole invocation whether one verdict is computed or five.
+    paid at most once per tree however many verdicts are computed, and once per
+    clone across calls (:mod:`tree_key_memo`).
     The unmemoized-across-calls property above is unchanged.
 
     Adds ``transfer_note`` — the near-miss or could-not-run sentence — for the
@@ -2626,8 +2661,8 @@ def _branch_coverage(
 
     Keys prefixed ``_`` are the rendering context: the verdict closure built
     over this invocation's diff/key memos. They are returned rather than
-    rebuilt by the caller because rebuilding re-pays the ``git ls-tree`` per
-    tree this call already paid — which is most of a cold verdict's cost.
+    rebuilt by the caller because rebuilding discards the diff memo this call
+    already filled, and re-pays each ``git diff`` in it.
     """
     precheck = _store_precheck(read)
     if precheck is not None:

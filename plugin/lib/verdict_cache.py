@@ -1,12 +1,13 @@
 """Memoization of the composed coverage verdict.
 
 ``coverage_algebra.coverage_verdict`` is a pure function, and an expensive one:
-its free-edge search keys every tree the store mentions, which is one
-``git ls-tree`` per tree. Measured on this repo (2,715 facts, 701 distinct
-trees) a cold verdict costs 17.4 s; with the per-invocation key cache already
-warm it costs 0.01 s. The store is append-only and shared by every worktree of
-the clone, so that cost grows monotonically and is paid again by every gate
-call — nine invocations in one consumer session ran 29–120 s each, two of them
+its free-edge search keys every tree the store mentions. Keying costs one
+``git ls-tree`` per tree the clone has not keyed before; :mod:`tree_key_memo`
+keeps the rest. Before that memo, measured on this repo (2,715 facts, 701
+distinct trees), a cold verdict cost 17.4 s, and 0.01 s with the keys already
+in hand. The store is append-only and shared by every worktree of the clone,
+so the cold cost grew monotonically and was paid again by every gate call.
+Nine invocations in one consumer session ran 29–120 s each, two of them
 hitting the 2-minute Bash ceiling, and the agent resorted to `timeout 200`.
 
 **This is a memo, not a second home for any fact** (``data-model.md``: *derived
