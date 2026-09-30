@@ -1,17 +1,9 @@
 # Backlog — {{PRODUCT_NAME}}
 
-<!-- Structured backlog (Prawduct v1.7+). Managed with the `/backlog` skill:
-     /backlog            summary + menu
-     /backlog pick       what to work on next (filters + natural language)
-     /backlog add        file a new item (searches for duplicates first)
-     /backlog find <q>   search title/metadata/body
-     /backlog list       tabular view (default: open, added within 90d)
-     /backlog update ID  change metadata or status
-     /backlog migrate    convert legacy unstructured items to this format
-
-     Items move between the three sections below via `/backlog update ID status=...`.
-     The framework never infers status from build plans or change logs — an agent
-     or human makes the call explicitly (see backlog-system-requirements.md D4/§5).
+<!-- Structured backlog. Manage it with /prawduct:backlog — pick, add, find <q>, list,
+     update ID, migrate. Items move between the three sections below via
+     /prawduct:backlog update ID status=...; status is never inferred from build plans
+     or change logs — an agent or human sets it explicitly.
 
 == Item shape ==
 
@@ -48,9 +40,10 @@
   Optional, on the same line (distinct concepts — keep them straight):
     related:   PFX-XXXX, PFX-XXXX   cross-references to related items
     closes:    PFX-XXXX             this item supersedes another backlog item (item → item)
-    closed-by: <chunk-id | scope/branch | tag>  what shipped this item (item → release), set on
+    closed-by: <scope/branch | release tag>  what shipped this item (item → release), set on
                                     status=shipped; a handle that exists before the commit —
-                                    never a bare commit SHA (dangles on --amend) or unassigned PR#
+                                    never a bare chunk id (names no plan), a bare commit SHA
+                                    (dangles on --amend) or an unassigned PR#
     reviewed:  YYYY-MM-DD           last-touched timestamp (auto-set on any update)
     accepted-by: @actor             soft claim "someone is on this" so others don't
                                     double-pick; pick/list exclude claimed items.
@@ -63,10 +56,12 @@
     refs: <doc#section>, <doc>      links to governing artifacts (requirements /
                                     arch / design docs). Distinct from `related:`
                                     (which is item -> item).
+    revisit: YYYY-MM-DD | <event>   expiry on a norm exception or stopgap; a past date
+                                    raises an advisory while the item is open.
 
   Legacy items (no metadata) remain valid — tools treat them as
   `effort: ? · impact: ? · area: untagged · status: open` and rank them lower.
-  Run `/backlog migrate` to add structure at your own pace; nothing is forced. -->
+  Run `/prawduct:backlog migrate` to add structure at your own pace; nothing is forced. -->
 
 ## Open
 
@@ -74,7 +69,7 @@
 
 ## Promoted
 
-<!-- Items currently being addressed in an active build plan. /backlog pick
+<!-- Items currently being addressed in an active build plan. /prawduct:backlog pick
      skips these by default (work is already in flight). -->
 
 ## Archive

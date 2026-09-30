@@ -5,9 +5,8 @@ passed, against which tree, and the freshness gates read it to decide whether an
 again. That record is only as honest as what feeds it.
 
 Two properties make it honest, and a product's test setup is where they are implemented. They are
-a **requirement** — prawduct states them and reads their output; it installs nothing and edits no
-runner config, because prawduct's own ratified norms say it guides and never implements
-(`docs/norms.md` for how norms bind; the norm itself lives in prawduct's repo, not in yours).
+a **requirement**: prawduct states them and reads their output, and installs nothing and edits no
+runner config.
 
 1. **The machine-readable report is a side effect of every run.** The report path lives in the
    runner's own default-arguments file, not in the command someone types. Nobody can run the suite
@@ -84,7 +83,7 @@ degraded on top of it.
 
 | Condition | Result |
 |---|---|
-| No record beside the report | **Proceed**, exactly as before the contract existed. A repo that has not wired a producer is unaffected. |
+| No record beside the report | **Proceed.** A repo that has not wired a producer is unaffected. |
 | Unreadable, not JSON, or not a JSON object | **Refuse** — ambiguous state on a path that feeds a gate verdict fails closed. |
 | `v` missing, or a version this reader does not know | **Refuse**, naming the version it found. |
 | `scope` missing or neither `full` nor `partial` | **Refuse**. |
@@ -104,14 +103,13 @@ path and is not second-guessed by this — a repo whose canonical command is del
 taken at its word. Where it declares none, the recorder runs its own pytest fallback and *does*
 consult the record, because there is no declaration standing behind that invocation: the fallback
 is the reader's own guess at the suite, so the scope it actually selected is the only evidence of
-what it covered. Pinned by `TestTheUndeclaredRunPath`.
+what it covered.
 
 ## Producing one
 
 **Advice, not contract.** What binds is the two properties above and the record this reads;
-*how* you produce it is yours (prawduct's own norms put goals and verification in the binding half
-and prescribed method in the advisory one). Every ecosystem has the two surfaces this needs: a file
-holding the runner's default arguments, and a pre/post-run hook. The pairing below is a starting
+*how* you produce it is yours. Every ecosystem has the two surfaces this needs: a file holding the
+runner's default arguments, and a pre/post-run hook. The pairing below is a starting
 point.
 
 | Ecosystem | Default-arguments file | Pre/post-run hook | What narrows a run there |
@@ -148,13 +146,7 @@ def _write(config, scope, why):
         os.chmod(tmp, 0o644)   # mkstemp is 0600; the recorder may run as another user
         os.replace(tmp, target)
     except OSError as exc:
-        # Guarded HERE, not at the call sites: one guard then covers every hook
-        # that writes, and a second writer cannot be added unguarded. A
-        # read-only directory or a full disk must not take the suite down with
-        # it — this describes the run, it is not part of it. Absence is the
-        # permissive case, so failing costs the guard and never makes a false
-        # green. Say so on stderr: an advisory that fails silently manufactures
-        # the confidence it exists to check (see "What a producer owes").
+        # Never raise out of a hook; say so on stderr (see "What a producer owes").
         print(f"NOTE: could not write the test-report scope record ({exc}) — "
               f"{target} will be absent, and an ingest of this report will be "
               "trusted rather than checked", file=sys.stderr)
@@ -164,8 +156,6 @@ def _write(config, scope, why):
 def pytest_configure(config):
     # Written FIRST, so a run that is killed or crashes leaves a record saying so
     # rather than the previous run's verdict sitting beside a truncated report.
-    # Never raise out of a hook: a producer that cannot write its record must not
-    # take the suite down with it (see "What a producer owes" above).
     _write(config, "partial", "the run did not finish")
 
 def pytest_sessionfinish(session, exitstatus):

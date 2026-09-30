@@ -1022,7 +1022,7 @@ class TestUncheckedReporting:
         assert any("record-lint did not run" in r for r in result["unchecked"])
         assert any("git exploded" in r for r in result["unchecked"]), "the cause is named"
         # The crash must reach the reviewer at the DELIVERABLE check's severity:
-        # `review-cycle.md` grades this prefix BLOCKING, inheriting the retired
+        # `cross-checks.md` grades this prefix BLOCKING, inheriting the retired
         # `cannot-verify:` bar. A generic note is the BLD-5J8N habituation.
         assert any(
             r.startswith("chunk-ref-missing unchecked") for r in result["unchecked"]
@@ -1252,7 +1252,7 @@ class TestEveryCheckCarriesASeverity:
     """
 
     SURFACES = (
-        "plugin/skills/critic/review-cycle.md",
+        "plugin/skills/critic/cross-checks.md",
         "plugin/skills/critic/goals-1-3.md",
         ".prawduct/cross-cutting-concerns.md",
     )
@@ -1304,7 +1304,7 @@ class TestEveryCheckCarriesASeverity:
         assert "inferred from build-plan Status" in emitter_src
         assert "active_build_plan pointer" in Path(buildplan_refs.__file__).read_text()
 
-        for rel in ("plugin/skills/critic/review-cycle.md",
+        for rel in ("plugin/skills/critic/cross-checks.md",
                     "plugin/skills/critic/goals-1-3.md"):
             text = (root / rel).read_text()
             assert "chunk-ref-missing unchecked" in text, (

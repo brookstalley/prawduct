@@ -24,6 +24,60 @@ def get_prawduct_dir(project_dir: Path) -> Path:
     return project_dir / ".prawduct"
 
 
+def declared_product_name(prawduct_dir: Path) -> str | None:
+    """``product_identity.name`` from ``project-state.yaml``, or ``None`` when
+    it is absent, null or an unfilled template placeholder. The one reader of
+    that field: the briefing shows it, and :func:`project_label` derives from
+    it."""
+    state_path = prawduct_dir / "project-state.yaml"
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    in_identity = False
+    for line in content.splitlines():
+        if "product_identity:" in line:
+            in_identity = True
+        elif in_identity and line.strip().startswith("name:"):
+            val = line.split(":", 1)[1].strip().strip("\"'")
+            if val and val != "null" and not val.startswith("{{"):
+                return val
+            return None
+        elif in_identity and not line.startswith(" ") and line.strip():
+            return None
+    return None
+
+
+def project_label(project_dir: Path) -> str:
+    """The name telemetry records a governed repo under (the ledger's
+    ``project``, the review-stats header).
+
+    Not the directory's name. A devcontainer mounts every workspace at one
+    fixed path (discodon's at ``/opt/venv``, so every event read ``venv``), and
+    a worktree's directory names the worktree, not the product. So, in order:
+    the committed ``product_identity.name``; the push remote's repository name
+    (:func:`push_remote`, so a lone remote not called ``origin`` counts), which
+    a container keeps; the main checkout's directory, which is what a worktree
+    shares; and only then the directory itself. Clones of one repository
+    therefore share a label, which is the identity the first two carry.
+    """
+    declared = declared_product_name(get_prawduct_dir(project_dir))
+    if declared:
+        return re.sub(r"\s+", "-", declared.strip().lower())
+    code, url, _err = _git_text(
+        project_dir, "config", "--get", f"remote.{push_remote(project_dir)}.url"
+    )
+    if code == 0 and url:
+        name = re.split(r"[/:]", url.rstrip("/"))[-1]
+        name = name[:-4] if name.endswith(".git") else name
+        if name:
+            return name
+    common = git_common_dir(project_dir)
+    if common is not None and common.name == ".git":
+        return common.parent.name
+    return project_dir.resolve().name
+
+
 def _git_toplevel(cwd: Path) -> Path | None:
     """Resolved ``git rev-parse --show-toplevel`` from ``cwd``.
 
@@ -409,6 +463,95 @@ def current_branch(project_dir: Path) -> str | None:
         return branch or None
     except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         return None
+
+
+def _run_git_text(project_dir: Path, *args: str) -> tuple[int, str]:
+    """``(returncode, stdout)`` of one read-only git call; ``(-1, "")`` when git
+    could not be run. Never raises. Decodes with ``surrogateescape`` so a path
+    or ref that is not valid UTF-8 parses instead of failing the whole call.
+    Runs with ``GIT_OPTIONAL_LOCKS=0``: a read must never refresh an index —
+    least of all another worktree's, whose index mtime a caller may be reading
+    as a sign of life."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            errors="surrogateescape",
+            cwd=str(project_dir),
+            timeout=10,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return -1, ""
+    return result.returncode, result.stdout
+
+
+def worktree_records(project_dir: Path) -> list[dict] | None:
+    """Parse ``git worktree list --porcelain`` into one dict per worktree — the
+    one parser every worktree-aware surface reads (#843 Decision 4). Three
+    copies had drifted apart on prunable and detached entries, so two lines of
+    one briefing could disagree about the same tree. Read with its own git
+    call, not ``evidence.run_git``: this module is the low-level home for git
+    primitives, and ``evidence`` imports it.
+
+    Keys are the porcelain's own line labels — ``worktree`` (path), ``HEAD``
+    (sha), ``branch`` (full ref) — plus valueless markers (``bare``,
+    ``detached``, ``locked``, ``prunable``) mapped to ``""``. Read them with
+    :func:`record_branch` and :func:`record_is_gone` rather than by hand.
+
+    ``[]`` when ``project_dir`` is not a git repository, the ordinary case for a
+    reader that can be pointed anywhere — and the only case, since a real repo
+    always lists at least its own worktree. ``None`` when it IS one and git
+    still failed (a timeout, a broken repo). Nothing is printed here, because
+    only the caller knows what it just lost: the delegate probe and the
+    stranded-work scan each name their own consequence, and
+    ``briefing._detect_worktrees`` drops its orientation line, since the
+    briefing's worktree line already reports the failure. The repo-ness check
+    is paid only on the failure path."""
+    rc, out = _run_git_text(project_dir, "worktree", "list", "--porcelain")
+    if rc != 0:
+        in_repo, _out = _run_git_text(project_dir, "rev-parse", "--git-dir")
+        return [] if in_repo != 0 else None
+    records: list[dict] = []
+    current: dict = {}
+    for line in out.splitlines():
+        if not line.strip():
+            if current:
+                records.append(current)
+                current = {}
+            continue
+        key, _sep, value = line.partition(" ")
+        current[key] = value
+    if current:
+        records.append(current)
+    return records
+
+
+def record_branch(record: dict) -> str | None:
+    """The short branch name a worktree record holds, or None when detached or
+    bare. Strips exactly ``refs/heads/`` — never a shortening git applies to a
+    name that collides with a tag, which would stop it matching the branch."""
+    ref = record.get("branch")
+    return ref.removeprefix("refs/heads/") if ref else None
+
+
+def record_is_gone(record: dict) -> bool | None:
+    """True when nobody can be working in this worktree: git marks it prunable,
+    or its directory no longer exists. None when that cannot be told: a
+    permission error, or a LOCKED worktree whose directory is absent — `git
+    worktree lock` exists for trees on removable or network storage that is
+    simply not mounted now, which is not abandonment. Callers must not treat
+    None as gone."""
+    if "prunable" in record:
+        return True
+    try:
+        present = Path(record.get("worktree", "")).is_dir()
+    except OSError:
+        return None
+    if not present and "locked" in record:
+        return None
+    return not present
 
 
 def local_branches(project_dir: Path) -> set[str] | None:

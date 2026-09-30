@@ -10,9 +10,102 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.6.2-dev.3
+## v3.7.0-dev.3
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
+**`opus-55-w1-always-on`**: **the always-loaded guidance is retuned for Opus 5.5.** The session
+digest now tells the model to take the next step when it can, instead of ending a turn to announce
+it, offer to continue, or list decisions it could make itself. Its closing-the-turn rules and four
+other bullets are shorter and plainer. A mid-chunk tangent lists delegation last, for when a
+parallel track shortens wall clock without colliding with your files. The stance bar "verify your
+own work before done" is now "show evidence for done". Newly scaffolded
+`.claude/rules/learnings/core.md` files open with "apply a rule where it bears; cite it where it
+changed what you did". Existing repos keep their current header, and it still lints clean.
+
+**`opus-55-w2-hook-gate-text`**: **gate and review output is shorter and plainer.** The
+NEXT-ACTION line after a review states the decision, the command and the cost, without capitals
+or re-argued rules. When the Stop hook blocks, the waiver recipe appears once, after the list of
+blockers. It writes one `.gates-waived` object holding the blocking gates' keys plus any waivers
+already in the file; drop the key of any gate you can satisfy. Previously each blocker printed its
+own `echo … >` line, and running two kept only the last. The session briefing's advisory relay
+now says to carry on with what you asked after relaying.
+
+**`opus-55-w3-review-machinery`**: **the Critic and PR reviewer prompts are retuned for Opus 5.5.**
+The PR reviewer now reports every release-readiness defect at its severity. It no longer
+withholds one because acting on it would cost a review round. Accepting stays the default, and it
+costs nothing. The Critic reviewer no longer gets depth coaching by work size, or a warning
+against inventing findings. Reviewers no longer read copies of rules their protocol already
+states, issue numbers and dates, or harness-version notes. Critic review routes load
+570 to 1,330 fewer tokens, depending on the route. The builder's `/prawduct:pr` skill is about 1,400 words shorter, with a
+plainer register. The Critic now applies a norm departure as BLOCKING wherever a product has
+*adopted* norms, as `norms.md` § Severity defines them. It used to say "ratified".
+
+**`opus-55-w3b-review-cycle-split`**: **each `final`/`cumulative` Critic reviewer loads about 7,800 fewer tokens** (`chunk` and `verify-resolutions` reviews are unchanged). The
+reviewer-facing half of `review-cycle.md` (the chunk-type selector and the final-mode cross-checks)
+is now `skills/critic/cross-checks.md`. The builder's lifecycle stays in `review-cycle.md`, which
+reviewers no longer load. The coordinator's dispatch steps are now `skills/critic/coordinator.md`,
+which only the coordinator reads. No review instruction changed wording.
+
+**`opus-55-w4-methodology-templates`**: **the methodology guides and artifact templates are
+retuned for Opus 5.5.** The guides no longer license ending a turn with work in hand: a chunk
+boundary ends the turn only when the plan is done, the next chunk needs you, or the cycle has
+reached what one review covers. The builder is no longer told to scrub its own diff while the
+Critic runs, or to redo a delegate's sweep; a delegate's brief asks instead for the output that
+shows the work complete. Delegation is no longer the default for tangents. Chunk shape, file-list
+deliverables and phase choreography are advice rather than rules.
+
+**`opus-55-w5-operational-skills`**: **the operational skills are retuned for Opus 5.5**
+(backlog, doctor, janitor, migrate, onboard, runbook and the smaller skills). They lose incident
+stories, version pins and second copies of facts that have a home elsewhere. Every command, gate
+and ordering stays. `/prawduct:backlog pick` ranks by value per effort and flags unassessed items;
+it no longer prints a numeric score. The janitor's neglected-hygiene check (Backlog Health check 5)
+now runs on the Issues backend too, over `in-progress` items whose working branch appears merged.
+The runbook skill and template drop an overstated evidence claim and a dated hallucination rate.
+
+**`opus-55-w6-reference-docs`**: **the reference docs are retuned for Opus 5.5**
+(`runbook-authoring.md`, `norms.md`, `waivers.md`, `test-report-contract.md`,
+`governance-telemetry.md` and `discipline.md`). The runbook guide no longer overstates the evidence
+for short procedures, and states its rejection criteria as the bar a finished runbook meets
+rather than as passes to re-run over your draft. Dated model statistics and research history give
+way to the rules they supported. `norms.md`'s enforcement table now points at § Severity, where
+BLOCKING is scoped to *adopted* norms, instead of restating it as "ratified". `waivers.md` says
+plainly that there is no region form. A whole-cycle coherence pass corrected seams between the
+waves: the chunk-boundary review rule now allows for a short plan's single boundary review, and
+stale pointers and restated facts in the Critic, backlog, doctor and janitor text agree with their
+homes. The methodology index no longer asks for a validation pass between artifact phases, and three
+Critic reviewer directives lose their capitals. No gate or parsed table changed.
+
+**`short-plan-tick`**: **a short plan reaches its boundary review without an override.** On a plan
+of at most 3 chunks that touches no risk surface, tick each earlier chunk's box when you commit it:
+its review is the boundary `cumulative`. Only the last box waits for that review. Previously the
+rules said to tick only after review. That left every box unticked, and `/prawduct:critic` kept
+answering `deferred`.
+
+**`stranded-work`** (#843, local-only arm) — **work stranded on a local branch now says its own
+name.** A reviewed fix could sit on a branch nobody had pushed, and the next session had no way to
+know it existed. Each local branch that no worktree has checked out and that holds commits no
+remote has now raises a `stranded-branch` advisory at session start, naming the branch. Like other
+advisories it is dismissible with a reason, and it resolves itself once you push, merge or delete
+the branch. Sibling **worktrees** get one briefing line of counts: how many have had no agent
+activity for 7+ days (and how many of those hold uncommitted changes), and how many have an agent
+active in the last 30 minutes. That line names no path or branch, so an agent is never pointed into
+another session's work. `prawduct-hook worktrees` (or `--json`) lists everything, with the signal
+behind each worktree's state. Activity is the newest of: Claude Code transcripts in every config
+directory (`~/.claude`, `~/.claude-*`, `$CLAUDE_CONFIG_DIR`, so several accounts are all seen), the
+worktree's git history, a governed session starting there, and its newest uncommitted edit. It is
+inferred from timestamps, so a session paused over a weekend reads as idle. In a repo that squash-
+or rebase-merges, a merged branch you never deleted locally will fire once; dismiss it or delete
+the branch. The suggested commands in this advisory, the unintegrated-delegate advisory and the
+unpushed-release-prep advisory now quote branch names and paths, which git allows to contain `$(`
+and `;`.
+
+**`four-part-release-versions`** (#901) — **`release=` accepts four-part versions.** A product
+whose tags have four numeric parts can now stamp them (`release=v1.2.3.4`, with or without a
+`-suffix`). Before this, every such tag was refused as "not a version", which blocked both
+`archive-change-log` and `check-releasability`. Placeholders such as `release=unreleased`, and
+two- or five-part values, are still refused. The refusal now tells you what to do in each case:
+if the entry shipped, correct the value; if it has not, delete the tag.
 
 **`update-body-lint`** (#898) — **backlog `update` now checks the body it writes.** On the
 Issues backend, `add` reported issue-standard body findings (the word budget, missing sections)
@@ -137,6 +230,17 @@ they grow. From this release:
   learnings rules, linked from the norm. It now lives in the norm's own `Rulings:` field, named and
   stated in full. When compaction reaches a ruling in your `core.md`, it moves it there
   (`moved-to`, verified at the destination) rather than squeezing it into one line.
+
+**`sibling-hook-perf`**: **SessionStart and Stop no longer slow down as a repo ages.** Every
+hook re-listed each tree in the review-evidence store with one `git ls-tree`, so latency grew with
+the store: about 4 s of a 6 s Stop at 231 trees, and a p90 of about a minute at 1,700. Each tree is now
+keyed once per clone and remembered in `.git/prawduct/tree-keys.json`. The first hook after an
+upgrade pays the old cost once; later ones don't. SessionStart's API-versioning scan walks the
+tree once instead of four times. Four governance fixes ride along. The clear-verdict guidance says
+that a server or recorder you started survives a `/clear`. Ledger and review-stats label a repo
+by its product name or git remote instead of the directory, so devcontainers stop logging
+`venv`. A chunk's `Type: bugfix` (or `feature`, `refactor`, …) reads as `code`. The compliance
+canary's "code changed but no tests" check is removed; test adequacy is the Critic's to judge.
 
 ## v3.6.1
 

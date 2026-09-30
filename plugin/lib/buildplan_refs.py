@@ -729,8 +729,9 @@ def infer_scope_from_branch(
     - A matched plan must be **live on this branch**: archived plans are never
       in the map, and a plan whose Status is entirely ticked matches only if
       this branch changed the plan file since it left the base branch. Boxes
-      are ticked per chunk, after each review, so every box is ticked by the
-      plan's own end-of-plan ``cumulative`` — rejecting on ticks alone turned
+      are ticked per chunk, after each review (a short plan's deferred chunks
+      at commit), so every box is ticked by the plan's own end-of-plan
+      ``cumulative`` — rejecting on ticks alone turned
       the scope off for exactly that review. But on gitflow a merged plan stays
       live until the release, and a follow-up branch reusing its exact name
       must not be graded against it: *this* answer feeds every
@@ -1588,6 +1589,19 @@ _BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
 _BUILD_PLAN_ALLOWED_TYPES = frozenset(
     {"code", "doc-only", "cleanup", "designer-handoff", "cumulative-final", "trivial"}
 )
+#: The work types `building.md` scales governance by, and the change-log's
+#: `type=` vocabulary shares two of them, so authors write them in a chunk's
+#: `Type:` field meaning "this is code work". Each reads as `code`, the full
+#: protocol, so an alias can never lighten a review. Rejecting them reported an
+#: error on a chunk that ran as `code` anyway.
+_BUILD_PLAN_TYPE_ALIASES = {
+    "feature": "code",
+    "bugfix": "code",
+    "refactor": "code",
+    "optimization": "code",
+    "hotfix": "code",
+    "debt-paydown": "code",
+}
 # `**Trivial because:** <rationale>` — first line; continuation lines (no
 # list-item / heading prefix) are joined onto the rationale until the next
 # field. Empty after the colon → missing-rationale.
@@ -2844,8 +2858,11 @@ def _parse_build_plan_chunk_type(
 
     if declared is None:
         return "code", None  # fail-closed default
+    declared = _BUILD_PLAN_TYPE_ALIASES.get(declared, declared)
     if declared not in _BUILD_PLAN_ALLOWED_TYPES:
-        allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
+        allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES)) + (
+            "; read as code: " + ", ".join(sorted(_BUILD_PLAN_TYPE_ALIASES))
+        )
         return None, f"{UNKNOWN_TYPE_PREFIX} {declared!r} (allowed: {allowed})"
     return declared, None
 

@@ -462,7 +462,13 @@ LAST_MEASURED_TOKENS = {
     # is still working. Paid in part by dropping the digest sentence's "so they reach you whether or
     # not you opened this guide", which restated what "injects them into every session" already
     # says. DECLARED for the remainder: the obligation is new, not a restatement.
-    "methodology/building.md": 5122,
+    # -49 on 2026-09-28 (opus-55-w4, slice B of the prompt audit): builder self-scrub
+    # during review (B-1), the consumer-grep subagent (B-2), the separate
+    # artifacts-current step (B-36) and the coordinator's re-derivation of a
+    # delegate's sweep (B-10) cut; bold emphasis trimmed (B-27). B-16's rule for
+    # when a chunk boundary ends the turn was paid for from those cuts, and so
+    # was the 3-4-file size the cumulative review found B-25 had dropped (-43 net).
+    "methodology/building.md": 5079,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -615,7 +621,12 @@ LAST_MEASURED_TOKENS = {
     # on a large review is thousands of output tokens on the dispatch critical path.
     # RAISED 4392 -> 4399, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: WARNING at `cumulative`, none at `final`.)
     # RAISED 4399 -> 4412, same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
-    "skills/critic/review-protocol.md": 4412,
+    # -96 on 2026-09-28 (opus-55-w3), C-21, C-23 and the adopted-norms pointer cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    # +10 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    # -523 on 2026-09-28 (opus-55-w3b), C-20: the Coordinator Pattern moves to coordinator.md; the ceiling lowered with it.
+    "skills/critic/review-protocol.md": 3803,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -708,7 +719,11 @@ LAST_MEASURED_TOKENS = {
     # fundable by trimming, and the wrong reading cost more than 30 tokens would.
     # RAISED 2652 -> 2665, #820 (owner decision 2026-09-23): the declared suite moves from every chunk's Verify to the boundary — a default every consumer inherits, so the sentence carrying it is owed at each surface its reader meets. Compressed in place first; no duplication to pay from. DECLARED. (stale suite: no finding at the inner stage.)
     # RAISED 2665 -> 2668, learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): three new record-lint checks, and `TestEveryCheckCarriesASeverity` requires every check NAME on this surface, so there is no shorter form to pay from. DECLARED.
-    "skills/critic/goals-1-3.md": 2668,
+    # -6 on 2026-09-28 (opus-55-w3), C-21 and the adopted-norms pointer cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    # +5 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    "skills/critic/goals-1-3.md": 2667,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -872,7 +887,14 @@ LAST_MEASURED_TOKENS = {
     # RAISED 11232 -> 11317 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
     # RAISED a further +48 (11317 -> 11365), learnings-one-line (the owner-confirmed design in that plan's Requirements Confidence, 2026-09-24): the severity table gains the three new record-lint checks and the over-budget row its second regime. Rows compressed in place first (65 -> 48); every check name must appear here (`TestEveryCheckCarriesASeverity`). DECLARED.
     # RAISED +2 (11365 -> 11367, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
-    "skills/critic/review-cycle.md": 11367,
+    # -670 on 2026-09-28 (opus-55-w3), C-2, C-3 and C-7's history sweep cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    # +3 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    # -3231 on 2026-09-28 (opus-55-w3b), C-8: the reviewer-facing Type selector and cross-checks move to cross-checks.md; the ceiling lowered with it.
+    # -9 on 2026-09-29 (opus-55-w6, the Fable coherence pass): a quote of a building.md sentence
+    # that no longer exists, and a claim the close directive prints this paragraph verbatim, cut.
+    "skills/critic/review-cycle.md": 7460,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1011,8 +1033,20 @@ LAST_MEASURED_TOKENS = {
     # RAISED 3680 -> 3684 (#820), same PR, after its cumulative review (W1/W3): the boundary is defined as where work LANDS, so direct-commit repos and work ending on a single `final` still owe the suite, and `final` reports a stale record as an observation. Compressed in place first. DECLARED.
     # RAISED 3684 -> 3719 (review-friction, 2026-09-25): the chunk-close order (review, fix, then commit), the mid-plan routing rule, and the merge-base start of a clean-tree `chunk` interval, which removes mid-plan boundary reviews (33 `cumulative` rounds since 09-20 across seven repos, ~11 findings each). The new text was compressed in place before declaring. DECLARED.
     # RAISED +1 (3719 -> 3720, review-friction, 2026-09-26): the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets. DECLARED.
-    "skills/critic/SKILL.md": 3720,
-    "skills/critic/framework-checks.md": 1116,
+    # -560 on 2026-09-28 (opus-55-w3), C-19: harness mechanics, the restated precedence and incident ids cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    # -9 in the same wave, DECLARED: fixes from the wave's own review: pointers into
+    # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
+    # -12 on 2026-09-28 (opus-55-w3b), C-20: the coordinator bullet points at coordinator.md instead of restating it; the ceiling lowered with it.
+    "skills/critic/SKILL.md": 3139,
+    # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
+    # prompt audit's slice C; the ceiling lowered with it.
+    "skills/critic/framework-checks.md": 1108,
+    # New on 2026-09-28 (opus-55-w3b). cross-checks.md holds the reviewer-facing half of the review
+    # cycle (C-8), and coordinator.md holds the coordinator's dispatch steps (C-20). Each is loaded on
+    # a reviewer route, so each carries a ceiling.
+    "skills/critic/cross-checks.md": 3380,
+    "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -1059,7 +1093,12 @@ LAST_MEASURED_TOKENS = {
     # DISCOVERY NOT CAPTURED nudge — the old sentence said nothing backfills the
     # state, which onboard now does. Unfunded; declared growth (#688).
     # Both landed together: 5116 - 529 + 16.
-    "methodology/discovery.md": 4603,
+    # -356 on 2026-09-28 (opus-55-w4): the API deferral rule's copy becomes a
+    # pointer to planning.md "Exposed API" (B-39); the domain-concern table,
+    # which restated each characteristic's Implications, goes (B-21), and so do
+    # the per-risk question and search quotas (B-22). B-21 and B-22 were held
+    # until a Sonnet 5.5 discovery probe showed no lost critical concern. A CUT.
+    "methodology/discovery.md": 4247,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1163,7 +1202,20 @@ LAST_MEASURED_TOKENS = {
     # +34 on 2026-09-25 (review-friction): "Per-chunk commit is the contract" now spells out
     # review, fix, then commit, and the multi-chunk heuristic says a chunk committed first still
     # infers `chunk`. A READING, no ceiling.
-    "methodology/planning.md": 5804,
+    # +57 on 2026-09-28 (short-plan-tick): the tick definition admits a short
+    # plan's deferred chunks, and the short-plan bullet says to tick them at
+    # commit and why. A READING, no ceiling.
+    # -152 on 2026-09-28 (opus-55-w4): phase choreography and its between-phase
+    # self-review (B-19), chunk shape restated as advice (B-17), the API
+    # deferral rule's second copy (B-39), prawduct's own surface list moved to
+    # this repo's learnings (B-20), bold emphasis trimmed (B-28). B-17's line now
+    # also states #341's acceptance criterion (a builder who finds a better
+    # route takes it and records why), paid from those cuts; the partition
+    # paragraph now points at the delegation test rather than restating it.
+    # +13 on 2026-09-30 (sibling-hook-perf): the Type field's allowed values
+    # name `building.md`'s work types as aliases read as `code` (#934), which
+    # authors wrote and the parser used to reject. A READING, no ceiling.
+    "methodology/planning.md": 5722,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1238,7 +1290,14 @@ LAST_MEASURED_TOKENS = {
     # -9 on 2026-09-24 (learnings-one-line Chunk 03): Step 4's product-rule
     # sentence rewritten to the one-line form, shorter than the heading form it
     # replaced. A READING, no ceiling.
-    "methodology/reflection.md": 2852,
+    # -9 on 2026-09-28 (opus-55-w1): the learnings-header sentence stopped
+    # describing an obligation A-16 removed. A READING, no ceiling.
+    # -191 on 2026-09-28 (opus-55-w4): the root-cause stopping rule in one
+    # sentence (B-23), Post-Fix Reflection no longer restates Steps 3-4 (B-24),
+    # the product-feedback scan every product could not run (B-40). A CUT.
+    # Post-Fix now fixes a cause's class through its one owner, not only
+    # in-scope instances, to agree with the learnings rule.
+    "methodology/reflection.md": 2652,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -1255,7 +1314,16 @@ LAST_MEASURED_TOKENS = {
     # the pair; the "outstanding" paragraph scopes `YOUR TURN` to work a clear
     # leaves alone, and the wrong-label list gains the pair. The guide had
     # taught the pair it now forbids. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3198,
+    # -158 on 2026-09-28 (opus-55-w4): the live-review deadline paragraph points
+    # at `MIN_PRICED_SAMPLE` instead of copying its value (B-34); the "just go"
+    # shade and the hard stop that read as licences to end the turn rewritten
+    # (B-9, B-35). A CUT.
+    # +55 on 2026-09-30 (sibling-hook-perf): the verdict paragraph says a
+    # process running on its own is no reason for `DO NOT CLEAR`, since a clear
+    # ends the conversation and not the process. Consumers closed `YOUR TURN` +
+    # `DO NOT CLEAR` over exactly that belief, and the gate refused them nine
+    # times (#932). A READING, no ceiling.
+    "methodology/session-hygiene.md": 3095,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1358,7 +1426,12 @@ LAST_MEASURED_TOKENS = {
     # is the moment this rule has to fire.
     # -4 on 2026-09-03 (learnings-v2-docs Chunk 04 resolutions): the clear-verdict
     # pointer names `session-hygiene` instead of a section of reflection.md. A CUT.
-    "methodology/delegation.md": 2762,
+    # +14 on 2026-09-28 (opus-55-w4): a delegate's Done on a sweep now ARRIVES
+    # with its evidence, so the brief's return clause asks for it (B-12), and the
+    # ownership bullet names the budgets the delegate's files sit under (a W3
+    # delegate met its ceilings only as red tests). Mostly paid in place by
+    # cutting two incident stories (B-33); the rest is a RAISE, on-demand class.
+    "methodology/delegation.md": 2776,
 }
 
 
@@ -1726,8 +1799,24 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # mostly in place: the new rule absorbed the findings-only sentence, which
     # stated the same obligation (persist, then `SAFE TO CLEAR`) for two of
     # its cases. The +2 it could not reach is DECLARED on the ceilings below.
-    "framework": 3280,
-    "product": 2221,
+    # framework 3280 -> 3134, product 2221 -> 2191 on 2026-09-28 (opus-55-w1,
+    # the Opus 5.5 prompt audit's always-on wave). A CUT: the digest's closing
+    # section and four bullets were rewritten plainly and carry A-1's
+    # take-the-next-step paragraph inside the saving; CLAUDE.md dropped the
+    # requirements check the digest's stance lead already states and the
+    # compact-preserve list the compact-time digest re-injects.
+    # +11 on both, 2026-09-28 (short-plan-tick). A DECLARED RAISE: the digest's
+    # tick bullet gains "a short plan's earlier chunks at commit". Without it the
+    # bullet contradicts the inference, which reads unticked boxes, and a short
+    # plan never infers its boundary review. Owner-confirmed in session.
+    # -3 framework on 2026-09-29 (opus-55-w6, the Fable coherence pass): CLAUDE.md's Critic
+    # timing sentence now also covers a short plan's single boundary review, in fewer words.
+    # 3142 -> 3134, 2202 -> 2194 on 2026-09-30 (sibling-hook-perf): the digest
+    # gains one clause (a server or recorder running on its own survives a
+    # clear, #932), paid in place by cutting its opening's second sentence,
+    # which restated what "Read on demand" says.
+    "framework": 3134,
+    "product": 2194,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1876,8 +1965,15 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # owed. Paid in place first (see the reading's entry); the 500-char emitted
     # reserve is NOT spent — the digest sits at 9,499 of its 9,500 working
     # budget. One over each reading, so nothing is banked.
-    "framework": 3281,
-    "product": 2222,
+    # 3281 -> 3135, 2222 -> 2192 on 2026-09-28 (opus-55-w1): ratcheted with the
+    # cut in the reading table, one over each reading, nothing banked.
+    # 3135 -> 3146, 2192 -> 2203 on 2026-09-28 (short-plan-tick): the declared
+    # raise in the reading table, one over each reading.
+    # 3146 -> 3143 framework on 2026-09-29 (opus-55-w6): ratcheted with the reading's cut.
+    # 3143 -> 3135, 2203 -> 2195 on 2026-09-30 (sibling-hook-perf): ratcheted
+    # with the reading, one over each.
+    "framework": 3135,
+    "product": 2195,
 }
 
 
@@ -2142,7 +2238,12 @@ class TestBuildingMethodology:
         above the rule saying warnings and notes gate nothing, so both halves
         are asserted together and the pair is what fails.
         """
-        assert "Disposition them ALL in ONE pass" in self.content
+        # Render consistency with the runtime half: the guide carries
+        # `gates.FIX_ORDER` verbatim, the string `_BATCH_FIX_DIRECTIVE` composes.
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from lib import gates
+        assert gates.FIX_ORDER in self.content
         assert "Warnings and notes gate nothing" in self.content
         # The exact phrasings the runtime's own comment records rejecting.
         assert "Fix them all in ONE commit" not in self.content
@@ -2520,6 +2621,23 @@ class TestBuildingMethodology:
             "never blind-append"
             in read_file("methodology/session-digest.md").lower()
         )
+
+    def test_a_process_running_on_its_own_is_no_reason_to_keep_the_session(self):
+        """Consumers closed `YOUR TURN` + `DO NOT CLEAR` because a server or
+        recorder they had started was running, and the gate refused them nine
+        times (#932). The rule's home says why such a process earns neither
+        label, and the digest, the one surface every session reads, carries
+        the trigger. Both are pinned: a rule reworded in one carrier is two
+        rules that no single-file guard sees."""
+        hygiene = read_file("methodology/session-hygiene.md")
+        verdict = hygiene[hygiene.index("**Only `RUNNING` may say `DO NOT CLEAR`.**"):]
+        verdict = verdict[: verdict.index("\n")]
+        assert "runs on its own" in verdict
+        assert "a clear ends the conversation, not the process" in verdict
+        digest = read_file("methodology/session-digest.md")
+        precedence = digest[digest.index("If they must speak it is `YOUR TURN`"):]
+        precedence = precedence[: precedence.index("never predict")]
+        assert "running on its own survives one" in " ".join(precedence.split())
 
     def test_a_findings_only_turn_must_persist_before_claiming_safe_to_clear(self):
         """The clear verdict is computed from disk and process state, so a turn
@@ -3170,7 +3288,9 @@ class TestBuildingMethodology:
         # RAISED 5056 -> 5073 (#820, suite at the boundary, 2026-09-23) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5094 -> 5117 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5117 -> 5123 (clear-verdict-coherence, 2026-09-27) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5123, f"building.md is ~{tokens} tokens, should be <5123"
+        # LOWERED 5123 -> 5080 (opus-55-w4, 2026-09-28): slice B's cuts, one over
+        # the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5080, f"building.md is ~{tokens} tokens, should be <5080"
 
 
 # =============================================================================
@@ -4644,14 +4764,6 @@ class TestCriticSkill:
             "prose and collects a restatement of the finding title"
         )
 
-    def test_signals_and_work_scaling(self):
-        """Has signals section and work size/type guidance."""
-        assert "Signals That Guide Your Review" in self.content
-        for level in ["Trivial", "Small", "Medium", "Large"]:
-            assert level in self.content
-        assert "Feature" in self.content
-        assert "Bugfix" in self.content
-
     def test_goal_based_structure(self):
         """All seven goals present."""
         for goal in [
@@ -4681,9 +4793,11 @@ class TestCriticSkill:
         assert "encapsulation" in lower
         assert "coupling" in lower
         assert "coordinator" in lower
-        assert "correctness reviewer" in lower
-        assert "design reviewer" in lower
-        assert "sustainability reviewer" in lower
+        # The reviewer roster moved to coordinator.md (opus-55 W3b, C-20).
+        roster = read_file("skills/critic/coordinator.md").lower()
+        assert "correctness reviewer" in roster
+        assert "design reviewer" in roster
+        assert "sustainability reviewer" in roster
         assert "project-preferences.md" in self.content
         assert "boundary-patterns.md" in self.content or "contract surface" in lower
         assert "alternatives considered" in lower
@@ -4880,7 +4994,7 @@ class TestCriticSkill:
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 4413, f"review-protocol.md is ~{tokens} tokens, should be <4413"
+        assert tokens < 3804, f"review-protocol.md is ~{tokens} tokens, should be <3804"
 
 
 # =============================================================================
@@ -5161,7 +5275,7 @@ class TestCriticGoals13:
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 2669, f"goals-1-3.md is ~{tokens} tokens, should be <2669"
+        assert tokens < 2668, f"goals-1-3.md is ~{tokens} tokens, should be <2668"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5173,7 +5287,7 @@ class TestCriticGoals13:
         prohibition instructs better than "don't read the others." So every line
         mentioning one must be that prohibition — which also means a future edit
         cannot smuggle a read-directive back in under the same filename."""
-        pointers = ("review-protocol.md", "review-cycle.md", "framework-checks.md")
+        pointers = _files_the_fast_path_must_not_open()
         offenders = [
             ln for ln in self.content.split("\n")
             if any(p in ln for p in pointers) and "do not open" not in ln
@@ -5269,7 +5383,7 @@ class TestCriticGoals13:
         cap above only limits the damage once one has.
 
         Asserted on BOTH carriers because the row exists twice — here (what a
-        chunk / verify-resolutions reviewer reads) and `review-cycle.md`'s
+        chunk / verify-resolutions reviewer reads) and `cross-checks.md`'s
         selector table (what every other reader consults). Dropping it from one
         leaves the other instructing the opposite, which is worse than leaving
         both: a reviewer that finds the surviving copy has an explicit mandate.
@@ -5280,11 +5394,11 @@ class TestCriticGoals13:
         )
         assert "Goal 1 prose only" in doc_only
         row = next(
-            ln for ln in read_file("skills/critic/review-cycle.md").split("\n")
+            ln for ln in read_file("skills/critic/cross-checks.md").split("\n")
             if ln.startswith("| `doc-only`")
         )
         assert "numeric counts" not in row, (
-            "review-cycle.md's Per-Chunk Type selector still asks for counts — "
+            "cross-checks.md's Per-Chunk Type selector still asks for counts — "
             "the two carriers now instruct opposite things"
         )
 
@@ -5345,6 +5459,21 @@ class TestCriticGoals13:
             "Framework-Specific Checks", "Backlog Reconciliation",
         ):
             assert absent not in self.content, f"goals-1-3.md regrew {absent!r} — that is final-mode payload"
+
+
+def _files_the_fast_path_must_not_open() -> tuple[str, ...]:
+    """Every Critic file a `chunk`/`verify-resolutions` reviewer must not be sent
+    to: each file `SKILL.md` routes by `${CLAUDE_SKILL_DIR}/` other than the fast
+    path's own `goals-1-3.md`, plus `review-cycle.md`, which no reviewer loads.
+
+    Derived rather than listed: the hand-kept tuples this replaced missed
+    `framework-checks.md` in two places and needed two new files added when the
+    review cycle was split (opus-55 W3b)."""
+    skill = read_file("skills/critic/SKILL.md")
+    routed = set(re.findall(r"\$\{CLAUDE_SKILL_DIR\}/([\w-]+\.md)", skill))
+    files = (routed - {"goals-1-3.md"}) | {"review-cycle.md"}
+    assert {"review-protocol.md", "cross-checks.md", "coordinator.md", "framework-checks.md"} <= files, files
+    return tuple(sorted(files))
 
 
 class TestCriticSkillRoutesByMode:
@@ -5417,7 +5546,7 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3721, f"SKILL.md is ~{tokens} tokens, should be <3721"
+        assert tokens < 3140, f"SKILL.md is ~{tokens} tokens, should be <3140"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -5452,7 +5581,7 @@ class TestCriticSkillRoutesByMode:
         unscoped = [
             ln.strip()[:110] for ln in header.split("\n")
             if ln.lstrip().startswith("- ")
-            and any(f in ln for f in ("review-protocol.md", "review-cycle.md", "framework-checks.md"))
+            and any(f in ln for f in _files_the_fast_path_must_not_open())
             and not any(m in ln for m in ("final", "cumulative"))
         ]
         assert not unscoped, f"header lists a final-only file without scoping it: {unscoped}"
@@ -5471,7 +5600,7 @@ class TestCriticSkillRoutesByMode:
             ln for ln in self.content.split("\n")
             if 'Roster `["reviewer"]`' in ln
         )
-        for cited in ("review-protocol.md", "review-cycle.md"):
+        for cited in _files_the_fast_path_must_not_open():
             assert cited not in bullet, (
                 f"the single-pass bullet cites {cited} — that read is the payload "
                 f"the split removed, and goals-1-3.md already carries it"
@@ -5489,15 +5618,17 @@ class TestCriticSkillRoutesByMode:
         `final`/`cumulative`) but an escape hatch excusing anything later
         appended to that line, which is the same shape as the defect this test
         was written to catch. Its prose now qualifies its own citation
-        (`the final/cumulative "Coordinator Pattern" in review-protocol.md`), so
+        (it now reads "On that `final`/`cumulative` roster, read `coordinator.md`"), so
         the skip was deleted rather than documented."""
         steps = self.content.split("## Getting Started", 1)[1]
         offenders = []
         for ln in steps.split("\n"):
             for clause in re.split(r"(?<=\.)\s|[;()]", ln):
-                if "review-protocol.md" not in clause and "review-cycle.md" not in clause:
+                if not any(f in clause for f in _files_the_fast_path_must_not_open()):
                     continue
-                if any(q in clause for q in ("final", "cumulative", "goals-1-3.md")):
+                # "no reviewer loads" qualifies too: after C-8 no review mode opens
+                # review-cycle.md, so a clause saying so sends no one there.
+                if any(q in clause for q in ("final", "cumulative", "goals-1-3.md", "no reviewer loads")):
                     continue
                 offenders.append(clause.strip()[:110])
         assert not offenders, f"fast-path steps cite a final-only file unqualified: {offenders}"
@@ -5738,7 +5869,22 @@ class TestReviewCycle:
         # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 11368, f"review-cycle.md is ~{tokens} tokens, should be <11368"
+        assert tokens < 7461, f"review-cycle.md is ~{tokens} tokens, should be <7461"
+
+    def test_cross_checks_token_budget(self):
+        # cross-checks.md is the reviewer-facing half review-cycle.md used to
+        # carry (C-8). Every `final`/`cumulative` reviewer loads it, three times
+        # on a coordinator roster, so growth here is paid per reviewer. The next
+        # addition trims or relocates; it does not bump.
+        tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
+        assert tokens < 3381, f"cross-checks.md is ~{tokens} tokens, should be <3381"
+
+    def test_coordinator_token_budget(self):
+        # coordinator.md is read only by the fork on a coordinator roster (C-20).
+        # It exists so that text leaves every dispatched reviewer's payload
+        # without landing in SKILL.md, which the cheap `chunk`/`verify` route loads.
+        tokens = estimate_tokens(read_file("skills/critic/coordinator.md"))
+        assert tokens < 595, f"coordinator.md is ~{tokens} tokens, should be <595"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -5756,7 +5902,7 @@ class TestReviewCycle:
         # standing rule: THE NEXT ADDITION TRIMS OR RELOCATES, IT DOES NOT BUMP.
         content = read_file("skills/critic/framework-checks.md")
         tokens = estimate_tokens(content)
-        assert tokens < 1150, f"framework-checks.md is ~{tokens} tokens, should be <1150"
+        assert tokens < 1109, f"framework-checks.md is ~{tokens} tokens, should be <1109"
 
     def test_structure(self):
         content = read_file("skills/critic/review-cycle.md")
@@ -5769,9 +5915,9 @@ class TestReviewCycle:
         """The four backlog-hygiene checks (CRT-3K9P) must stay in Backlog
         Reconciliation — guards against a silent trim deleting them (the same
         regression-guard pattern as the PR-reviewer dropped-goal test)."""
-        content = read_file("skills/critic/review-cycle.md")
+        content = read_file("skills/critic/cross-checks.md")
         for check in ("C-B1", "C-B2", "C-B3", "C-B4"):
-            assert check in content, f"review-cycle.md missing backlog check {check}"
+            assert check in content, f"cross-checks.md missing backlog check {check}"
 
     def test_the_per_mode_table_records_the_severity_narrowing(self):
         """`review-cycle.md` owns per-mode behavior, so the table is where a
@@ -6256,7 +6402,7 @@ class TestInnerBlockingSetIsOneSentence:
             "the dispatched reviewer's partial schema has no observations arm — at "
             "inner stage it has nowhere to put what it demotes"
         )
-        protocol = read_file("skills/critic/review-protocol.md")
+        protocol = read_file("skills/critic/coordinator.md")
         assert "Signals: <SIGNALS>" in protocol and "`signals` verbatim" in protocol, (
             "the coordinator prompt template no longer substitutes the manifest's "
             "code-rendered signals line — a coordinator composes one again"
@@ -6359,8 +6505,8 @@ class TestSubjectAndOracleReachTheReviewer:
             "the reviewer is left to infer that the narrowing swallowed it"
         )
 
-    def test_review_cycle_owns_the_records_pass(self):
-        content = read_file("skills/critic/review-cycle.md")
+    def test_cross_checks_owns_the_records_pass(self):
+        content = read_file("skills/critic/cross-checks.md")
         assert "### Records Pass" in content
         # The two bars moved here from the builder-facing severity paragraph;
         # they are the pass's whole contract, so both must survive the move.
@@ -6372,7 +6518,7 @@ class TestSubjectAndOracleReachTheReviewer:
         """Not a fourth reviewer role — adding lenses is what the measurement
         said drives finding count. It rides `sustainability`, which already
         owns the other two cross-checks."""
-        cycle = read_file("skills/critic/review-cycle.md")
+        cycle = read_file("skills/critic/cross-checks.md")
         header = cycle.split("## Final-Mode Cross-Checks", 1)[1]
         assert "### Records Pass" in header.split("\n## ", 1)[0], (
             "the Records Pass is not inside Final-Mode Cross-Checks"
@@ -6389,7 +6535,7 @@ class TestSubjectAndOracleReachTheReviewer:
         have no Records Pass to route it to. A reviewer obeying an absolute there
         swallows a machine-detected BLOCKING, which is the expensive direction.
         One statement owns the carve-out; the other surfaces point at it."""
-        cycle = read_file("skills/critic/review-cycle.md")
+        cycle = read_file("skills/critic/cross-checks.md")
         # Whitespace-normalized: these files are hard-wrapped, so a two-word
         # name legitimately straddles a line break and a literal substring test
         # would grade the wrapping rather than the rule.
@@ -6414,7 +6560,7 @@ class TestSubjectAndOracleReachTheReviewer:
         Making records oracle-only per round retired no severity — a Records Pass
         whose bars all read WARNING would have traded that class away silently,
         and nothing in the plan disposed of it."""
-        cycle = read_file("skills/critic/review-cycle.md")
+        cycle = read_file("skills/critic/cross-checks.md")
         pass_section = " ".join(
             cycle.split("### Records Pass", 1)[1].split("\n### ", 1)[0].split()
         )
@@ -6430,10 +6576,12 @@ class TestSubjectAndOracleReachTheReviewer:
         builder section rather than left standing beside its replacement. Two
         stopping rules where one is false is the failure this whole plan exists
         to fix."""
-        cycle = read_file("skills/critic/review-cycle.md")
-        builder_half = cycle.split("## Final-Mode Cross-Checks", 1)[0]
+        # Since W3b (C-8) review-cycle.md IS the builder half, and the pass lives
+        # in cross-checks.md, so the pointer names that file.
+        builder_half = read_file("skills/critic/review-cycle.md")
         assert "only subject is a non-judgeable record is a **NOTE**" not in builder_half
-        assert "Records Pass** below" in builder_half
+        assert "`cross-checks.md`'s **Records Pass**" in builder_half
+        assert "### Records Pass" in read_file("skills/critic/cross-checks.md")
 
 
 class TestReviewerFileSetsRideTheManifest:
@@ -6456,8 +6604,8 @@ class TestReviewerFileSetsRideTheManifest:
 
     @staticmethod
     def _template() -> str:
-        protocol = read_file("skills/critic/review-protocol.md")
-        section = protocol.split("### Coordinator Pattern", 1)[1].split("\n## ", 1)[0]
+        protocol = read_file("skills/critic/coordinator.md")
+        section = protocol.split("## Coordinator Pattern", 1)[1]
         lines = [ln for ln in section.splitlines() if ln.lstrip().startswith('> "Critic reviewer')]
         assert len(lines) == 1, "the coordinator prompt template is no longer one quoted line"
         return lines[0]
@@ -6480,7 +6628,7 @@ class TestReviewerFileSetsRideTheManifest:
         assert "<MANIFEST>" in template
         # The oracle half is what a narrowing silently loses, so both are named.
         assert "`files_reviewed`" in template and "`files_oracle`" in template
-        protocol = " ".join(read_file("skills/critic/review-protocol.md").split())
+        protocol = " ".join(read_file("skills/critic/coordinator.md").split())
         assert "`<MANIFEST>` as `[dir]` + `.prawduct/.critic-partials/manifest.json`" in protocol
 
     def test_the_reviewer_is_told_its_sets_come_from_the_manifest(self):

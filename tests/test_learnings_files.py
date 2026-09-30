@@ -359,11 +359,7 @@ class TestScaffoldCore:
         assert path == tmp_path / lf.RULES_DIR_REL / lf.CORE_NAME
         assert path.read_text(encoding="utf-8") == lf.CORE_HEADER
 
-    def test_header_carries_the_descent_obligation(self):
-        # The obligation is what a product actually receives — the two sentences
-        # that make a read rule cost something to ignore.
-        assert "Reading a rule is not applying it" in lf.CORE_HEADER
-        assert "does not apply" in lf.CORE_HEADER
+    def test_header_has_no_paths_frontmatter(self):
         # No `paths:` frontmatter: core is the always-loaded file.
         assert lf.parse_frontmatter(lf.CORE_HEADER)[0] == []
 
@@ -467,11 +463,36 @@ class TestRuleUnits:
             "a rule with no title above it"
         ]
 
-    def test_the_scaffold_obligation_header_is_not_a_unit(self):
+    def test_the_scaffold_header_is_not_a_unit(self):
         """`CORE_HEADER` is a title plus two plain paragraphs. A freshly scaffolded
         repo must have ZERO rules, or its first Stop records a rule nobody
         wrote and the corpus reads as used from the moment it is created."""
         assert lf.rule_units(lf.CORE_HEADER) == []
+
+    #: The header every product repo scaffolded before it was reworded. A
+    #: scaffold never rewrites `core.md`, so these repos keep this text for good.
+    PRIOR_CORE_HEADER = (
+        "# Learnings — core\n"
+        "\n"
+        "**Reading a rule is not applying it.** For any rule below that bears on the "
+        "decision in front of you, name the rule and say what it changes about that "
+        "decision — or say that it does not apply, which is also an answer.\n"
+        "\n"
+        "Each rule is one line of at most 250 characters. This file is capped, "
+        "so a new rule is paid for by merging or retiring one.\n"
+    )
+
+    def test_a_repo_keeping_the_prior_header_still_lints_clean(self):
+        """The header is excluded by GRAMMAR (plain paragraphs), not by matching
+        `CORE_HEADER`'s text. So rewording `CORE_HEADER` must not turn the old
+        header, still in every already-onboarded repo, into a rule or a body
+        violation. Control: the same sentence written as a bullet IS a unit,
+        so a zero here is not the parser failing to see the text."""
+        text = self.PRIOR_CORE_HEADER + "\n- an authored rule\n"
+        assert lf.rule_units(text) == ["an authored rule"]
+        assert lf.shape_violations(text) == []
+        as_bullet = "# Learnings — core\n\n- **Reading a rule is not applying it.** x\n"
+        assert lf.rule_units(as_bullet) == ["**Reading a rule is not applying it.** x"]
 
     def test_frontmatter_contributes_no_units(self):
         text = _area("  - src/**\n", body="\n# Area\n\n### the only rule\n")
@@ -656,10 +677,22 @@ class TestAgainstTheRealCorpus:
         # No citation is ever the empty string, which would match every finding.
         assert all(lf.unit_citation(u) for u in citable)
 
-    def test_the_real_title_and_obligation_header_are_excluded(self):
-        units = lf.rule_units(self._core().read_text(encoding="utf-8"))
+    def test_the_real_title_and_scaffold_header_are_excluded(self):
+        """The real `core.md` opens with the scaffold header, and none of that
+        header's paragraphs is read as a rule. The paragraphs are taken from
+        `CORE_HEADER` itself, so rewording the header cannot leave this test
+        checking a sentence the file no longer has."""
+        text = self._core().read_text(encoding="utf-8")
+        assert text.startswith(lf.CORE_HEADER)
+        units = lf.rule_units(text)
         assert not any(u.startswith("Learnings —") for u in units)
-        assert not any("Reading a rule is not applying it" in u for u in units)
+        paragraphs = [
+            p.strip("*") for p in lf.CORE_HEADER.splitlines()
+            if p and not p.startswith("#")
+        ]
+        assert len(paragraphs) == 2
+        for paragraph in paragraphs:
+            assert not any(paragraph[:40] in u for u in units), paragraph
 
 
 #: Words of a rule's opening used to decide that two units are the SAME RULE.
@@ -779,7 +812,7 @@ class TestShapeViolations:
     """The format is a property of the text alone. Each test names its red."""
 
     def test_the_header_before_the_first_rule_is_not_a_body(self):
-        # Red if the scaffold's obligation paragraph is flagged.
+        # Red if the scaffold's instruction paragraph is flagged.
         assert lf.shape_violations(lf.CORE_HEADER + "- a rule\n") == []
 
     def test_frontmatter_is_not_a_body(self):

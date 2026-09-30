@@ -96,12 +96,13 @@ Re-verified against the current tree (`develop`, 2026-09-22):
   (imported from `coverage.py` at module scope, `:58`), `resolve_build_plan_path` (imported from
   `core.py`), and `plan_index` (imported at module scope, per the module's own docstring, `:13-25`).
   No new cross-module dependency is introduced.
-- **The waiver mechanism this design's escape hatch reuses is a fixed, hand-maintained set, not a
-  registry.** `KNOWN_WAIVER_KEYS` (`plugin/bin/prawduct-hook:2439`) is a literal Python set compared
-  against `.gates-waived`'s keys; adding a gate that wants a waiver means adding one string to that
-  set and one `blockers.append(_attributed(...))` call with a matching escape-hatch paragraph,
-  exactly the shape of the existing `reflection` (`:2574`) / `critic` (`:3005`, a second occurrence
-  at `:3208`) / `pr` (`:3419`) / `learnings` (`:2689`) / `learnings-budget` (`:2799`) blockers.
+- **The waiver mechanism this design's escape hatch reuses is a fixed, hand-maintained map, not a
+  registry.** `_WAIVER_KEY_BY_GATE` in `plugin/bin/prawduct-hook` maps a Stop-gate blocker id to its
+  `.gates-waived` key; `KNOWN_WAIVER_KEYS` is derived from it, and `_waiver_footer` renders the one
+  escape-hatch paragraph after the `BLOCKED` list from the ids that blocked. Adding a gate that
+  wants a waiver means adding one entry to that map and one `blockers.append(_attributed(...))`
+  call, exactly the shape of the existing `reflection` / `critic` / `pr` / `learnings-unmigrated`
+  blockers. The blocker carries no escape-hatch paragraph of its own.
 - **`_committed_chunk_ids`'s own docstring documents a real, cited case of a plan's commit-scope
   diverging from its frontmatter `scope:`** ("on this very branch the continuity plan's commits
   say `session-continuity` while its frontmatter says `session-handoff-continuity`",
@@ -190,9 +191,8 @@ deliberately:
   - It can block a session end on a false positive (Decision 2's stated residual cases). The
     remedy is cheap by construction — write the missing plan file, or waive it — never a rewrite.
   - It needs the same waiver mechanism every other blocking gate here already has:
-    `KNOWN_WAIVER_KEYS` gains `"plan-not-persisted"`, and the blocker's message ends with the
-    standard escape-hatch paragraph (`echo '{"plan-not-persisted": "reason"}' >
-    .prawduct/.gates-waived`), matching `reflection`/`critic`/`pr`/`learnings` verbatim in shape.
+    `_WAIVER_KEY_BY_GATE` gains `"plan-not-persisted": "plan-not-persisted"`, and the shared
+    footer then names that key whenever this gate blocks.
   - **Never auto-writes the missing plan.** Per Grounding facts (`plan_backfill.py`'s own stated
     ruling — "only a session with the work in context may say which chunk is done" — and the
     broader report-never-write posture the codebase applies to plan/checkbox state throughout),
@@ -216,8 +216,8 @@ anything, and enough for a human reviewing the block to independently confirm or
    `buildplan_refs.unpersisted_plan_notice`, gated the same way the existing gates are (only spends
    the filesystem check `resolve_build_plan_path(...).is_file()` up front — the common case, a repo
    with a live plan, never reaches a git call); on a non-`None` result and no matching waiver, append
-   to `blockers` via `_attributed("plan-not-persisted", …)` with the standard escape-hatch paragraph.
-   `KNOWN_WAIVER_KEYS` gains `"plan-not-persisted"`.
+   to `blockers` via `_attributed("plan-not-persisted", …)`. `_WAIVER_KEY_BY_GATE` gains
+   `"plan-not-persisted"`, which is what puts it in `KNOWN_WAIVER_KEYS` and the waiver footer.
 3. `plugin/hooks/gates.json`: new entry, `id: "plan-not-persisted"`, `name:
    "plan-not-persisted"`, `summary: "chunk-shaped commits exist on this branch but no build plan
    file resolves anywhere, live or archived — the plan was never written down"`, `since` filled in
@@ -297,9 +297,9 @@ anything, and enough for a human reviewing the block to independently confirm or
 - `plugin/bin/prawduct-hook:22-24` (module docstring, the `.prawduct/`-only governing invariant),
   `:2304-2305` (`transcript_path` documented, confirmed unread elsewhere by `git grep`) — the
   citation for ruling out transcript-based detection (Grounding facts, Decision 1, Scope-out).
-- `plugin/bin/prawduct-hook:2439-2450` (`KNOWN_WAIVER_KEYS`, the unknown-waiver-key stderr note),
-  `:2574` / `:3005` (also `:3208`) / `:3419` (the `reflection` / `critic` / `pr` blocker escape-
-  hatch paragraphs) — the waiver convention Decision 3 extends by one key.
+- `plugin/bin/prawduct-hook`: `_WAIVER_KEY_BY_GATE` (the gate-to-key map that `KNOWN_WAIVER_KEYS`,
+  every gate's waiver check and the `_waiver_footer` escape-hatch paragraph all read) — the waiver
+  convention Decision 3 extends by one key.
 - `plugin/hooks/gates.json` — the gate registry this design adds one entry to, and its own stated
   purpose (new-gate attribution for the version-delta banner and Stop-hook blocking messages).
 - Issue #843's design document (`documentation/issues/843-design.md`) — the structural precedent

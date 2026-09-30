@@ -97,15 +97,25 @@ PAYLOAD_ROUTES = {
     "single-pass-full": (
         "skills/critic/SKILL.md",
         "skills/critic/review-protocol.md",
-        "skills/critic/review-cycle.md",
+        "skills/critic/cross-checks.md",
         "skills/critic/framework-checks.md",
+    ),
+    # The fork on a coordinator roster: it reads what `single-pass-full` reads
+    # (the roster is only known after `critic-begin`), then `coordinator.md`,
+    # and dispatches. It reviews nothing itself.
+    "coordinator-fork": (
+        "skills/critic/SKILL.md",
+        "skills/critic/review-protocol.md",
+        "skills/critic/cross-checks.md",
+        "skills/critic/framework-checks.md",
+        "skills/critic/coordinator.md",
     ),
     # One dispatched `critic-reviewer` on a coordinator roster. Its system
     # prompt replaces `SKILL.md`, and a roster multiplies this by its size.
     "dispatched-reviewer": (
         "agents/critic-reviewer.md",
         "skills/critic/review-protocol.md",
-        "skills/critic/review-cycle.md",
+        "skills/critic/cross-checks.md",
         "skills/critic/framework-checks.md",
     ),
 }
@@ -170,7 +180,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
     # +3 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
     # +1 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
-    "single-pass-inner": 6388,
+    # -566 on 2026-09-28 (opus-55-w3): slice C's in-place trims to the Critic files this route loads.
+    # -4 in the same wave, DECLARED: fixes from the wave's own review: pointers into deleted
+    # text repaired, goals-1-3.md's adopted-norm scope inlined so the file stays self-contained, and
+    # critic-reviewer.md's "stay inside your tools: line" contract restored after the trim made it false.
+    # -12 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
+    # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
+    # into coordinator.md, which only the coordinator fork reads).
+    "single-pass-inner": 5806,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -190,7 +207,14 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # feeding verify rounds). 33 of those ran mid-plan since 09-20. Compressed in place before declaring.
     # +48 on 2026-09-24 (learnings-one-line), DECLARED: see the dispatched-reviewer entry below.
     # +3 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
-    "single-pass-full": 20615,
+    # -1334 on 2026-09-28 (opus-55-w3): slice C's in-place trims to the Critic files this route loads.
+    # +4 in the same wave, DECLARED: fixes from the wave's own review: pointers into deleted
+    # text repaired, goals-1-3.md's adopted-norm scope inlined so the file stays self-contained, and
+    # critic-reviewer.md's "stay inside your tools: line" contract restored after the trim made it false.
+    # -7855 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
+    # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
+    # into coordinator.md, which only the coordinator fork reads).
+    "single-pass-full": 11430,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -245,13 +269,24 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # it for itself, and the check exists to stop a corpus that every session
     # pays for, at 15-35k tokens a session, from regrowing a fifth time.
     # +2 on 2026-09-26 (review-friction), DECLARED: the interval's merge-base start is bounded by uncommitted JUDGEABLE work, not by a clean tree (cumulative review rev-20260926T141912Z-875cfe56 R-1): a reviewer told 'clean tree' misreads the interval a records-only close gets.
-    "dispatched-reviewer": 19781,
+    # -1123 on 2026-09-28 (opus-55-w3): slice C's in-place trims to the Critic files this route loads.
+    # +46 in the same wave, DECLARED: fixes from the wave's own review: pointers into deleted
+    # text repaired, goals-1-3.md's adopted-norm scope inlined so the file stays self-contained, and
+    # critic-reviewer.md's "stay inside your tools: line" contract restored after the trim made it false.
+    # -7843 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
+    # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
+    # into coordinator.md, which only the coordinator fork reads).
+    "dispatched-reviewer": 10861,
+    # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
+    # of its own (coordinator.md). It reads less than single-pass-full did before the split.
+    "coordinator-fork": 12024,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 6389,
-    "single-pass-full": 20616,
-    "dispatched-reviewer": 19782,
+    "single-pass-inner": 5807,
+    "single-pass-full": 11431,
+    "dispatched-reviewer": 10862,
+    "coordinator-fork": 12025,
 }
 
 
@@ -299,7 +334,7 @@ def test_the_payload_is_non_empty_and_holds_what_it_names(route):
     assert payload, f"the {route} payload is empty — this sum measures nothing"
     for member, tokens in payload.items():
         assert tokens > 0, f"{member} contributed 0 tokens — it was not read"
-    if route.startswith("single-pass"):
+    if route.startswith("single-pass") or route == "coordinator-fork":
         assert "skills/critic/SKILL.md" in payload, (
             "a single-pass fork enters through SKILL.md — a sum omitting it "
             "understates what that route loads"
@@ -391,10 +426,16 @@ def test_the_cheap_protocol_route_stays_materially_cheaper():
     file, so the comparison isolates the split rather than mixing in the actor
     difference.
     """
+    # Bound moved from 1/2 to 11/20 on 2026-09-28 (opus-55-w3b), because the
+    # DENOMINATOR moved, not the cheap route: C-8 took ~7.9k of builder lifecycle
+    # out of the full route, and the cheap route shrank too (5818 -> 5806). What
+    # must not move, the cheap route's own size, stays pinned by its exact
+    # ratchet ceiling above. This relation still catches the cheap route
+    # creeping toward the full one.
     cheap = sum(_payload("single-pass-inner").values())
     full = sum(_payload("single-pass-full").values())
-    assert cheap * 2 < full, (
-        f"the cheap protocol route ({cheap}) is no longer less than half the full "
+    assert cheap * 20 < full * 11, (
+        f"the cheap protocol route ({cheap}) is no longer under 55% of the full "
         f"one ({full}). The `goals-1-3.md` split exists to keep the common mode "
         f"cheap; if the cheap protocol has genuinely earned this much, say so and "
         f"move this bound — but do not let it drift."

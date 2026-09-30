@@ -1,6 +1,4 @@
 <!-- Test Specifications Template
-     Tier: 1 (Source of Truth)
-     Owner: Artifact Generator (C3)
 
      Usage: Copy this template to your project's artifacts/ directory.
      Test scenarios must be specific and concrete, not generic.

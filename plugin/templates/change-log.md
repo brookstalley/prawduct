@@ -20,17 +20,15 @@
      Recognized keys:
        scope    - rollup identifier (e.g., v1.4), matching the `scope:`
                   frontmatter of the build plan that governs the work.
-       release  - the version that carried this entry. Its ABSENCE is what
+       release  - the version that carried this entry: three or four numeric
+                  parts, optionally with a -suffix (release=v1.3.18,
+                  release=v1.3.18.2, release=v1.4.0-rc.1). Its ABSENCE is what
                   marks the entry release-pending, so write NO release= on
                   the feature branch and add it at release. Any value at all
                   — including a placeholder naming the absence, e.g.
                   `release=unreleased` — drops the whole scope out of the
                   release-pending set and silently unships the work.
 
-     Nothing else is read. `chunks=` and `status=` were retired along with the
-     derived views they fed; entries in older logs still carry them and are
-     parsed as inert — leave them. Which chunks an entry shipped belongs in
-     the entry BODY, where release notes and readers actually find it: a
-     deliverable omitted from the body ships invisibly, and no tag ever
-     caught that either. -->
-
+     Nothing else is read; any other key is inert. Which chunks an entry
+     shipped belongs in the entry BODY, where release notes and readers find
+     it — a deliverable omitted from the body ships invisibly. -->

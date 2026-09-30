@@ -335,6 +335,48 @@ class TestValidateChangeLogTags:
         ]
         assert change_log.validate_change_log_tags(entries) == ([], [])
 
+    def test_four_part_release_is_clean(self):
+        """A product whose tags carry four numeric parts must be able to stamp
+        them; refusing one left its archive and release gate unusable."""
+        entries = [
+            change_log.ChangeLogEntry(title="ok", tags={"release": "v1.2.3.4"}),
+            change_log.ChangeLogEntry(title="ok", tags={"release": "v10.0.12.305"}),
+            change_log.ChangeLogEntry(title="rc", tags={"release": "v1.2.3.4-rc.1"}),
+        ]
+        assert change_log.validate_change_log_tags(entries) == ([], [])
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "unreleased",
+            "v1.2",
+            "v1.2.3.4.5",
+            "1.2.3.4",
+            "v1.2.3.",
+            "v1.2.3.4-",
+            "v1.2.3.x",
+        ],
+    )
+    def test_non_version_release_is_still_an_error(self, value):
+        entries = [
+            change_log.ChangeLogEntry(title="bad", tags={"scope": "s", "release": value})
+        ]
+        errors, _warnings = change_log.validate_change_log_tags(entries)
+        assert len(errors) == 1
+        assert repr(value) in errors[0]
+
+    def test_diagnostic_names_both_accepted_shapes_and_both_remedies(self):
+        """The remedy depends on whether the entry shipped: deleting the tag on a
+        shipped entry would mark shipped work as pending."""
+        entries = [
+            change_log.ChangeLogEntry(title="bad", tags={"release": "v1.2.3.4.5"})
+        ]
+        errors, _warnings = change_log.validate_change_log_tags(entries)
+        assert "vMAJOR.MINOR.PATCH" in errors[0]
+        assert "v1.2.3.4" in errors[0]
+        assert "delete the tag" in errors[0]
+        assert "version it shipped in" in errors[0]
+
     def test_absent_release_is_the_pending_state_not_an_error(self):
         entries = [
             change_log.ChangeLogEntry(title="untagged", tags={}),

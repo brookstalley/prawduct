@@ -186,13 +186,12 @@ def test_distribution_plugin_recorded(scaffolded: Path):
 def test_learnings_scaffolded_as_a_harness_rules_file(scaffolded: Path):
     """The corpus a new product receives is a `.claude/rules/` file, not a
     `.prawduct/` one — so the harness loads it and no prawduct code is on the
-    read path. The starter carries the descent obligation, which is the whole
-    reason the header is scaffolded rather than left empty."""
+    read path. The starter is exactly the scaffold header, which is the whole
+    reason the file is scaffolded rather than left empty."""
     from lib import learnings_files  # noqa: PLC0415
 
     core = scaffolded / learnings_files.RULES_DIR_REL / learnings_files.CORE_NAME
     assert core.read_text(encoding="utf-8") == learnings_files.CORE_HEADER
-    assert "Reading a rule is not applying it" in core.read_text(encoding="utf-8")
     # No pre-cutover corpus: a new product must never be born unmigrated.
     assert not (scaffolded / learnings_files.LEGACY_REL).exists()
     assert learnings_files.resolve(scaffolded).state == learnings_files.STATE_NEW

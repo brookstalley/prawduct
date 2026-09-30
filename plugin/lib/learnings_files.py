@@ -85,17 +85,16 @@ RULE_LINE_MAX = 250
 #: agent-authored raises in five days is what "raise with a reason" measured to be.
 CORE_CAP_KB = 12
 
-#: What a scaffolded ``core.md`` opens with. The obligation is here rather than
-#: in a pointer because this file is the one thing every session reads: a rule
-#: that arrives, is agreed with, and changes nothing is the failure mode a
-#: learnings corpus actually has, and the only cure is being asked to say out
-#: loud what the rule did to the decision in hand.
+#: What a scaffolded ``core.md`` opens with. The instruction is here rather
+#: than in a pointer because this file is the one thing every session reads. It
+#: asks for a citation only where a rule changed the work, not a rule-by-rule
+#: account of which rules apply: that narration lengthens every reply without
+#: changing what gets done.
 CORE_HEADER = (
     "# Learnings — core\n"
     "\n"
-    "**Reading a rule is not applying it.** For any rule below that bears on the "
-    "decision in front of you, name the rule and say what it changes about that "
-    "decision — or say that it does not apply, which is also an answer.\n"
+    "**Apply a rule below where it bears on the decision in front of you, and cite "
+    "it where it changed what you did.**\n"
     "\n"
     f"Each rule is one line of at most {RULE_LINE_MAX} characters. This file is capped, "
     "so a new rule is paid for by merging or retiring one.\n"
@@ -661,7 +660,7 @@ def rule_units(text: str) -> list[str]:
     * **The ``#`` title.** A file's ``#`` heading names the file, not a rule.
       Exclusion is by LEVEL, not by position: a rules file with no title is
       still all rules, so "the first heading" would silently eat one.
-    * **The scaffold's header** (:data:`CORE_HEADER`'s obligation and format
+    * **The scaffold's header** (:data:`CORE_HEADER`'s instruction and format
       paragraphs) — plain paragraphs, so they are excluded by the grammar rather
       than by a name check; a header that grew a heading would need this
       docstring re-read, not a regex tightened.
@@ -757,7 +756,7 @@ def shape_violations(text: str) -> "list[ShapeViolation]":
     **A body** is any non-blank line after the file's first rule that is not
     itself a rule or a ``#`` title: a prose paragraph, an indented bullet, fenced
     code. What sits BEFORE the first rule is the file's header (the scaffold's
-    obligation paragraph, an area file's one-line scope note). It is not
+    instruction paragraph, an area file's one-line scope note). It is not
     flagged, and it still counts toward the file's byte budget, so it cannot
     grow for free.
 

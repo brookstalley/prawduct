@@ -11,9 +11,9 @@ graceful migration that removes the committed framework files (now provided by t
 while preserving **all** product-owned state. It is destructive but reversible — the whole
 change lands as **one commit** you can `git revert`.
 
-The plugin governs this repo the moment it is installed (Chunk 8: plugin governs, legacy
-yields). This cutover removes the now-redundant committed framework files so the repo commits
-zero framework code and stops folding framework drift into its own diffs.
+The plugin governs this repo the moment it is installed; this cutover removes the
+now-redundant committed framework files so the repo commits zero framework code and stops
+folding framework drift into its own diffs.
 
 ## What gets removed vs. preserved
 
@@ -91,6 +91,6 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
 - **Idempotent.** Re-running after a successful migration is a no-op (`already_migrated`).
 - **Reversible.** The single commit can be reverted; the removed framework files return and the
   legacy file-sync hook resumes governing (it stands down only while `distribution: plugin` is
-  recorded and/or the plugin is enabled — Chunk 8).
+  recorded and/or the plugin is enabled).
 - The engine is plugin-native (`lib/migrate_plugin.py`); it needs no framework checkout, so a
   consumer that committed only the install reference can still migrate.

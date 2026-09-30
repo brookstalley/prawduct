@@ -345,9 +345,10 @@ absence (`release=unreleased`) reads as deliberate while removing that entry's w
 from the release-pending set. `check-releasability` then answers "no release-pending scopes
 — nothing to classify" and the work never ships, which is REL-2N8K's failure with a more
 convincing disguise (six entries hid a whole branch from v3.2.8 that way). A `release=`
-that is not `vMAJOR.MINOR.PATCH` (optionally `-suffix`) is therefore a **validation error**
-that fails closed — an unevaluable release state must never read as "fine". Release-pending
-is the tag's absence; step 3 adds it, and that is the only edit.
+that is not `vMAJOR.MINOR.PATCH` or a four-part `vMAJOR.MINOR.PATCH.N` (either optionally
+`-suffix`) is therefore a **validation error** that fails closed — an unevaluable release
+state must never read as "fine". Release-pending is the tag's absence; step 3 adds it, and
+that is the only edit.
 
 **Where the refusal now happens.** `check-releasability` itself refuses it — exit 1 with a
 `bad-change-log-tag:` line naming the entry and its line number. It used to be checked only by
@@ -468,7 +469,7 @@ benign**, not a gate to satisfy:
 ## The checkboxes are ticked during development, not at release
 
 A chunk's box is ticked by the session that finished the chunk, right after its Critic review
-passes. The release does not touch them and no command regenerates them — the boxes, the Context
+passes, or at commit for a short plan's earlier chunks (`plugin/methodology/planning.md`). The release does not touch them and no command regenerates them — the boxes, the Context
 line, and git history are one progress record, not a derived view and its source.
 
 This is the reverse of the rule that stood here until 2026-08-08, when Status was regenerated from

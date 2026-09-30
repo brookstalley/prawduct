@@ -26,6 +26,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -614,7 +615,7 @@ class TestTheCitationInstructionReachesReviewers:
     """`learning.fired` has exactly one input: a reviewer quoting the rule.
 
     So the instruction is the feature, and it is carried by two surfaces on
-    purpose — `review-cycle.md`'s Learnings Cross-Check, which only the
+    purpose — `cross-checks.md`'s Learnings Cross-Check, which only the
     sustainability reviewer opens, and `agents/critic-reviewer.md`, which every
     reviewer the coordinator dispatches reads at the moment it writes findings.
     One file's copy going missing is invisible from the other, so the pin lives
@@ -640,7 +641,7 @@ class TestTheCitationInstructionReachesReviewers:
         )
 
     def test_the_cross_check_carries_it_too(self):
-        cycle = self._prose("skills/critic/review-cycle.md")
+        cycle = self._prose("skills/critic/cross-checks.md")
         assert "quote that rule's opening words" in cycle
 
     def test_the_instruction_sits_where_findings_are_written(self):
@@ -649,10 +650,13 @@ class TestTheCitationInstructionReachesReviewers:
         one. Bounded to the smallest region that must carry it, so a mutation
         in a neighbouring paragraph does not pass."""
         text = (_ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
-        marker = "Assess your goals and gather findings"
-        assert marker in text, "the findings-writing step was renamed — re-anchor this pin"
-        step = text[text.index(marker):]
-        step = step[: step.index("\n## ")] if "\n## " in step else step
+        # Anchored on structure, not wording: the findings-writing step is the
+        # last numbered step of "## What to do", the section just before the
+        # one that says what to write.
+        section = text[text.index("## What to do"):text.index("## What to write")]
+        steps = list(re.finditer(r"^\d+\. ", section, flags=re.M))
+        assert steps, "## What to do lost its numbered steps — re-anchor this pin"
+        step = section[steps[-1].start():]
         assert "opening words" in " ".join(step.split())
 
     def test_the_registry_says_the_join_under_counts_without_it(self):

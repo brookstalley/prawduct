@@ -540,3 +540,33 @@ def test_an_installed_copy_nested_in_an_unrelated_repo_contributes_nothing(tmp_p
     (installed / "mod.py").write_text("a = 1\n")
 
     assert vc.probe_code_identity(installed) == ""
+
+
+def test_a_second_edit_to_a_dirty_file_changes_the_identity(tmp_path):
+    """The dirty fingerprint is over CONTENT. A status-only fingerprint names
+    which files changed, not how, so a second edit to an already-modified
+    classifier would replay answers the first edit's code computed."""
+    plugin, _ = _checkout(tmp_path, "twice")
+    (plugin / "mod.py").write_text("a = 2\n")
+    first = vc.probe_code_identity(plugin)
+    (plugin / "mod.py").write_text("a = 3\n")
+    second = vc.probe_code_identity(plugin)
+    assert first != second
+
+
+def test_a_dirty_rename_is_fingerprinted_without_error(tmp_path):
+    """A staged rename's source path arrives as its own unprefixed record."""
+    plugin, repo = _checkout(tmp_path, "rename")
+    clean = vc.probe_code_identity(plugin)
+    _git(repo, "mv", "plugin/mod.py", "plugin/renamed.py")
+    renamed = vc.probe_code_identity(plugin)
+    assert renamed != clean and renamed.startswith(clean)
+
+
+def test_the_module_digest_participates_in_the_key(monkeypatch):
+    """An installed copy keeps one version string across code states; the
+    judgeability modules' bytes are what tell those states apart."""
+    monkeypatch.setattr(vc, "_MODULE_DIGEST", "classifier-one")
+    one = vc._key("t1", "t2", "fp")
+    monkeypatch.setattr(vc, "_MODULE_DIGEST", "classifier-two")
+    assert vc._key("t1", "t2", "fp") != one

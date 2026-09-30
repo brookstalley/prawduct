@@ -878,7 +878,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
     # JSON and human renderings always agree.
     report = {
         "schema_version": report.pop("schema_version"),
-        "project": project_dir.resolve().name,
+        "project": gitstate.project_label(project_dir),
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         # Stated even when null. A windowed report and a whole-corpus one are
         # the same shape, and a consumer that cannot tell them apart will

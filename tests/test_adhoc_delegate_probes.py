@@ -23,6 +23,7 @@ Registry isolation mirrors ``test_stale_base_probes.py`` (autouse
 from __future__ import annotations
 
 import builtins
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -61,6 +62,16 @@ def _git(repo: Path, *args: str) -> str:
     )
     assert proc.returncode == 0, f"git {args} failed: {proc.stderr}"
     return proc.stdout.strip()
+
+
+def shell_words(command: str) -> list[str]:
+    """How a POSIX shell splits ``command`` into words and operators — without
+    running one (the suite bans shell=True). An operator (`;`, `(`, `)`, `|`,
+    `&`) comes back as its own token, so a name that escaped its quoting shows
+    up as a split."""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    return list(lexer)
 
 
 def _commit(repo: Path, rel: str, content: str, msg: str) -> None:
@@ -147,6 +158,25 @@ class TestFires:
         # And it runs, in the coordinator's checkout, naming the delegate's commit.
         out = _git(repo, *cand.recommended_action.split()[1:])
         assert "delegate-a: work" in out
+
+    def test_a_hostile_branch_name_is_quoted_in_both_commands(self, tmp_path):
+        # git allows `$(` and `;` in a branch name, and a path may hold a space;
+        # both commands run as given, so each value must stay one shell word.
+        repo = _repo(tmp_path)
+        hostile = "d;touch${IFS}pwned"
+        _delegate(repo, hostile, rel_dir=".claude/worktrees/agent-hostile dir")
+        cand = _probe(repo)[0]
+        log_argv = ["git", "log", "--oneline", f"HEAD..{hostile}"]
+        remove_argv = ["git", "worktree", "remove", ".claude/worktrees/agent-hostile dir"]
+        assert shell_words(cand.recommended_action) == log_argv
+        (remove,) = cand.alternative_actions
+        assert shell_words(remove) == remove_argv
+        # Exactly shlex's single-quoting: the tokenizer treats double quotes alike,
+        # but a shell still expands `$(` inside them.
+        assert (cand.recommended_action, remove) == (shlex.join(log_argv), shlex.join(remove_argv))
+        assert ";" in shell_words(f"git log --oneline HEAD..{hostile}"), (
+            "positive control: unquoted, the shell sees an operator"
+        )
 
     def test_one_advisory_per_worktree_with_distinct_ids(self, tmp_path):
         repo = _repo(tmp_path)
@@ -363,14 +393,8 @@ class TestDegradesLoudly:
     def test_a_failed_worktree_list_says_what_was_lost(self, tmp_path, monkeypatch, capsys):
         repo = _repo(tmp_path)
         _delegate(repo)
-        real = adp.evidence.run_git
-
-        def _fail_worktree_list(root, *args, **kwargs):
-            if args[:1] == ("worktree",):
-                return 1, "", "fatal: timed out"
-            return real(root, *args, **kwargs)
-
-        monkeypatch.setattr(adp.evidence, "run_git", _fail_worktree_list)
+        # `None` is the shared parser's "git failed in a real repo" answer.
+        monkeypatch.setattr(gitstate, "worktree_records", lambda root: None)
         assert _probe(repo) == []
         err = capsys.readouterr().err
         assert "delegate-worktree probe skipped" in err

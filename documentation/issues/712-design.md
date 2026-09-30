@@ -24,11 +24,10 @@ Re-verified against the current tree (2026-09-08):
 - **Nothing implements the sweep today.** Janitor Step 2.5 runs exactly 7 numbered checks
   (`plugin/skills/janitor/SKILL.md:225-238`); none is GV3. Check 5 ("neglected hygiene") is a
   different, still-dormant concept blocked on the `promoted` GH-Issues gap (#529), not this one.
-- **`/prawduct:pr` already names #712 as its own missing backstop.** Merge Flow's "Close the backlog
-  items this PR resolves" step
-  (`plugin/skills/pr/SKILL.md`, Merge Flow) and its "Honest limit" note point here by number: "If you
-  merge through the GitHub UI, or the session ends at the merge, nothing downstream notices the close
-  never fired… tracked as #712."
+- **`/prawduct:pr` already states the missing backstop.** Merge Flow's "Close the backlog items this
+  PR resolves" step (`plugin/skills/pr/SKILL.md`, Merge Flow) says the step is its own only
+  detector: "if you merge through the GitHub UI or the session ends at the merge, nothing notices
+  that the close never fired." It no longer cites this issue by number.
 - **`closed_by` is not a cache column.** `cachequery.py`'s `_FULL_COLUMNS`
   (`plugin/lib/backlog/cachequery.py:51-65`) has no `closed_by` field, so no existing `cache-query`
   answer can serve this sweep — confirming the sibling docs' own framing that GV3 is a **live** read,
