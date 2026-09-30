@@ -1636,6 +1636,33 @@ class TestPostCutoverResolvesThroughTheCache:
         assert out[0].type == "backlog-cache-unreadable"
         assert "sync" in out[0].recommended_action
 
+    @pytest.mark.parametrize(
+        "why_lines",
+        [
+            (),
+            ("Why: settled by {scope}#7.", "Re-affirmed: 2026-09-27 (owner) — {scope}#7: holds."),
+        ],
+        ids=["status-only", "why-reaffirmed"],
+    )
+    def test_dead_why_reports_an_outage_the_status_scan_meets(self, tmp_path, why_lines):
+        """dead-why scans `Why:` citations first and `Status:` second. When the
+        first has nothing to look up — no `Why:` citation, or every one already
+        re-affirmed — only the second scan meets the unreachable store, and its
+        outage must still be reported rather than read as a clean answer."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)  # no cache in it
+        fields = "".join(f"  {ln.format(scope=self.SCOPE)}\n" for ln in why_lines)
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n{fields}  Status: in-transition — tracked in {self.SCOPE}#7\n"
+            ),
+        )
+
+        out = np.probe_dead_why(self._state(), _cb(tmp_path))
+
+        assert [c.type for c in out] == ["backlog-cache-unreadable"]
+
     def test_both_probes_report_one_outage_not_two(self, tmp_path):
         """One cause, one nag. `compute_id` hashes (feature, type, version,
         evidence), so the shared type and evidence collapse the two reports into
