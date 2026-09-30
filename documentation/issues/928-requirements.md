@@ -1,6 +1,6 @@
 # Issue #928 — Portable host adapters (Codex first, Gemini later): Requirements
 
-`status: draft · stage: requirements · area: governance/plugin-runtime · added: 2026-09-30 · source: scheduled
+`status: draft · stage: requirements (D-1, D-2, D-4 ruled 2026-09-30) · area: governance/plugin-runtime · added: 2026-09-30 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/928`
 
 This document turns the proposal in #928 into requirements the owner can accept, amend or
@@ -32,8 +32,10 @@ Measured on `develop`, 2026-09-30. Re-derive with the commands shown; do not cop
   persistent-data dependency to translate — all mutable state is already in the repo's `.prawduct/`.
 - **The host-shaped surface is the hook payload/response protocol, not the logic.**
   `bin/prawduct-hook` (one ~9k-line dispatcher) reads Claude payload fields — `agent_type`
-  (SubagentStop, `cmd_subagent_stop`), `last_assistant_message` / `transcript_path` /
-  `background_tasks` (Stop, `lib/gates.py`) — and emits Claude response shapes:
+  (SubagentStop, `cmd_subagent_stop`), `last_assistant_message` / `background_tasks` (Stop,
+  `lib/gates.py`) — and emits Claude response shapes. It reads no `session_id`,
+  `transcript_path`, `stop_hook_active` or `hook_event_name`; those names appear only in
+  docstrings. The response shapes are:
   `{"systemMessage", "additionalContext"}` on Stop, and
   `{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext"}}` from
   `hooks/digest.py`. Exit-code semantics (exit 2 = block) are part of the contract too.
@@ -138,26 +140,86 @@ language; an MCP server (unless a feasibility finding shows it is required); shi
 the same change as Codex; weakening Critic independence to fit a host; any change to how Claude
 Code users install or invoke Prawduct.
 
-## Decisions needed (owner) — recommendations
+## Decisions (owner, 2026-09-30)
 
-The issue's seven questions collapse to four real forks; the rest follow.
+- **D-1 Same repo.** The adapter lives in this repo under a dedicated directory and ships on one
+  release train with the core. A companion package would bring back the version-pinning problem
+  the plugin already pays for, at the exact point (the hook protocol) most likely to move.
+- **D-2 The boundary is the hook protocol plus path resolution.** Payload in, response out, and
+  how the plugin and project roots are found. The `prawduct-hook` subcommands stay internal and
+  free to change. Design picks the concrete seam.
+- **D-3 Replaced by an inventory.** Instead of the owner guessing which Claude-specific pieces
+  stay out of the core, § Host-surface inventory below lists every host-shaped surface the
+  engine touches. The adapter author marks each one for Codex (supported, fallback, or
+  unsupported) and proposes the seams. The owner rules on that proposal at design.
+  One item is already decided: the governance anchor moves to `AGENTS.md`, and `CLAUDE.md`
+  becomes an `@AGENTS.md` import plus Claude-only lines. Claude Code reads `AGENTS.md` natively
+  only as a fallback when no `CLAUDE.md` exists, so the import is what makes it load in every
+  Claude session. That change is its own backlog item and ships independently of the adapter.
+- **D-4 "Officially supported" means R-1 to R-13 met on a pinned host version range, with R-8
+  shown live.** Anything short of that is labelled *experimental*. The adapter has one named
+  maintainer, and it is demoted to experimental when it falls a set number of host releases
+  behind without an update (the number is set at design).
 
-- **D-1 Same repo vs. companion packages.** *Recommend: same repo, adapter under a dedicated
-  directory, one release train.* The learnings on two-copies-of-one-idea, and the fact that the
-  hook protocol is the volatile part, argue against version-skew between core and adapter; a
-  companion package reintroduces the pinning problem the plugin already pays for.
-- **D-2 Where the boundary sits.** *Recommend: the hook protocol (payload in, response out) plus
-  path resolution — not the CLI subcommands.* The subcommand surface is internal (the plugin's
-  own tooling has retired subcommands under an inert-retention rule); making it a public host
-  contract freezes more than a host needs. Design must pick the concrete seam.
-- **D-3 Claude-specific things that stay outside the portable core.** Candidate list for the
-  owner to confirm: `context: fork` skill semantics; `Bash(pattern)` frontmatter grants; the
-  plugin cache/pin model and `/prawduct:migrate` file-sync history; `CLAUDE.md` as the anchor
-  (Codex would use `AGENTS.md`).
-- **D-4 "Officially supported" bar.** *Recommend:* all R-1–R-13 met on the pinned host version
-  range, with R-8 demonstrated live. Anything short is labelled *experimental*. Because the
-  proposer commits to maintenance, name a single owner and a rule for what happens if that
-  maintainer goes quiet (adapter demoted to experimental after N unreleased host versions).
+## Host-surface inventory
+
+Every place the engine depends on Claude Code specifically, taken from `develop` at `2caeca96`
+by searching the plugin (hook registrations, payload keys read, response shapes, `CLAUDE_*`
+variables, skill and agent frontmatter, instruction files, plugin install paths). Paths are
+under `plugin/`. Re-derive before relying on a row; the code moves.
+
+**Class** is what the item means for governance on Claude today:
+**gate** = a gate or the Critic's independence depends on it;
+**fallback** = governance survives without it through a named backstop;
+**UX** = presentation or convenience only.
+
+The last two columns are for the adapter author: what Codex does for this item, and the seam
+proposed for it.
+
+| # | Surface | Where | Governance uses it for | Class | Codex | Proposed seam |
+|---|---|---|---|---|---|---|
+| 1 | SessionStart banner + digest (matcher `startup\|resume\|clear\|compact\|fork`) | `hooks/hooks.json`, `hooks/banner.py`, `hooks/digest.py` | Version banner; governance digest injected as context | fallback (`/prawduct:methodology`) | | |
+| 2 | SessionStart split: `startup\|clear` runs `clear --session-start`; `resume\|compact\|fork` runs `--brief-only` | `hooks/hooks.json`; `cmd_clear` in `bin/prawduct-hook` | Session boundary vs continuation: resets markers, `.session-base-tree`, waivers, regenerates the handoff | gate | | |
+| 3 | Session source comes from the matcher; the `source` payload field is never read | `hooks/hooks.json` | Boundary classification is done by registration | gate (adapter must map the host's source to the flag) | | |
+| 4 | Stop hook, every turn | `hooks/hooks.json`; `cmd_stop`; `hooks/gates.json` | All session-end gates (reflection, Critic, PR, trivial, learnings, clear-verdict) | gate | | |
+| 5 | Stop blocks by exit 2 with the reason on stderr, which the host feeds back to the model | `cmd_stop` | The blocking channel for every gate | gate | | |
+| 6 | No `stop_hook_active` re-entry guard; blocking again on every Stop relies on Claude's exit-2 re-prompt loop | `cmd_stop` | Gate persistence across retries | gate (depends on the host's re-fire semantics) | | |
+| 7 | Stop advisories at exit 0 as stdout JSON `{systemMessage, additionalContext}` | `bin/prawduct-hook` (advisory emit) | Deferral notes, non-blocking advisories | fallback | | |
+| 8 | Stop payload `last_assistant_message` | `lib/gates.py` | The clear-verdict gate; the RUNNING + DO NOT CLEAR deferral | gate (clear-verdict); deferral degrades to block | | |
+| 9 | Stop payload `background_tasks[]` | `lib/gates.py` | Defers blockers while a background task is in flight | fallback (absent means block as normal) | | |
+| 10 | Stdin payload parsing tolerates empty or garbage input as `{}` | `bin/prawduct-hook` payload reader | Stop and SubagentStop input | gate (fails closed) | | |
+| 11 | SubagentStop, matcher `(^\|:)critic-reviewer$`; payload `agent_type`, `cwd` | `hooks/hooks.json`; `cmd_subagent_stop` | Consolidates each Critic partial as its reviewer finishes | fallback (Stop consolidates idempotently) | | |
+| 12 | SessionStart plain stdout goes into model context | `cmd_clear`; `hooks/banner.py` | Briefing, handoff, advisories, the new-gate relay | fallback | | |
+| 13 | SessionStart JSON `hookSpecificOutput{additionalContext, reloadSkills}` and its size limit | `hooks/digest.py` | Governance digest; skill-cache refresh in the framework repo | fallback | | |
+| 14 | `statusMessage` on each hook | `hooks/hooks.json` | Spinner text | UX | | |
+| 15 | Retired hook subcommands kept inert because the host pins hooks.json lazily | `bin/prawduct-hook` | Old registrations must exit 0 silently | UX (compat) | | |
+| 16 | `${CLAUDE_PLUGIN_ROOT}` in hook commands and code | `hooks/hooks.json`; `bin/prawduct-hook`; `hooks/*.py` | Finds `lib/`, the manifest version, the gate registry | gate (code falls back to its own path) | | |
+| 17 | `CLAUDE_PROJECT_DIR` | `bin/prawduct-hook`; `hooks/*.py`; `lib/gitstate.py` | Project root; worktree redirect in the Stop path | gate (falls back to cwd or worktree toplevel) | | |
+| 18 | `CLAUDE_CONFIG_DIR` and `~/.claude*` roots | `hooks/banner.py`; `lib/plugin_activation.py`; `lib/stranded_work.py` | Install detection; transcript roots for liveness | UX / fallback | | |
+| 19 | `${CLAUDE_SKILL_DIR}` in skill prose | critic, pr, methodology, janitor, runbook, report-bug skills; `lib/buildplan_refs.py` | Loading the Critic and PR protocols and the methodology guides next to their skill | gate in effect | | |
+| 20 | Transcript directory mtimes (content never read) | `lib/stranded_work.py` | Worktree liveness in the briefing and `worktrees` | fallback (reflog, session markers, file mtimes) | | |
+| 21 | Reviewer agents' `tools:` allowlists (`Bash(pattern)`, `Write`) | `agents/critic-reviewer.md`, `agents/pr-reviewer.md` | Reviewer isolation. On Claude the tool *set* is enforced; `Bash` patterns and `Write` paths are a contract the reviewer keeps, backed by consolidation validating each partial | gate (R-8) | | |
+| 22 | `model: inherit`; `omitClaudeMd: true` on the PR reviewer | `agents/*.md` | Same-model review; PR reviewer isolated from instructions and memory | fallback (isolation weakens) | | |
+| 23 | Subagent dispatch through the Agent tool, three reviewers concurrently | `skills/critic/coordinator.md`; `skills/pr/SKILL.md` | Independent multi-role Critic; the PR reviewer | gate (single-pass roster is the fallback) | | |
+| 24 | Skill frontmatter `context: fork` | critic, backlog, advisory skills | Critic runs outside the builder's context; backlog out of main context | gate (critic), UX (others) | | |
+| 25 | Skill frontmatter `allowed-tools` with `Bash(...)` grants and deny patterns; `$ARGUMENTS`; `argument-hint`; `disable-model-invocation` | `skills/*/SKILL.md` | What each skill may run; argument passing | fallback / UX | | |
+| 26 | `.claude/rules/learnings/core.md` loaded every session by the harness | `lib/learnings_files.py`; `lib/init_product.py` | Durable rules in context; the core budget gate assumes that load cost | gate | | |
+| 27 | Area learnings loaded when a file matching `paths:` is read | `lib/learnings_files.py`; `agents/pr-reviewer.md` | `learnings-files --for-diff` mirrors what the harness loaded; Critic cross-check | gate (a host without on-read loading needs an explicit read) | | |
+| 28 | Learnings gates (unmigrated, over-budget, budget-unreasoned, rule length) | `hooks/gates.json`; `cmd_stop` | Keep the corpus shaped for harness autoload | gate | | |
+| 29 | Governance anchor in `CLAUDE.md` (moving to `AGENTS.md`, see D-3) | `lib/migrate_plugin.py`; `lib/anchor_repair.py`; `lib/init_product.py`; `lib/onboarding_probes.py` | Plugin-absent notice; points the agent at the methodology | fallback | | |
+| 30 | Judgeability treats root `CLAUDE.md`, `skills/`, `agents/`, `methodology/`, `templates/` as protected and `.claude/settings.json` as metadata | `lib/buildplan_refs.py`; `lib/gitstate.py`; `lib/coverage_algebra.py` | What reopens the Critic gate; the doc-only fast path | gate (`AGENTS.md` would be misclassified today) | | |
+| 31 | `.claude/settings.json` install reference (`extraKnownMarketplaces`, `enabledPlugins`) | `lib/migrate_plugin.py`; `lib/init_product.py`; install-reference probes | Onboard, migrate, doctor, the drift advisory | fallback | | |
+| 32 | Per-repo disable via `.claude/settings.local.json` `enabledPlugins` | `lib/repo_toggle.py`; `skills/repo-disable` | Opt out per repo | UX | | |
+| 33 | Reads `~/.claude/plugins/installed_plugins.json` and names `known_marketplaces.json` | `lib/plugin_activation.py`; install-reference probes | `check-plugin-active` during onboarding | fallback (answers `unknown` on doubt) | | |
+| 34 | Managed install vs `--plugin-dir` checkout detection | `hooks/banner.py` | Provenance in the banner | UX | | |
+| 35 | Version from `.claude-plugin/plugin.json` vs `.prawduct/.prawduct-version` | `bin/prawduct-hook`; `hooks/banner.py` | Gate attribution; new-gate announcements | fallback | | |
+| 36 | Plugin `bin/` on the Bash PATH (bare `prawduct-hook`) | every skill, agent and methodology file that runs it | Every skill-driven gate write (critic-begin, consolidate, evidence, PR review) | gate | | |
+| 37 | Harness worktree naming (`.claude/worktrees/agent-*`, `wf_*`) | `lib/gitstate.py`; `bin/prawduct-hook` | Refuse `.prawduct/` writes that would strand in a disposable worktree | fallback (without it, writes strand silently) | | |
+| 38 | `/prawduct:*` command names in gate and briefing text | `bin/`, `lib/`, `hooks/`, skills | Remedy text in blocking messages | UX | | |
+| 39 | Session model: `/clear` is a boundary; resume, compact and fork continue; the SAFE TO CLEAR / DO NOT CLEAR block | `methodology/`; `hooks/session-digest.md`; `cmd_clear`; clear-verdict gate | Boundary resets; the clear-verdict gate parses those labels from `last_assistant_message` | gate | | |
+
+Not host-specific but external: the Stop PR check shells out to `gh`; hooks.json sets no
+`timeout`, so the host default applies; telemetry assumes Anthropic model ids.
 
 ## Risks
 
@@ -172,6 +234,9 @@ The issue's seven questions collapse to four real forks; the rest follow.
 
 ## Next step
 
-Owner answers D-1…D-4 on the issue. Then design stage: the concrete seam, the Codex feasibility
-spike (issue's Phase 1) scoped to one skill, the session briefing, and one Stop gate, with a
-live probe for each host-behaviour assumption.
+The adapter author fills the Codex and Proposed seam columns above, starting with the **gate**
+rows, and posts the feasibility evidence on #928. R-8 comes first: whether a reviewer-specific
+policy can take shell access away from the Critic on Codex, or whether the Critic has to run as a
+separate constrained session. Then design: the concrete seam, and the Codex feasibility spike
+(the issue's Phase 1) scoped to one skill, the session briefing and one Stop gate, with a live
+probe for each host-behaviour assumption.
