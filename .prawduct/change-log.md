@@ -5,6 +5,14 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-30: develop opens 3.7.0-dev.3
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.3 -->
+
+The dev track's version moves from `3.7.0-dev.2` to `3.7.0-dev.3` in the four carriers, so repos on
+the develop track pick up `sibling-hook-perf` (#938). The public changelog's rolling notes gain its
+consumer-facing summary, which that PR did not carry. Owner-directed, 2026-09-30.
+
 ## 2026-09-30: four governance frictions found in consumer transcripts
 
 <!-- prawduct: type=bugfix | scope=sibling-hook-perf -->
