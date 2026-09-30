@@ -65,6 +65,10 @@ from . import buildplan_refs
 from .gitstate import METADATA_PREFIXES, is_object_id
 
 DiffFn = Callable[[str, str], "list[str] | None"]
+#: A tree's key, or ``None`` for a tree that cannot be read. May also carry an
+#: optional ``prime(trees)`` attribute that answers many trees in one call
+#: before they are keyed one by one (``gates._tree_key_fn`` sets it); the
+#: algebra calls it when present and works without it.
 KeyFn = Callable[[str], "str | None"]
 
 _RESOLVING_DISPOSITIONS = frozenset({"fixed", "waived"})
@@ -431,6 +435,11 @@ def _free_classes(nodes: "set[str]", key_fn: KeyFn) -> dict[str, list[str]]:
     must never buy a free pass; the fast path fails in the same direction as
     the slow one.
     """
+    # A key function may answer many trees in one call first (the production
+    # one resolves trees git no longer holds); optional, so any callable works.
+    prime = getattr(key_fn, "prime", None)
+    if prime is not None:
+        prime(sorted(nodes))
     classes: dict[str, list[str]] = {}
     for node in nodes:
         key = key_fn(node)

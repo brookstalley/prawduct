@@ -228,7 +228,7 @@ def _append_event(
         "event": event_kind,
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "duration_seconds": duration_seconds,
-        "project": project_dir.resolve().name,
+        "project": gitstate.project_label(project_dir),
         "scope": scope,
         "chunk": chunk,
         "actor": {"role": _EVENT_ROLES[event_kind], "model": actor_model},

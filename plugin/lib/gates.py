@@ -39,7 +39,6 @@ mirror), plus the stdlib.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import subprocess
 import sys
@@ -53,6 +52,7 @@ from . import (
     gitstate,
     learnings_files,
     standing_block,
+    tree_key_memo,
     verdict_cache,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
@@ -1306,28 +1306,56 @@ def _tree_key_fn(project_dir: Path):
     by every worktree of the clone, so that degrades monotonically. Keying
     each tree once is linear in trees and asks the same question.
 
+    Linear is still the whole store on every gate call, and the store only
+    grows, so a computed key is also kept across processes
+    (:mod:`tree_key_memo`): each tree costs one ``git ls-tree`` per clone and
+    code identity, and trees git no longer holds are answered together by
+    ``prime`` rather than one failed call apiece.
+
     ``None`` when the tree cannot be read, which denies a free edge rather
     than granting one — the fast path fails in the same direction as the slow
-    one, because this gate is authority and authority fails closed.
+    one, because this gate is authority and authority fails closed. A ``None``
+    is never persisted, so an unreadable tree is asked again next time.
     """
     cache: dict[str, "str | None"] = {}
+    memo = tree_key_memo.for_project(project_dir)
 
     def key_fn(tree: str) -> "str | None":
         if tree not in cache:
+            remembered = memo.get(tree)
+            if remembered is not None:
+                cache[tree] = remembered
+                return remembered
             entries = evidence.tree_entries(project_dir, tree)
             if entries is None:
                 cache[tree] = None
             else:
-                judgeable = sorted(
-                    f"{mode} {object_id} {path}"
-                    for mode, object_id, path in entries
-                    if coverage_algebra.is_judgeable_path(path)
-                )
-                cache[tree] = hashlib.sha256(
-                    "\n".join(judgeable).encode("utf-8", "surrogateescape")
-                ).hexdigest()
+                cache[tree] = tree_key_memo.judgeable_key(entries)
+                memo.put(tree, cache[tree])
         return cache[tree]
 
+    def prime(trees) -> None:
+        """Answer every tree the memo lacks whose object git no longer holds,
+        in one call, before they are keyed one by one. Such a tree is never
+        remembered, so it would otherwise cost a failed ``git ls-tree`` on
+        every hook. When git cannot answer, nothing is primed and each tree
+        is asked the slow way."""
+        unknown = []
+        for tree in trees:
+            if tree in cache:
+                continue
+            remembered = memo.get(tree)
+            if remembered is not None:
+                cache[tree] = remembered
+            else:
+                unknown.append(tree)
+        if not unknown:
+            return
+        missing = evidence.missing_objects(project_dir, unknown)
+        for tree in missing or ():
+            cache[tree] = None
+
+    key_fn.prime = prime
     return key_fn
 
 
@@ -1753,8 +1781,10 @@ def _merge_base_verdict(
     Its cost lands on the failing path only, and lands small: the diagnosis's
     extra verdicts run through the ``diff_fn``/``key_fn`` caches this call
     already built, so the ``git ls-tree`` per tree — the expensive part — is
-    paid once for the whole invocation whether one verdict is computed or five.
-    The unmemoized-across-calls property above is unchanged.
+    paid at most once per tree however many verdicts are computed, and once per
+    clone across calls (:mod:`tree_key_memo`). What persists across calls is
+    only those per-tree keys; the verdict itself is still not memoized here,
+    for the reason given above.
 
     Adds ``transfer_note`` — the near-miss or could-not-run sentence — for the
     caller to carry onto the verdict it actually returns; the caller pops it, so
@@ -2532,9 +2562,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
     Any unverifiable → no transfer and the remedy above stands unchanged,
     because authority fails closed.
 
-    Composed verdicts are memoized across calls (:mod:`verdict_cache`) — a cold
-    one costs 17 s on this repo's store and the gate is polled several times a
-    session. The wrapper exists to make the flush unconditional: the body has
+    Composed verdicts are memoized across calls (:mod:`verdict_cache`), because
+    the gate is polled several times a session and a cold verdict pays for its
+    composition and for every tree key the clone has not memoized yet. The wrapper exists to make the flush unconditional: the body has
     four exit paths, three of them failures, and a memo that only persisted on
     success would leave exactly the repeated-poll case it was built for
     uncached.
@@ -2545,8 +2575,8 @@ def check_cumulative_critic(project_dir: Path) -> int:
         return _cumulative_critic_verdict(project_dir, read, cache)
     finally:
         # A memo that silently stops working is indistinguishable from one that
-        # was never built, and the symptom — every call back on the ~17 s cold
-        # path — reads as "the gate is slow again" with nothing to point at.
+        # was never built, and the symptom — every call back on the cold path —
+        # reads as "the gate is slow again" with nothing to point at.
         # Attributed on the DEGRADED paths only: a working memo says nothing,
         # because a line printed on every successful gate call is noise that
         # trains the reader to skip the block where real remedies live.
@@ -2626,8 +2656,8 @@ def _branch_coverage(
 
     Keys prefixed ``_`` are the rendering context: the verdict closure built
     over this invocation's diff/key memos. They are returned rather than
-    rebuilt by the caller because rebuilding re-pays the ``git ls-tree`` per
-    tree this call already paid — which is most of a cold verdict's cost.
+    rebuilt by the caller because rebuilding discards the diff memo this call
+    already filled, and re-pays each ``git diff`` in it.
     """
     precheck = _store_precheck(read)
     if precheck is not None:

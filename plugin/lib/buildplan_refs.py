@@ -1589,6 +1589,19 @@ _BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
 _BUILD_PLAN_ALLOWED_TYPES = frozenset(
     {"code", "doc-only", "cleanup", "designer-handoff", "cumulative-final", "trivial"}
 )
+#: The work types `building.md` scales governance by, and the change-log's
+#: `type=` vocabulary shares two of them, so authors write them in a chunk's
+#: `Type:` field meaning "this is code work". Each reads as `code`, the full
+#: protocol, so an alias can never lighten a review. Rejecting them reported an
+#: error on a chunk that ran as `code` anyway.
+_BUILD_PLAN_TYPE_ALIASES = {
+    "feature": "code",
+    "bugfix": "code",
+    "refactor": "code",
+    "optimization": "code",
+    "hotfix": "code",
+    "debt-paydown": "code",
+}
 # `**Trivial because:** <rationale>` — first line; continuation lines (no
 # list-item / heading prefix) are joined onto the rationale until the next
 # field. Empty after the colon → missing-rationale.
@@ -2845,8 +2858,11 @@ def _parse_build_plan_chunk_type(
 
     if declared is None:
         return "code", None  # fail-closed default
+    declared = _BUILD_PLAN_TYPE_ALIASES.get(declared, declared)
     if declared not in _BUILD_PLAN_ALLOWED_TYPES:
-        allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
+        allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES)) + (
+            "; read as code: " + ", ".join(sorted(_BUILD_PLAN_TYPE_ALIASES))
+        )
         return None, f"{UNKNOWN_TYPE_PREFIX} {declared!r} (allowed: {allowed})"
     return declared, None
 

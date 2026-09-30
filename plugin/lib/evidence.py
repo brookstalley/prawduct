@@ -764,7 +764,11 @@ def has_fact(project_dir: Path, kind: str, fact_id: str) -> bool:
 
 
 def run_git(
-    project_dir: Path, *args: str, env: dict | None = None, strip: bool = True
+    project_dir: Path,
+    *args: str,
+    env: dict | None = None,
+    strip: bool = True,
+    input: str | None = None,
 ) -> tuple[int, str, str]:
     """One git call; (returncode, stdout, stderr). Never raises — converts
     subprocess failures to a nonzero returncode with the message in stderr.
@@ -787,6 +791,7 @@ def run_git(
             text=True,
             timeout=timeout,
             env=env,
+            input=input,
         )
     except subprocess.TimeoutExpired:
         # Named before the generic branch below (TimeoutExpired IS a
@@ -1082,6 +1087,39 @@ def tree_diff(
     return [path for path in out.split("\0") if path]
 
 
+def missing_objects(project_dir: Path, object_ids: "list[str]") -> "set[str] | None":
+    """The subset of ``object_ids`` the repository does not hold, from ONE
+    ``git cat-file --batch-check`` however many ids are asked; ``None`` when
+    git cannot answer, so a caller falls back to asking per object.
+
+    A store outlives its objects: a rebased or deleted branch's trees are
+    garbage-collected, and a clone's store keeps naming them. Each one costs
+    a failed ``git ls-tree`` whenever it is keyed, and a key is never
+    remembered for an unreadable tree, so without this check every hook paid
+    for every missing tree again (198 of 1,326 in this repo's store).
+
+    Only well-formed ids are sent, since a line git cannot parse would read as
+    a different question; a malformed id is reported missing, because
+    :func:`tree_entries` refuses it too.
+    """
+    wanted = [oid for oid in object_ids if gitstate.is_object_id(oid)]
+    missing = {oid for oid in object_ids if not gitstate.is_object_id(oid)}
+    if not wanted:
+        return missing
+    rc, out, _err = run_git(
+        project_dir, "cat-file", "--batch-check", input="\n".join(wanted) + "\n"
+    )
+    if rc != 0:
+        return None
+    lines = out.splitlines()
+    if len(lines) != len(wanted):
+        return None
+    for oid, line in zip(wanted, lines):
+        if line == f"{oid} missing":
+            missing.add(oid)
+    return missing
+
+
 def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | None":
     """``(mode, object_id, path)`` for every entry in ``tree``, or ``None``
     when the tree cannot be read (missing object, git failure) — never
@@ -1136,8 +1174,9 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
 
 # The store is append-only, shared by every worktree of the clone, and never
 # pruned. Composition cost is linear in the number of distinct TREES it
-# mentions (not facts), so that is the number worth watching — and watching it
-# is the whole point: a deferral whose trigger nothing measures fires only if
+# mentions, not facts: a `git ls-tree` the first time a clone meets a tree and
+# a `tree_key_memo` lookup after that. So trees are the number worth watching,
+# and watching it is the whole point: a deferral whose trigger nothing measures fires only if
 # someone happens to notice, which is the same silence the gates exist to end.
 # Advisory, never a block: `nonfunctional-requirements` makes state-file growth
 # something that prompts compaction, not something that stops work.

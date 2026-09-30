@@ -24,6 +24,60 @@ def get_prawduct_dir(project_dir: Path) -> Path:
     return project_dir / ".prawduct"
 
 
+def declared_product_name(prawduct_dir: Path) -> str | None:
+    """``product_identity.name`` from ``project-state.yaml``, or ``None`` when
+    it is absent, null or an unfilled template placeholder. The one reader of
+    that field: the briefing shows it, and :func:`project_label` derives from
+    it."""
+    state_path = prawduct_dir / "project-state.yaml"
+    try:
+        content = state_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    in_identity = False
+    for line in content.splitlines():
+        if "product_identity:" in line:
+            in_identity = True
+        elif in_identity and line.strip().startswith("name:"):
+            val = line.split(":", 1)[1].strip().strip("\"'")
+            if val and val != "null" and not val.startswith("{{"):
+                return val
+            return None
+        elif in_identity and not line.startswith(" ") and line.strip():
+            return None
+    return None
+
+
+def project_label(project_dir: Path) -> str:
+    """The name telemetry records a governed repo under (the ledger's
+    ``project``, the review-stats header).
+
+    Not the directory's name. A devcontainer mounts every workspace at one
+    fixed path (discodon's at ``/opt/venv``, so every event read ``venv``), and
+    a worktree's directory names the worktree, not the product. So, in order:
+    the committed ``product_identity.name``; the push remote's repository name
+    (:func:`push_remote`, so a lone remote not called ``origin`` counts), which
+    a container keeps; the main checkout's directory, which is what a worktree
+    shares; and only then the directory itself. Clones of one repository
+    therefore share a label, which is the identity the first two carry.
+    """
+    declared = declared_product_name(get_prawduct_dir(project_dir))
+    if declared:
+        return re.sub(r"\s+", "-", declared.strip().lower())
+    code, url, _err = _git_text(
+        project_dir, "config", "--get", f"remote.{push_remote(project_dir)}.url"
+    )
+    if code == 0 and url:
+        name = re.split(r"[/:]", url.rstrip("/"))[-1]
+        name = name[:-4] if name.endswith(".git") else name
+        if name:
+            return name
+    common = git_common_dir(project_dir)
+    if common is not None and common.name == ".git":
+        return common.parent.name
+    return project_dir.resolve().name
+
+
 def _git_toplevel(cwd: Path) -> Path | None:
     """Resolved ``git rev-parse --show-toplevel`` from ``cwd``.
 

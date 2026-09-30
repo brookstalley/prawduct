@@ -173,7 +173,7 @@ See `methodology/building.md` for runtime behavior and `skills/critic/review-cyc
 
 Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `skills/critic/cross-checks.md`.
 
-Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the full protocol — so a missing field is the default, not a carveout. Declare a non-default Type only when the chunk actually deviates:
+Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`; `building.md`'s work types (`feature`, `bugfix`, `refactor`, …) read as `code`. Default is `code` — the full protocol — so a missing field is the default, not a carveout. Declare a non-default Type only when the chunk actually deviates:
 
 - **`code`** — code or behavior changes. The default; rarely written explicitly.
 - **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage.

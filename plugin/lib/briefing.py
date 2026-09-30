@@ -359,26 +359,8 @@ def staleness_scan(project_dir: Path) -> list[str]:
 
 
 def _get_product_name(prawduct_dir: Path) -> str:
-    """Extract product name from project-state.yaml."""
-    state_path = prawduct_dir / "project-state.yaml"
-    if not state_path.is_file():
-        return "Unknown"
-    try:
-        content = state_path.read_text()
-        in_identity = False
-        for line in content.splitlines():
-            if "product_identity:" in line:
-                in_identity = True
-            elif in_identity and line.strip().startswith("name:"):
-                val = line.split(":", 1)[1].strip().strip("\"'")
-                if val and val != "null" and not val.startswith("{{"):
-                    return val
-                break
-            elif in_identity and not line.startswith(" ") and line.strip():
-                break
-    except Exception:  # prawduct:allow prawduct/broad-except -- product name extraction is best-effort
-        pass
-    return "Unknown"
+    """The declared product name for the briefing header, or ``Unknown``."""
+    return gitstate.declared_product_name(prawduct_dir) or "Unknown"
 
 
 def _get_current_branch(project_dir: Path) -> str:

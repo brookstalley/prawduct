@@ -5,6 +5,85 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-09-30: four governance frictions found in consumer transcripts
+
+<!-- prawduct: type=bugfix | scope=sibling-hook-perf -->
+
+Found by the same investigation of consumer sessions as #931.
+
+**A process running on its own no longer reads as a reason for `DO NOT CLEAR` (#932).** The
+`clear-verdict` gate fired nine times across fabulous, discodon, puzzles and this repo. Every
+block was correct and each cost a turn. The cause was one belief: that a server or recorder the
+session had started would die with a `/clear`. The digest's precedence line, the verdict paragraph
+in `session-hygiene.md`, and the gate's own message now say that a clear ends the conversation,
+not the process. Tests pin all three places: the digest and `session-hygiene.md` in one, the gate
+message in another. The digest pays for its clause in place by
+dropping an opening sentence that restated "Read on demand", so both injected totals fall and
+their ceilings ratchet down.
+
+**Telemetry labels a repo by its identity, not its directory (#933).** Discodon's devcontainer
+mounts every workspace at `/opt/venv`, so every ledger event since 09-21 read `project: "venv"`.
+`gitstate.project_label` is now the one owner, shared by the ledger and the review-stats header.
+It tries, in order: the committed `product_identity.name` (as a slug), the push remote's
+repository name (so a lone remote not named `origin` counts), the main checkout's directory (which a worktree shares), and only then the
+directory itself. `gitstate.declared_product_name` becomes the one reader of
+`product_identity.name`, and the briefing delegates to it.
+`[DECISION: clones of one repository share a label | identity is what the committed name and the origin carry, and no path survives a container | this changes future labels for three checkouts: samsung-frame-art-loader becomes curatarr (its origin), fabulous-tips becomes fabulous, and prawduct-learning becomes prawduct; worktrees take their main checkout's name; existing rows are not relabelled]`
+
+**`**Type:** bugfix` parses (#934).** `building.md` sizes governance by work type (feature,
+bugfix, refactor, …), and authors carried the word into a chunk's `Type:` field, which reported
+it as unknown on a chunk that ran as `code` anyway. The work types are now aliases for `code`,
+the full protocol, so an alias can never lighten a review. `planning.md` names them. Aliases are
+case-sensitive, like the types: `Bugfix` is reported as unknown, as `Code` always was, and the
+error now lists the aliases beside the types.
+
+**The code-without-tests canary check is deleted (#935, part of #164).** It fired on every
+session that changed code without a test file, a research spike under `docs/` included, and it
+could not recognise test files beyond Python and JS naming. #164, owner-ruled, deletes it with
+Critic Goal 1 as its covering surface. `_is_test_file` goes with it, and `architecture.md`'s
+retroactivity inventory no longer lists it. The surviving canary checks had no tests at all; they
+have them now, including a control showing that the canary still runs when the deleted check
+would have been its only finding. The rest of #164 is still open.
+
+## 2026-09-30: hook latency no longer grows with the evidence store
+
+<!-- prawduct: type=bugfix | scope=sibling-hook-perf -->
+
+**Root cause (verified by profile and A/B).** Every SessionStart and Stop composes a coverage
+verdict whose free-edge search keys every tree the evidence store mentions, one `git ls-tree`
+each. The keys were memoised only within the process, and the store is append-only and shared by
+every worktree, so hook latency grew with the store's age rather than with the work at hand. On a
+snapshot of the puzzles repo (231 trees), each cached plugin version from 3.5.1-dev.2 to
+3.7.0-dev.2 took about 6.4 s per Stop, of which 4 s was this keying. Field data from the
+transcripts shows the growth: the puzzles Stop p90 went from 3 s to 15 s as its store grew from 20
+trees to 231 between 09-12 and 09-30, and discodon (1,743 trees) reached a p90 of 62 s (#931).
+
+**Fix.** `lib/tree_key_memo.py` persists each computed key beside the evidence store, keyed by the
+tree and by `verdict_cache.code_identity()`. That is now the one identity both per-clone memos
+use: the plugin version, a checkout's plugin tree and the content of its uncommitted edits, and the
+bytes of the modules that decide judgeability and form the key. The last two parts came from the
+boundary review. A same-version install and a second edit to an already-dirty file would
+otherwise have replayed keys formed by older code, and those could grant a free edge. Each tree now
+costs one `git ls-tree` per clone and per code change. A save that fails is reported once and is
+not retried. An unreadable tree
+is never remembered, so it still denies the free edge and is asked again next time. A second
+cost of the same kind: trees that git has collected, which the store keeps naming, cost a failed
+`ls-tree` apiece on every hook (198 of 1,326 here). One `git cat-file --batch-check` now answers
+all of them (`evidence.missing_objects`, reached through the key function's `prime`). The memo
+saves every 100 new keys and at exit, so a cold run that the harness kills keeps its progress.
+
+Measured on the same snapshot, with an edit before each Stop as in a real session: warm Stop hooks
+went from about 6.0 s to about 2.1 s, and the coverage verdict itself from 4.1 s to 0.05 s, with
+identical gate output. This repo's warm Stop went from 34 s to about 6.3 s. The rest is a fixed
+set of git calls spread across other gates, plus the base-advance diagnosis's per-candidate diffs,
+filed separately.
+
+**SessionStart's api-versioning probe (#936).** `Codebase` ran an `rglob` per pattern, four per
+sync, each descending into `.git`, `.venv` and `node_modules` before discarding what it found. It
+now walks once, pruning the skip set as it descends, and every scan filters that listing: about
+1.1 s down to 0.18 s on the snapshot, returning exactly the same files as before on puzzles and on
+this repo.
+
 ## 2026-09-29: develop opens 3.7.0-dev.2
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.2 -->

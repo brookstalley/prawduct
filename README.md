@@ -102,7 +102,7 @@ Prawduct enforces governance at four levels:
 - **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and relevant learnings. The session briefing surfaces things like current stage in multi-step work, PR's waiting to be merged, and recently completed work.
 - **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened. The Critic skill has structural tool restrictions preventing test/build execution.
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
-- **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
+- **Compliance canary** — At session end, informational checks flag common governance failures (dependencies without rationale, broad exception handling, waivers without a reason)
 
 Everything else is governed by a set of principles, always in context via the session digest, and methodology guides read on demand.
 
