@@ -16,7 +16,8 @@ Found by the same investigation of consumer sessions as #931.
 block was correct and each cost a turn. The cause was one belief: that a server or recorder the
 session had started would die with a `/clear`. The digest's precedence line, the verdict paragraph
 in `session-hygiene.md`, and the gate's own message now say that a clear ends the conversation,
-not the process. One test pins all three places. The digest pays for its clause in place by
+not the process. Tests pin all three places: the digest and `session-hygiene.md` in one, the gate
+message in another. The digest pays for its clause in place by
 dropping an opening sentence that restated "Read on demand", so both injected totals fall and
 their ceilings ratchet down.
 
@@ -56,8 +57,13 @@ transcripts shows the growth: the puzzles Stop p90 went from 3 s to 15 s as its 
 trees to 231 between 09-12 and 09-30, and discodon (1,743 trees) reached a p90 of 62 s (#931).
 
 **Fix.** `lib/tree_key_memo.py` persists each computed key beside the evidence store, keyed by the
-tree and by the classifier's code identity (the plugin version, plus the plugin tree on a
-checkout). Each tree now costs one `git ls-tree` per clone and per code change. An unreadable tree
+tree and by `verdict_cache.code_identity()`. That is now the one identity both per-clone memos
+use: the plugin version, a checkout's plugin tree and the content of its uncommitted edits, and the
+bytes of the modules that decide judgeability and form the key. The last two parts came from the
+boundary review. A same-version install and a second edit to an already-dirty file would
+otherwise have replayed keys formed by older code, and those could grant a free edge. Each tree now
+costs one `git ls-tree` per clone and per code change. A save that fails is reported once and is
+not retried. An unreadable tree
 is never remembered, so it still denies the free edge and is asked again next time. A second
 cost of the same kind: trees that git has collected, which the store keeps naming, cost a failed
 `ls-tree` apiece on every hook (198 of 1,326 here). One `git cat-file --batch-check` now answers

@@ -116,3 +116,21 @@ def test_the_briefing_still_reads_the_declared_name_verbatim(tmp_path):
     repo = _repo(tmp_path / "r")
     _declare(repo, "Acme Widgets")
     assert briefing._get_product_name(repo / ".prawduct") == "Acme Widgets"
+
+
+def test_review_stats_reports_the_label_not_the_mount_path(tmp_path):
+    """The report header, the other place the directory name used to leak."""
+    repo = _repo(tmp_path / "opt" / "venv", "git@github.com:pacepace/discodon.git")
+    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(repo)}
+    r = subprocess.run(
+        [sys.executable, str(HOOK), "review-stats", "--json"],
+        cwd=str(repo), capture_output=True, text=True, timeout=60, env=env,
+    )
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["project"] == "discodon"
+
+
+def test_a_lone_remote_not_called_origin_still_names_the_repo(tmp_path):
+    repo = _repo(tmp_path / "opt" / "venv")
+    _git(repo, "remote", "add", "upstream", "git@github.com:pacepace/discodon.git")
+    assert gitstate.project_label(repo) == "discodon"

@@ -55,25 +55,20 @@ def project_label(project_dir: Path) -> str:
     Not the directory's name. A devcontainer mounts every workspace at one
     fixed path (discodon's at ``/opt/venv``, so every event read ``venv``), and
     a worktree's directory names the worktree, not the product. So, in order:
-    the committed ``product_identity.name``; the origin remote's repository
-    name, which a container keeps; the main checkout's directory, which is
-    what a worktree shares; and only then the directory itself. Clones of one
-    repository therefore share a label, which is the identity the first two
-    carry.
+    the committed ``product_identity.name``; the push remote's repository name
+    (:func:`push_remote`, so a lone remote not called ``origin`` counts), which
+    a container keeps; the main checkout's directory, which is what a worktree
+    shares; and only then the directory itself. Clones of one repository
+    therefore share a label, which is the identity the first two carry.
     """
     declared = declared_product_name(get_prawduct_dir(project_dir))
     if declared:
         return re.sub(r"\s+", "-", declared.strip().lower())
-    try:
-        remote = subprocess.run(
-            ["git", "config", "--get", "remote.origin.url"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError):
-        remote = None
-    if remote is not None and remote.returncode == 0:
-        url = remote.stdout.strip().rstrip("/")
-        name = re.split(r"[/:]", url)[-1] if url else ""
+    code, url, _err = _git_text(
+        project_dir, "config", "--get", f"remote.{push_remote(project_dir)}.url"
+    )
+    if code == 0 and url:
+        name = re.split(r"[/:]", url.rstrip("/"))[-1]
         name = name[:-4] if name.endswith(".git") else name
         if name:
             return name

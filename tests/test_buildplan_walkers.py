@@ -1438,7 +1438,7 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
 
     @pytest.mark.parametrize(
         "work_type",
-        ["bugfix", "feature", "refactor", "optimization", "hotfix", "debt-paydown", "Bugfix"],
+        ["bugfix", "feature", "refactor", "optimization", "hotfix", "debt-paydown"],
     )
     def test_a_building_md_work_type_reads_as_code(self, tmp_path: Path, work_type: str):
         """`building.md` sizes governance by work type (Feature, Bugfix, …) and
@@ -1449,6 +1449,17 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
         assert buildplan_refs._parse_build_plan_chunk_type(
             prawduct, "01", plan_path=plan
         ) == ("code", None)
+
+    def test_case_is_significant_for_aliases_as_for_types(self, tmp_path: Path):
+        """`Bugfix` is as unknown as `Code`: one rule for both lookups, and the
+        error names the aliases beside the types."""
+        for value in ("Bugfix", "Code"):
+            prawduct, plan = _plan_with_chunk_body(tmp_path, f"- **Type:** {value}\n")
+            chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+                prawduct, "01", plan_path=plan
+            )
+            assert chunk_type is None and error.startswith("unknown type:")
+            assert "read as code: bugfix" in error
 
     def test_an_unknown_value_in_field_position_still_reports(self, tmp_path: Path):
         """The typo path is unchanged — that is the point of reading it first."""
@@ -1838,7 +1849,7 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
                 if target == "code"
             }
             if (chunk_type, error) == ("code", None) and not (
-                {d.lower() for d in declared} & honoured_as_code
+                set(declared) & honoured_as_code
             ):
                 silent.append(f"{plan.name} Chunk {chunk_id}: declared {declared}")
 

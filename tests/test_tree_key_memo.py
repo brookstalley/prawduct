@@ -23,7 +23,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 sys.path.insert(0, str(ROOT))
-from lib import coverage_algebra, evidence, gates, tree_key_memo  # noqa: E402
+from lib import coverage_algebra, evidence, gates, tree_key_memo, verdict_cache  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -315,3 +315,77 @@ class TestTreesGitNoLongerHolds:
         coverage_algebra._free_classes({present, gone}, key_fn)
         assert key_fn(gone) is None and key_fn(present) is not None
         assert sorted(calls) == sorted([present, gone])
+
+
+class TestTheIdentityCoversTheCodeThatFormsKeys:
+    def test_a_change_to_the_judgeability_modules_is_not_replayed(self, repo, monkeypatch):
+        # An installed copy's only other identity is its version string, and the
+        # dev track keeps one version across several merges; a widened
+        # judgeability replayed under an old key could group trees the new
+        # classifier tells apart, which grants a free edge.
+        tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        gates._tree_key_fn(repo)(tree)
+        _new_process()
+        monkeypatch.setattr(verdict_cache, "_MODULE_DIGEST", "a-different-classifier")
+        calls = _count_ls_tree(monkeypatch)
+        gates._tree_key_fn(repo)(tree)
+        assert calls == [tree]
+
+    def test_the_digest_covers_every_module_the_classifier_reads(self):
+        # Whatever module defines a table `is_judgeable_path` reads must be
+        # digested, or an edit to that table replays keys the old table formed.
+        from lib import buildplan_refs, gitstate
+        assert coverage_algebra.METADATA_PREFIXES is gitstate.METADATA_PREFIXES
+        owners = {
+            Path(coverage_algebra.__file__).name,
+            Path(gitstate.__file__).name,  # METADATA_PREFIXES
+            Path(buildplan_refs.__file__).name,  # _TRIVIAL_PROTECTED_PATHS
+        }
+        assert owners <= set(verdict_cache._IDENTITY_MODULES)
+
+    @pytest.mark.parametrize(
+        ("module", "table"),
+        [("gitstate.py", "METADATA_PREFIXES = (\n"),
+         ("buildplan_refs.py", "_TRIVIAL_PROTECTED_PATHS: ")],
+    )
+    def test_a_classifier_table_edit_moves_the_module_digest(self, tmp_path, module, table):
+        lib = Path(verdict_cache.__file__).resolve().parent
+        copy = tmp_path / "lib"
+        copy.mkdir()
+        for name in verdict_cache._IDENTITY_MODULES:
+            (copy / name).write_bytes((lib / name).read_bytes())
+        before = verdict_cache.module_digest(copy)
+        assert verdict_cache.module_digest(copy) == before, "the digest is deterministic"
+        source = (copy / module).read_text()
+        widened = source.replace(table, "# widened\n" + table, 1)
+        assert widened != source, f"the fixture's edit must reach {module}'s table"
+        (copy / module).write_text(widened)
+        assert verdict_cache.module_digest(copy) != before
+
+    def test_the_key_formula_lives_in_a_digested_module(self):
+        assert tree_key_memo.judgeable_key.__module__ == "lib.tree_key_memo"
+        assert "tree_key_memo.py" in verdict_cache._IDENTITY_MODULES
+
+
+class TestAFailedSaveIsReportedAndNotRetried:
+    def test_a_failed_save_stops_retrying_and_says_so_once(self, repo, monkeypatch, capsys):
+        monkeypatch.setattr(tree_key_memo, "FLUSH_EVERY", 2)
+        writes: list[int] = []
+        monkeypatch.setattr(
+            verdict_cache, "write_memo_entries",
+            lambda *a, **k: writes.append(1) and False,
+        )
+        trees = [_commit(repo, f"s{i}.py", f"s = {i}\n", f"s{i}") for i in range(5)]
+        key_fn = gates._tree_key_fn(repo)
+        for tree in trees:
+            key_fn(tree)
+        assert writes == [1], "a failed save was retried on every later batch"
+        tree_key_memo.flush_all()
+        err = capsys.readouterr().err
+        assert err.count("tree-key memo") == 1
+        assert "could not be saved" in err and "5 tree key(s)" in err
+
+    def test_a_healthy_save_is_silent(self, repo, capsys):
+        gates._tree_key_fn(repo)(_git(repo, "rev-parse", "HEAD^{tree}"))
+        tree_key_memo.flush_all()
+        assert "tree-key memo" not in capsys.readouterr().err

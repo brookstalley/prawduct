@@ -2858,9 +2858,11 @@ def _parse_build_plan_chunk_type(
 
     if declared is None:
         return "code", None  # fail-closed default
-    declared = _BUILD_PLAN_TYPE_ALIASES.get(declared.lower(), declared)
+    declared = _BUILD_PLAN_TYPE_ALIASES.get(declared, declared)
     if declared not in _BUILD_PLAN_ALLOWED_TYPES:
-        allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES))
+        allowed = ", ".join(sorted(_BUILD_PLAN_ALLOWED_TYPES)) + (
+            "; read as code: " + ", ".join(sorted(_BUILD_PLAN_TYPE_ALIASES))
+        )
         return None, f"{UNKNOWN_TYPE_PREFIX} {declared!r} (allowed: {allowed})"
     return declared, None
 

@@ -147,16 +147,133 @@ def probe_code_identity(plugin_dir: Path) -> str:
         if tree.returncode == 0 and tree.stdout.strip():
             parts.append(tree.stdout.strip())
             dirty = subprocess.run(
-                ["git", "status", "--porcelain", "--", str(plugin_dir)],
+                ["git", "status", "--porcelain", "-z", "--untracked-files=all",
+                 "--", str(plugin_dir)],
                 cwd=plugin_dir, capture_output=True, text=True, timeout=10,
             )
-            if dirty.returncode == 0 and dirty.stdout.strip():
-                parts.append(
-                    hashlib.sha256(dirty.stdout.encode()).hexdigest()[:16]
-                )
+            if dirty.returncode == 0 and dirty.stdout.strip("\0"):
+                parts.append(_dirty_content_digest(plugin_dir, dirty.stdout))
     except (OSError, subprocess.SubprocessError):
         return ""
     return "\0".join(parts)
+
+
+def _dirty_content_digest(plugin_dir: Path, porcelain_z: str) -> str:
+    """A digest of what is uncommitted: each dirty path AND its bytes.
+
+    The status line alone names which files changed, not how, so a second edit
+    to a file already modified would keep the identity and replay answers the
+    first edit's code computed. Porcelain paths are relative to the repository
+    root, so they are resolved against it; a path that cannot be read (deleted,
+    a directory) contributes its name and status only, which still moves the
+    digest whenever the set of such paths does.
+    """
+    top = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=plugin_dir, capture_output=True, text=True, timeout=10,
+    )
+    root = Path(top.stdout.strip()) if top.returncode == 0 else plugin_dir
+    digest = hashlib.sha256()
+    records = porcelain_z.split("\0")
+    i = 0
+    while i < len(records):
+        record = records[i]
+        i += 1
+        if len(record) < 4:
+            continue
+        digest.update(record.encode("utf-8", "surrogateescape") + b"\0")
+        # A rename or copy carries its source as the next, unprefixed record.
+        if record[0] in "RC" and i < len(records):
+            digest.update(records[i].encode("utf-8", "surrogateescape") + b"\0")
+            i += 1
+        try:
+            digest.update((root / record[3:]).read_bytes())
+        except OSError:
+            pass
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
+
+
+#: The modules whose code decides what a memoised answer MEANS: which paths
+#: are judgeable (``coverage_algebra.is_judgeable_path``, reading
+#: ``gitstate.METADATA_PREFIXES`` and ``buildplan_refs``' protected paths),
+#: how a tree is keyed (``tree_key_memo``), and how keys and facts compose
+#: into a verdict (``coverage_algebra``). Their bytes are part of the identity, because an
+#: installed copy's only other component is the version string, and the dev
+#: track keeps one version across several merges.
+_IDENTITY_MODULES = (
+    "coverage_algebra.py", "gitstate.py", "buildplan_refs.py", "tree_key_memo.py",
+)
+
+_MODULE_DIGEST: "str | None" = None
+
+
+def module_digest(lib_dir: Path) -> str:
+    """Digest of :data:`_IDENTITY_MODULES`' bytes under ``lib_dir``."""
+    digest = hashlib.sha256()
+    for name in _IDENTITY_MODULES:
+        digest.update(name.encode() + b"\0")
+        try:
+            digest.update((lib_dir / name).read_bytes())
+        except OSError:
+            digest.update(b"<unreadable>")
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def _module_digest() -> str:
+    """:func:`module_digest` of this plugin's own modules, once per process."""
+    global _MODULE_DIGEST
+    if _MODULE_DIGEST is None:
+        _MODULE_DIGEST = module_digest(Path(__file__).resolve().parent)
+    return _MODULE_DIGEST
+
+
+def code_identity() -> str:
+    """What identifies the code behind any memoised coverage answer: the
+    plugin version, the checkout's plugin tree and uncommitted content
+    (:func:`_code_identity`), and the bytes of the modules that define
+    judgeability and keying (:func:`_module_digest`). The one composition both
+    per-clone memos key on (this module's verdicts and
+    :mod:`tree_key_memo`'s tree keys), so an input added here reaches both."""
+    return hashlib.sha256(
+        "\0".join((
+            evidence._plugin_version() or "unversioned",
+            _code_identity(),
+            _module_digest(),
+        )).encode()
+    ).hexdigest()
+
+
+def read_memo_entries(path: Path, schema: int) -> dict:
+    """A per-clone memo file's ``entries``, or ``{}`` for anything unreadable,
+    malformed, or written under a different schema. Never raises: a memo that
+    cannot be read is a miss, and a miss is only ever slower. Shared by both
+    memos beside the evidence store."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if not isinstance(data, dict) or data.get("schema") != schema:
+        return {}
+    entries = data.get("entries")
+    return entries if isinstance(entries, dict) else {}
+
+
+def write_memo_entries(path: Path, schema: int, entries: dict, max_entries: int) -> bool:
+    """Write ``entries`` (oldest first), keeping the newest ``max_entries``.
+    ``False`` on an ``OSError``: best-effort by contract, since a memo that
+    fails to save costs a recomputation and never a verdict."""
+    if len(entries) > max_entries:
+        entries = dict(list(entries.items())[-max_entries:])
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            path, json.dumps({"schema": schema, "entries": entries}, separators=(",", ":"))
+        )
+    except OSError:
+        return False
+    return True
 
 
 def _key(base_tree: str, target_tree: str, fingerprint: str) -> str:
@@ -170,16 +287,17 @@ def _key(base_tree: str, target_tree: str, fingerprint: str) -> str:
     older one becomes a `covered` the new rules would not grant. `CACHE_SCHEMA`
     was the intended guard and is a hand bump that nothing enforces — a
     maintainer changing judgeability has no reason to look at a cache module.
-    The version is derived, so it cannot be forgotten.
+    The version is derived, so it cannot be forgotten, and the bytes of the
+    judgeability modules ride with it (:func:`code_identity`) for the installs
+    where one version string spans several code states.
     """
     return hashlib.sha256(
         "\0".join((
             str(CACHE_SCHEMA),
-            evidence._plugin_version() or "unversioned",
             # The version alone is constant across develop pushes on a git
-            # checkout, so it cannot identify the code there. See
-            # `_code_identity`.
-            _code_identity(),
+            # checkout and across same-version installs, so it cannot identify
+            # the code. See `code_identity`.
+            code_identity(),
             base_tree,
             target_tree,
             fingerprint,
@@ -191,14 +309,7 @@ def _read(path: Path) -> dict:
     """The cache file's entries, or ``{}`` for anything unreadable, malformed,
     or written under a different schema. Never raises: a cache that cannot be
     read is a cache miss, and a cache miss is only ever slower."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        return {}
-    if not isinstance(data, dict) or data.get("schema") != CACHE_SCHEMA:
-        return {}
-    entries = data.get("entries")
-    return entries if isinstance(entries, dict) else {}
+    return read_memo_entries(path, CACHE_SCHEMA)
 
 
 class VerdictCache:
@@ -299,17 +410,9 @@ class VerdictCache:
             return False
         merged = _read(self._path)
         merged.update(self._memory)
-        # Newest-last insertion order is what `dict` preserves, so trimming from
-        # the front drops the oldest.
-        if len(merged) > MAX_ENTRIES:
-            merged = dict(list(merged.items())[-MAX_ENTRIES:])
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            atomic_write_text(
-                self._path,
-                json.dumps({"schema": CACHE_SCHEMA, "entries": merged}),
-            )
-        except OSError:
+        # Newest-last insertion order is what `dict` preserves, so the writer's
+        # trim from the front drops the oldest.
+        if not write_memo_entries(self._path, CACHE_SCHEMA, merged, MAX_ENTRIES):
             return False
         self._dirty = False
         return True

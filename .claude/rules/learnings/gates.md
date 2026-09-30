@@ -25,3 +25,4 @@ paths:
 - "Fail closed" means the channel's BLOCKING value, not any non-zero — a generic error code fails OPEN where the contract reads a specific code as block. Check the exit-code table the refusal reaches. Tell: "a refused gate is a blocked gate"
 - A refusal predicate is not a severity predicate — a gate folding conditions into one "cannot be trusted" must not also pick how hard to fail, or its mildest, ordinary case escalates. Split reasons at the call site. Tell: function picked by NAME
 - A documented "clears when X"/"exempt when X" arm is NOT evidence X is implemented — grep the module first; unworkable compliance routes operators to the forbidden lever. Tell: the promised state change doesn't move
+- A persisted memo key must cover every input for the VALUE's lifetime — a key borrowed from a shorter-lived memo carries gaps its expiry hid (a verdict died at the next append; a tree key lives to eviction). Tell: reused another cache's identity

@@ -65,6 +65,10 @@ from . import buildplan_refs
 from .gitstate import METADATA_PREFIXES, is_object_id
 
 DiffFn = Callable[[str, str], "list[str] | None"]
+#: A tree's key, or ``None`` for a tree that cannot be read. May also carry an
+#: optional ``prime(trees)`` attribute that answers many trees in one call
+#: before they are keyed one by one (``gates._tree_key_fn`` sets it); the
+#: algebra calls it when present and works without it.
 KeyFn = Callable[[str], "str | None"]
 
 _RESOLVING_DISPOSITIONS = frozenset({"fixed", "waived"})

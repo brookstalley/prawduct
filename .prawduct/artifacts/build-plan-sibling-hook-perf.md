@@ -12,7 +12,7 @@ governed_by:
     dispositions:
       - "verdicts are computed from the append-only fact ledger, never from mutable model-written state → conforms: the tree-key memo holds no fact and no model writes it; deterministic code computes each key from a git tree"
       - "facts are immutable and append-only → inapplicable, because no fact is written or changed"
-      - "derived views are disposable and never authoritative → conforms, by the argument verdict_cache.py already makes: the memo is keyed by every input the key is a function of (an immutable tree SHA, plus the code identity of the judgeable-path classifier). A hit therefore replays a computation whose inputs have not changed, and deleting the file loses nothing but time"
+      - "derived views are disposable and never authoritative → conforms, by the argument verdict_cache.py already makes: the memo is keyed by every input the key is a function of (an immutable tree SHA, plus `verdict_cache.code_identity()`: the version, a checkout's plugin tree and uncommitted content, and the bytes of the judgeability and keying modules). A hit therefore replays a computation whose inputs have not changed, and deleting the file loses nothing but time"
       - "a governance document reaches a terminal state → conforms: this plan is archived at merge"
       - "issue-standard title rules → conforms: #931–#936 were filed through /prawduct:backlog"
       - "a newer-schema fact is a loud block → inapplicable, because the memo is not a fact; a schema mismatch is a cache miss"
@@ -77,8 +77,8 @@ bodies.
 - The ledger and review-stats label a devcontainer or worktree session with the origin remote's
   repo name.
 - `**Type:** bugfix`, and the other work types in `building.md`, parse as `code`.
-- Canary check 1 is gone. Its tests are replaced by a test pinning its absence, and #935 closes
-  under #164's ruling.
+- Canary check 1 is gone. It had no tests; a test now pins its absence, and #935 closes under
+  #164's ruling.
 - The clear-verdict teaching text in the digest, the gate message and session-hygiene says that a
   process which runs on its own survives a clear.
 
