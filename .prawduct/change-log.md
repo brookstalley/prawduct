@@ -7,7 +7,7 @@
 
 ## 2026-09-30: four governance frictions found in consumer transcripts
 
-<!-- prawduct: type=bugfix | scope=sibling-hook-perf | chunks=02 -->
+<!-- prawduct: type=bugfix | scope=sibling-hook-perf -->
 
 Found by the same investigation of consumer sessions as #931.
 
@@ -47,7 +47,7 @@ would have been its only finding. The rest of #164 is still open.
 
 ## 2026-09-30: hook latency no longer grows with the evidence store
 
-<!-- prawduct: type=bugfix | scope=sibling-hook-perf | chunks=01 -->
+<!-- prawduct: type=bugfix | scope=sibling-hook-perf -->
 
 **Root cause (verified by profile and A/B).** Every SessionStart and Stop composes a coverage
 verdict whose free-edge search keys every tree the evidence store mentions, one `git ls-tree`

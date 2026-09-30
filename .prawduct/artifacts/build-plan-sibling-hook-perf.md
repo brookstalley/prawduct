@@ -74,8 +74,8 @@ bodies.
   written under a different code identity gives a miss, never a grant.
 - `Codebase` walks the tree once, pruning `_SCAN_SKIP_DIRS` as it descends, and every scan
   primitive filters that one listing.
-- The ledger and review-stats label a devcontainer or worktree session with the push remote's
-  repo name.
+- The ledger and review-stats label a devcontainer or worktree session by its identity: the
+  committed product name, else the push remote's repo name, else the main checkout's directory.
 - `**Type:** bugfix`, and the other work types in `building.md`, parse as `code`.
 - Canary check 1 is gone. It had no tests; a test now pins its absence, and #935 closes under
   #164's ruling.
