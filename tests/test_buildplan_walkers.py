@@ -1828,8 +1828,18 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
             graded += 1
             # `code` is the default AND a declarable type, so it is the one
             # answer that cannot distinguish "honoured" from "fell through" —
-            # unless the section is one whose author wrote `code`.
-            if (chunk_type, error) == ("code", None) and "code" not in declared:
+            # unless the section is one whose author wrote `code`, or a work
+            # type `building.md` names, which reads as `code` by declaration
+            # (#934; this corpus alone declares `bugfix` in a dozen chunks, each
+            # reported as unknown before). A typo still falls outside both.
+            honoured_as_code = {"code"} | {
+                alias
+                for alias, target in buildplan_refs._BUILD_PLAN_TYPE_ALIASES.items()
+                if target == "code"
+            }
+            if (chunk_type, error) == ("code", None) and not (
+                {d.lower() for d in declared} & honoured_as_code
+            ):
                 silent.append(f"{plan.name} Chunk {chunk_id}: declared {declared}")
 
     assert not misread, "a type a human reads off the line was read as something else:\n" + "\n".join(misread)
