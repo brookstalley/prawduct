@@ -104,17 +104,15 @@ Measured against `develop` on 2026-10-01 (re-derive with the commands in the las
   existing text on purpose), so a block needs an escape that is itself a recorded artifact; the
   false-positive rate is unmeasured until R-7 yields data. Revisit promotion to blocking after
   the yield is observed (promotion changes what a false positive costs).
-- **D-3 — slice fidelity (R-3).** Whole-file fallback over-reports nothing (a literal present in
-  the whole base file but not in the slice would be *under*-flagged... see risk below). Confirm
-  that a `whole-file` finding is acceptable as weaker evidence rather than suppressed.
+- **D-3 — slice fidelity (R-3).** When the slice cannot be reproduced, comparing the whole base
+  file can false-positive (the literal exists elsewhere in the base file, outside the slice the
+  test reads). Choose: report it labelled `whole-file` (weaker evidence), or leave such pins
+  `unresolved`. **Recommendation: label and report**, then let the R-7 yield decide.
 
 ## Risks and open questions
 
-- **Direction of the whole-file fallback.** If the pin reads a slice but the check compares the
-  whole base file, a literal present in the base outside the slice is flagged although the slice
-  did not satisfy it (false positive); conversely nothing is missed. Hence the `whole-file` label
-  in R-3; the alternative is to leave such pins `unresolved`. Design should pick by measuring how
-  many real pins fall in each bucket.
+- **Direction of the whole-file fallback.** It can only over-flag, never miss a satisfied pin;
+  design should size how many real pins fall in each bucket (see D-3).
 - **Parsing cost and brittleness.** Resolution via the `ast` module over the changed test file
   only is the expected mechanism; a regex over added lines cannot resolve a variable. Design
   decides; requirements only demand R-2's "resolve or say so".
