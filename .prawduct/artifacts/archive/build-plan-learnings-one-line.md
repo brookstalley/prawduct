@@ -36,7 +36,13 @@ governed_by:
       - "§8.7(3), 'an over-cap core.md on day one costs nothing until the next rule is written' → falsified in discodon (growth measured against the legacy file's 176KB) and corrected by removing that credit"
 partition: serial — 02's validator reuses 01's lint, and 04 runs 02's command on this repo's own corpus; 03 is prose that could run beside 02 but shares the change-log and the token-budget tests with it
 last_validated: 2026-09-24
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — learnings are one line each, and core.md stays small
 

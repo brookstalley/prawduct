@@ -27,7 +27,13 @@ governed_by:
     dispositions:
       - "prose-test taxonomy: a doc test pins budgets, refs, interface tokens and render consistency, never a sentence → conforms: no test pinned a sentence this wave rewrites. The one docstring that quoted a rewritten sentence (`test_registry_completeness.py`) quotes the new one. The three machine-read tables (`discipline.md`, `test-report-contract.md`, `waivers.md`) keep their parsed shape"
       - "model plan (Fable coherence before the cycle lands) → the pass is owed before this wave lands, and this plan's Done-when carries it"
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: Opus 5.5 prompt audit — W6, reference docs
 

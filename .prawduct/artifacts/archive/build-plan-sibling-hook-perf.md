@@ -34,7 +34,13 @@ governed_by:
       - "prawduct guides and reviews, never implements → inapplicable"
       - "goals and verification bind; method is advice → conforms"
       - "every fact has one home → conforms: the clear-verdict rule's home stays session-hygiene.md; the digest and the gate message restate the trigger in one clause and point there"
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: sibling-repo hook latency and governance friction
 

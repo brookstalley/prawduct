@@ -28,7 +28,13 @@ governed_by:
     dispositions:
       - "prose-test taxonomy: a doc test pins budgets, refs, interface tokens and render consistency, never a sentence → conforms: tests that read a moved section are re-pointed at the file that now holds it, with the same assertions. The new file gets its own budget"
       - "model plan (Fable coherence before the cycle lands) → conforms: owed once, before W6 lands"
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: Opus 5.5 prompt audit — W3b, the review-cycle split
 

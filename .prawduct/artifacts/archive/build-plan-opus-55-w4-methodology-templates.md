@@ -27,7 +27,13 @@ governed_by:
     dispositions:
       - "prose-test taxonomy: a doc test pins budgets, refs, interface tokens and render consistency, never a sentence → conforms: a pin on a sentence this wave rewrites is retired, or re-anchored on structure or on the interface token it protects. Any absence guard kept is a recorded [DECISION], as W3's were"
       - "model plan (Fable coherence before the cycle lands) → conforms: owed once, before W6 lands"
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: Opus 5.5 prompt audit — W4, methodology and templates
 

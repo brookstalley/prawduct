@@ -27,7 +27,13 @@ governed_by:
     dispositions:
       - "prose-test taxonomy: a doc test pins budgets, refs, interface tokens and render consistency, never a sentence → conforms with one recorded exception class: a test pinning a sentence this wave rewrites is retired as a descoped requirement, or re-anchored on structure or the interface token it protects (C-23 deletes `test_signals_and_work_scaling` with its text). The exception class is absence guards on deleted text, named in the [DECISION] under Requirements Confidence"
       - "model plan (Fable coherence before the cycle lands) → conforms: owed once, before W6 lands"
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: Opus 5.5 prompt audit — W3, review machinery
 

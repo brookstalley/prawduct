@@ -49,7 +49,13 @@ partition: >-
   and the token-budget tests. At integration it re-reads each delegate's prose against the other's code,
   because disjoint files do not keep one agent's claims true about a mechanism the other changed.
 last_validated: 2026-09-25
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan — reviews and Stop blocks cost what they earn
 

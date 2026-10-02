@@ -43,7 +43,13 @@ governed_by:
       - "a governance document reaches a terminal state, never deleted → conforms: this plan is archived when its work ships"
       - "every backlog issue conforms to the §1 title rules → inapplicable, because nothing here writes the backlog"
       - "backlog_service_repo selects the authoritative store → inapplicable, because nothing here reads or writes the backlog"
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: stranded-work
 

@@ -10,9 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.0-dev.4
+## v3.7.0
 
-**Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+**Prawduct's prompts are rewritten for Opus 5.5, every learnings rule is one line under a `core.md` cap only you can raise, and a chunk you committed before its review gets a chunk review instead of a full bundle review.** Thirty-four scopes since v3.6.1, counting release housekeeping. Three changes you will notice in an ordinary session. First, the session digest, gate output, review prompts, methodology guides and skills are shorter and plainer, and they tell the model to take the next step rather than announce it; each `final` or `cumulative` Critic reviewer loads about 7,800 fewer tokens. Second, a learnings rule is one line of at most 250 characters, and a corpus over the new limits does not break: it stops growing until you compact it with `prawduct-hook learnings-compact`. Third, a mid-plan `/prawduct:critic` reviews only what has not been reviewed yet, and the reflection and Critic gates wait while a turn closes `RUNNING` and `DO NOT CLEAR`. SessionStart and Stop also stop slowing down as a repo's review history grows. Three gates are new in this release: `learnings-rule-too-long`, `learnings-rule-body` and `clear-verdict`.
 
 **`opus-55-w1-always-on`**: **the always-loaded guidance is retuned for Opus 5.5.** The session
 digest now tells the model to take the next step when it can, instead of ending a turn to announce
