@@ -111,9 +111,9 @@ if the entry shipped, correct the value; if it has not, delete the tag.
 retired change-log keys stop at the PR.** A plan that names an absolute path (`/usr/local/bin/x`),
 a home path (`~/runs`) or your repo's own `owner/repo` no longer draws a BLOCKING
 `chunk-ref-missing`. The slug is excused only when git lists it as one of your remotes, so
-`docs/api` and other repos' names are still checked. Separately, `check-change-log-entry` now
-refuses a change-log tag line that the branch adds or edits if it still carries the retired
-`chunks=` or `status=` key. Delete the key and re-run. Old entries are never flagged unless you
+`docs/api` and other repos' names are still checked. Separately, when your change-log is
+committed, `check-change-log-entry` now refuses a tag line that the branch adds or edits if it
+still carries the retired `chunks=` or `status=` key. Delete the key and re-run. Old entries are never flagged unless you
 edit them.
 
 **`update-body-lint`** (#898) — **backlog `update` now checks the body it writes.** On the
