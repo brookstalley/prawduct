@@ -5,6 +5,26 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-02: v3.7.0 is cut, and develop reopens on 3.7.1-dev
+
+<!-- prawduct: type=chore | scope=release-v3.7.0 -->
+
+**34 scopes and 35 change-log entries. `K = 0`, so this took the whole-develop promotion path with
+nothing withheld.** Tag `v3.7.0` was published with the CHANGELOG section as its Release notes.
+`check-released v3.7.0` reports 3 of 3 verified, and the hand-dispatched `verify-release` run is
+green. To re-derive the scope set, grep for `release=v3.7.0` in `change-log.md` and
+`change-log-archive/`.
+
+**A minor, as the owner named it and v3.6.1 had already planned.** Three gates are stamped
+`since: 3.7.0`; `.prawduct/artifacts/release-plan-v3.7.0.md` records the reasoning. The cut also
+archived `waiver-pragma-plan.md`, a 2.0-line plan no sweep could reach because its `scope:` sat in
+an HTML comment, as completed in v2.0.4 by a tree-content test.
+
+Step 11a caught one red test on the prep tree: a README bullet saying "once per clone" read as a
+clone claim to `test_plugin_absent_prose`, and was reworded before the prep commit.
+
+`develop` reopens on `3.7.1-dev`, a patch guess per the runbook's guess-low rule.
+
 ## 2026-10-02: develop opens 3.7.0-dev.4
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.4 | release=v3.7.0 -->
