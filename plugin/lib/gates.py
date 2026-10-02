@@ -30,7 +30,8 @@ were reassigned here (they are gate logic, lib-clean) from the briefing region.
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
-(the one resolver for the rules layout the cross-check nudge names), and ``core``
+(the one resolver for the rules layout the cross-check nudge names),
+``standing_block`` (the closing block the Stop deferral and clear-verdict gate read), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -38,7 +39,6 @@ mirror), plus the stdlib.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import subprocess
 import sys
@@ -51,6 +51,8 @@ from . import (
     evidence,
     gitstate,
     learnings_files,
+    standing_block,
+    tree_key_memo,
     verdict_cache,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
@@ -79,11 +81,15 @@ _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
     # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
-    # SHA the recorded run ran against, captured via ``evidence.capture_tree`` at
-    # ``record`` time. Consumed ONLY by the additive tree-validity clause in
-    # ``tests_are_current`` — a str when present, always omitted (never null) when
-    # capture failed or the on-ramp is ``--from-counts``, so old and count-only
-    # records keep exactly their pre-clause timestamp-only behavior.
+    # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
+    # before a live run starts (omitted when a path that affects the test outcome
+    # changed before it ended — ``_test_evidence_tree_valid``'s test, a superset of
+    # judgeable), or at ingest for ``--from-junit`` and a restamp. Read by the
+    # tree-validity clause of ``tests_are_current`` and ``suite_vouches_for_tree``
+    # (each directly and through ``_store_run_vouching``), and by the restamp guard
+    # in ``test-evidence record``. A str when present, always omitted (never null)
+    # when capture failed or the on-ramp is ``--from-counts``, so old and
+    # count-only records keep exactly their pre-clause timestamp-only behavior.
     "evidence_tree": (str,),
     # ``degraded``: WHY this run did not cover what its counts imply — a worker
     # that died under contention, a shard that never reported, a suite cut short.
@@ -428,8 +434,10 @@ def _test_evidence_tree_valid(
     legitimate. Correct by design (a restamp rewrites ``evidence_tree``, so
     permitting an unverifiable one lets stale counts vouch for a tree they never
     ran against), and survivable because the reason string is printed and the
-    escape is to run the suite. Read this before widening the ``False`` cases:
-    each one is now a refusal somewhere, not only a stale verdict.
+    escape is to run the suite. A live ``record`` also acts on it, asking whether
+    the tree held still while the suite ran, and omits ``evidence_tree`` on a
+    ``False``. Read this before widening the ``False`` cases: each one is now a
+    refusal or a withheld stamp somewhere, not only a stale verdict.
     """
     if target_tree is None:
         capture = evidence.capture_tree(project_dir)
@@ -856,6 +864,94 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
     return True, labels
 
 
+#: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
+#: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
+#: (learnings, PR review, trivial bounds) is not about whether the session is
+#: ending, so it keeps blocking on such a turn.
+VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
+
+
+def _last_message(stop_input) -> str | None:
+    """The Stop payload's ``last_assistant_message``, or ``None`` when the
+    payload is not a dict or the field is absent, non-string or blank."""
+    if not isinstance(stop_input, dict):
+        return None
+    message = stop_input.get("last_assistant_message")
+    if not isinstance(message, str) or not message.strip():
+        return None
+    return message
+
+
+def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
+    """Decide whether the turn that just ended told the user NOT to end the
+    session, from the Stop-hook ``last_assistant_message`` field.
+
+    The Stop hook fires at every turn end, while the reflection and Critic
+    gates are about session end. A turn whose standing block says ``RUNNING``
+    and closes on ``DO NOT CLEAR`` is the agent's own statement that it is
+    still working — a review in flight, a delegate not yet reaped — so both
+    gates DEFER to the next Stop. Both, by owner ruling: the label is a
+    required, user-facing claim, so misusing it to dodge a gate is visible to
+    the person it misleads. The deferral is stateless: the next
+    turn that closes on anything else is a session end, and the gates fire.
+
+    ``DO NOT CLEAR`` under ``YOUR TURN`` or ``COMPLETE`` does NOT defer. A turn
+    that hands the session over is one the reader may clear, hours or days
+    later, so it owes ``SAFE TO CLEAR`` and faces the session-end gates like
+    any other; the Stop hook refuses that pairing outright
+    (:func:`turn_contradicts_its_verdict`). A pending question is never a
+    reason not to clear — what it needs is written down.
+
+    Reads the payload field only. Claude Code 2.1.282 carries
+    ``last_assistant_message`` beside ``transcript_path``; the transcript is
+    deliberately NOT parsed as a fallback, because an older client that lacks
+    the field then behaves exactly as before this signal existed.
+
+    Degradation ladder — the permissive direction is taken ONLY on a clearly
+    present verdict and disposition; every uncertain case keeps blocking
+    (authority fails closed):
+
+      - non-dict input, field absent, non-string or blank → ``(False, None)``;
+      - the message's closing block states no single verdict where the block
+        puts it (``standing_block.clear_verdict`` returns ``None``: a label
+        quoted mid-prose, both labels, trailing text after the verdict) →
+        ``(False, None)``;
+      - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
+      - the verdict is ``DO NOT CLEAR`` but the block states no single
+        disposition, or one other than ``RUNNING`` → ``(False, None)``;
+      - ``RUNNING`` with ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
+    """
+    message = _last_message(stop_input)
+    if message is None:
+        return False, None
+    verdict = standing_block.clear_verdict(message)
+    if (
+        verdict == standing_block.DO_NOT_CLEAR
+        and standing_block.disposition(message) == standing_block.RUNNING
+    ):
+        return True, verdict
+    return False, None
+
+
+def turn_contradicts_its_verdict(stop_input) -> str | None:
+    """The disposition a turn hands the session over with while also saying
+    ``DO NOT CLEAR`` — ``YOUR TURN`` or ``COMPLETE`` — or ``None``.
+
+    The reader of ``YOUR TURN`` / ``DO NOT CLEAR`` is told it is their move
+    and that they must not end the session, and may sit on both for days. The
+    pairing is never true: if something a clear would kill is running, the
+    disposition is ``RUNNING`` (the ask rides in its copy); if nothing is, what
+    only the conversation holds can be written down and the verdict is
+    ``SAFE TO CLEAR``. Only a clearly stated pair returns a label
+    (``standing_block.contradiction``); a missing field or an ambiguous block
+    returns ``None``, because the caller blocks on it.
+    """
+    message = _last_message(stop_input)
+    if message is None:
+        return None
+    return standing_block.contradiction(message)
+
+
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _CRITIC_MODE_FINAL = "final (full review, ready for push)"
 _CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"
@@ -1210,28 +1306,56 @@ def _tree_key_fn(project_dir: Path):
     by every worktree of the clone, so that degrades monotonically. Keying
     each tree once is linear in trees and asks the same question.
 
+    Linear is still the whole store on every gate call, and the store only
+    grows, so a computed key is also kept across processes
+    (:mod:`tree_key_memo`): each tree costs one ``git ls-tree`` per clone and
+    code identity, and trees git no longer holds are answered together by
+    ``prime`` rather than one failed call apiece.
+
     ``None`` when the tree cannot be read, which denies a free edge rather
     than granting one — the fast path fails in the same direction as the slow
-    one, because this gate is authority and authority fails closed.
+    one, because this gate is authority and authority fails closed. A ``None``
+    is never persisted, so an unreadable tree is asked again next time.
     """
     cache: dict[str, "str | None"] = {}
+    memo = tree_key_memo.for_project(project_dir)
 
     def key_fn(tree: str) -> "str | None":
         if tree not in cache:
+            remembered = memo.get(tree)
+            if remembered is not None:
+                cache[tree] = remembered
+                return remembered
             entries = evidence.tree_entries(project_dir, tree)
             if entries is None:
                 cache[tree] = None
             else:
-                judgeable = sorted(
-                    f"{mode} {object_id} {path}"
-                    for mode, object_id, path in entries
-                    if coverage_algebra.is_judgeable_path(path)
-                )
-                cache[tree] = hashlib.sha256(
-                    "\n".join(judgeable).encode("utf-8", "surrogateescape")
-                ).hexdigest()
+                cache[tree] = tree_key_memo.judgeable_key(entries)
+                memo.put(tree, cache[tree])
         return cache[tree]
 
+    def prime(trees) -> None:
+        """Answer every tree the memo lacks whose object git no longer holds,
+        in one call, before they are keyed one by one. Such a tree is never
+        remembered, so it would otherwise cost a failed ``git ls-tree`` on
+        every hook. When git cannot answer, nothing is primed and each tree
+        is asked the slow way."""
+        unknown = []
+        for tree in trees:
+            if tree in cache:
+                continue
+            remembered = memo.get(tree)
+            if remembered is not None:
+                cache[tree] = remembered
+            else:
+                unknown.append(tree)
+        if not unknown:
+            return
+        missing = evidence.missing_objects(project_dir, unknown)
+        for tree in missing or ():
+            cache[tree] = None
+
+    key_fn.prime = prime
     return key_fn
 
 
@@ -1393,12 +1517,26 @@ def commit_coverage(project_dir: Path) -> dict:
 
 
 #: How far back from HEAD :func:`covered_frontier` walks before giving up. A
-#: bound, not a tuning knob: past it the frontier reads as absent and the
-#: review keeps today's HEAD-anchored interval, the answer it had before.
+#: bound, not a tuning knob: past it the frontier reads as absent, and where the
+#: review then starts is :func:`critic_consolidate.working_tree_interval_base`'s call.
 FRONTIER_WALK_LIMIT = 200
 
+#: Which clean ``None`` :func:`covered_frontier` returned, for a caller that
+#: passes ``absent``. They differ in what the builder must hear: "unreviewed"
+#: is the ordinary first chunk, "blocked" means a review found a blocker nobody
+#: has resolved (only ``verify-resolutions`` records resolutions), and "none
+#: composes" cannot tell a never-reviewed branch from one whose reviews
+#: predate a base sync.
+FRONTIER_ABSENT_UNREVIEWED = "unreviewed"
+FRONTIER_ABSENT_BLOCKED = "blocked"
+FRONTIER_ABSENT_NONE_COMPOSES = "none-composes"
 
-def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict | None":
+
+def covered_frontier(
+    project_dir: Path,
+    why: "list[str] | None" = None,
+    absent: "list[str] | None" = None,
+) -> "dict | None":
     """The newest commit on this branch whose tree a REVIEW already covers.
 
     Walks HEAD's first-parent history back toward the merge-base and returns
@@ -1409,22 +1547,28 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
     after it as well as the uncommitted work. When that commit is HEAD, nothing
     after it needs covering and the caller's interval is unchanged.
 
-    ``None`` whenever extension must not happen, so the caller keeps its
-    HEAD-anchored interval:
+    ``None`` whenever extension from a reviewed tree must not happen. Where the
+    review starts instead is the caller's call
+    (:func:`critic_consolidate.working_tree_interval_base`): HEAD, or, on a clean
+    tree with no blocker-free reviewed state behind it, the merge-base. The
+    first three cases below are "nothing to find", and a caller passing
+    ``absent`` gets one ``FRONTIER_ABSENT_*`` code naming which:
 
     - the nearest composing tree carries an unresolved blocker — those clear
       through ``verify-resolutions``, the only mode that records resolutions;
     - the nearest composing tree is covered by free edges alone, i.e. nothing
-      on the branch has been reviewed yet. Extending there would turn the first
-      inner-stage review into a review of everything the branch committed, the
-      span the boundary ``cumulative`` exists for;
+      on the branch has been reviewed yet. Extending there from a dirty tree would
+      turn the first inner-stage review into a review of everything the branch
+      committed. With nothing judgeable uncommitted the caller does reach that
+      span (``critic_consolidate.working_tree_interval_base``), at inner rigor:
+      review stage is keyed on the plan's position, not on whether the builder
+      committed first, so the alternative is the same span at boundary rigor;
     - no tree on the walk composes at all. After a base sync this is the
       ordinary answer: the merge-base is the new base tip, and a pre-sync review
       composes from it only across a free (non-judgeable) advance, never across
       a judgeable one — that needs the base-advance transfer, which
-      :func:`_merge_base_verdict` owns. So a sync leaves today's interval in
-      place until a review spans it, rather than extending to a whole-branch
-      review;
+      :func:`_merge_base_verdict` owns. A never-reviewed branch returns here
+      too, and the two are indistinguishable from the walk;
     - the merge-base, the history or the store cannot be read, or the walk
       passes :data:`FRONTIER_WALK_LIMIT`.
 
@@ -1436,6 +1580,10 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
     def _unreadable(reason: str) -> None:
         if why is not None:
             why.append(reason)
+
+    def _absent(code: str) -> None:
+        if absent is not None:
+            absent.append(code)
 
     read = evidence.read_facts(project_dir)
     precheck = _store_precheck(read)
@@ -1472,9 +1620,14 @@ def covered_frontier(project_dir: Path, why: "list[str] | None" = None) -> "dict
         )
         if verdict["status"] == "covered":
             reviewed = any(step.get("kind") == "review" for step in verdict.get("path", []))
-            return {"commit": commit, "tree": tree} if reviewed else None
-        if verdict["status"] == "blocked":
+            if reviewed:
+                return {"commit": commit, "tree": tree}
+            _absent(FRONTIER_ABSENT_UNREVIEWED)
             return None
+        if verdict["status"] == "blocked":
+            _absent(FRONTIER_ABSENT_BLOCKED)
+            return None
+    _absent(FRONTIER_ABSENT_NONE_COMPOSES)
     return None
 
 
@@ -1628,8 +1781,10 @@ def _merge_base_verdict(
     Its cost lands on the failing path only, and lands small: the diagnosis's
     extra verdicts run through the ``diff_fn``/``key_fn`` caches this call
     already built, so the ``git ls-tree`` per tree — the expensive part — is
-    paid once for the whole invocation whether one verdict is computed or five.
-    The unmemoized-across-calls property above is unchanged.
+    paid at most once per tree however many verdicts are computed, and once per
+    clone across calls (:mod:`tree_key_memo`). What persists across calls is
+    only those per-tree keys; the verdict itself is still not memoized here,
+    for the reason given above.
 
     Adds ``transfer_note`` — the near-miss or could-not-run sentence — for the
     caller to carry onto the verdict it actually returns; the caller pops it, so
@@ -2136,6 +2291,24 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
     )
 
 
+#: The fix order, stated once. Every directive that tells a builder how to land
+#: fixes composes it — :func:`blocking_remedy_lines` here and the review-close
+#: directives in ``critic_consolidate`` — so no carrier can state a different
+#: order: fix in the working tree, verify the UNCOMMITTED fixes, then commit. Committing first
+#: leaves a clean tree, and mid-plan inference then has no uncommitted fix to
+#: anchor a verify pass on.
+FIX_ORDER = (
+    "make the fixes in the working tree, run one `/prawduct:critic"
+    " verify-resolutions` over the uncommitted fixes, then land them in one commit"
+)
+#: The one exception to :data:`FIX_ORDER`, kept beside it: after a boundary
+#: `cumulative`, inference's rule 1b recognizes a committed fix.
+FIX_ORDER_AFTER_CUMULATIVE = (
+    "(A fix committed after a `cumulative` still infers that pass, but committing"
+    " first re-anchors it on committed HEAD.)"
+)
+
+
 def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     """The whole remedy a blocking verdict prescribes, as unindented lines.
 
@@ -2149,8 +2322,9 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     each commit extends HEAD, so each one buys a fresh round whose demoted
     observations tempt the next fix. Fixing everything in the working tree and
     verifying once is sound — a verify pass reads the dirty tree so long as no
-    commit has moved its anchor, which is what the no-commit-between-fixes line
-    below buys — and the verified tree is what gets committed.
+    commit has moved its anchor, which is what the fix order buys — and the
+    verified tree is what gets committed. The order is composed from
+    :data:`FIX_ORDER`, its one home, not restated here.
 
     Three cases, because the standard remedy is *wrong* for a superseded
     blocker: one carried by a review fact no verify-resolutions pass will
@@ -2169,14 +2343,14 @@ def blocking_remedy_lines(unresolved: "list[dict] | None") -> list[str]:
     other, and no exit code moves.
     """
     entries = [e for e in (unresolved or []) if isinstance(e, dict)]
+    # The fix-order line is never wrapped: it carries a backticked command, and
+    # a wrap inside it hands the reader half a command.
     standard = [
-        "Fix ALL of them in the working tree first — do not commit between fixes.",
-        "Then run ONE /prawduct:critic verify-resolutions (it reads the dirty tree",
-        "BECAUSE nothing was committed first), and commit that verified tree",
-        "verbatim: it records the resolution facts, so this same evidence passes",
-        "with no full re-review. Commit CONTENT the review has not seen and the",
-        "pass anchors HEAD instead, leaving any uncommitted fix outside it",
-        "(review-cycle.md § Verify-resolutions anchoring and demotion).",
+        f"Fix them: {FIX_ORDER}.",
+        "The pass records the resolution facts, so this same evidence then passes",
+        "with no full re-review. Commit the tree it verified verbatim: content it",
+        "has not seen leaves the fix outside what it anchored (review-cycle.md",
+        "§ Verify-resolutions anchoring and demotion).",
     ]
     n = sum(1 for e in entries if e.get("superseded"))
     if not n:
@@ -2388,9 +2562,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
     Any unverifiable → no transfer and the remedy above stands unchanged,
     because authority fails closed.
 
-    Composed verdicts are memoized across calls (:mod:`verdict_cache`) — a cold
-    one costs 17 s on this repo's store and the gate is polled several times a
-    session. The wrapper exists to make the flush unconditional: the body has
+    Composed verdicts are memoized across calls (:mod:`verdict_cache`), because
+    the gate is polled several times a session and a cold verdict pays for its
+    composition and for every tree key the clone has not memoized yet. The wrapper exists to make the flush unconditional: the body has
     four exit paths, three of them failures, and a memo that only persisted on
     success would leave exactly the repeated-poll case it was built for
     uncached.
@@ -2401,8 +2575,8 @@ def check_cumulative_critic(project_dir: Path) -> int:
         return _cumulative_critic_verdict(project_dir, read, cache)
     finally:
         # A memo that silently stops working is indistinguishable from one that
-        # was never built, and the symptom — every call back on the ~17 s cold
-        # path — reads as "the gate is slow again" with nothing to point at.
+        # was never built, and the symptom — every call back on the cold path —
+        # reads as "the gate is slow again" with nothing to point at.
         # Attributed on the DEGRADED paths only: a working memo says nothing,
         # because a line printed on every successful gate call is noise that
         # trains the reader to skip the block where real remedies live.
@@ -2482,8 +2656,8 @@ def _branch_coverage(
 
     Keys prefixed ``_`` are the rendering context: the verdict closure built
     over this invocation's diff/key memos. They are returned rather than
-    rebuilt by the caller because rebuilding re-pays the ``git ls-tree`` per
-    tree this call already paid — which is most of a cold verdict's cost.
+    rebuilt by the caller because rebuilding discards the diff memo this call
+    already filled, and re-pays each ``git diff`` in it.
     """
     precheck = _store_precheck(read)
     if precheck is not None:

@@ -3,6 +3,21 @@
 `status: draft · stage: design · area: governance · added: 2026-09-20 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/843`
 
+> **Partly built, 2026-09-28 (`feature/stranded-work`).** Two pieces of this design shipped there,
+> one of them changed. **Shipped:** Decision 4's parser move — `gitstate.worktree_records`, now read
+> by `adhoc_delegate_probes`, `briefing._detect_worktrees` and `stranded_work`, with one departure:
+> on a git failure it returns `None` silently; the delegate probe and the stranded-work scan each
+> name what THEY lost, since a shared parser cannot know, and the briefing's orientation line drops
+> out because its worktree line already reports the failure — and Decision 5's surface, the advisory roster. **Shipped differently:** the
+> candidate test. `branch-landing:stranded-branch` fires for a local branch checked out in no
+> live worktree whose tip no remote-tracking ref reaches, with no plan required and no age floor.
+> It is the LOCAL arm: it caught the case that motivated building it (#898/#818, reviewed, no
+> build plan, 18 hours old), which Decisions 1 and 2 as written would both have excluded.
+> **Still open:** this document's own arm — a branch whose claiming plans are all ticked and that
+> has never had a PR (`gh pr list --state all`, Decision 4's bounded network step). A pushed branch
+> is invisible to the local arm, so `fix/767-test-status-clause`, the cost example above, needs
+> this one. The `cmd_stop` extraction and the egress-boundary bullet belong to it.
+
 Related: #712 (the inverse — merged work whose backlog item is still open — already designed and
 the nearest structural precedent, cited throughout below); #640 (a closed item whose own fix is
 half-built on one of the branches this issue's own survey lists — a live cost of the exact gap this

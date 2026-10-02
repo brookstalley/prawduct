@@ -34,24 +34,22 @@ Don't fix the symptom — ask "what about the system allowed this?" and chain th
 
 Fixing a shallow cause patches one instance; fixing a deep cause prevents a class of problems.
 
-**The stopping rule, stated so it survives being applied in a hurry.** Stop at the *shallowest* cause that satisfies all three: (1) you can change it **here**, in this repo, with the access you have; (2) changing it would have prevented **this** instance; (3) changing it would prevent instances that **do not look like this one**. Two of three is not a stop. Fail (3) and you have the symptom's parent rather than the class — keep chaining. Fail (1) and you have a cause you can only report: record it as a learning or a backlog item, and take the deepest cause you *can* change as the fix.
-
-Three whys is typical, and the chain is short by default because most chains are. What signals it stopped **early** is a terminal that restates the failure instead of explaining it — "the model made a mistake", "we were in a hurry", "nobody reviewed it". None of those is something you can change, so none of them is a stop.
+**Where to stop.** At the shallowest cause you can change here that would have prevented this instance *and* instances that don't look like this one. A cause you can only report becomes a learning or a backlog item, and the fix goes to the deepest cause you can change. A terminal that restates the failure — "the model made a mistake", "we were in a hurry", "nobody reviewed it" — is not a cause.
 
 ### Step 4: Capture — route what you learned to the one place it fires
 
 What a reflection produces is one of four things, and each has exactly one home. Deciding which is the step; writing it is the easy part.
 
 - **An episode** — what happened, expected vs. actual, the root cause or "no defect" — goes to **`.prawduct/.session-reflected`**, in that shape (it is the shape the gate grades). It is removed at the next session boundary (a fresh start or `/clear` — not a resume/compact/fork, which continue this session), and the machine-generated handoff is the only thing carrying it forward: nothing archives it. Most cycles produce an episode and nothing else.
-- **A rule about this product** — a fact the model cannot know or derive: an API quirk, an invariant, an environment constraint, the consequence of a ratified decision — goes to **`.claude/rules/learnings/`**: `core.md` if it is cross-cutting, or the area file whose `paths:` frontmatter covers the files it governs, so the harness loads it only when those files are read. Write it as a heading that carries the rule, its brief why, and **the instance that earned it, inline** — the file that fires is the only one read at the moment a rule has to fire, so an instance relocated anywhere else is an instance lost. Never a narrative; the episode already holds that.
+- **A rule about this product** — a fact the model cannot know or derive: an API quirk, an invariant, an environment constraint, the consequence of a ratified decision — goes to **`.claude/rules/learnings/`**: the area file whose `paths:` frontmatter covers the files it governs, so the harness loads it only when those files are read, or `core.md` only if every session needs it. Write it as **one `- ` line**, with the instance that earned it as a clause: the file that fires is the only one read when the rule has to fire, so the instance belongs on that line. Never a narrative; the episode already holds that.
 - **Framework friction** — a rule naming the Critic, a gate, a hook, a build plan or the backlog, or any lesson about prawduct rather than about this product — goes **upstream through `/prawduct:report-bug`** at the moment you write it, and is never stored as a product rule. A bug report against prawduct filed where no framework session will read it is a bug report nobody receives.
 - **Portable engineering discipline** — a lesson that would be true in any repo, on any stack, about building software with an agent ("green is evidence only about what could have made it red") — is **not written as a product rule**. Say in the episode *why* it is portable and stop: the framework curates those into the surfaces where rules measurably fire (`docs/discipline.md` records where each lives), so a product that rewrites one has paid for a rule it already inherited.
 
 **In prawduct's own repo the framework is the product**, so the last two routes turn around: friction about the Critic, a gate or a hook is a product rule *here*, and a portable rule's home is a `docs/discipline.md` row plus the surface it names — that session is the curator.
 
-**The corpus has a budget, and the budget is the curation mechanism.** Each rules file carries a byte ceiling (16KB by default; `learnings_budgets:` in `project-state.yaml` raises it per file, with a reason). A file over its ceiling *and grown this session* blocks at session end, and the payment is made by the author with the episode in hand: **merge or delete a genuine duplicate in the same commit, or raise the budget with its reason — never trim a rule to fit.** The descent obligation that governs reading the rules lives in `core.md`'s own header, two sentences long; it is not restated here.
+**A rule is one line, and the corpus has a cap.** Write each rule as one line of at most 250 characters: the rule, with its reason or the instance that earned it as a clause. What does not fit is two rules, or narrative, and narrative stays in `.session-reflected`. `core.md` is capped at 12KB and only the owner raises it (`owner_approved:` in `learnings_budgets:`); an area file's budget (16KB default) rises per file with a reason. A file over its budget that grew, or a line breaking the format, blocks at session end — pay in the same commit by merging or retiring a rule, or moving a path-scoped one to its area file. How to read the rules is `core.md`'s own header; it is not restated here.
 
-Good rules have: **context** (one sentence), **what happened**, **why** (root cause), **lesson** (what to do differently), and the **related principle**. Bad rules are too abstract ("be more careful with tests"), too specific ("in file X line 42 change Y"), or write-only (filed where nobody reads them).
+Bad rules are too abstract ("be more careful with tests"), too specific ("in file X line 42 change Y"), or write-only (filed where nobody reads them).
 
 ### Step 5: Evolve
 Should this learning change anything upstream? **Strengthen a principle** that's consistently violated because it's too abstract; **amend the methodology** when a guide misses a recurring case; **improve an existing learning** that proved insufficient; **propose a new principle** for a pattern fundamental enough to recur across projects. This step closes the learning loop — without it, learnings accumulate but the system doesn't evolve.
@@ -90,17 +88,11 @@ At natural milestones (finishing discovery, planning, a build or subsystem), ref
 - **Concern completeness**: Any cross-cutting concerns not surfaced anywhere in the pipeline? Check `.prawduct/cross-cutting-concerns.md`, and think about what's missing from the registry itself.
 - **Learning completeness**: Were observations captured for everything significant?
 
-This produces change-log entries and may trigger methodology updates. **Product feedback review**: periodically scan product repos' `.claude/rules/learnings/` for methodology feedback that should have gone upstream — the reverse channel; products discover gaps the framework can't see from inside.
+This produces change-log entries and may trigger methodology updates.
 
 ## Post-Fix Reflection
 
-When fixing a bug or recovering from an error, apply root-cause discipline before implementing:
-
-1. **Classify**: product bug or framework/methodology issue? Framework issues get deeper analysis.
-2. **Root cause**: chain the whys to something structural — don't stop at "the code was wrong." A reported cause is a hypothesis until you reproduce it against live data; the report's own evidence often carries the disproof.
-3. **Fix scope**: fix the root cause, not the symptom. If it's in the methodology, update the methodology.
-4. **Meta-check**: could the same root cause manifest elsewhere? Fix those too.
-5. **Capture**: route it as Step 4 says — failures are the richest source.
+When fixing a bug or recovering from an error, root-cause it (Step 3) before implementing. First classify it — product bug, or framework/methodology issue (those get deeper analysis) — and treat a reported cause as a hypothesis until you reproduce it against live data; the report's own evidence often carries the disproof. Where the same cause shows up elsewhere, fix the class through the one place that owns it when you can change that here; file what you cannot. Capture it as Step 4 says.
 
 ## Learning Lifecycle
 

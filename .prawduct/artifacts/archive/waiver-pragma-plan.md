@@ -1,6 +1,15 @@
 <!--
 scope: waiver-pragma
 -->
+---
+lifecycle: completed
+archived: 2026-10-02
+released_in: v2.0.4
+maintained: false
+---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
+
 # Build Plan — Intentional-Waiver Pragma (`prawduct:allow`)
 
 ## Problem / Success / Scope

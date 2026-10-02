@@ -258,6 +258,66 @@ class TestCodebase:
         assert cb.has_source_matching(["package.json"], ['"express"']) is True
         assert cb.has_source_matching(["package.json"], ['"fastify"']) is False
 
+    def test_every_scan_of_a_sync_shares_one_walk(self, tmp_path: Path, monkeypatch):
+        # The cost is the directory walk, so count walks, not results: the
+        # api-versioning probe alone asks four scans per SessionStart, and a
+        # walk per scan made each re-descend the whole tree.
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("import flask\n")
+        (tmp_path / "src" / "package.json").write_text('{"dependencies": {"express": "^4"}}\n')
+        walks: list[str] = []
+        real_walk = _adv.os.walk
+
+        def counting_walk(top, *a, **k):
+            walks.append(str(top))
+            return real_walk(top, *a, **k)
+
+        monkeypatch.setattr(_adv.os, "walk", counting_walk)
+        cb = Codebase(root=tmp_path)
+        assert cb.has_imports(["flask"]) is True
+        assert cb.has_source_matching(["*.proto"]) is False
+        assert cb.has_source_matching(["package.json"], ['"express"']) is True
+        assert walks == [str(tmp_path)]
+
+    def test_skipped_dirs_are_pruned_not_walked_and_filtered(self, tmp_path: Path, monkeypatch):
+        # Filtering a vendored tree's files after walking it gives the right
+        # answer at the full price; the walk must never enter it at all.
+        deep = tmp_path / "node_modules" / "a" / "b"
+        deep.mkdir(parents=True)
+        (deep / "x.py").write_text("import flask\n")
+        (tmp_path / ".venv" / "lib").mkdir(parents=True)
+        (tmp_path / "keep").mkdir()
+        (tmp_path / "keep" / "y.py").write_text("\n")
+        entered: list[str] = []
+        real_walk = _adv.os.walk
+
+        def recording_walk(top, *a, **k):
+            for dirpath, dirnames, filenames in real_walk(top, *a, **k):
+                entered.append(Path(dirpath).relative_to(tmp_path).as_posix())
+                yield dirpath, dirnames, filenames
+
+        monkeypatch.setattr(_adv.os, "walk", recording_walk)
+        cb = Codebase(root=tmp_path)
+        assert cb.has_imports(["flask"]) is False
+        assert sorted(entered) == [".", "keep"]
+
+    def test_patterns_match_the_way_rglob_did(self, tmp_path: Path):
+        # A bare name at any depth, and a pattern with separators against the
+        # trailing components; neither a directory nor a dangling link named
+        # like a pattern is a file.
+        (tmp_path / "a" / "b").mkdir(parents=True)
+        (tmp_path / "a" / "b" / "go.mod").write_text("module x\n")
+        (tmp_path / "specs").mkdir()
+        (tmp_path / "specs" / "openapi.v1.yaml").write_text("openapi: 3\n")
+        (tmp_path / "thing.proto").mkdir()
+        # A dangling symlink is listed among a directory's files but is no file.
+        (tmp_path / "gone.proto").symlink_to(tmp_path / "missing.proto")
+        cb = Codebase(root=tmp_path)
+        assert cb.has_source_matching(["go.mod"]) is True
+        assert cb.has_source_matching(["specs/openapi*.yaml"]) is True
+        assert cb.has_source_matching(["other/openapi*.yaml"]) is False
+        assert cb.has_source_matching(["*.proto"]) is False
+
     def test_has_source_matching_skips_vendored_dirs(self, tmp_path: Path):
         nm = tmp_path / "node_modules" / "dep"
         nm.mkdir(parents=True)

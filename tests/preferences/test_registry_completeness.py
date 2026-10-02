@@ -107,8 +107,8 @@ def _registered_waiver_rules() -> set[str]:
 
 
 def test_every_waiver_rule_the_code_uses_is_registered():
-    """`docs/waivers.md` says its table IS the registry — "add a row when a new
-    framework rule becomes waivable, that is the only change needed" — and defines
+    """`docs/waivers.md` says its table IS the registry — "a check that starts
+    honoring a new `prawduct/<id>` adds its row here in the same change" — and defines
     `<rule-id>` as "a *reference* into a registry, not a literal the tooling
     hard-codes". A hard-coded id with no row breaks that contract twice: the row
     is how a plan author DISCOVERS the escape exists, and it is where the rule

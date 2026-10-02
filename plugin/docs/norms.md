@@ -60,7 +60,7 @@ characteristic flips alike:
 - **Reasoned** — it engages the norm's why, not just the local convenience.
 - **Timely** — it lands with or before the departing change, never as post-hoc paperwork
   discovered by a later review.
-- **Durably homed** — rulings in the learnings rules (`.claude/rules/learnings/`) linked from the norm; amendments in the norm's
+- **Durably homed** — rulings in the norm's own `Rulings:` field, each named and stated there; amendments in the norm's
   own entry; exceptions and stopgaps on backlog items (below); flips in
   `project-state.yaml` classification.
 
@@ -105,8 +105,9 @@ Norms live where they already live — **no new file class, no norm IDs, no sche
   their own index and take no Enforcement-table row; their machinery is the characteristic-flip
   protocol below plus the doctor's classification-currency check.
 
-Rulings live in the learnings rules (`.claude/rules/learnings/`), cross-linked — norms are statute, learnings are case law, and
-each reads better for pointing at the other.
+Rulings live with the norm they rule on, in its `Rulings:` field: a `[[name]]` plus the ruling's statement. Norms are
+statute and rulings are case law, and case law belongs beside the statute it reads. A ruling is a record a reader
+consults, not a rule every session carries.
 
 ## Anatomy of a Norm
 
@@ -122,7 +123,8 @@ A Direction entry (or preferences row) carries these parts:
   consumer integrate twice and every future async surface reinvent it.
   Status: in-transition — collector export tracked in OBS-4C1K; interim: new work emits spans
   even where export is pending; work the substrate cannot yet serve escalates, never improvises.
-  Rulings: [[otel-payload-store-ruling]]
+  Rulings: [[otel-payload-store-ruling]] — externally-ingested runtime content is exempt, provided
+  it is never persisted into the asset store.
 ```
 
 - **Statement** — one sentence stating the constraint, scoped. Bold.
@@ -140,8 +142,14 @@ A Direction entry (or preferences row) carries these parts:
 - **Retroactivity** — present when the norm was adopted over existing code (see Birth): names
   the outcome and its record (`migrate: <item>` | `contain: <boundary artifact>` |
   `grandfather: <inventory ref>`).
-- **Rulings** — links to learnings entries recording boundary and precedence decisions. Norms
-  accrete case law; the statement stays short.
+- **Rulings** — each boundary or precedence decision, named `[[like-this]]` and stated in full
+  here. Norms accrete case law; the norm's own statement stays short.
+- **Re-affirmed** — the owner's answer to a decay finding (§ Trajectory), one line per answer:
+  `Re-affirmed: <date> (owner) — <id>: <why the norm holds without it>`. It answers the
+  `dead-why` advisory for every id written on it, in this entry, on `Why:` lines — spell each id
+  as the `Why:` does, and name only ids you answered. An id it does not name, or the same id in
+  another entry, is still asked. It never answers an in-transition `Status:` whose tracking item
+  finished: that status is stale, so fix it.
 
 ## Lifecycle Rules
 
@@ -184,8 +192,8 @@ Work at a norm's edge — a scenario the norm's author never contemplated, or tw
 demands conflict — resolves by **ruling**, never by silent interpretation in either direction.
 Silently exempting erodes the norm; mechanically applying it blocks legitimate work and teaches
 builders to resent the registry. A ruling is a recorded decision (per the standard above),
-derived from the norms' *whys*, recorded as a learnings entry linked from the norm's Rulings
-list. Rule at the **category** level ("externally-ingested runtime content is exempt, provided
+derived from the norms' *whys*, recorded in the norm's Rulings field (on both norms, for a
+collision). Rule at the **category** level ("externally-ingested runtime content is exempt, provided
 it is never persisted into the asset store"), not the instance, so the next case at the same
 edge is pre-decided. A collision ruling records precedence on **both** norms. **A collision
 involving a whyless norm blocks on backfilling that why first** — the arbiter cannot run on one
@@ -239,8 +247,7 @@ when the declared substrate cannot serve new work, the choices are (a) accelerat
 migration or (b) record a **stopgap** — a bounded exception per the standard above, its expiry
 tied to the tracking item — never (c) build a third system silently. Stall detection is
 mechanical: the tracking item's backlog entry unedited (no status, stage, or content change)
-for the 30-day stall window raises an advisory (a fixed window today; a config surface is
-deferred until any probe needs one).
+for 30 days raises an advisory.
 
 A stopgap is **written into the norm's own entry** as a `Stopgap:` field, one line-starting
 field alongside `Status:`, and it must name its bound in the form `expires YYYY-MM-DD`:
@@ -250,16 +257,13 @@ Status: in-transition — LNG-5W8R tracks the migration. Interim rule: …
 Stopgap: recorded 2026-09-01, expires 2026-12-01. `[DECISION: … | … | user can veto/override]`
 ```
 
-Both halves of that shape are load-bearing, and each is a defect this spec has already paid for
-once. The field label is **one word** because the entry parser treats only single-word
-capitalized labels as line starts — a `Live exception:` marker soft-wraps into the line above,
-where no field matcher can see it and where its backlog citations are read as the previous
-field's. And the `expires <date>` bound is **the whole field**: the stall advisory suppresses
-itself for a stopgap whose expiry is still ahead and fires once that date has passed —
-independently of the stall clock, since touching the tracking item resets the stall clock and
-would otherwise let a lapsed exception stand unnoticed forever. A `Stopgap:` with no parseable
-expiry therefore suppresses nothing. An exception with no clock is not bounded, and an
-unbounded exception is the drift this whole section exists to prevent.
+Both halves are load-bearing. The label is **one word** because the entry parser treats only
+single-word capitalized labels as line starts; a multi-word label soft-wraps into the field
+above, where no matcher sees it and its backlog citations are read as that field's. The
+`expires <date>` bound is **the whole field**. The stall advisory stays quiet for a stopgap
+whose expiry is still ahead and fires once it passes, independently of the stall clock, since
+touching the tracking item resets that clock. A `Stopgap:` with no parseable expiry suppresses
+nothing, and an exception with no clock is not bounded.
 
 ### Trajectory — erosion and decay
 
@@ -277,8 +281,9 @@ time, and they are owned by the **time-domain organs**, not the Critic:
   judgment.
 
 Either finding forces the same explicit fork: **re-affirm and schedule cleanup, or retire the
-norm** — and the chosen arm is itself recorded (re-affirm ⇒ a cleanup backlog item; retire ⇒ an
-amendment), so an erosion finding cannot evaporate by nobody deciding. Norms are standing
+norm** — and the chosen arm is itself recorded (re-affirm ⇒ a cleanup backlog item, and for a
+decayed cited why a `Re-affirmed:` field naming the finished item; retire ⇒ an amendment), so an
+erosion finding cannot evaporate by nobody deciding. Norms are standing
 decisions subject to challenge (Principle 19 extended to products) — enforced, not worshipped.
 
 ### Ambient norms — structural characteristics
@@ -309,7 +314,7 @@ audit sees them.
 | Moment | Organ | What it catches |
 |---|---|---|
 | Planning | `governed_by:` reconciliation, seeded by `prawduct-hook jurisdiction` | jurisdiction + the per-norm disposition lines (incl. *inapplicable because X*); departures surfaced as decisions before code |
-| Review (event-domain) | Critic Goals 3/4 + Learnings Cross-Check; PR reviewer | departure without a recorded decision (Critic: BLOCKING, all forms, where ratified norms exist; NOTE in a norm-less product — see Severity above; PR reviewer: WARNING at its layer); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
+| Review (event-domain) | Critic Goals 3/4 + Learnings Cross-Check; PR reviewer | departure without a recorded decision (severity by layer: § Severity above); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
 | Session sync (time-domain, cheap) | advisory probes | the mechanical hooks, canonically: **dated `revisit:` expiries; backlog-id literals in Status/Why lines whose items are shipped/archived (dead why); in-transition tracking items unedited past the window (stall); structural presence** (strategy artifacts with no Direction *entry* anywhere — a bare heading is not one — or missing Enforcement columns → unratified; Norm Health sweep overdue while norms exist under *either* homing) |
 | Periodic (time-domain, deep) | janitor Norm Health theme | erosion distance + trend, decay in prose whys, event-bound triggers walked, registry hygiene — the re-affirm-or-retire fork |
 | Repair | `/prawduct:doctor` | ratification flow (below) + registry integrity: whys present, mechanisms exist, in-transition entries carry tracking ids, classification currency |
@@ -318,14 +323,9 @@ Probes fire **only** on the mechanical hooks named in the Session-sync row — d
 literals, structural presence — never on prose interpretation. Rare and high-signal is a hard
 bar. Anything subtler belongs to the janitor's judgment or the Critic's.
 
-**Structural-coverage staging — staged nudges, not a pile-on.** The structural-presence hooks form a
-three-layer chain that stages a product from "we don't yet know what this is" to "its norms are
-ratified," so a fresh product never gets three simultaneous nags. The layers key off one shared
-boundary — whether `classification.structural` records at least one characteristic
-(`lib/coverage_probes.structural_characteristics_recorded`) — plus layer 2's *independent*
-artifact-existence gate. The 0↔1 boundary is mutually exclusive **and possibly neither** — each layer
-adds a second condition beyond the boundary predicate, so a repo can sit outside both; 1→2 is
-sequential but not mutually exclusive (see below):
+**Structural-coverage staging.** The structural-presence hooks form a three-layer chain that
+stages a product from "we don't yet know what this is" to "its norms are ratified", so a fresh
+product never gets three simultaneous nags:
 
 | Layer | Fires when | Nudge |
 |---|---|---|
@@ -333,21 +333,11 @@ sequential but not mutually exclusive (see below):
 | 1 — strategy-artifact-missing | characteristics **recorded**, but an expected strategy-class artifact is absent | author the artifact (a `(not relevant — …)` stub counts) |
 | 2 — norm-registry-unratified | a strategy-class artifact **exists**, but the norm registry is unratified | ratify the direction, or record there is none |
 
-Layer 0 speaks only on the negation of the boundary predicate; layer 1 only on its truth — so 0
-and 1 never double-fire. Each adds a second condition of its own (the table above: layer 0 also
-needs product work, layer 1 a missing artifact), so both are silent on a freshly-onboarded empty
-repo — that is the chain not yet engaged, not the chain satisfied, and `coverage-status` renders
-the two differently. Layer 1 stays silent until characteristics are
-recorded *even for the universal artifacts* — "every product needs a data model" means every
-product that has told the framework it is one. Layer 2 keeps its OWN artifact-existence gate: it
-fires once *any* strategy-class artifact exists and the registry is unratified — you can ratify the
-direction of what you have already written — so it does **not** wait for layer 1 to clear. During
-*partial* authoring (some strategy artifacts written, others still owed) layer 1 (author the rest)
-and layer 2 (ratify what exists) therefore both speak — two distinct asks, not a double-nag on one.
-So the guarantee is proportionality (a fresh product never gets three simultaneous nags), not a hard
-one-at-a-time invariant. The common trajectory still reads as staged: an all-`(not relevant)` stub
-set creates every file in one act (layer 1 clears), then layer 2 nudges ratification. The chain
-advances as each layer's condition clears.
+Layers 0 and 1 key off one predicate, whether `classification.structural` records at least one
+characteristic, so they never fire together. Both stay silent on a freshly-onboarded empty repo,
+which `coverage-status` shows as the chain not yet engaged. Layer 2 has its own gate: it fires
+once any strategy-class artifact exists and the registry is unratified. During partial
+authoring, layers 1 and 2 can therefore both speak, as two distinct asks.
 
 **Honest limitations.** Work landed entirely outside governed sessions (an out-of-band hotfix
 pushed directly) meets no event-domain organ; the probes and the janitor sweep are the
@@ -368,7 +358,7 @@ The nine failure modes this spec was tested against, and which rule catches each
 | Two norms collide on one scenario | Boundaries — precedence ruling on both; whyless norm blocks on backfill |
 | Norm adopted mid-life over existing violations | Birth — retroactivity decision with recorded ref; Migrate ⇒ in-transition |
 | "Temporary" incident bypass persists | Exceptions — clock on a backlog item; follow-up review demands the rail; dated expiries fire |
-| Declared migration stalls; new work improvises a third system | Transitions — interim rule; stall advisory (30-day default); stopgap = bounded exception |
+| Declared migration stalls; new work improvises a third system | Transitions — interim rule; stall advisory (30 days); stopgap = bounded exception |
 | Norm eroded by many small defensible exceptions | Trajectory — janitor distance + recorded trend; sweep-overdue advisory; fork outcomes recorded |
 | Norm outlives its rationale, compliance continues | Trajectory — decay; id-citing whys fire mechanically, prose whys by sweep |
 | Unwritten ambient assumption invalidated (e.g. single→multi-user) | Ambient — flip is a recorded decision; review verifies re-derivation + audit; audit output = requirements |
@@ -423,7 +413,6 @@ What this spec intentionally does **not** introduce, and why:
 - **No mechanical divergence gates.** Every scenario above defeats a checker built for the
   previous one; all of them yield to the same questions asked by a capable reviewer with the
   right context. Mechanical hooks are confined to the canonical Session-sync list.
-- **No prose-parsing probes.** The orphan-term hook's noise history is the cautionary tale: a
-  probe that misfires trains its reader to ignore the one real catch.
+- **No prose-parsing probes.** A probe that misfires trains its reader to ignore the one real catch.
 - **No auto-ratification.** Visibility is automatic; ratification is the owner's — binding
   force is the owner's declaration, recorded or not.

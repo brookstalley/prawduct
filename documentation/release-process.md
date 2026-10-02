@@ -78,6 +78,25 @@ never changed, so any other clone of it was always on `main`.
 per-machine, so a collaborator on the same repo silently runs a different governance version than
 you do, and a gate that behaves differently between two people is worse than one that is behind.
 
+**Machine-wide variant: a directory marketplace, pointed at a pinned worktree and never at your
+working checkout.** A maintainer may instead redefine the `prawduct` marketplace itself in
+`~/.claude/plugins/known_marketplaces.json` as a `directory` source. That puts **every** governed
+repo on this machine on it, overriding each repo's committed `ref: "main"`. A directory source runs
+from the path as it is on disk (`CLAUDE_PLUGIN_ROOT` resolves into it, with no cache copy and no
+version key), so whatever that path holds is what every repo runs. Point it at the checkout you
+develop in and every sibling session runs your feature branch, uncommitted edits included. The
+banner shows it (`plugin · feature/x@abc1234+dirty`), and it is easy to miss. Point it at a
+worktree that exists only to be run:
+
+```bash
+git worktree add --detach ~/source/prawduct-live origin/develop        # once
+# then set the prawduct entry's source.path and installLocation to ~/source/prawduct-live
+git -C ~/source/prawduct-live fetch && git -C ~/source/prawduct-live checkout --detach origin/develop   # after each merge to develop
+```
+
+The worktree is detached, so it never holds the `develop` branch lock. A new session's banner reads
+`plugin · detached@<sha>`. The shared-repo warning above applies to every repo this reaches.
+
 ## The version is the release trigger — not cosmetic
 
 Claude Code resolves a plugin's version from `plugin.json` `version` first. With
@@ -326,9 +345,10 @@ absence (`release=unreleased`) reads as deliberate while removing that entry's w
 from the release-pending set. `check-releasability` then answers "no release-pending scopes
 — nothing to classify" and the work never ships, which is REL-2N8K's failure with a more
 convincing disguise (six entries hid a whole branch from v3.2.8 that way). A `release=`
-that is not `vMAJOR.MINOR.PATCH` (optionally `-suffix`) is therefore a **validation error**
-that fails closed — an unevaluable release state must never read as "fine". Release-pending
-is the tag's absence; step 3 adds it, and that is the only edit.
+that is not `vMAJOR.MINOR.PATCH` or a four-part `vMAJOR.MINOR.PATCH.N` (either optionally
+`-suffix`) is therefore a **validation error** that fails closed — an unevaluable release
+state must never read as "fine". Release-pending is the tag's absence; step 3 adds it, and
+that is the only edit.
 
 **Where the refusal now happens.** `check-releasability` itself refuses it — exit 1 with a
 `bad-change-log-tag:` line naming the entry and its line number. It used to be checked only by
@@ -449,7 +469,7 @@ benign**, not a gate to satisfy:
 ## The checkboxes are ticked during development, not at release
 
 A chunk's box is ticked by the session that finished the chunk, right after its Critic review
-passes. The release does not touch them and no command regenerates them — the boxes, the Context
+passes, or at commit for a short plan's earlier chunks (`plugin/methodology/planning.md`). The release does not touch them and no command regenerates them — the boxes, the Context
 line, and git history are one progress record, not a derived view and its source.
 
 This is the reverse of the rule that stood here until 2026-08-08, when Status was regenerated from

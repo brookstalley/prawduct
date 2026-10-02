@@ -33,7 +33,9 @@ a *historical* entry may contain. Keys, and who reads them:
   reads it and the commands that wrote it are inert. Release-pending is now
   carried by the ABSENCE of ``release=`` alone. Historical entries carrying
   either value still parse, because the parser preserves unknown keys and both
-  are now among them.
+  are now among them. A tag line a change adds or edits that still carries
+  either is refused at the PR boundary when the log is tracked
+  (:data:`RETIRED_TAG_KEYS`).
 
 Unknown keys are preserved verbatim so a future reader can pick them up without
 a schema bump. Entries with no tag line are ignored — untagged historical
@@ -266,7 +268,34 @@ def _is_standalone_tag_line(line: str) -> bool:
     return bool(tags)
 
 
-RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+#: Keys a tag line being written must not carry. The parser keeps accepting them, because
+#: every onboarded repo's history is full of them; what it cannot do is tell an
+#: author they are dead, and a key that parses clean looks live. Copied forward
+#: from a neighbouring entry, ``chunks=`` kept reaching PR review. The
+#: PR-boundary entry probe refuses one by reading this set, so retiring a third
+#: key is one edit here.
+RETIRED_TAG_KEYS = ("chunks", "status")
+
+
+def retired_keys_on(line: str) -> list[str]:
+    """The retired keys ``line`` sets, in :data:`RETIRED_TAG_KEYS` order.
+
+    Empty for any line that is not a standalone tag line, so a sentence quoting
+    an old tag line (as this log's own history does) is not one. Callers pass
+    only the lines a change ADDED, which keeps historical entries out of it.
+    An edited old tag line is an added line too, and is meant to be caught: a
+    change that touches the line can drop the dead key in the same edit.
+    """
+    if not _is_standalone_tag_line(line):
+        return []
+    tags, _conflicts = parse_tag_line_with_conflicts(TAG_LINE_RE.search(line).group(1))
+    return [key for key in RETIRED_TAG_KEYS if key in tags]
+
+
+# Three or four numeric parts: some products tag four (`v1.2.3.4`), and refusing
+# them left their change-log archive and release gate unusable. The fourth part
+# is explicit rather than open-ended, so a mistyped version still fails closed.
+RELEASE_VALUE_RE = re.compile(r"^v\d+\.\d+\.\d+(?:\.\d+)?(?:-[0-9A-Za-z.]+)?$")
 
 
 def validate_change_log_tags(
@@ -293,7 +322,8 @@ def validate_change_log_tags(
       ``release=unreleased`` on six entries hid an entire branch from the
       v3.2.8 release, and it read as deliberate, which is exactly why nothing
       questioned it. Release-pending is *statusless with no* ``release=`` *tag*.
-      Accepts ``vMAJOR.MINOR.PATCH`` with an optional ``-suffix``.
+      Accepts ``vMAJOR.MINOR.PATCH`` or a four-part ``vMAJOR.MINOR.PATCH.N``,
+      either with an optional ``-suffix``.
     * Tag lines that CONFLICT. When several tag lines set one scalar key to
       different values, :func:`_merge_tag_line` keeps the first — a repair that
       may have picked the wrong one (two ``release=`` lines disagreeing about
@@ -319,10 +349,13 @@ def validate_change_log_tags(
         ):
             errors.append(
                 f"{where} has release={release!r}, which is not a version — "
-                f"expected vMAJOR.MINOR.PATCH. Any release= tag marks this entry "
-                f"as already released, so its whole scope drops out of the "
-                f"release-pending set and the work never ships. Release-pending "
-                f"is statusless with NO release= tag; delete the tag."
+                f"expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH.N (e.g. v1.2.3 "
+                f"or v1.2.3.4), optionally with a -suffix. Any release= tag marks "
+                f"this entry as already released, so its whole scope drops out of "
+                f"the release-pending set and the work never ships. If the entry "
+                f"has shipped, set release= to the version it shipped in; if it "
+                f"has not, delete the tag — release-pending is statusless with NO "
+                f"release= tag."
             )
 
         if entry.tag_conflicts:

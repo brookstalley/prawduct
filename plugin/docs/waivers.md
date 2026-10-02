@@ -6,9 +6,9 @@ named principle or check**, with a **mandatory reason**. It marks the violation 
 legitimate; a waiver is "I looked at this and it's intentional, here's why," never a
 rubber stamp.
 
-Waivers are the general mechanism that the original `prawduct:ok-broad-except` marker was a
-special case of. Instead of inventing a new magic literal for every kind of intentional
-violation, there is **one keyword** and an **open, documented vocabulary** of rule ids.
+There is **one keyword** and an **open, documented vocabulary** of rule ids. The recognizer
+matches `prawduct:allow` generically and reads the rule id as data, so making a rule waivable
+never changes the pragma syntax.
 
 ## Grammar
 
@@ -26,18 +26,6 @@ violation, there is **one keyword** and an **open, documented vocabulary** of ru
 
 A waiver may list **multiple refs** comma-separated for a line that intentionally trips more
 than one rule: `prawduct:allow prawduct/broad-except,project/no-log -- reason`.
-
-## Why one keyword instead of per-rule literals
-
-The point of this design is to be **semantic, not literal**. Compare:
-
-- **Per-rule literals (what we're replacing):** every new waivable thing needs the canary to
-  hard-code a fresh magic token (`ok-broad-except`, then `ok-legacy-ref`, then …) *and* a
-  detection rule. Adding a waivable rule means editing the recognizer.
-- **One keyword + referenced vocabulary (this design):** the recognizer matches the single
-  `prawduct:allow` keyword generically and reads the rule-id as **data**. Each check declares
-  which ref waives it. Adding a waivable rule is a registry entry + a doc line — the pragma
-  *syntax* never changes. The syntax is closed; the vocabulary is open.
 
 ## Scopes
 
@@ -70,8 +58,7 @@ A waiver applies to:
 2. the line immediately **above** the offending line (leading — for long lines or verbose
    reasons).
 
-A region form (`prawduct:allow-begin` / `prawduct:allow-end`) is a documented future extension;
-it is not implemented today.
+There is no region form: each waived line carries its own pragma, or the line above it does.
 
 ## Reviewed, not exempt
 
@@ -95,8 +82,8 @@ invisible to governance:
 | `back-compat` | An intentional compatibility shim or fallback | P12 Scope Discipline | For deliberate compatibility code where a real deployment requires it. |
 | `chunk-ref-missing` | A backticked path in build-plan chunk prose that is the **subject** of a record rather than a declared deliverable | P3 Living Documentation / P13 Coherent Artifacts | A chunk body discusses paths as well as declaring them, and a backtick scan cannot tell them apart — a carried-in review observation naming the path a past defect was about is correct *because* that path is missing, so the check would fire forever. **Legitimacy test:** the reason must say why the path's absence is the point. A waiver used to silence a genuinely missing *deliverable* is itself a finding — that is the case the check exists for. Matched on the line or the one above it, so wrapped prose can carry the pragma on its own line. |
 
-This table is the registry. Add a row when a new framework rule becomes waivable — that is the
-only change needed; the pragma syntax is untouched.
+This table is the registry. A check that starts honoring a new `prawduct/<id>` adds its row here
+in the same change; the pragma syntax never changes.
 
 ## `project/*` — for consuming repos
 

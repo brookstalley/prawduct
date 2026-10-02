@@ -26,6 +26,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -397,7 +398,9 @@ class TestTheDedupeIsAmortized:
         assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h1")
         seen = ledger.learning_events_seen(repo / ".prawduct")
         session = evidence._session_epoch(repo)
-        assert ("learning.written", session, "core.md", "h1", None) in seen
+        # The key gained `from_hash` (None here) when learning.compacted joined:
+        # two rules merged into one are two events only through it.
+        assert ("learning.written", session, "core.md", "h1", None, None) in seen
 
         def _no_read(*_a, **_k):
             raise AssertionError("the amortized path must not re-read the ledger")
@@ -405,7 +408,7 @@ class TestTheDedupeIsAmortized:
         monkeypatch.setattr(ledger, "iter_events_newest_first", _no_read)
         assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h1", seen=seen) is False
         assert ledger.append_learning_event(repo, "learning.written", file="core.md", unit_hash="h2", seen=seen) is True
-        assert ("learning.written", session, "core.md", "h2", None) in seen
+        assert ("learning.written", session, "core.md", "h2", None, None) in seen
         assert len(_events(repo, "learning.written")) == 2
 
 
@@ -612,7 +615,7 @@ class TestTheCitationInstructionReachesReviewers:
     """`learning.fired` has exactly one input: a reviewer quoting the rule.
 
     So the instruction is the feature, and it is carried by two surfaces on
-    purpose — `review-cycle.md`'s Learnings Cross-Check, which only the
+    purpose — `cross-checks.md`'s Learnings Cross-Check, which only the
     sustainability reviewer opens, and `agents/critic-reviewer.md`, which every
     reviewer the coordinator dispatches reads at the moment it writes findings.
     One file's copy going missing is invisible from the other, so the pin lives
@@ -638,7 +641,7 @@ class TestTheCitationInstructionReachesReviewers:
         )
 
     def test_the_cross_check_carries_it_too(self):
-        cycle = self._prose("skills/critic/review-cycle.md")
+        cycle = self._prose("skills/critic/cross-checks.md")
         assert "quote that rule's opening words" in cycle
 
     def test_the_instruction_sits_where_findings_are_written(self):
@@ -647,10 +650,13 @@ class TestTheCitationInstructionReachesReviewers:
         one. Bounded to the smallest region that must carry it, so a mutation
         in a neighbouring paragraph does not pass."""
         text = (_ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
-        marker = "Assess your goals and gather findings"
-        assert marker in text, "the findings-writing step was renamed — re-anchor this pin"
-        step = text[text.index(marker):]
-        step = step[: step.index("\n## ")] if "\n## " in step else step
+        # Anchored on structure, not wording: the findings-writing step is the
+        # last numbered step of "## What to do", the section just before the
+        # one that says what to write.
+        section = text[text.index("## What to do"):text.index("## What to write")]
+        steps = list(re.finditer(r"^\d+\. ", section, flags=re.M))
+        assert steps, "## What to do lost its numbered steps — re-anchor this pin"
+        step = section[steps[-1].start():]
         assert "opening words" in " ".join(step.split())
 
     def test_the_registry_says_the_join_under_counts_without_it(self):
@@ -658,3 +664,68 @@ class TestTheCitationInstructionReachesReviewers:
         where it is read, or "never fired" gets believed as a census."""
         doc = self._prose("docs/governance-telemetry.md")
         assert "reads here as never fired" in doc
+
+
+class TestACompactedRuleIsNotWritten:
+    """`learnings-compact` rewrites rules; the Stop emitter must not count the
+    rewrites as new rules, or one compaction reads as the whole corpus written
+    this session. Red if cmd_stop stops consulting `learning.compacted`."""
+
+    def test_only_the_genuinely_new_rule_is_written(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _write_rules(repo, "the rewritten wording of an old rule", "a brand new rule")
+        ledger.append_learning_event(
+            repo, "learning.compacted", file=RULES_REL,
+            unit_hash=lf.unit_hash("the rewritten wording of an old rule"),
+            from_hash="0" * 16,
+        )
+        _touch_code(repo)
+        _stop(repo, capsys)
+        written = {e["learning"]["unit_hash"] for e in _events(repo, "learning.written")}
+        assert lf.unit_hash("a brand new rule") in written
+        assert lf.unit_hash("the rewritten wording of an old rule") not in written
+
+
+class TestAMovedRuleIsNotWritten:
+    """A rule moved verbatim from core.md to an area file is an old rule in a
+    new place. The emitter used to compare each file against that file's own
+    base, so a compaction that split a file recorded every moved rule as
+    written (seen in this repo's ledger on 2026-09-24). Red if the base is
+    per-file again."""
+
+    def test_a_verbatim_move_between_files_writes_nothing(self, tmp_path, capsys):
+        repo = _repo(tmp_path, rules=("the rule that will move to an area file", "a rule that stays"))
+        (repo / RULES_REL).write_text(_corpus("a rule that stays"), encoding="utf-8")
+        area = repo / lf.RULES_DIR_REL / "area.md"
+        area.write_text('---\npaths:\n  - "code.py"\n---\n# area\n\n### the rule that will move to an area file\n')
+        _touch_code(repo)
+        _stop(repo, capsys)
+        assert _events(repo, "learning.written") == []
+
+    def test_a_rule_moved_out_of_a_deleted_file_writes_nothing(self, tmp_path, capsys):
+        """The base is the corpus at the base TREE, so a file deleted since then
+        still counts: folding an area file back into core.md writes nothing.
+        Red if the base is read only for files that exist now."""
+        repo = _repo(tmp_path, rules=("a rule that stays",))
+        area = repo / lf.RULES_DIR_REL / "area.md"
+        area.write_text('---\npaths:\n  - "code.py"\n---\n# area\n\n### a rule folded back into core\n')
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "area file")
+        _base_tree(repo)
+        area.unlink()
+        (repo / RULES_REL).write_text(
+            _corpus("a rule that stays", "a rule folded back into core"), encoding="utf-8"
+        )
+        _touch_code(repo)
+        _stop(repo, capsys)
+        assert _events(repo, "learning.written") == []
+
+    def test_a_new_rule_in_an_area_file_is_still_written(self, tmp_path, capsys):
+        # The control: the union must not swallow genuinely new rules.
+        repo = _repo(tmp_path, rules=("a rule that stays",))
+        area = repo / lf.RULES_DIR_REL / "area.md"
+        area.write_text('---\npaths:\n  - "code.py"\n---\n# area\n\n### a genuinely new rule for the area\n')
+        _touch_code(repo)
+        _stop(repo, capsys)
+        written = {e["learning"]["unit_hash"] for e in _events(repo, "learning.written")}
+        assert lf.unit_hash("a genuinely new rule for the area") in written

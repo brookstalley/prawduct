@@ -84,9 +84,9 @@ def _record_backlog_service_repo(project_dir: Path, spec: str) -> bool:
         return False
     content = path.read_text(encoding="utf-8") if path.is_file() else ""
     block = (
-        "\n# GitHub Issues backlog backend — recorded at onboard for a product adopting\n"
-        "# the Issues backend from day one (init-product --backlog-repo). The normal\n"
-        "# path is markdown-first and sets this later, at scrub/cutover.\n"
+        "\n# GitHub Issues backlog backend — recorded at onboard (init-product\n"
+        "# --backlog-repo), the recommended path for a new product. A product that\n"
+        "# starts on markdown sets this later, at the scrub/cutover.\n"
         "# `/prawduct:backlog` routes on this scalar.\n"
         f"backlog_service_repo: {spec}\n"
     )
@@ -218,8 +218,8 @@ def init_product(
                 core.write_template(core.TEMPLATES_DIR / tmpl, dst, subs)
 
     # Learnings starter — a `.claude/rules/` file, so the harness loads it and no
-    # prawduct code sits on the read path. `scaffold_core` owns the header (the
-    # descent obligation) and the never-overwrite rule; this reports the write.
+    # prawduct code sits on the read path. `scaffold_core` owns the header
+    # (`CORE_HEADER`) and the never-overwrite rule; this reports the write.
     core_rel = f"{learnings_files.RULES_DIR_REL}/{learnings_files.CORE_NAME}"
     if not (project_dir / core_rel).is_file():
         created.append(core_rel)

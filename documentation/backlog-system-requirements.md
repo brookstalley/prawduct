@@ -166,7 +166,7 @@ Required metadata line (one line, backticked, dot-separated):
 Optional metadata (extend the same line):
 - `related: PFX-XXXX, PFX-XXXX` — explicit cross-references (item → item)
 - `closes: PFX-XXXX` — when this item supersedes another (item → item)
-- `closed-by: <chunk-id|tag>` — what shipped this item, set on `status=shipped` (item → release)
+- `closed-by: <scope/branch|release tag>` — what shipped this item, set on `status=shipped` (item → release); never a bare chunk id, which names no plan (`plugin/skills/backlog/SKILL.md`)
 - `reviewed: YYYY-MM-DD` — last-touched timestamp (auto-set on any update)
 - **`accepted-by: @actor` (v0.3)** — soft claim that `@actor` is working this item; `pick`/`list` exclude claimed items. Does **not** auto-expire (D10); cleared by `accepted-by=` (empty) or automatically on `status`→`shipped`/`dropped`. An optional ISO timestamp may follow for information only — it does **not** drive expiry or filtering.
 - **`stage: idea | research | requirements | design | ready` (v0.3)** — where the item sits in the feature lifecycle (D11). Absent or early-stage ⇒ **treat as not-yet-implementable**: `pick` routes it to discovery/planning, not building. `ready` ⇒ requirements are clear enough to implement. Bug/cleanup items are typically born `ready`; a vague feature idea is `idea`/`requirements`.

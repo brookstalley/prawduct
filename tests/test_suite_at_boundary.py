@@ -40,7 +40,7 @@ class TestTheBuilderIsToldWhenTheSuiteIsOwed:
     def test_verify_records_at_the_boundary_run(self):
         text = _read("methodology/building.md")
         assert (
-            "A chunk runs the ceiling above; record the declared suite **once**, "
+            "A chunk runs the ceiling above; record the declared suite once, "
             "at the boundary run" in text
         )
         assert "Record **once**, at Verify" not in text
@@ -185,7 +185,11 @@ class TestTheReplacementsSayTheNewRule:
         )
 
     def test_the_release_note_names_the_default_change(self):
+        # The entry is looked up in whichever version section carries it, not in the
+        # first one: a release reopens an empty prerelease section above it, so a
+        # "first section" pin goes red at every cut without anything having changed.
         notes = (PLUGIN / "CHANGELOG.md").read_text(encoding="utf-8")
-        unreleased = notes[notes.index("\n## "):notes.find("\n## ", notes.index("\n## ") + 1)]
-        assert "**`suite-at-boundary`**" in unreleased
-        assert "This changes a default your repo inherits." in unreleased
+        sections = [s for s in notes.split("\n## ")[1:] if "**`suite-at-boundary`**" in s]
+        assert len(sections) == 1, "the suite-at-boundary note must appear in exactly one version section"
+        assert sections[0].startswith("v"), "the note must sit under a version heading"
+        assert "This changes a default your repo inherits." in sections[0]

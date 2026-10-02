@@ -44,10 +44,11 @@ at import time — the same pattern as the sibling probe modules.
 
 from __future__ import annotations
 
+import shlex
 import sys
 from pathlib import Path
 
-from . import evidence
+from . import evidence, gitstate
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
 
 FEATURE = "delegation"
@@ -58,47 +59,6 @@ PROBE_VERSION = 1
 # what makes the file untracked and therefore a per-worktree signal rather than
 # something every checkout inherits from HEAD.
 BRIEF_REL = Path(".prawduct") / ".delegate-brief.md"
-
-
-def _worktree_records(root: Path) -> list[dict]:
-    """Parse ``git worktree list --porcelain`` into one dict per worktree.
-
-    Keys are the porcelain's own line labels — ``worktree`` (path), ``HEAD``
-    (sha), ``branch`` (full ref) — plus valueless markers (``bare``,
-    ``detached``, ``locked``, ``prunable``) mapped to ``""``.
-
-    A failure yields an empty list — advice fails soft — but it does not fail
-    *silent*: "not a git repository" is the ordinary case for a probe that can
-    be pointed anywhere and stays quiet, while any other failure (a timeout, a
-    broken repo) has just cost the reader the only signal an orphaned delegate
-    has, and says so. The repo-ness check is paid only on the failure path.
-    """
-    rc, out, err = evidence.run_git(root, "worktree", "list", "--porcelain")
-    if rc != 0:
-        in_repo, _out, _err = evidence.run_git(root, "rev-parse", "--git-dir")
-        if in_repo == 0:
-            print(
-                "NOTE: delegate-worktree probe skipped: `git worktree list` failed "
-                f"({err.strip() or f'rc={rc}'}) — an unintegrated delegate worktree "
-                "would go unreported this session",
-                file=sys.stderr,
-            )
-        return []
-    if not out:
-        return []
-    records: list[dict] = []
-    current: dict = {}
-    for line in out.splitlines():
-        if not line.strip():
-            if current:
-                records.append(current)
-                current = {}
-            continue
-        key, _sep, value = line.partition(" ")
-        current[key] = value
-    if current:
-        records.append(current)
-    return records
 
 
 def _is_integrated(root: Path, sha: str, refs: list[str]) -> bool:
@@ -164,7 +124,16 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
     own HEAD — so no special case is needed for the tree you are standing in.
     """
     root = codebase.root
-    records = _worktree_records(root)
+    # One parser for every worktree-aware surface; `None` means git failed in a
+    # real repo, and only this probe can say what that cost.
+    records = gitstate.worktree_records(root)
+    if records is None:
+        print(
+            "NOTE: delegate-worktree probe skipped: `git worktree list` failed — an "
+            "unintegrated delegate worktree would go unreported this session",
+            file=sys.stderr,
+        )
+        return []
     if len(records) < 2:
         return []
 
@@ -194,8 +163,7 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
         if _is_integrated(root, sha, refs):
             continue
 
-        branch_ref = record.get("branch") or ""
-        label = branch_ref.rpartition("refs/heads/")[2] or branch_ref
+        label = gitstate.record_branch(record) or ""
         subject = f"branch {label}" if label else f"detached HEAD {sha[:12]}"
         shown = _display_path(root_abs, worktree)
         candidates.append(
@@ -227,8 +195,10 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
                 # sites statically, and a conditional expression is a value it
                 # declines to guess at — which would exempt this field's copy from
                 # every rule the lint applies.
-                recommended_action=f"git log --oneline HEAD..{label or sha[:12]}",
-                alternative_actions=(f"git worktree remove {shown}",),
+                # Quoted: a branch name may carry `$(`, backticks or spaces, and a
+                # path may carry spaces; both lines run as given.
+                recommended_action=f"git log --oneline {shlex.quote('HEAD..' + (label or sha[:12]))}",
+                alternative_actions=(f"git worktree remove {shlex.quote(shown)}",),
                 priority="warn",
             )
         )

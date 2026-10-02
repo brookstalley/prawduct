@@ -102,7 +102,7 @@ Prawduct enforces governance at four levels:
 - **Session briefing** — On session start, a staleness scan checks artifacts against code reality and delivers a structured briefing with project context, warnings, and relevant learnings. The session briefing surfaces things like current stage in multi-step work, PR's waiting to be merged, and recently completed work.
 - **Critic review** — A session hook blocks completion if code was modified against a build plan but no independent review happened. The Critic skill has structural tool restrictions preventing test/build execution.
 - **Session reflection** — A session hook blocks completion if no reflection was captured (skipped for doc-only changes)
-- **Compliance canary** — At session end, informational checks flag common governance failures (code without tests, dependencies without rationale, broad exception handling)
+- **Compliance canary** — At session end, informational checks flag common governance failures (dependencies without rationale, broad exception handling, waivers without a reason)
 
 Everything else is governed by a set of principles, always in context via the session digest, and methodology guides read on demand.
 
@@ -288,9 +288,12 @@ See [`docs/principles.md`](plugin/docs/principles.md) for the full principles wi
 
 ## Recent Changes
 
-Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.6** line is what has been built on top of them:
+Full release notes are in [CHANGELOG.md](plugin/CHANGELOG.md). Two major releases define the current architecture, and the **3.1–3.7** line is what has been built on top of them:
 
-### 3.1–3.6 — Governance that reports its own state
+### 3.1–3.7 — Governance that reports its own state
+- **Prompts rewritten for Opus 5.5** — the session digest, gate output, Critic and PR reviewer prompts, methodology guides, skills and reference docs are shorter and plainer, and tell the model to take the next step rather than announce it; `final` and `cumulative` reviewers stop loading the builder's half of the review lifecycle
+- **One-line learnings under an owner-held cap** — every rule is one line of at most 250 characters with no body, `core.md` has a cap only an owner-approved override raises, and a corpus over the limits stops growing until `prawduct-hook learnings-compact` converts it, as one revertable commit. Rulings move into the `Rulings:` field of the norm they rule on
+- **Mid-plan reviews stay chunk-sized** — `/prawduct:critic` mid-plan reviews only what is unreviewed, even after you commit, and the reflection and Critic gates wait on a turn that closes `RUNNING` / `DO NOT CLEAR` instead of blocking work still in progress. Hooks key each evidence tree once and remember it, so SessionStart and Stop no longer slow down as review history grows
 - **Your learnings live where the harness loads them** — rules move from `.prawduct/learnings.md` into `.claude/rules/learnings/`, migrated in place on your repo's first session; the lifecycle verbs and their skill retire, the reflection gate fires on any session that wrote code whether or not a plan governs it, and ten portable rules the fleet kept re-learning ship as `docs/discipline.md`
 - **Review rigor is stage-keyed, and a finding you decline is recorded instead of lost** — the *inner* stage (a chunk review, a `final`, a `verify-resolutions`) blocks only on the ships-broken set and demotes the rest to observations; the *boundary* (a `cumulative`, the PR review) runs everything and is never inferred away. `prawduct-hook disposition <review-id> O-1 --accept "<reason>"` discharges an observation on the record — no gate's verdict moves — and the two rules that drove over-fixing now state that the obligation to *fix* is bounded to BLOCKING
 - **Reviews that say what they covered, and stop** — a written rule with no enforcer draws one finding naming the rule rather than one per instance; a clean `verify-resolutions` now says it covered its own delta and *not* the branch, instead of leaving you to go ask a gate; and the close prices the fix/accept decision from figures that were already computed rather than handing you the question unpriced

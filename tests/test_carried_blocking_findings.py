@@ -3,7 +3,7 @@
 The reported failure (#711): a `verify-resolutions` pass discharged one finding
 by reference to another — "R-12 is implicitly closed by R-1's fix, same class" —
 and wrote a resolution fact for R-1 only. Its own counts were 0 blocking, so it
-printed THE REVIEW IS OVER and the operator relayed that. The gate disagreed:
+printed "the review is over" and the operator relayed that. The gate disagreed:
 R-12 had no resolution fact and still blocked. By then R-12 sat on a superseded
 round no later verify pass would name, so the only route left was a full
 `cumulative` — a whole round of bookkeeping for a defect fixed two rounds
@@ -136,7 +136,7 @@ def test_next_action_refuses_to_say_the_review_is_over(tmp_path):
 
     line = cc.next_action_line("rev-B", 0, 0, 0, None, carried=carried)
 
-    assert "THE REVIEW IS OVER" not in line
+    assert "the review is over" not in line
     assert "NOT DONE" in line
     assert "rev-A/R-12" in line
     assert "the other half" in line
@@ -171,7 +171,7 @@ def test_carried_overrides_the_warning_note_arm_too():
         carried=[{"review_id": "rev-A", "fid": "R-12"}],
     )
 
-    assert "THE REVIEW IS OVER" not in line
+    assert "the review is over" not in line
 
 
 def test_no_carried_findings_leaves_every_existing_arm_untouched():
@@ -209,16 +209,20 @@ def test_every_carried_finding_is_named_not_just_counted():
 def test_blocking_arm_alone_would_lie_when_a_blocker_was_inherited():
     """The finding that ordering `if blocking:` first produced.
 
-    That arm says "nothing else here does". With an inherited blocker it is
-    false, and a builder who believes it fixes only this round's findings,
-    re-verifies, and anchors the next pass on THIS review — orphaning the
-    inherited id onto a superseded round.
+    That arm names only this review's blockers. With an inherited blocker, a
+    builder who believes it fixes only this round's findings, re-verifies, and
+    anchors the next pass on THIS review — orphaning the inherited id onto a
+    superseded round. So the carried arm must win, and the plain arm's text
+    must not appear at all.
     """
     carried = [{"review_id": "rev-A", "fid": "R-12"}]
 
     line = cc.next_action_line("rev-B", 2, 0, 0, None, carried=carried)
+    plain = cc.next_action_line("rev-B", 2, 0, 0, None)
+    plain_lead = plain.split(".")[0]
 
-    assert "nothing else here does" not in line
+    assert plain_lead in plain and plain_lead.startswith("2 BLOCKING")
+    assert plain_lead not in line
     assert "R-12" in line
     assert "2 BLOCKING finding(s) of its own" in line
 
@@ -229,7 +233,7 @@ def test_carried_wins_over_every_own_count():
     for blocking, warning, note in [(0, 0, 0), (0, 5, 5), (3, 0, 0), (3, 2, 1)]:
         line = cc.next_action_line("rev-B", blocking, warning, note, None, carried=carried)
         assert "R-12" in line, (blocking, warning, note)
-        assert "THE REVIEW IS OVER" not in line, (blocking, warning, note)
+        assert "the review is over" not in line, (blocking, warning, note)
 
 
 def test_cache_record_carries_the_sentence_to_the_builder():
@@ -246,7 +250,7 @@ def test_cache_record_carries_the_sentence_to_the_builder():
     )
 
     assert "R-12" in record["next_action"]
-    assert "THE REVIEW IS OVER" not in record["next_action"]
+    assert "the review is over" not in record["next_action"]
 
 
 def test_cache_record_without_carried_is_unchanged():

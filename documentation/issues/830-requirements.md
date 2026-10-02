@@ -305,10 +305,11 @@ MUST unless marked SHOULD.
 - `.prawduct/release-notes.md:1-11` ("Derived views are retired... this was a digest of it").
 - `plugin/hooks/digest.py` — the existing "session digest," the naming-collision risk in Grounding
   facts.
-- `plugin/skills/critic/review-cycle.md:104` (PR gate treats WARNING/NOTE as advisory), `:268-276`
-  ("Why the default moved" — the backlog-dumping regression this item must not reproduce), `:291-294`
-  ("Severity does not exempt").
-- `plugin/skills/pr/review-protocol.md:161-163` (PR reviewer's severity contract).
+- `plugin/skills/critic/review-cycle.md:104` (PR gate treats WARNING/NOTE as advisory), the FILE-is-narrowest rule
+  (the backlog-dumping regression this item must not reproduce; its measurement, "open items went
+  50 → 180 in 26 days", is in that file's "Why the default moved" paragraph at `a078edc9`), and its
+  "Severity does not exempt" paragraph.
+- `plugin/skills/pr/review-protocol.md` § Severity Levels (PR reviewer's severity contract).
 - `documentation/release-process.md:127-145` (release checklist, Step 0 = `check-releasability`).
 - `plugin/templates/project-preferences.md:40-52` (`## Workflow`), `:60-87` (`## Enforcement`) — the
   natural home for a posture setting, if design decides one is needed.

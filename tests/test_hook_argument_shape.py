@@ -149,6 +149,7 @@ _REFUSAL_VERIFIED = {
     "check-releasability": "explicit token scan; exits 2",
     "check-released": "explicit token scan; exits 2",
     "plan-backfill": "explicit token scan; exits 2",
+    "worktrees": "lib.stranded_work.worktrees_cmd names the token; exits 2 (bare exits 0)",
 }
 
 # Refusing is the wrong behaviour for these, for the same reasons the
@@ -566,7 +567,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "check-branch-pushed",
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
         "check-plugin-active",
-        "check-learnings-pairing", "learnings-migrate",
+        "check-learnings-pairing", "learnings-migrate", "learnings-compact",
         "stamp-merged", "build-index", "user-prompt-submit", "regen-views",
         "infer-critic-mode", "resolve-base", "disposition", "render-dispositions",
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",
@@ -576,6 +577,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "learnings-obligation", "lifecycle-repair", "plan-backfill", "archive-change-log",
         "repo-disable",
         "reanchor",
+        "worktrees",
     }
     assert set(_dispatch_branches()) == listed
 

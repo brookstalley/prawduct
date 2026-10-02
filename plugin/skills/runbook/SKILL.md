@@ -18,7 +18,7 @@ If asked for a "runbook" for local dev setup, write a setup guide and say that i
 
 **Read `${CLAUDE_SKILL_DIR}/../../docs/runbook-authoring.md` before authoring or reviewing.** It is the
 canonical guide — the invariants, the anatomy, the writing rules, branching, irreversible steps,
-domain adaptation, and a self-review of six restraint checks plus 26 criteria. It also carries an
+domain adaptation, and the rejection criteria: six restraint checks plus 26 criteria. It also carries an
 evidence appendix distinguishing what is verified from what is convention, and a list of refuted
 claims you must not reintroduce.
 
@@ -31,8 +31,8 @@ The blank artifact is `${CLAUDE_SKILL_DIR}/../../templates/runbook.md`.
 The guide is long because it catalogues how procedures fail. **The runbooks you write must be
 short.** The most common way an agent ruins a runbook is by treating that guide as a checklist and
 dutifully filling in every section — producing a thorough, complete document no tired human will
-read. That is a failure that looks like success, and it contradicts the best-evidenced finding in
-the whole literature: length itself drives people to skip a procedure or execute it badly.
+read. That is a failure that looks like success. The sources agree on the direction: length carries
+the risk that people skip a procedure or execute it badly.
 
 **Default to the minimal shape.** For most procedures this is the entire document:
 
@@ -51,10 +51,6 @@ the whole literature: length itself drives people to skip a procedure or execute
 Add a section only when the procedure actually needs it. **Budgets: ≤20 steps, 5–15 per phase,
 action lines under ~25 words.** Real production runbooks run ~5–15 steps.
 
-**Do a subtraction pass before you finish** — one read whose only purpose is deletion. Cut
-background the reader doesn't need to act, rationale on steps nobody would skip, sections carried
-from the template with nothing product-specific in them, and anything said twice.
-
 It has to work for two readers: someone doing this routinely on a Tuesday who needs it to be *fast*,
 and someone doing it at 3 a.m. for the first time who needs it to be *unambiguous*. Concision serves
 both; padding serves neither. When choosing between a shorter runbook with excellent verification
@@ -64,9 +60,9 @@ steps and a longer one covering more ground, choose the shorter one.
 
 > **Derive every command from the repository. Never generate one.**
 
-Models emit references to packages that do not exist at measured rates of 4.6–6.1%, and when an
-agent generates an operational command on the fly instead of using a stored exact one, it drifts
-from the template, drops conditions, and mangles escaping. A plausible invented command is worse
+Models emit references to packages that do not exist and API calls that are not valid, at measured
+rates well above zero, and when an agent generates an operational command on the fly instead of using a stored
+exact one, it drifts from the template, drops conditions, and mangles escaping. A plausible invented command is worse
 than a missing one: it makes a broken runbook look finished.
 
 You have the repository. Use it. **Verification terminates at the authoritative system — the repo,
@@ -128,7 +124,7 @@ verbatim; if nothing triggers it, the title is the symptom as experienced.
 6. **Tests**, especially integration and smoke tests — they encode real invocation and real
    expected output.
 
-Record where each command came from. You will need it for the self-review.
+Record where each command came from; Step 6 reports it.
 
 **Step 3 — Classify.** Assign a tier (reversibility × blast radius × executor distance). Mark every
 step reversible or irreversible using the operative test: *if performed wrong, can the initiating
@@ -163,11 +159,11 @@ Non-negotiables while drafting:
   especially silenced alerts. Where it introduced none, no close-out.
 - Under ~20 steps, or split into phases with checkpoints.
 
-**Step 5 — Subtract, then self-review.** First the deletion pass: remove every line a tired
-responder would not miss, and every section with nothing product-specific in it. Then run the
-guide's rejection criteria — start with the **Restraint** block (R1–R6), because those delete work
-rather than adding it. The two highest-yield checks: every verification step names an observed
-value, and every command traces to a file you can name. Fix, don't annotate.
+**Step 5 — Subtract.** Remove every line a tired responder would not miss, and every section with
+nothing product-specific in it. The guide's rejection criteria are the bar the finished runbook
+meets; its **Restraint** block (R1–R6) is the part that deletes work. The two that matter most:
+every verification step names an observed value, and every command traces to a file you can name.
+Fix, don't annotate.
 
 If the draft exceeds 20 steps, do not ship it long — split it into separate runbooks, each with its
 own entry condition.

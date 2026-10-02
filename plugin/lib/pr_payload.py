@@ -59,6 +59,7 @@ SECTION_NAMES = (
     "change_log",
     "backlog",
     "default_branch",
+    "learnings_cap",
 )
 
 
@@ -677,6 +678,58 @@ def _section_default_branch(project_dir: Path) -> Section:
 # --------------------------------------------------------------------------
 
 
+def _section_learnings_cap(project_dir: Path, prawduct_dir: Path, base: str) -> Section:
+    """Whether this branch changes ``core.md``'s cap, and on whose word.
+
+    ``owner_approved:`` is text an agent can write, so its visibility at the
+    PR boundary is the only check on a raise the owner never gave. A reviewer
+    who is told nothing here would have to open ``project-state.yaml`` itself.
+    """
+    from . import learnings_files, record_lint  # noqa: PLC0415 — lazy; only this section needs them
+
+    # The MERGE-BASE, not the base branch's tip: a cap changed on the base after
+    # this branch forked is not this branch's change, and would read as one.
+    code, fork = _git(project_dir, "merge-base", base, "HEAD")
+    if code != 0 or not fork:
+        return Section("learnings_cap", degraded=(
+            f"core.md's cap could not be compared — no merge-base with {base}; read "
+            "`learnings_budgets.core.md` in project-state.yaml at both ends yourself"
+        ))
+    # ``budgets_at`` does not raise: an unreadable tree or state file reads as
+    # "no override", which the comparison below reports as the default.
+    before = record_lint.budgets_at(project_dir, prawduct_dir, fork).get(learnings_files.CORE_NAME) or {}
+    after = record_lint.budgets_at(project_dir, prawduct_dir, "HEAD").get(learnings_files.CORE_NAME) or {}
+    def _cap(entry: dict) -> tuple:
+        return (entry.get("kb"), entry.get("owner_approved"))
+
+    def _show(entry: dict) -> str:
+        # The two fields that decide the cap, never ``reason:`` — a legacy reason
+        # runs to kilobytes and says nothing about whether the cap rose.
+        shown = {k: entry[k] for k in ("kb", "owner_approved") if entry.get(k)}
+        return str(shown) if shown else "the default"
+
+    if _cap(before) == _cap(after):
+        return Section("learnings_cap", body="this branch does not change core.md's cap")
+    # Judged on the cap IN FORCE, not the entry's text: removing or lowering an
+    # override (what compacting a corpus does) needs no approval, and calling it
+    # a raise would put a false WARNING on every compaction PR.
+    core = learnings_files.CORE_NAME
+    kb_before = record_lint._effective_kb(core, {core: before})
+    kb_after = record_lint._effective_kb(core, {core: after})
+    if kb_after <= kb_before:
+        return Section("learnings_cap", body=(
+            f"core.md's cap entry changes on this branch ({_show(before)} -> {_show(after)}), "
+            f"but the cap in force does not rise: {kb_before}KB -> {kb_after}KB. "
+            "Lowering or removing a cap needs no owner approval."
+        ))
+    return Section("learnings_cap", body=(
+        f"core.md's cap RISES on this branch: {kb_before}KB -> {kb_after}KB "
+        f"({_show(before)} -> {_show(after)}). "
+        "`owner_approved:` is text an agent can write: this raise needs the owner's "
+        "approval quoted in the PR description, or it is a WARNING."
+    ))
+
+
 def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
     """Build every section. Returns ``(sections, hard_failure_reason)``.
 
@@ -742,6 +795,7 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
         )
     )
     sections.append(_section_default_branch(project_dir))
+    sections.append(_section_learnings_cap(project_dir, prawduct_dir, base))
 
     # The roster is the promise, so reconcile against it rather than trusting the
     # list just built. A builder that raised, or a section quietly dropped in a

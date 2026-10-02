@@ -1,4 +1,4 @@
-# Migration scrub — markdown backlog → GitHub Issues (MG4)
+# Migration scrub — markdown backlog → GitHub Issues
 
 The one-time, owner-confirmed cleanup that runs when a project moves its
 `.prawduct/backlog.md` onto GitHub Issues through the backlog service
@@ -6,36 +6,32 @@ The one-time, owner-confirmed cleanup that runs when a project moves its
 they become live issues, so the migrated backlog starts clean instead of
 inheriting years of silt.
 
-The session-start **`backlog-service-migration-required`** advisory (GV7) is what
+The session-start **`backlog-service-migration-required`** advisory is what
 nudges an un-migrated repo here: while `.prawduct/backlog.md` holds a structured
 backlog and `backlog_service_repo` is unset, every session flags that migration is
 required — so a repo that upgraded past prawduct's own cutover is told to migrate,
 never silently degraded to a zeroed backlog count.
 
 This is a **workflow over the deterministic ops** (`provision` / `list` / `status` /
-`merge` / `import`), **not a single command** (API §2.5). Run it interactively with
+`merge` / `import`), **not a single command**. Run it interactively with
 the owner.
 
-## The one invariant: the model decides, it never touches the data plane (MG4/G1)
+## The one invariant: the model decides, it never touches the data plane
 
 You (the model) may read items and *propose* dispositions. Every mutating
 step — `import`, `merge`, `status` — receives a **concrete set the owner has
 confirmed**, never an inference applied on your own authority. Nothing is ever
 hard-deleted: a stale item is *closed* (`status … dropped`), a duplicate is
-*folded and redirected* (`merge`), and both keep their body verbatim (DM7). No
+*folded and redirected* (`merge`), and both keep their body verbatim. No
 silent drops — every item is either migrated, closed with a recorded reason, or
-explicitly left to the owner. This is asserted structurally by the MIG-5 test:
-the import op consumes a record set, not a model call.
+explicitly left to the owner.
 
 ## Steps
 
-**Precondition. Confirm the running plugin actually HAS the backlog service — before anything else.**
-Every command in this runbook is written as a bare `prawduct-hook backlog …`, which resolves on
-`PATH`. **On a released plugin that resolves to a binary with no `backlog` op at all**, because the
-backlog service was deliberately withheld from the v3.1.1 and v3.1.2 pruned releases. The failure is
-loud (`unknown op`), but the *diagnosis* is not obvious mid-migration, and the same skew is silent in
-the more dangerous direction: a build that has the op but predates this runbook's safety rails will
-run happily and skip the target-binding this runbook exists to enforce.
+**Precondition. Confirm the running plugin has the backlog service — before anything else.**
+Every command here is a bare `prawduct-hook backlog …` resolved on `PATH`. Some released builds ship
+without the `backlog` op, and a build that has the op but predates this runbook's target-binding
+would run without that safeguard.
 
    - **Check first, in the repo you are about to migrate:**
 
@@ -47,15 +43,11 @@ run happily and skip the target-binding this runbook exists to enforce.
 
          claude <target-repo> --plugin-dir /path/to/prawduct/plugin
 
-     There is no `.prawduct/tools/prawduct-hook` to fall back to — that was the **v1 file-sync**
-     layout, retired in M4. A plugin-governed repo commits the install reference and no framework
-     files, so the *only* lever is which plugin the session loaded.
+     The loaded plugin is the only lever: a plugin-governed repo commits no framework files to fall
+     back to.
 
-   - **Record the plugin version and `--plugin-dir` (if used) alongside the other scrub decisions.**
-     Not bookkeeping: when a migration is later found to be incomplete, the first question is *which
-     build ran it*, and a repo that cannot answer that cannot be diagnosed. This is not hypothetical —
-     `samsung-frame-art-loader` was found half-migrated (7 of 9 items never reached GitHub, with the
-     cutover already recorded) and nothing in the repo records which build performed it.
+   - **Record the plugin version and `--plugin-dir` (if used) alongside the other scrub decisions**,
+     so a migration later found incomplete can be traced to the build that ran it.
 
 **0. Select and confirm the target repo — the one binding every later step reads.**
 This is the guard that stops a scrub from writing 100–250 real issues into a repo
@@ -83,10 +75,7 @@ nobody chose. Nothing below runs until it is done.
      creates labels ad hoc:
      `prawduct-hook backlog provision --repo <target>`
      Idempotent and collision-free — it only ever creates the `<facet>:`-namespaced
-     base labels it does not find, and never touches a repo's existing labels. This
-     is the scrub's ownership of provisioning; the other two entry paths own it for
-     theirs — `/prawduct:onboard` provisions at adoption, `/prawduct:doctor`
-     reconciles as a repair.
+     base labels it does not find, and never touches a repo's existing labels.
 
 **Throughout the steps below, `<target>` is that one owner-confirmed repo from
 Step 0 — bound once, never re-derived. Every `--repo <target>` is the same value; do
@@ -156,9 +145,7 @@ Propose two candidate sets:
      obsolete. Group with a one-line "why this looks stale."
    - **Duplicate / overlapping** — cluster by area + title/body overlap. For
      each cluster name the **survivor** (the item others fold into) and the
-     duplicates. (Lexical `search --like` is a post-cache accelerator, not
-     available in the cacheless service — surface duplicates by reading the
-     `list` output directly.)
+     duplicates, reading the source or the `list` output directly.
    - **One fix, many items (the altitude question)** — ask of the whole corpus:
      **"would a SINGLE change close all of these?"** That is a *shared-root-cause*
      test, not the duplicate test above, and it must run **corpus-wide, before
@@ -180,7 +167,7 @@ Propose two candidate sets:
 action, correct a survivor), or defers individual rows. **Apply nothing that is
 not confirmed.** Deferred rows stay live and untouched — never a silent drop.
 
-**3b. Restructure pre-pass (MG6 — issue-standard §5).** For the items being
+**3b. Restructure pre-pass (issue-standard §5).** For the items being
 migrated (typically the open set; archive items may stay verbatim), *propose* a
 restructure plan as a JSON file — per item: a ≤72 `area:`-prefixed title,
 template body sections, and a `kind:`. **Flag non-atomic items
@@ -189,8 +176,8 @@ mints new IDs and is an owner scrub decision; 1 PFX = 1 issue).
 
 **The `area:` prefix is the import's job, not the plan's.** `import` normalizes
 every title to the §1 `area: summary` shape from the item's own `area:` facet,
-whether or not the plan names that item (#728) — so a plan that retitles only
-the lint-failing items no longer yields a half-prefixed issue list, and you
+whether or not the plan names that item — so a plan that retitles only
+the lint-failing items does not yield a half-prefixed issue list, and you
 never need a `title` entry whose only purpose is to add the prefix. Write plan
 titles as the summary you want; the prefix arrives either way, and
 `normalize_title` never adds a second one. Every title the import changes keeps
@@ -227,66 +214,35 @@ The owner reviews **in aggregate** (representative sample + the full
 before/after artifact) and approves the batch — not per-item. The preview is
 generated from the same code path the import consumes, so what is approved is
 byte-for-byte what gets written. Originals are preserved verbatim
-(`original_title`/`original_body` block fields + the MG2 export backup + git
+(`original_title`/`original_body` block fields + the Step 1 export backup + git
 history of the source file) — a bad rewrite is always recoverable.
 
-**3c. Decide archive scope (MG4b) — an explicit owner choice, never a silent
+**3c. Decide archive scope — an explicit owner choice, never a silent
 default.** Ask the owner how much of the historical archive to mint as GitHub
 issues, and name the tradeoff:
-   - **`open`** — migrate only the live/open set, minting **no** closed issue per
-     ancient item. Fewer *total* writes (NF3) and a cleaner live tracker — note the
-     ≈80/min + ≈500/hr *rate* ceiling is the Pacer's job, not this lever's (it
-     reduces write *volume*, not the rate — BKL-6X5D). **State the cost plainly
-     before the owner chooses:** the skipped archive stays in the **git-tracked
-     source markdown** (Step 1's pre-migration backup) — *not* in the MG2 export,
-     which dumps the migrated repo and therefore never contains what this lever
-     excluded. So those items are preserved as **git history, not as live backlog**:
-     after cutover the skill treats the source file as frozen history and stops
-     reading it, so the skipped set is **outside the tracker entirely** — no adapter
-     op, at any flag, can reach it. What is *not* `open`-specific: archived items are
-     absent from a default `list` and from add-time dedup under **either** scope (see
-     `all` below), so a duplicate of a previously-dropped item can be re-filed with no
-     signal either way. The lever decides whether the record is *recoverable through
-     the tracker*, not whether dedup sees it. (State it as `list`, not `find`: an item
-     never imported is outside the tracker entirely, so no cache-served op reaches it
-     either — `find` runs post-cutover, but only over what the cache holds, and what
-     this lever skips was never synced.)
-   - **`all`** — import the full archive as closed issues (every disposed/shipped
-     item becomes a closed issue). Complete history *in the tracker* — but
-     **reachable, not visible by default**: `list` defaults to `state=open`
-     (`lib/backlog/query.py`), and so does the dedup-on-create check `adapter-mode.md`
-     documents (`list --area=<area> --json`, no state filter). Seeing the archive takes
-     an explicit `--state closed` or `--state all`. So the differential against `open`
-     is **reachability, not default visibility**: `all` puts the archive one flag away
-     inside the tracker; `open` leaves it outside the tracker entirely, in frozen
-     markdown no adapter op reads. Neither scope makes archived items show up in a
-     default `list` or block a duplicate at add time. **Its cost, stated
-     symmetrically:** an archived item is **two** writes, not one — a create, then a
-     status reconcile to closed (the create path has no initial-state field).
-     **Both writes are metered** — a `_PacingTransport` decorator charges every
-     transport *method* call against a 900-points/minute window (5 per write, 1 per
-     read), so the close is inside the meter alongside the create. The charge is per
-     method, not per HTTP request — a paged read issues several requests and is
-     charged once — so the reported point total is a **floor**, not an exact REST
-     count, and the run summary prints `≥N` (BKL-3H7W). *(Corrected
-     2026-07-24: this previously read "Only the create is paced (`Pacer.before_create`
-     is the sole paced call), so a large `all` run spends its close writes outside
-     the meter" — true when written, made false by the Chunk 04 metering fix, which
-     updated the NFR but not this runbook.)* A live `--archive-scope all` run of 295
-     items measured **zero** pacing waits: serial `gh` round-trip latency caps the
-     burst well under the ceiling, so the budget is a safety belt rather than the
-     governor (VRF-009). Size the run on **wall clock** — roughly latency × call
-     count, ~18 minutes for 295 items — not on rate-limit risk.
+   - **`open`** — migrate only the live/open set and mint no closed issue per
+     archived item: fewer total writes and a cleaner tracker. (The rate ceiling is
+     the importer's pacer's job, not this lever's.) **State the cost before the owner
+     chooses:** the skipped archive stays only in the git-tracked source markdown,
+     not in the export (which dumps the migrated repo), so after cutover no adapter
+     op — not `list`, not the cache-served `find` — can reach it.
+   - **`all`** — import the full archive as closed issues: complete history inside
+     the tracker, one `--state closed|all` flag away. Under either scope, archived
+     items are absent from a default `list` and from add-time dedup; the lever
+     decides whether the record is reachable through the tracker, not whether dedup
+     sees it. **Its cost, stated symmetrically:** an archived item is **two** writes
+     — a create, then a status reconcile to closed (the create path has no
+     initial-state field) — and both are paced. The run summary prints its point
+     total as a floor (`≥N`). Pacing rarely has to wait in practice, so size the run
+     on **wall clock**: roughly round-trip latency × call count, about 18 minutes for
+     295 items.
 
    The model surfaces the tradeoff; the owner decides; the deterministic importer
    applies it via **`--archive-scope {open|all}`** (Step 4) — a data-plane lever,
    never a model inference. Keep the restructure plan (Step 3b) scoped to the set
    you migrate: under `open`, don't author plan entries for archived items you're
    dropping (the importer refuses fail-closed if the plan names an item outside the
-   chosen scope — a contradiction, caught, never a silent mis-import). A *quantified*
-   recent-shipped window between the poles
-   (migrate the last N months, drop older) is the adopter-scale refinement tracked
-   by **BKL-6X5D**; today the lever is the binary open/all.
+   chosen scope — a contradiction, caught, never a silent mis-import).
 
    **Record the choice where the other scrub decisions live**, with its date and the
    cost the owner accepted — the migration is one-time and irreversible in part, so a
@@ -328,9 +284,8 @@ issues, and name the tradeoff:
      **Read the line after the summary before moving on.** Two things can leave a
      run incomplete while the counts look healthy.
 
-     A per-item rejection **no longer ends the run**: an item GitHub refuses is
-     recorded and the import continues past it, so one malformed row can never
-     again end a 396-row migration. Those items are **not on the target at all**,
+     A per-item rejection does not end the run: an item GitHub refuses is recorded
+     and the import continues past it. Those items are **not on the target at all**,
      which is worse than the reconcile case below — the summary counts them as
      `N rejected` and prints
      `WARNING: N item(s) were REJECTED and are NOT on the target`. Re-running the
@@ -363,26 +318,10 @@ issues, and name the tradeoff:
    snapshot of the moment of migration that is *expected* to diverge from the tracker
    thereafter.
 
-   **Sizing note for `--archive-scope all`.** For a **large** backlog where the
-   content-creation budget (≈80/min, ≈500/hr) is the scarce path, it is tempting to
-   import obvious stale items already-closed to avoid create-then-close churn — **but
-   the importer cannot do that today**: the create path carries no initial-state field
-   (Step 3c), so every closed item is a create plus a status reconcile regardless of
-   ordering. Treat the churn as a fixed cost of `all` and size the run for it; revisit
-   only if the create path gains an initial state.
-
-**5. Spot-check.** `prawduct-hook backlog counts --repo <target>` for the
-rollup; spot-check a handful of migrated bodies and IDs; confirm every
-hand-minted `PFX` resolves as an `id:PFX` alias. Total issue count = every source
-item **plus `untriaged`** — an item the *source* recorded as dropped or shipped is
-still present, just closed, and `total` also counts any issue already on the target
-that is not a prawduct item (a hand-filed report, a report from another product).
-On a target that was empty before the import, `untriaged` is `0` and the identity is
-plain; on a target with pre-existing issues, subtract `untriaged` before comparing —
-the gate that actually decides completeness is `verify-migration` in step 6, not this
-arithmetic. **Nothing has been disposed yet**, so the scrub's own drops and merges are
-not what you are looking for here; they are checked at *Apply the confirmed
-dispositions*.
+**5. Rollup.** Run `prawduct-hook backlog counts --repo <target>` for the rollup.
+Completeness is decided by `verify-migration` in step 6, not by this count: `total`
+includes any pre-existing non-prawduct issues (`untriaged`), and nothing has been
+disposed yet.
 
 **6. Cut over.** **Gate first — this is the one step that must not be taken on
 trust.** Setting the key below is what makes the markdown stop being read, so
@@ -437,27 +376,17 @@ import is the right answer for only two of them**:
   `id_aliases` entry, so an old ref to it still resolves. The bare `PFX` form
   cannot express this merge: both endpoints resolve through the `id:PFX` label search
   to the *same* labelled survivor, so it is rejected as merging an item into itself.
+  This fold is a migration repair, not a confirmed disposition — it reconciles two
+  target issues onto one source item — so run it here, before the gate passes. **Do
+  not hand-edit the loser's body to strip the id**: that breaks the refs the redirect
+  keeps working, and `backlog update --body` cannot do it anyway (it re-appends the
+  original block and reports `ok`).
 - **`unencodable_status`** — the source item declares a `status:` in no documented
   vocabulary (a typo, or a value from another tool). The import substituted one
   rather than refusing, so the issue exists at a plausible-but-unasserted status
   — and **a re-run substitutes it again**. Correct the source markdown to a
   documented value (`open`, `promoted`, `shipped`, `dropped`) and re-import.
-  `promoted` in particular is now carried across: it lands as the service's
-  `in-progress` sub-state rather than being flattened to `open`.
-  The number is the only handle that distinguishes the two. **This fold is a migration
-  repair, not a confirmed disposition** — it reconciles two target issues onto one
-  source item rather than diverging from the source — so it is correct to run here,
-  before the gate passes, and the import step's "no disposals yet" rule does not reach
-  it.
-
-  **The fold clears the list.** `merge` writes a `superseded_by` redirect on the loser
-  before closing it, and a redirected issue stops counting as a claimant of the id — so
-  the survivor is left as the only one and the gate goes green on the next run. The
-  loser keeps its `id_aliases` entry on purpose: an old reference to the folded id still
-  has to resolve, and it resolves through the redirect to the survivor. **Do not
-  hand-edit the loser's body to strip the id** — that breaks the very refs the redirect
-  exists to keep working, and `backlog update --body` cannot do it anyway (it re-appends
-  the original block by design and reports `ok` while changing nothing).
+  `promoted` lands as the service's `in-progress` sub-state.
 
 `source_items` counts **every** parsed item in scope, not just the aliasable
 ones — so `source_items` exceeding `aliased` with an empty `missing` is exactly
@@ -478,17 +407,11 @@ what `open` actually creates — the closed items it skips stay in the git-track
 source markdown and are correctly not counted as stranded. Passing a different
 scope than you imported with compares against the wrong set.
 
-*Why this is a command and not the eyeball check step 5 already asks for.* Step 5
-has always said "Total issue count = every source item," and it was not enough:
-`samsung-frame-art-loader` recorded its cutover with **7 of 9 items never
-imported**, and nothing noticed until the repo was read months later. A raw issue
-count would not have caught it either — issues filed natively after a cutover
-carry a `prawduct` block but no `id:PFX` alias, so that repo's counts looked
-plausible (17 issues) while 7 source items were stranded. The gate compares the
-**source set against alias coverage**, which is the only comparison that holds —
-and then, because coverage alone still cannot see an item that arrived at the
-wrong status, compares each covered item's **decoded status** against the
-source's target.
+*Why a command rather than step 5's count.* A raw issue count cannot see stranded
+items: issues filed natively after a cutover carry a `prawduct` block but no
+`id:PFX` alias, so totals can look plausible while source items are missing. The
+gate compares the source set against alias coverage, then compares each covered
+item's decoded status against the source.
 
 Then record the switch that makes the migrated repo the live backlog — a
 top-level scalar in `.prawduct/project-state.yaml`, set to the same `<target>`
@@ -498,29 +421,17 @@ bound in Step 0:
 backlog_service_repo: <target>
 ```
 
-This single key (API §2.4) repoints the session briefing to the GV2 snapshot
-(`snapshot.read`, file-only, visible age + detached refresh warm — never a
-synchronous network call) and retires every markdown-premise advisory probe
-(the backlog trio `legacy-backlog-format` / `legacy-section-schema` /
-`backlog-overdue-grooming` AND the norm probe `revisit-due` — the frozen file
-must not generate nudges). **Two former members of that list now switch backends
-rather than retiring**: `dead-why` and `stalled-transition` resolve their
-citations against the backlog cache on the far side, so cutover changes where
-they read, not whether. Retirement is
-not silence, and it no longer needs an advisory to say so: the readers outside
-this skill query the local backlog cache on the far side, and one that cannot
-reach it reports that at the point of use rather than returning nothing (full
-retirement table: post-sync-advisory-spec §8.2). **Do not set
-it before the import has been verified** (the gate at the head of this step) —
-once set, the briefing stops counting the markdown file. From here the markdown
-backlog is frozen history for *this* repo.
+Setting this key makes every prawduct surface read the backlog from the service
+instead of the markdown file, and stops the markdown-premise advisories. **Do not
+set it until the gate at the head of this step passes.** Once it is set nothing
+counts the markdown file, which from here on is frozen history for this repo.
 
 **Then mark the source file itself — the key alone leaves it declaring that it is
 live.** Setting the scalar changes what the *tooling* reads; it changes nothing a
 human sees when they open `.prawduct/backlog.md`, which still carries a "managed via
 the backlog skill" header and a `## Open (pickable)` section under it. Write a
 frozen-history banner at the head of the source naming the cutover date, the live
-tracker URL, and the read commands. Three constraints, all learned the hard way:
+tracker URL, and the read commands. Three constraints:
 
 - **It must be visible when RENDERED.** An HTML comment is invisible in GitHub's
   rendered view — a reader browsing the file sees a heading and a list of open items
@@ -548,40 +459,19 @@ close the migrated issues (filtered on the `id:` alias namespace — never delet
 does not reuse numbers) **and revert this banner**. Skip the third and the restored live
 backlog announces that it is frozen and redirects readers to a tracker you just closed.
 
-**`legacy.py` is NOT retired at this cutover — not this repo's, not any repo's.**
-It is the shared plugin's markdown read path, and `GV7`/`MG3` retire it only when
-the **whole portfolio** has migrated: retiring it at one project's cutover is the
-silent degradation GV7 exists to prevent, and it would also disable the *next*
-repo's migration, since `lib/backlog/migrate.py` reads the source through
-`legacy.parse_backlog`.
-Portfolio-wide retirement is not this runbook's business.
-
-**The local upstream-bug drop-box this runbook once had to sequence against is
-gone**, retired 2026-09-08 together with the MG5 replacement that made it
-retirable (BKL-0QR1) — reports are filed as GitHub issues now. So a cutover run
-has no local bug channel to hold in lockstep, and no step here reads or writes
-one. Anything a machine still holds from that era is one operator's untracked
-files, triaged by hand.
-
-**6b. Repair the items the import ADOPTED.** A `--restructure` plan applies **at
-create**, so it cannot reach an item the importer adopted by its `id:PFX` alias from an
-earlier partial run — that item keeps whatever title and body it already had. On a real
-415-item migration that was 25 issues, which would have kept their original run-on
-titles in a migration whose entire purpose was fixing run-on titles. The CLI usage line
-says "applied as each issue is created, not as a later edit"; nothing drew the
-consequence, and nothing repaired it.
+**6b. Repair the items the import ADOPTED.** A `--restructure` plan applies only at
+create, so an item the importer adopted by its `id:PFX` alias from an earlier partial
+run keeps its old title and body.
 
 - The import result names them: everything in `existing` rather than `created`. For each
   one that the plan has an entry for, apply the entry now —
   `prawduct-hook backlog update <id> --title '<planned title>' --repo <target>` (and the
   body, if the plan restructured it).
-- **Then lint the whole target, not just the adopted set.** `verify-migration` compares
-  *source → target coverage*; **nothing compares target → the issue standard**. An issue
-  that was aliased and on the target before this run is in no source open set, no plan,
-  no gate list and no disposition — invisible to every step. The same migration carried
-  two issues with 142- and 123-character titles that no step would ever have looked at.
-  List every aliased issue and check its title against §1 (`≤72`, `area:`-prefixed,
-  atomic); fix what fails with `update --title`.
+- **Then lint the whole target, not just the adopted set.** `verify-migration` checks
+  source → target coverage, and nothing checks the target against the issue standard,
+  so an issue aliased before this run is seen by no other step. List every aliased
+  issue, check its title against §1 (`≤72`, `area:`-prefixed, atomic), and fix failures
+  with `update --title`.
 
 **6c. Sweep inbound references — instructions, not just links.** Setting the scalar
 repoints the *tooling*; the repo's prose still says whatever it said. A migration that
@@ -589,12 +479,11 @@ repoints the tooling and leaves the documentation telling people to write into a
 file is half a migration.
 
 - Grep the repo for the source path (`.prawduct/backlog.md`) and for the words the team
-  uses for the backlog. Fix **wrong instructions**, not only stale links: the real find
-  was a `DEVELOPMENT.md` telling contributors to file new items into the now-frozen
-  file, which no link-checker would ever flag.
-- **Name the anchor doc explicitly: `CLAUDE.md`** (or this repo's equivalent). It is the
-  file every agent session and every new contributor actually reads, and on that
-  migration it did not mention where the backlog lived at all — before or after.
+  uses for the backlog. Fix **wrong instructions**, not only stale links — for example, a
+  contributor guide telling people to file into the now-frozen file.
+- **Name the anchor doc explicitly: `CLAUDE.md`** (or this repo's equivalent), the file
+  every agent session and new contributor reads, and say in it where the backlog now
+  lives.
 - Banner **every** source file, including a separate `--archive` file (see the archive
   shape constraint in step 6).
 
@@ -622,14 +511,14 @@ import step, which says why.
 
    - **Fold each duplicate** into its survivor (writes the `superseded_by`
      redirect *before* closing the source, so a crash leaves a resolvable
-     open-but-redirected item, never an orphan — AU3/CRASH-2):
+     open-but-redirected item, never an orphan):
      `prawduct-hook backlog merge <duplicate-id> --into <survivor-id> --repo <target>`
      (`--repo` is required for bare `PFX-XXXX` ids — alias resolution needs the
      target repo)
    - **Close each stale item** (closed + preserved, not deleted):
      `prawduct-hook backlog status <id> --to dropped --repo <target>`
-   - **Confirm each disposed item is *closed*, not missing** — the check *Spot-check*
-     could not yet make, because nothing had been disposed when it ran.
+   - **Confirm each disposed item is *closed*, not missing** — the check the step 5
+     rollup could not yet make, because nothing had been disposed when it ran.
 
 **Do not re-run the import after this point, and do not re-run `verify-migration`.** The
 import reconciles the status axis of already-migrated items against the **source

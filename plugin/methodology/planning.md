@@ -26,21 +26,14 @@ Artifacts are specification files that guide building — catching issues at the
 **Structurally-triggered artifacts** (from characteristics detected in discovery):
 - *Human interface*: Interaction design, information architecture, accessibility specification, onboarding flow
 - *Runs unattended*: Pipeline architecture, scheduling, monitoring and alerting, failure recovery, configuration management
-- *Programmatic interface* (any surface others call — network service, library/SDK, on-device/platform, or CLI): API contract — operations, inputs/outputs, error model, **versioning scheme**, **deprecation/compatibility policy**, conventions & evolution rules (template: `templates/api-contract.md`). Versioning, deprecation, and error-model choices are *recorded decisions* (`design_decisions.api_versioning_approach` / `api_error_model_approach`), not silent defaults — a deferral must be dated with a revisit trigger.
+- *Programmatic interface* (any surface others call — network service, library/SDK, on-device/platform, or CLI): API contract (template: `templates/api-contract.md`), whose versioning and error-model decisions are recorded as "Exposed API" below describes.
 - *Multiple party types*: Per-party experience specifications, trust boundary analysis, data isolation rules
 - *Sensitive data*: Deepens existing artifacts (data lifecycle, security model, audit trails) rather than creating new ones
 - *Multi-process or distributed*: System architecture — process topology, communication channels, concurrency model, persistence boundaries
 
 ### Artifact Dependencies
 
-Generate in dependency order and validate at boundaries — the cost of fixing a spec error scales with how many downstream artifacts have incorporated it:
-
-**Phase A**: Product Brief (everything depends on this)
-**Phase B**: Data Model + Non-Functional Requirements
-**Phase C**: Everything else (security, testing, operations, structural artifacts)
-**Phase D**: Build Plan (depends on all artifacts)
-
-Between phases, review what you've produced through the review perspectives (Product, Design, Architecture, Skeptic, Testing).
+Generate in dependency order — the cost of fixing a spec error scales with how many downstream artifacts have incorporated it: the Product Brief first (everything references it), the Data Model and Non-Functional Requirements next, the Build Plan last (it depends on all of them).
 
 ### Where Artifacts Live
 
@@ -50,21 +43,21 @@ Write all generated artifacts to `.prawduct/artifacts/` — the Critic reads fro
 
 Artifact depth scales to risk: a personal utility gets a 1-page brief and minimal data model; a financial platform gets deep specs with edge-case coverage. The framework doesn't skip artifacts for low-risk products — it scales them. If an artifact is genuinely not applicable, note that briefly and move on; don't generate content to fill a template.
 
-The **strategy-class** artifacts (data model, security model, non-functional requirements, operational spec, observability strategy, plus the characteristic-triggered API contract and architecture) are coverage-tracked once discovery records the product's structural characteristics: the framework detects one that was *never created* — the gap reactive review can't see — and nudges via the `strategy-artifact-missing` advisory and the `/prawduct:doctor` coverage check. "Note that briefly and move on" is that record: a one-line `(not relevant — <reason>)` stub in `.prawduct/artifacts/<name>` **is** coverage (the file existing is the whole check; whether the decision holds is the Critic's call). `prawduct-hook coverage-scaffold` drops those stubs in one act. See `methodology/discovery.md` for the characteristic → artifact map.
+The **strategy-class** artifacts (data model, security model, non-functional requirements, operational spec, observability strategy, plus the characteristic-triggered API contract and architecture) are coverage-tracked once discovery records the product's structural characteristics: the framework detects one that was *never created* — the gap reactive review can't see — and nudges via the `strategy-artifact-missing` advisory and the `/prawduct:doctor` coverage check. "Note that briefly and move on" is that record: a one-line `(not relevant — <reason>)` stub in `.prawduct/artifacts/<name>` is coverage (the file existing is the whole check; whether the decision holds is the Critic's call). `prawduct-hook coverage-scaffold` drops those stubs in one act. See `methodology/discovery.md` for the characteristic → artifact map.
 
 ## Build Planning
 
-The build plan decomposes artifacts into buildable chunks — coherent units of work with clear deliverables and acceptance criteria.
+The build plan decomposes artifacts into buildable chunks, each with acceptance criteria that define done. What a chunk will touch is a forecast, not a contract: a builder who finds a better route takes it and records why.
 
 **Presenting a plan carries an advisory obligation.** Before the chunks, say what you would do differently: a scope you would cut, a simpler design that gets most of the value, a risk the requirements do not price. "Nothing — this is the right shape" is a fine answer when it is true. What is not an option is handing over a plan with no position on it, because a plan presented silently reads as endorsed (Principles 7 and 23).
 
-**Which plan is active is branch state — let the plan say so.** A plan's frontmatter may declare `branch: <name>`; while that branch is checked out, every governance surface resolves that plan, ahead of the `active_build_plan:` scalar. Prefer it: the scalar is one product-level line that two concurrent branches conflict on every time, and after a merge one of the two plans is invisible to every surface that reads it. Opt in per plan — a plan declaring no `branch:` resolves by the scalar exactly as before.
+**Which plan is active is branch state — let the plan say so.** A plan's frontmatter may declare `branch: <name>`; while that branch is checked out, every governance surface resolves that plan, ahead of the `active_build_plan:` scalar. Prefer it: the scalar is one product-level line that two concurrent branches conflict on every time, and after a merge one of the two plans is invisible to every surface that reads it. Opt in per plan — a plan declaring no `branch:` resolves by the scalar.
 
-**Several plans may declare one branch, and that is ordinary** — a `release/2-0` carrying a telemetry plan and a documentation plan, or a fix branch that grew three. Governance resolves one of them and says which, in the session briefing. **This is the one place the precedence is written; every other surface points here.** In order: the sole claimant if there is one (ahead of everything, so a lone plan keeps governing after its last box is ticked — which happens during its own closing PR); else the one claimant still holding open chunks; else the plan `active_build_plan` names, *if* it is one of the candidates still in contention — its remaining job is breaking a tie within a branch, and it does not resurrect a finished plan over open ones; else path order, which is arbitrary and says so. Nothing is silent, because governing by the wrong plan looks exactly like governing correctly unless the surface names its choice. When several plans on a branch are all live work, point the scalar at whichever one you are building now.
+**Several plans may declare one branch, and that is ordinary** — a `release/2-0` carrying a telemetry plan and a documentation plan, or a fix branch that grew three. Governance resolves one of them and says which, in the session briefing. This is the one place the precedence is written; every other surface points here. In order: the sole claimant if there is one (ahead of everything, so a lone plan keeps governing after its last box is ticked — which happens during its own closing PR); else the one claimant still holding open chunks; else the plan `active_build_plan` names, *if* it is one of the candidates still in contention — its remaining job is breaking a tie within a branch, and it does not resurrect a finished plan over open ones; else path order, which is arbitrary and says so. Nothing is silent, because governing by the wrong plan looks exactly like governing correctly unless the surface names its choice. When several plans on a branch are all live work, point the scalar at whichever one you are building now.
 
-**A `## Status` tick means that chunk is built, committed and reviewed on the branch — never merged or released**, which the plan's archive state and the change-log's `release=` tag carry.
+**A `## Status` tick means that chunk is built, committed and reviewed on the branch — or, on a short plan, committed with its review deferred to the boundary — never merged or released**, which the plan's archive state and the change-log's `release=` tag carry.
 
-**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — nothing has to be un-pointed for the claim to stop resolving. **On gitflow**, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships. A branch-declaring plan gets its pointer **cleared** at that merge; a scalar-only plan keeps `active_build_plan` aimed at it and is repointed after the release. `/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split and says why each way. Build plans are tracked artifacts — commit them, archived ones included.
+**Plan lifecycle: a plan ends by being archived, never deleted.** When its work is done — or has stopped, been descoped, or been absorbed elsewhere — `prawduct-hook archive-plan <path> --state completed|superseded` stamps it with what became of it and moves it into `archive/`, where it stays findable by name. Both terminal states archive; a half-finished dead plan left live is the one that reads as active forever. Archiving also ends a `branch:` claim, so for a branch-declaring plan the move is the whole retirement — nothing has to be un-pointed for the claim to stop resolving. On gitflow, when authoring a new plan while the prior plan's work is merged-but-unreleased, leave the prior plan live until the release ships. A branch-declaring plan gets its pointer cleared at that merge; a scalar-only plan keeps `active_build_plan` aimed at it and is repointed after the release. `/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split and says why each way. Build plans are tracked artifacts — commit them, archived ones included.
 
 ### Plan Shape
 
@@ -91,25 +84,19 @@ The field is required but not a gate — committing to a level forces honesty. W
 
 An assumption is a decision made on the user's behalf, surfaced for correction — the impact tag tells the reader which to check first.
 
-**Good chunks are:**
-- **Vertically sliced** — each delivers working, testable functionality across layers
-- **Dependency-ordered** — later chunks build on earlier ones
-- **Independently testable** — verifiable without waiting for later chunks
-- **Small enough to review** — one Critic pass
-
-**The first chunk is special**: a thin vertical slice through the entire architecture, proving the layers connect and the build approach works. Validate the path before widening it.
+**Chunks usually work best** as vertical slices (working, testable functionality across layers), in dependency order, each verifiable without later chunks and small enough for one Critic pass — the last is the firm limit. A thin first slice through the whole architecture proves the layers connect before you widen it.
 
 **Verification strategy.** Include how the builder confirms each chunk works beyond tests — exercising the product as its users would. Describe the approach, not a checklist; complex products (human interfaces, multi-party) may need dedicated tooling planned into the scaffold.
 
-**Governance checkpoints** are points where you review the whole trajectory, not just the current chunk. Place them at natural boundaries — after the first chunk (architecture validation), midpoint, before completion. The count scales with risk (1-2 low, 3-5 high).
+**Governance checkpoints** are points where you review the whole trajectory, not just the current chunk — typically after the first chunk proves the architecture, and before completion; add more as risk warrants.
 
 **A persisted format is always a lock-in decision, regardless of implementation size.** Lock-in is measured by reversal cost, not LOC — a 30-line ledger writer locks a schema every future consumer depends on. A chunk introducing a persisted format must enumerate, in the plan and before designing fields, the questions the data must answer: its consumers' future queries are its requirements, elicited from those consumers, not inferred from the mechanism (see `methodology/building.md` "Decision Research").
 
-**Enumerate the surfaces when a chunk introduces a project-wide concept.** A new build-plan field, governance flag, or convention cascades across many files — product CLAUDE.md, the Critic and PR protocols, methodology guides, the template, their guarding tests. List the surfaces up front in the chunk description: the count makes the chunk's true size visible (split it if too large for one Critic pass), and several of those surfaces carry token-budget guardrail tests — anticipate the trim rather than discovering it at chunk-close.
+**Enumerate the surfaces when a chunk introduces a project-wide concept.** A new convention, config key or shared type cascades across files; list them up front in the chunk description, so the count shows the chunk's true size (split it if it is too large for one Critic pass).
 
 ### Partition: Serial or Delegated
 
-Chunk boundaries are where the delegation decision is drawn: the last moment before any brief exists at which the whole partition is visible at once. Ask it of each chunk: **what would prove this chunk on its own?** A chunk you cannot answer that for is not scoped tightly enough to hand to anyone, which is a finding about the chunk rather than about delegation. Then apply the default (`/prawduct:methodology delegation`): delegate when the same work finishes in less wall clock and the delegates will not fight each other.
+Chunk boundaries are where the delegation decision is drawn: the last moment before any brief exists at which the whole partition is visible at once. Ask it of each chunk: *what would prove this chunk on its own?* A chunk you cannot answer that for is not scoped tightly enough to hand to anyone, which is a finding about the chunk rather than about delegation. Then apply `/prawduct:methodology delegation`'s test.
 
 **Record the decision either way**, in the plan's `partition:` frontmatter field, on one line. `serial — 02 and 03 both edit the store module` is an answer; `02-04 delegated, isolated worktrees` is an answer. Serial is very often right — *unexamined* is what the field catches, and a plan with independent chunks and no partition line is the guide's **serial by default** anti-pattern in its plan-time form.
 
@@ -122,7 +109,7 @@ Chunk boundaries are where the delegation decision is drawn: the last moment bef
 3. Delegates will write in the shared worktree, so the user's own tree changes under them.
 4. Something irreversible or outward-facing sits inside a delegated chunk.
 
-Reasons 1 and 2 turn on history, so **read it rather than asserting it** — the `partition:` lines
+Reasons 1 and 2 turn on history, so read it rather than asserting it — the `partition:` lines
 on this repo's plans, live and archived, and whether `project-preferences.md` carries a Delegation
 row. A precedent you did not look up is the defensive ask wearing a justification.
 
@@ -164,19 +151,19 @@ error handling go missing one context at a time.
 
 ### Critic Mode Per Chunk
 
-`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is **optional**: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `methodology/building.md` and `skills/critic/review-protocol.md`). Declare it only to override inference.
+`Critic mode:` is the proportionality knob — it controls how heavy each per-chunk review is. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The field is optional: at runtime `/prawduct:critic` (no args) infers the mode from git + build-plan state (see `skills/critic/review-cycle.md` "Mode Selection"). Declare it only to override inference.
 
 **Heuristic — what inference will pick, and when to override:**
 - **Single-chunk plan** → inference picks `final` — unless the plan is short (next bullet), where the same plan owes only its boundary `cumulative`. No declaration needed.
-- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last — again unless the plan is short. No declaration needed.
-- **Short plan** (at most 3 chunks, nothing the branch changes is a risk surface) → no per-chunk review is inferred at all: mid-chunk inference answers `deferred`, the Stop gate warns rather than blocks on a non-final chunk, and the last chunk's `cumulative` is every chunk's review (#292). Declaring `Critic mode:` on **any** chunk opts the whole plan back into per-chunk review — do it when an early chunk is a keystone you want seen before the rest is built on it.
+- **Multi-chunk plan** → `chunk` for non-final chunks, `final` for the last — again unless the plan is short. No declaration needed. Committed before its review, a non-final chunk still infers `chunk` (the stage is cycle position, not commit order).
+- **Short plan** (at most 3 chunks, nothing the branch changes is a risk surface) → no per-chunk review is inferred at all: mid-chunk inference answers `deferred`, the Stop gate warns rather than blocks on a non-final chunk, and the last chunk's `cumulative` is every chunk's review. So tick each earlier chunk when it is committed: inference counts unticked boxes, and a box held for a review that never comes reads as a chunk still to build. Declaring `Critic mode:` on any chunk opts the whole plan back into per-chunk review — do it when an early chunk is a keystone you want seen before the rest is built on it.
 - **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it.
 - **Override forward to `cumulative`** on the last chunk of a plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final` and no explicit `Critic mode:` needed).
 - **Trivial chunks** (typo-level edits inside a larger plan) → waive Critic via `.gates-waived`; for bounded mechanical code changes, prefer `Type: trivial` (below).
 
 **Why this layering:** the per-chunk goals catch the high-frequency failures cheaply because they scope to local changes; the final-chunk goals need the full diff — coherence is across files — so they belong at the end of the cycle.
 
-**Per-chunk commit is the contract.** `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
+**Per-chunk commit is the contract** — review the chunk, fix, then commit it. `chunk`-mode reviews assume the previous chunk was committed, so the working-tree diff is just the current chunk. Batch-commit-at-end plans break this — if you need that, override every chunk to `final` (heavy but safe; squash-at-end with `chunk`-mode has unbounded diff scope and is wrong).
 
 **Default when unsure.** A missing or unrecognized mode is inferred, and when no rule fires the review is the inner-stage `chunk` — never `final` by default (canonical rule: `skills/critic/review-cycle.md`). Rely on inference rather than declaring a mode to buy depth the chunk has not earned.
 
@@ -184,18 +171,18 @@ See `methodology/building.md` for runtime behavior and `skills/critic/review-cyc
 
 ### Choosing a Chunk Type
 
-Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `skills/critic/review-cycle.md`.
+Chunks also declare `Type:` — a separate axis from `Critic mode:`. Mode controls *how deep* the review is; Type controls *what kind of work* is under review. The Critic reads both and selects protocol per the matrix in `skills/critic/cross-checks.md`.
 
-Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`. Default is `code` — the full protocol — so a missing field is the default, not a carveout. Declare a non-default Type only when the chunk actually deviates:
+Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulative-final` | `trivial`; `building.md`'s work types (`feature`, `bugfix`, `refactor`, …) read as `code`. Default is `code` — the full protocol — so a missing field is the default, not a carveout. Declare a non-default Type only when the chunk actually deviates:
 
 - **`code`** — code or behavior changes. The default; rarely written explicitly.
 - **`doc-only`** — methodology, template, or prose-only edits. Critic skips test-evidence checks but still reviews prose deliverables for coverage.
 - **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review.
-- **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped" and the stop-hook gate also skips. **The only Type that bypasses Critic enforcement entirely — use deliberately.**
+- **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped" and the stop-hook gate also skips. The only Type that bypasses Critic enforcement entirely — use deliberately.
 - **`cumulative-final`** — marker on the last chunk of a multi-chunk plan: the chunk's own review IS the one `/prawduct:critic cumulative` against `merge-base...HEAD` (commit first, run once — cumulative is a strict superset of `final`, so no separate `final`). That review is also the `/prawduct:pr create` gate (Principle 14 at the bundle level).
 - **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small (an 80-LOC project-wide rename can be trivial; a 5-line state-machine change cannot). Two machine-enforced layers at chunk close:
   1. **File-set bounds (hard):** no edits under `skills/`, `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file deletions; no new files — the catastrophic-blast-radius classes regardless of size.
-  2. **Required `**Trivial because:**` rationale (hard):** non-empty, or BLOCKING at the stop-hook. The rationale is the semantic claim Critic Goal 3 validates against the diff — **strong** rationale names the structural property bounding risk (`"project-wide rename of FooBar to BazQux; no behavior change"`); **weak** rationale describes feeling (`"small change"`) and can't be validated.
+  2. **Required `**Trivial because:**` rationale (hard):** non-empty, or BLOCKING at the stop-hook. The rationale is the semantic claim Critic Goal 3 validates against the diff — strong rationale names the structural property bounding risk (`"project-wide rename of FooBar to BazQux; no behavior change"`); weak rationale describes feeling (`"small change"`) and can't be validated.
 
   **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
 
@@ -209,15 +196,15 @@ The Critic's ref-drift check (Goal 2) verifies backticked file paths in the curr
 
 ### Foreign API Verification
 
-When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own — **the first step is reading source or running discovery probes, not drafting handlers from documentation.** Vendor docs lag code; training data lags further; tests written against an assumed signature pass against fakes mirroring the same assumption, then fail at integration time.
+When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own — the first step is reading source or running discovery probes, not drafting handlers from documentation. Vendor docs lag code; training data lags further; tests written against an assumed signature pass against fakes mirroring the same assumption, then fail at integration time.
 
-**The rule.** The chunk declares `**Foreign API:** <name>` and prepends a `verify-api` step as Done-when step 0 (existing numbering preserved). `verify-api` means, in preference order: read the foreign code directly (SDK/MCP source, `.pyi` stubs); probe a live instance and capture the actual response shape; or, if neither is possible, document the docs consulted and flag the chunk `Requirements Confidence: Medium` with the assumed surface as an open assumption. Fakes are built *after* `verify-api` confirms the real shape. The Critic's Goal 2 emits a **WARNING** when a chunk declares `Foreign API:` but no `verify-api` step appears in Done-when (case-insensitive substring — the literal token `verify-api` should appear; the filled example in `templates/build-plan.md` shows the shape). When discovery flags an external SDK in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry it into the plan on the chunk that first touches the wrapper — the annotation is what triggers the check.
+**The rule.** The chunk declares `**Foreign API:** <name>` and prepends a `verify-api` step as Done-when step 0 (existing numbering preserved). `verify-api` means, in preference order: read the foreign code directly (SDK/MCP source, `.pyi` stubs); probe a live instance and capture the actual response shape; or, if neither is possible, document the docs consulted and flag the chunk `Requirements Confidence: Medium` with the assumed surface as an open assumption. Fakes are built *after* `verify-api` confirms the real shape. The Critic's Goal 2 emits a WARNING when a chunk declares `Foreign API:` but no `verify-api` step appears in Done-when (case-insensitive substring — the literal token `verify-api` should appear; the filled example in `templates/build-plan.md` shows the shape). When discovery flags an external SDK in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry it into the plan on the chunk that first touches the wrapper — the annotation is what triggers the check.
 
 ### Exposed API: Versioning, Deprecation & Error Model
 
-The mirror for the interface a product *produces* — any programmatic surface others call (network service, library/SDK, on-device/platform, or CLI). Two design decisions must be *recorded*, not left to silence: the **versioning + deprecation/compatibility** scheme and the **error model** — introducing either later is a breaking change for every consumer. The framework forces the decision, not versioning itself: "none — internal-only" is valid; a deferral must be dated with a revisit trigger.
+The mirror for the interface a product *produces* — any programmatic surface others call (network service, library/SDK, on-device/platform, or CLI). Two design decisions must be *recorded*, not left to silence: the versioning + deprecation/compatibility scheme and the error model — introducing either later is a breaking change for every consumer. The framework forces the decision, not versioning itself: "none — internal-only" is valid; a deferral must be dated with a revisit trigger.
 
-**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a **WARNING** for each missing decision. Discovery's `exposes_programmatic_interface` flag carries into the plan on the chunk that first builds the surface; the `api-versioning` advisory independently nudges already-built products.
+**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a WARNING for each missing decision. Discovery's `exposes_programmatic_interface` flag carries into the plan on the chunk that first builds the surface; the `api-versioning` advisory independently nudges already-built products.
 
 ### Visual Change Verification
 

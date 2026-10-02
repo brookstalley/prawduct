@@ -123,6 +123,15 @@ def _critic_mode():
     return critic_mode
 
 
+def _wrap_gate_prose(text: str) -> str:
+    """``text`` as the gate's two-space-indented block, wrapped at 76 columns."""
+    import textwrap  # noqa: PLC0415 — only the short-plan messages need it
+
+    return "".join(
+        f"  {line}\n" for line in textwrap.wrap(text, width=76, break_on_hyphens=False)
+    )
+
+
 def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, plan):
     """The Stop gate's read of the short-plan deferral (#292), or ``None``.
 
@@ -521,6 +530,85 @@ def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | No
     if version and since and since == version:
         new_part = f" · NEW this release (v{since})"
     return f"[{ver_part}gate: {name}{new_part}]"
+
+
+#: Stop-gate blocker id → the `.gates-waived` key that waives it. A gate absent
+#: here has no waiver (the learnings budget, the clear verdict, `trivial`).
+_WAIVER_KEY_BY_GATE = {
+    "reflection": "reflection",
+    "learnings-unmigrated": "learnings",
+    "critic": "critic",
+    "pr": "pr",
+}
+
+
+def _waiver_footer(
+    gate_ids: "list[str | None]", review_pending: bool, existing: "dict | None" = None
+) -> str:
+    """The one escape-hatch paragraph printed after the ``BLOCKED`` list.
+
+    One footer for the whole block, because the recipe is the same for every
+    gate and only the key differs. Its `echo … >` replaces `.gates-waived`, so
+    the object it prints carries every waiver already in the file as well as
+    the keys of the gates blocking now; anything less would erase a waiver a
+    reader declared at an earlier Stop. The reader keeps only the keys whose
+    gate genuinely cannot be satisfied. Empty when nothing that blocked can be
+    waived.
+    """
+    keys = list(dict.fromkeys(
+        _WAIVER_KEY_BY_GATE[g] for g in gate_ids if g in _WAIVER_KEY_BY_GATE
+    ))
+    if not keys:
+        return ""
+    carried = {
+        k: v for k, v in (existing or {}).items()
+        if isinstance(k, str) and isinstance(v, str) and k not in keys
+    }
+    body = json.dumps(
+        {**carried, **{k: "reason — be specific" for k in keys}}, ensure_ascii=False
+    ).replace("'", "'\\''")
+    discard = (
+        "  For an unfinished review, run `prawduct-hook critic-discard` first: it archives\n"
+        "  reviewer output and names the `critic-restore <id>` that brings the review\n"
+        "  back (restore promptly; the archive keeps the newest few). Never `rm` the\n"
+        "  marker or .critic-partials by hand.\n"
+        if review_pending and "critic" in keys
+        else ""
+    )
+    kept = (
+        "  The object carries over the waivers already in the file.\n"
+        if carried
+        else ""
+    )
+    return (
+        "  Escape hatch: a gate above that genuinely cannot be satisfied this session\n"
+        "  can be waived with a specific reason. Drop the key of any gate you can satisfy:\n"
+        f"    echo '{body}' > .prawduct/.gates-waived\n"
+        + kept
+        + discard
+        + "  Empty reasons are rejected; the file clears at the next session boundary\n"
+        "  (a fresh start or /clear), so it outlives a resume/compact/fork. When waiving\n"
+        "  is appropriate: `/prawduct:methodology building` (Gate waivers).\n"
+    )
+
+
+class _GateMessage(str):
+    """A gate's message text that remembers WHICH gate raised it.
+
+    The Stop hook decides some deferrals per gate — a turn that says
+    ``RUNNING`` and closes on ``DO NOT CLEAR`` defers the session-end gates
+    and nothing else — so a
+    blocker must carry its gate id rather than have it parsed back out of the
+    rendered attribution line. A plain ``str`` carries no id, and the deferral
+    treats that as "not deferrable", which is the direction authority fails.
+    """
+
+    gate: str = ""
+
+    def __new__(cls, text: str, gate: str) -> "_GateMessage":
+        obj = super().__new__(cls, text)
+        obj.gate = gate
+        return obj
 
 
 # --- Column-0 YAML scalar reading (inline mirror of lib/core.py) ---
@@ -2403,6 +2491,53 @@ def _worktree_redirect_note(project_dir: Path) -> str | None:
     )
 
 
+def _committed_work_remedy(project_dir: Path) -> str:
+    """The Stop gate's advice for unreviewed committed work, from the interval owner.
+
+    No-mode ``/prawduct:critic`` is the right advice only when a ``chunk``/``final``
+    interval reaches the committed work: from the last reviewed state, or from
+    the merge-base when nothing judgeable is uncommitted. With code in flight
+    and no reviewed state behind HEAD it starts at HEAD and misses the commits,
+    and repeating the advice would buy a round that leaves the gate uncovered.
+    Asked of ``working_tree_interval_base``, the owner of where that interval
+    starts, so the advice and the interval cannot disagree. An unreadable state
+    names both routes rather than guess.
+    """
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+    from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    reaches = None
+    rc_c, head_commit, _ = evidence.run_git(project_dir, "rev-parse", "HEAD")
+    rc_t, head_tree, _ = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc_c == 0 and rc_t == 0 and head_commit.strip() and head_tree.strip():
+        why: list = []
+        start = critic_consolidate.working_tree_interval_base(
+            project_dir, head_commit.strip(), head_tree.strip(), why
+        )
+        if not why:
+            reaches = start["origin"] in (
+                critic_consolidate.BASE_AT_FRONTIER,
+                critic_consolidate.BASE_AT_MERGE_BASE,
+                critic_consolidate.BASE_AT_HEAD_COVERED,
+            )
+    if reaches:
+        return (
+            "  run /prawduct:critic with no mode: its interval reaches them (from the\n"
+            "  last reviewed state, or the merge-base), so mid-plan it infers a chunk\n"
+            "  review, and at the PR point cumulative.\n"
+        )
+    if reaches is False:
+        return (
+            "  run /prawduct:critic cumulative: with code uncommitted and no reviewed\n"
+            "  state behind HEAD, a chunk review starts at HEAD and cannot reach them.\n"
+        )
+    return (
+        "  run /prawduct:critic with no mode if nothing judgeable is uncommitted or a\n"
+        "  reviewed state sits behind HEAD; otherwise /prawduct:critic cumulative,\n"
+        "  whose committed range reaches them (the reach could not be read here).\n"
+    )
+
+
 def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """Check governance gates before session end.
 
@@ -2413,6 +2548,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     flight, the would-be blockers are DEFERRED to the next Stop rather than
     blocking now (the session can't end anyway — the harness re-wakes it). The
     deferral is stateless, so it re-arms automatically once the array empties.
+    Its ``last_assistant_message`` drives a narrower deferral through the same
+    path: a turn whose standing block says ``RUNNING`` and closes on
+    ``DO NOT CLEAR`` is not a session end, so the session-end gates
+    (reflection, Critic) defer while every other gate still blocks
+    (``lib/gates.turn_declares_in_flight``). The same field drives the
+    clear-verdict gate, which neither deferral touches: a turn that hands the
+    session over (``YOUR TURN`` / ``COMPLETE``) while saying ``DO NOT CLEAR``
+    is refused (``lib/gates.turn_contradicts_its_verdict``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     stop_input = stop_input or {}
@@ -2442,6 +2585,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # blocking — the gate re-arms on the next Stop once the work lands. Computed
     # once here; used to skip the PR network probe and to convert blockers below.
     defer_active, in_flight_tasks = _gates().background_tasks_in_flight(stop_input)
+    # The turn's own clear verdict: a turn saying RUNNING and closing on DO NOT
+    # CLEAR has told the user it is still working, so the SESSION-END gates
+    # (reflection, Critic) defer through the same path below. Unlike the
+    # in-flight deferral above it defers only those gates — every other blocker
+    # still blocks on such a turn.
+    verdict_defer, turn_verdict = _gates().turn_declares_in_flight(stop_input)
+    # A turn that hands the session over while saying DO NOT CLEAR contradicts
+    # itself, and its reader may not see it for days. Held apart from
+    # `blockers` so neither deferral below can swallow it: it is a fault in the
+    # message the reader is about to act on, not in the work, and rewriting the
+    # close is all it asks.
+    clear_blockers: list[str] = []
 
     # New-gate attribution (design §5a): load the plugin version + gate registry
     # once, then prefix every blocker with "[prawduct vX · gate: <name>]" so a
@@ -2452,7 +2607,29 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     _gate_registry = _load_gate_registry()
 
     def _attributed(gate_id: str, body: str) -> str:
-        return f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}"
+        return _GateMessage(
+            f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}", gate_id
+        )
+
+    handed_over = _gates().turn_contradicts_its_verdict(stop_input)
+    if handed_over:
+        clear_blockers.append(_attributed("clear-verdict",
+            f"CLEAR VERDICT: this turn closes on `{handed_over}` and `DO NOT CLEAR`,\n"
+            "  which contradict each other. `DO NOT CLEAR` means you are still working\n"
+            "  (a live review, an unreaped delegate, background work a clear would kill),\n"
+            f"  and that is `RUNNING`. `{handed_over}` hands the session to someone who may\n"
+            "  read it hours or days from now, so it must be `SAFE TO CLEAR`. Rewrite the\n"
+            "  close:\n"
+            "    - Nothing running: write what only this conversation holds (findings,\n"
+            "      the pending decision, where you stopped) to .prawduct/.handoff-notes.md,\n"
+            "      reflect if you have not, then close `SAFE TO CLEAR`.\n"
+            "    - Something a clear would kill is running: close `RUNNING` +\n"
+            "      `DO NOT CLEAR`, and put the question in the RUNNING copy.\n"
+            "  A process that runs on its own (a server, a recorder, an app you\n"
+            "  launched) is not that: a clear ends the conversation, not the process.\n"
+            "  Name it in the copy and close `SAFE TO CLEAR`.\n"
+            "  See `/prawduct:methodology session-hygiene`.\n"
+        ))
 
     # v5: Compliance canary (informational)
     try:
@@ -2478,7 +2655,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # are noise — they make every session look like it bypassed governance.
     waivers = _gates()._read_gates_waived(prawduct_dir)
     waiver_notes: list[str] = []
-    KNOWN_WAIVER_KEYS = {"reflection", "critic", "pr", "learnings", "learnings-budget"}
+    KNOWN_WAIVER_KEYS = set(_WAIVER_KEY_BY_GATE.values())
     unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
     if unknown_waiver_keys:
         # Stderr-only warning so the agent learns about typos. Doesn't affect gate
@@ -2532,7 +2709,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # this file knows. The fallback is deliberately path-free: a hardcoded second
     # opinion about the layout is the defect the resolver exists to remove.
     _rule_destination = (
-        f"{_learnings_core} (or the area file under {_learnings_rules_dir}/ whose `paths:` cover it)"
+        f"the area file under {_learnings_rules_dir}/ whose `paths:` cover it (or {_learnings_core} if every session needs it)"
         if _learnings_core
         else "this repo's learnings rules files"
     )
@@ -2582,8 +2759,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     reflection_would_block = reflection_span["judgeable"] and not reflection_shape_ok
     if reflection_would_block:
-        if "reflection" in waivers:
-            waiver_notes.append(f"reflection: waived ({waivers['reflection']})")
+        if _WAIVER_KEY_BY_GATE["reflection"] in waivers:
+            waiver_notes.append(f"reflection: waived ({waivers[_WAIVER_KEY_BY_GATE['reflection']]})")
         else:
             _missing_lines = "".join(f"    - {m}\n" for m in reflection_missing)
             blockers.append(_attributed("reflection",
@@ -2598,23 +2775,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 )
                 + "  Append them — a couple of sentences is enough. The narrative around them is\n"
                 "  yours: what changed, what surprised you, what the methodology helped or hindered.\n"
-                "\n"
-                "  Going forward, reflect at WORK BOUNDARIES — right after Critic passes, after a bug\n"
-                "  fix, after error recovery — not at session end. Writing reflections when the user is\n"
-                "  waiting on /clear creates friction and hurts quality. Append to .session-reflected\n"
-                "  as you go; the file accumulates across the session. Then /clear is instant.\n"
+                "  Reflect at work boundaries (after a Critic pass, a bug fix, an error recovery) and\n"
+                "  this gate never fires at /clear.\n"
                 "\n"
                 "  If this session produced a durable lesson (a rule future sessions should follow),\n"
-                f"  also add it to {_rule_destination}.\n"
-                "  Learnings are concise standing rules; the session reflection is the story\n"
-                "  behind them.\n"
-                "\n"
-                "  Escape hatch: if this gate cannot be satisfied this session (rare for reflection —\n"
-                "  it is meant to be cheap), declare a waiver so this gate stops re-firing:\n"
-                "    echo '{\"reflection\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
-                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
+                f"  also add it to {_rule_destination} as ONE line — the rules gate\n"
+                "  names any line over the limit. Learnings are one-line standing rules; the\n"
+                "  session reflection is the story behind them.\n"
             ))
 
     # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
@@ -2671,8 +2838,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     _work_span = reflection_span
     _rules_changed = any(_touches_rules(f) for f in _work_span["changed"])
     if _judgeable_work and _learnings_state in _unmigrated_states:
-        if "learnings" in waivers:
-            waiver_notes.append(f"learnings: waived ({waivers['learnings']})")
+        if _WAIVER_KEY_BY_GATE["learnings-unmigrated"] in waivers:
+            waiver_notes.append(
+                f"learnings: waived ({waivers[_WAIVER_KEY_BY_GATE['learnings-unmigrated']]})"
+            )
         else:
             # TWO states reach this gate and they are not the same failure, so
             # they do not get the same sentence. In `both` the rules tree exists
@@ -2722,14 +2891,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 _headline
                 + "\n"
                 + _learnings_directive + "\n"
-                "\n"
-                "  Escape hatch: if the migration genuinely cannot happen this session\n"
-                "  (mid-rebase, a dirty learnings file you are still editing), declare a\n"
-                "  waiver so this gate stops re-firing every turn:\n"
-                "    echo '{\"learnings\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
-                "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
             ))
 
     # Gate 1c: the learnings BUDGET floor.
@@ -2758,28 +2919,43 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         try:
             from lib import record_lint as _record_lint  # noqa: PLC0415 — lazy keeps top-level cheap
 
-            # Called even with no base-tree marker, because only ONE of the two
-            # arms needs one: `learnings-budget-unreasoned` is decided from
-            # project-state.yaml alone and is emitted before the check ever
-            # looks at a file. Skipping the call on a missing marker silenced a
-            # finding whose answer did not depend on it.
+            # Called even with no base-tree marker: `learnings-budget-unreasoned`
+            # is decided from project-state.yaml alone, and the rest measure
+            # against HEAD in that case (below) rather than not at all.
             _budget_base = _gates()._read_session_base_tree(prawduct_dir)
+            # No marker: measure against HEAD rather than not at all. The format
+            # needs no base, and "no marker" is how a continuation in a fresh
+            # checkout or a worktree arrives — discodon's core.md grew through
+            # three such sessions with only a stderr NOTE nobody reads. Work this
+            # session already COMMITTED is invisible from HEAD, and the NOTE
+            # says so rather than implying a full check.
+            _budget_cmp = _budget_base
+            if not _budget_cmp:
+                _head_rc = subprocess.run(
+                    ["git", "rev-parse", "HEAD^{tree}"],
+                    cwd=str(project_dir), capture_output=True, text=True, timeout=10,
+                )
+                _budget_cmp = _head_rc.stdout.strip() if _head_rc.returncode == 0 else ""
             _budget_findings, _budget_unchecked, _ = (
                 _record_lint._check_learnings_budget(
-                    project_dir, prawduct_dir, _budget_base
+                    project_dir, prawduct_dir, _budget_cmp
                 )
             )
-            if not _budget_base:
-                # `record_lint` reports this as "could not resolve the base tree
-                # <empty>"; the cause is one level up and is the actionable form.
+            if not _budget_base and _budget_cmp:
+                _budget_unchecked = _budget_unchecked + [
+                    "learnings-over-budget measured against HEAD — no .session-base-tree "
+                    "marker, so rules this session already committed were not charged, "
+                    "and no `learning.written` telemetry was recorded"
+                ]
+            elif not _budget_base:
+                # Neither a marker nor a readable HEAD: say that, rather than the
+                # generic "could not resolve the base tree <empty>".
                 _budget_unchecked = [
                     _e for _e in _budget_unchecked
                     if "could not resolve the base tree" not in _e
                 ] + [
-                    "learnings-over-budget unchecked — no .session-base-tree marker, so "
-                    "there is no base size to compare this session's growth against, "
-                    "and no `learning.written` telemetry was recorded either (both "
-                    "questions are the same comparison against the same missing base)"
+                    "learnings-over-budget unchecked — no .session-base-tree marker and "
+                    "HEAD did not resolve, so there is nothing to compare against"
                 ]
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             _budget_findings, _budget_unchecked = [], [
@@ -2790,57 +2966,63 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         # not be measured must not read as a ceiling that held.
         for _entry in _budget_unchecked:
             print(f"\nNOTE: {_entry}", file=sys.stderr)
+        # Advisory findings print as a NOTE and never block: an unapproved core
+        # raise is already IGNORED by the check (the cap holds), so blocking on
+        # the declaration would charge the session for text that changes nothing.
+        _budget_advisory = {"learnings-core-raise-unapproved"}
+        for _f in _budget_findings:
+            if _f["check"] in _budget_advisory:
+                print(f"\nNOTE: {_f['path']}: {_f['detail']}", file=sys.stderr)
+        _budget_findings = [
+            _f for _f in _budget_findings if _f["check"] not in _budget_advisory
+        ]
         if _budget_findings:
-            if "learnings-budget" in waivers:
-                waiver_notes.append(
-                    f"learnings-budget: waived ({waivers['learnings-budget']})"
+            # No waiver. A waiver the agent writes for itself is how a cap stops
+            # being a cap, and this one is the corpus every session pays for.
+            #
+            # DERIVED from the checks present, never written for the one in
+            # mind: the kinds share nothing but a file, and each gets the
+            # sentence that is true of it.
+            _budget_headlines = {
+                "learnings-over-budget": (
+                    "LEARNINGS BUDGET (over and grown): a rules file is over its ceiling\n"
+                    "  and grew this session, so the next addition pays before it lands:\n"
+                ),
+                "learnings-budget-unreasoned": (
+                    "LEARNINGS BUDGET (ceiling with no reason): a `learnings_budgets:` entry\n"
+                    "  raises a budget without saying what earned the extra room. Nothing here\n"
+                    "  is about a file's size — the fix is one `reason:` line:\n"
+                ),
+                "learnings-rule-too-long": (
+                    "LEARNINGS FORMAT (rule too long): a rule is one line — its reason and\n"
+                    "  instance fit as a clause, or it is two rules:\n"
+                ),
+                "learnings-rule-body": (
+                    "LEARNINGS FORMAT (body under a rule): rules carry no body — the story\n"
+                    "  belongs in the session reflection:\n"
+                ),
+            }
+            _by_check: dict[str, list[dict]] = {}
+            for _f in _budget_findings:
+                _by_check.setdefault(_f["check"], []).append(_f)
+            for _check in sorted(_by_check):
+                _detail = "".join(
+                    f"    - {_f['path']}: {_f['detail']}\n" for _f in _by_check[_check]
                 )
-            else:
-                # DERIVED from the checks present, never written for the one in
-                # mind. `_check_learnings_budget` returns two kinds in one list
-                # and they have nothing in common: `learnings-budget-unreasoned`
-                # is about a `learnings_budgets:` entry in project-state.yaml, it
-                # fires before the check ever looks at a rules file (so it
-                # reaches a `none`-state repo with no corpus at all), and its
-                # remedy is one `reason:` line. Under the over-budget headline an
-                # operator was sent hunting for growth that never happened, and
-                # the blocker id named a control that did not fire.
-                _budget_headlines = {
-                    "learnings-over-budget": (
-                        "LEARNINGS BUDGET (over and grown): a rules file is over its ceiling\n"
-                        "  and grew this session, so the next addition pays before it lands:\n"
-                    ),
-                    "learnings-budget-unreasoned": (
-                        "LEARNINGS BUDGET (ceiling with no reason): a `learnings_budgets:` entry\n"
-                        "  raises a budget without saying what earned the extra room. Nothing here\n"
-                        "  is about a file's size — the fix is one `reason:` line:\n"
-                    ),
-                }
-                _by_check: dict[str, list[dict]] = {}
-                for _f in _budget_findings:
-                    _by_check.setdefault(_f["check"], []).append(_f)
-                for _check in sorted(_by_check):
-                    _detail = "".join(
-                        f"    - {_f['path']}: {_f['detail']}\n" for _f in _by_check[_check]
-                    )
-                    # A check this gate has no sentence for still gets a true
-                    # one: naming it beats heading it with another check's.
-                    _head = _budget_headlines.get(
-                        _check,
-                        f"LEARNINGS BUDGET ({_check}): the budget check reported this and\n"
-                        "  this gate carries its wording unchanged:\n",
-                    )
-                    blockers.append(_attributed(_check,
-                        _head
-                        + _detail
-                        + "\n"
-                        "  Escape hatch: if this cannot be resolved this session, declare a\n"
-                        "  waiver so this gate stops re-firing every turn:\n"
-                        "    echo '{\"learnings-budget\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                        "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                        "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
-                        "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
-                    ))
+                # A check this gate has no sentence for still gets a true
+                # one: naming it beats heading it with another check's.
+                _head = _budget_headlines.get(
+                    _check,
+                    f"LEARNINGS ({_check}): the check reported this and\n"
+                    "  this gate carries its wording unchanged:\n",
+                )
+                blockers.append(_attributed(_check,
+                    _head
+                    + _detail
+                    + "\n"
+                    "  There is no waiver for this gate: pay in this session, or ask the\n"
+                    "  owner. core.md's cap moves only with an `owner_approved:` date.\n"
+                ))
 
         # Telemetry, not a gate: one `learning.written` per rule unit that is
         # new since this session's base revision (`docs/governance-telemetry.md`).
@@ -2878,23 +3060,32 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 # since the base" for the rest of the session, so per-unit
                 # probing was a whole-file read per rule per turn.
                 _lt_seen = _lt_ledger.learning_events_seen(prawduct_dir)
-                for _lt_path in _lt_lf.resolve(project_dir).files:
+                # A rule `learnings-compact` rewrote is the old rule in fewer
+                # words, recorded as `learning.compacted`, never as written.
+                _lt_compacted = _lt_ledger.compacted_unit_hashes(prawduct_dir)
+                _lt_files = _lt_lf.resolve(project_dir).files
+                # The base is the WHOLE corpus at the base revision, not the
+                # same file's: a rule moved verbatim between rules files (a
+                # compaction's split, or by hand) is an old rule in a new
+                # place, never a written one. `record_lint`'s format check asks
+                # the same question through the same helper.
+                _lt_base_texts = _lt_lf.corpus_texts_at(project_dir, _budget_base)
+                if _lt_base_texts is None:
+                    raise RuntimeError(
+                        f"git could not list the rules files at the base tree {_budget_base[:12]}"
+                    )
+                _lt_base = {
+                    _lt_lf.unit_hash(_u)
+                    for _lt_base_text in _lt_base_texts
+                    for _u in _lt_lf.rule_units(_lt_base_text)
+                }
+                for _lt_path in _lt_files:
                     _lt_rel = _lt_path.relative_to(project_dir).as_posix()
-                    _lt_rc, _lt_base_text, _ = _lt_evidence.run_git(
-                        project_dir, "show", f"{_budget_base}:{_lt_rel}"
-                    )
-                    # Nonzero here is "not in that tree" — the base tree itself
-                    # already resolved — so every unit of a brand-new rules file
-                    # is new, which is what it is.
-                    _lt_base = (
-                        {_lt_lf.unit_hash(_u) for _u in _lt_lf.rule_units(_lt_base_text)}
-                        if _lt_rc == 0 else set()
-                    )
                     for _lt_unit in _lt_lf.rule_units(
                         _lt_path.read_text(encoding="utf-8")
                     ):
                         _lt_hash = _lt_lf.unit_hash(_lt_unit)
-                        if _lt_hash in _lt_base:
+                        if _lt_hash in _lt_base or _lt_hash in _lt_compacted:
                             continue
                         # Telemetry is PULLED, not pushed: nothing is printed on
                         # success, and the return value (appended vs. already
@@ -3012,9 +3203,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
             marker_present = False
     if marker_present:
-        if "critic" in waivers:
+        if _WAIVER_KEY_BY_GATE["critic"] in waivers:
             waiver_notes.append(
-                f"critic: waived ({waivers['critic']}) — .critic-active marker still present"
+                f"critic: waived ({waivers[_WAIVER_KEY_BY_GATE['critic']]}) — .critic-active marker still present"
             )
         elif defer_active:
             # Reviewers still running (background_tasks non-empty): don't self-heal
@@ -3026,31 +3217,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  will run as they finish. (Deferred while background work is in flight.)\n"
             ))
         else:
-            # The escape hatch names `critic-discard`, never a bare `rm` of the
-            # partials. It is appended to three sites below, and on two of them
-            # reviewer output is on disk: a complete roster one deterministic
-            # consolidation from being recorded, or a partial set a re-dispatch
-            # can still use. (The third site serves both `none` and
-            # `unreadable`; under `none` there may be nothing to lose — which is
-            # an argument for one safe recipe everywhere, not for two.)
-            # `critic-discard` archives whatever is there and prints the
-            # `critic-restore <id>` that brings it back; `rm -rf` destroys it
-            # while saying nothing, which is the silence this guard exists to
-            # remove (lib/critic_marker, "Explicit override").
-            _escape = (
-                "\n"
-                "  Escape hatch: if a review genuinely cannot complete this session,\n"
-                "  discard it and declare a waiver so this gate stops re-firing every turn:\n"
-                "    prawduct-hook critic-discard\n"
-                "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  critic-discard archives any reviewer partials rather than deleting\n"
-                "  them and names the `critic-restore <id>` that brings the review back\n"
-                "  as itself (the archive keeps the newest few — restore promptly).\n"
-                "  Do not `rm` the marker or .critic-partials by hand: most states that\n"
-                "  reach this message are holding reviewer output.\n"
-                "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                "  (a fresh start or /clear), so it outlives a resume/compact/fork.\n"
-            )
+            # A pending review holds reviewer output on disk, so the waiver
+            # footer (`_waiver_footer`) names `critic-discard`, never a bare
+            # `rm`: it archives what is there and prints the `critic-restore <id>`
+            # that brings it back (lib/critic_marker, "Explicit override").
             try:
                 state, missing = _critic_consolidate().pending_state(prawduct_dir)
             except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
@@ -3076,7 +3246,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         "  stderr above (e.g. HEAD moved since dispatch, a malformed partial,\n"
                         "  or a ledger failure). Fix the cause or re-run the review:\n"
                         "    /prawduct:critic\n"
-                        + _escape
                     ))
             elif state == "incomplete":
                 abandoned_critic = True
@@ -3086,7 +3255,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     f"  every reviewer reported. Missing partial(s): {missing_str}.\n"
                     "  Re-dispatch the missing reviewer(s), or re-run the whole review:\n"
                     "    /prawduct:critic\n"
-                    + _escape
                 ))
             else:  # "none" (marker, no manifest) or "unreadable"
                 abandoned_critic = True
@@ -3189,7 +3357,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     + cause +
                     "  Re-run the review:\n"
                     "    /prawduct:critic\n"
-                    + _escape
                 ))
 
     critic_would_block = False
@@ -3238,28 +3405,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             }
 
     if critic_would_block:
-        _escape_hatch = (
-            "\n"
-            "  Escape hatch: if Critic legitimately cannot run this session — e.g., the chunk\n"
-            "  is in a designer-handoff phase (mark `Type: designer-handoff` in the build plan\n"
-            "  to skip this gate automatically), or the GO/NO-GO is not yet verifiable because\n"
-            "  it depends on a human authoring step or external system — declare a waiver so\n"
-            "  this gate stops re-firing every turn:\n"
-            "    echo '{\"critic\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-            "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                "  (a fresh start or /clear), so it outlives a resume/compact/fork. See\n"
-            "  `/prawduct:methodology building` (Gate waivers) for when this is appropriate.\n"
-        )
         verdict_status = critic_verdict.get("status", "")
-        if "critic" in waivers:
-            waiver_notes.append(f"critic: waived ({waivers['critic']})")
+        if _WAIVER_KEY_BY_GATE["critic"] in waivers:
+            waiver_notes.append(f"critic: waived ({waivers[_WAIVER_KEY_BY_GATE['critic']]})")
         elif verdict_status == "schema-ahead":
             blockers.append(_attributed("critic",
                 "CRITIC REVIEW (evidence from a newer plugin): "
                 f"{critic_verdict.get('reason', '')}\n"
                 "  This session cannot judge those facts, so the gate fails closed rather\n"
                 "  than passing on evidence it cannot read.\n"
-                + _escape_hatch
             ))
         elif verdict_status == "gate-crash":
             blockers.append(_attributed("critic",
@@ -3268,7 +3422,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  This is NOT a coverage verdict: the gate fails closed rather than\n"
                 "  passing on a check it could not complete. Fix the underlying error\n"
                 "  (or report it via /prawduct:report-bug), then retry.\n"
-                + _escape_hatch
             ))
         elif verdict_status == "blocked":
             unresolved = critic_verdict.get("unresolved", [])
@@ -3289,7 +3442,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 f"  over this session's changes, but carries {len(unresolved)} unresolved BLOCKING finding(s):\n"
                 + lines + more
                 + remedy
-                + _escape_hatch
             ))
         else:
             base = (critic_verdict.get("base") or "")[:12]
@@ -3329,19 +3481,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 stop_advisories.append(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
-                    "  This chunk's review is deferred to the boundary: commit it and carry\n"
-                    "  on; the `cumulative` review at the last chunk (inferred by\n"
-                    "  `/prawduct:critic` once that chunk is committed) covers every chunk\n"
-                    "  and is the PR gate's evidence. To review this chunk anyway, run\n"
+                    "  This chunk's review is deferred to the boundary. Next:\n"
+                    + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
+                    + "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
                     "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
                     "  the plan to restore per-chunk review for the whole plan.\n"
                 ))
             else:
                 last_chunk_note = (
                     "  This plan is short and its per-chunk reviews were deferred to this\n"
-                    f"  boundary review ({deferral.reason}): commit the chunk, then run\n"
-                    "  `/prawduct:critic` — it infers `cumulative`, which is this chunk's\n"
-                    "  review and the PR gate's evidence; no separate `final` is owed.\n"
+                    f"  boundary review ({deferral.reason}):\n"
+                    + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
                     if deferral is not None and deferral.defers and deferral.last_chunk
                     else ""
                 )
@@ -3355,8 +3505,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  SELECTIVE commit of only part of the reviewed state), the current tree was\n"
                     "  never reviewed — run /prawduct:critic verify-resolutions to review the\n"
                     "  delta and close the gap. If unreviewed changes were committed mid-session,\n"
-                    "  /prawduct:critic cumulative reviews the whole branch span.\n"
-                    + _escape_hatch
+                    + _committed_work_remedy(project_dir)
+                    + "  A `Type: designer-handoff` chunk skips this gate automatically.\n"
                 ))
 
     # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
@@ -3458,22 +3608,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             pass
 
     if pr_would_block:
-        if "pr" in waivers:
-            waiver_notes.append(f"pr: waived ({waivers['pr']})")
+        if _WAIVER_KEY_BY_GATE["pr"] in waivers:
+            waiver_notes.append(f"pr: waived ({waivers[_WAIVER_KEY_BY_GATE['pr']]})")
         else:
             blockers.append(_attributed("pr",
                 f"PR REVIEW: PR exists for branch '{pr_block_branch}' but no valid review evidence found.\n"
                 "  Run /prawduct:pr to invoke the PR reviewer before merging.\n"
                 "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
-                "\n"
-                "  Escape hatch: if PR review cannot run this session (e.g., reviewer agent is\n"
-                "  unavailable and merge is not imminent), declare a waiver so this gate stops\n"
-                "  re-firing every turn:\n"
-                "    echo '{\"pr\": \"reason — be specific\"}' > .prawduct/.gates-waived\n"
-                "  Empty reasons are rejected; the file clears at the next session boundary\n"
-                "  (a fresh start or /clear), so it outlives a resume/compact/fork. PR review is\n"
-                "  the release-readiness gate — waive only when merge will not happen this\n"
-                "  session. See `/prawduct:methodology building` (Gate waivers).\n"
+                "  It is the release-readiness gate: waive it only when the merge will not\n"
+                "  happen this session.\n"
             ))
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
@@ -3507,8 +3650,42 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for blocker in blockers:
             # First line of each blocker names the gate — enough to show what's pending.
             print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
-        _emit_stop_advisories(stop_advisories)
-        return 0
+        if not clear_blockers:
+            _emit_stop_advisories(stop_advisories)
+            return 0
+        blockers = []
+
+    # The same deferral, on the turn's own verdict rather than on tracked work,
+    # and narrower: only the session-end gates defer. A blocker from any other
+    # gate — or one that carries no gate id at all — keeps blocking, and the
+    # deferred ones are named so the block does not hide them.
+    if blockers and verdict_defer:
+        _deferrable = _gates().VERDICT_DEFERRED_GATES
+        verdict_deferred = [
+            b for b in blockers if getattr(b, "gate", None) in _deferrable
+        ]
+        if verdict_deferred:
+            blockers = [
+                b for b in blockers if getattr(b, "gate", None) not in _deferrable
+            ]
+            print("", file=sys.stderr)
+            print(
+                f"GATES DEFERRED — this turn says RUNNING and closed on {turn_verdict}, "
+                "so it is still working, not a session end; the session-end gate(s) "
+                "below are deferred to the next Stop (NOT skipped — they fire on the "
+                "first turn that does not):",
+                file=sys.stderr,
+            )
+            for blocker in verdict_deferred:
+                print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
+            # A contradiction and this deferral cannot both hold (one needs
+            # RUNNING, the other YOUR TURN or COMPLETE), so `clear_blockers` is
+            # empty on this path.
+            if not blockers:
+                _emit_stop_advisories(stop_advisories)
+                return 0
+
+    blockers.extend(clear_blockers)
 
     # Report blockers or exit clean
     if blockers:
@@ -3517,6 +3694,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         print("", file=sys.stderr)
         for blocker in blockers:
             print(blocker, file=sys.stderr)
+        _footer = _waiver_footer(
+            [getattr(b, "gate", None) for b in blockers], abandoned_critic, waivers
+        )
+        if _footer:
+            print(_footer, file=sys.stderr)
         # Include canary findings in stderr so model sees them alongside blockers
         if canary_findings:
             print("COMPLIANCE CANARY (address if possible):", file=sys.stderr)
@@ -3890,10 +4072,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     makes the evidence sound in the first place.
 
     Exit code mirrors the suite (0 iff every test passed); the evidence file is
-    written either way (a failing run records ``failed > 0``) — with ONE
-    carve-out: an interpreter-fallback run with zero passes and nonzero
-    failures/errors (skips may accompany — the incident that taught this had
-    35) is refused as a launch-environment error (see below).
+    written either way (a failing run records ``failed > 0``) — with two
+    carve-outs, both refused with exit 2 and nothing written. An
+    interpreter-fallback run with zero passes and nonzero failures/errors
+    (skips may accompany — the incident that taught this had 35) is a
+    launch-environment error (see below). And a command that exited nonzero
+    while its own report shows no failing test is a run the report does not
+    account for, so its counts would record a failed run as green.
 
     Gate-soundness ch.2 — two optional ``project-state.yaml`` knobs remove the
     one-repo-shape assumption that forced products (scriob) into wrapper
@@ -3960,6 +4145,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # below. It must be parsed before --from-counts in particular, which
     # consumes every remaining token after its own flag.
     degraded_reason = None
+    live_run = False  # set by the run branch below; ingest and restamp never run
+    pre_run_tree = None  # the tree a live run started on, when it could be captured
     if "--degraded" in rest:
         k = rest.index("--degraded")
         reason = rest[k + 1] if k + 1 < len(rest) else ""
@@ -4327,6 +4514,14 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # command points at. Split BEFORE substituting so a report path
         # containing spaces/quotes lands as one intact token.
         import shlex  # noqa: PLC0415 — only this branch needs it
+        # Bracket the run: the tree it STARTS on, checked against the one it ends
+        # on below, because a file edited while the suite runs may never be
+        # loaded by it and must not end up inside the stamp as though tested.
+        from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+        live_run = True
+        _pre = _evidence_mod.capture_tree(project_dir)
+        pre_run_tree = _pre.get("tree") if _pre.get("status") == "ok" else None
+        pre_run_why = _pre.get("reason") or "unknown reason"
         for command in declared_commands or [None]:
             fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-junit-")
             os.close(fd)
@@ -4403,8 +4598,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     except OSError:
                         pass
 
-    # Aggregate across ALL top-level <testsuite> elements (skipped entirely when
-    # counts come from --from-counts or --no-rerun — there is no XML root).
+    # Aggregate across ALL top-level <testsuite> elements and root-level
+    # <testcase> elements (skipped entirely when counts come from --from-counts
+    # or --no-rerun — there is no XML root).
     if from_counts is None and not no_rerun:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
@@ -4432,12 +4628,25 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # nest, so counting leaves is correct under both conventions and needs
         # no reporter detection. `failed`/`skipped` are classified per leaf for
         # the same reason; `passed` stays the remainder.
-        suites = []
-        for root in roots:
-            suites += [root] if root.tag == "testsuite" else root.findall("testsuite")
+        #
+        # A leaf can also sit directly under a <testsuites> root with no suite
+        # around it: node:test writes a top-level `test()` that way. Such a case
+        # is its own unit, since `iter("testcase")` on a <testcase> yields the
+        # case itself. Units are read in document order, so `failed_tests` keeps
+        # report order. Each carries the index of the root it came from, so a
+        # command's failures can be checked against that command's exit status.
+        suites = []  # (root index, <testsuite> or root-level <testcase>)
+        for root_index, root in enumerate(roots):
+            if root.tag == "testsuite":
+                suites.append((root_index, root))
+            else:
+                suites += [
+                    (root_index, el) for el in root if el.tag in ("testsuite", "testcase")
+                ]
         if not suites:
             print(
-                "error: the test run produced no <testsuite> (no tests collected?)",
+                "error: the test run produced no <testsuite> or <testcase> "
+                "(no tests collected?)",
                 file=sys.stderr,
             )
             return 2
@@ -4460,8 +4669,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # a populated suite with a <testsuite errors="1"> that died before emitting
         # any <testcase>.
         total = failures = errors = skipped = 0
+        failed_by_root = [0] * len(roots)
         try:
-            for s in suites:
+            for root_index, s in suites:
+                before = failures + errors
                 leaves = list(s.iter("testcase"))
                 if leaves:
                     total += len(leaves)
@@ -4491,6 +4702,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     failures += _attr_int(s, "failures")
                     errors += _attr_int(s, "errors")
                     skipped += _attr_int(s, "skipped")
+                failed_by_root[root_index] += failures + errors - before
         except ValueError as exc:
             print(
                 "error: malformed count attribute on a <testsuite> in the test "
@@ -4502,7 +4714,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # field has always reported. Summing <testcase time=> would change the
         # field's meaning — per-case times are elapsed-per-test and, under any
         # parallel runner, add up to more than the wall clock actually spent.
-        duration = sum(float(s.get("time", "0") or "0") for s in suites)
+        # A root-level case is the exception: it is a sibling of the top-level
+        # suites, so its time adds to theirs exactly as a sibling suite's does.
+        duration = sum(float(s.get("time", "0") or "0") for _, s in suites)
         passed = total - failures - errors - skipped
         failed = failures + errors
         # False-red guard (upstream discodon report): an interpreter-fallback
@@ -4535,6 +4749,31 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
+        # A command that exited nonzero while its own report shows no failure
+        # has not been accounted for: the report missed a case, the runner died
+        # after writing it, or something outside the tests failed the command.
+        # Recording those counts would put a green on a red run, and `failed`
+        # is what `tests_are_current` and every gate after it read. Refused
+        # rather than marked `degraded`, which only a coordinator asserts.
+        # Judged per command, because another command's real failure says
+        # nothing about why this one exited nonzero. Live runs only: one root
+        # per command, in order. Ingest has no exit status to disagree with.
+        for command, rc, root_failed in zip(
+            declared_commands or [None], run_returncodes, failed_by_root
+        ):
+            if rc != 0 and root_failed == 0:
+                label = repr(command) if command is not None else "the pytest fallback"
+                print(
+                    f"error: refusing to record — {label} exited {rc}, but its "
+                    "report shows no failing test, so the report does not account "
+                    "for the run. Find and fix what failed it. Only if every test "
+                    "ran, the report records them all, and the failure is outside "
+                    "the tests (a coverage threshold, say), run the command "
+                    "yourself and ingest the report:\n"
+                    "  prawduct-hook test-evidence record --from-junit <report.xml>",
+                    file=sys.stderr,
+                )
+                return 2
 
     # Capture the working-tree SHA this run covers, so a later session with a
     # byte-identical judgeable tree can trust the record without re-running (the
@@ -4543,8 +4782,42 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # working tree (an embedded/HIL run may not even test it), so that on-ramp
     # stays timestamp-only. Best-effort — a capture failure omits the field and
     # freshness falls back to the timestamp model; the clause is purely additive.
+    #
+    # A live run whose tree cannot be shown to have held still is that same
+    # capture failure: there is no one tree it ran against. The field is omitted
+    # unless `_test_evidence_tree_valid` — the freshness check's own comparison,
+    # by `affects_test_outcome` path rather than raw equality, because every run
+    # writes caches and reports of its own — says the tree captured before the
+    # first command still holds at the end. "Cannot tell" (a failed capture or
+    # diff) omits it too. That never marks the record `degraded` (a coordinator's assertion,
+    # never derived) and never makes it stale this session; it only withholds the
+    # tree clause, so no later session or other worktree reuses the run for a
+    # tree it may not have exercised. Ingest and restamp have no run to bracket.
     evidence_tree = None
-    if from_counts is None:
+    if live_run:
+        still, why = (
+            _gates()._test_evidence_tree_valid(project_dir, pre_run_tree)
+            if pre_run_tree is not None
+            else (False, f"the tree could not be captured before the run: {pre_run_why}")
+        )
+        if still:
+            evidence_tree = pre_run_tree
+        else:
+            # Re-running helps only when the tree MOVED. A capture that failed
+            # (no git, an unreadable index) will fail the same way next time,
+            # so advising a re-run there sends the operator in a circle.
+            remedy = (
+                " Run it again once edits stop to let a later session reuse it."
+                if pre_run_tree is not None
+                else ""
+            )
+            print(
+                "warning: could not confirm the working tree held still while the suite "
+                f"ran ({why}), so this record vouches for no tree — it stays current "
+                f"this session only.{remedy}",
+                file=sys.stderr,
+            )
+    elif from_counts is None:
         from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
         _cap = _evidence_mod.capture_tree(project_dir)
         if _cap.get("status") == "ok":
@@ -5586,6 +5859,27 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
     return briefing.handoff_cmd(project_dir, argv)
 
 
+def cmd_worktrees(project_dir: Path, argv: list[str]) -> int:
+    """List every worktree with its inferred liveness, and the local branches
+    no remote carries. Read-only. Thin wrapper — body lives in
+    ``lib.stranded_work``; the session briefing renders the same report as
+    counts only."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import stranded_work  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "worktrees unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return stranded_work.worktrees_cmd(project_dir, argv)
+
+
 def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     """Aggregate the governance ledger into review cost / yield numbers.
     Thin wrapper — body lives in ``lib.telemetry.review_stats``
@@ -5864,12 +6158,13 @@ def cmd_infer_critic_mode(project_dir: Path, args: str | None) -> int:
     ``<mode>`` is one of the short tokens (``chunk`` / ``final`` /
     ``cumulative`` / ``verify-resolutions``) — or ``deferred``, the
     output-only answer that NO review is owed now (``critic_mode.MODE_DEFERRED``),
-    for one of two reasons the rationale names: the branch's plan is short and
-    touches no risk surface (#292), or a later review the plan still owes will
+    for one of three reasons the rationale names: the branch's plan is short and
+    touches no risk surface (#292); a later review the plan still owes will
     start from the last reviewed state and cover this work (#167,
-    ``extension-deferred``). The skill dispatches nothing on it and reports the
-    rationale, which says what to do: commit and carry on, or, on a short plan's
-    last chunk, commit and run the ``cumulative`` that is that chunk's review. ``<rationale>`` is the
+    ``extension-deferred``); or, mid-plan, nothing is unreviewed. The skill dispatches nothing on it and reports the
+    rationale, which says what to do (``critic_mode.short_plan_next_step`` on a
+    short plan: tick each earlier chunk at commit, or, on the last chunk, commit
+    and run the ``cumulative`` that is that chunk's review). ``<rationale>`` is the
     human-readable explanation suitable for both stdout reporting and
     the ``mode_chosen_by`` field in ``.critic-findings.json``.
 
@@ -6002,14 +6297,11 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     § Enforcement — proportionality, not a hard one-at-a-time invariant). ``--json``
     emits the structured status for the doctor skill; default is human-readable.
 
-    A fourth row sits OUTSIDE the chain — **risk surfaces**: has the product said
-    where a missed defect would cost it most (``risk_surfaces:`` in
-    ``project-state.yaml``)? Asked of ``lib/risk_surface_probes.risk_surfaces_status``,
-    the same classification the ambient advisory fires on, so the row cannot drift
-    from the nudge; ``undeclared`` and ``unparseable`` are the degraded answers and
-    each carries its own fix. Not staged behind the layers: discovery asks it
-    beside them, and an unanswered question here changes review depth for the
-    life of the product rather than what artifacts it owes.
+    Outside the chain, ``--json`` also reports how the ``risk_surfaces:`` key
+    reads (``lib/risk.risk_surfaces_status``). Nothing asks for that key, so
+    ``undeclared`` is healthy; only ``unparseable`` carries a fix, and only it
+    renders a human line, because a key the reader refuses escalates every
+    review until it is rewritten.
 
     Read-only and informational — always exits 0. A broken plugin import or a
     faulty sub-check degrades to a NOTE / "unknown", never a crash (a health
@@ -6063,19 +6355,17 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
         print(f"NOTE: coverage-status layer-2 (norm ratification) check skipped: {exc}", file=sys.stderr)
         norms_unratified = None
 
-    # Risk surfaces — asked of the probe module, never re-derived here, for the
-    # same reason the layers are: the row's whole claim is that it mirrors the
-    # ambient nudge. Guarded like layer 2: a report degrades to "unknown" and
-    # names why on stderr; it does not crash and it does not go quiet.
+    # How the `risk_surfaces:` key reads. Guarded like layer 2: a report
+    # degrades to null and names why on stderr; it does not crash.
     risk_status: str | None
     try:
-        from lib import risk_surface_probes  # noqa: PLC0415
+        from lib import risk as _risk  # noqa: PLC0415
 
-        risk_status = risk_surface_probes.risk_surfaces_status(project_dir)
-    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade the risk-surfaces row to unknown + log
+        risk_status = _risk.risk_surfaces_status(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- report must not crash; degrade the risk-surfaces status to null + log
         print(f"NOTE: coverage-status risk-surfaces check skipped: {exc}", file=sys.stderr)
         risk_status = None
-    risk_fix = _RISK_SURFACE_FIXES.get(risk_status)
+    risk_fix = _RISK_SURFACES_UNPARSEABLE_FIX if risk_status == "unparseable" else None
 
     # Which single layer currently owns the nudge (the chain stages). Layers 0 and 1
     # are asked of the probe module, never re-derived here: this report's whole claim
@@ -6104,9 +6394,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
             "norms_unratified": norms_unratified,
             "active_layer": active_layer,
             "fix": fix,
-            # Outside the chain; `status` is one of risk_surface_probes.STATUS_*
-            # or null when the check could not run. `fix` is set for the two
-            # degraded statuses only.
+            # Outside the chain; `status` is one of lib/risk.STATUS_* or null
+            # when the check could not run. `fix` is set for `unparseable` only.
             "risk_surfaces": {"status": risk_status, "fix": risk_fix},
         }, indent=2))
         return 0
@@ -6162,44 +6451,19 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
               "once the repo has source code or docs/.")
     else:
         print("  Active nudge → none: the coverage chain is satisfied.")
-
-    # The row outside the chain. Every status renders its own line — the two
-    # non-findings say WHY they are not findings, because "declared" and "not
-    # owed yet" are different answers and a bare "ok" would render them alike.
-    label = "  Risk surfaces (review depth)  : "
-    if risk_status is None:
-        print(f"{label}unknown (check unavailable)")
-    elif risk_status == "undeclared":
-        print(f"{label}NOT DECLARED — this repo has code under review and has never "
-              "said where a missed defect would cost it most, so every change is "
-              "reviewed at the depth its size suggests")
+    if risk_status == "unparseable":
+        print("  Risk surfaces (review depth)  : declared in a shape prawduct cannot read, "
+              "so every review escalates")
         print(f"       fix: {risk_fix}")
-    elif risk_status == "unparseable":
-        print(f"{label}declared in a shape prawduct cannot read, so review escalates "
-              "rather than read a syntax slip as low risk")
-        print(f"       fix: {risk_fix}")
-    elif risk_status == "declared":
-        print(f"{label}declared (`risk_surfaces:` in project-state.yaml; `[]` is the "
-              "opt-out)")
-    else:
-        print(f"{label}not owed yet — no source code that this scan recognises")
     return 0
 
 
-#: The fix each degraded risk-surfaces status names, keyed on
-#: ``risk_surface_probes.STATUS_*``. Declared and not-owed carry none.
-_RISK_SURFACE_FIXES = {
-    "undeclared": (
-        "answer where a missed defect would cost most and record it under "
-        "`risk_surfaces:` in .prawduct/project-state.yaml "
-        "(/prawduct:methodology discovery, \"Surface Risk Surfaces\"); "
-        "`risk_surfaces: []` is the deliberate opt-out"
-    ),
-    "unparseable": (
-        "rewrite `risk_surfaces:` as a block sequence of plain strings "
-        "(one `- path` per line), or `[]` to opt out"
-    ),
-}
+#: The one fix the risk-surfaces status carries: an unparseable key escalates
+#: every review, so it is worth rewriting. An absent key is healthy.
+_RISK_SURFACES_UNPARSEABLE_FIX = (
+    "rewrite `risk_surfaces:` as a block sequence of plain strings "
+    "(one `- path` per line), or delete the key"
+)
 
 
 def cmd_coverage_scaffold(project_dir: Path, argv: list[str]) -> int:
@@ -7434,6 +7698,163 @@ def cmd_check_learnings_pairing(project_dir: Path, argv: list[str] | None = None
     return 0
 
 
+def cmd_learnings_compact(project_dir: Path, argv: list[str]) -> int:
+    """Compact a learnings corpus into one-line rules under its caps.
+
+    ``--plan`` writes the worksheet (``--force`` replaces one that already
+    carries decisions). With no mode flag it validates the worksheet as it
+    stands and prints what ``--apply`` would do, which is the dry run.
+    ``--apply`` validates, writes, and records the compaction events.
+    ``--local`` replaces the commit as the undo with a verified backup.
+    Exit 0 on success, 1 when refused or unreadable, 2 on a usage error.
+    """
+    flags = {"--plan", "--apply", "--force", "--local", "--json"}
+    rejected = _reject_unknown_args("learnings-compact", argv, flags)
+    if rejected is not None:
+        return rejected
+    do_plan, do_apply = "--plan" in argv, "--apply" in argv
+    if do_plan and do_apply:
+        print(
+            "learnings-compact: --plan writes the worksheet and --apply reads it; "
+            "run them separately. Nothing ran.",
+            file=sys.stderr,
+        )
+        return 2
+    as_json, local, force = "--json" in argv, "--local" in argv, "--force" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import learnings_compact, learnings_files  # noqa: PLC0415 — lazy import
+    except ImportError:
+        print(
+            "error: learnings-compact could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT}; nothing was changed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    layout = learnings_files.resolve(project_dir)
+    if layout.state not in (learnings_files.STATE_NEW, learnings_files.STATE_BOTH):
+        print(
+            "learnings-compact: no rules tree to compact "
+            f"(layout: {layout.state}); a legacy corpus runs learnings-migrate first.",
+            file=sys.stderr,
+        )
+        return 1
+    path = learnings_compact.worksheet_path(project_dir)
+    if path is None:
+        print("learnings-compact: git could not say where the worksheet lives.", file=sys.stderr)
+        return 1
+
+    if do_plan:
+        if path.is_file() and not force:
+            try:
+                existing = learnings_compact.load(path)
+            except (OSError, ValueError):
+                existing = {}
+            if any((r.get("disposition") for r in existing.get("rows") or [])):
+                print(
+                    f"learnings-compact: {path} already carries decisions; --plan "
+                    "--force replaces it and loses them. Nothing was written.",
+                    file=sys.stderr,
+                )
+                return 1
+        try:
+            ws = learnings_compact.build_worksheet(project_dir)
+        except learnings_compact.CompactRefused as exc:
+            print(f"learnings-compact: REFUSED — {exc}", file=sys.stderr)
+            return 1
+        try:
+            learnings_compact.save(path, ws)
+        except OSError as exc:
+            print(f"learnings-compact: could not write {path}: {exc}. Nothing else changed.", file=sys.stderr)
+            return 1
+        if as_json:
+            print(json.dumps({"worksheet": str(path), "rows": len(ws["rows"])}))
+        else:
+            print(f"learnings-compact: wrote {path} — {len(ws['rows'])} rule(s) to decide.")
+            print(
+                "  Fill one `disposition` per row (the module docstring lists the five "
+                "actions), declare any new area file in `new_areas`, show the owner the "
+                "drop list, then run `prawduct-hook learnings-compact` to check it and "
+                "`--apply` to write."
+            )
+        return 0
+
+    try:
+        ws = learnings_compact.load(path)
+    except FileNotFoundError:
+        print("learnings-compact: no worksheet yet; run --plan first.", file=sys.stderr)
+        return 1
+    except (OSError, ValueError) as exc:
+        print(f"learnings-compact: cannot read {path}: {exc}", file=sys.stderr)
+        return 1
+
+    if do_apply:
+        try:
+            result = learnings_compact.apply(project_dir, ws, local=local)
+        except learnings_compact.CompactRefused as exc:
+            print(f"learnings-compact: REFUSED — {exc}", file=sys.stderr)
+            return 1
+        except learnings_compact.CompactInterrupted as exc:
+            reached = ", ".join(exc.written) or "nothing"
+            print(
+                f"learnings-compact: INTERRUPTED — {exc}. Reached disk: {reached}.\n"
+                f"  Restore the rules directory (`git checkout -- {learnings_files.RULES_DIR_REL}` "
+                "and remove any file it created, or copy back the --local backup), then re-run "
+                "--apply: the worksheet and its decisions are kept. Do NOT --plan --force.",
+                file=sys.stderr,
+            )
+            return 1
+        path.unlink(missing_ok=True)
+    else:
+        result = learnings_compact.validate(project_dir, ws)
+        result.refusals.extend(learnings_compact.undo_refusals(project_dir, local))
+
+    report = {
+        "applied": do_apply,
+        "refusals": result.refusals,
+        "writes": {rel: len(c.encode("utf-8")) for rel, c in result.outputs.items()},
+        "deletions": result.deletions,
+        "counts": result.counts,
+        "over_cap": result.over_cap,
+        "event_failures": result.event_failures,
+    }
+    if as_json:
+        print(json.dumps(report))
+    else:
+        verb = "applied" if do_apply else "would apply"
+        if result.refusals:
+            print("learnings-compact: REFUSED —")
+            for reason in result.refusals:
+                print(f"  - {reason}")
+        else:
+            print(f"learnings-compact: {verb} — " + ", ".join(
+                f"{n} {a}" for a, n in sorted(result.counts.items())
+            ))
+            for rel, size in sorted(report["writes"].items()):
+                print(f"  write {rel} ({size}B)")
+            for rel in result.deletions:
+                print(f"  delete {rel} (no rules left)")
+            for line in result.over_cap:
+                print(
+                    f"  NOTE: {line} — the corpus stays frozen until the owner approves "
+                    "drops or raises the cap"
+                )
+            if result.event_failures:
+                print(
+                    f"NOTE: {result.event_failures} learning.compacted event(s) could not be "
+                    "written to the governance ledger; the rules are on disk, and those rules "
+                    "lose their citation history",
+                    file=sys.stderr,
+                )
+            if do_apply:
+                print("  Commit this as one change; `git revert` is the undo.")
+    return 1 if result.refusals else 0
+
+
 def cmd_learnings_migrate(project_dir: Path, argv: list[str]) -> int:
     """Relayout ``.prawduct/learnings.md`` into ``.claude/rules/learnings/``.
 
@@ -7823,6 +8244,7 @@ _USAGE = (
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
     "review-stats [--json] [--since <stamp>] [--until <stamp>]|classify-diff-risk [<base>]|"
+    "worktrees [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -7846,6 +8268,7 @@ _USAGE = (
     "update-gitignore [--dry-run]|"
     "audit-learnings [deprecated, inert]|learnings-obligation [deprecated, inert]|"
     "learnings-migrate [--apply] [--map <file>] [--propose-map] [--json] [--local]|"
+    "learnings-compact [--plan [--force]|--apply] [--local] [--json]|"
     "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
@@ -8221,6 +8644,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "verify-coverage",
     "verify-records",
     "version",
+    # Read-only: git reads with --no-optional-locks and file mtimes.
+    "worktrees",
 })
 
 # Read-only reports that mutate only under `--apply` — a third shape, neither
@@ -8548,8 +8973,22 @@ def main() -> int:
     attributes — so the classifier, and the ``cmd_stop`` probe that converted it
     into the harness block code, went with it rather than staying as handling
     for a condition no code can produce.
+
+    **The error-model norm is enforced here, once, for every command**
+    (`api-contract.md` § Direction: errors are attributed, never raised as
+    stack traces across the boundary). An exception no command handled becomes
+    one `error: <command>: <Type>: <message>` line on stderr and exit 1, where
+    it used to become a traceback that names no command and reads as the
+    plugin crashing. Commands still own their specific handling; this is the
+    floor under all of them. `SystemExit` and `KeyboardInterrupt` are not
+    `Exception`s and pass through untouched.
     """
-    return _dispatch()
+    try:
+        return _dispatch()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- the boundary's floor: every unhandled error is attributed, never a traceback (error-model norm)
+        command = sys.argv[1] if len(sys.argv) > 1 else "(no command)"
+        print(f"error: {command}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 1
 
 
 # --- Pre-dispatch argument shape --------------------------------------------
@@ -8737,6 +9176,8 @@ def _dispatch() -> int:
         return cmd_pr_review_payload(project_dir, sys.argv[2:])
     elif command == "review-stats":
         return cmd_review_stats(project_dir, sys.argv[2:])
+    elif command == "worktrees":
+        return cmd_worktrees(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":
@@ -8747,6 +9188,8 @@ def _dispatch() -> int:
         return cmd_check_learnings_pairing(project_dir, sys.argv[2:])
     elif command == "learnings-migrate":
         return cmd_learnings_migrate(project_dir, sys.argv[2:])
+    elif command == "learnings-compact":
+        return cmd_learnings_compact(project_dir, sys.argv[2:])
     elif command == "check-operator-verification":
         return cmd_check_operator_verification(project_dir)
     elif command == "accept-operator-verification":

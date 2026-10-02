@@ -107,8 +107,9 @@ def _repo(tmp_path: Path) -> Path:
 def _base_tree(repo: Path) -> None:
     """Record the session base tree the way `cmd_clear` does at session start.
 
-    Without it the budget gate has no "before" to compare against and correctly
-    reports itself unchecked rather than guessing.
+    Without it the budget gate has no session "before" and measures against
+    HEAD instead, saying so in a NOTE: uncommitted growth is still charged,
+    committed growth is not.
     """
     out = subprocess.run(
         ["git", "rev-parse", "HEAD^{tree}"],
@@ -528,7 +529,12 @@ class TestTheBudgetFloor:
         # The finding text is carried, not re-worded: one wording wherever the
         # builder meets this check.
         assert "learnings-over-budget" in err
-        assert "never trim a rule to fit" in err
+        # Renegotiated 2026-09-24 (learnings-one-line): the carried finding used
+        # to say "never trim a rule to fit" and the blocker offered a waiver.
+        # The corpus regrew four times under both; the remedy is now paying or
+        # asking the owner, and the gate says there is no waiver.
+        assert "merging or retiring a rule" in err
+        assert "no waiver" in err
 
     def test_over_but_unchanged_passes(self, tmp_path, capsys):
         # Over alone is a one-time sweep, not this gate's business — the
@@ -551,7 +557,10 @@ class TestTheBudgetFloor:
         assert rc == 0
         assert BUDGET_BLOCKER not in err
 
-    def test_the_budget_waiver_key_suppresses_it(self, tmp_path, capsys):
+    def test_the_retired_budget_waiver_key_suppresses_nothing(self, tmp_path, capsys):
+        """Renegotiated 2026-09-24: `learnings-budget` was a waiver the agent
+        wrote for itself, which is how a cap stops being a cap. A repo still
+        carrying one is told the key is unknown, and the gate still blocks."""
         repo = _repo(tmp_path)
         self._over_budget(repo, grown=True)
         _touch_code(repo)
@@ -559,12 +568,9 @@ class TestTheBudgetFloor:
             json.dumps({"learnings-budget": "compaction lands next session"})
         )
         rc, err = _stop(repo, capsys)
-        assert rc == 0
-        assert BUDGET_BLOCKER not in err
-        assert "learnings-budget: waived (compaction lands next session)" in err
-        # A key that suppresses a real blocker while being reported ineffective
-        # is the worst of both readings.
-        assert "unknown keys" not in err
+        assert rc == 2
+        assert BUDGET_BLOCKER in err
+        assert "unknown keys" in err and "learnings-budget" in err
 
     def test_the_cutover_floors_waiver_does_not_suppress_the_budget(
         self, tmp_path, capsys
@@ -579,16 +585,29 @@ class TestTheBudgetFloor:
         assert rc == 2
         assert BUDGET_BLOCKER in err
 
-    def test_an_unchecked_result_is_a_note_never_silence(self, tmp_path, capsys):
-        """No base tree means no growth comparison. That is not a pass, and a
-        ceiling that could not be measured must not read as one that held."""
+    def test_no_marker_measures_against_head_and_says_so(self, tmp_path, capsys):
+        """No base marker used to mean "unchecked", a stderr NOTE nobody reads,
+        and discodon's core.md grew through three such sessions. Now the check
+        runs against HEAD, catches uncommitted growth, and the NOTE says what
+        HEAD cannot see."""
+        repo = _repo(tmp_path)
+        self._over_budget(repo, grown=False)
+        (repo / ".prawduct" / ".session-base-tree").unlink(missing_ok=True)
+        core = repo / ".claude" / "rules" / "learnings" / "core.md"
+        core.write_text(core.read_text() + "x" * 4096)
+        _touch_code(repo)
+        rc, err = _stop(repo, capsys)
+        assert rc == 2 and BUDGET_BLOCKER in err
+        assert "measured against HEAD" in err
+        assert "already committed were not charged" in err
+
+    def test_no_marker_and_nothing_grown_passes_with_the_note(self, tmp_path, capsys):
         repo = _repo(tmp_path)
         _rules(repo)
         _touch_code(repo)  # no _base_tree() call
         rc, err = _stop(repo, capsys)
         assert rc == 0
-        assert "learnings-over-budget unchecked" in err
-        assert "no .session-base-tree marker" in err
+        assert "measured against HEAD" in err
 
     def test_an_unmigrated_repo_is_not_budgeted(self, tmp_path, capsys):
         # Two controls naming one state teach a reader to skip both; the legacy
@@ -599,6 +618,111 @@ class TestTheBudgetFloor:
         _, err = _stop(repo, capsys)
         assert BUDGET_BLOCKER not in err
         assert "learnings-over-budget unchecked" not in err
+        assert "measured against HEAD" not in err
+
+
+class TestEveryLearningsCheckAtStop:
+    """Each finding `_check_learnings_budget` can emit, met through `cmd_stop`.
+
+    The record-lint tests call the check directly, so they cannot see what the
+    Stop hook does with a finding: whether it blocks, under which headline,
+    or, for the one advisory kind, whether it stays a NOTE. A regression in
+    that filter would block every session in any repo carrying an unapproved
+    core raise. Each test names its red.
+    """
+
+    _LONG = "- " + "a long rule " * 30
+
+    def _compliant(self, repo: Path, *, marker: bool = True) -> Path:
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True, exist_ok=True)
+        core = d / "core.md"
+        core.write_text("# core\n\n- a short rule\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "compliant corpus")
+        if marker:
+            _base_tree(repo)
+        return core
+
+    def test_a_long_rule_blocks_under_its_own_headline(self, tmp_path, capsys):
+        # Red if cmd_stop drops the too-long finding or heads it with another check's.
+        repo = _repo(tmp_path)
+        core = self._compliant(repo)
+        core.write_text(core.read_text() + self._LONG + "\n")
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert "LEARNINGS FORMAT (rule too long)" in err
+        assert "gate: learnings-rule-too-long" in err
+
+    def test_a_body_blocks_under_its_own_headline(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        core = self._compliant(repo)
+        core.write_text(core.read_text() + "The story of how we learned it.\n")
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert "LEARNINGS FORMAT (body under a rule)" in err
+        assert "gate: learnings-rule-body" in err
+
+    def test_no_marker_and_an_added_long_rule_blocks(self, tmp_path, capsys):
+        """The plan's Success 4 case: no base marker (a continuation in a fresh
+        checkout). Red if the HEAD fallback is removed."""
+        repo = _repo(tmp_path)
+        core = self._compliant(repo, marker=False)
+        (repo / ".prawduct" / ".session-base-tree").unlink(missing_ok=True)
+        core.write_text(core.read_text() + self._LONG + "\n")
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert "gate: learnings-rule-too-long" in err
+        assert "measured against HEAD" in err
+
+    def test_an_unapproved_core_raise_is_a_note_not_a_blocker(self, tmp_path, capsys):
+        """Red if the advisory filter regresses: every session in a repo carrying
+        such a raise, this one included, would block on a declaration the check
+        already ignores."""
+        repo = _repo(tmp_path)
+        self._compliant(repo)
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            'learnings_budgets:\n  core.md: {kb: 64, reason: "room"}\n'
+        )
+        _touch_code(repo)  # the gate runs only on judgeable work or a rules change
+        rc, err = _stop(repo, capsys)
+        assert rc == 0
+        assert "NOTE:" in err and "IGNORED" in err
+        assert "gate: learnings-core-raise-unapproved" not in err
+
+    def test_no_marker_and_no_commits_says_there_is_nothing_to_compare(self, tmp_path, capsys):
+        """Carried from Chunk 01's verify pass: with no marker AND no HEAD, the
+        NOTE must not claim a measurement against HEAD. Red if the note is
+        written for the HEAD case regardless."""
+        repo = tmp_path / "fresh"
+        (repo / ".prawduct").mkdir(parents=True)
+        _git(repo, "init", "-q", "-b", "main")
+        (repo / ".prawduct" / ".session-reflected").write_text(SHAPED_REFLECTION)
+        d = repo / ".claude" / "rules" / "learnings"
+        d.mkdir(parents=True)
+        (d / "core.md").write_text("# core\n\n- a rule\n")
+        (repo / "code.py").write_text("x = 1\n")
+        _rc, err = _stop(repo, capsys)
+        assert "HEAD did not resolve" in err
+        assert "measured against HEAD" not in err
+
+    def test_every_check_the_budget_function_emits_has_a_stop_outcome(self):
+        """Derived from `record_lint.CHECKS`, not a list written from memory:
+        every learnings check `_check_learnings_budget` emits is either given a
+        headline or named advisory in Gate 1c. `learnings-area-dead` is emitted
+        by a different function and never reaches this gate. Red when a check is
+        added to CHECKS and the Stop hook is not told what to do with it."""
+        from lib import record_lint
+
+        source = (_ROOT / "bin" / "prawduct-hook").read_text()
+        gate = source[source.index("# Gate 1c"):source.index("# Telemetry, not a gate")]
+        emitted = [
+            c for c in record_lint.CHECKS
+            if c.startswith("learnings-") and c != "learnings-area-dead"
+        ]
+        assert len(emitted) == 5, emitted
+        missing = [c for c in emitted if f'"{c}"' not in gate]
+        assert not missing, f"Gate 1c has no outcome for {missing}"
 
 
 class TestAReviewerScopesToTheReviewInterval:

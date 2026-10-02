@@ -97,8 +97,51 @@ def test_code_change_with_new_entry_passes(tmp_path):
     _commit_file(
         repo, CHANGE_LOG,
         "# Change Log\n\n## 2026-06-10: new work\n"
-        "<!-- prawduct: type=fix | chunks=01 | scope=x -->\n\n"
+        "<!-- prawduct: type=fix | scope=x -->\n\n"
         "## 2026-06-01: baseline entry\n\nBody.\n",
+        "add entry",
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "entry-present" in result.stdout
+
+
+@pytest.mark.parametrize("key", ["chunks=01,02", "status=shipped"])
+def test_a_retired_key_on_the_added_tag_line_fails(tmp_path, key):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n## 2026-06-10: new work\n"
+        f"<!-- prawduct: {key} | scope=x -->\n\n"
+        "## 2026-06-01: baseline entry\n\nBody.\n",
+        "add entry",
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "retired-key:" in result.stderr
+    assert f"`{key.split('=')[0]}=`" in result.stderr
+
+
+def test_a_retired_key_in_history_does_not_fail_a_new_clean_entry(tmp_path):
+    # The baseline already carries the retired keys; this branch writes none.
+    repo = _make_branched_repo(tmp_path)
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n## 2026-06-01: baseline entry\n"
+        "<!-- prawduct: chunks=01 | status=shipped | scope=old -->\n\nBody.\n",
+        "historical tag line",
+    )
+    _git(repo, "checkout", "-q", "feature/x")
+    _git(repo, "merge", "-q", "--ff-only", "main")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n## 2026-06-10: new work\n"
+        "<!-- prawduct: scope=x -->\n\n"
+        "## 2026-06-01: baseline entry\n"
+        "<!-- prawduct: chunks=01 | status=shipped | scope=old -->\n\nBody.\n",
         "add entry",
     )
     result = _run_probe(repo)

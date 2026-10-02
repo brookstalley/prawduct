@@ -157,6 +157,99 @@ class TestFileStandard:
         assert result["lint"] == []
 
 
+class TestUpdateBodyStandard:
+    """#898 — a body written through `update` is audited like one written through
+    `file`. A body conforms or not regardless of which verb wrote it, and before
+    this an over-budget body edit returned the same output as a conforming one."""
+
+    @staticmethod
+    def _long_body(words: int) -> str:
+        from lib.backlog import issuefmt
+
+        assert words > issuefmt.BODY_MAX_WORDS
+        return " ".join(["word"] * words)
+
+    def _filed(self, fake):
+        created = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: a conforming title for body lint",
+            body="Short body.", facets={"kind": "task", "area": "core"},
+        )
+        return created["data"]["id"]
+
+    def test_update_body_reports_body_findings(self, fake):
+        ref = self._filed(fake)
+        result = core.update_item(fake, id_raw=ref, fields={"body": self._long_body(400)})
+
+        assert result["status"] == "ok", "body lints are WARN-only — they never refuse"
+        assert "body-too-long" in {f["rule"] for f in result["lint"]}
+        assert all(f["severity"] == "warn" for f in result["lint"])
+
+    def test_update_and_file_agree_on_the_same_body(self, fake):
+        """The asymmetry was the defect, so pin the symmetry, not just a rule."""
+        body = self._long_body(300)
+        filed = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: a conforming title for body lint",
+            body=body, facets={"kind": "task", "area": "core"},
+        )
+        body_rules = {f["rule"] for f in filed["lint"]} - {"no-kind", "no-area", "too-many-labels"}
+        ref = self._filed(fake)
+
+        updated = core.update_item(fake, id_raw=ref, fields={"body": body})
+
+        assert {f["rule"] for f in updated["lint"]} == body_rules
+
+    def test_a_conforming_body_edit_reports_an_empty_lint_not_none(self, fake):
+        """`lint: []` says the check ran and passed; an absent `lint` says it did
+        not run. Collapsing the two is what made a clean update look like
+        evidence of conformance."""
+        from lib.backlog import issuefmt
+
+        ref = self._filed(fake)
+        body = issuefmt.render_body(
+            "task", {"Problem": "p", "Proposed change": "c", "Acceptance": "- [ ] done", "Scope-out": "none"}
+        )
+
+        result = core.update_item(fake, id_raw=ref, fields={"body": body})
+
+        assert result["status"] == "ok"
+        assert result["lint"] == []
+
+    def test_update_that_does_not_write_the_body_does_not_lint_it(self, fake):
+        """Editing an unrelated field never reports on a body it didn't write —
+        the same containment the stored-title ruling keeps."""
+        ref = self._filed(fake)
+        core.update_item(fake, id_raw=ref, fields={"body": self._long_body(400)})
+
+        result = core.update_item(fake, id_raw=ref, fields={"stage": "ready"})
+
+        assert result["status"] == "ok"
+        assert "lint" not in result
+
+    def test_body_findings_ride_beside_a_stored_title_finding(self, fake):
+        ref = self._filed(fake)
+        number = int(ref.split("#")[1])
+        fake.repos[(OWNER, REPO)].issues[number]["title"] = "core: " + "too long " * 12
+
+        result = core.update_item(fake, id_raw=ref, fields={"body": self._long_body(400)})
+
+        rules = {f["rule"] for f in result["lint"]}
+        assert {"title-too-long", "body-too-long"} <= rules
+
+    def test_sections_are_judged_against_the_kind_the_write_leaves(self, fake):
+        """`kind` picks the §2 template, so a `kind` set in the same call as the
+        body is the one the body answers to. Linting the labels read BEFORE the
+        facet swap would judge this bug body by the task template."""
+        ref = self._filed(fake)
+
+        result = core.update_item(
+            fake, id_raw=ref, fields={"body": "Prose with no sections at all.", "kind": "bug"}
+        )
+
+        assert result["status"] == "ok"
+        rules = {f["rule"] for f in result["lint"]}
+        assert "bug-missing-env" in rules, "only the bug template emits this nudge"
+
+
 class TestAttribution:
     """SEC-3 — actor is the API identity, resolved once across a sweep."""
 

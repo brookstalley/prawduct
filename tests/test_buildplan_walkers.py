@@ -1436,6 +1436,31 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
             prawduct, "01", plan_path=plan
         ) == ("code", None)
 
+    @pytest.mark.parametrize(
+        "work_type",
+        ["bugfix", "feature", "refactor", "optimization", "hotfix", "debt-paydown"],
+    )
+    def test_a_building_md_work_type_reads_as_code(self, tmp_path: Path, work_type: str):
+        """`building.md` sizes governance by work type (Feature, Bugfix, …) and
+        authors carry the word into `Type:`. Each reads as `code`, the full
+        protocol: reporting it as unknown was an error on a chunk that ran as
+        `code` anyway (a consumer's `bugfix` chunk, 2026-09-28)."""
+        prawduct, plan = _plan_with_chunk_body(tmp_path, f"- **Type:** {work_type}\n")
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    def test_case_is_significant_for_aliases_as_for_types(self, tmp_path: Path):
+        """`Bugfix` is as unknown as `Code`: one rule for both lookups, and the
+        error names the aliases beside the types."""
+        for value in ("Bugfix", "Code"):
+            prawduct, plan = _plan_with_chunk_body(tmp_path, f"- **Type:** {value}\n")
+            chunk_type, error = buildplan_refs._parse_build_plan_chunk_type(
+                prawduct, "01", plan_path=plan
+            )
+            assert chunk_type is None and error.startswith("unknown type:")
+            assert "read as code: bugfix" in error
+
     def test_an_unknown_value_in_field_position_still_reports(self, tmp_path: Path):
         """The typo path is unchanged — that is the point of reading it first."""
         prawduct, plan = _plan_with_chunk_body(
@@ -1814,8 +1839,18 @@ def test_every_type_line_in_this_repo_is_honoured_or_reported():
             graded += 1
             # `code` is the default AND a declarable type, so it is the one
             # answer that cannot distinguish "honoured" from "fell through" —
-            # unless the section is one whose author wrote `code`.
-            if (chunk_type, error) == ("code", None) and "code" not in declared:
+            # unless the section is one whose author wrote `code`, or a work
+            # type `building.md` names, which reads as `code` by declaration
+            # (#934; this corpus alone declares `bugfix` in a dozen chunks, each
+            # reported as unknown before). A typo still falls outside both.
+            honoured_as_code = {"code"} | {
+                alias
+                for alias, target in buildplan_refs._BUILD_PLAN_TYPE_ALIASES.items()
+                if target == "code"
+            }
+            if (chunk_type, error) == ("code", None) and not (
+                set(declared) & honoured_as_code
+            ):
                 silent.append(f"{plan.name} Chunk {chunk_id}: declared {declared}")
 
     assert not misread, "a type a human reads off the line was read as something else:\n" + "\n".join(misread)

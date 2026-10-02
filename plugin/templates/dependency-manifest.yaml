@@ -1,6 +1,4 @@
 # Dependency Manifest Template
-# Tier: 1 (Source of Truth)
-# Owner: Artifact Generator (C3)
 #
 # Usage: Copy this template to your project's artifacts/ directory.
 # Every external dependency (library, service, API, infrastructure) must be

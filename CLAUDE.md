@@ -26,13 +26,11 @@ When someone opens this directory, route on what they came for:
 ## Before Building: Requirements Clarity
 
 When the user says "build X," "implement Y," or "let's add Z" — this fires before a plan exists,
-which is before `building.md` is read — check four things:
+which is before `building.md` is read — check three things:
 
 1. **What problem does this solve?** (Observable, not abstract.)
 2. **What does success look like?** (Specific, verifiable.)
 3. **What's out of scope?** (What you're deliberately not doing.)
-4. **Should it be built as asked?** Lead with the expert take — the risk, the simpler
-   alternative, or explicit agreement — then build. Silence here reads as endorsement.
 
 If any is unclear, **don't start building.** State the gap, offer the cheapest close — one targeted
 question, an inferred assumption to confirm, or a 5-line scope sketch — then proceed. One round of
@@ -46,8 +44,8 @@ The narrative guides live in `plugin/methodology/`: `discovery.md`, `planning.md
 
 ## The Critic — Independent Review
 
-Each build plan chunk includes `/prawduct:critic` in its "Done when" steps. Follow the plan — run
-the Critic after acceptance criteria pass, before marking the chunk complete.
+Each chunk's "Done when" says when to run `/prawduct:critic`: after acceptance criteria pass,
+before marking it complete, or once at a short plan's boundary.
 
 Two things bind you and are not restated by the skill you invoke. **Fix every blocking finding
 before the next chunk** — `/prawduct:critic verify-resolutions` records the resolution facts that
@@ -98,14 +96,8 @@ Critic/PR protocols — comes from the **plugin**, not the repo.
 
 ## Compact Instructions
 
-When compacting this conversation, preserve:
-- Which product is being built and its current work (size, type, description)
-- Any unresolved issues, blocked work, or pending decisions
-- The instruction to re-read CLAUDE.md after compaction
-- The requirement to read `plugin/methodology/building.md` before writing any code
-- The requirement for Critic review after each chunk (invoke via `/prawduct:critic`; the stop hook enforces this)
-- The requirement for reflection at work boundaries (the stop hook enforces only the session-end floor)
-- Any in-progress learnings not yet captured
-
-Do NOT inline methodology file contents during compaction. They are read on demand — summarize what was learned from them, but reference the file path for re-reading.
+When compacting, preserve: which product is being built and its current work (size, type,
+description); unresolved issues, blocked work and pending decisions; and learnings not yet
+captured. Governance is re-injected on compact by the session digest, so summarize what you
+learned from methodology files and cite their paths rather than inlining them.
 

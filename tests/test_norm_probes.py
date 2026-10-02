@@ -289,6 +289,154 @@ class TestDeadWhyProbe:
         assert a.trigger_summary != b.trigger_summary
 
 
+class TestDeadWhyReaffirmation:
+    """#818 — a `Re-affirmed:` field answers dead-why for the ids it names.
+
+    The probe asks one question per citation: *this item is finished — does the
+    norm still hold?* An owner who answered it for MIG-4C1K was asked again every
+    session, because nothing read the answer. The field is per-id, so the
+    question stays open for every id it does not name — including one that dies
+    after the re-affirmation was written."""
+
+    @staticmethod
+    def _entry(*fields: str) -> str:
+        return "- **All telemetry rides OpenTelemetry.**\n" + "".join(f"  {f}\n" for f in fields)
+
+    def _fire(self, tmp_path, *entries: str, dead=("MIG-4C1K",)):
+        _write_backlog(
+            tmp_path, "".join(_item(i, section="Archive", status="shipped") for i in dead)
+        )
+        _write_artifact(tmp_path, "observability-strategy.md", _direction_artifact(*entries))
+        return np.probe_dead_why(ProjectState({}), _cb(tmp_path))
+
+    def test_the_reported_case_is_silent(self, tmp_path):
+        """The filer's shape: the rationale rewritten to stand alone, the id kept
+        as a record of where the rule was exercised, and the answer recorded."""
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: one substrate for causality; MIG-4C1K is where it was first exercised.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+        )
+        assert out == []
+
+    def test_the_same_entry_without_the_field_still_fires(self, tmp_path):
+        """The control for the case above — without it, silence proves nothing."""
+        out = self._fire(
+            tmp_path,
+            self._entry("Why: one substrate for causality; MIG-4C1K is where it was first exercised."),
+        )
+        assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
+
+    def test_only_the_named_id_is_answered(self, tmp_path):
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K and OBS-7T2Q both made the second system redundant.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+            dead=("MIG-4C1K", "OBS-7T2Q"),
+        )
+        assert len(out) == 1
+        assert "OBS-7T2Q" in out[0].trigger_summary
+        assert "MIG-4C1K" not in out[0].trigger_summary
+
+    def test_the_answer_belongs_to_its_own_entry(self, tmp_path):
+        """A re-affirmation settles one norm. Another norm resting on the same
+        finished item has not been asked yet."""
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K made the second system redundant.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+            "- **Spans everywhere.**\n  Why: MIG-4C1K gave every turn a trace id.\n",
+        )
+        assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
+
+    def test_an_in_flight_status_is_not_answered_by_it(self, tmp_path):
+        """A `Status: in-transition` whose tracking item is finished is a stale
+        status, not a question about the rationale — re-affirming the norm does
+        not make the transition still be running. The repair is the status line."""
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: one substrate for causality.",
+                "Status: in-transition — tracked in MIG-4C1K.",
+                "Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+        )
+        assert len(out) == 1 and "MIG-4C1K" in out[0].trigger_summary
+
+    def test_a_why_citation_is_told_to_re_affirm(self, tmp_path):
+        (out,) = self._fire(tmp_path, self._entry("Why: MIG-4C1K made it redundant."))
+        assert "`Re-affirmed:`" in out.trigger_summary
+        assert "Settle the `Status:`" not in out.trigger_summary
+
+    def test_a_status_citation_is_not_told_to_re_affirm(self, tmp_path):
+        """The remedy has to be one that works: re-affirming never answers this
+        arm, so recommending it would re-ask the owner every session — #818's
+        own loop, one field over."""
+        (out,) = self._fire(
+            tmp_path,
+            self._entry("Why: one substrate for causality.", "Status: in-transition — tracked in MIG-4C1K."),
+        )
+        assert "Settle the `Status:`" in out.trigger_summary
+        assert "Re-affirmed" not in out.trigger_summary
+
+    def test_each_arm_names_its_own_pairs_when_both_fire(self, tmp_path):
+        (out,) = self._fire(
+            tmp_path,
+            self._entry("Why: MIG-4C1K made it redundant.", "Status: in-transition — tracked in OBS-7T2Q."),
+            dead=("MIG-4C1K", "OBS-7T2Q"),
+        )
+        why_part, status_part = out.trigger_summary.split("An in-transition Status")
+        assert "MIG-4C1K" in why_part and "OBS-7T2Q" not in why_part
+        assert "OBS-7T2Q" in status_part and "MIG-4C1K" not in status_part
+
+    def test_following_the_status_remedy_clears_it(self, tmp_path):
+        """The advisory's printed repair, applied: a settled status is silent."""
+        assert self._fire(
+            tmp_path,
+            self._entry(
+                "Why: one substrate for causality.",
+                "Status: steady-state as of 2026-09-27 — transitioned when MIG-4C1K closed.",
+            ),
+        ) == []
+
+    def test_a_phrase_in_prose_is_not_the_field(self, tmp_path):
+        """The answer is a FIELD, not a phrase: prose saying "re-affirmed" inside
+        the Why is still rationale citing a finished item."""
+        out = self._fire(
+            tmp_path,
+            self._entry("Why: re-affirmed by the owner after MIG-4C1K shipped; still holds."),
+        )
+        assert len(out) == 1
+
+    @pytest.mark.parametrize("marker", ["**Re-affirmed:**", "_Re-affirmed:_", "Re-affirmed:"])
+    def test_every_emphasis_form_is_the_field(self, tmp_path, marker):
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K made the second system redundant.",
+                f"{marker} 2026-09-27 (owner) — MIG-4C1K: holds without it.",
+            ),
+        )
+        assert out == []
+
+    def test_an_id_after_the_fields_wrap_point_is_still_named(self, tmp_path):
+        out = self._fire(
+            tmp_path,
+            self._entry(
+                "Why: MIG-4C1K made the second system redundant.",
+                "Re-affirmed: 2026-09-27 (owner) — the norm stands on its own; the",
+                "citation of MIG-4C1K records where it was exercised.",
+            ),
+        )
+        assert out == []
+
+
 # =============================================================================
 # stalled-transition
 # =============================================================================
@@ -1487,6 +1635,33 @@ class TestPostCutoverResolvesThroughTheCache:
         assert len(out) == 1
         assert out[0].type == "backlog-cache-unreadable"
         assert "sync" in out[0].recommended_action
+
+    @pytest.mark.parametrize(
+        "why_lines",
+        [
+            (),
+            ("Why: settled by {scope}#7.", "Re-affirmed: 2026-09-27 (owner) — {scope}#7: holds."),
+        ],
+        ids=["status-only", "why-reaffirmed"],
+    )
+    def test_dead_why_reports_an_outage_the_status_scan_meets(self, tmp_path, why_lines):
+        """dead-why scans `Why:` citations first and `Status:` second. When the
+        first has nothing to look up — no `Why:` citation, or every one already
+        re-affirmed — only the second scan meets the unreachable store, and its
+        outage must still be reported rather than read as a clean answer."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)  # no cache in it
+        fields = "".join(f"  {ln.format(scope=self.SCOPE)}\n" for ln in why_lines)
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n{fields}  Status: in-transition — tracked in {self.SCOPE}#7\n"
+            ),
+        )
+
+        out = np.probe_dead_why(self._state(), _cb(tmp_path))
+
+        assert [c.type for c in out] == ["backlog-cache-unreadable"]
 
     def test_both_probes_report_one_outage_not_two(self, tmp_path):
         """One cause, one nag. `compute_id` hashes (feature, type, version,

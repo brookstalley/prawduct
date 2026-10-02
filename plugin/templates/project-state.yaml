@@ -45,7 +45,7 @@ classification:
   # Risk and complexity profile.
   risk_profile:
     # Overall risk: low, medium, high.
-    # Drives discovery depth (low: 5-8 questions, medium: 8-15, high: 15-25).
+    # Drives discovery depth (methodology/discovery.md "Risk Calibration").
     overall: null
     # Specific risk factors identified during classification.
     # Each: { factor, level (low/medium/high), rationale }
@@ -290,18 +290,24 @@ build_state:
 # roster derivation, which gives a diff touching any of them the deeper
 # three-reviewer review at any size.
 #
-# **Declaring this is what buys the deeper review where it matters.** Leave it
-# unset and only two things escalate: prawduct's framework-shaped defaults
-# (`skills/`, `lib/gates*`, `bin/*hook*`, plus any contract paths you list in
+# Nothing asks for this list, and leaving it unset is a healthy state. Unset,
+# two things escalate: prawduct's framework-shaped defaults (`skills/`,
+# `lib/gates*`, `bin/*hook*`, plus any contract paths you list in
 # boundary-patterns.md), which rarely match a product's own tree, and volume —
 # 12 or more judgeable files. There is no file-count fallback below that:
 # prawduct will not review a small change to your riskiest code more deeply
 # unless you have named that code here.
 #
+# **A declared list REPLACES those defaults, it does not add to them** — the
+# contract paths from boundary-patterns.md stop escalating unless you list them
+# here too. So declaring is not free: it trades the defaults for your list.
+#
 # Pattern semantics: a trailing `/` is a directory prefix; anything else is an
-# fnmatch glob (a plain path with no metacharacters is an exact match). An
-# explicit empty list (`risk_surfaces: []`) is a deliberate "this product has
-# no risk surfaces" opt-out and turns the tier check off.
+# fnmatch glob (a plain path with no metacharacters is an exact match). Write it
+# as a block list (one `- path` per line); `[a, b]` flow style is refused and
+# escalates every review until rewritten. An explicit empty list
+# (`risk_surfaces: []`) replaces the defaults with nothing and turns the tier
+# check off — strictly less review than leaving the key out.
 #
 # risk_surfaces:
 #   - src/auth/
@@ -355,7 +361,7 @@ build_state:
 #     key: package.version
 
 # =============================================================================
-# COVERAGE EVIDENCE (opt-in, v1.4+)
+# COVERAGE EVIDENCE (opt-in)
 # =============================================================================
 # When true, the Critic requires every changed file the verifier can judge to
 # appear in `.test-evidence.json`'s `changes_referenced` list (files it can't
@@ -364,8 +370,8 @@ build_state:
 # `coverage_level` (`referenced` floor vs. `executed` real). The reference
 # verifier at `bin/test-reference-verify` emits the floor; products with
 # non-trivial coverage concerns should plug in a stronger verifier. See
-# `/prawduct:methodology building` "Coverage Evidence".
-# Default off in v1.4 — schema is checked but content is not enforced.
+# `/prawduct:methodology building` "Test Discipline".
+# Default off — schema is checked but content is not enforced.
 
 coverage_required: false
 
@@ -408,21 +414,23 @@ coverage_required: false
 # Learnings live in `.claude/rules/learnings/`: `core.md` is in every session's
 # context from launch, and each `<area>.md` arrives when a file its `paths:`
 # globs match is read. So a rule is paid for by every session that follows it,
-# and the corpus has no natural ceiling — twice compacted, twice regrown past
-# where it started.
+# and the corpus has no natural ceiling — compacted four times, and regrown
+# past where it started every time.
 #
-# `prawduct-hook verify-records` therefore reports a rules file that is over
-# budget AND larger than it was at the review's base tree. Over alone is quiet:
-# an inherited corpus is not asked to stop the world, only to pay for the next
-# addition, which is the moment the duplicate is in front of the author. The
-# payment is genuine duplication (merge or delete two rules in the same commit)
-# — never trimming a rule until it fits, which keeps the bytes and loses the
-# meaning.
+# Every rule is ONE line of at most 250 characters, with no body. `core.md` is
+# capped at 12 KB and ONLY THE OWNER raises it: a `core.md` entry counts only
+# with an `owner_approved:` date. Each area file defaults to 16 KB and may be
+# raised here with a reason. A raise counts from the next session, never the
+# one that writes it, so growth and its excuse cannot land together.
 #
-# Default: 16 KB per file. Raise one here when a file has earned the room:
+# The Stop hook blocks a file over its budget that grew this session, and any
+# line breaking the one-line format. A corpus not yet compacted is frozen: no
+# file over its budget may grow, and every added line must already be a
+# one-line rule. Pay by
+# merging or retiring a rule, or by moving a path-scoped rule to its area file.
 #
 # learnings_budgets:
-#   core.md: {kb: 24, reason: "the fleet-wide rules; the 2026-09 sweep is done"}
+#   core.md: {kb: 16, reason: "the owner's call", owner_approved: 2026-09-24}
 #   critic.md:
 #     kb: 20
 #     reason: "review protocol rules, and reviewers read this file every cycle"
@@ -434,15 +442,15 @@ coverage_required: false
 #   inside quotes: quote any reason containing a `#`.
 
 # =============================================================================
-# OPERATOR VERIFICATION (opt-in, v1.4+)
+# OPERATOR VERIFICATION (opt-in)
 # =============================================================================
-# When true, `/pr create` BLOCKS if `.prawduct/operator-verification.md`
+# When true, `/prawduct:pr create` BLOCKS if `.prawduct/operator-verification.md`
 # has any entry with `**Status:** pending`. The queue records pre-merge
 # human-verification items for visual / live-integration changes that
 # automated tests can't fully cover. Drain via
 # `prawduct-hook verify-operator-verification <VRF-id>` or
-# override per-PR with `/pr create --accept-pending-verification "rationale"`.
-# Default off in v1.4 — opt-in by setting `operator_verification_required: true`.
+# override per-PR with `/prawduct:pr create --accept-pending-verification "rationale"`.
+# Default off — opt in by setting `operator_verification_required: true`.
 
 operator_verification_required: false
 
@@ -493,7 +501,7 @@ operator_verification_required: false
 review_round_budget: 6
 
 # =============================================================================
-# API VERSIONING DECISION (advisory resolution fact, v2.2+)
+# API VERSIONING DECISION (advisory resolution fact)
 # =============================================================================
 # The committed "answer store" fact the `api-versioning` sync probe consults.
 # When the product exposes a programmatic interface (detected from the code —
@@ -507,18 +515,18 @@ review_round_budget: 6
 # api_versioning_decided:
 
 # =============================================================================
-# BACKLOG (structured backlog resolution conditions, v1.7+)
+# BACKLOG (structured backlog resolution conditions)
 # =============================================================================
 # The shared "answer store" (committed) that backlog sync probes consult to
 # know whether a migration nudge is still needed. The per-clone nag log lives
 # in .prawduct/.advisories.json; these committed facts auto-resolve a
-# teammate's advisory on next sync (see post-sync-advisory-spec.md §3.5, §7.1).
+# teammate's advisory on next sync.
 #
-#   backlog_format_version  — set to 2 once `/backlog migrate` has converted
+#   backlog_format_version  — set to 2 once `/prawduct:backlog migrate` has converted
 #                             items to the [PFX-XXXX] structured format. Unset
 #                             (or absent) means legacy/unmigrated; the
 #                             `legacy-backlog-format` probe may nudge.
-#   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /backlog
+#   backlog_prefixes        — OPTIONAL declared prefix vocabulary for /prawduct:backlog
 #                             validation (e.g. [STH, CRT, SYN]). Emergent by
 #                             default; declare only if you want validation.
 #   backlog_backend         — set to `markdown` to declare that this product is
@@ -540,10 +548,10 @@ review_round_budget: 6
 #                             are set — having migrated beats declaring you
 #                             never will.
 #
-# Reserved for deferred backlog probes (v1.7 ships only legacy-backlog-format):
+# Also read by the backlog probes:
 #   backlog_external_imports — list of external backlog files already audited
-#                              via `/backlog import` (resolves external-detected).
-#   backlog_last_groomed_at  — ISO-8601 of the last /backlog list|pick (resolves
+#                              via `/prawduct:backlog import` (resolves external-detected).
+#   backlog_last_groomed_at  — ISO-8601 of the last /prawduct:backlog list|pick (resolves
 #                              overdue-grooming).
 
 # backlog_format_version:

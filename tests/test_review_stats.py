@@ -691,8 +691,47 @@ class TestDurationProvenanceSplit:
             _event(duration=600),
         ])
         out = _run(repo).stdout
-        assert "measured 1 (median 240.0s)" in out
-        assert "self-reported 1 (median 600s)" in out
+        assert "duration clocked 1 (total 240.0s, median 240.0s)" in out
+        assert "unclocked, self-reported estimate 1 (total 600s, median 600s)" in out
+
+    def test_the_headline_leads_with_the_clock_when_the_two_disagree(self, tmp_path):
+        """#882's headline defect. The two clocked reviews estimate themselves at
+        600s and took 240s and 360s; the one unclocked review estimates 300s.
+        The old headline was the median of every ESTIMATE (600s), printed first
+        and unlabelled. The line must now lead with the clocked figure, name the
+        rest as an estimate, and print no pooled estimate at all."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(duration=600, dispatched_at="2026-06-10T11:56:00Z"),  # 240s clocked
+            _event(duration=600, dispatched_at="2026-06-10T11:54:00Z"),  # 360s clocked
+            _event(duration=300),
+        ])
+        overall = next(
+            line for line in _run(repo).stdout.splitlines() if line.startswith("overall:")
+        )
+        clocked = "duration clocked 2 (total 600.0s, median 300.0s)"
+        estimate = "unclocked, self-reported estimate 1 (total 300s, median 300s)"
+        assert clocked in overall
+        assert estimate in overall
+        assert overall.index(clocked) < overall.index(estimate), "the clock must lead"
+        # The pooled estimate (median of 600/600/300 = 600s) is gone from the
+        # line a reader takes the first number from.
+        assert "duration total" not in overall
+        assert "median 600" not in overall
+
+    def test_the_json_keys_keep_their_meaning(self, tmp_path):
+        """The control for the rendering change: `--json` is a published
+        contract, so the older keys still carry the estimate over every review
+        that had one. No key is repurposed, so no schema version moves."""
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(duration=600, dispatched_at="2026-06-10T11:56:00Z"),
+            _event(duration=300),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["schema_version"] == 7
+        assert report["overall"]["duration_total_seconds"] == 900
+        assert report["overall"]["duration_median_seconds"] == 450
 
 
 def _finding(severity: str = "note", *, recommendation=..., files=("a.py",)) -> dict:

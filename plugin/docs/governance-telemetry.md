@@ -33,28 +33,32 @@ kind-named key (`review` for `review.*`):
 - `scope` is the build-plan feature key (derived by `critic-begin` from the branch name, or passed explicitly as an override;
   the `active_build_plan` pointer is only the fallback).
 - `duration_seconds` and `actor.model` are nullable — recorded, never invented.
+  `duration_seconds` is the reviewing model's **own estimate**, never a clock. The clock is the
+  optional `dispatched_at` key, written only when the review's dispatch was marked before the
+  reviewer was spawned; its interval ends at `ts` (at `review_written_at` on a `review.pr` that
+  carries it). An absent key means *not measured*, never zero. `lib/review_dispatch.py` owns the
+  interval, and every reader goes through it.
 - `review.critic` (the Critic, after writing its findings file) and
   `review.pr` (the `/prawduct:pr` skill after the PR review, via
   `--findings <evidence-path>` — required for `review.pr`, rejected for
   `review.critic`, whose only trusted source is the canonical
-  `.critic-findings.json`). `build.chunk` / `plan.authored` /
-  `discovery.session` are accommodated by the envelope and deliberately not
-  yet produced.
-- `learning.written` and `learning.fired` — the learning loop, below.
+  `.critic-findings.json`).
+- `learning.written`, `learning.fired` and `learning.compacted` — the learning loop, below.
 - **Consumers skip unknown event kinds and unknown fields** — that contract is
   what lets producers grow without migrating the ledger.
 
 ## The learning-loop events
 
-Measure the loop or do not claim it. Two kinds record what the rules corpus
+Measure the loop or do not claim it. Three kinds record what the rules corpus
 actually does, so an audit reads a number instead of sampling transcripts:
 
 | kind | `actor.role` | emitted by | means |
 |---|---|---|---|
 | `learning.written` | `builder` | the Stop hook, after the learnings budget check | a rule unit that is new since this session's base revision, **committed work included** |
 | `learning.fired` | `critic` | `critic-consolidate`, after the `review.critic` anchor | a consolidated finding quoted a rule's opening words |
+| `learning.compacted` | `builder` | `learnings-compact --apply` | a rule was rewritten or merged: `from_hash` is the unit it was, `unit_hash` the unit it became. `review-stats` reads citations and authorship through it, and the Stop hook does not count the new unit as written |
 
-Both nest under a `learning` key, under the same envelope:
+All three nest under a `learning` key, under the same envelope:
 
 ```json
 {"schema_version": 1,
@@ -129,7 +133,7 @@ The format is lock-in, so the queries came before the fields:
    as a floor, not a census:** a rule fires only when a reviewer QUOTES it, so
    a rule that shaped a finding without being quoted reads here as never fired.
    The instruction to quote lives with the reviewers (`agents/critic-reviewer.md`,
-   and `review-cycle.md` for the cross-check), but nothing enforces it — so this
+   and `cross-checks.md` for the cross-check), but nothing enforces it — so this
    answer under-counts by however often reviewers paraphrase.
 4. **All of the above across a fleet** — key by the envelope's `project`.
 
@@ -143,29 +147,31 @@ Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt
 lines, kinds it aggregates neither of, and unusable payloads **with counts**
 (never silently). A `learning.*` event carrying no `unit_hash` is an
 `invalid_payload`, not a skip nobody names — it can answer none of the four
-questions. A `learning.` kind this report has no column for stays
-`unknown_kinds`, which is what that key has always meant. Missing ledger → "no
+questions. A `learning.` kind this report has no column for counts
+under `unknown_kinds`. Missing ledger → "no
 review history", exit 0. Exit 1 only on bad arguments — **including a window bound this reader
 cannot interpret**, which is refused rather than filtered on as a bare string: a bound silently
 meaning something other than what was typed moves events between the halves of a before/after
 comparison, and the difference is then attributed to whatever change was under test.
 
 Per grouping — overall, `actor.role` × `actor.model` × review mode,
-per-`scope`, and per review `stage` — it reports: review count, total/median `duration_seconds`,
-findings by severity, **actionable rate** (share of reviews with ≥1
+per-`scope`, and per review `stage` — it reports: review count; duration led by the **clocked**
+population (reviews whose dispatch was marked) and then the **unclocked** reviews' self-reported
+estimate, labelled as one — two disjoint populations, never pooled; findings by severity, **actionable rate** (share of reviews with ≥1
 blocking/warning), and findings-per-review. Plus a findings-by-file rollup
 from per-finding `files` attribution (top paths by actionable findings,
 capped at 10 with the total attributed count alongside).
 
 ### The `--json` contract
 
-The machine shape is the seam cross-project aggregation (TEL-7A4X) builds on.
+The machine shape is the seam cross-project aggregation builds on.
 Top-level keys, in order:
 
 ```
 schema_version   report schema (bumped on any key change — pinned by
                  tests/test_review_stats.py)
-project          repo directory name
+project          the repo's identity: product_identity.name, else the push
+                 remote's repository name, else the main checkout's directory
 generated_at     ISO-8601 UTC
 window           {since, until} — the bounds in force, stated even when both
                  are null so a slice is never mistaken for the whole corpus
@@ -186,15 +192,17 @@ units minus the set of fired ones (never a subtraction of the two counts — the
 are not nested, and on a repo whose corpus predates the telemetry they are disjoint): the
 rules no review has ever cited among those WRITTEN since the telemetry shipped — a floor under
 question 3 (whose full answer is the corpus's units minus the fired set), reported rather than
-by hand. They are **not** in `events_total`, which means reviews and is read as
-such; and they are no longer skips.
+by hand. They are **not** in `events_total`, which counts reviews.
 
 Stat block: `reviews`, `duration_total_seconds`, `duration_median_seconds`
-(null when no event carried a duration), `duration_measured` /
+(the reviewing models' **estimates** over every review that carried one, clocked reviews
+included; null when no event carried one — kept because a published key is never dropped or
+repurposed, and not what the human headline shows), `duration_measured` /
 `duration_self_reported` (each `{reviews, total_seconds, median_seconds}` —
-a clock read either side of dispatch and the reviewing model's own
-recollection are two populations, and a median over the mixture measures
-neither; schema 6 added them), `findings`
+a clock read either side of dispatch, and the estimate of the reviews that have NO clock:
+two disjoint populations, because a median over the mixture measures
+neither; schema 6 added them — the human line leads with the first and labels the second an
+estimate), `findings`
 (`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
 `actionable_rate` (0–1), `observations` (items an inner-stage pass demoted —
 never counted in `findings`), `reviews_recording_observations`
@@ -225,9 +233,8 @@ describe the windowed population, so two adjacent windows partition the corpus a
 consumer summing them double-counts nothing. A human report carries a `WINDOW:` banner when either
 bound is set.
 
-The predicates live in `lib/timewindow.py` and are shared with `tools/pr-review-yield.py` — the two
-instruments grade the same before/after split, and while each kept its own copy the lower bound had
-already diverged.
+The predicates live in `lib/timewindow.py` and are shared with `tools/pr-review-yield.py`, so the two
+instruments grade a before/after split identically.
 
 `by_stage` groups on the record's `stage` — `inner` (`chunk`, `final`, `verify-resolutions`) or
 `boundary` (`cumulative`), stamped by `critic-begin` and carried through the fact and the findings
@@ -245,7 +252,7 @@ Model keys are **folded to a family label** (`opus` / `sonnet` / `haiku` /
 `fable`): one model is recorded under several id strings (`opus`,
 `claude-opus-4-8`, `claude-opus-4-8[1m]` are all `opus`), so the aggregation
 key collapses the aliases — otherwise the reviewer-model dimension fragments
-into noise (TEL-4M9X). An unfamiliar id passes through verbatim (never bucketed
+into noise. An unfamiliar id passes through verbatim (never bucketed
 under a known family). This folds **values, not keys**, so `schema_version`
 holds; the raw id stays in each ledger line untouched, so the fold is a
 read-time view, not a rewrite.

@@ -164,19 +164,33 @@ def _read_events(
     skipped = {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
     learning = {"written": 0, "fired": 0}
     units: dict[str, set] = {"written": set(), "fired": set()}
+    # `learning.compacted`: old unit -> the unit a compaction rewrote it into.
+    # Every set is read THROUGH this map at the end, so a rule keeps the
+    # citations and the authorship it had before it was shortened.
+    became: dict[str, str] = {}
     events: list[dict] = []
 
+    def _now(unit: str) -> str:
+        # The walk has one home (`ledger.canonical_unit`); this reader builds
+        # `became` in file order, so the NEWEST mapping wins here as it does in
+        # `ledger.compaction_map`.
+        from . import ledger  # noqa: PLC0415 — lazy; telemetry stays import-light
+
+        return ledger.canonical_unit(became, unit)
+
     def _finish() -> dict:
+        written = {_now(u) for u in units["written"]}
+        fired = {_now(u) for u in units["fired"]}
         return {
             "written": learning["written"],
             "fired": learning["fired"],
-            "units_written": len(units["written"]),
-            "units_fired": len(units["fired"]),
+            "units_written": len(written),
+            "units_fired": len(fired),
             # A SET difference, never a difference of sizes: the two sets are
             # not nested — a rule authored before the emitter shipped can fire
             # without ever being written — and on a migrated fleet repo they
             # are disjoint, where a size subtraction reads 0 forever.
-            "units_uncited": len(units["written"] - units["fired"]),
+            "units_uncited": len(written - fired),
         }
 
     try:
@@ -204,6 +218,15 @@ def _read_events(
         if not in_window(event.get("ts"), since, until):
             continue
         kind = event["event"]
+        if kind == "learning.compacted":
+            payload = event.get("learning")
+            old = payload.get("from_hash") if isinstance(payload, dict) else None
+            new = payload.get("unit_hash") if isinstance(payload, dict) else None
+            if isinstance(old, str) and isinstance(new, str) and old and new:
+                became[old] = new
+            else:
+                skipped["invalid_payloads"] += 1
+            continue
         if kind in _LEARNING_KINDS:
             payload = event.get("learning")
             unit = payload.get("unit_hash") if isinstance(payload, dict) else None
@@ -384,11 +407,14 @@ def _group_stats(rows: list[dict]) -> dict:
         }
     recording = [r["observations"] for r in rows if r["observations"] is not None]
     # The two populations, never pooled. `duration_total_seconds` and
-    # `duration_median_seconds` below are the POOLED figures every existing
-    # consumer already reads; they are kept because dropping a published key is a
-    # breaking change, but a caller grading a protocol change reads the split —
-    # a median over a mixture of clock readings and model recollections is not a
-    # measurement of anything.
+    # `duration_median_seconds` below are older keys: the reviewers' own
+    # ESTIMATES over every review that carried one, clocked rows included. They
+    # are kept because dropping or repurposing a published key is a breaking
+    # change, and they are not the headline — the human line leads with
+    # `duration_measured` and names the unclocked estimate as one, and a caller
+    # grading a protocol change reads the split, because a median over a
+    # mixture of clock readings and model recollections is not a measurement of
+    # anything.
     measured = [r["duration_measured"] for r in rows if r["duration_measured"] is not None]
     self_reported = [
         r["duration"] for r in rows
@@ -661,28 +687,42 @@ def aggregate_review_stats(
     }
 
 
+def _fmt_population(label: str, population: dict) -> str:
+    """One duration population for the human line: its count, then its total
+    and median when it has any — an empty one prints its zero and no median,
+    never a ``0s`` median that reads as reviews that took no time."""
+    if population["median_seconds"] is None:
+        return f"{label} {population['reviews']}"
+    return (
+        f"{label} {population['reviews']} (total {population['total_seconds']}s, "
+        f"median {population['median_seconds']}s)"
+    )
+
+
 def _fmt_stats(stats: dict) -> str:
     """One stat block as a human line fragment (shared by every grouping)."""
     f = stats["findings"]
     meas, self_rep = stats["duration_measured"], stats["duration_self_reported"]
-    med = stats["duration_median_seconds"]
     pct = round(stats["actionable_rate"] * 100)
     recording = stats["reviews_recording_observations"]
     observations = (
         f"observations {stats['observations']} in {recording} recording review(s)"
         if recording else "observations not recorded"
     )
-    # Provenance is stated wherever a duration is, so a reader cannot take a
-    # median for a measurement without being told how much of it was measured.
-    provenance = (
-        f"measured {meas['reviews']}"
-        + (f" (median {meas['median_seconds']}s)" if meas["median_seconds"] is not None else "")
-        + f", self-reported {self_rep['reviews']}"
-        + (f" (median {self_rep['median_seconds']}s)" if self_rep["median_seconds"] is not None else "")
-    )
+    # The headline LEADS with the clock and names the estimate as one. The
+    # pooled `duration_total_seconds` / `duration_median_seconds` keys are the
+    # reviewers' own estimates over every review that carried one — clocked rows
+    # included — and a headline built from them read 420s on a ledger whose
+    # clocked median was 209s. They stay in `--json` (dropping a published key
+    # is a breaking change) and leave the human line, where a reader takes the
+    # first number for the measurement.
+    #
+    # The estimate shown is the population with NO clock, so the two figures
+    # cover disjoint reviews and never describe the same round twice.
     return (
-        f"{stats['reviews']} review(s) | duration total {stats['duration_total_seconds']}s, "
-        f"median {med if med is not None else '-'}s [{provenance}] | "
+        f"{stats['reviews']} review(s) | "
+        f"{_fmt_population('duration clocked', meas)}; "
+        f"{_fmt_population('unclocked, self-reported estimate', self_rep)} | "
         f"B/W/N/other {f['blocking']}/{f['warning']}/{f['note']}/{f['other']} | "
         f"actionable {pct}% | {stats['findings_per_review']} findings/review | "
         f"{observations}"
@@ -838,7 +878,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
     # JSON and human renderings always agree.
     report = {
         "schema_version": report.pop("schema_version"),
-        "project": project_dir.resolve().name,
+        "project": gitstate.project_label(project_dir),
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         # Stated even when null. A windowed report and a whole-corpus one are
         # the same shape, and a consumer that cannot tell them apart will

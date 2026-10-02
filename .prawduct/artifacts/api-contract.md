@@ -106,7 +106,9 @@ in `docs/governance-telemetry.md`.
   This ratifies the reading v3.3.3 restored both commands under — that release was the repair, and
   this is the ratification it explicitly said it lacked. The tier permission stands unchanged; the
   atomic-update warrant stays withdrawn, replaced rather than restored.
-  Case law: [[deprecation-requires-an-inert-retention-window]]. The rule this makes fully written is
+  Ruling [[deprecation-requires-an-inert-retention-window]] (homed here since 2026-09-24): when you
+  retire a harness-invoked subcommand, unregister it now and keep it INERT until no supported install
+  still registers it, because plugin pins are per-project and lazy. The rule this makes fully written is
   what unblocks #644's conformance leg from `stage: requirements`.
 
   **Ruled 2026-08-26 (v3.4.1-dev) — a default that violates a higher norm is withdrawn outright, not
@@ -136,7 +138,9 @@ in `docs/governance-telemetry.md`.
   Category-level: **an inert-retention window is a courtesy the deprecating norm extends, not one it
   can extend on another norm's behalf** — when two norms collide the question is not which is senior,
   but which one's stated *warrant* has stopped holding.
-  Case law: [[inert-retention-cannot-be-extended-across-norms]]. Qualifies, and does not retire,
+  Ruling [[inert-retention-cannot-be-extended-across-norms]] (homed here since 2026-09-24): when the
+  behaviour an inert-retention window would preserve IS a violation of another ratified norm,
+  withdraw it outright, and the withdrawal must fail CLOSED. Qualifies, and does not retire,
   [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
   whose retained behaviour is inert rather than itself non-conforming.
 
@@ -150,7 +154,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
   overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted — see
   § Error Model), `critic-consolidate`
-  (merge partials → evidence fact, mutating), `critic-end`, `critic-discard` (archive-then-remove a
+  (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
+  and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
+  the ledger append after it still consumes the mark), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list`, `ledger-append`
@@ -172,6 +178,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Test evidence** — `test-evidence record` (mutating), `test-status` (freshness), `validate-evidence`.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
+- **Stranded work** — `worktrees [--json]` (read-only): every worktree with its inferred liveness
+  (active / recent / idle / unknown / missing, and which signal decided it) and uncommitted-file
+  count, plus the local branches checked out nowhere whose tip no remote-tracking ref reaches, with
+  their commit counts. The session briefing renders the worktree half as counts that name nothing;
+  each stranded branch is a `branch-landing:stranded-branch` advisory. Exit 0 whenever a report was
+  produced — a partial one names its failed probes in it — and 2 on an unknown argument.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
@@ -192,6 +204,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `ledger-append` gained two event kinds it refuses at the CLI; `review-stats --json` moved to
   `schema_version` 5 (a `learning` block added, then its `units_uncited` key, then the verify-pass `observations` counts, then a `by_stage` grouping; no key repurposed). Nothing a consumer allowlisted
   changed meaning.
+  **learnings-one-line (2026-09-24)** adds `learnings-compact [--plan [--force]|--apply] [--local]
+  [--json]` (mutating with `--apply`): `--plan` writes a worksheet under
+  `<git-common-dir>/prawduct/learnings-compact/`, the agent records one decision per rule, the bare
+  form validates it as a dry run, and `--apply` writes one-line rules under the caps and records a
+  `learning.compacted` event per rewritten rule. It refuses an undecided row, an unapproved drop, a
+  `moved-to` whose text is not at its destination, a corpus edited since `--plan`, an area file over
+  its budget, and uncommitted rules files (the commit is the undo; `--local` keeps a verified backup
+  instead). Exit 0 written or would write, 1 refused or could not run, 2 usage, as its siblings.
+  `learnings_budgets.core.md` now needs an `owner_approved: YYYY-MM-DD` date to count, and
+  `ledger-append` refuses the new `learning.compacted` kind like the other two. Additive: no flag,
+  exit code or key changed meaning.
 - **Learnings lifecycle (retired with learnings v2)** — `audit-learnings`, `learnings-obligation`,
   `check-learnings-pairing` (deprecated, inert): the corpus they graded — `.prawduct/learnings.md`
   and its detail/history pair — no longer exists; rules are harness-loaded from
@@ -388,7 +411,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
 - **Inputs:** subcommand argv (each subcommand parses its own flags; unknown flags are rejected
   except where § Operations records otherwise — five deliberate non-refusers and nine unaudited),
   and — for the hook subcommands — a JSON event payload on **stdin** (e.g. `stop` reads
-  `background_tasks`; `subagent-stop` reads `cwd`/`agent_type`).
+  `background_tasks` and `last_assistant_message`, the second only for the turn's closing block — its
+  clear verdict and disposition;
+  `subagent-stop` reads `cwd`/`agent_type`).
 - **Human-readable output:** most subcommands print prefixed text (see Error Model). Skills consume
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
@@ -399,9 +424,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     Keys (`structural_recorded`,
     `discovery_expected`, `missing_artifacts[]`, `norms_unratified`, `active_layer`, `fix` /
     `applied`, `created[]`, and `risk_surfaces: {status, fix}` — outside the chain; `status` is
-    `declared` / `undeclared` / `unparseable` / `not-owed`, or null when the check could not run,
-    read from the same classification the ambient risk-surfaces advisory fires on; Health Check
-    #20 consumes it). `discovery_expected` is the layer-0 staging half, and it has **three**
+    `declared` / `undeclared` / `unparseable` / `not-owed`, or null when the check could not run
+    (`lib/risk.risk_surfaces_status`); Health Check #20 consumes it. Since 2026-09-26 nothing asks
+    for the key, so `fix` is set for `unparseable` only — `undeclared` stopped being a finding; the
+    key and its status values are unchanged, per the additive-first norm). `discovery_expected` is the layer-0 staging half, and it has **three**
     states, not two. **False** = no product work *this scan recognises* — it reads source by suffix
     allowlist (`#561`), so a repo in an unlisted language reads the same as an empty one; with
     `active_layer: null` that means "nothing owed yet", never "chain satisfied". **Null** on
@@ -457,6 +483,13 @@ files to touch previews first. That framing is descriptive — the binding rule 
     repo-disable skill documents and runs only the bare form. A row naming a consumer that parses
     nothing is inert, which is exactly why it does not fail — so this list is checked by re-running
     its own premise against each row, not by reading it.
+  - `worktrees --json` → **no skill consumer today**: top-level `schema_version`, `worktrees[]`
+    (`path`, `branch` — null when detached — `is_current`, `ephemeral`, `state`, `last_activity`
+    as `{source, at}` or null, `dirty` — null when git could not be asked), `branches[]` (`name`,
+    `last_commit`, `unique_commits` — null when the count failed), `worktrees_checked` (false when
+    git could not list worktrees: every count is then "not checked", never "none"), `has_remotes`,
+    `problems[]`. The briefing and the advisory read the report in-process, not this payload.
+    Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
@@ -748,7 +781,8 @@ Evolution rules we want to hold, so new versions stay rare:
   `null` when it produced no answer.
 - **Internal / lifecycle surface** (called by the harness or by consolidation, not a public
   contract): `clear`, `stop`, `subagent-stop`, `critic-begin`, `critic-consolidate`,
-  `learnings-migrate` (run once per repo from the session-start directive).
+  `learnings-migrate` (run once per repo from the session-start directive), `learnings-compact`
+  (run from the session-start directive when a corpus is over its limits).
   **`backlog <op>` sits in this tier on different grounds:** its callers are the
   `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
   ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
