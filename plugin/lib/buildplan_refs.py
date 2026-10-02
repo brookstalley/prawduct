@@ -1774,6 +1774,59 @@ def _names_a_live_git_ref(token: str, project_dir: "Path | None") -> bool:
     return names is not None and token in names
 
 
+#: Per-repo cache of the ``owner/repo`` slugs this checkout's remotes point at,
+#: casefolded. One subprocess per repo for the same reason as the ref cache
+#: above, and never invalidated for the same reason.
+_GIT_REMOTE_SLUGS_CACHE: "dict[str, frozenset[str]]" = {}
+
+
+def _git_remote_slugs(project_dir: Path) -> "frozenset[str]":
+    """The GitHub ``owner/repo`` of every configured remote, casefolded.
+
+    Empty when git cannot answer. Unlike :func:`_git_ref_names` there is no
+    third state to keep: the only use is to EXCUSE a token, so "could not ask"
+    and "no remote" both mean "keep checking it", which is the direction this
+    module fails in. A non-GitHub remote yields no slug for the same reason —
+    ``parse_remote_url`` is the one parser of remote URLs, and a remote it
+    cannot read leaves the token checked rather than guessed at.
+    """
+    key = str(project_dir)
+    if key in _GIT_REMOTE_SLUGS_CACHE:
+        return _GIT_REMOTE_SLUGS_CACHE[key]
+    from .backlog.upstream import parse_remote_url  # noqa: PLC0415 — lazy; only a slug-shaped token pays for it
+
+    slugs: "frozenset[str]" = frozenset()
+    try:
+        proc = subprocess.run(
+            ["git", "config", "--get-regexp", r"^remote\..*\.url$"],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if proc.returncode == 0:
+            slugs = frozenset(
+                slug.casefold()
+                for line in proc.stdout.splitlines()
+                if (slug := parse_remote_url(line.partition(" ")[2]))
+            )
+    except (OSError, subprocess.SubprocessError):
+        pass  # empty: the token stays checked, which is this cache's fail direction
+    _GIT_REMOTE_SLUGS_CACHE[key] = slugs
+    return slugs
+
+
+def _names_a_configured_remote(token: str, project_dir: "Path | None") -> bool:
+    """Is ``token`` the ``owner/repo`` of one of this checkout's remotes?
+
+    Asked of git rather than decided by shape: ``docs/api`` and
+    ``brookstalley/prawduct`` are the same shape, and only one is a path.
+    """
+    if project_dir is None or token.count("/") != 1:
+        return False
+    return token.casefold() in _git_remote_slugs(project_dir)
+
+
 def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool:
     """A backticked token is a precise file-path reference only when it
     contains ``/`` — i.e. the chunk author wrote a specific relative path.
@@ -1781,10 +1834,11 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     conceptual references whose actual location varies, so they're not
     verifiable in a useful way.
 
-    Slash-commands (``/prawduct:pr``, ``/prawduct:backlog``, ``/prawduct:critic``) also contain
-    ``/`` but are not file paths. Exclude tokens that start with ``/``,
-    have no further ``/``, and contain no ``.`` — that shape is a single
-    slash-command identifier, not a path.
+    A token anchored anywhere but the repo root is not a deliverable this
+    verifier can check: an absolute path (``/usr/local/bin/lane-status``, on a
+    host the plan describes), a home path (``~/testruns``), or a slash-command
+    (``/prawduct:pr``), which is the same leading-``/`` shape. Resolving one
+    against the repo asks about a file nobody claimed lives there.
 
     Glob patterns written in prose (e.g. ``docs/requirements/*.md`` in a Tests
     bullet) also contain ``/`` but name a *set*, not a literal file — a literal
@@ -1835,12 +1889,17 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     branches are the case a dot-presence test gets wrong — see the note on
     ``_FILE_EXTENSION_RE``.
 
+    A repo slug (``brookstalley/prawduct``) is path-shaped too, and is excused
+    the same way a live ref is: only when git confirms it, here as the
+    ``owner/repo`` of a configured remote (:func:`_names_a_configured_remote`).
+    Any other slug stays checked, so ``docs/api`` is never skipped for its shape.
+
     ``project_dir`` is optional because :mod:`lib.risk` shares this predicate to
     classify tokens in a diff, where there is no plan and no repo question to
-    ask; omitting it is the pre-#537 behaviour exactly."""
+    ask; omitting it skips both git questions."""
     if "/" not in token:
         return False
-    if token.startswith("/") and "/" not in token[1:] and "." not in token:
+    if token.startswith(("/", "~")):
         return False
     if any(ch in token for ch in "*?["):
         return False
@@ -1851,6 +1910,8 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     if "#" in token:
         return False
     if _names_a_live_git_ref(token, project_dir):
+        return False
+    if _names_a_configured_remote(token, project_dir):
         return False
     first, _, rest = token.partition("/")
     if first in _GIT_REF_PREFIXES and not _has_file_extension(rest.rsplit("/", 1)[-1]):
@@ -3177,8 +3238,9 @@ def _verify_chunk_refs(project_dir: Path, refs: dict) -> list[dict]:
     might be prose (a repo slug, a placeholder). A gate that guesses "probably
     not a file" fails open on exactly the input it exists to judge; the author
     disambiguates in the plan instead — placeholders as ``<owner>/<repo>``,
-    real repositories unbackticked or as URLs, both of which this module
-    already declines to treat as paths.
+    other repositories unbackticked or as URLs, both of which this module
+    already declines to treat as paths. This repo's own remotes need neither:
+    git confirms those, so :func:`_looks_like_file_path` excuses them.
     """
     missing: list[dict] = []
     ref_root = _ref_root(project_dir)

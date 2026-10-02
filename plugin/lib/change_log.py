@@ -33,7 +33,9 @@ a *historical* entry may contain. Keys, and who reads them:
   reads it and the commands that wrote it are inert. Release-pending is now
   carried by the ABSENCE of ``release=`` alone. Historical entries carrying
   either value still parse, because the parser preserves unknown keys and both
-  are now among them.
+  are now among them. A tag line a change adds or edits that still carries
+  either is refused at the PR boundary when the log is tracked
+  (:data:`RETIRED_TAG_KEYS`).
 
 Unknown keys are preserved verbatim so a future reader can pick them up without
 a schema bump. Entries with no tag line are ignored — untagged historical
@@ -264,6 +266,30 @@ def _is_standalone_tag_line(line: str) -> bool:
         return False
     tags, _conflicts = parse_tag_line_with_conflicts(match.group(1))
     return bool(tags)
+
+
+#: Keys a tag line being written must not carry. The parser keeps accepting them, because
+#: every onboarded repo's history is full of them; what it cannot do is tell an
+#: author they are dead, and a key that parses clean looks live. Copied forward
+#: from a neighbouring entry, ``chunks=`` kept reaching PR review. The
+#: PR-boundary entry probe refuses one by reading this set, so retiring a third
+#: key is one edit here.
+RETIRED_TAG_KEYS = ("chunks", "status")
+
+
+def retired_keys_on(line: str) -> list[str]:
+    """The retired keys ``line`` sets, in :data:`RETIRED_TAG_KEYS` order.
+
+    Empty for any line that is not a standalone tag line, so a sentence quoting
+    an old tag line (as this log's own history does) is not one. Callers pass
+    only the lines a change ADDED, which keeps historical entries out of it.
+    An edited old tag line is an added line too, and is meant to be caught: a
+    change that touches the line can drop the dead key in the same edit.
+    """
+    if not _is_standalone_tag_line(line):
+        return []
+    tags, _conflicts = parse_tag_line_with_conflicts(TAG_LINE_RE.search(line).group(1))
+    return [key for key in RETIRED_TAG_KEYS if key in tags]
 
 
 # Three or four numeric parts: some products tag four (`v1.2.3.4`), and refusing

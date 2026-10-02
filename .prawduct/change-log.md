@@ -5,6 +5,34 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-02: record-lint stops flagging out-of-repo refs; the PR entry probe refuses retired tag keys
+
+<!-- prawduct: type=bugfix | scope=record-lint-945-939 -->
+
+Two record-lint defects that the sibling-repo audit of 3.7.0-dev counted as review cost.
+
+**#945, false `chunk-ref-missing`.** `_looks_like_file_path` treated three non-repo token shapes
+as deliverable paths: absolute paths (a binary on a remote host), `~/` paths, and the repo's own
+`owner/repo` slug. A correct plan therefore drew a BLOCKING finding. These were 12 of the 61
+blocking findings on 3.7.0-dev. **Root cause:** the predicate excused only the slash-command form
+of a leading `/` and had no answer for a slug, so it fell through to "path". **Fix:** a token
+anchored at `/` or `~` is not a repo path. That rule covers slash-commands, so the narrower
+carveout is gone. A slug is excused only when git names it as the GitHub `owner/repo` of a
+configured remote, read once per repo from `git config` and parsed by the existing
+`parse_remote_url`. It is not decided by shape, so `docs/api` and other repos' slugs stay
+checked.
+
+**#939, retired `chunks=` and `status=` keys on new tag lines.** The parser still accepts both
+for history, and nothing told an author they are dead. The PR reviewer caught three
+recurrences. **Root cause:** no check read the added tag lines. **Fix:**
+`change_log.RETIRED_TAG_KEYS` is the one list of retired keys, and `retired_keys_on` reads it.
+On a tracked log, the PR Step 1c entry probe refuses a retired key with `retired-key`, reading
+only the tag lines the branch adds or edits. Step 1c is where the entry is written, after the
+last Critic review, so a record-lint check would have run before the entry existed and caught
+none of the recurrences. It was built and dropped in this change. Untouched historical entries
+still parse and are never flagged. CL4 in `governance-artifact-lifecycle-requirements.md` is
+amended by owner ruling to allow the probe's one tag read.
+
 ## 2026-09-27: a `Re-affirmed:` field answers dead-why for the ids it names
 
 <!-- prawduct: type=bugfix | scope=dead-why-reaffirmed -->
