@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.0-dev.3
+## v3.7.0-dev.4
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
@@ -106,6 +106,15 @@ whose tags have four numeric parts can now stamp them (`release=v1.2.3.4`, with 
 `archive-change-log` and `check-releasability`. Placeholders such as `release=unreleased`, and
 two- or five-part values, are still refused. The refusal now tells you what to do in each case:
 if the entry shipped, correct the value; if it has not, delete the tag.
+
+**`record-lint-945-939`** (#945, #939) — **fewer false blockers from the deliverable check, and
+retired change-log keys stop at the PR.** A plan that names an absolute path (`/usr/local/bin/x`),
+a home path (`~/runs`) or your repo's own `owner/repo` no longer draws a BLOCKING
+`chunk-ref-missing`. The slug is excused only when git lists it as one of your remotes, so
+`docs/api` and other repos' names are still checked. Separately, when your change-log is
+committed, `check-change-log-entry` now refuses a tag line that the branch adds or edits if it
+still carries the retired `chunks=` or `status=` key. Delete the key and re-run. Old entries are never flagged unless you
+edit them.
 
 **`update-body-lint`** (#898) — **backlog `update` now checks the body it writes.** On the
 Issues backend, `add` reported issue-standard body findings (the word budget, missing sections)

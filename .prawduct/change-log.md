@@ -5,6 +5,14 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-02: develop opens 3.7.0-dev.4
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.4 -->
+
+The dev track's version moves from `3.7.0-dev.3` to `3.7.0-dev.4` in the four carriers, so repos on
+the develop track pick up `record-lint-945-939` (#946). The public changelog's rolling notes gain its
+consumer-facing summary, which that PR did not carry. Owner-directed, 2026-10-02.
+
 ## 2026-10-02: record-lint stops flagging out-of-repo refs; the PR entry probe refuses retired tag keys
 
 <!-- prawduct: type=bugfix | scope=record-lint-945-939 -->
