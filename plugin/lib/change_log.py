@@ -33,7 +33,8 @@ a *historical* entry may contain. Keys, and who reads them:
   reads it and the commands that wrote it are inert. Release-pending is now
   carried by the ABSENCE of ``release=`` alone. Historical entries carrying
   either value still parse, because the parser preserves unknown keys and both
-  are now among them.
+  are now among them. A NEW tag line carrying either is flagged at review and
+  refused at the PR boundary (:data:`RETIRED_TAG_KEYS`).
 
 Unknown keys are preserved verbatim so a future reader can pick them up without
 a schema bump. Entries with no tag line are ignored — untagged historical
@@ -264,6 +265,29 @@ def _is_standalone_tag_line(line: str) -> bool:
         return False
     tags, _conflicts = parse_tag_line_with_conflicts(match.group(1))
     return bool(tags)
+
+
+#: Keys a NEW tag line must not carry. The parser keeps accepting them, because
+#: every onboarded repo's history is full of them; what it cannot do is tell an
+#: author they are dead, and a key that parses clean looks live. Copied forward
+#: from a neighbouring entry, ``chunks=`` kept reaching PR review. Both checks
+#: that catch one (record-lint, the PR-boundary entry probe) read this set, so
+#: retiring a third key is one edit here.
+RETIRED_TAG_KEYS = ("chunks", "status")
+
+
+def retired_keys_on(line: str) -> list[str]:
+    """The retired keys ``line`` sets, in :data:`RETIRED_TAG_KEYS` order.
+
+    Empty for any line that is not a standalone tag line, so a sentence quoting
+    an old tag line (as this log's own history does) is not one. Callers pass
+    only the lines a change ADDED, which is what keeps historical entries out of
+    it: they are not being written, only read.
+    """
+    if not _is_standalone_tag_line(line):
+        return []
+    tags, _conflicts = parse_tag_line_with_conflicts(TAG_LINE_RE.search(line).group(1))
+    return [key for key in RETIRED_TAG_KEYS if key in tags]
 
 
 # Three or four numeric parts: some products tag four (`v1.2.3.4`), and refusing

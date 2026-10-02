@@ -1158,13 +1158,14 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the diff is empty, or holds no judgeable file, or
       * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
-        existing entry's text does not vouch for new work, or
+        existing entry's text does not vouch for new work — and no tag line it
+        adds carries a retired key (``change_log.RETIRED_TAG_KEYS``), or
       * the log is UNTRACKED and the copy on disk holds at least one entry
         (``entry-present-untracked`` — the weaker check of
         :func:`_entry_check_without_history`, which says so).
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
-    ``entry-edited-not-added``, ``no-base``, ``git-failed``). Un-evaluable
+    ``entry-edited-not-added``, ``retired-key``, ``no-base``, ``git-failed``). Un-evaluable
     git state fails closed — the caller falls back to manual judgment rather
     than silently skipping the probe (same posture as ``check_pr_doc_only``).
     An untracked log is not un-evaluable and must not be read as absent: the
@@ -1275,6 +1276,27 @@ def check_change_log_entry(project_dir: Path) -> int:
             f"entry-edited-not-added: {CHANGE_LOG_REL_PATH} changed but no new "
             f"entry header (+## ...) was added — editing an existing entry does "
             f"not vouch for this branch's code changes.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The entry is written HERE, at Step 1c, after the last Critic review has
+    # run record-lint — so this probe is the only mechanism that sees a retired
+    # key on the tag line before the PR reviewer does.
+    from . import change_log  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    retired = sorted({
+        key
+        for line in proc2.stdout.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+        for key in change_log.retired_keys_on(line[1:])
+    })
+    if retired:
+        print(
+            f"retired-key: a tag line this branch adds to {CHANGE_LOG_REL_PATH} "
+            "carries " + ", ".join(f"`{k}=`" for k in retired) + ", which "
+            "nothing reads. Delete it from the new tag line (which chunks "
+            "shipped belongs in the entry body), commit, and re-run.",
             file=sys.stderr,
         )
         return 1

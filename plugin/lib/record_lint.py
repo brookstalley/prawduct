@@ -72,6 +72,7 @@ CHECKS = (
     "chunk-ref-missing",
     "governed-by-gap",
     "suite-total-claim",
+    "change-log-retired-key",
     "learnings-over-budget",
     "learnings-budget-unreasoned",
     "learnings-core-raise-unapproved",
@@ -335,6 +336,34 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
                 "reads it",
             )
         )
+    return findings
+
+
+def _check_retired_tag_keys(path: str, added: "list[tuple[int, str]]") -> list[dict]:
+    """A retired key on a change-log tag line this change ADDED.
+
+    Added lines only, so the log's history — which carries ``chunks=`` and
+    ``status=`` on most of its entries and is never rewritten — stays out of it.
+    """
+    from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    if path != change_log.CHANGE_LOG_REL_PATH:
+        return []
+    findings: list[dict] = []
+    for line_num, text in added:
+        keys = change_log.retired_keys_on(text)
+        if keys:
+            findings.append(
+                _finding(
+                    "change-log-retired-key",
+                    path,
+                    line_num,
+                    "new tag line carries retired "
+                    + ", ".join(f"`{k}=`" for k in keys)
+                    + " — nothing reads it, and leaving it makes it look live. "
+                    "Delete it; which chunks shipped belongs in the entry body",
+                )
+            )
     return findings
 
 
@@ -1520,18 +1549,27 @@ def lint_records(
     if records:
         diffed = _added_lines(project_dir, base_tree, head_tree, records)
         if diffed is None:
-            unchecked.append(
-                "suite-total-claim unchecked — git could "
-                f"not read the diff {base_tree[:12]}..{head_tree[:12]} over the "
-                "changed records"
-            )
-            no_answer.add("suite-total-claim")
+            # Both line-scoped checks lost their input. The retired-key check
+            # had a question only if the change log is among the records.
+            from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+            blind = ["suite-total-claim"]
+            if change_log.CHANGE_LOG_REL_PATH in records:
+                blind.append("change-log-retired-key")
+            for check in blind:
+                unchecked.append(
+                    f"{check} unchecked — git could "
+                    f"not read the diff {base_tree[:12]}..{head_tree[:12]} over the "
+                    "changed records"
+                )
+                no_answer.add(check)
         else:
             added_by_path = diffed
     for rel in records:
         added = added_by_path.get(rel)
         if added:
             findings.extend(_check_suite_totals(rel, added))
+            findings.extend(_check_retired_tag_keys(rel, added))
 
     for rel in _plans_to_check(prawduct_dir, records):
         text = _read_text(project_dir / rel)

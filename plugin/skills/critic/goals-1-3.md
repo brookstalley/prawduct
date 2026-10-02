@@ -50,7 +50,7 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
 recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING** (a declared deliverable that does not exist is a dropped requirement, so it is in the inner set); `learnings-budget-unreasoned`, `learnings-rule-too-long`, `learnings-rule-body` and `learnings-over-budget` → **BLOCKING** at the boundary, an observation here.
-`governed-by-gap`, `learnings-area-dead`, `learnings-core-raise-unapproved` → **WARNING** under Goal 2.
+`governed-by-gap`, `change-log-retired-key`, `learnings-area-dead`, `learnings-core-raise-unapproved` → **WARNING** under Goal 2.
 `suite-total-claim` → **NOTE**.
 **`unchecked` is not a pass: an entry inherits one step below its check's severity** (BLOCKING
 → **WARNING**, else **NOTE**), except the shapes below:
