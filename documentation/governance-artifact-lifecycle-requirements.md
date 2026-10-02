@@ -179,15 +179,15 @@ MUST unless marked SHOULD.
   repos' history is churn with no consumer.
 - **CL3** `check-releasability` continues to derive release-pending scopes from `scope=` plus the
   absence of `release=`. *Unchanged; recorded because it is the only surviving gate over change-log
-  content and the sole reason any tag survives.*
-- **CL4** `check-change-log-entry` continues to gate on a branch adding an entry heading. It never
-  reads tags, so nothing in this tag lifecycle reaches it. *How* it establishes that a heading was
-  added is its own concern and has since grown a second path (`lib/coverage.py`) — do not restate the
-  mechanism here.
-  *Departure, pending owner ruling (2026-10-02, #939):* the probe now also reads added tag lines,
-  for one purpose only: it refuses a CL2-retired key on a tag line the branch adds or edits, so the
-  key stops being copied forward. No tag value changes whether an entry counts. The clause above
-  is left as written until the owner rules on it.
+  tag values and the sole reason any tag survives.*
+- **CL4** `check-change-log-entry` continues to gate on a branch adding an entry heading. It reads
+  tags for one purpose only: it refuses a CL2-retired key on a tag line the branch adds or edits,
+  so the key stops being copied forward. No tag value changes whether an entry counts. *How* it
+  establishes that a heading was added is its own concern and has since grown a second path
+  (`lib/coverage.py`) — do not restate the mechanism here. *Amended 2026-10-02 (owner ruling,
+  #939): this clause said the probe never reads tags. The retired key kept costing PR review
+  rounds, and Step 1c is where the entry is written, after the last Critic review, so the probe is
+  the one point that can refuse it.*
 - **CL5** (SHOULD) At release, the only edit to an entry's *content* is adding `release=vX.Y.Z` to the
   entries that shipped. The three-tag sweep and its selection rule are removed. *Amended 2026-09-16
   (owner direction, `build-plan-change-log-archive.md`): "only edit" once read as "nothing else

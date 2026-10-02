@@ -116,8 +116,7 @@ Severity per check:
 |---|---|---|
 | `chunk-ref-missing` | A deliverable the reviewed chunk *declares* does not exist | **BLOCKING** |
 | `governed-by-gap` | A plan disposes of fewer norms than the cited artifact's `## Direction` carries, cites an artifact that does not exist, or carries a frontmatter no parser can read | **WARNING** (Goal 2 — the paperwork arm below) |
-| `suite-total-claim` | A suite-total test claim on an **added** line of durable prose | **NOTE** |
-| `change-log-retired-key` | An **added** change-log tag line carries `chunks=` or `status=` | **WARNING** |
+| `suite-total-claim` | A suite-total test claim on an **added** line of durable prose — the store already records pass/fail per tree | **NOTE** |
 | `learnings-over-budget` | A `.claude/rules/learnings/` file over budget **and grown since the base tree** (compacted corpus: over at all) | **BLOCKING** |
 | `learnings-rule-too-long` / `learnings-rule-body` | A rule over the line limit, or a body line (uncompacted corpus: added lines only) | **BLOCKING** |
 | `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
@@ -130,7 +129,8 @@ only that reviewer reads it, so splitting the findings by their natural goal los
 
 **The severities above are the other three modes'.** In `verify-resolutions` only the **BLOCKING** rows
 stay findings; the WARNING and NOTE rows become observations like anything else rated below
-BLOCKING (`review-cycle.md` "A re-review does not manufacture work").
+BLOCKING (see `review-cycle.md` "A re-review does not manufacture work" — the general rule is not suspended for this
+table).
 
 **`unchecked` is not a pass: an entry inherits one step below its check's severity** — BLOCKING
 → **WARNING**, else **NOTE**. Each entry names a check that could not run, or an assumption made

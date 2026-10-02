@@ -1045,8 +1045,7 @@ LAST_MEASURED_TOKENS = {
     # New on 2026-09-28 (opus-55-w3b). cross-checks.md holds the reviewer-facing half of the review
     # cycle (C-8), and coordinator.md holds the coordinator's dispatch steps (C-20). Each is loaded on
     # a reviewer route, so each carries a ceiling.
-    # -6 on 2026-10-02 (record-lint-945-939): the change-log-retired-key severity row added (#939), paid in place by cutting two rationales the findings' own detail text already carries; the ceiling lowered with it.
-    "skills/critic/cross-checks.md": 3374,
+    "skills/critic/cross-checks.md": 3380,
     "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -5878,8 +5877,7 @@ class TestReviewCycle:
         # on a coordinator roster, so growth here is paid per reviewer. The next
         # addition trims or relocates; it does not bump.
         tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
-        # RATCHETED 3381 -> 3375 (record-lint-945-939, 2026-10-02) with the reading.
-        assert tokens < 3375, f"cross-checks.md is ~{tokens} tokens, should be <3375"
+        assert tokens < 3381, f"cross-checks.md is ~{tokens} tokens, should be <3381"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).

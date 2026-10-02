@@ -34,7 +34,7 @@ a *historical* entry may contain. Keys, and who reads them:
   carried by the ABSENCE of ``release=`` alone. Historical entries carrying
   either value still parse, because the parser preserves unknown keys and both
   are now among them. A tag line a change adds or edits that still carries
-  either is flagged at review and, on a tracked log, refused at the PR boundary
+  either is refused at the PR boundary when the log is tracked
   (:data:`RETIRED_TAG_KEYS`).
 
 Unknown keys are preserved verbatim so a future reader can pick them up without
@@ -271,9 +271,9 @@ def _is_standalone_tag_line(line: str) -> bool:
 #: Keys a tag line being written must not carry. The parser keeps accepting them, because
 #: every onboarded repo's history is full of them; what it cannot do is tell an
 #: author they are dead, and a key that parses clean looks live. Copied forward
-#: from a neighbouring entry, ``chunks=`` kept reaching PR review. Both checks
-#: that catch one (record-lint, the PR-boundary entry probe) read this set, so
-#: retiring a third key is one edit here.
+#: from a neighbouring entry, ``chunks=`` kept reaching PR review. The
+#: PR-boundary entry probe refuses one by reading this set, so retiring a third
+#: key is one edit here.
 RETIRED_TAG_KEYS = ("chunks", "status")
 
 

@@ -5,7 +5,7 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
-## 2026-10-02: record-lint stops flagging out-of-repo refs and starts flagging retired tag keys
+## 2026-10-02: record-lint stops flagging out-of-repo refs; the PR entry probe refuses retired tag keys
 
 <!-- prawduct: type=bugfix | scope=record-lint-945-939 -->
 
@@ -26,11 +26,12 @@ checked.
 for history, and nothing told an author they are dead. The PR reviewer caught three
 recurrences. **Root cause:** no check read the added tag lines. **Fix:**
 `change_log.RETIRED_TAG_KEYS` is the one list of retired keys, and `retired_keys_on` reads it.
-Two checks use that reader, and both look only at added lines. The record-lint check
-`change-log-retired-key` (WARNING) covers the Critic path. On a tracked log, the PR Step 1c
-entry probe refuses with `retired-key`, because Step 1c is where the entry is written, after the
-last Critic review. An edited old tag line counts as added, so touching one means dropping its
-dead key. Untouched historical entries still parse and are never flagged.
+On a tracked log, the PR Step 1c entry probe refuses a retired key with `retired-key`, reading
+only the tag lines the branch adds or edits. Step 1c is where the entry is written, after the
+last Critic review, so a record-lint check would have run before the entry existed and caught
+none of the recurrences. It was built and dropped in this change. Untouched historical entries
+still parse and are never flagged. CL4 in `governance-artifact-lifecycle-requirements.md` is
+amended by owner ruling to allow the probe's one tag read.
 
 ## 2026-09-27: a `Re-affirmed:` field answers dead-why for the ids it names
 

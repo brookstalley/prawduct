@@ -757,9 +757,9 @@ class TestSameLineDuplicateKeys:
 
 
 class TestRetiredKeysOn:
-    """The one reader of :data:`change_log.RETIRED_TAG_KEYS`. Both checks that
-    catch a retired key on a new tag line call it, so its verdict on prose and
-    on illustrations is their verdict too."""
+    """The one reader of :data:`change_log.RETIRED_TAG_KEYS`. The PR entry probe
+    calls it on every tag line a branch adds, so its verdict on prose and on
+    illustrations is the probe's verdict too."""
 
     @pytest.mark.parametrize(
         ("line", "expected"),

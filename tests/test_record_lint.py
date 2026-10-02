@@ -355,85 +355,6 @@ class TestSuiteTotalClaim:
             assert not self._fires(tmp_path, text), f"unexpected finding for {text!r}"
 
 
-class TestChangeLogRetiredKey:
-    """A retired key on a change-log tag line this change ADDED.
-
-    The log's history carries `chunks=` and `status=` on most entries and is
-    never rewritten, so a check reading the whole file would fire on every
-    review of every repo. Added lines only is what makes it usable.
-    """
-
-    LOG = ".prawduct/change-log.md"
-    HISTORY = (
-        "# Change Log\n\n## 2026-01-01: old work\n"
-        "<!-- prawduct: chunks=01,02 | status=shipped | scope=old -->\n\nBody.\n"
-    )
-
-    def _lint_new_entry(self, tmp_path, tag: str, rel: str = LOG) -> dict:
-        repo = _make_repo(tmp_path)
-        log = repo / rel
-        log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text(self.HISTORY)
-        base = _commit(repo, "seed")
-        log.write_text(
-            "# Change Log\n\n## 2026-10-02: new work\n"
-            f"{tag}\n\nBody.\n\n" + self.HISTORY.split("\n\n", 1)[1]
-        )
-        head = _commit(repo, "add")
-        return _lint(repo, [rel], base, head)
-
-    def test_flags_a_retired_key_on_the_added_tag_line(self, tmp_path):
-        result = self._lint_new_entry(tmp_path, "<!-- prawduct: chunks=01 | scope=new -->")
-        findings = _checks(result, "change-log-retired-key")
-        assert [(f["path"], f["line"]) for f in findings] == [(self.LOG, 4)]
-        assert "`chunks=`" in findings[0]["detail"]
-        assert result["counts"]["change-log-retired-key"] == 1
-
-    def test_names_every_retired_key_on_the_line(self, tmp_path):
-        result = self._lint_new_entry(
-            tmp_path, "<!-- prawduct: scope=new | status=shipped | chunks=01 -->"
-        )
-        (finding,) = _checks(result, "change-log-retired-key")
-        assert "`chunks=`, `status=`" in finding["detail"]
-
-    def test_history_carrying_retired_keys_stays_quiet(self, tmp_path):
-        result = self._lint_new_entry(tmp_path, "<!-- prawduct: scope=new -->")
-        assert _checks(result, "change-log-retired-key") == []
-        assert result["counts"]["change-log-retired-key"] == 0
-
-    def test_editing_a_historical_tag_line_that_keeps_the_key_is_flagged(self, tmp_path):
-        # Deliberate: a change touching the line can drop the dead key in the same
-        # edit. Pinned so the behaviour is a decision, not an accident of diffing.
-        repo = _make_repo(tmp_path)
-        log = repo / self.LOG
-        log.write_text(self.HISTORY)
-        base = _commit(repo, "seed")
-        log.write_text(self.HISTORY.replace("scope=old -->", "scope=old | release=v1.0.0 -->"))
-        head = _commit(repo, "stamp release")
-        (finding,) = _checks(_lint(repo, [self.LOG], base, head), "change-log-retired-key")
-        assert "added or edited" in finding["detail"]
-
-    def test_a_tag_line_in_another_record_is_not_the_change_log(self, tmp_path):
-        # A doc teaching the old format is not an entry being written.
-        result = self._lint_new_entry(
-            tmp_path, "<!-- prawduct: chunks=01 | scope=new -->", rel="docs/format.md"
-        )
-        assert _checks(result, "change-log-retired-key") == []
-
-    def test_an_undiffable_change_log_reports_the_check_unchecked(self, tmp_path):
-        repo = _make_repo(tmp_path)
-        result = _lint(repo, [self.LOG], "0" * 40, _tree(repo))
-        assert any(r.startswith("change-log-retired-key unchecked") for r in result["unchecked"])
-        assert result["counts"]["change-log-retired-key"] is None
-
-    def test_an_undiffable_interval_without_the_log_leaves_the_check_answered(self, tmp_path):
-        # The check had no question to answer, so a lost diff costs it nothing.
-        repo = _make_repo(tmp_path)
-        result = _lint(repo, [".prawduct/artifacts/notes.md"], "0" * 40, _tree(repo))
-        assert not any(r.startswith("change-log-retired-key") for r in result["unchecked"])
-        assert result["counts"]["change-log-retired-key"] == 0
-
-
 class TestTheStateFileIsLintedToo:
     """The tripwire that keeps `build_state.test_tracking` from coming back.
 
@@ -1068,7 +989,6 @@ class TestUncheckedReporting:
                 "chunk-ref-missing": None,
                 "governed-by-gap": 0,
                 "suite-total-claim": 0,
-                "change-log-retired-key": 0,
                 # The budget check is not record-scoped — it runs over the rules
                 # corpus whatever the diff touched. This fixture has none, so it
                 # honestly found nothing.

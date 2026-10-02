@@ -1280,9 +1280,10 @@ def check_change_log_entry(project_dir: Path) -> int:
         )
         return 1
 
-    # The entry is written HERE, at Step 1c, after the last Critic review has
-    # run record-lint — so this probe is the only mechanism that sees a retired
-    # key on the tag line before the PR reviewer does.
+    # The entry is written HERE, at Step 1c, after the last Critic review, so
+    # this probe is the one point that sees a retired key on the new tag line
+    # before the PR reviewer does — and refusing it here costs one edit, not a
+    # review round.
     from . import change_log  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     retired = sorted({
