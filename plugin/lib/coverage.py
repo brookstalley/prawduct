@@ -1293,9 +1293,9 @@ def check_change_log_entry(project_dir: Path) -> int:
     })
     if retired:
         print(
-            f"retired-key: a tag line this branch adds to {CHANGE_LOG_REL_PATH} "
+            f"retired-key: a tag line this branch adds or edits in {CHANGE_LOG_REL_PATH} "
             "carries " + ", ".join(f"`{k}=`" for k in retired) + ", which "
-            "nothing reads. Delete it from the new tag line (which chunks "
+            "nothing reads. Delete it from that tag line (which chunks "
             "shipped belongs in the entry body), commit, and re-run.",
             file=sys.stderr,
         )

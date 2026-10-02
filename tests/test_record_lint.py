@@ -401,6 +401,18 @@ class TestChangeLogRetiredKey:
         assert _checks(result, "change-log-retired-key") == []
         assert result["counts"]["change-log-retired-key"] == 0
 
+    def test_editing_a_historical_tag_line_that_keeps_the_key_is_flagged(self, tmp_path):
+        # Deliberate: a change touching the line can drop the dead key in the same
+        # edit. Pinned so the behaviour is a decision, not an accident of diffing.
+        repo = _make_repo(tmp_path)
+        log = repo / self.LOG
+        log.write_text(self.HISTORY)
+        base = _commit(repo, "seed")
+        log.write_text(self.HISTORY.replace("scope=old -->", "scope=old | release=v1.0.0 -->"))
+        head = _commit(repo, "stamp release")
+        (finding,) = _checks(_lint(repo, [self.LOG], base, head), "change-log-retired-key")
+        assert "added or edited" in finding["detail"]
+
     def test_a_tag_line_in_another_record_is_not_the_change_log(self, tmp_path):
         # A doc teaching the old format is not an entry being written.
         result = self._lint_new_entry(

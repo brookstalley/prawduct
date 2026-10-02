@@ -214,7 +214,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -7855 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
-    "single-pass-full": 11430,
+    # -6 on 2026-10-02 (record-lint-945-939), via cross-checks.md: the change-log-retired-key severity row added (#939), paid in place by cutting two rationales the findings' own detail text already carries; the ceiling lowered with it.
+    "single-pass-full": 11424,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -276,17 +277,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -7843 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
-    "dispatched-reviewer": 10861,
+    # -6 on 2026-10-02 (record-lint-945-939), via cross-checks.md: the change-log-retired-key severity row added (#939), paid in place by cutting two rationales the findings' own detail text already carries; the ceiling lowered with it.
+    "dispatched-reviewer": 10855,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
-    "coordinator-fork": 12024,
+    # -6 on 2026-10-02 (record-lint-945-939), via cross-checks.md: the change-log-retired-key severity row added (#939), paid in place by cutting two rationales the findings' own detail text already carries; the ceiling lowered with it.
+    "coordinator-fork": 12018,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5807,
-    "single-pass-full": 11431,
-    "dispatched-reviewer": 10862,
-    "coordinator-fork": 12025,
+    "single-pass-full": 11425,
+    "dispatched-reviewer": 10856,
+    "coordinator-fork": 12019,
 }
 
 

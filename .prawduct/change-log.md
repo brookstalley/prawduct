@@ -27,9 +27,10 @@ for history, and nothing told an author they are dead. The PR reviewer caught th
 recurrences. **Root cause:** no check read the added tag lines. **Fix:**
 `change_log.RETIRED_TAG_KEYS` is the one list of retired keys, and `retired_keys_on` reads it.
 Two checks use that reader, and both look only at added lines. The record-lint check
-`change-log-retired-key` (WARNING) covers the Critic path. The PR Step 1c entry probe refuses
-with `retired-key`, because Step 1c is where the entry is written, after the last Critic
-review. Historical entries still parse unchanged.
+`change-log-retired-key` (WARNING) covers the Critic path. On a tracked log, the PR Step 1c
+entry probe refuses with `retired-key`, because Step 1c is where the entry is written, after the
+last Critic review. An edited old tag line counts as added, so touching one means dropping its
+dead key. Untouched historical entries still parse and are never flagged.
 
 ## 2026-09-27: a `Re-affirmed:` field answers dead-why for the ids it names
 

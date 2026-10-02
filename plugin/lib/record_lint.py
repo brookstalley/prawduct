@@ -340,10 +340,11 @@ def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]
 
 
 def _check_retired_tag_keys(path: str, added: "list[tuple[int, str]]") -> list[dict]:
-    """A retired key on a change-log tag line this change ADDED.
+    """A retired key on a change-log tag line this change ADDED or edited.
 
     Added lines only, so the log's history — which carries ``chunks=`` and
-    ``status=`` on most of its entries and is never rewritten — stays out of it.
+    ``status=`` on most of its entries and is never rewritten — stays out of it
+    until a change touches the line, at which point dropping the key is free.
     """
     from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
 
@@ -358,7 +359,7 @@ def _check_retired_tag_keys(path: str, added: "list[tuple[int, str]]") -> list[d
                     "change-log-retired-key",
                     path,
                     line_num,
-                    "new tag line carries retired "
+                    "added or edited tag line carries retired "
                     + ", ".join(f"`{k}=`" for k in keys)
                     + " — nothing reads it, and leaving it makes it look live. "
                     "Delete it; which chunks shipped belongs in the entry body",
