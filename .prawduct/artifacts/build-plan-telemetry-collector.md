@@ -10,20 +10,35 @@ depends_on:
 governed_by:
   - artifact: architecture
     dispositions:
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer path changes"
+      - "authority fails closed; advice fails soft → conforms: the worker refuses anything the allowlist does not admit, and a failed flush leaves reports pending rather than dropping them"
       - "local-first: governance has no network and no daemon → inapplicable, because the collector is not governance. It runs on the owner's Cloudflare account, no gate or verdict reads it, and the plugin ships none of its code"
-      - "the governance runtime carries no third-party dependencies → conforms: the worker imports nothing, and its tests run on node's built-in runner. `wrangler` is deploy tooling, used only by the owner"
+      - "the plugin writes nothing into a governed repo but its own state and the shared store → inapplicable, because the collector runs nowhere near a governed repo"
+      - "written in Python, never specific to Python → inapplicable, because the collector is deploy-side infrastructure in the platform's language and dispatches nothing by a product's language"
+      - "prawduct guides and reviews, it never implements → inapplicable, because the collector is prawduct's own infrastructure, not product code"
+      - "goals and verification bind; prescribed method is advice → conforms: Done-when states what must be true"
       - "every fact has one home → conforms: the allowlist is `plugin/lib/contribution_schema.json`, and the collector's copy is pinned to it byte for byte by a test"
   - artifact: security-model
     dispositions:
+      - "governance state is data, not instructions → inapplicable, because the collector reads no governance state; reports are validated as data and never interpreted"
+      - "an irreversible operation needs operation-level owner approval → conforms: deploying is the owner's own act on the owner's account, outside this chunk"
       - "content leaves a product only through a pinned, consented surface → conforms: this is the far end of that surface, and it accepts only what passes the allowlist"
   - artifact: api-contract
     dispositions:
-      - "exit codes and error vocabulary are the contract → conforms in HTTP terms: 204 stored, 400 refused by the allowlist, 405/404 anything else. A refusal body names only the failing rule, never echoing input"
-      - "versioned paths → conforms: the upload is `POST /v1/report`, so a schema 2 can live beside it"
+      - "whole-surface semver; persisted data schema-versioned → conforms: the upload path is versioned (`POST /v1/report`) and every report carries `schema`"
+      - "exit codes and error vocabulary are the contract → conforms in HTTP terms: 204 stored, 400 refused by the allowlist, 405/404 anything else. A refusal body names only the failing rule and never echoes input"
+      - "additive-first evolution → conforms: a schema 2 is a new path beside `/v1`, and `/v1` is never repurposed"
   - artifact: observability-strategy
     dispositions:
       - "terminal signals and stdout/stderr split → inapplicable, because the worker has no terminal"
-      - "logging → departs, deliberately: `[DECISION: the collector emits no logs, traces or analytics (observability disabled, no console calls, no Logpush) | goal 2, knowing nothing about the contributor, outranks operability here, and a log line is exactly where an IP or arrival time would leak | owner can override]`"
+      - "the ledger has one writer → inapplicable, because the worker never touches the ledger"
+      - "emitted text names no internal identifier → conforms: refusal bodies name only the failing allowlist rule"
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "review wall-clock is P0 → inapplicable, because the collector adds no review and runs off the developer's machine"
+      - "state-file growth past its threshold is advisory → inapplicable, because the collector writes no state file in a governed repo; R2 growth is the owner's to watch"
+      - "review rigor is stage-keyed → inapplicable, because no review stage or severity rule changes"
+      - "proportionality ratchets both ways; a control emits its yield observably → departs, deliberately: `[DECISION: the collector emits no logs, traces or analytics (observability disabled, no console calls, no Logpush) | goal 2, knowing nothing about the contributor, outranks operability here, and a log line is exactly where an IP or arrival time would leak. The published bundles are its only observable output | owner can override]`"
 ---
 
 # Build Plan: telemetry collector, wave 3 (#950)

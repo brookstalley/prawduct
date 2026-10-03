@@ -25,9 +25,14 @@ governed_by:
       - "destructive or irreversible operations need operation-level approval → conforms: a send is irreversible, and `ask` approves the exact bytes"
   - artifact: data-model
     dispositions:
-      - "a persisted format is a lock-in decision → conforms: the payload schema and the sent record are versioned (`schema: 1`). The questions they must answer are the audit's metric set, listed under Chunk 01"
-      - "derived views never authoritative → conforms: the payload is a report; no gate reads it"
-      - "facts immutable and append-only → inapplicable, because no evidence fact is added"
+      - "verdicts come from append-only facts; no model in a fact's write path → inapplicable, because no verdict reads the report or the sent record; both are written by code"
+      - "facts immutable and append-only → inapplicable, because no evidence fact is added. The sent record is per-clone bookkeeping, rewritten whole and atomically, and no gate reads it"
+      - "derived views never authoritative → conforms: a report is a view over the store, and no gate reads it"
+      - "a governance document reaches a terminal state, never deleted → conforms: this plan is archived at merge"
+      - "every backlog write conforms to the issue title standard → inapplicable, because this plan writes no backlog item"
+      - "a fact from a newer schema is a loud block → conforms: `stats` already excludes schema-ahead facts. An unrecognised sent record refuses, rather than reading as empty and re-offering every window"
+      - "two stores, two lifetimes → conforms: the consent is a committed answer (`project-preferences.md`), and the sent record is per-clone, gitignored state beside the evidence store"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable, because no backlog read or write changes"
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; persisted data schema-versioned → conforms: the payload carries `schema`, and the sent record carries its own version"
@@ -35,7 +40,8 @@ governed_by:
       - "additive-first evolution → conforms: a new subcommand and a new preference row"
   - artifact: observability-strategy
     dispositions:
-      - "terminal signals use the severity-prefix vocabulary and the stdout/stderr split → conforms"
+      - "terminal signals use the severity-prefix vocabulary and the stdout/stderr split → conforms: refusals are `BLOCKED:` and failures `WARNING:` on stderr; the preview is on stdout"
+      - "the ledger has one writer → inapplicable, because nothing is written to the ledger"
       - "emitted text names no internal identifier → conforms"
 ---
 
@@ -124,7 +130,8 @@ digest under `ask`, then that a collector endpoint is pinned. It writes the sent
 each report through `urllib` and reports the outcome. The endpoint constant stays empty until #950
 deploys, and an empty endpoint refuses. The architecture and security-model Direction entries are
 amended to admit the third surface, citing the audit's owner line, and `project-state.yaml`'s
-egress record gains the site.
+egress record gains the site. `templates/project-preferences.md` ships the row reading `never`
+(moved here from chunk 03, because the consent tests pin the shipped default).
 
 Done when:
 1. Under `never`, or under any unreadable or unrecognised row, `--send` refuses before the
@@ -134,10 +141,11 @@ Done when:
 4. An empty endpoint refuses with a message naming #950.
 5. The architecture and security-model amendments each carry a `[DECISION: …]` citing the audit's
    owner line, and the egress record lists the new site.
+6. The shipped template row reads `never` (tested).
 
 ### Chunk 03: the opt-in surfaces
 
-`templates/project-preferences.md` ships the row reading `never`. The briefing says when windows
+The briefing says when windows
 are pending, but only under `ask` or `always` and only with an endpoint pinned. Under `never` it
 stays silent. `/prawduct:janitor` offers the opt-in as a question to the person and never writes
 the row without their answer. `docs/governance-telemetry.md` documents the payload and the
@@ -146,8 +154,7 @@ command, and the CHANGELOG gains an entry.
 **Type:** cumulative-final
 
 Done when:
-1. A fresh onboard's preferences read `never`, and with the row absent nothing is sent and nothing
-   prompts outside the janitor offer.
+1. With the row absent, nothing prompts outside the janitor offer.
 2. The briefing line appears only under `ask` or `always` with windows pending and an endpoint
    pinned (each arm tested).
 3. The janitor skill's offer is phrased as a question and says the row is the person's to write.
