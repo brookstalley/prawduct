@@ -1363,7 +1363,7 @@ def _tree_key_fn(project_dir: Path):
 #: gates emit under this one name, because the question the records answer —
 #: "did the transfer ever fire, and did it ever pass something that turned out
 #: to need a review?" — is about the control, not about which gate observed it.
-_TRANSFER_GUARD = "base-advance-transfer"
+_TRANSFER_GUARD = evidence.TRANSFER_GRANT_GUARD
 
 
 def record_transfer_grant(

@@ -1417,3 +1417,64 @@ whether it changed the action.
 > **Noted because it bears on when this drains:** `operator_verification_required` is `false` in
 > this repo, so nothing blocks on this entry. That is the standing configuration, not a lapse, and
 > it means the entry drains when someone chooses to read it rather than at a gate.
+
+## VRF-022 — telemetry collector (#950) — deployed, and a live round trip from the client
+
+**Status:** verified
+**Verified:** 2026-10-03, on the owner's Cloudflare account (brooks@tangentry.com).
+**Added:** 2026-10-03 (`build-plan-telemetry-collector.md` § Deploy)
+
+**What was deployed.** Bucket `prawduct-telemetry` and Worker `prawduct-collector` (version
+`84518f5e-e084-412b-9ca1-a1d7688b0efb`) at `https://prawduct-collector.brooks-76d.workers.dev`,
+with a `0 0 * * *` cron. The deploy was by Wrangler 4.147.0, from `collector/`.
+
+**Result: every route answers as its contract says.**
+- `GET /health` → `200 {"claim_outstanding":false}`.
+- A posted preview wrapper → `400 {"refused":"unknown-key"}`.
+- The README's `dev:true` fixture report → `204`.
+- An unknown path → `404`. `GET /bundles/index.json` before the first flush → `404`.
+
+**Result: nothing beyond the report is stored.** Each pending object, read back through the R2
+API, has empty `custom_metadata` and `http_metadata`. Its key is a content hash plus random bits,
+with no time in it. Script settings report `logpush: false` and no tail consumers.
+`observability` was also PATCHed explicitly off; the API reports a disabled setting as `null`
+both before and after.
+
+**Result: the client round trip is byte-exact.**
+- A scratch repo (synthetic reviews written as plugin `3.7.1-dev.1`, row
+  `Stats contribution: always`) ran `prawduct-hook contribute --send` against the pinned
+  endpoint. It printed `sent 2026-W38:3.7-dev` and recorded the window.
+- A second send found nothing waiting.
+- The stored object equals the previewed bytes exactly. It is marked `dev:true`, as is the
+  fixture, so both are identifiable as synthetic in the first public bundle.
+
+## VRF-023 — telemetry collector (#950) — the first nightly flush, live
+
+**Status:** pending
+**Added:** 2026-10-03 (`collector/README.md` § Check on the first live flush)
+
+**What to check after 00:00 UTC on 2026-10-04:**
+- `GET /bundles/index.json` lists `2026-10-04`.
+- `GET /bundles/2026-10-04.jsonl` holds the two synthetic `dev:true` lines (VRF-022), sorted by
+  their bytes.
+- `GET /health` reads `{"claim_outstanding":false}`.
+- R2 → `prawduct-telemetry` → Objects, filtered on `pending/`, is empty.
+
+**Why a live check:** the flush's overlap safety rests on R2 honouring `onlyIf` preconditions on
+`put` (`etagMatches`, and `If-None-Match: *` in `Headers`). The in-memory fakes model them; only
+the live binding proves R2 does.
+
+> === 2026-10-03 — DRAIN DISPOSITION: LIVE-ONLY, AND IT DRAINS ITSELF AT THE FIRST FLUSH ===
+>
+> **The static half is already a test.** The flush's merge, sort, idempotence and overlap handling
+> are `collector/test/flush.test.mjs` and `collector/test/overlap.test.mjs`, run against fakes that
+> model both `onlyIf` forms and are red-verified by mutation.
+>
+> **What it turns on:** whether the live R2 binding honours those preconditions, and whether the
+> first scheduled run publishes and empties `pending/`. Only Cloudflare's runtime can show that.
+>
+> **Whose harness answers it:** the Worker's own cron at 2026-10-04 00:00 UTC, read through the
+> public `GET` routes and the R2 object listing. It needs no product and no release.
+>
+> **It gates nothing:** `operator_verification_required` is `false` in this repo. #950 stays open
+> until it is verified.

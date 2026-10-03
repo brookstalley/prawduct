@@ -181,11 +181,14 @@ A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference
 
 ## Testing Prawduct
 
-Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance (1,716 tests):
+Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance. The stats
+collector (`collector/`) has its own suite on node's built-in runner, with no dependencies.
+`prawduct-hook test-evidence record` runs both, so recording evidence needs node:
 
 ```bash
 cd prawduct
 python3 -m pytest tests/
+node --test 'collector/test/*.test.mjs'
 ```
 
 Scenario tests in `tests/scenarios/` are end-to-end evaluations — each describes a product, a user persona with scripted responses, and a detailed rubric. Together they cover every structural characteristic, a range of risk levels, diverse tech stacks, and user expertise from novice to deep expert.

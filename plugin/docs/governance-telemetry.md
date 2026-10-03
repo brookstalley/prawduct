@@ -315,7 +315,8 @@ The definitions (their one home):
     a session. A Stop that passes records nothing, so "consecutive" cannot be
     measured.
 - **guard refusals**: control firings other than Stop blocks, per recorded
-  session (the same rule) and by guard.
+  session (the same rule) and by guard. A base-advance transfer grant shares
+  their sink, but it is a pass, so it is counted under Benefit instead.
 
 **Benefit**
 - **findings**: per severity, raised, then what became of each one.
@@ -330,12 +331,44 @@ The definitions (their one home):
     finding.
   - *acted on* = (fixed + fixed_unreviewed + filed) / (those + accepted +
     waived). Undispositioned findings are left out of the rate and reported
-    beside it.
+    beside it. The denominator is exported as `answered`.
 - **blocking fixed by goal**, and **blocking and warnings fixed per scope**.
   Both kinds of fixed count.
 - **red suite runs**: recorded suite runs with a failure.
+- **transfer grants**: base-advance transfers that granted, each a review round
+  the transfer saved, per recorded session.
 
 Rates with no denominator print as `-` (`null` in `--json`), never as zero.
 `--json` carries `schema_version`, `project`, `generated_at`, `window`,
 `schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
 by `major.minor` (`unknown` when a fact names no version).
+
+## `prawduct-hook contribute [--json]` and `contribute --send [--approve sha256:<digest>]`
+
+Anonymous stats contribution, **off unless the product's owner opts in**. The
+`Stats contribution` row in `.prawduct/artifacts/project-preferences.md` says
+`never`, `ask` or `always`. The template ships it unset, and an absent, unset,
+misspelled or unreadable row reads as `never`.
+
+- **Bare** previews every pending report's exact bytes and one digest over them,
+  and opens no socket. `--json` gives `pending` (window and report) and `digest`.
+- **`--send`** sends each report as one POST to prawduct's collector, whose
+  address is a plugin constant. Under `ask` it needs `--approve` with the
+  previewed digest; under `always` it needs none. Exit 2 when the product has not
+  opted in, the digest does not match, or the store holds facts a newer plugin
+  wrote; exit 1 when a send fails.
+- **A report** covers one ISO week for one plugin version, offered once the week
+  ended at least seven days ago, and only the eight most recent such weeks. It
+  carries only keys from `lib/contribution_schema.json`, the allowlist, and every
+  value is an integer, a stepped number, a fixed-list value or a volume band.
+  The metrics are this file's `stats` definitions over that week, coarsened, and
+  a metric whose denominator is under the schema's floor is left out.
+- **Sent at most once.** A window is recorded as sent before its request, in
+  `<git-common-dir>/prawduct/contributions.json`, and the record is withdrawn only
+  when the report provably was not stored: the request never arrived (a refused
+  connection, a failed proxy tunnel or TLS handshake), or the reply says so (400,
+  429 or 503). A send that may have arrived keeps its window spent.
+- **Where it shows up:** under `ask` or `always`, the session briefing says when
+  reports are waiting, and it names a row that is present but misspelled.
+  `/prawduct:janitor` asks once whether to opt in, while the row is absent or
+  still unset.

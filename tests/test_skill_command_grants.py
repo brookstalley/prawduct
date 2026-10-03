@@ -279,6 +279,10 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # Granting it would hand a maintenance survey a network write it has no
     # business making, which is the opposite of what the grant is for.
     ("janitor", "backlog sync"): "remedy text printed for the operator, never run by the janitor",
+    # Deliberately ungranted: a Bash grant is a prefix match, so granting the
+    # preview would also grant `contribute --send`, an upload the person must
+    # approve. The janitor names the preview for the person; running it may prompt.
+    ("janitor", "contribute"): "a grant would also cover `contribute --send`, which needs the person's consent",
     # Deliberate exclusion, and load-bearing: an independent reviewer must never
     # mutate the session it is reviewing. `clear` appears only as the thing the
     # critic-active marker REFUSES.

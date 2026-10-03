@@ -16,7 +16,8 @@ summed as a measurement), empty verify-resolutions rounds, re-reviews of an
 interval or tree already reviewed, Stop-hook blocks, and guard refusals.
 Benefit: findings raised and what became of them, by the rule
 ``render-dispositions`` uses; blocking and warning findings fixed per scope;
-blocking fixed by goal; and red recorded suite runs.
+blocking fixed by goal; red recorded suite runs; and base-advance transfer
+grants, which share the guard-refusal sink but are passes, not refusals.
 
 Informational only: no gate reads it.
 """
@@ -142,15 +143,19 @@ def _new_bucket() -> dict:
         "blocks_by_gate": Counter(),
         "blocks_by_session": defaultdict(Counter),
         "guard_refusals": [],  # (guard, session)
+        "transfer_grants": [],  # (guard, session)
         "test_runs": 0,
         "red_test_runs": 0,
     }
 
 
-def aggregate(facts: list[dict], since=None, until=None) -> dict:
+def aggregate(facts: list[dict], since=None, until=None, bucket=None) -> dict:
     """The per-version report body over ``facts`` (one ``read_facts`` result).
 
-    Pure: no I/O, so every definition is testable against a fixture list."""
+    ``bucket`` maps a fact to its bucket key, by default its plugin
+    ``major.minor``. Pure: no I/O, so every definition is testable against a
+    fact list."""
+    bucket_of = bucket or _bucket
     store = {"facts": facts}
     outcome = finding_outcome(store)
     verified_by = Counter(
@@ -169,7 +174,7 @@ def aggregate(facts: list[dict], since=None, until=None) -> dict:
             if fact.get("kind") == "review":
                 _remember_interval(_body(fact), seen_intervals, seen_heads)
             continue
-        kind, body, b = fact.get("kind"), _body(fact), buckets[_bucket(fact)]
+        kind, body, b = fact.get("kind"), _body(fact), buckets[bucket_of(fact)]
         session = _session(fact)
         if kind == "session-start":
             if session:
@@ -184,6 +189,8 @@ def aggregate(facts: list[dict], since=None, until=None) -> dict:
                 b["stops"].append((stop, session))
                 b["blocks_by_gate"][gate] += 1
                 b["blocks_by_session"][session][gate] += 1
+            elif guard == evidence.TRANSFER_GRANT_GUARD:
+                b["transfer_grants"].append((guard, session))
             elif isinstance(guard, str) and guard:
                 b["guard_refusals"].append((guard, session))
         elif kind == "test-run":
@@ -270,6 +277,9 @@ def _finish(b: dict) -> dict:
         findings[severity] = {
             "raised": c["raised"],
             **{o: c[o] for o in _OUTCOMES},
+            # The rate's denominator, exported so a reader that floors on it
+            # (the contribution report) uses this count rather than its own.
+            "answered": answered,
             "acted_on_rate": _rate(acted, answered),
         }
     loops = sum(
@@ -312,6 +322,10 @@ def _finish(b: dict) -> dict:
             "total": len(b["guard_refusals"]),
             "per_session": _per_session(b["guard_refusals"], sessions),
             "by_guard": dict(refusals.most_common()),
+        },
+        "transfer_grants": {
+            "total": len(b["transfer_grants"]),
+            "per_session": _per_session(b["transfer_grants"], sessions),
         },
         "findings": findings,
         "blocking_fixed_by_goal": dict(b["blocking_fixed_by_goal"].most_common()),
@@ -383,8 +397,18 @@ def render_human(report: dict) -> str:
             f"warning {_fmt(v['warnings_fixed_per_scope'])}; "
             f"red suite runs {v['test_runs']['red']} of {v['test_runs']['total']}"
         )
+        grants = v["transfer_grants"]
+        lines.append(
+            f"    transfer grants    {grants['total']} "
+            f"({_fmt(grants['per_session'])} per recorded session), each a review round saved"
+        )
     if not report["by_version"]:
         lines.append("no governance history in this clone's evidence store")
+    if report.get("schema_ahead"):
+        lines.append(
+            f"{report['schema_ahead']} fact(s) written by a newer plugin are not counted; "
+            "run a newer prawduct to include them"
+        )
     return "\n".join(lines)
 
 

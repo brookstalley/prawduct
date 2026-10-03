@@ -70,6 +70,9 @@ CASES = {
     "empty_item": "risk_surfaces:\n  - \n",
     "nested_mapping": "risk_surfaces:\n  path: a\n",
     "empty_block": "risk_surfaces:\nbase_branch: develop\n",
+    "item_ending_in_a_quoted_argument": "risk_surfaces:\n  - node --test 'a/*.mjs'\n  - x \"y\"\n",
+    "item_quoted_at_both_ends_but_not_whole": "risk_surfaces:\n  - \"$V/pytest\" -k \"not slow\"\n",
+    "quoted_empty_item": "risk_surfaces:\n  - ''\n",
 }
 
 #: ``(status, items)`` the canonical reader must produce for each case above.
@@ -90,6 +93,9 @@ EXPECTED = {
     "empty_item": (YAML_UNPARSEABLE, ()),
     "nested_mapping": (YAML_UNPARSEABLE, ()),
     "empty_block": (YAML_DECLARED, ()),
+    "item_ending_in_a_quoted_argument": (YAML_DECLARED, ("node --test 'a/*.mjs'", 'x "y"')),
+    "item_quoted_at_both_ends_but_not_whole": (YAML_DECLARED, ('"$V/pytest" -k "not slow"',)),
+    "quoted_empty_item": (YAML_UNPARSEABLE, ()),
 }
 
 
@@ -226,3 +232,26 @@ class TestThePerKeyPolicyOnUnparseable:
 
         assert rv._read_declaration("release_version_files: [a, b]\n") == []
         assert rv._read_declaration("base_branch: develop\n") is None
+
+
+class TestScalarUnquoting:
+    """A declared command scalar (``test_command:``) can end in a quoted
+    argument. Both scalar readers unquote only a value wholly wrapped in one
+    matching pair of quotes, and agree with each other."""
+
+    CASES = {
+        'test_command: "pytest -q"\n': "pytest -q",
+        "test_command: 'pytest -q'\n": "pytest -q",
+        "test_command: node --test 'a/*.mjs'\n": "node --test 'a/*.mjs'",
+        'test_command: run "x" --flag "y"\n': 'run "x" --flag "y"',
+        'test_command: "$VENV/bin/pytest" tests/ -k "not slow"\n': '"$VENV/bin/pytest" tests/ -k "not slow"',
+    }
+
+    @pytest.mark.parametrize("text", sorted(CASES))
+    def test_both_readers_keep_inner_quotes(self, tmp_path, text):
+        from lib.core import read_str_yaml_key
+
+        path = tmp_path / "project-state.yaml"
+        path.write_text(text, encoding="utf-8")
+        assert read_str_yaml_key(path, "test_command") == self.CASES[text]
+        assert _hook._read_str_yaml_key(path, "test_command") == self.CASES[text]

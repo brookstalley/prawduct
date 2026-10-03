@@ -5,6 +5,66 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-03: the stats collector, a Cloudflare Worker writing to R2
+
+<!-- prawduct: type=feature | scope=telemetry-collector -->
+
+Wave 3 of the telemetry program (#950), in `collector/`. It is built by isolated delegates, deployed
+from the owner's account, and never shipped in the plugin.
+
+- **`POST /v1/report`** admits only reports that pass the plugin's allowlist, which the worker
+  embeds and a test pins equal to `plugin/lib/contribution_schema.json` (a separate
+  `collector/schema.json` copy, read by nothing at runtime, was removed). It stores their canonical
+  bytes as one R2 object each. It stores no IP, header or
+  time beyond R2's own upload stamp.
+- **A nightly cron** folds pending objects into one sorted bundle per UTC day and deletes them. It
+  is idempotent across re-runs, crashes and overlapping runs. `GET /bundles/...` publishes them.
+- **R2 direct rather than a Durable Object**, by owner decision (#950). A SQLite DO keeps 30-day
+  point-in-time recovery that cannot be turned off, while R2 has no versioning and its deletes are
+  irreversible.
+- **Observability, logs, traces and Logpush are off,** pinned by a test.
+- **The node suite runs in CI** as its own job and as the second entry in `test_commands`, so
+  recording evidence here needs node.
+
+## 2026-10-03: products can contribute anonymous stats, off unless their owner opts in
+
+<!-- prawduct: type=feature | scope=telemetry-contribution -->
+
+Wave 2 of the telemetry program (#949). The owner's condition (2026-10-03): "off by default and
+consuming repos must affirmatively opt in".
+
+- **`prawduct-hook contribute`** previews, as exact bytes, one report per settled ISO week and
+  plugin version. Keys come from a committed allowlist; values are integers, stepped numbers,
+  fixed-list values or volume bands. Metrics under their sample floor are left out.
+- **`contribute --send`** sends only under the product's own `Stats contribution` row: `ask`
+  with the previewed digest, or `always`. Every other state reads as `never` and refuses before
+  the transport. The endpoint is a plugin constant, pinned to the deployed collector
+  (VRF-022); an empty one refuses.
+- **Delivery is at most once,** under a clone-wide lock. A window the collector provably did not
+  store (refused, 503, a failed tunnel or handshake) stays pending; one that may have arrived is
+  spent.
+- **Surfaces:** the template ships the row unset; `/prawduct:janitor` asks once while it is unset;
+  and the session briefing speaks only for an opted-in product, or for a row that is misspelled.
+- **`prawduct-hook stats`** counts base-advance transfer grants apart from guard refusals, exports
+  each severity's acted-on denominator, and says when a newer plugin's facts were left out.
+- **Norms:** architecture's local-first rule and the security model's egress rule admit the upload
+  as a third network surface, on the owner's recorded authority. The upstream-filing and
+  contribution rows now share one row reader (`core.read_preference_row`).
+- **Real-data check (the plan's verification strategy).** `contribute` over this clone's evidence
+  store offers 13 reports, W31 to W38 of 2026. The only string values are volume bands, and the
+  largest report is 535 bytes. No byte names a product, path, branch, scope or person. What a
+  report does reveal is that some product ran a given plugin version that week, and a coarse
+  activity profile. A collector operator could link a product's weeks by that profile, but never
+  to an identity. That is the residual the audit accepted.
+- **Also fixed (found by this branch's boundary run): a declared test command ending in a quoted
+  argument was corrupted.** The YAML readers stripped quote characters from both ends of a value,
+  so a command like `node --test 'dir/*.mjs'` came out with an unbalanced quote and
+  `test-evidence record` crashed after the earlier suites had run. Now
+  `core.unquote_scalar` and its hook mirror strip one pair of quotes only when they wrap the whole
+  value, for both the scalar and the sequence readers. Every declared command is also split before
+  any suite runs, and a bad one is refused with exit 2, naming it. The comment-truncation half of the
+  same family stays #790.
+
 ## 2026-10-03: Stop blocks and sessions become evidence facts, and `prawduct-hook stats` reports cost and yield per plugin version
 
 <!-- prawduct: type=feature | scope=telemetry-stats -->

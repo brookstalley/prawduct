@@ -143,6 +143,9 @@ class TestBenefit:
         assert f["warning"]["acted_on_rate"] == 0.5
         # Unanswered findings are counted, never read as a verdict either way.
         assert f["note"]["undispositioned"] == 1 and f["note"]["acted_on_rate"] is None
+        # The denominator is exported, so a reader flooring on it uses this count.
+        assert f["warning"]["answered"] == 2 and f["note"]["answered"] == 0
+        assert f["blocking"]["answered"] == 1
 
     def test_blocking_fixed_by_goal_and_per_scope(self):
         facts = [
@@ -235,6 +238,23 @@ class TestCost:
         assert g["by_guard"] == {"critic-dispatch-free-interval": 1}
         assert g["per_session"] is None  # no session-start facts: no denominator, no rate
 
+    def test_a_transfer_grant_is_a_pass_not_a_refusal(self):
+        facts = [
+            _fact("session-start", {}, fid="s"),
+            _fact("guard-refusal", {"guard": "critic-dispatch-free-interval"}, fid="g1"),
+            _fact("guard-refusal", {"guard": evidence.TRANSFER_GRANT_GUARD}, fid="g2"),
+            _fact("guard-refusal", {"guard": evidence.TRANSFER_GRANT_GUARD}, fid="g3"),
+        ]
+        v = _v(facts)
+        assert v["guard_refusals"]["by_guard"] == {"critic-dispatch-free-interval": 1}
+        assert v["guard_refusals"]["per_session"] == 1
+        assert v["transfer_grants"] == {"total": 2, "per_session": 2}
+
+    def test_the_grant_guard_is_the_one_gates_records(self):
+        from lib import gates
+
+        assert gates._TRANSFER_GUARD == evidence.TRANSFER_GRANT_GUARD == "base-advance-transfer"
+
     def test_per_session_rates_count_only_sessions_that_recorded_their_start(self):
         """A block from a session older than the session-start fact has no
         denominator; counting it against the sessions that do inflates the rate."""
@@ -318,6 +338,11 @@ class TestCli:
         assert "stops blocked      1 (1 per recorded session)" in result.stdout
         assert "reflection 1" in result.stdout
         assert "acted on" in result.stdout
+
+    def test_the_human_report_says_when_newer_facts_were_left_out(self):
+        base = {"project": "p", "window": {"since": None, "until": None}, "by_version": {}}
+        assert "newer plugin are not counted" in stats.render_human({**base, "schema_ahead": 3})
+        assert "newer plugin" not in stats.render_human({**base, "schema_ahead": 0})
 
     def test_empty_store_is_an_answer(self, tmp_path):
         result = self._run(self._repo(tmp_path))
