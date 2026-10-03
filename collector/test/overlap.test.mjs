@@ -40,8 +40,8 @@ function assertEachOnce(env, sent) {
   assert.equal(claimOutstanding(env), false, "no claim is outstanding");
 }
 
-test("R-1: a run that adopts another's claim and reads the bundle before it is written loses nothing", BOUNDED, async () => {
-  // The review's interleaving: run 2 adopts run 1's claim and reads the
+test("a run that adopts another's claim and reads the bundle before it is written loses nothing", BOUNDED, async () => {
+  // The interleaving: run 2 adopts run 1's claim and reads the
   // bundle before run 1 writes it. Run 1 writes the bundle and deletes the
   // pending objects. Run 2's later reads come back empty. Run 2 must not then
   // write a bundle with fewer lines over run 1's.

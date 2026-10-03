@@ -255,7 +255,7 @@ test("bundles hold report bytes only; the one metadata value is a random claim i
 });
 
 test("an unparseable index does not fail the flush; the flush rebuilds it from the bundles", async () => {
-  // The review's case: an index that won't parse, so every night's flush
+  // An index that won't parse would make every night's flush
   // would throw, and the claim and its pending objects would never clear.
   for (const corrupt of ["{not json", '{"days":"2026-10-03"}', "", '{"days":["../claims"]}']) {
     const env = makeEnv();
