@@ -492,8 +492,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
-  - `stats --json` → `/prawduct:janitor`, and the opt-in contribution payload a later wave derives
-    from it: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
+  - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the
+    opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
     `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
     in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any

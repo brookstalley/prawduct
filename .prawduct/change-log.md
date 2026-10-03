@@ -22,7 +22,9 @@ audit had to mine Claude Code transcripts for Stop-hook blocks because prawduct 
   - **cost:** rounds per scope, measured-only review time, empty verify rounds, re-reviews, Stop
     blocks per session and by gate, and guard refusals;
   - **benefit:** findings by outcome, blocking fixed by goal, and red suite runs.
-  Run over the ten sibling stores, it reproduces the audit's per-version figures.
+  Run over the ten sibling stores, it reproduces the audit's per-version counts of reviews, blocking
+  findings raised and fixed, and re-reviews. `/prawduct:janitor` now runs it; its tool grant gains
+  both spellings of `stats`.
 - **Test changes.** The write-isolation test now skips the shared evidence store, the one write
   outside `.prawduct/` that the architecture norm admits. It skips nothing else, and no assertion
   was weakened.
