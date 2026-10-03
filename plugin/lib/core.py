@@ -302,6 +302,20 @@ YAML_SCALAR_NULL = "null"
 YAML_SCALAR_VALUE = "value"
 
 
+def unquote_scalar(value: str) -> str:
+    """Strip one pair of quotes only when they wrap the WHOLE value.
+
+    A bare ``strip("\\"'")`` is not unquoting: it corrupts any value that merely
+    starts or ends with a quote, and a declared test command routinely does
+    (``node --test 'dir/*.mjs'``, ``"$VENV/bin/pytest" -k "not slow"``), leaving
+    an unbalanced quote that fails far from here. A value whose quote character
+    recurs inside is left as written, because it is several quoted words rather
+    than one quoted scalar."""
+    if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0] and value[0] not in value[1:-1]:
+        return value[1:-1]
+    return value
+
+
 def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]":
     """``(state, value)`` for a top-level (column-0) ``key: value`` scalar.
 
@@ -333,7 +347,7 @@ def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]"
         line = raw.split("#", 1)[0].rstrip()
         if not line.startswith(needle):
             continue
-        value = line.split(":", 1)[1].strip().strip("\"'")
+        value = unquote_scalar(line.split(":", 1)[1].strip())
         if not value or value.lower() in ("null", "~"):
             return YAML_SCALAR_NULL, None
         return YAML_SCALAR_VALUE, value
@@ -498,7 +512,7 @@ def read_block_sequence(text: str, key: str) -> tuple[str, tuple[str, ...]]:
     for line in body:
         if not line.startswith("- "):
             return YAML_UNPARSEABLE, ()
-        value = line[2:].strip().strip("\"'")
+        value = unquote_scalar(line[2:].strip())
         if not value:
             return YAML_UNPARSEABLE, ()
         items.append(value)
@@ -574,7 +588,7 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
     for line in lines:
         if not line.startswith("- "):
             continue
-        value = line[2:].strip().strip("'\"")
+        value = unquote_scalar(line[2:].strip())
         if value:
             out.append(value)
     return tuple(out)

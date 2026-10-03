@@ -62,14 +62,7 @@ base_branch: develop
 # same record and a red collector cannot hide behind a green plugin suite.
 test_commands:
   - python3 -m pytest tests/ --junit-xml={junit_xml} -q
-  - node --test --test-reporter=junit --test-reporter-destination={junit_xml} 'collector/test/*.test.mjs'
-
-# How this repo runs ONE test file, for `audit-learnings` sentinel grading.
-# Separate from `test_command:` because that one names `tests/` and would grade
-# every sentinel by the whole suite's verdict. Declared here rather than assumed:
-# an undeclared sentinel is reported ungraded, and this repo being the framework's
-# own is exactly why it must not rely on a Python-shaped default.
-sentinel_command: python3 -m pytest {sentinel} -q
+  - node --test --test-reporter=junit --test-reporter-destination={junit_xml} collector/test/*.test.mjs
 
 # Path prefixes whose files a NON-HERMETIC test in THIS repo reads. Absent means
 # empty, which is exactly the behaviour every repo had before the key existed.

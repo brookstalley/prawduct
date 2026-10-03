@@ -34,6 +34,11 @@ weekly, coarsened numbers from a public allowlist, with no names, paths, branche
 identifiers. Sending stays off until prawduct's collector is deployed. `prawduct-hook stats` now
 counts base-advance transfer grants apart from guard refusals, because a grant saves a review.
 
+**Fix:** a `test_command` or `test_commands` entry ending in a quoted argument (for example
+`node --test 'dir/*.mjs'`) is read intact. It used to lose its final quote and crash
+`prawduct-hook test-evidence record`. A command that cannot be split is now refused before any suite
+runs.
+
 ## v3.7.0
 
 **Prawduct's prompts are rewritten for Opus 5.5, every learnings rule is one line under a `core.md` cap only you can raise, and a chunk you committed before its review gets a chunk review instead of a full bundle review.** Thirty-four scopes since v3.6.1, counting release housekeeping. Three changes you will notice in an ordinary session. First, the session digest, gate output, review prompts, methodology guides and skills are shorter and plainer, and they tell the model to take the next step rather than announce it; each `final` or `cumulative` Critic reviewer loads about 7,800 fewer tokens. Second, a learnings rule is one line of at most 250 characters, and a corpus over the new limits does not break: it stops growing until you compact it with `prawduct-hook learnings-compact`. Third, a mid-plan `/prawduct:critic` reviews only what has not been reviewed yet, and the reflection and Critic gates wait while a turn closes `RUNNING` and `DO NOT CLEAR`. SessionStart and Stop also stop slowing down as a repo's review history grows. Three gates are new in this release: `learnings-rule-too-long`, `learnings-rule-body` and `clear-verdict`.

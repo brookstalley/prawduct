@@ -627,6 +627,15 @@ class _GateMessage(str):
 # into code nothing calls, on its fourth rework. Deleted instead (Principle 25).
 
 
+# prawduct:allow prawduct/duplication -- intentional inline mirror of lib.core.unquote_scalar; pinned by tests/test_hook_yaml_readers.py
+def _unquote_scalar(value: str) -> str:
+    """Mirror of ``lib.core.unquote_scalar``: strip one pair of quotes only when
+    they wrap the WHOLE value. Kept in step by tests/test_hook_yaml_readers.py."""
+    if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0] and value[0] not in value[1:-1]:
+        return value[1:-1]
+    return value
+
+
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestProductHookMirrorParity
 def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
@@ -646,7 +655,7 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
         line = raw.split("#", 1)[0].rstrip()
         if not line.startswith(needle):
             continue
-        value = line.split(":", 1)[1].strip().strip("\"'")
+        value = _unquote_scalar(line.split(":", 1)[1].strip())
         if not value or value.lower() in ("null", "~"):
             return None
         return value
@@ -692,7 +701,7 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
             break  # next top-level key ends the block cleanly
         if not stripped.startswith("- "):
             return None
-        value = stripped[2:].strip().strip("\"'")
+        value = _unquote_scalar(stripped[2:].strip())
         if not value:
             return None  # an empty item is an authoring error, not skippable
         items.append(value)
@@ -4383,6 +4392,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
         for command in declared_commands:
+            try:
+                shlex.split(command)
+            except ValueError as exc:
+                # Checked here, before any suite runs: split inside the run
+                # loop, a malformed later command fails only after the earlier
+                # suites have spent their minutes.
+                print(
+                    f"error: declared test command {command!r} in project-state.yaml "
+                    f"cannot be split into arguments ({exc}). Check its quoting.",
+                    file=sys.stderr,
+                )
+                return 2
             if "{junit_xml}" not in command:
                 print(
                     f"error: declared test command {command!r} must contain "
@@ -4554,7 +4575,6 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # compound invocations (&&, pipes, env vars) belong in a script the
         # command points at. Split BEFORE substituting so a report path
         # containing spaces/quotes lands as one intact token.
-        import shlex  # noqa: PLC0415 — only this branch needs it
         # Bracket the run: the tree it STARTS on, checked against the one it ends
         # on below, because a file edited while the suite runs may never be
         # loaded by it and must not end up inside the stamp as though tested.

@@ -53,6 +53,14 @@ consuming repos must affirmatively opt in".
   report does reveal is that some product ran a given plugin version that week, and a coarse
   activity profile. A collector operator could link a product's weeks by that profile, but never
   to an identity. That is the residual the audit accepted.
+- **Also fixed (found by this branch's boundary run): a declared test command ending in a quoted
+  argument was corrupted.** The YAML readers stripped quote characters from both ends of a value,
+  so a command like `node --test 'dir/*.mjs'` came out with an unbalanced quote and
+  `test-evidence record` crashed after the earlier suites had run. Now
+  `core.unquote_scalar` and its hook mirror strip one pair of quotes only when they wrap the whole
+  value, for both the scalar and the sequence readers. Every declared command is also split before
+  any suite runs, and a bad one is refused with exit 2, naming it. The comment-truncation half of the
+  same family stays #790.
 
 ## 2026-10-03: Stop blocks and sessions become evidence facts, and `prawduct-hook stats` reports cost and yield per plugin version
 
