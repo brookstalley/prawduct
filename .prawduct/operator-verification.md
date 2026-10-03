@@ -1463,3 +1463,18 @@ both before and after.
 **Why a live check:** the flush's overlap safety rests on R2 honouring `onlyIf` preconditions on
 `put` (`etagMatches`, and `If-None-Match: *` in `Headers`). The in-memory fakes model them; only
 the live binding proves R2 does.
+
+> === 2026-10-03 — DRAIN DISPOSITION: LIVE-ONLY, AND IT DRAINS ITSELF AT THE FIRST FLUSH ===
+>
+> **The static half is already a test.** The flush's merge, sort, idempotence and overlap handling
+> are `collector/test/flush.test.mjs` and `collector/test/overlap.test.mjs`, run against fakes that
+> model both `onlyIf` forms and are red-verified by mutation.
+>
+> **What it turns on:** whether the live R2 binding honours those preconditions, and whether the
+> first scheduled run publishes and empties `pending/`. Only Cloudflare's runtime can show that.
+>
+> **Whose harness answers it:** the Worker's own cron at 2026-10-04 00:00 UTC, read through the
+> public `GET` routes and the R2 object listing. It needs no product and no release.
+>
+> **It gates nothing:** `operator_verification_required` is `false` in this repo. #950 stays open
+> until it is verified.

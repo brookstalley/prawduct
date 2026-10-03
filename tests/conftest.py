@@ -310,7 +310,12 @@ def _never_post_to_the_live_collector(monkeypatch):
     """
     from urllib.parse import urlsplit
 
-    from lib import contribution
+    try:
+        from lib import contribution
+    except ModuleNotFoundError:
+        # Some tests copy this conftest into fixture repos that carry no plugin;
+        # there is no client there to guard.
+        return
 
     live_host = urlsplit(contribution.COLLECTOR_ENDPOINT).hostname
     real_post = contribution._post
