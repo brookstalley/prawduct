@@ -267,6 +267,7 @@ design_decisions:
         client: "the stdlib's urllib, in lib/contribution.py's _post; no gh and no third-party library"
         scope: "one caller, `contribute --send`, the opt-in stats upload. Off unless the product's own `Stats contribution` row says ask or always (absent, unset, misspelled or unreadable reads as never). Added 2026-10-03 (#949, #950)"
         credential: "none: the collector takes anonymous POSTs, and no identifier of any kind is sent"
+        host: "a personal-account workers.dev subdomain, chosen at the first deploy and fine on develop. A release that ships contribution pins every installed copy to it for good, so the host must move to an owner-controlled hostname, or be committed to stay live, before that release: #954"
         egress_boundary: "one egress site: lib/contribution.py's _post, POSTing allowlisted reports to the pinned COLLECTOR_ENDPOINT. It honours HTTPS_PROXY, refuses redirects, and sends a User-Agent naming no runtime. COLLECTOR_ENDPOINT is pinned to the deployed collector (https://prawduct-collector.brooks-76d.workers.dev, deployed 2026-10-03, operator verification VRF-022); an empty endpoint would refuse"
         mock_boundary: "the client's tests patch `_post` or drive it against a local http.server stub (tests/preferences/test_stats_contribution_consent.py); the collector's tests run the worker against in-memory R2 fakes (collector/test/support/fakes.mjs)"
         integration_test_strategy: "a live round trip ran 2026-10-03 and matched byte for byte (.prawduct/operator-verification.md VRF-022); the first live flush, confirming every R2 `onlyIf` precondition the flush relies on (collector/README.md § Check on the first live flush), is VRF-023, pending"
@@ -618,7 +619,7 @@ build_state:
 # the bookkeeping merged WITH the PR" step now says to clear the pointer for
 # this case. The plan is untouched: still live, still findable, archived by
 # scope at the release.
-active_build_plan: .prawduct/artifacts/build-plan-telemetry-contribution.md
+active_build_plan: null
 
 # =============================================================================
 # BUILD-PLAN REF ROOT (opt-in)

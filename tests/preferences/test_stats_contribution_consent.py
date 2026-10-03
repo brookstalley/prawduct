@@ -358,6 +358,7 @@ class TestTransport:
     @pytest.mark.parametrize("status, body, stays_pending, says", [
         (400, b'{"refused":"unknown-key"}', True, "refused: unknown-key"),
         (503, b"", True, "HTTP 503"),
+        (429, b"", True, "HTTP 429"),
         (500, b"", False, "may or may not have arrived"),
     ])
     def test_the_collectors_reply_decides_whether_a_window_is_spent(
@@ -454,3 +455,19 @@ def test_no_test_can_post_to_the_live_collector():
         pytest.skip("no collector is pinned, so there is nothing to guard")
     with pytest.raises(AssertionError, match="live collector"):
         contribution._post(contribution.COLLECTOR_ENDPOINT, b"{}")
+
+
+
+def test_a_store_holding_newer_plugin_facts_refuses_to_send(tmp_path, seam, capsys):
+    """A sent window is never re-sent, so sending while facts this plugin cannot
+    read sit in the store would publish an undercount that never corrects."""
+    import json as _json
+
+    repo = _repo(tmp_path, "- **Stats contribution**: always")
+    store = contribution.evidence.store_path(repo)
+    with store.open("a") as f:
+        f.write(_json.dumps({"schema": 999, "kind": "review", "id": "future", "ts": "2026-09-30T10:00:00Z",
+                             "actor": {"plugin": "9.0.0"}, "body": {}}) + "\n")
+    assert _send(repo) == 2
+    assert seam == [] and not contribution.sent_record_path(repo).exists()
+    assert "written by a newer plugin" in capsys.readouterr().err

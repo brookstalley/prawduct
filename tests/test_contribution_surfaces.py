@@ -86,14 +86,15 @@ class TestBriefingLine:
         monkeypatch.setattr(contribution, "briefing_line", lambda project_dir: "Stats: sentinel line")
         assert "Stats: sentinel line" in briefing.assemble_session_briefing(repo, [])
 
-    def test_a_failing_line_never_breaks_the_briefing(self, tmp_path, monkeypatch):
+    def test_a_failing_line_never_breaks_the_briefing_and_says_so(self, tmp_path, monkeypatch):
         repo = _repo(tmp_path, "- **Stats contribution**: always")
 
         def boom(project_dir):
             raise RuntimeError("store exploded")
 
         monkeypatch.setattr(contribution, "briefing_line", boom)
-        assert "store exploded" not in briefing.assemble_session_briefing(repo, [])
+        text = briefing.assemble_session_briefing(repo, [])
+        assert "NOTE: stats contribution could not be checked (RuntimeError: store exploded)" in text
 
 
 class TestJanitorOffer:

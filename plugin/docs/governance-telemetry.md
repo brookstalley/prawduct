@@ -347,15 +347,16 @@ by `major.minor` (`unknown` when a fact names no version).
 
 Anonymous stats contribution, **off unless the product's owner opts in**. The
 `Stats contribution` row in `.prawduct/artifacts/project-preferences.md` says
-`never` (the default), `ask` or `always`; an absent, empty, misspelled or
-unreadable row reads as `never`.
+`never`, `ask` or `always`. The template ships it unset, and an absent, unset,
+misspelled or unreadable row reads as `never`.
 
 - **Bare** previews every pending report's exact bytes and one digest over them,
   and opens no socket. `--json` gives `pending` (window and report) and `digest`.
-- **`--send`** sends each report as one POST to the plugin's pinned collector
-  (#950). Under `ask` it needs `--approve` with the previewed digest; under
-  `always` it needs none. Exit 2 when the product has not opted in, the digest
-  does not match, or no collector is pinned; exit 1 when a send fails.
+- **`--send`** sends each report as one POST to prawduct's collector, whose
+  address is a plugin constant. Under `ask` it needs `--approve` with the
+  previewed digest; under `always` it needs none. Exit 2 when the product has not
+  opted in, the digest does not match, or the store holds facts a newer plugin
+  wrote; exit 1 when a send fails.
 - **A report** covers one ISO week for one plugin version, offered once the week
   ended at least seven days ago, and only the eight most recent such weeks. It
   carries only keys from `lib/contribution_schema.json`, the allowlist, and every
@@ -364,7 +365,10 @@ unreadable row reads as `never`.
   a metric whose denominator is under the schema's floor is left out.
 - **Sent at most once.** A window is recorded as sent before its request, in
   `<git-common-dir>/prawduct/contributions.json`, and the record is withdrawn only
-  when the request provably never arrived.
-- **Where it shows up:** under `ask` or `always`, with a collector pinned, the
-  session briefing says when reports are waiting. `/prawduct:janitor` asks once
-  whether to opt in, when the row is absent.
+  when the report provably was not stored: the request never arrived (a refused
+  connection, a failed proxy tunnel or TLS handshake), or the reply says so (400,
+  429 or 503). A send that may have arrived keeps its window spent.
+- **Where it shows up:** under `ask` or `always`, the session briefing says when
+  reports are waiting, and it names a row that is present but misspelled.
+  `/prawduct:janitor` asks once whether to opt in, while the row is absent or
+  still unset.

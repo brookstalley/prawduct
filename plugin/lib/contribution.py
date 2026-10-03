@@ -33,7 +33,7 @@ each week, and a Stop block whose session started the week before has no
 session to divide by. Both read a little low, and neither biases one plugin
 version against another.
 
-The numbers come from :func:`stats.aggregate`, wave 1's report over the
+The numbers come from :func:`stats.aggregate`, the ``stats`` report over the
 clone-shared evidence store, so a contributed week uses ``stats``' own
 definitions over that week, with dev builds bucketed apart from releases.
 
@@ -432,9 +432,10 @@ class MaybeArrived(Exception):
     """The report may or may not have been stored."""
 
 
-#: Replies the collector documents as "not stored": 400 is an allowlist
-#: refusal, 503 is storage unavailable.
-_NOT_STORED_STATUSES = (400, 503)
+#: Replies that prove the report was not stored: 400 is the collector's
+#: allowlist refusal, 503 is its storage unavailable, and 429 can only come
+#: from Cloudflare's edge (the worker never sends it), before the worker runs.
+_NOT_STORED_STATUSES = (400, 429, 503)
 
 
 def _post(url: str, body: bytes) -> None:
@@ -678,6 +679,14 @@ def contribute_cmd(project_dir: Path, argv: list[str], now: "datetime | None" = 
     if read["status"] == "error":
         print(f"contribute: {read['reason']}", file=sys.stderr)
         return 1
+    ahead = len(read.get("schema_ahead") or [])
+    if send and ahead:
+        # A sent window is never sent again, so a report missing facts this
+        # plugin cannot read would stay short for good.
+        return _refuse(
+            f"{ahead} fact(s) in the store were written by a newer plugin and cannot be read here, "
+            "so these reports would undercount for good. Send with the newer plugin"
+        )
     sent, reason = read_sent(project_dir)
     if sent is None:
         print(f"contribute: {reason}", file=sys.stderr)

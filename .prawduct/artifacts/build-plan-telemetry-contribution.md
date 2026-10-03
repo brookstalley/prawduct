@@ -101,6 +101,12 @@ inferred:
 
 What would raise it: the owner's read of the week-window and `always` assumptions.
 
+**As built (the review rounds moved three of these):**
+- A week is offered only once it has settled for seven days.
+- A window is withdrawn when the report provably was not stored. That covers a refused connection,
+  a failed DNS lookup, proxy tunnel or TLS handshake, and a 400, 429 or 503 reply.
+- The briefing also names a misspelled opt-in or a stuck contribution.
+
 ## Chunks
 
 ### Chunk 01: allowlist schema, payload builder, preview
@@ -137,8 +143,9 @@ digest under `ask`, then that a collector endpoint is pinned. It writes the sent
 each report through `urllib` and reports the outcome. The endpoint constant stays empty until #950
 deploys, and an empty endpoint refuses. The architecture and security-model Direction entries are
 amended to admit the third surface, citing the audit's owner line, and `project-state.yaml`'s
-egress record gains the site. `templates/project-preferences.md` ships the row reading `never`
-(moved here from chunk 03, because the consent tests pin the shipped default).
+egress record gains the site. `templates/project-preferences.md` ships the row (moved here from
+chunk 03, because the consent tests pin the shipped default). It ships unset, which reads as
+`never`, so the janitor can still tell a product nobody asked from one that declined.
 
 Done when:
 1. Under `never`, or under any unreadable or unrecognised row, `--send` refuses before the
@@ -148,7 +155,7 @@ Done when:
 4. An empty endpoint refuses, with a plain message that names no internal identifier.
 5. The architecture and security-model amendments each carry a `[DECISION: …]` citing the audit's
    owner line, and the egress record lists the new site.
-6. The shipped template row reads `never` (tested).
+6. The shipped template row is present, unset, and reads as `never` (tested).
 
 Also carries the fixes for the cumulative review `rev-20261003T135311Z-94eefd47`:
 - R-1: transfer grants are counted apart from guard refusals, in `stats` and in the report;

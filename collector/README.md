@@ -7,8 +7,9 @@ as a public bundle. It exists to serve two goals, and when they conflict the sec
 2. know nothing about the contributor.
 
 Sending is the client's business (`prawduct-hook contribute`, in `plugin/lib/contribution.py`).
-Contribution is off by default, and a repository sends nothing until its owner opts in. The
-collector only ever sees reports that a contributor has previewed byte for byte and approved.
+Contribution is off by default, and a repository sends nothing until its owner opts in. Under
+`ask` the owner previews and approves each send's exact bytes; under `always` they have given
+standing consent instead. Either way, a report can carry only what the allowlist admits.
 
 The Worker has one binding, a private R2 bucket. It has no Durable Object, database, queue or KV.
 
@@ -20,8 +21,8 @@ is `pending/<sha256 of the bytes>-<128 random bits>`, so the key is built from t
 random number, never from the sender or the time. The random part keeps identical reports from two
 contributors apart, so both are counted.
 
-A report gets in only if it passes the allowlist (`schema.json`, a byte-for-byte copy of
-`plugin/lib/contribution_schema.json`). Under that allowlist every value is an integer, a number on
+A report gets in only if it passes the allowlist, whose one home is
+`plugin/lib/contribution_schema.json`; the worker embeds it, and a test pins the two equal. Under that allowlist every value is an integer, a number on
 its field's step, a band label, or a boolean, so a report has no room for free text.
 
 **Not stored, anywhere, by this code:**
@@ -234,8 +235,8 @@ subscription: a checkout flow in the dashboard, under **R2**
    https://<host>/v1/report` and expect `204`. One object appears under `pending/` with no custom
    metadata. `GET https://<host>/bundles/index.json` returns `404` until the first 00:00 UTC flush,
    then lists the day, and `pending/` is empty again.
-7. Give the endpoint URL to wave 2 (`build-plan-telemetry-contribution.md`), which pins it as the
-   client's endpoint constant. A live round trip is then recorded in
+7. Pin the endpoint URL as `COLLECTOR_ENDPOINT` in `plugin/lib/contribution.py`, the client's
+   endpoint constant. A live round trip is then recorded in
    `.prawduct/operator-verification.md`.
 
 **Check on the first live flush.** The flush is safe against overlapping runs only if R2 honours
@@ -312,8 +313,7 @@ and 25.6.1. `test/support/fakes.mjs` is an in-memory R2 bucket shaped to the doc
 
 The Python parity fixtures under `test/fixtures/` come from the real client. Regenerate them with
 `python3 collector/test/fixtures/generate.py [PLUGIN_DIR]`, where `PLUGIN_DIR` defaults to this
-repository's `plugin/`. The script refuses to run unless that plugin's
-`lib/contribution_schema.json` is byte-identical to `collector/schema.json`. Importing
+repository's `plugin/`. Importing
 `generate.py` has no side effects, so a Python test can compare its `step_values()`,
 `verdict(body)` and `BODIES` with the committed files. The hand-picked
 reports in `test/support/reports.mjs` were produced by applying `contribution.to_step` to raw

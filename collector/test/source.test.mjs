@@ -1,8 +1,9 @@
 // Done-when 3: the worker never logs and reads no request header beyond
 // content-type and content-length. Greps the source, so a new log line or
 // header read fails here before it can ship. Also pins the worker's embedded
-// allowlist to collector/schema.json. That file's byte-for-byte match with the
-// plugin's allowlist is pinned on the plugin side, under tests/.
+// allowlist to its one home, the plugin's plugin/lib/contribution_schema.json:
+// the worker imports nothing, so it carries the allowlist as an object, and
+// this test is what keeps that object equal to the file.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -52,7 +53,7 @@ test("nothing in the worker reads the clock", () => {
   assert.deepEqual(clocks, ["new Date(scheduledTime)"]);
 });
 
-test("the embedded allowlist equals collector/schema.json", () => {
-  const file = JSON.parse(readFileSync(here("../schema.json"), "utf8"));
+test("the embedded allowlist equals the plugin's allowlist", () => {
+  const file = JSON.parse(readFileSync(here("../../plugin/lib/contribution_schema.json"), "utf8"));
   assert.deepEqual(SCHEMA, file);
 });

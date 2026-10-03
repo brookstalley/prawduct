@@ -201,9 +201,9 @@ Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to und
 
 Run `prawduct-hook review-stats` for the project's review cost / actionable-finding history, and `prawduct-hook stats` for cost and yield per plugin version (`docs/governance-telemetry.md`) — findings-dense paths, low-yield review tiers and a gate that blocks often are maintenance signals.
 
-**Stats contribution: an offer, asked once.** If `project-preferences.md` has no `Stats contribution` row, or the row is still `(unset — …)`, ask the person, as a question, whether this product should contribute anonymous governance stats to help improve prawduct. Say what a report carries: numbers and fixed-list values from a public allowlist, with no names, paths, branches, text or identifiers. `prawduct-hook contribute` shows the exact bytes and sends nothing. Offer `never` (the default), `ask` (they approve the exact bytes of each send) and `always` (standing consent). Write the row with the answer they give, `never` included, so the question is not asked again. The choice is theirs alone: never pick for them, and leave the row unwritten when no person answers.
-
 This context shapes how you interpret every theme. "Structural clarity" means something different for a 500-line CLI tool than for a multi-service platform. "Controllability" means something different for firmware with a hardware simulator than for a web app with a dev server.
+
+**Stats contribution: an offer, asked once.** If `project-preferences.md` has no `Stats contribution` row, or the row is still `(unset — …)`, ask the person, as a question, whether this product should contribute anonymous governance stats to help improve prawduct. Say what a report carries: numbers and fixed-list values from a public allowlist, with no names, paths, branches, text or identifiers. `prawduct-hook contribute` shows the exact bytes and sends nothing. Offer `never` (the default), `ask` (they approve the exact bytes of each send) and `always` (standing consent). Write the row with the answer they give, `never` included, so the question is not asked again. The choice is theirs alone: never pick for them, and leave the row unwritten when no person answers.
 
 ### Step 2: Survey
 

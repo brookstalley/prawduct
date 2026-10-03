@@ -17,8 +17,9 @@
 
 // --- the allowlist ------------------------------------------------------------
 
-// A copy of collector/schema.json, which is itself a byte-for-byte copy of
-// plugin/lib/contribution_schema.json. A test pins this object to that file.
+// The allowlist, whose one home is plugin/lib/contribution_schema.json. The
+// worker imports nothing, so it carries the content as an object, and
+// test/source.test.mjs pins this object equal to that file.
 export const SCHEMA = {
   schema: 1,
   about:

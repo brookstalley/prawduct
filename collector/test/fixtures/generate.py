@@ -5,8 +5,7 @@ Run from the repository root:
     python3 collector/test/fixtures/generate.py [PLUGIN_DIR]
 
 PLUGIN_DIR is the plugin whose client to use (default: this repository's
-``plugin/``). Its ``lib/contribution_schema.json`` must be byte-identical to
-``collector/schema.json``, or nothing is written.
+``plugin/``).
 
 - python-step-values.json: every value contribution.to_step can emit for one
   field of each distinct (step, min, max), as json.dumps writes it.
@@ -151,8 +150,6 @@ def write(name, about, payload):
 
 def main(argv):
     c, _ = _load(argv[1] if len(argv) > 1 else None)
-    if c.SCHEMA_PATH.read_bytes() != (HERE.parents[1] / "schema.json").read_bytes():
-        sys.exit(f"generate: {c.SCHEMA_PATH} differs from collector/schema.json; copy it first")
     write(
         "python-step-values.json",
         "Every value contribution.to_step can emit for one field of each distinct (step, min, max), "
