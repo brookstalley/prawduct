@@ -31,7 +31,7 @@ it is off unless you opt in.** A new `Stats contribution` row in `project-prefer
 `never` by default; `/prawduct:janitor` asks once whether you want `ask` (you approve the exact
 bytes of every send) or `always`. `prawduct-hook contribute` shows exactly what would be sent:
 weekly, coarsened numbers from a public allowlist, with no names, paths, branches, text or
-identifiers. Sending stays off until prawduct's collector is deployed. `prawduct-hook stats` now
+identifiers. Reports go to prawduct's own collector, whose daily bundles are public. `prawduct-hook stats` now
 counts base-advance transfer grants apart from guard refusals, because a grant saves a review.
 
 **Fix:** a `test_command` or `test_commands` entry ending in a quoted argument (for example

@@ -36,7 +36,8 @@ consuming repos must affirmatively opt in".
   fixed-list values or volume bands. Metrics under their sample floor are left out.
 - **`contribute --send`** sends only under the product's own `Stats contribution` row: `ask`
   with the previewed digest, or `always`. Every other state reads as `never` and refuses before
-  the transport. The endpoint is a plugin constant, empty until the collector is deployed.
+  the transport. The endpoint is a plugin constant, pinned to the deployed collector
+  (VRF-022); an empty one refuses.
 - **Delivery is at most once,** under a clone-wide lock. A window the collector provably did not
   store (refused, 503, a failed tunnel or handshake) stays pending; one that may have arrived is
   spent.

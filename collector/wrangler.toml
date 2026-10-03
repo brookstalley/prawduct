@@ -50,4 +50,4 @@ crons = ["0 0 * * *"]
 # access.
 [[r2_buckets]]
 binding = "BUNDLES"
-bucket_name = "<R2_BUCKET_NAME>" # OWNER: the bucket you create in deploy step 2
+bucket_name = "prawduct-telemetry" # the deployed bucket (2026-10-03); see README § Deploy

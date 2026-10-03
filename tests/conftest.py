@@ -295,3 +295,31 @@ def _unpin_project_dir():
     finally:
         if saved is not None:
             os.environ["CLAUDE_PROJECT_DIR"] = saved
+
+
+@pytest.fixture(autouse=True)
+def _never_post_to_the_live_collector(monkeypatch):
+    """Refuse, in every test, a stats report bound for the deployed collector.
+
+    `contribution.COLLECTOR_ENDPOINT` is the live collector, and its bundles are
+    public. A test that forgot to stub the transport would publish a synthetic
+    report to them, and the collector cannot tell it from a real contribution.
+    So the real `_post` is wrapped once, here, for every test: a request to the
+    pinned endpoint's host fails loudly, while a test's own local server is
+    untouched. A test that patches `_post` itself replaces this wrapper.
+    """
+    from urllib.parse import urlsplit
+
+    from lib import contribution
+
+    live_host = urlsplit(contribution.COLLECTOR_ENDPOINT).hostname
+    real_post = contribution._post
+
+    def guarded(url, body):
+        if live_host and urlsplit(url).hostname == live_host:
+            raise AssertionError(
+                f"a test tried to post a stats report to the live collector ({live_host})"
+            )
+        return real_post(url, body)
+
+    monkeypatch.setattr(contribution, "_post", guarded)

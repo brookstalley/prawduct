@@ -445,3 +445,12 @@ def test_a_failed_tls_handshake_never_arrived(server):
     plain = server.replace("http://", "https://")
     with pytest.raises(contribution.NeverArrived):
         contribution._post(f"{plain}/v1/report", b"{}")
+
+
+def test_no_test_can_post_to_the_live_collector():
+    """The suite-wide guard in conftest.py is in force: the shipped endpoint is
+    refused before any byte leaves this machine."""
+    if not contribution.COLLECTOR_ENDPOINT:
+        pytest.skip("no collector is pinned, so there is nothing to guard")
+    with pytest.raises(AssertionError, match="live collector"):
+        contribution._post(contribution.COLLECTOR_ENDPOINT, b"{}")

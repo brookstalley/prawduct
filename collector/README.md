@@ -199,9 +199,10 @@ subscription: a checkout flow in the dashboard, under **R2**
 
 1. Install a current Wrangler (`observability.issues` is documented from 4.134.0). Check with
    `npx wrangler --version`, then run `npx wrangler login`.
-2. Create the bucket: `npx wrangler r2 bucket create <name>`. Put `<name>` in `wrangler.toml` in
-   place of `<R2_BUCKET_NAME>`. Leave public access, event notifications and bucket locks off
-   (§ What Cloudflare still sees).
+2. Create the bucket: `npx wrangler r2 bucket create <name>`, and set `bucket_name` in
+   `wrangler.toml` to `<name>`. The deployed collector's bucket is `prawduct-telemetry`, so a
+   redeploy to the same account needs no change. Leave public access, event notifications and
+   bucket locks off (§ What Cloudflare still sees).
 3. Optional: set `account_id`, or `CLOUDFLARE_ACCOUNT_ID`, and add a `route` or custom domain if
    the collector should answer on your own hostname. Otherwise it answers on `workers.dev`.
 4. From `collector/`, run `npx wrangler deploy`.

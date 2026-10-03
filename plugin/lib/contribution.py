@@ -71,11 +71,11 @@ MAX_WEEKS = 8
 #: How long after a week ends before it is offered.
 SETTLE_DAYS = 7
 _DEV_SUFFIX = "-dev"
-#: Where reports go: the collector #950 deploys on the owner's Cloudflare
-#: account. A plugin constant and never configuration, so no setting can point
-#: a product's reports anywhere else. Empty until the collector is deployed,
-#: and an empty endpoint refuses every send.
-COLLECTOR_ENDPOINT = ""
+#: Where reports go: prawduct's collector (`collector/`), deployed on the
+#: owner's Cloudflare account. A plugin constant and never configuration, so no
+#: setting can point a product's reports anywhere else. An empty endpoint
+#: refuses every send.
+COLLECTOR_ENDPOINT = "https://prawduct-collector.brooks-76d.workers.dev/v1/report"
 #: The only identifying header a send carries. urllib's default names the
 #: Python version, which is a fingerprint the report itself is built to avoid.
 USER_AGENT = "prawduct"

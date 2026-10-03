@@ -55,8 +55,11 @@ test("no Durable Object: no binding, no class lifecycle, no other storage bindin
   assert.deepEqual(classes.map(([k]) => k), ["JsonNumber"], "the only exported class is the parser's number type");
 });
 
-test("owner values are placeholders, and no route is chosen for the owner", () => {
-  assert.match(CONFIG.r2_buckets[0].bucket_name, /^<[A-Z0-9_]+>$/);
+// The collector is deployed (2026-10-03), so the bucket names the live one. The
+// account id stays out of the repo (Wrangler reads it from the login), and no
+// route is set: the collector answers on workers.dev.
+test("the bucket is the deployed one, and no account or route is committed", () => {
+  assert.equal(CONFIG.r2_buckets[0].bucket_name, "prawduct-telemetry");
   assert.equal(CONFIG.account_id, undefined);
   assert.equal(CONFIG.route, undefined);
   assert.equal(CONFIG.routes, undefined);
