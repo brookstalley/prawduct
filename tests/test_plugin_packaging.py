@@ -187,6 +187,10 @@ NOT_DISTRIBUTED_DIRS = {
     ".claude-plugin",
     ".github",
     ".prawduct",
+    # The stats collector: a Cloudflare Worker deployed from the owner's account.
+    # It is the far end of the opt-in upload, not part of the plugin, and a
+    # governed product must never carry its code.
+    "collector",
     "documentation",
     "plugin",
     "tests",
