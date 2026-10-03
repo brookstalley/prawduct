@@ -180,3 +180,52 @@ class TestSessionStartFacts:
         assert before is not None
         assert evidence.append_session_start(repo)["status"] == "appended"
         assert evidence.read_facts(repo)["coverage_fingerprint"] == before
+
+
+class TestEdges:
+    def test_a_blocker_without_a_gate_id_records_as_unattributed(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _hook._record_stop_block(repo, ["a plain-string blocker"])
+        assert [f["body"]["gate"] for f in _stop_facts(repo)] == ["unattributed"]
+
+    def test_an_unexpected_error_while_recording_keeps_the_block(self, tmp_path, capsys, monkeypatch):
+        repo = _repo(tmp_path)
+        _commit_code(repo)
+
+        def boom(*a, **k):
+            raise ValueError("surprise")
+
+        monkeypatch.setattr(evidence, "append_stop_block", boom)
+        assert _stop(repo) == 2
+        assert "ValueError: surprise" in capsys.readouterr().err
+
+    def test_a_failed_session_start_append_says_so(self, tmp_path, capsys, monkeypatch):
+        repo = _repo(tmp_path)
+        monkeypatch.setattr(
+            evidence, "append_session_start",
+            lambda *a, **k: {"status": "error", "reason": "disk full"},
+        )
+        assert _hook.cmd_clear(repo, ["--session-start"]) == 0
+        err = capsys.readouterr().err
+        assert "NOTE:" in err and "disk full" in err
+
+    def test_an_unexpected_error_while_recording_a_session_does_not_fail_session_start(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        repo = _repo(tmp_path)
+
+        def boom(*a, **k):
+            raise ValueError("surprise")
+
+        monkeypatch.setattr(evidence, "append_session_start", boom)
+        assert _hook.cmd_clear(repo, ["--session-start"]) == 0
+        assert "ValueError: surprise" in capsys.readouterr().err
+
+    def test_evidence_list_shows_both(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        evidence.append_session_start(repo)
+        evidence.append_stop_block(repo, ["reflection"])
+        assert evidence.evidence_cmd(repo, ["list"]) == 0
+        out = capsys.readouterr().out
+        assert "session-start" in out
+        assert "guard=stop-gate:reflection" in out

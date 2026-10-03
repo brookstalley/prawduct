@@ -20,10 +20,13 @@ governed_by:
       - "derived views never authoritative → conforms: `stats` is a report; no gate reads it"
       - "a fact from a newer schema is a loud block → conforms: no schema version moves. The new `session-start` kind is additive under schema 1, and older readers keep unknown kinds without letting them satisfy a gate (evidence.py's forward-compat rule)"
       - "two stores, two lifetimes → conforms: both facts go to the clone-shared evidence store, which outlives worktrees"
+      - "a governance document reaches a terminal state, never deleted → conforms: this plan is archived at merge like any other"
+      - "every backlog write conforms to the issue title standard → inapplicable, because this plan writes no backlog item"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable, because no backlog read or write changes"
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; no per-subcommand version; persisted data schema-versioned → conforms: `stats --json` carries its own `schema_version`, like `review-stats --json`"
-      - "exit codes are the contract → conforms: `stats` exits 0 on a report, 1 on an unreadable store, 2 on usage, which is review-stats' scheme"
+      - "exit codes are the contract → conforms: `stats` exits 0 on a report (an empty store included) and 1 on bad arguments or an unreadable store, matching review-stats"
       - "additive-first evolution → conforms: new subcommand; nothing repurposed"
   - artifact: architecture
     dispositions:
@@ -31,7 +34,10 @@ governed_by:
       - "the plugin writes nothing into a governed repo but its own state and the shared store → conforms"
       - "authority fails closed; advice fails soft → conforms: recording a block is advice. A failed append is attributed on stderr and never changes the Stop exit code or delays session start"
       - "every fact has one home → conforms: metric definitions live in governance-telemetry.md; the audit artifact cites them"
-      - "the remaining architecture norms → inapplicable, because no reviewer path, language dispatch or product code changes"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer path changes"
+      - "written in Python, never specific to Python → conforms: the metrics read language-neutral facts; nothing dispatches by language"
+      - "prawduct guides and reviews, it never implements → conforms: the report measures governance; it writes no product code"
+      - "goals and verification bind; prescribed method is advice → conforms: Done-when states what must be true; the file lists are forecasts"
   - artifact: observability-strategy
     dispositions:
       - "terminal signals use the severity-prefix vocabulary and the stdout/stderr split → conforms: a failed append is a `NOTE:` on stderr"
@@ -52,7 +58,7 @@ for Stop-hook blocks because prawduct records none. Transcripts are kept for abo
 - Every Stop-hook block appends one fact per blocking gate to the evidence store, and every
   session boundary appends a `session-start` fact.
 - `prawduct-hook stats [--json] [--since] [--until]` reports the audit's metric set per plugin
-  `major.minor` from this clone's store and ledger. Run against the sibling stores, it reproduces
+  `major.minor` from this clone's evidence store. Run against the sibling stores, it reproduces
   the audit's review numbers, which is the cross-check that it is right.
 
 ## Out of scope
@@ -83,7 +89,7 @@ as naming the control. | owner can veto]`
 
 ## Status
 
-- [ ] Chunk 01: Stop-block and session-start facts
+- [x] Chunk 01: Stop-block and session-start facts
 - [ ] Chunk 02: `prawduct-hook stats`
 
 ## Chunk 01: Stop-block and session-start facts
@@ -94,10 +100,11 @@ session-boundary stamp in `cmd_clear`), the `evidence list` renderer, tests, and
 `plugin/docs/governance-telemetry.md`.
 
 **Persisted-format questions the facts must answer:** how often each gate blocks per session and
-per plugin version; whether blocks repeat within a session (consecutive blocks by `ts` within one
+per plugin version; whether one gate blocks repeatedly within a session (its facts grouped by
 `actor.session`); which gates co-fire on one Stop; how many sessions ran per version. Body:
 `{"guard": "stop-gate:<id>", "gate": "<id>", "stop": "<one id shared by the Stop's facts>",
-"co_gates": [...]}`; `session-start` body `{"source": "startup" | "clear"}`.
+"co_gates": [...]}`; `session-start` body `{}`: the envelope is the record, and no question here needs
+the SessionStart payload's `source`.
 
 **Done when:** a blocked Stop appends one fact per blocking gate and a clean Stop appends none; a
 deferred gate appends nothing; a store failure prints a `NOTE:` and leaves the exit code at 2; a
@@ -114,10 +121,11 @@ home), `plugin/skills/janitor/SKILL.md` (instruction plus both grant forms), `pl
 **Metrics,** per plugin `major.minor`, windowed by `--since`/`--until` on fact `ts`:
 C1 rounds per scope (median, p90); C2 measured review time per scope (`dispatched_at`→`ts` only,
 estimates reported separately and labelled); C3 empty verify-resolutions rounds; C4
-unchanged-tree re-reviews; C5 Stop blocks per session and per gate, plus loop episodes (three or
-more consecutive blocks in one session); C6 guard refusals per session; B1 blocking fixed per
-scope by goal; B2 warnings fixed per scope; B3 precision per severity; B4 red recorded suite runs;
-B6 learnings fired per session (ledger `learning.fired`).
+unchanged-tree re-reviews; C5 Stop blocks per recorded session and per gate, plus loops (one gate
+blocking three or more times in a session — a passing Stop records nothing, so "consecutive" is not
+measurable); C6 guard refusals per session; B1 blocking fixed per
+scope by goal; B2 warnings fixed per scope; B3 acted-on rate per severity; B4 red recorded suite runs. **Descoped:** B6 (learnings fired per session). Ledger lines carry no
+plugin version (#262 TEL1), so it cannot be bucketed by version.
 
 **Done when:** each metric has a fixture test, including a falsifying case (an empty round that
 verified a resolution is not empty; an estimated duration is never summed as measured); `--json`

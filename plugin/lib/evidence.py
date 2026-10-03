@@ -487,9 +487,9 @@ def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
 
 def append_session_start(project_dir: Path) -> dict:
     """Record one session boundary. The envelope (``ts``, ``actor.session``,
-    ``actor.plugin``) is the whole record; the body is empty because the
-    boundary cannot tell ``startup`` from ``clear`` (one hooks.json entry
-    serves both) and nothing else about it is a question anyone asks."""
+    ``actor.plugin``) is the whole record. The body is empty: the per-session
+    rates this fact exists for need only that a session began, so the
+    SessionStart payload's ``source`` (``startup`` or ``clear``) is not read."""
     fact_id = "session-start-{}-{}".format(
         datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
     )

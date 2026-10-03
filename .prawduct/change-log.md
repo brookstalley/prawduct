@@ -5,6 +5,30 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-03: Stop blocks and sessions become evidence facts, and `prawduct-hook stats` reports cost and yield per plugin version
+
+<!-- prawduct: type=feature | scope=telemetry-stats -->
+
+Wave 1 of the telemetry program in `.prawduct/artifacts/roi-audit-2026-10-02.md` (#948). The
+audit had to mine Claude Code transcripts for Stop-hook blocks because prawduct recorded none.
+
+- **Stop blocks are now recorded.** A blocked Stop appends one `guard-refusal` fact per blocking
+  gate (`guard` = `stop-gate:<id>`). It rides the class sink so that every control firing has one
+  shape (#563's owner decision); a kind plugins in the field already know also keeps their
+  verdict caches warm.
+- **Session boundaries are now recorded:** a new `session-start` fact, observational, as the
+  denominator for per-session rates.
+- **`prawduct-hook stats` reports per plugin `major.minor`,** from the clone-shared evidence store:
+  - **cost:** rounds per scope, measured-only review time, empty verify rounds, re-reviews, Stop
+    blocks per session and by gate, and guard refusals;
+  - **benefit:** findings by outcome, blocking fixed by goal, and red suite runs.
+  Run over the ten sibling stores, it reproduces the audit's per-version figures.
+- **Test changes.** The write-isolation test now skips the shared evidence store, the one write
+  outside `.prawduct/` that the architecture norm admits. It skips nothing else, and no assertion
+  was weakened.
+- **Descoped:** learnings fired per session. Ledger lines carry no plugin version (#262 TEL1), so it
+  cannot be bucketed by version.
+
 ## 2026-10-02: v3.7.0 is cut, and develop reopens on 3.7.1-dev
 
 <!-- prawduct: type=chore | scope=release-v3.7.0 -->
