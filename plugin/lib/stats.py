@@ -147,10 +147,13 @@ def _new_bucket() -> dict:
     }
 
 
-def aggregate(facts: list[dict], since=None, until=None) -> dict:
+def aggregate(facts: list[dict], since=None, until=None, bucket=None) -> dict:
     """The per-version report body over ``facts`` (one ``read_facts`` result).
 
-    Pure: no I/O, so every definition is testable against a fixture list."""
+    ``bucket`` maps a fact to its bucket key, by default its plugin
+    ``major.minor``. Pure: no I/O, so every definition is testable against a
+    fact list."""
+    bucket_of = bucket or _bucket
     store = {"facts": facts}
     outcome = finding_outcome(store)
     verified_by = Counter(
@@ -169,7 +172,7 @@ def aggregate(facts: list[dict], since=None, until=None) -> dict:
             if fact.get("kind") == "review":
                 _remember_interval(_body(fact), seen_intervals, seen_heads)
             continue
-        kind, body, b = fact.get("kind"), _body(fact), buckets[_bucket(fact)]
+        kind, body, b = fact.get("kind"), _body(fact), buckets[bucket_of(fact)]
         session = _session(fact)
         if kind == "session-start":
             if session:

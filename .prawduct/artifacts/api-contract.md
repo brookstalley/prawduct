@@ -167,7 +167,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   per-clone stopwatch, never an answer; the Critic's equivalent is written by `critic-begin` itself
   and has no separate verb), `pr-review-payload [--json] [<project dir>]`
   (assemble the PR reviewer's context in one pass; read-only, emits no verdict, fails soft per
-  section with each degradation named), `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `disposition` (append a finding's ACCEPT/FILE/FIXED
+  section with each degradation named), `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `contribute [--json]` (preview the anonymous stats reports this clone would contribute, as their exact bytes and one digest; read-only, opens no socket), `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
   on any judgeable path or any BLOCKING finding; the id argument takes a finding's `fid` **or** an
   observation's `oid`, the flags meaning exactly what they mean for a finding),
