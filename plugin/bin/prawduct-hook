@@ -1057,6 +1057,45 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
         )
 
 
+def _record_session_start(project_dir: Path) -> None:
+    """Append this boundary's ``session-start`` fact — the denominator for every
+    per-session rate ``prawduct-hook stats`` reports. Advice: a failure is a
+    NOTE and never blocks session start."""
+    try:
+        from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+        result = evidence.append_session_start(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- recording a session is advice; it must never fail session start
+        result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+    if result.get("status") != "appended":
+        print(
+            f"NOTE: this session's start was not recorded ({result.get('reason', 'unknown')}) "
+            "— per-session rates in `prawduct-hook stats` will undercount sessions",
+            file=sys.stderr,
+        )
+
+
+def _record_stop_block(project_dir: Path, blockers: list) -> None:
+    """Append one fact per gate that blocked this Stop, so a gate's firing rate
+    is a query rather than a transcript search. A blocker that carries no gate
+    id is recorded as ``unattributed`` so the count stays complete. Advice: the
+    block stands whether or not its record lands, and a failure says so."""
+    gates_blocking = list(
+        dict.fromkeys(getattr(b, "gate", None) or "unattributed" for b in blockers)
+    )
+    try:
+        from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+        results = evidence.append_stop_block(project_dir, gates_blocking)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- recording a block is advice; an escape here would end the session instead of blocking it
+        results = [{"status": "error", "reason": f"{type(exc).__name__}: {exc}"}]
+    failed = [r for r in results if r.get("status") != "appended"]
+    if failed:
+        print(
+            f"NOTE: this block was not recorded ({failed[0].get('reason', 'unknown')}) "
+            "— `prawduct-hook stats` will undercount Stop blocks",
+            file=sys.stderr,
+        )
+
+
 def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None:
     """The second session-BOUNDARY region: anchor the new session in git.
 
@@ -1746,6 +1785,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Session BOUNDARY region 2 of 2 — skipped on a continuation (SCN-5B8Q).
     if not brief_only:
         _boundary_capture_git_anchors(project_dir, prawduct_dir)
+        _record_session_start(project_dir)
     elif not (prawduct_dir / ".session-base-tree").is_file():
         # The continuation path never writes an anchor — correct, because stamping
         # a resume-time clock onto a session that began earlier narrows the very
@@ -3705,6 +3745,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             for f in canary_findings:
                 print(f"  {f}", file=sys.stderr)
             print("", file=sys.stderr)
+        _record_stop_block(project_dir, blockers)
         return 2
 
     # No blockers — print canary to stderr (visible in verbose mode only)
@@ -5900,6 +5941,25 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     return telemetry.review_stats(project_dir, argv)
+
+
+def cmd_stats(project_dir: Path, argv: list[str]) -> int:
+    """What governance cost and caught, per plugin version, from the evidence
+    store. Thin wrapper — body lives in ``lib.stats.stats_cmd``. Informational,
+    never a gate; a missing lib degrades to a note + exit 1, like
+    ``cmd_review_stats``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import stats  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "stats unavailable (could not import the plugin lib/ from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return stats.stats_cmd(project_dir, argv)
 
 
 def cmd_pr_review_dispatch(project_dir: Path, argv: list[str]) -> int:
@@ -8243,7 +8303,7 @@ _USAGE = (
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
-    "review-stats [--json] [--since <stamp>] [--until <stamp>]|classify-diff-risk [<base>]|"
+    "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--since <stamp>] [--until <stamp>]|classify-diff-risk [<base>]|"
     "worktrees [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
@@ -8638,6 +8698,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "render-dispositions",
     "resolve-base",
     "review-stats",
+    # Read-only: reads the evidence store and prints a report.
+    "stats",
     "test-status",
     "validate-evidence",
     "verify-chunk-refs",
@@ -9176,6 +9238,8 @@ def _dispatch() -> int:
         return cmd_pr_review_payload(project_dir, sys.argv[2:])
     elif command == "review-stats":
         return cmd_review_stats(project_dir, sys.argv[2:])
+    elif command == "stats":
+        return cmd_stats(project_dir, sys.argv[2:])
     elif command == "worktrees":
         return cmd_worktrees(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":

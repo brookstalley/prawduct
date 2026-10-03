@@ -167,7 +167,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   per-clone stopwatch, never an answer; the Critic's equivalent is written by `critic-begin` itself
   and has no separate verb), `pr-review-payload [--json] [<project dir>]`
   (assemble the PR reviewer's context in one pass; read-only, emits no verdict, fails soft per
-  section with each degradation named), `review-stats`, `disposition` (append a finding's ACCEPT/FILE/FIXED
+  section with each degradation named), `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
   on any judgeable path or any BLOCKING finding; the id argument takes a finding's `fid` **or** an
   observation's `oid`, the flags meaning exactly what they mean for a finding),
@@ -492,6 +492,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
+  - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the
+    opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
+    `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
+    in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
     consumer that would otherwise recount findings by hand. Top-level `schema_version` (the second
     report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`,
@@ -759,7 +763,7 @@ Evolution rules we want to hold, so new versions stay rare:
 ## Surface Inventory & Stability Tiers
 
 - **Stable, allowlistable surface** (intended to be depended on, and scoped into skill
-  `allowed-tools`): `evidence status|list`, `review-stats --json`, `render-dispositions`,
+  `allowed-tools`): `evidence status|list`, `review-stats --json`, `stats --json`, `render-dispositions`,
   `learnings-files` (bound by the Critic skill, the PR reviewer protocol and the reviewer agent),
   `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
   `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
