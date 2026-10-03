@@ -184,4 +184,4 @@ local `http.server` stub, once with a set `HTTPS_PROXY`, to see the bytes that a
 
 - [x] Chunk 01: allowlist schema, payload builder, preview
 - [x] Chunk 02: consent, send, the record, and the norm amendments
-- [ ] Chunk 03: the opt-in surfaces
+- [x] Chunk 03: the opt-in surfaces

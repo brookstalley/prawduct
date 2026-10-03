@@ -117,4 +117,4 @@ a live round trip is recorded in `.prawduct/operator-verification.md`.
 
 ## Status
 
-- [ ] Chunk 01: the worker, its config and its tests
+- [x] Chunk 01: the worker, its config and its tests
