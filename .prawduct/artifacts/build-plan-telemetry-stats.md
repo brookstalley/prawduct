@@ -90,7 +90,7 @@ as naming the control. | owner can veto]`
 ## Status
 
 - [x] Chunk 01: Stop-block and session-start facts
-- [ ] Chunk 02: `prawduct-hook stats`
+- [x] Chunk 02: `prawduct-hook stats`
 
 ## Chunk 01: Stop-block and session-start facts
 
