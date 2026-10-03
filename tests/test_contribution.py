@@ -24,10 +24,11 @@ sys.path.insert(0, str(_ROOT))
 from lib import contribution, evidence  # noqa: E402
 
 SCHEMA = contribution.load_schema()
-#: A Wednesday, so "this week" is still open and the week before is closed.
-NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
-LAST_WEEK = "2026-09-30T10:00:00Z"  # ISO 2026-W40
-THIS_WEEK = "2026-10-06T10:00:00Z"  # ISO 2026-W41, still open at NOW
+#: A Wednesday. The week that ended three days ago (W41) has not settled yet;
+#: the week before it (W40) has.
+NOW = datetime(2026, 10, 14, 12, 0, tzinfo=timezone.utc)
+LAST_WEEK = "2026-09-30T10:00:00Z"  # ISO 2026-W40, settled at NOW
+UNSETTLED_WEEK = "2026-10-06T10:00:00Z"  # ISO 2026-W41, ended under SETTLE_DAYS ago
 
 
 def _fact(kind, body, *, fid, ts=LAST_WEEK, plugin="3.7.1", session="s1"):
@@ -119,6 +120,8 @@ class TestValidator:
     def test_an_out_of_range_number_is_refused(self):
         assert contribution.validate(_valid_report(red_test_run_share=1.05), SCHEMA)
         assert contribution.validate(_valid_report(iso_week=54), SCHEMA)
+        # Outside input could be any JSON integer; a huge one is refused, not raised on.
+        assert contribution.validate(_valid_report(iso_week=10**400), SCHEMA)
         assert contribution.validate(_valid_report(red_test_run_share=1), SCHEMA) == []
 
     def test_a_missing_header_field_is_refused(self):
@@ -222,23 +225,35 @@ class TestFloors:
 
 
 class TestWindows:
-    def test_only_a_closed_week_is_offered(self):
-        pending = _pending(_reviews(5) + _reviews(5, ts=THIS_WEEK))
+    def test_only_a_settled_week_is_offered(self):
+        pending = _pending(_reviews(5) + _reviews(5, ts=UNSETTLED_WEEK))
         assert [item["window"] for item in pending] == ["2026-W40:3.7"]
+
+    def test_an_open_week_is_not_offered(self):
+        facts = _reviews(5, ts="2026-10-13T10:00:00Z")  # ISO 2026-W42, NOW's own week
+        assert _pending(facts) == []
+
+    def test_a_week_is_offered_once_it_has_settled(self):
+        facts = _reviews(5, ts=UNSETTLED_WEEK)
+        settled = NOW + timedelta(days=contribution.SETTLE_DAYS)
+        offered = contribution.pending_reports(facts, settled, set(), SCHEMA)
+        assert [item["window"] for item in offered] == ["2026-W41:3.7"]
 
     def test_each_version_in_a_week_is_its_own_window(self):
         facts = _reviews(5, plugin="3.6.2") + _reviews(5, plugin="3.7.0-dev.1")
         assert [item["window"] for item in _pending(facts)] == ["2026-W40:3.6", "2026-W40:3.7-dev"]
 
-    def test_only_the_most_recent_closed_weeks_are_offered(self):
+    def test_only_the_most_recent_settled_weeks_are_offered(self):
         stamps = [
             (NOW - timedelta(weeks=w)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            for w in range(1, contribution.MAX_WEEKS + 3)
+            for w in range(1, contribution.MAX_WEEKS + 4)
         ]
         facts = [f for ts in stamps for f in _reviews(1, ts=ts)]
         pending = _pending(facts)
         assert len(pending) == contribution.MAX_WEEKS
-        newest = (NOW - timedelta(weeks=1)).isocalendar()
+        # NOW is a Wednesday, so the week one week back has not settled and
+        # the newest offered is two back.
+        newest = (NOW - timedelta(weeks=2)).isocalendar()
         assert pending[-1]["report"]["iso_week"] == newest[1]
 
     def test_a_sent_window_is_not_offered_again(self):
@@ -281,7 +296,9 @@ def _repo_with_store(tmp_path, facts):
 
 
 def _last_week_stamp():
-    return (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """A stamp in a week that has settled whatever today is: two weeks back
+    lands in a week that ended at least SETTLE_DAYS ago."""
+    return (datetime.now(timezone.utc) - timedelta(weeks=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class TestPreviewCommand:
@@ -308,7 +325,7 @@ class TestPreviewCommand:
     def test_nothing_pending_is_an_answer(self, tmp_path):
         result = self._run(_repo_with_store(tmp_path, []))
         assert result.returncode == 0, result.stderr
-        assert "no closed window is waiting" in result.stdout
+        assert "no settled window is waiting" in result.stdout
 
     def test_an_unreadable_sent_record_refuses_rather_than_offering_everything(self, tmp_path):
         repo = _repo_with_store(tmp_path, _reviews(5, ts=_last_week_stamp()))

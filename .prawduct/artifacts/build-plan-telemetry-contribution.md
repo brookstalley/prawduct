@@ -143,6 +143,14 @@ Done when:
    owner line, and the egress record lists the new site.
 6. The shipped template row reads `never` (tested).
 
+Also carries the fixes for the cumulative review `rev-20261003T135311Z-94eefd47`:
+- R-1: transfer grants are counted apart from guard refusals, in `stats` and in the report;
+- R-8: `stats` exports `answered`, and the report's floor reads it;
+- R-6: a week is offered only once it has settled for `SETTLE_DAYS`, and the docstring states the
+  week edge's costs;
+- R-9 and R-14: the docstring and the schema's `about` no longer claim that a collector exists, and
+  both name the band type.
+
 ### Chunk 03: the opt-in surfaces
 
 The briefing says when windows

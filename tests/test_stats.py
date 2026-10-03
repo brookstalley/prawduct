@@ -143,6 +143,9 @@ class TestBenefit:
         assert f["warning"]["acted_on_rate"] == 0.5
         # Unanswered findings are counted, never read as a verdict either way.
         assert f["note"]["undispositioned"] == 1 and f["note"]["acted_on_rate"] is None
+        # The denominator is exported, so a reader flooring on it uses this count.
+        assert f["warning"]["answered"] == 2 and f["note"]["answered"] == 0
+        assert f["blocking"]["answered"] == 1
 
     def test_blocking_fixed_by_goal_and_per_scope(self):
         facts = [
@@ -234,6 +237,23 @@ class TestCost:
         g = _v(facts)["guard_refusals"]
         assert g["by_guard"] == {"critic-dispatch-free-interval": 1}
         assert g["per_session"] is None  # no session-start facts: no denominator, no rate
+
+    def test_a_transfer_grant_is_a_pass_not_a_refusal(self):
+        facts = [
+            _fact("session-start", {}, fid="s"),
+            _fact("guard-refusal", {"guard": "critic-dispatch-free-interval"}, fid="g1"),
+            _fact("guard-refusal", {"guard": evidence.TRANSFER_GRANT_GUARD}, fid="g2"),
+            _fact("guard-refusal", {"guard": evidence.TRANSFER_GRANT_GUARD}, fid="g3"),
+        ]
+        v = _v(facts)
+        assert v["guard_refusals"]["by_guard"] == {"critic-dispatch-free-interval": 1}
+        assert v["guard_refusals"]["per_session"] == 1
+        assert v["transfer_grants"] == {"total": 2, "per_session": 2}
+
+    def test_the_grant_guard_is_the_one_gates_records(self):
+        from lib import gates
+
+        assert gates._TRANSFER_GUARD == evidence.TRANSFER_GRANT_GUARD == "base-advance-transfer"
 
     def test_per_session_rates_count_only_sessions_that_recorded_their_start(self):
         """A block from a session older than the session-start fact has no

@@ -315,7 +315,8 @@ The definitions (their one home):
     a session. A Stop that passes records nothing, so "consecutive" cannot be
     measured.
 - **guard refusals**: control firings other than Stop blocks, per recorded
-  session (the same rule) and by guard.
+  session (the same rule) and by guard. A base-advance transfer grant shares
+  their sink, but it is a pass, so it is counted under Benefit instead.
 
 **Benefit**
 - **findings**: per severity, raised, then what became of each one.
@@ -330,10 +331,12 @@ The definitions (their one home):
     finding.
   - *acted on* = (fixed + fixed_unreviewed + filed) / (those + accepted +
     waived). Undispositioned findings are left out of the rate and reported
-    beside it.
+    beside it. The denominator is exported as `answered`.
 - **blocking fixed by goal**, and **blocking and warnings fixed per scope**.
   Both kinds of fixed count.
 - **red suite runs**: recorded suite runs with a failure.
+- **transfer grants**: base-advance transfers that granted, each a review round
+  the transfer saved, per recorded session.
 
 Rates with no denominator print as `-` (`null` in `--json`), never as zero.
 `--json` carries `schema_version`, `project`, `generated_at`, `window`,

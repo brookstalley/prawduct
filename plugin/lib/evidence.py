@@ -450,6 +450,11 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
 #: follows it. Readers select Stop blocks from other control firings by it.
 STOP_GATE_PREFIX = "stop-gate:"
 
+#: The ``guard`` a base-advance transfer's GRANT is recorded under. It shares
+#: the guard-refusal sink with the refusals, but it is a pass that saves a
+#: review round, so readers that count friction must leave it out.
+TRANSFER_GRANT_GUARD = "base-advance-transfer"
+
 
 def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
     """Record one blocked Stop: a ``guard-refusal`` fact per blocking gate.

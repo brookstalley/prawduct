@@ -5963,8 +5963,8 @@ def cmd_stats(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_contribute(project_dir: Path, argv: list[str]) -> int:
-    """Preview the anonymous stats reports this clone would contribute. Thin
-    wrapper — body lives in ``lib.contribution.contribute_cmd``. A missing lib
+    """Preview the anonymous stats reports this clone would contribute, or send
+    them under the product's own consent (``--send``). Thin wrapper — body lives in ``lib.contribution.contribute_cmd``. A missing lib
     degrades to a note + exit 1, like ``cmd_stats``."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
@@ -8321,7 +8321,7 @@ _USAGE = (
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
-    "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--since <stamp>] [--until <stamp>]|contribute [--json]|classify-diff-risk [<base>]|"
+    "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|classify-diff-risk [<base>]|"
     "worktrees [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"

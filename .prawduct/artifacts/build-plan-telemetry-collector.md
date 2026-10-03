@@ -66,16 +66,17 @@ owner owns (audit § Owner decisions; #950).
 
 ## Requirements Confidence: Medium
 
-- [ASSUMPTION: reports wait in one SQLite-backed Durable Object until a daily cron writes them to
-  R2 as one bundle and deletes them. Neither the DO rows nor the bundle carry a per-report time.
-  Writing each report straight to R2 would give every object an upload timestamp | MED impact |
-  owner can override]
+- Owner decision 2026-10-03 (#950): each report is written straight to R2 under `pending/`, and
+  the daily cron folds the pending objects into one bundle and deletes them. This replaces a
+  SQLite-backed Durable Object, whose 30-day point-in-time recovery (always on) would let the
+  operator reconstruct arrival times and recover deleted reports. R2 has no versioning and its
+  deletes are irreversible, so a pending object's upload time exists for under a day.
 - [ASSUMPTION: a bundle is JSON Lines, one canonical report per line, sorted by the line's bytes,
   at `bundles/<YYYY-MM-DD>.jsonl`, with `bundles/index.json` listing the days. Both are served by
   the worker's `GET` routes, so the bucket stays private | MED impact | owner can override]
 - [ASSUMPTION: abuse control is a body-size cap and the allowlist. Poisoning cannot be detected by
   design, so the aggregator must use robust statistics | LOW impact | owner can override]
-- [ASSUMPTION: Workers, Durable Objects, R2 and cron behave as their current docs say. Those facts
+- [ASSUMPTION: Workers, R2 and cron behave as their current docs say. Those facts
   are post-cutoff and fast-moving, so the delegate verifies each against the docs before relying on
   it | MED impact | resolved in chunk 01 step 0]
 
@@ -84,11 +85,11 @@ owner owns (audit § Owner decisions; #950).
 ### Chunk 01: the worker, its config and its tests
 
 new `collector/` holds the worker (`src/worker.js`, no imports), `wrangler.toml` (observability
-off, no Logpush, the R2 binding, the DO binding and migration, a daily cron), a copy of the schema
+off, no Logpush, the R2 binding and a daily cron), a copy of the schema
 (`schema.json`), tests runnable with `node --test`, and a README covering the privacy promise, the
 endpoints and the owner's deploy steps.
 
-**Foreign API:** Cloudflare Workers, Durable Objects, R2, cron triggers, wrangler config
+**Foreign API:** Cloudflare Workers, R2, cron triggers, wrangler config
 
 Done when:
 0. verify-api: each binding, handler signature and config key used is checked against Cloudflare's
