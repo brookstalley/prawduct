@@ -12,8 +12,10 @@
 Wave 3 of the telemetry program (#950), in `collector/`. It is built by isolated delegates, deployed
 from the owner's account, and never shipped in the plugin.
 
-- **`POST /v1/report`** admits only reports that pass a byte-identical copy of the plugin's
-  allowlist, and stores their canonical bytes as one R2 object each. It stores no IP, header or
+- **`POST /v1/report`** admits only reports that pass the plugin's allowlist, which the worker
+  embeds and a test pins equal to `plugin/lib/contribution_schema.json` (a separate
+  `collector/schema.json` copy, read by nothing at runtime, was removed). It stores their canonical
+  bytes as one R2 object each. It stores no IP, header or
   time beyond R2's own upload stamp.
 - **A nightly cron** folds pending objects into one sorted bundle per UTC day and deletes them. It
   is idempotent across re-runs, crashes and overlapping runs. `GET /bundles/...` publishes them.

@@ -108,6 +108,10 @@ Done when:
 6. `GET` serves the index and bundles; every other method or path is 404 or 405.
 7. `tests/test_collector_schema_parity.py` pins `collector/schema.json` to the plugin's schema byte
    for byte. The integrator writes this test.
+   *As built (2026-10-03, after the branch's final cumulative review):* the separate copy and this
+   test are gone, because a third home of the allowlist was neither deployed nor read at runtime.
+   `collector/test/source.test.mjs` pins the worker's embedded allowlist straight to
+   `plugin/lib/contribution_schema.json`, and was red-verified by drifting one field.
 
 ## Deploy (owner)
 
