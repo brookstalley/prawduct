@@ -82,7 +82,11 @@ class TestPreference:
         repo = _repo(tmp_path, "- **Upstream filing**: always-file")
         assert contribution.read_preference(repo) == ("never", None)
 
-    @pytest.mark.parametrize("row", ["- **Stats contribution**: yes", "- **Stats contribution**:"])
+    @pytest.mark.parametrize("row", ["- **Stats contribution**:", "- **Stats contribution**: (unset — reads as never)"])
+    def test_an_unset_row_is_never_and_silent(self, tmp_path, row):
+        assert contribution.read_preference(_repo(tmp_path, row)) == ("never", None)
+
+    @pytest.mark.parametrize("row", ["- **Stats contribution**: yes", "- **Stats contribution**: alwyas"])
     def test_an_unrecognised_row_is_never_and_says_so(self, tmp_path, row):
         state, warning = contribution.read_preference(_repo(tmp_path, row))
         assert state == "never" and "reads as never" in warning
@@ -94,13 +98,17 @@ class TestPreference:
         state, warning = contribution.read_preference(repo)
         assert state == "never" and "could not be read" in warning
 
-    def test_the_shipped_template_row_reads_never(self, tmp_path):
+    def test_the_shipped_template_row_is_present_unset_and_reads_never(self, tmp_path):
+        from lib import core
+
         template = (_ROOT / "templates" / "project-preferences.md").read_text(encoding="utf-8")
-        assert contribution._PREFERENCE_RE.search(template), "the template must ship the row"
         prefs = tmp_path / ".prawduct" / "artifacts"
         prefs.mkdir(parents=True)
         (prefs / "project-preferences.md").write_text(template, encoding="utf-8")
-        # Through the real reader, warning-free: the row is present and says never.
+        # Present but unset, so the janitor still asks; and through the real
+        # reader it is a silent never, so nothing is sent before it does.
+        row = core.read_preference_row(tmp_path, contribution.PREFERENCE_LABEL)
+        assert (row.state, row.value) == (core.PREF_ROW_PRESENT, "")
         assert contribution.read_preference(tmp_path) == ("never", None)
 
 
@@ -143,7 +151,24 @@ class TestRefusalsReachNoSeam:
         repo = _repo(tmp_path, "- **Stats contribution**: always")
         assert _send(repo) == 2
         assert seam == [] and not contribution.sent_record_path(repo).exists()
-        assert "#950" in capsys.readouterr().err
+        assert "prawduct's collector is not deployed yet" in capsys.readouterr().err
+
+    def test_no_emitted_text_names_an_internal_id(self):
+        """Operator-facing text names no prawduct-internal identifier, such as a
+        backlog number (observability-strategy § Direction). Walks every string
+        the module hands to print or a refusal."""
+        import ast
+
+        tree = ast.parse((_ROOT / "lib" / "contribution.py").read_text(encoding="utf-8"))
+        emitted = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) in ("print", "_refuse"):
+                for arg in node.args:
+                    for part in ast.walk(arg):
+                        if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                            emitted.append(part.value)
+        assert emitted, "the walk found no emitted strings, so it checked nothing"
+        assert not [t for t in emitted if __import__("re").search(r"#\d", t)]
 
     def test_the_shipped_endpoint_is_empty_or_https(self):
         assert contribution.COLLECTOR_ENDPOINT == "" or contribution.COLLECTOR_ENDPOINT.startswith("https://")
@@ -176,7 +201,7 @@ class TestSending:
 
         def times_out(url, body):
             seam.append((url, body))
-            raise TimeoutError("timed out")
+            raise contribution.MaybeArrived("timed out")
 
         monkeypatch.setattr(contribution, "_post", times_out)
         assert _send(repo) == 1
@@ -221,6 +246,7 @@ class _Recorder(BaseHTTPRequestHandler):
     seen: list = []
     status = 204
     location = None
+    reply = b""
 
     def _record(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -229,8 +255,9 @@ class _Recorder(BaseHTTPRequestHandler):
         self.send_response(type(self).status)
         if type(self).location:
             self.send_header("Location", type(self).location)
-        self.send_header("Content-Length", "0")
+        self.send_header("Content-Length", str(len(type(self).reply)))
         self.end_headers()
+        self.wfile.write(type(self).reply)
 
     do_POST = do_GET = do_CONNECT = _record
 
@@ -240,7 +267,7 @@ class _Recorder(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def server():
-    _Recorder.seen, _Recorder.status, _Recorder.location = [], 204, None
+    _Recorder.seen, _Recorder.status, _Recorder.location, _Recorder.reply = [], 204, None, b""
     httpd = HTTPServer(("127.0.0.1", 0), _Recorder)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -277,6 +304,9 @@ class TestTransport:
         repo = _repo(tmp_path, "- **Stats contribution**: always")
         assert _send(repo) == 1
         assert ("CONNECT", "collector.invalid:443") in [(m, p) for m, p, *_ in _Recorder.seen]
+        # A tunnel the proxy declined carried no byte of the report, so the
+        # window stays pending rather than being spent.
+        assert contribution.read_sent(repo) == (set(), None)
 
     def test_a_redirect_is_refused_not_followed(self, tmp_path, server, monkeypatch):
         monkeypatch.delenv("HTTP_PROXY", raising=False)
@@ -300,16 +330,48 @@ class TestTransport:
             contribution._post(f"http://127.0.0.1:{port}/v1/report", b"{}")
 
     def test_a_garbled_reply_is_a_failed_send_not_a_crash(self, tmp_path, monkeypatch):
-        import http.client
+        import socket as socket_mod
 
-        def garbled(url, body):
-            raise http.client.BadStatusLine("garbage")
+        listener = socket_mod.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(4)
 
-        monkeypatch.setattr(contribution, "COLLECTOR_ENDPOINT", "https://collector.example/v1/report")
-        monkeypatch.setattr(contribution, "_post", garbled)
+        def serve():
+            for _ in range(2):
+                conn, _ = listener.accept()
+                conn.recv(65536)
+                conn.sendall(b"garbage that is not HTTP\r\n\r\n")
+                conn.close()
+
+        threading.Thread(target=serve, daemon=True).start()
+        monkeypatch.delenv("HTTP_PROXY", raising=False)
+        monkeypatch.delenv("http_proxy", raising=False)
+        port = listener.getsockname()[1]
+        monkeypatch.setattr(contribution, "COLLECTOR_ENDPOINT", f"http://127.0.0.1:{port}/v1/report")
+        repo = _repo(tmp_path, "- **Stats contribution**: always")
+        try:
+            assert _send(repo) == 1
+        finally:
+            listener.close()
+        assert _send(repo) == 0  # recorded: it may have arrived
+
+    @pytest.mark.parametrize("status, body, stays_pending, says", [
+        (400, b'{"refused":"unknown-key"}', True, "refused: unknown-key"),
+        (503, b"", True, "HTTP 503"),
+        (500, b"", False, "may or may not have arrived"),
+    ])
+    def test_the_collectors_reply_decides_whether_a_window_is_spent(
+        self, tmp_path, server, monkeypatch, capsys, status, body, stays_pending, says
+    ):
+        monkeypatch.delenv("HTTP_PROXY", raising=False)
+        monkeypatch.delenv("http_proxy", raising=False)
+        _Recorder.status, _Recorder.reply = status, body
+        monkeypatch.setattr(contribution, "COLLECTOR_ENDPOINT", f"{server}/v1/report")
         repo = _repo(tmp_path, "- **Stats contribution**: always")
         assert _send(repo) == 1
-        assert _send(repo) == 0  # recorded: it may have arrived
+        assert says in capsys.readouterr().err
+        assert (contribution.read_sent(repo)[0] == set()) is stays_pending
+
 
 
 class TestCommandSurface:
@@ -339,3 +401,47 @@ class TestCommandSurface:
         assert contribution.contribute_cmd(repo, [], now=NOW) == 0
         last = capsys.readouterr().out.rstrip("\n").splitlines()[-1]
         assert last.startswith("consent: ") and line in last
+
+
+
+class TestSendLock:
+    def test_a_live_lock_sends_nothing(self, tmp_path, seam, capsys):
+        repo = _repo(tmp_path, "- **Stats contribution**: always")
+        lock = contribution.sent_record_path(repo).with_name(contribution.SEND_LOCK_BASENAME)
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("")
+        assert _send(repo) == 1
+        assert seam == [] and "another session on this clone is sending" in capsys.readouterr().err
+        assert lock.exists()  # someone else's lock is not ours to remove
+
+    def test_a_stale_lock_is_taken_over_and_released(self, tmp_path, seam):
+        import os
+
+        repo = _repo(tmp_path, "- **Stats contribution**: always")
+        lock = contribution.sent_record_path(repo).with_name(contribution.SEND_LOCK_BASENAME)
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        lock.write_text("")
+        old = lock.stat().st_mtime - contribution.STALE_LOCK_SECONDS - 1
+        os.utime(lock, (old, old))
+        assert _send(repo) == 0
+        assert len(seam) == 2 and not lock.exists()
+
+    def test_a_window_sent_by_another_session_since_the_preview_is_skipped(self, tmp_path, seam, monkeypatch):
+        repo = _repo(tmp_path, "- **Stats contribution**: always")
+        real = contribution._send_locked
+
+        def other_session_sent_one_first(project_dir, pending):
+            contribution._write_sent(project_dir, {pending[0]["window"]})
+            return real(project_dir, pending)
+
+        monkeypatch.setattr(contribution, "_send_locked", other_session_sent_one_first)
+        assert _send(repo) == 0
+        assert len(seam) == 1
+
+
+def test_a_failed_tls_handshake_never_arrived(server):
+    """https against a plain-HTTP listener fails in the handshake, before any
+    byte of the report is written, so the window must stay pending."""
+    plain = server.replace("http://", "https://")
+    with pytest.raises(contribution.NeverArrived):
+        contribution._post(f"{plain}/v1/report", b"{}")

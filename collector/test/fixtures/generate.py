@@ -15,28 +15,51 @@ PLUGIN_DIR is the plugin whose client to use (default: this repository's
   client would have sent for it: canonical_bytes after to_step, which is the
   form the collector stores.
 
-Writes only the two JSON files beside this script.
+Writes only the two JSON files beside this script, and only when run as a
+script. Importing it has no side effects: it reads, writes and exits nothing,
+and changes no import path. A test can import ``step_values()``,
+``verdict(body)`` and ``BODIES`` and compare them with the committed fixtures.
+Those three names are a contract with that test. Keep them and their
+signatures stable. The client is loaded on first use, from ``lib.contribution``
+when the plugin is already importable (as under ``tests/conftest.py``), and
+otherwise from this repository's ``plugin/``.
 """
 
+import importlib
 import json
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PLUGIN = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HERE.parents[2] / "plugin"
-sys.path.insert(0, str(PLUGIN))
-from lib import contribution as c  # noqa: E402
+DEFAULT_PLUGIN = HERE.parents[2] / "plugin"
 
-if c.SCHEMA_PATH.read_bytes() != (HERE.parents[1] / "schema.json").read_bytes():
-    sys.exit(f"generate: {c.SCHEMA_PATH} differs from collector/schema.json; copy it first")
+_client = None
 
-SCHEMA = c.load_schema()
-FIELDS = SCHEMA["fields"]
+
+def _load(plugin=None):
+    """``(contribution module, schema)``, imported once, on first use.
+
+    ``plugin`` (the script's PLUGIN_DIR) is put first on the import path.
+    Without it, an importable ``lib.contribution`` is used, or else this
+    repository's.
+    """
+    global _client
+    if _client is None:
+        if plugin is not None:
+            sys.path.insert(0, str(Path(plugin).resolve()))
+        try:
+            c = importlib.import_module("lib.contribution")
+        except ImportError:
+            sys.path.insert(0, str(DEFAULT_PLUGIN))
+            c = importlib.import_module("lib.contribution")
+        _client = (c, c.load_schema())
+    return _client
 
 
 def step_values():
+    c, schema = _load()
     seen, out = set(), {}
-    for name, spec in FIELDS.items():
+    for name, spec in schema["fields"].items():
         if spec["type"] != "number":
             continue
         key = (spec["step"], spec["min"], spec["max"])
@@ -105,17 +128,19 @@ BODIES = [
 
 
 def verdict(body):
+    c, schema = _load()
+    fields = schema["fields"]
     try:
         report = json.loads(body)
     except ValueError:
         return {"body": body, "accepted": False}
-    problems = c.validate(report, SCHEMA)
+    problems = c.validate(report, schema)
     if problems:
         return {"body": body, "accepted": False}
     client = {
-        k: (c.to_step(v, FIELDS[k]) if FIELDS[k]["type"] == "number" else v) for k, v in report.items()
+        k: (c.to_step(v, fields[k]) if fields[k]["type"] == "number" else v) for k, v in report.items()
     }
-    assert c.validate(client, SCHEMA) == []
+    assert c.validate(client, schema) == []
     return {"body": body, "accepted": True, "stored": c.canonical_bytes(client).decode("ascii")}
 
 
@@ -124,7 +149,10 @@ def write(name, about, payload):
     (HERE / name).write_text(json.dumps(doc, indent=0) + "\n", encoding="utf-8")
 
 
-if __name__ == "__main__":
+def main(argv):
+    c, _ = _load(argv[1] if len(argv) > 1 else None)
+    if c.SCHEMA_PATH.read_bytes() != (HERE.parents[1] / "schema.json").read_bytes():
+        sys.exit(f"generate: {c.SCHEMA_PATH} differs from collector/schema.json; copy it first")
     write(
         "python-step-values.json",
         "Every value contribution.to_step can emit for one field of each distinct (step, min, max), "
@@ -137,3 +165,7 @@ if __name__ == "__main__":
         "the client-form canonical bytes. Regenerate: python3 collector/test/fixtures/generate.py",
         {"cases": [verdict(b) for b in BODIES]},
     )
+
+
+if __name__ == "__main__":
+    main(sys.argv)

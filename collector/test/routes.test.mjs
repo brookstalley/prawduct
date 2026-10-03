@@ -1,5 +1,5 @@
-// Done-when 6: GET serves the index and the bundles; every other method or
-// path is 405 or 404.
+// Done-when 6: GET serves the index, the bundles and the health flag; every
+// other method or path is 405 or 404.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -38,6 +38,34 @@ test("GET of a day with no bundle, or before any flush, is 404", async () => {
   assert.equal((await worker.fetch(req("GET", "/bundles/index.json"), makeEnv())).status, 404);
 });
 
+test("GET /health says only whether a claim is outstanding: never a count, a time or a key", async () => {
+  const health = async (env) => {
+    const lists = env.BUNDLES.lists;
+    const response = await worker.fetch(req("GET", "/health"), env);
+    assert.equal(env.BUNDLES.lists, lists, "the route lists nothing, so it can't count");
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/json");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    return response.text();
+  };
+  const env = makeEnv();
+  assert.equal(await health(env), '{"claim_outstanding":false}', "before any flush");
+  for (const { bytes } of PYTHON_REPORTS) await route(post(bytes), env);
+  assert.equal(await health(env), '{"claim_outstanding":false}', "reports pending change nothing");
+
+  // A flush that fails leaves its claim outstanding, which is what the route
+  // is for: the owner's sign of a broken nightly flush.
+  env.BUNDLES.fail = (key, op) => {
+    if (op === "put" && key.startsWith("bundles/")) throw new Error("r2 unavailable");
+  };
+  await assert.rejects(worker.scheduled({ scheduledTime: Date.UTC(2026, 9, 3) }, env, {}));
+  env.BUNDLES.fail = null;
+  assert.equal(await health(env), '{"claim_outstanding":true}', "after a failed flush");
+
+  await worker.scheduled({ scheduledTime: Date.UTC(2026, 9, 4) }, env, {});
+  assert.equal(await health(env), '{"claim_outstanding":false}', "after the next flush finishes it");
+});
+
 test("other methods on the known paths are 405 with Allow", async () => {
   const env = await flushedEnv();
   const cases = [
@@ -48,6 +76,8 @@ test("other methods on the known paths are 405 with Allow", async () => {
     ["PUT", "/bundles/2026-10-03.jsonl", "GET"],
     ["DELETE", "/bundles/2026-10-03.jsonl", "GET"],
     ["HEAD", "/bundles/index.json", "GET"],
+    ["POST", "/health", "GET"],
+    ["DELETE", "/health", "GET"],
   ];
   for (const [method, path, allow] of cases) {
     const response = await worker.fetch(req(method, path), env);
@@ -81,6 +111,8 @@ test("every other path is 404, including ones that would reach other bucket keys
     "/" + pendingKey,
     "/claims/current.json",
     "/bundles/../claims/current.json",
+    "/health/",
+    "/v1/health",
   ];
   for (const path of paths) {
     for (const method of ["GET", "POST"]) {

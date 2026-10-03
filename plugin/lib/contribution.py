@@ -34,32 +34,38 @@ session to divide by. Both read a little low, and neither biases one plugin
 version against another.
 
 The numbers come from :func:`stats.aggregate`, wave 1's report over the
-clone-shared evidence store, so a contributed week reads exactly as
-``stats --since <its Monday> --until <its Sunday>`` would.
+clone-shared evidence store, so a contributed week uses ``stats``' own
+definitions over that week, with dev builds bucketed apart from releases.
+
+The network stack is imported only inside a send, because the session
+briefing imports this module for every product, and a product at the default
+must not pay for TLS at session start.
 """
 
 from __future__ import annotations
 
 import hashlib
-import http.client
 import json
 import math
-import re
-import socket
+import os
 import sys
-import urllib.error
-import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from . import evidence, stats
-from .core import atomic_write_text
+from .core import PREF_ROW_PRESENT, PREF_ROW_UNREADABLE, atomic_write_text, read_preference_row
 from .timewindow import parse_instant
 
 SCHEMA_PATH = Path(__file__).with_name("contribution_schema.json")
 #: The sent-window record's own format version, separate from the report's.
 SENT_RECORD_SCHEMA = 1
 SENT_RECORD_BASENAME = "contributions.json"
+#: Held for the whole of a send, so two sessions on one clone cannot both read
+#: the record, both claim a window and both send it.
+SEND_LOCK_BASENAME = "contributions.lock"
+#: A lock older than this was left by a send that died, not one still running:
+#: a send is at most MAX_WEEKS requests of SEND_TIMEOUT_SECONDS each.
+STALE_LOCK_SECONDS = 600
 #: How many of the most recent settled ISO weeks are offered.
 MAX_WEEKS = 8
 #: How long after a week ends before it is offered.
@@ -373,37 +379,29 @@ PREF_ASK = "ask"
 PREF_ALWAYS = "always"
 PREFERENCE_STATES = (PREF_NEVER, PREF_ASK, PREF_ALWAYS)
 PREFERENCE_LABEL = "Stats contribution"
-_PREFERENCE_RE = re.compile(
-    rf"^[ \t]*[-*][ \t]*\*\*[ \t]*{re.escape(PREFERENCE_LABEL)}[ \t]*\*\*[ \t]*:(?P<value>.*)$",
-    re.IGNORECASE | re.MULTILINE,
-)
 
 
 def read_preference(project_dir: Path) -> "tuple[str, str | None]":
     """``(state, warning)``: the product's consent, and why it is not the row's
-    when the two differ. Every failure reads as :data:`PREF_NEVER`. The warning
-    is set whenever the owner could believe they opted in and have not: a row
-    that does not parse, or a file that cannot be read. An absent file or row is
-    the ordinary case and stays silent."""
-    path = Path(project_dir) / ".prawduct" / "artifacts" / "project-preferences.md"
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return PREF_NEVER, None
-    except (OSError, UnicodeDecodeError) as exc:
+    when the two differ. Every failure reads as :data:`PREF_NEVER`.
+
+    Silent for the ordinary cases: no file, no row, or a row left unset (the
+    shipped template's ``(unset — …)``, whose value is empty). The warning is
+    set whenever the owner could believe they opted in and have not: a value
+    that is not a state, or a file that cannot be read."""
+    row = read_preference_row(project_dir, PREFERENCE_LABEL)
+    if row.state == PREF_ROW_UNREADABLE:
         return PREF_NEVER, (
-            f"project-preferences.md could not be read ({exc}), so `{PREFERENCE_LABEL}` "
+            f"project-preferences.md could not be read ({row.error}), so `{PREFERENCE_LABEL}` "
             f"reads as {PREF_NEVER}"
         )
-    match = _PREFERENCE_RE.search(text)
-    if match is None:
+    if row.state != PREF_ROW_PRESENT or not row.value:
         return PREF_NEVER, None
-    raw = match.group("value").split("(", 1)[0].strip().strip("`").lower()
-    if raw in PREFERENCE_STATES:
-        return raw, None
+    if row.value in PREFERENCE_STATES:
+        return row.value, None
     return PREF_NEVER, (
-        f"`{PREFERENCE_LABEL}` in project-preferences.md reads {raw or '(empty)'!r}, which is "
-        f"not one of {'/'.join(PREFERENCE_STATES)}, so it reads as {PREF_NEVER}"
+        f"`{PREFERENCE_LABEL}` in project-preferences.md reads {row.value!r}, which is not one "
+        f"of {'/'.join(PREFERENCE_STATES)}, so it reads as {PREF_NEVER} and nothing is sent"
     )
 
 
@@ -425,39 +423,68 @@ def _consent_line(state: str) -> str:
 # --- the transport ------------------------------------------------------------
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """The endpoint is pinned, so a redirect is refused rather than followed:
-    following one would send the report somewhere nobody approved."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 class NeverArrived(Exception):
-    """The request provably never reached the collector."""
+    """The collector provably did not store the report: the request never
+    reached it, or it answered with a refusal or "retry later"."""
+
+
+class MaybeArrived(Exception):
+    """The report may or may not have been stored."""
+
+
+#: Replies the collector documents as "not stored": 400 is an allowlist
+#: refusal, 503 is storage unavailable.
+_NOT_STORED_STATUSES = (400, 503)
 
 
 def _post(url: str, body: bytes) -> None:
-    """POST one report. Proxies come from the environment (``HTTPS_PROXY``),
-    as urllib reads them. Raises :class:`NeverArrived` only when the
-    collector cannot have received the bytes; any other failure means the
-    report may or may not have arrived."""
+    """POST one report, or raise :class:`NeverArrived` / :class:`MaybeArrived`.
+
+    Proxies come from the environment (``HTTPS_PROXY``), as urllib reads them.
+    A redirect is refused rather than followed, because the endpoint is pinned
+    and following one would send the report somewhere nobody approved. A
+    failed proxy tunnel or TLS handshake happens before any byte of the report
+    is written, so it never arrived; so did a reply the collector documents as
+    not stored, whose refusal rule is passed on, because the collector keeps no
+    logs and its reply is the only diagnostic there is."""
+    import http.client  # noqa: PLC0415 — lazy: the briefing imports this module
+    import socket  # noqa: PLC0415
+    import ssl  # noqa: PLC0415
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
     request = urllib.request.Request(
         url,
         data=body,
         method="POST",
         headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
     )
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = urllib.request.build_opener(NoRedirect)
     try:
         with opener.open(request, timeout=SEND_TIMEOUT_SECONDS):
             return
-    except urllib.error.HTTPError:
-        raise
+    except urllib.error.HTTPError as exc:
+        if exc.code in _NOT_STORED_STATUSES:
+            try:
+                rule = json.loads(exc.read() or b"{}").get("refused")
+            except (ValueError, AttributeError, OSError):
+                rule = None
+            detail = f"refused: {rule}" if rule else f"HTTP {exc.code}"
+            raise NeverArrived(f"the collector did not store it ({detail})") from exc
+        raise MaybeArrived(f"HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
-        if isinstance(exc.reason, (ConnectionRefusedError, socket.gaierror)):
-            raise NeverArrived(str(exc.reason)) from exc
-        raise
+        reason = exc.reason
+        if isinstance(reason, (ConnectionRefusedError, socket.gaierror, ssl.SSLError)):
+            raise NeverArrived(str(reason)) from exc
+        if isinstance(reason, OSError) and str(reason).startswith("Tunnel connection failed"):
+            raise NeverArrived(str(reason)) from exc
+        raise MaybeArrived(str(reason)) from exc
+    except (OSError, http.client.HTTPException) as exc:
+        raise MaybeArrived(str(exc) or type(exc).__name__) from exc
 
 
 def _refuse(message: str) -> int:
@@ -494,8 +521,47 @@ def send_pending(project_dir: Path, pending: list[dict], approve: "str | None") 
             "were approved. Preview again with `contribute`"
         )
     if not COLLECTOR_ENDPOINT:
-        return _refuse("no collector is deployed yet (#950), so there is nowhere to send to")
+        # The collector is #950; the operator-facing text names no internal id.
+        return _refuse("prawduct's collector is not deployed yet, so there is nowhere to send to")
 
+    lock = _acquire_send_lock(project_dir)
+    if isinstance(lock, str):
+        print(f"contribute: {lock}", file=sys.stderr)
+        return 1
+    try:
+        return _send_locked(project_dir, pending)
+    finally:
+        lock.unlink(missing_ok=True)
+
+
+def _acquire_send_lock(project_dir: Path) -> "Path | str":
+    """The lock path, or why it could not be taken. Exclusive creation is the
+    whole mechanism: of two sessions racing, exactly one creates the file."""
+    record = sent_record_path(project_dir)
+    if record is None:
+        return "not inside a git repository"
+    lock = record.with_name(SEND_LOCK_BASENAME)
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    for _ in range(2):
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return lock
+        except FileExistsError:
+            try:
+                age = datetime.now(timezone.utc).timestamp() - lock.stat().st_mtime
+            except FileNotFoundError:
+                continue  # released between the two calls; try again
+            if age < STALE_LOCK_SECONDS:
+                return "another session on this clone is sending; nothing was sent"
+            lock.unlink(missing_ok=True)  # left by a send that died
+        except OSError as exc:
+            return f"could not take the send lock ({exc}), so nothing was sent"
+    return "could not take the send lock, so nothing was sent"
+
+
+def _send_locked(project_dir: Path, pending: list[dict]) -> int:
+    """The send loop, under the lock. The record is re-read here, inside the
+    lock, so a window another session sent since the preview is skipped."""
     sent, reason = read_sent(project_dir)
     if sent is None:
         print(f"contribute: {reason}", file=sys.stderr)
@@ -503,6 +569,8 @@ def send_pending(project_dir: Path, pending: list[dict], approve: "str | None") 
     failures = 0
     for item in pending:
         window = item["window"]
+        if window in sent:
+            continue
         try:
             _write_sent(project_dir, sent | {window})
         except OSError as exc:
@@ -519,9 +587,8 @@ def send_pending(project_dir: Path, pending: list[dict], approve: "str | None") 
                 retry = "it stays pending"
             except OSError:
                 retry = "it is recorded as sent anyway, because the record could not be rewritten"
-            print(f"WARNING: contribute: {window} never reached the collector ({exc}); {retry}", file=sys.stderr)
-        # http.client raises HTTPException, not OSError, on a reply it cannot parse.
-        except (urllib.error.HTTPError, OSError, http.client.HTTPException) as exc:
+            print(f"WARNING: contribute: {window} was not stored ({exc}); {retry}", file=sys.stderr)
+        except MaybeArrived as exc:
             failures += 1
             print(
                 f"WARNING: contribute: {window} may or may not have arrived ({exc}). It stays recorded "
@@ -537,20 +604,25 @@ def send_pending(project_dir: Path, pending: list[dict], approve: "str | None") 
 
 
 def briefing_line(project_dir: Path, now: "datetime | None" = None) -> "str | None":
-    """The session briefing's line when reports are waiting, or ``None``.
+    """The session briefing's line about stats contribution, or ``None``.
 
-    Silent unless the product opted in and a collector is pinned, so a product
-    at the default never pays for the store read and never sees a prompt. Under
-    ``ask`` the line points at the preview, because the person approves the
-    bytes. Under ``always`` it points at the send, because the person already
-    consented."""
-    state, _ = read_preference(project_dir)
+    Silent at the default, and without a store read, so a product that never
+    opted in pays nothing. A row that is present but not a state is named,
+    because its owner may believe they opted in. An opted-in product whose
+    contribution has stopped (an unreadable store or sent record) is told so,
+    because under ``always`` this line is the only thing that prompts a send.
+    Under ``ask`` the line asks for the person's yes on the exact bytes; under
+    ``always`` it tells the agent to send, because the owner already chose."""
+    state, warning = read_preference(project_dir)
+    if warning:
+        return f"Stats: contribution is off — {warning}. The row is the owner's to fix"
     if state == PREF_NEVER or not COLLECTOR_ENDPOINT:
         return None
     read = evidence.read_facts(project_dir)
-    sent, _ = read_sent(project_dir)
+    sent, reason = read_sent(project_dir)
     if read["status"] == "error" or sent is None:
-        return None
+        stuck = read.get("reason") if read["status"] == "error" else reason
+        return f"Stats: contribution is stuck — {stuck}. Nothing is sent until that is fixed"
     pending = pending_reports(read["facts"], now or datetime.now(timezone.utc), sent, load_schema())
     if not pending:
         return None
@@ -560,7 +632,10 @@ def briefing_line(project_dir: Path, now: "datetime | None" = None) -> "str | No
             "`prawduct-hook contribute`'s exact bytes, and send with `--send --approve <digest>` only "
             "on their yes"
         )
-    return f"Stats: {len(pending)} anonymous report(s) ready — `prawduct-hook contribute --send` sends them"
+    return (
+        f"Stats: {len(pending)} anonymous report(s) ready — run `prawduct-hook contribute --send` "
+        "once, without asking: the owner chose `always`"
+    )
 
 
 # --- the command --------------------------------------------------------------

@@ -405,7 +405,8 @@ async function boundedText(request) {
 // --- R2 layout ------------------------------------------------------------------------
 //
 // pending/<sha256 of the bytes>-<128 random bits>  one accepted report each
-// claims/current.json                              the flush in progress, if any
+// claims/current.json                              the outstanding claim, or the
+//                                                  last one's retirement mark
 // bundles/<YYYY-MM-DD>.jsonl                       a day's published reports
 // bundles/index.json                               {"days": [...]}
 //
@@ -469,10 +470,26 @@ async function getObject(env, key, contentType) {
   });
 }
 
+// Whether a claim is outstanding, and nothing else. Outside the minutes after
+// 00:00 UTC, an outstanding claim means a flush failed. It says nothing about
+// any report: only the cron takes or retires a claim, so its state changes
+// only when the cron runs. A pending count would say something, because
+// polling it would time each arrival.
+async function health(env) {
+  const { claim } = await readClaim(env.BUNDLES);
+  return new Response(JSON.stringify({ claim_outstanding: claim !== null }), {
+    status: 200,
+    headers: { "content-type": "application/json", "cache-control": "no-store" },
+  });
+}
+
 export async function route(request, env) {
   const path = new URL(request.url).pathname;
   if (path === "/v1/report") {
     return request.method === "POST" ? postReport(request, env) : status(405, { allow: "POST" });
+  }
+  if (path === "/health") {
+    return request.method === "GET" ? health(env) : status(405, { allow: "GET" });
   }
   if (path === "/" + INDEX_KEY) {
     return request.method === "GET" ? getObject(env, INDEX_KEY, "application/json") : status(405, { allow: "GET" });
@@ -506,52 +523,96 @@ export default {
 // --- the daily flush -----------------------------------------------------------------------
 //
 // 1. Claim: list up to MAX_CLAIM pending keys and write them, with a random
-//    claim id and the day, to claims/current.json, only if no claim exists.
+//    claim id and the day, to claims/current.json, only if no claim is
+//    outstanding.
 // 2. Publish: unless the day's bundle already carries this claim id in its
 //    custom metadata, merge the claimed reports into it, sort, and write it
-//    with the id. Add the day to the index.
-// 3. Clean up: delete the claimed pending objects, then the claim.
+//    with the id. Rebuild the index from the bundles that exist.
+// 3. Clean up: delete the claimed pending objects, then retire the claim.
 //
 // A run that finds a claim finishes it instead of taking a new one, and the id
 // on the bundle stops a claim from being merged twice. So a report is
 // published once even if a run dies between the bundle write and the deletes.
+//
+// Runs can overlap: a slow run, a retried cron, a second cron time. So every
+// write here that rests on something read is conditional on that thing being
+// unchanged: R2's put with onlyIf, on the etag that was read, or on absence. A
+// write whose precondition fails stores nothing and returns null, and its run
+// reads again. R2's delete takes no precondition, so the claim is never
+// deleted. A conditional write of a mark naming it retires it, so a stalled
+// run can't remove a claim taken after the one it read.
+//
+// The rest leans on one invariant: a claimed pending object is deleted only
+// after its claim is published. So a run that finds one gone knows another run
+// has published that claim, and writes no bundle for it.
 
-async function listPending(bucket, max) {
+// How many times a run reads again after losing a race before it gives up. It
+// gives up by throwing, which leaves the claim for the next run.
+const ATTEMPTS = 4;
+
+const BUNDLES_PREFIX = "bundles/";
+const BUNDLE_KEY_RE = /^bundles\/([0-9]{4}-[0-9]{2}-[0-9]{2})\.jsonl$/;
+
+// A precondition that the key is still as it was read: `seen` is the object
+// read, or null if the key was absent. The wildcard goes in a Headers object,
+// the form R2's binding release notes give for "*". The R2Conditional field
+// once parsed "*" as a literal etag (workerd#2572). etagMatches takes the
+// unquoted etag.
+function unchangedSince(seen) {
+  return seen === null ? new Headers({ "if-none-match": "*" }) : { etagMatches: seen.etag };
+}
+
+async function listKeys(bucket, prefix, max = Infinity) {
   const keys = [];
   let cursor;
   do {
-    const page = await bucket.list({ prefix: PENDING_PREFIX, cursor });
+    const page = await bucket.list({ prefix, cursor });
     for (const object of page.objects) keys.push(object.key);
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor !== undefined && keys.length < max);
   return keys.slice(0, max);
 }
 
+// {seen, claim}: the claim object as read (null if absent), and the claim
+// itself if one is outstanding. A retired claim is {"done": <id>}, which is
+// not outstanding.
 async function readClaim(bucket) {
-  const object = await bucket.get(CLAIM_KEY);
-  return object === null ? null : object.json();
+  const seen = await bucket.get(CLAIM_KEY);
+  if (seen === null) return { seen, claim: null };
+  const body = await seen.json();
+  return { seen, claim: Array.isArray(body.keys) ? body : null };
 }
 
-async function takeClaim(bucket, day) {
-  const keys = await listPending(bucket, MAX_CLAIM);
+const CLAIM_HTTP = { contentType: "application/json" };
+
+// Take a claim over what is pending, on top of the claim state `seen`. If
+// another run changed that state first, finish its claim if it is
+// outstanding, and otherwise stop: what is still pending waits for the next
+// run.
+async function takeClaim(bucket, day, seen) {
+  const keys = await listKeys(bucket, PENDING_PREFIX, MAX_CLAIM);
   if (keys.length === 0) return null;
   const claim = { id: randomHex(16), day, keys: keys.sort() };
-  // Create-only: if another run claimed first, finish its claim instead.
-  const created = await bucket.put(CLAIM_KEY, JSON.stringify(claim), {
-    httpMetadata: { contentType: "application/json" },
-    onlyIf: new Headers({ "if-none-match": "*" }),
+  const written = await bucket.put(CLAIM_KEY, JSON.stringify(claim), {
+    httpMetadata: CLAIM_HTTP,
+    onlyIf: unchangedSince(seen),
   });
-  return created === null ? readClaim(bucket) : claim;
+  if (written !== null) return { claim, etag: written.etag };
+  const now = await readClaim(bucket);
+  return now.claim === null ? null : { claim: now.claim, etag: now.seen.etag };
 }
 
 async function publish(bucket, claim) {
   const key = bundleKey(claim.day);
-  const existing = await bucket.get(key);
-  if (existing === null || (existing.customMetadata || {}).claim !== claim.id) {
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    const existing = await bucket.get(key);
+    if (existing !== null && (existing.customMetadata || {}).claim === claim.id) return;
     const lines = existing === null ? [] : (await existing.text()).split("\n").filter((line) => line !== "");
     for (const pending of claim.keys) {
       const object = await bucket.get(pending);
-      if (object === null) continue;
+      // Gone, so another run has published this claim. Writing what is left
+      // would put a bundle without this report over the one that has it.
+      if (object === null) return;
       const text = await object.text();
       // Only canonical, allowlisted bytes are ever published, whatever else
       // may have been written under pending/.
@@ -562,31 +623,56 @@ async function publish(bucket, claim) {
     if (lines.length === 0) return;
     // Canonical bytes are ASCII, so code-unit order is byte order.
     lines.sort();
-    await bucket.put(key, lines.join("\n") + "\n", {
+    const written = await bucket.put(key, lines.join("\n") + "\n", {
       httpMetadata: { contentType: "application/x-ndjson" },
       customMetadata: { claim: claim.id },
+      onlyIf: unchangedSince(existing),
     });
+    if (written !== null) return;
+    // Another run wrote the bundle after this one read it: read it again.
   }
-  const index = await bucket.get(INDEX_KEY);
-  const days = index === null ? [] : (await index.json()).days;
-  if (!days.includes(claim.day)) {
-    days.push(claim.day);
-    days.sort();
-    await bucket.put(INDEX_KEY, JSON.stringify({ days }), {
+  throw new Error("flush: the bundle kept changing");
+}
+
+// The index is rebuilt from the bundles that exist, never edited, so the next
+// flush puts right an index that is missing, stale or unparseable instead of
+// failing on it. One list call covers 1,000 days.
+async function updateIndex(bucket) {
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+    const current = await bucket.get(INDEX_KEY);
+    const days = [];
+    for (const key of await listKeys(bucket, BUNDLES_PREFIX)) {
+      const m = BUNDLE_KEY_RE.exec(key);
+      if (m) days.push(m[1]);
+    }
+    if (current === null && days.length === 0) return;
+    const text = JSON.stringify({ days: days.sort() });
+    if (current !== null && (await current.text()) === text) return;
+    const written = await bucket.put(INDEX_KEY, text, {
       httpMetadata: { contentType: "application/json" },
+      onlyIf: unchangedSince(current),
     });
+    if (written !== null) return;
   }
+  throw new Error("flush: the index kept changing");
 }
 
 export async function flush(bucket, day) {
-  const claim = (await readClaim(bucket)) || (await takeClaim(bucket, day));
-  if (claim === null) return;
+  const state = await readClaim(bucket);
+  const held =
+    state.claim !== null ? { claim: state.claim, etag: state.seen.etag } : await takeClaim(bucket, day, state.seen);
+  if (held === null) return;
+  const { claim } = held;
   await publish(bucket, claim);
+  await updateIndex(bucket);
   for (let i = 0; i < claim.keys.length; i += DELETE_BATCH) {
     await bucket.delete(claim.keys.slice(i, i + DELETE_BATCH));
   }
-  // Drop the claim only if it is still this one.
-  const current = await readClaim(bucket);
-  if (current !== null && current.id === claim.id) await bucket.delete(CLAIM_KEY);
+  // Retire the claim only if it is still this one. The mark names the claim,
+  // so no two marks share an etag, and a run holding an old mark's etag can't
+  // take a claim over a newer one.
+  await bucket.put(CLAIM_KEY, JSON.stringify({ done: claim.id }), {
+    httpMetadata: CLAIM_HTTP,
+    onlyIf: { etagMatches: held.etag },
+  });
 }
-

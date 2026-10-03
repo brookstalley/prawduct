@@ -404,6 +404,11 @@ def render_human(report: dict) -> str:
         )
     if not report["by_version"]:
         lines.append("no governance history in this clone's evidence store")
+    if report.get("schema_ahead"):
+        lines.append(
+            f"{report['schema_ahead']} fact(s) written by a newer plugin are not counted; "
+            "run a newer prawduct to include them"
+        )
     return "\n".join(lines)
 
 

@@ -339,6 +339,11 @@ class TestCli:
         assert "reflection 1" in result.stdout
         assert "acted on" in result.stdout
 
+    def test_the_human_report_says_when_newer_facts_were_left_out(self):
+        base = {"project": "p", "window": {"since": None, "until": None}, "by_version": {}}
+        assert "newer plugin are not counted" in stats.render_human({**base, "schema_ahead": 3})
+        assert "newer plugin" not in stats.render_human({**base, "schema_ahead": 0})
+
     def test_empty_store_is_an_answer(self, tmp_path):
         result = self._run(self._repo(tmp_path))
         assert result.returncode == 0

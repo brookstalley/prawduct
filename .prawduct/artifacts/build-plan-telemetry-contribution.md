@@ -38,6 +38,13 @@ governed_by:
       - "whole-surface semver; persisted data schema-versioned → conforms: the payload carries `schema`, and the sent record carries its own version"
       - "exit codes are the contract → conforms: 0 preview or sent; 1 bad arguments or an unreadable store; 2 a refusal (consent, digest, no collector)"
       - "additive-first evolution → conforms: a new subcommand and a new preference row"
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "review wall-clock is P0 → inapplicable, because no review is added"
+      - "proportionality ratchets both ways; a control emits its yield observably → inapplicable, because contribution is not a control; it is the instrument that measures controls"
+      - "state-file growth past its threshold is advisory → conforms: the sent record holds at most a few windows per week and is per-clone; the store growth it reads is #953"
+      - "review rigor is stage-keyed → inapplicable, because no review stage changes"
+      - "SessionStart stays fast and import-light → conforms: the network stack is imported only inside a send, pinned by a test, and a product at the default reads nothing. An opted-in product pays one store read and up to 8 week aggregates, measured at about 0.2s on a 13 MB store, which its owner chose"
   - artifact: observability-strategy
     dispositions:
       - "terminal signals use the severity-prefix vocabulary and the stdout/stderr split → conforms: refusals are `BLOCKED:` and failures `WARNING:` on stderr; the preview is on stdout"
@@ -138,7 +145,7 @@ Done when:
    transport seam, and nothing is recorded.
 2. Under `ask`, a send whose `--approve` does not match a re-render of the bytes refuses.
 3. A window already recorded is never sent again, including after a send that timed out.
-4. An empty endpoint refuses with a message naming #950.
+4. An empty endpoint refuses, with a plain message that names no internal identifier.
 5. The architecture and security-model amendments each carry a `[DECISION: …]` citing the audit's
    owner line, and the egress record lists the new site.
 6. The shipped template row reads `never` (tested).

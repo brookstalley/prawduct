@@ -15,6 +15,7 @@ is gone.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from collections.abc import Sequence
@@ -337,6 +338,50 @@ def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]"
             return YAML_SCALAR_NULL, None
         return YAML_SCALAR_VALUE, value
     return YAML_SCALAR_ABSENT, None
+
+
+#: States of a ``project-preferences.md`` Workflow row, as read by
+#: :func:`read_preference_row`.
+PREF_ROW_NO_FILE = "no-file"
+PREF_ROW_UNREADABLE = "unreadable"
+PREF_ROW_ABSENT = "absent"
+PREF_ROW_PRESENT = "present"
+
+
+class PreferenceRow(NamedTuple):
+    """One Workflow row of ``project-preferences.md``. ``value`` is set only
+    when the row is present: lowercased, unquoted, and cut at the first ``(``,
+    because the parenthetical is guidance for the human. A row reading
+    ``(unset — …)`` therefore has the empty value. ``error`` is set only when
+    the file exists and cannot be read."""
+
+    state: str
+    value: "str | None" = None
+    error: "str | None" = None
+
+
+def read_preference_row(project_dir: Path, label: str) -> PreferenceRow:
+    """THE reader of a ``- **<Label>**: value (…)`` row, shared by every consent
+    gate so a parser fix cannot reach one gate and miss another. Each caller
+    maps the result to its own states and defaults, because they differ on
+    purpose: upstream filing defaults to asking, stats contribution to never."""
+    path = Path(project_dir) / ".prawduct" / "artifacts" / "project-preferences.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return PreferenceRow(PREF_ROW_NO_FILE)
+    except (OSError, UnicodeDecodeError) as exc:
+        return PreferenceRow(PREF_ROW_UNREADABLE, error=str(exc))
+    match = re.search(
+        rf"^[ \t]*[-*][ \t]*\*\*[ \t]*{re.escape(label)}[ \t]*\*\*[ \t]*:(?P<value>.*)$",
+        text,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    if match is None:
+        return PreferenceRow(PREF_ROW_ABSENT)
+    return PreferenceRow(
+        PREF_ROW_PRESENT, value=match.group("value").split("(", 1)[0].strip().strip("`").lower()
+    )
 
 
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:

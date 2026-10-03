@@ -42,14 +42,29 @@ class TestBriefingLine:
         assert line.startswith("Stats: 1 anonymous report(s) ready")
         assert "--approve" in line and "only on their yes" in line
 
-    def test_always_points_at_the_send(self, tmp_path, pinned):
+    def test_always_instructs_the_send(self, tmp_path, pinned):
         line = contribution.briefing_line(_repo(tmp_path, "- **Stats contribution**: always"), NOW)
-        assert line.startswith("Stats: 1 anonymous report(s) ready") and "contribute --send" in line
+        assert line.startswith("Stats: 1 anonymous report(s) ready")
+        assert "run `prawduct-hook contribute --send` once, without asking" in line
         assert "--approve" not in line
 
-    @pytest.mark.parametrize("row", [None, "- **Stats contribution**: never", "- **Stats contribution**: yes"])
+    @pytest.mark.parametrize(
+        "row", [None, "- **Stats contribution**: never", "- **Stats contribution**: (unset — reads as never)"]
+    )
     def test_silent_without_an_opt_in(self, tmp_path, pinned, row):
         assert contribution.briefing_line(_repo(tmp_path, row), NOW) is None
+
+    def test_a_misspelled_opt_in_is_named(self, tmp_path, monkeypatch):
+        # Even with no collector pinned: the owner believes they opted in.
+        monkeypatch.setattr(contribution, "COLLECTOR_ENDPOINT", "")
+        line = contribution.briefing_line(_repo(tmp_path, "- **Stats contribution**: alwyas"), NOW)
+        assert line.startswith("Stats: contribution is off") and "'alwyas'" in line
+
+    def test_an_opted_in_product_whose_record_broke_is_told(self, tmp_path, pinned):
+        repo = _repo(tmp_path, "- **Stats contribution**: always")
+        contribution.sent_record_path(repo).write_text("{not json")
+        line = contribution.briefing_line(repo, NOW)
+        assert line.startswith("Stats: contribution is stuck") and "could not be read" in line
 
     def test_silent_without_a_pinned_collector(self, tmp_path, monkeypatch):
         monkeypatch.setattr(contribution, "COLLECTOR_ENDPOINT", "")
@@ -103,3 +118,19 @@ class TestJanitorOffer:
         frontmatter = (_ROOT / "skills" / "janitor" / "SKILL.md").read_text(encoding="utf-8").split("---")[1]
         # A Bash grant is a prefix match: granting `contribute` would grant `contribute --send`.
         assert "contribute" not in frontmatter
+
+
+
+def test_importing_the_module_does_not_load_the_network_stack():
+    """The briefing imports this module for every product at session start, so
+    a product at the default must not pay for urllib and TLS there."""
+    import subprocess
+
+    probe = (
+        "import sys; sys.path.insert(0, %r)\n"
+        "from lib import contribution, briefing\n"
+        "heavy = [m for m in ('ssl', 'urllib.request', 'http.client') if m in sys.modules]\n"
+        "print(','.join(heavy))"
+    ) % str(_ROOT)
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == ""

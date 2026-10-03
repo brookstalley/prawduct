@@ -24,9 +24,14 @@ const cron = (env, scheduledTime) =>
 const lines = (text) => text.split("\n").filter((l) => l !== "");
 const bundle = (env, day) => lines(env.BUNDLES.text(bundleKey(day)));
 
+// A finished claim is never deleted, because R2's delete takes no
+// precondition. It is overwritten with a retirement mark that names it and
+// holds no pending key.
 function assertDrained(env) {
   assert.deepEqual(env.BUNDLES.keys(PENDING_PREFIX), [], "pending is empty");
-  assert.equal(env.BUNDLES.text(CLAIM_KEY), undefined, "no claim is left behind");
+  const claim = JSON.parse(env.BUNDLES.text(CLAIM_KEY));
+  assert.deepEqual(Object.keys(claim), ["done"], "the claim is retired, and the mark holds no pending key");
+  assert.match(claim.done, /^[0-9a-f]{32}$|^other$/);
 }
 
 test("flushDay names the UTC day of the scheduled time", () => {
@@ -42,7 +47,7 @@ test("a flush writes one bundle sorted by bytes, the index, and empties pending"
   assert.deepEqual(bundle(env, "2026-10-03"), [A, A, B, C].sort());
   assert.ok(env.BUNDLES.text(bundleKey("2026-10-03")).endsWith("\n"));
   assert.deepEqual(JSON.parse(env.BUNDLES.text(INDEX_KEY)), { days: ["2026-10-03"] });
-  assert.deepEqual(env.BUNDLES.keys(), [bundleKey("2026-10-03"), INDEX_KEY].sort());
+  assert.deepEqual(env.BUNDLES.keys(), [bundleKey("2026-10-03"), CLAIM_KEY, INDEX_KEY].sort());
   assertDrained(env);
 });
 
@@ -128,7 +133,7 @@ test("a run that dies after the bundle write, before the deletes, never publishe
   await assert.rejects(cron(env, DAY1));
   assert.deepEqual(bundle(env, "2026-10-03"), [A, B].sort());
   assert.equal(env.BUNDLES.keys(PENDING_PREFIX).length, 2, "the pending objects survive the crash");
-  assert.ok(env.BUNDLES.text(CLAIM_KEY), "so does the claim");
+  assert.ok(JSON.parse(env.BUNDLES.text(CLAIM_KEY)).keys, "so does the claim, outstanding");
   env.BUNDLES.fail = null;
   await cron(env, DAY1);
   assert.deepEqual(bundle(env, "2026-10-03"), [A, B].sort(), "no duplicates");
@@ -247,4 +252,41 @@ test("bundles hold report bytes only; the one metadata value is a random claim i
   assert.match(entry.customMetadata.claim, /^[0-9a-f]{32}$/);
   for (const line of lines(entry.text)) assert.ok(line === A || line === B);
   assert.deepEqual(Object.keys(env.BUNDLES.objects.get(INDEX_KEY).customMetadata), []);
+});
+
+test("an unparseable index does not fail the flush; the flush rebuilds it from the bundles", async () => {
+  // The review's case: an index that won't parse, so every night's flush
+  // would throw, and the claim and its pending objects would never clear.
+  for (const corrupt of ["{not json", '{"days":"2026-10-03"}', "", '{"days":["../claims"]}']) {
+    const env = makeEnv();
+    await send(env, A);
+    await cron(env, DAY1);
+    await env.BUNDLES.put(INDEX_KEY, corrupt);
+    await send(env, B);
+    await cron(env, DAY2);
+    assert.deepEqual(JSON.parse(env.BUNDLES.text(INDEX_KEY)), { days: ["2026-10-03", "2026-10-04"] }, corrupt);
+    assert.deepEqual(bundle(env, "2026-10-04"), [B]);
+    assertDrained(env);
+  }
+});
+
+test("the index lists exactly the days that have a bundle", async () => {
+  const env = makeEnv();
+  await send(env, A);
+  await cron(env, DAY1);
+  // A stale index: it names a day with no bundle, and misses a bundle's day.
+  await env.BUNDLES.put(INDEX_KEY, JSON.stringify({ days: ["2020-01-01"] }));
+  await env.BUNDLES.put(bundleKey("2026-09-30"), A + "\n");
+  await send(env, B);
+  await cron(env, DAY2);
+  assert.deepEqual(JSON.parse(env.BUNDLES.text(INDEX_KEY)), { days: ["2026-09-30", "2026-10-03", "2026-10-04"] });
+});
+
+test("a claim that publishes nothing writes no bundle and no index", async () => {
+  const env = makeEnv();
+  await env.BUNDLES.put(`${PENDING_PREFIX}stray`, '{"sender":"203.0.113.77"}');
+  await cron(env, DAY1);
+  assert.equal(env.BUNDLES.text(INDEX_KEY), undefined);
+  assert.equal(env.BUNDLES.text(bundleKey("2026-10-03")), undefined);
+  assertDrained(env);
 });

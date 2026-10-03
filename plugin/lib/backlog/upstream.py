@@ -64,7 +64,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import core, encode, ids, issuefmt, transport as tx
-from ..core import read_str_yaml_key
+from ..core import PREF_ROW_PRESENT, PREF_ROW_UNREADABLE, read_preference_row, read_str_yaml_key
 
 #: The canonical upstream repo, as a **plugin constant** — never a caller-supplied
 #: ``--repo`` (design §5 check 2). Configurability is what would make the pin
@@ -535,17 +535,6 @@ PREF_UNREADABLE = "unreadable"
 #: The ``project-preferences.md`` row this reads, as the row spells itself.
 FILING_PREFERENCE_LABEL = "Upstream filing"
 
-#: The bullet form every Workflow preference in ``templates/project-preferences.md``
-#: uses — ``- **Name**: value (default: … )`` — matched over the whole file. The
-#: trailing parenthetical is guidance for the human, so the value is everything
-#: ahead of the first ``(``.
-_PREFERENCE_RE = re.compile(
-    rf"^[ \t]*[-*][ \t]*\*\*[ \t]*{re.escape(FILING_PREFERENCE_LABEL)}[ \t]*\*\*[ \t]*:"
-    r"(?P<value>.*)$",
-    re.IGNORECASE | re.MULTILINE,
-)
-
-
 def read_filing_preference(project_dir) -> tuple[str, str | None]:
     """``(state, warning)`` — the §4.1 consent state, plus any reason it is not the row's.
 
@@ -574,26 +563,20 @@ def read_filing_preference(project_dir) -> tuple[str, str | None]:
     resolves to the same state the shipped row names, so a repo predating the row
     — or an operator who deleted it — has nothing to be told.
     """
-    path = Path(project_dir) / ".prawduct" / "artifacts" / "project-preferences.md"
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return PREF_ASK_USER, None
-    except (OSError, UnicodeDecodeError) as exc:
+    row = read_preference_row(project_dir, FILING_PREFERENCE_LABEL)
+    if row.state == PREF_ROW_UNREADABLE:
         return PREF_UNREADABLE, (
-            f"project-preferences.md exists but could not be read ({exc}), so "
+            f"project-preferences.md exists but could not be read ({row.error}), so "
             f"`{FILING_PREFERENCE_LABEL}` could not be consulted — filing is "
             f"refused rather than assumed, because a row reading {PREF_NEVER_FILE} "
             "and a row nobody can read are indistinguishable from here"
         )
-    match = _PREFERENCE_RE.search(text)
-    if match is None:
+    if row.state != PREF_ROW_PRESENT:
         return PREF_ASK_USER, None
-    raw = match.group("value").split("(", 1)[0].strip().strip("`").lower()
-    if raw in FILING_PREFERENCE_STATES:
-        return raw, None
+    if row.value in FILING_PREFERENCE_STATES:
+        return row.value, None
     return PREF_ASK_USER, (
-        f"`{FILING_PREFERENCE_LABEL}` in project-preferences.md reads {raw or '(empty)'!r}, "
+        f"`{FILING_PREFERENCE_LABEL}` in project-preferences.md reads {row.value or '(empty)'!r}, "
         f"which is not one of {'/'.join(FILING_PREFERENCE_STATES)} — treating it as "
         f"{PREF_ASK_USER}, so an approval digest is still required"
     )
