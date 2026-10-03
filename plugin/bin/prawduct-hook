@@ -5964,7 +5964,8 @@ def cmd_stats(project_dir: Path, argv: list[str]) -> int:
 
 def cmd_contribute(project_dir: Path, argv: list[str]) -> int:
     """Preview the anonymous stats reports this clone would contribute, or send
-    them under the product's own consent (``--send``). Thin wrapper — body lives in ``lib.contribution.contribute_cmd``. A missing lib
+    them under the product's own consent (``--send``). Thin wrapper — body
+    lives in ``lib.contribution.contribute_cmd``. A missing lib
     degrades to a note + exit 1, like ``cmd_stats``."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:

@@ -23,7 +23,16 @@ version.** It reads this clone's evidence store and reports:
   blocking findings fixed by goal, and red recorded suite runs.
 
 The Stop hook now records each block, and each session start is recorded too, so block rates are
-available from now on. `/prawduct:janitor` reads the report. Nothing leaves your machine.
+available from now on. `/prawduct:janitor` reads the report. Nothing leaves your machine unless
+you opt in to contribution (below).
+
+**`telemetry-contribution`**: **you can contribute anonymous stats to help improve prawduct, and
+it is off unless you opt in.** A new `Stats contribution` row in `project-preferences.md` reads
+`never` by default; `/prawduct:janitor` asks once whether you want `ask` (you approve the exact
+bytes of every send) or `always`. `prawduct-hook contribute` shows exactly what would be sent:
+weekly, coarsened numbers from a public allowlist, with no names, paths, branches, text or
+identifiers. Sending stays off until prawduct's collector is deployed. `prawduct-hook stats` now
+counts base-advance transfer grants apart from guard refusals, because a grant saves a review.
 
 ## v3.7.0
 

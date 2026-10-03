@@ -342,3 +342,29 @@ Rates with no denominator print as `-` (`null` in `--json`), never as zero.
 `--json` carries `schema_version`, `project`, `generated_at`, `window`,
 `schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
 by `major.minor` (`unknown` when a fact names no version).
+
+## `prawduct-hook contribute [--json]` and `contribute --send [--approve sha256:<digest>]`
+
+Anonymous stats contribution, **off unless the product's owner opts in**. The
+`Stats contribution` row in `.prawduct/artifacts/project-preferences.md` says
+`never` (the default), `ask` or `always`; an absent, empty, misspelled or
+unreadable row reads as `never`.
+
+- **Bare** previews every pending report's exact bytes and one digest over them,
+  and opens no socket. `--json` gives `pending` (window and report) and `digest`.
+- **`--send`** sends each report as one POST to the plugin's pinned collector
+  (#950). Under `ask` it needs `--approve` with the previewed digest; under
+  `always` it needs none. Exit 2 when the product has not opted in, the digest
+  does not match, or no collector is pinned; exit 1 when a send fails.
+- **A report** covers one ISO week for one plugin version, offered once the week
+  ended at least seven days ago, and only the eight most recent such weeks. It
+  carries only keys from `lib/contribution_schema.json`, the allowlist, and every
+  value is an integer, a stepped number, a fixed-list value or a volume band.
+  The metrics are this file's `stats` definitions over that week, coarsened, and
+  a metric whose denominator is under the schema's floor is left out.
+- **Sent at most once.** A window is recorded as sent before its request, in
+  `<git-common-dir>/prawduct/contributions.json`, and the record is withdrawn only
+  when the request provably never arrived.
+- **Where it shows up:** under `ask` or `always`, with a collector pinned, the
+  session briefing says when reports are waiting. `/prawduct:janitor` asks once
+  whether to opt in, when the row is absent.

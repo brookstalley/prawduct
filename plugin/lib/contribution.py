@@ -440,8 +440,8 @@ class NeverArrived(Exception):
 def _post(url: str, body: bytes) -> None:
     """POST one report. Proxies come from the environment (``HTTPS_PROXY``),
     as urllib reads them. Raises :class:`NeverArrived` only when the
-    collector cannot have received the bytes; every other failure is an
-    ``OSError`` whose report may or may not have arrived."""
+    collector cannot have received the bytes; any other failure means the
+    report may or may not have arrived."""
     request = urllib.request.Request(
         url,
         data=body,
@@ -531,6 +531,36 @@ def send_pending(project_dir: Path, pending: list[dict], approve: "str | None") 
         else:
             print(f"contribute: sent {window}")
     return 1 if failures else 0
+
+
+# --- the briefing -------------------------------------------------------------
+
+
+def briefing_line(project_dir: Path, now: "datetime | None" = None) -> "str | None":
+    """The session briefing's line when reports are waiting, or ``None``.
+
+    Silent unless the product opted in and a collector is pinned, so a product
+    at the default never pays for the store read and never sees a prompt. Under
+    ``ask`` the line points at the preview, because the person approves the
+    bytes. Under ``always`` it points at the send, because the person already
+    consented."""
+    state, _ = read_preference(project_dir)
+    if state == PREF_NEVER or not COLLECTOR_ENDPOINT:
+        return None
+    read = evidence.read_facts(project_dir)
+    sent, _ = read_sent(project_dir)
+    if read["status"] == "error" or sent is None:
+        return None
+    pending = pending_reports(read["facts"], now or datetime.now(timezone.utc), sent, load_schema())
+    if not pending:
+        return None
+    if state == PREF_ASK:
+        return (
+            f"Stats: {len(pending)} anonymous report(s) ready to contribute — show the person "
+            "`prawduct-hook contribute`'s exact bytes, and send with `--send --approve <digest>` only "
+            "on their yes"
+        )
+    return f"Stats: {len(pending)} anonymous report(s) ready — `prawduct-hook contribute --send` sends them"
 
 
 # --- the command --------------------------------------------------------------

@@ -190,6 +190,7 @@ single-actor developer tool; prawduct deliberately prescribes no tracing/metrics
 readable by the agent: terminal output composes into context, and all durable signals are plain
 files (`evidence.jsonl`, `.governance-ledger.jsonl`, `.critic-findings.json`, `project-state.yaml`)
 the agent can read and the `prawduct-hook` CLI can query (`evidence status|list`, `review-stats`,
+`stats` for cost and yield per plugin version, including Stop-hook blocks per session,
 `coverage-status`). The agent's debugging loop — run → observe → investigate → fix → verify — never
 breaks at "investigate," because investigation is just reading files and running read-only
 subcommands. This is why observability here needs no rich visualization: the consumers read text.

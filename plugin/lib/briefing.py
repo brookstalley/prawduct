@@ -1083,6 +1083,17 @@ def assemble_session_briefing(
     except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         pass
 
+    # Stats contribution — silent unless the product's owner opted in and a
+    # collector is pinned; see contribution.briefing_line.
+    try:
+        from . import contribution  # noqa: PLC0415 — lazy; a product at the default never needs it
+
+        stats_line = contribution.briefing_line(project_dir)
+        if stats_line:
+            lines.append(stats_line)
+    except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        pass
+
     return "\n".join(lines)
 
 
