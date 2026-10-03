@@ -1057,6 +1057,45 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
         )
 
 
+def _record_session_start(project_dir: Path) -> None:
+    """Append this boundary's ``session-start`` fact — the denominator for every
+    per-session rate ``prawduct-hook stats`` reports. Advice: a failure is a
+    NOTE and never blocks session start."""
+    try:
+        from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+        result = evidence.append_session_start(project_dir)
+    except (OSError, ImportError) as exc:
+        result = {"status": "error", "reason": str(exc)}
+    if result.get("status") != "appended":
+        print(
+            f"NOTE: this session's start was not recorded ({result.get('reason', 'unknown')}) "
+            "— per-session rates in `prawduct-hook stats` will undercount sessions",
+            file=sys.stderr,
+        )
+
+
+def _record_stop_block(project_dir: Path, blockers: list) -> None:
+    """Append one fact per gate that blocked this Stop, so a gate's firing rate
+    is a query rather than a transcript search. A blocker that carries no gate
+    id is recorded as ``unattributed`` so the count stays complete. Advice: the
+    block stands whether or not its record lands, and a failure says so."""
+    gates_blocking = list(
+        dict.fromkeys(getattr(b, "gate", None) or "unattributed" for b in blockers)
+    )
+    try:
+        from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+        results = evidence.append_stop_block(project_dir, gates_blocking)
+    except (OSError, ImportError) as exc:
+        results = [{"status": "error", "reason": str(exc)}]
+    failed = [r for r in results if r.get("status") != "appended"]
+    if failed:
+        print(
+            f"NOTE: this block was not recorded ({failed[0].get('reason', 'unknown')}) "
+            "— `prawduct-hook stats` will undercount Stop blocks",
+            file=sys.stderr,
+        )
+
+
 def _boundary_capture_git_anchors(project_dir: Path, prawduct_dir: Path) -> None:
     """The second session-BOUNDARY region: anchor the new session in git.
 
@@ -1746,6 +1785,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Session BOUNDARY region 2 of 2 — skipped on a continuation (SCN-5B8Q).
     if not brief_only:
         _boundary_capture_git_anchors(project_dir, prawduct_dir)
+        _record_session_start(project_dir)
     elif not (prawduct_dir / ".session-base-tree").is_file():
         # The continuation path never writes an anchor — correct, because stamping
         # a resume-time clock onto a session that began earlier narrows the very
@@ -3705,6 +3745,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             for f in canary_findings:
                 print(f"  {f}", file=sys.stderr)
             print("", file=sys.stderr)
+        _record_stop_block(project_dir, blockers)
         return 2
 
     # No blockers — print canary to stderr (visible in verbose mode only)

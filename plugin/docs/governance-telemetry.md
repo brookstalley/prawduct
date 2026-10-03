@@ -141,6 +141,23 @@ The format is lock-in, so the queries came before the fields:
 all four counts, and its human rendering closes with the number question 3
 asks for.
 
+## Control firings and sessions (evidence store)
+
+Two facts outside the ledger feed the friction side of the picture. Both live in
+the clone-shared evidence store, because the ledger is per worktree and
+worktrees get deleted.
+
+- **A Stop-hook block** appends one `guard-refusal` fact per gate that blocked,
+  with `guard` = `stop-gate:<gate id>`. It uses the same sink as every other
+  control firing, so `prawduct-hook evidence list --kind guard-refusal` lists
+  them beside guard refusals. A deferred gate did not block and records nothing.
+- **A session boundary** (startup or `/clear`) appends one `session-start` fact,
+  the denominator for per-session rates.
+
+Their writers are `lib/evidence.py`'s `append_stop_block` and
+`append_session_start`. Neither is read by any gate. A failed append prints a `NOTE:` and changes
+nothing else.
+
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
 Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt

@@ -89,15 +89,20 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # data plane — ``coverage_algebra`` never reads it. Its readers are the
 # test-evidence freshness fallback (``gates._store_run_vouching``), the one that
 # decides anything, and ``evidence list``, which only displays it.
+#
+# ``session-start`` records one session boundary (startup or /clear, never a
+# resume) — the denominator that turns a count of Stop-hook blocks or guard
+# firings into a per-session rate (:func:`append_session_start`). No gate reads
+# it.
 KNOWN_KINDS = frozenset(
-    {"review", "resolution", "disposition", "guard-refusal", "test-run"}
+    {"review", "resolution", "disposition", "guard-refusal", "test-run", "session-start"}
 )
 
 #: Kinds the coverage verdict never reads, so their lines are left out of
 #: ``coverage_fingerprint`` (:func:`read_facts`). Membership is a claim about
 #: ``coverage_algebra.coverage_verdict``'s inputs — review edges and the
 #: resolution index — and a kind joins only if that function cannot see it.
-OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run"})
+OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run", "session-start"})
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
@@ -439,6 +444,56 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
         uuid.uuid4().hex[:8],
     )
     return append_fact(project_dir, "test-run", fact_id, body)
+
+
+#: Prefix of the ``guard`` a Stop-hook block is recorded under; the gate id
+#: follows it. Readers select Stop blocks from other control firings by it.
+STOP_GATE_PREFIX = "stop-gate:"
+
+
+def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
+    """Record one blocked Stop: a ``guard-refusal`` fact per blocking gate.
+
+    A Stop gate is a control like any pre-dispatch guard, so it records through
+    the same class sink (:func:`append_guard_refusal`) rather than a kind of its
+    own — one shape for every control firing, and a kind every plugin already
+    in the field reads as observational. One fact per gate, not per Stop, so
+    "how often does gate G block?" is a count rather than a parse; ``stop`` ties
+    the facts of one Stop together and ``co_gates`` names the others, so "which
+    gates fire together?" needs no join. Each blocked Stop is a separate event
+    (the model was sent back once per block), so there is no dedupe key.
+
+    Returns each sink result. Callers treat a failure as soft: the block is
+    correct whether or not its record lands.
+    """
+    stop_id = "{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+    )
+    results = []
+    for gate in gates:
+        results.append(
+            append_guard_refusal(
+                project_dir,
+                f"{STOP_GATE_PREFIX}{gate}",
+                {
+                    "gate": gate,
+                    "stop": stop_id,
+                    "co_gates": [g for g in gates if g != gate],
+                },
+            )
+        )
+    return results
+
+
+def append_session_start(project_dir: Path) -> dict:
+    """Record one session boundary. The envelope (``ts``, ``actor.session``,
+    ``actor.plugin``) is the whole record; the body is empty because the
+    boundary cannot tell ``startup`` from ``clear`` (one hooks.json entry
+    serves both) and nothing else about it is a question anyone asks."""
+    fact_id = "session-start-{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+    )
+    return append_fact(project_dir, "session-start", fact_id, {})
 
 
 def read_facts(project_dir: Path) -> dict:
