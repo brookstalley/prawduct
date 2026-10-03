@@ -56,8 +56,13 @@ base_branch: develop
 
 # The canonical suite invocation (dogfooding the declared-command posture the
 # record on-ramp prescribes — the interpreter fallback is deprecated-by-nudge).
-# Stdlib-only repo: the hook's python3 IS the project environment.
-test_command: python3 -m pytest tests/ --junit-xml={junit_xml} -q
+# Stdlib-only repo: the hook's python3 IS the project environment. The second
+# entry is the collector's suite (`collector/`, the stats collector for #950):
+# node's built-in runner with no dependencies, so its evidence is part of the
+# same record and a red collector cannot hide behind a green plugin suite.
+test_commands:
+  - python3 -m pytest tests/ --junit-xml={junit_xml} -q
+  - node --test --test-reporter=junit --test-reporter-destination={junit_xml} collector/test/
 
 # How this repo runs ONE test file, for `audit-learnings` sentinel grading.
 # Separate from `test_command:` because that one names `tests/` and would grade

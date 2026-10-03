@@ -95,13 +95,16 @@ Done when:
 0. verify-api: each binding, handler signature and config key used is checked against Cloudflare's
    current docs, and the README cites what was read.
 1. A report failing the allowlist gets a 400 and is not stored. Each refusal class has a test.
-2. A stored report persists as its canonical bytes only. A test asserts that the stored value
-   equals the canonical bytes, with no IP, header or time field anywhere in storage.
+2. A stored report persists as its canonical bytes only. A test asserts that the stored object's
+   body equals the canonical bytes and that it carries no IP, header or time in its key, body or
+   metadata. R2's own upload stamp is the one exception, and it lasts only until the nightly
+   flush deletes the object.
 3. The worker never calls `console.*` and reads no request header beyond what it needs, the
    content length and type. A test greps the source.
 4. `wrangler.toml` disables observability. A test parses the file and pins it.
 5. The daily flush writes one sorted bundle, updates the index and empties the pending store.
-   A flush with nothing pending writes nothing.
+   A flush with nothing pending writes nothing. A re-run, a failed bundle write or a crash
+   mid-flush never publishes a report twice and never loses one.
 6. `GET` serves the index and bundles; every other method or path is 404 or 405.
 7. `tests/test_collector_schema_parity.py` pins `collector/schema.json` to the plugin's schema byte
    for byte. The integrator writes this test.
