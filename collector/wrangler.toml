@@ -1,0 +1,66 @@
+# The prawduct stats collector. See README.md for what it stores, what it
+# does not, and the owner's deploy steps.
+#
+# Every key below is checked against Cloudflare's docs as of 2026-10-03; the
+# README lists the pages read. A test (test/wrangler.test.mjs) parses this file
+# and pins the privacy-relevant keys, so loosening one fails the suite.
+
+name = "prawduct-collector"
+main = "src/worker.js"
+compatibility_date = "2026-10-01"
+
+# OWNER: your Cloudflare account id, or set CLOUDFLARE_ACCOUNT_ID instead.
+# account_id = "<ACCOUNT_ID>"
+
+# OWNER: add a route or custom domain here if the collector should answer on
+# your own hostname rather than on workers.dev. Left unset on purpose.
+
+# --- no logs, traces or analytics exports -------------------------------------
+# Workers Logs is on by default for new Workers, so it is turned off here
+# explicitly, along with every sub-switch Cloudflare documents. Logpush is off
+# and there are no tail consumers, so no trace event leaves the Worker either.
+
+logpush = false
+
+[observability]
+enabled = false
+head_sampling_rate = 0
+
+[observability.logs]
+enabled = false
+invocation_logs = false
+head_sampling_rate = 0
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 0
+
+# Workers Issues groups failures from log data; documented from Wrangler 4.134.0.
+[observability.issues]
+enabled = false
+
+# --- the daily flush --------------------------------------------------------------
+# 00:00 UTC. The bundle is named for the UTC day the flush runs.
+[triggers]
+crons = ["0 0 * * *"]
+
+# --- bindings -----------------------------------------------------------------------
+
+# The private bucket the bundles are written to. The Worker serves them; the
+# bucket needs no public access.
+[[r2_buckets]]
+binding = "BUNDLES"
+bucket_name = "<R2_BUCKET_NAME>" # OWNER: the bucket you create in deploy step 1
+
+# Reports wait here until the daily flush.
+[[durable_objects.bindings]]
+name = "PENDING"
+class_name = "PendingReports"
+
+# The declarative form of a SQLite-backed Durable Object class (the `exports`
+# field, which replaced the legacy `[[migrations]]` array in June 2026). The two
+# are mutually exclusive; README § Deploy has the legacy form for an older
+# Wrangler.
+[exports.PendingReports]
+type = "durable-object"
+storage = "sqlite"

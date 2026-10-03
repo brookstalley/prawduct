@@ -1,0 +1,191 @@
+{
+"about": "Raw bodies with Python's verdict (json.loads, then contribution.validate) and, when accepted, the client-form canonical bytes. Regenerate: python3 collector/test/fixtures/generate.py",
+"cases": [
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39.0,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":3.9e1,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":-0,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":53,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":53,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":54,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":true,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":0,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":1,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":true,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": true,
+"stored": "{\"dev\":true,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"1\\u002d9\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"1-9\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"1-9 \",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":12,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"iso_week\":\"x\",\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\"}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"surprise\":1}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":0.30000000000000004}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":0.3,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":0.3}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":0.3,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":3.0}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":3,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":3}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":3,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":30e-1}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":3,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":1e-8}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":0,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":1e-6}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":0.35}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":100.0}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":100,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":100.1}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":-0.0}",
+"accepted": true,
+"stored": "{\"blocking_per_review\":0,\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"blocking_per_review\":null}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"red_test_run_share\":0.35}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"red_test_run_share\":0.35,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"red_test_run_share\":0.35000000001}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"red_test_run_share\":0.35,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"red_test_run_share\":0.3500001}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"red_test_run_share\":0.375}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"red_test_run_share\":1}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"red_test_run_share\":1,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"red_test_run_share\":1.0000000001}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"rounds_per_scope_p90\":2.25}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"rounds_per_scope_p90\":2.5}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"rounds_per_scope_p90\":2.5,\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"review_minutes_per_scope_median\":6000}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"review_minutes_per_scope_median\":6000,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\"}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"review_minutes_per_scope_median\":5999.5}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"review_minutes_per_scope_median\":1e400}",
+"accepted": false
+},
+{
+"body": "[]",
+"accepted": false
+},
+{
+"body": "\"a report\"",
+"accepted": false
+},
+{
+"body": "null",
+"accepted": false
+}
+]
+}
