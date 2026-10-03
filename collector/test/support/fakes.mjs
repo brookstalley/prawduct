@@ -1,157 +1,115 @@
-// In-memory stand-ins for the Cloudflare bindings the collector uses, shaped
-// to the APIs as documented (README § Docs consulted):
+// An in-memory stand-in for the one Cloudflare binding the collector uses, an
+// R2 bucket, shaped to the Workers binding API as documented
+// (https://developers.cloudflare.com/r2/api/workers/workers-api-reference/):
 //
-// - R2: bucket.get(key) -> R2ObjectBody | null, with body, text(), json(),
-//   customMetadata, httpMetadata; bucket.put(key, value, {httpMetadata,
-//   customMetadata}) -> R2Object.
-// - Durable Object SQLite storage: storage.sql.exec(query, ...bindings) ->
-//   cursor with toArray() and one(); storage.transactionSync(fn). Backed by
-//   node's built-in SQLite, so the worker's SQL runs against a real engine.
-// - Durable Object namespace: namespace.getByName(name) -> stub with
-//   fetch(request), which calls the instance's fetch handler.
+// - get(key) -> R2ObjectBody | null, with body, text(), json(),
+//   customMetadata, httpMetadata and uploaded;
+// - put(key, value, {httpMetadata, customMetadata, onlyIf}) -> R2Object, or
+//   null when an onlyIf precondition fails. Only "if-none-match: *", the one
+//   precondition the worker uses, is modelled;
+// - delete(key | keys[]) -> void, at most 1,000 keys per call;
+// - list({prefix, cursor, limit}) -> {objects, truncated, cursor}, in lexical
+//   key order. A page may hold fewer than `limit` objects, so the fake's page
+//   size can be lowered to force pagination.
 
-import { DatabaseSync } from "node:sqlite";
-import { PendingReports } from "../../src/worker.js";
+export class FakeR2Bucket {
+  constructor({ pageSize = 1000 } = {}) {
+    this.objects = new Map();
+    this.pageSize = pageSize;
+    this.puts = [];
+    this.deletes = [];
+    this.lists = 0;
+    // Set to a function(key, op) that throws, to simulate a failed call.
+    this.fail = null;
+  }
 
-export class FakeSqlStorage {
-  constructor() {
-    this.db = new DatabaseSync(":memory:");
-    this.sql = {
-      exec: (query, ...bindings) => {
-        const statement = this.db.prepare(query);
-        const isRead = /^\s*SELECT/i.test(query);
-        const rows = isRead ? statement.all(...bindings).map((r) => ({ ...r })) : (statement.run(...bindings), []);
-        return {
-          toArray: () => rows,
-          one: () => {
-            if (rows.length !== 1) throw new Error(`expected exactly one row, got ${rows.length}`);
-            return rows[0];
-          },
-        };
+  view(entry) {
+    return {
+      key: entry.key,
+      size: entry.text.length,
+      uploaded: entry.uploaded,
+      customMetadata: { ...entry.customMetadata },
+      httpMetadata: { ...entry.httpMetadata },
+      get body() {
+        return new Response(entry.text).body;
       },
+      text: async () => entry.text,
+      json: async () => JSON.parse(entry.text),
     };
   }
 
-  transactionSync(fn) {
-    this.db.exec("BEGIN");
-    try {
-      const result = fn();
-      this.db.exec("COMMIT");
-      return result;
-    } catch (err) {
-      this.db.exec("ROLLBACK");
-      throw err;
-    }
-  }
-
-  // Everything the database holds: each table's definition and every row, as
-  // one string, for "nothing but X is stored" assertions.
-  dump() {
-    const tables = this.db.prepare("SELECT name, sql FROM sqlite_master").all();
-    const parts = [];
-    for (const t of tables) {
-      parts.push(t.sql || "");
-      if (t.sql && /^CREATE TABLE/i.test(t.sql)) {
-        for (const row of this.db.prepare(`SELECT * FROM "${t.name}"`).all()) parts.push(Object.values(row).join(" | "));
-      }
-    }
-    return parts.join("\n");
-  }
-
-  rows(table) {
-    return this.db.prepare(`SELECT * FROM "${table}"`).all().map((r) => ({ ...r }));
-  }
-}
-
-function objectBody(entry) {
-  return {
-    key: entry.key,
-    size: entry.text.length,
-    customMetadata: { ...entry.customMetadata },
-    httpMetadata: { ...entry.httpMetadata },
-    get body() {
-      return new Response(entry.text).body;
-    },
-    text: async () => entry.text,
-    json: async () => JSON.parse(entry.text),
-  };
-}
-
-export class FakeR2Bucket {
-  constructor() {
-    this.objects = new Map();
-    this.puts = [];
-    // Set to a function(key) that throws to simulate a failed write.
-    this.failPut = null;
-  }
-
   async get(key) {
+    if (this.fail) this.fail(key, "get");
     const entry = this.objects.get(key);
-    return entry === undefined ? null : objectBody(entry);
+    return entry === undefined ? null : this.view(entry);
   }
 
   async put(key, value, options = {}) {
-    if (this.failPut) this.failPut(key);
+    if (this.fail) this.fail(key, "put");
+    const onlyIf = options.onlyIf;
+    if (onlyIf !== undefined) {
+      const ifNoneMatch = onlyIf instanceof Headers ? onlyIf.get("if-none-match") : undefined;
+      if (ifNoneMatch !== "*") throw new Error("fake R2: unmodelled precondition");
+      if (this.objects.has(key)) return null;
+    }
     const text = typeof value === "string" ? value : new TextDecoder().decode(value);
     const entry = {
       key,
       text,
+      // R2 stamps every object with its upload time, and so does the fake.
+      // The worker can't prevent it; the tests check it never copies it.
+      uploaded: new Date(),
       httpMetadata: options.httpMetadata || {},
       customMetadata: options.customMetadata || {},
+      options: Object.keys(options),
     };
     this.objects.set(key, entry);
     this.puts.push(key);
-    return objectBody(entry);
+    return this.view(entry);
+  }
+
+  async delete(keys) {
+    const list = Array.isArray(keys) ? keys : [keys];
+    if (list.length > 1000) throw new Error("fake R2: at most 1000 keys per delete");
+    for (const key of list) {
+      if (this.fail) this.fail(key, "delete");
+      this.objects.delete(key);
+      this.deletes.push(key);
+    }
+  }
+
+  async list(options = {}) {
+    this.lists++;
+    const prefix = options.prefix || "";
+    const limit = Math.min(options.limit || 1000, 1000, this.pageSize);
+    const keys = [...this.objects.keys()].filter((k) => k.startsWith(prefix)).sort();
+    const from = options.cursor === undefined ? 0 : keys.filter((k) => k <= options.cursor).length;
+    const page = keys.slice(from, from + limit);
+    const truncated = from + limit < keys.length;
+    return {
+      objects: page.map((k) => this.view(this.objects.get(k))),
+      truncated,
+      ...(truncated ? { cursor: page[page.length - 1] } : {}),
+      delimitedPrefixes: [],
+    };
   }
 
   text(key) {
     const entry = this.objects.get(key);
     return entry === undefined ? undefined : entry.text;
   }
-}
 
-export class FakeDurableObjectNamespace {
-  constructor(env) {
-    this.env = env;
-    this.instances = new Map();
-    this.storages = new Map();
-    // Every request a stub forwarded, for "no header crosses" assertions.
-    this.received = [];
+  keys(prefix = "") {
+    return [...this.objects.keys()].filter((k) => k.startsWith(prefix)).sort();
   }
 
-  getByName(name) {
-    return {
-      fetch: async (request) => {
-        this.received.push(request.clone());
-        return this.instance(name).fetch(request);
-      },
-    };
-  }
-
-  instance(name) {
-    if (!this.instances.has(name)) {
-      const storage = this.storages.get(name) || new FakeSqlStorage();
-      this.storages.set(name, storage);
-      this.instances.set(name, new PendingReports({ storage }, this.env));
-    }
-    return this.instances.get(name);
-  }
-
-  // A restart: the in-memory instance goes, its storage stays.
-  evict(name) {
-    this.instances.delete(name);
+  entries(prefix = "") {
+    return this.keys(prefix).map((k) => this.objects.get(k));
   }
 }
 
-export function makeEnv() {
-  const env = { BUNDLES: new FakeR2Bucket() };
-  env.PENDING = new FakeDurableObjectNamespace(env);
-  return env;
-}
-
-export function storageOf(env) {
-  env.PENDING.instance("pending");
-  return env.PENDING.storages.get("pending");
+export function makeEnv(options) {
+  return { BUNDLES: new FakeR2Bucket(options) };
 }
 
 export const BASE = "https://collector.example";

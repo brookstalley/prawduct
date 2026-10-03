@@ -176,6 +176,19 @@
 "accepted": false
 },
 {
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"review_minutes_per_scope_median\":9999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999}",
+"accepted": false
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"transfer_grants_per_session\":0.7}",
+"accepted": true,
+"stored": "{\"dev\":false,\"iso_week\":39,\"iso_year\":2026,\"plugin_major\":3,\"plugin_minor\":7,\"reviews\":\"10-49\",\"schema\":1,\"scopes\":\"1-9\",\"sessions\":\"10-49\",\"transfer_grants_per_session\":0.7}"
+},
+{
+"body": "{\"schema\":1,\"iso_year\":2026,\"iso_week\":39,\"plugin_major\":3,\"plugin_minor\":7,\"dev\":false,\"sessions\":\"10-49\",\"scopes\":\"1-9\",\"reviews\":\"10-49\",\"transfer_grants_per_session\":0.75}",
+"accepted": false
+},
+{
 "body": "[]",
 "accepted": false
 },

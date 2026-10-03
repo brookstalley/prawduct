@@ -44,23 +44,10 @@ enabled = false
 [triggers]
 crons = ["0 0 * * *"]
 
-# --- bindings -----------------------------------------------------------------------
-
-# The private bucket the bundles are written to. The Worker serves them; the
-# bucket needs no public access.
+# --- the one binding ------------------------------------------------------------------
+# The private bucket that holds pending reports, the flush claim and the
+# published bundles. The Worker serves the bundles; the bucket needs no public
+# access.
 [[r2_buckets]]
 binding = "BUNDLES"
-bucket_name = "<R2_BUCKET_NAME>" # OWNER: the bucket you create in deploy step 1
-
-# Reports wait here until the daily flush.
-[[durable_objects.bindings]]
-name = "PENDING"
-class_name = "PendingReports"
-
-# The declarative form of a SQLite-backed Durable Object class (the `exports`
-# field, which replaced the legacy `[[migrations]]` array in June 2026). The two
-# are mutually exclusive; README § Deploy has the legacy form for an older
-# Wrangler.
-[exports.PendingReports]
-type = "durable-object"
-storage = "sqlite"
+bucket_name = "<R2_BUCKET_NAME>" # OWNER: the bucket you create in deploy step 2

@@ -9,14 +9,11 @@
 // - reads no request header except content-type and content-length, and never
 //   touches the request's cf object;
 // - never logs (there is no console call anywhere in it);
-// - stores a report as its canonical bytes and a count of identical copies,
-//   with no time, address, header or arrival order beside it;
+// - stores a report as one R2 object whose body is its canonical bytes, under a
+//   key made of its content hash and a random suffix, with no metadata, so
+//   neither the key nor the object says who sent it or in what order;
 // - publishes a day's reports sorted by their bytes, so a bundle's order says
 //   nothing about when any report arrived.
-//
-// Plain-class Durable Object: extending DurableObject would need an import
-// from "cloudflare:workers", and this file must load in plain node for its
-// tests. A plain class with a fetch() handler is the non-RPC form.
 
 // --- the allowlist ------------------------------------------------------------
 
@@ -25,7 +22,7 @@
 export const SCHEMA = {
   schema: 1,
   about:
-    "The allowlist for an anonymous prawduct stats report. A report may carry only these keys. Every value is an integer, a number on the field's step, or one of the field's enum values, so no field can hold text. A field naming floor_on is left out of the report when that denominator is under floor. The collector validates against a copy of this file.",
+    "The allowlist for an anonymous prawduct stats report. A report may carry only these keys. Every value is an integer, a number on the field's step, one of the field's enum values, or one of the volume bands below, so no field can hold text. A field naming floor_on is left out of the report when that denominator is under floor.",
   floor: 5,
   bands: ["0", "1-9", "10-49", "50-199", "200+"],
   fields: {
@@ -50,6 +47,7 @@ export const SCHEMA = {
     rereview_same_head_share: { type: "number", step: 0.05, min: 0, max: 1, floor_on: "reviews" },
     stops_blocked_per_session: { type: "number", step: 0.1, min: 0, max: 100, floor_on: "sessions" },
     guard_refusals_per_session: { type: "number", step: 0.1, min: 0, max: 100, floor_on: "sessions" },
+    transfer_grants_per_session: { type: "number", step: 0.1, min: 0, max: 100, floor_on: "sessions" },
 
     blocking_per_review: { type: "number", step: 0.1, min: 0, max: 100, floor_on: "reviews" },
     warning_per_review: { type: "number", step: 0.1, min: 0, max: 100, floor_on: "reviews" },
@@ -63,8 +61,8 @@ export const SCHEMA = {
   },
 };
 
-// The largest report schema 1 allows is about 720 bytes in canonical form, and
-// about 1 KiB pretty-printed. 4 KiB admits every valid report however it is
+// The largest report schema 1 allows is under 800 bytes in canonical form, and
+// under 1 KiB pretty-printed. 4 KiB admits every valid report however it is
 // spaced, and refuses anything that could only be padding or abuse before it
 // is parsed.
 export const MAX_BODY_BYTES = 4096;
@@ -404,16 +402,47 @@ async function boundedText(request) {
   }
 }
 
-// --- the public Worker ----------------------------------------------------------------
+// --- R2 layout ------------------------------------------------------------------------
+//
+// pending/<sha256 of the bytes>-<128 random bits>  one accepted report each
+// claims/current.json                              the flush in progress, if any
+// bundles/<YYYY-MM-DD>.jsonl                       a day's published reports
+// bundles/index.json                               {"days": [...]}
+//
+// Only bundles/ is ever served.
 
-export const PENDING_NAME = "pending";
-const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+export const PENDING_PREFIX = "pending/";
+export const CLAIM_KEY = "claims/current.json";
 export const INDEX_KEY = "bundles/index.json";
 export const bundleKey = (day) => `bundles/${day}.jsonl`;
+const DAY_RE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 
-function pendingStub(env) {
-  return env.PENDING.getByName(PENDING_NAME);
+// The most reports one flush claims. A flush spends about one R2 call per
+// report plus a dozen more, and the Free plan allows 1,000 calls to Cloudflare
+// services per invocation. Anything beyond the cap stays pending for the next
+// flush.
+export const MAX_CLAIM = 900;
+// R2's delete takes at most 1,000 keys per call.
+const DELETE_BATCH = 1000;
+
+function hex(bytes) {
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+function randomHex(n) {
+  return hex(crypto.getRandomValues(new Uint8Array(n)));
+}
+
+// The content hash groups identical reports; the random suffix keeps two of
+// them apart, so both are counted. Neither part depends on when the report
+// arrived or who sent it, and R2 lists keys in lexical order, so a listing's
+// order is no arrival order either.
+export async function pendingKey(canonical) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return PENDING_PREFIX + hex(new Uint8Array(digest)) + "-" + randomHex(16);
+}
+
+// --- the public Worker ----------------------------------------------------------------
 
 async function postReport(request, env) {
   if (!isJsonMediaType(request.headers.get("content-type"))) return refuse("content-type");
@@ -422,17 +451,13 @@ async function postReport(request, env) {
   if (text === undefined) return refuse("json");
   const verdict = admit(text);
   if (!verdict.ok) return refuse(verdict.rule);
-  // A fresh request carrying the canonical bytes and nothing else: no header
-  // of the original request reaches the Durable Object.
-  let stored;
   try {
-    stored = await pendingStub(env).fetch(
-      new Request("https://pending.internal/store", { method: "POST", body: verdict.canonical }),
-    );
+    // The canonical bytes and nothing else: no options, so no metadata.
+    await env.BUNDLES.put(await pendingKey(verdict.canonical), verdict.canonical);
   } catch { // prawduct:allow prawduct/broad-except -- system boundary: any storage failure is a retryable 503, and its message is never surfaced
     return status(503);
   }
-  return stored.status === 204 ? status(204) : status(503);
+  return status(204);
 }
 
 async function getObject(env, key, contentType) {
@@ -471,137 +496,97 @@ export default {
     return route(request, env);
   },
 
+  // A failed flush throws, so the cron run is marked failed; whatever it had
+  // claimed is finished by the next run.
   async scheduled(controller, env) {
-    const response = await pendingStub(env).fetch(
-      new Request("https://pending.internal/flush", { method: "POST", body: flushDay(controller.scheduledTime) }),
-    );
-    // A failed flush throws, so the cron run is marked failed and the reports
-    // stay pending for the next one.
-    if (response.status !== 204) throw new Error(`flush failed with status ${response.status}`);
+    await flush(env.BUNDLES, flushDay(controller.scheduledTime));
   },
 };
 
-// --- the Durable Object: pending reports and the daily flush ---------------------------
+// --- the daily flush -----------------------------------------------------------------------
+//
+// 1. Claim: list up to MAX_CLAIM pending keys and write them, with a random
+//    claim id and the day, to claims/current.json, only if no claim exists.
+// 2. Publish: unless the day's bundle already carries this claim id in its
+//    custom metadata, merge the claimed reports into it, sort, and write it
+//    with the id. Add the day to the index.
+// 3. Clean up: delete the claimed pending objects, then the claim.
+//
+// A run that finds a claim finishes it instead of taking a new one, and the id
+// on the bundle stops a claim from being merged twice. So a report is
+// published once even if a run dies between the bundle write and the deletes.
 
-// WITHOUT ROWID tables: a rowid table numbers its rows in insert order, and
-// that order is exactly the arrival order this collector must not keep.
-const SCHEMA_SQL = [
-  "CREATE TABLE IF NOT EXISTS pending (report TEXT PRIMARY KEY, n INTEGER NOT NULL) WITHOUT ROWID",
-  "CREATE TABLE IF NOT EXISTS claimed (report TEXT PRIMARY KEY, n INTEGER NOT NULL) WITHOUT ROWID",
-  "CREATE TABLE IF NOT EXISTS claim (k TEXT PRIMARY KEY, v TEXT NOT NULL) WITHOUT ROWID",
-];
+async function listPending(bucket, max) {
+  const keys = [];
+  let cursor;
+  do {
+    const page = await bucket.list({ prefix: PENDING_PREFIX, cursor });
+    for (const object of page.objects) keys.push(object.key);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor !== undefined && keys.length < max);
+  return keys.slice(0, max);
+}
 
-export class PendingReports {
-  constructor(state, env) {
-    this.storage = state.storage;
-    this.sql = state.storage.sql;
-    this.env = env;
-    this.flushing = null;
-    for (const statement of SCHEMA_SQL) this.sql.exec(statement);
-  }
+async function readClaim(bucket) {
+  const object = await bucket.get(CLAIM_KEY);
+  return object === null ? null : object.json();
+}
 
-  async fetch(request) {
-    const path = new URL(request.url).pathname;
-    if (request.method === "POST" && path === "/store") {
-      // Re-admitted here as well, so nothing but canonical, allowlisted bytes
-      // can be written even if a caller other than route() ever reaches this.
-      const text = await request.text();
+async function takeClaim(bucket, day) {
+  const keys = await listPending(bucket, MAX_CLAIM);
+  if (keys.length === 0) return null;
+  const claim = { id: randomHex(16), day, keys: keys.sort() };
+  // Create-only: if another run claimed first, finish its claim instead.
+  const created = await bucket.put(CLAIM_KEY, JSON.stringify(claim), {
+    httpMetadata: { contentType: "application/json" },
+    onlyIf: new Headers({ "if-none-match": "*" }),
+  });
+  return created === null ? readClaim(bucket) : claim;
+}
+
+async function publish(bucket, claim) {
+  const key = bundleKey(claim.day);
+  const existing = await bucket.get(key);
+  if (existing === null || (existing.customMetadata || {}).claim !== claim.id) {
+    const lines = existing === null ? [] : (await existing.text()).split("\n").filter((line) => line !== "");
+    for (const pending of claim.keys) {
+      const object = await bucket.get(pending);
+      if (object === null) continue;
+      const text = await object.text();
+      // Only canonical, allowlisted bytes are ever published, whatever else
+      // may have been written under pending/.
       const verdict = admit(text);
-      if (!verdict.ok || verdict.canonical !== text) return status(400);
-      this.sql.exec(
-        "INSERT INTO pending (report, n) VALUES (?, 1) ON CONFLICT (report) DO UPDATE SET n = n + 1",
-        text,
-      );
-      return status(204);
+      if (verdict.ok && verdict.canonical === text) lines.push(text);
     }
-    if (request.method === "POST" && path === "/flush") {
-      const day = await request.text();
-      if (!DAY_RE.test(day)) return status(400);
-      await this.flush(day);
-      return status(204);
-    }
-    return status(404);
-  }
-
-  // One flush at a time: a second call while one runs waits for it instead of
-  // publishing the same reports twice.
-  flush(day) {
-    if (!this.flushing) {
-      this.flushing = this.runFlush(day).finally(() => {
-        this.flushing = null;
-      });
-    }
-    return this.flushing;
-  }
-
-  readClaim() {
-    const rows = this.sql.exec("SELECT k, v FROM claim").toArray();
-    if (rows.length === 0) return null;
-    const claim = Object.fromEntries(rows.map((r) => [r.k, r.v]));
-    return { id: claim.id, day: claim.day };
-  }
-
-  // Moves every pending report into the claimed set in one transaction, under
-  // a random claim id. Reports that arrive while the claim is published land
-  // in pending, untouched, for the next flush.
-  takeClaim(day) {
-    return this.storage.transactionSync(() => {
-      const count = this.sql.exec("SELECT COUNT(*) AS c FROM pending").one().c;
-      if (count === 0) return null;
-      this.sql.exec("INSERT INTO claimed (report, n) SELECT report, n FROM pending");
-      this.sql.exec("DELETE FROM pending");
-      const id = crypto.randomUUID();
-      this.sql.exec("INSERT INTO claim (k, v) VALUES ('id', ?), ('day', ?)", id, day);
-      return { id, day };
+    // Nothing claimed survived re-admission and there is no bundle to keep.
+    if (lines.length === 0) return;
+    // Canonical bytes are ASCII, so code-unit order is byte order.
+    lines.sort();
+    await bucket.put(key, lines.join("\n") + "\n", {
+      httpMetadata: { contentType: "application/x-ndjson" },
+      customMetadata: { claim: claim.id },
     });
   }
-
-  dropClaim() {
-    this.storage.transactionSync(() => {
-      this.sql.exec("DELETE FROM claimed");
-      this.sql.exec("DELETE FROM claim");
+  const index = await bucket.get(INDEX_KEY);
+  const days = index === null ? [] : (await index.json()).days;
+  if (!days.includes(claim.day)) {
+    days.push(claim.day);
+    days.sort();
+    await bucket.put(INDEX_KEY, JSON.stringify({ days }), {
+      httpMetadata: { contentType: "application/json" },
     });
-  }
-
-  // Idempotent: the bundle records the id of the last claim merged into it,
-  // so a claim whose bundle write landed but whose cleanup did not is never
-  // merged twice. Writing the index is a set union, so repeating it is safe.
-  async publish(claim) {
-    const bucket = this.env.BUNDLES;
-    const key = bundleKey(claim.day);
-    const existing = await bucket.get(key);
-    if (existing === null || (existing.customMetadata || {}).claim !== claim.id) {
-      const lines = existing === null ? [] : (await existing.text()).split("\n").filter((line) => line !== "");
-      for (const row of this.sql.exec("SELECT report, n FROM claimed").toArray()) {
-        for (let k = 0; k < row.n; k++) lines.push(row.report);
-      }
-      // Canonical bytes are ASCII, so code-unit order is byte order.
-      lines.sort();
-      await bucket.put(key, lines.join("\n") + "\n", {
-        httpMetadata: { contentType: "application/x-ndjson" },
-        customMetadata: { claim: claim.id },
-      });
-    }
-    const index = await bucket.get(INDEX_KEY);
-    const days = index === null ? [] : (await index.json()).days;
-    if (!days.includes(claim.day)) {
-      days.push(claim.day);
-      days.sort();
-      await bucket.put(INDEX_KEY, JSON.stringify({ days }), {
-        httpMetadata: { contentType: "application/json" },
-      });
-    }
-  }
-
-  async runFlush(day) {
-    // A claim left by a flush that failed part-way is finished first, into
-    // the day it was claimed for; then today's pending reports are claimed.
-    let claim = this.readClaim();
-    if (claim === null) claim = this.takeClaim(day);
-    while (claim !== null) {
-      await this.publish(claim);
-      this.dropClaim();
-      claim = claim.day === day ? null : this.takeClaim(day);
-    }
   }
 }
+
+export async function flush(bucket, day) {
+  const claim = (await readClaim(bucket)) || (await takeClaim(bucket, day));
+  if (claim === null) return;
+  await publish(bucket, claim);
+  for (let i = 0; i < claim.keys.length; i += DELETE_BATCH) {
+    await bucket.delete(claim.keys.slice(i, i + DELETE_BATCH));
+  }
+  // Drop the claim only if it is still this one.
+  const current = await readClaim(bucket);
+  if (current !== null && current.id === claim.id) await bucket.delete(CLAIM_KEY);
+}
+

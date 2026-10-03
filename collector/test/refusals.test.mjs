@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { route, MAX_BODY_BYTES } from "../src/worker.js";
-import { BASE, makeEnv, post, storageOf } from "./support/fakes.mjs";
+import { BASE, makeEnv, post } from "./support/fakes.mjs";
 import { reportText, PYTHON_REPORTS } from "./support/reports.mjs";
 
 const MARKER = "zz-marker-zz";
@@ -78,9 +78,8 @@ for (const [name, make, rule] of CASES) {
     const body = await response.text();
     assert.deepEqual(JSON.parse(body), { refused: rule });
     assert.ok(!body.includes(MARKER), "a refusal must not echo input");
-    const storage = storageOf(env);
-    assert.deepEqual(storage.rows("pending"), [], "a refused report must not be stored");
-    assert.equal(env.PENDING.received.length, 0, "a refused report must not reach the Durable Object");
+    assert.deepEqual(env.BUNDLES.keys(), [], "a refused report must not be stored");
+    assert.deepEqual(env.BUNDLES.puts, [], "a refused report must not reach storage at all");
   });
 }
 
@@ -95,11 +94,9 @@ test("accepts every report the client produced, with 204 and an empty body", asy
 
 test("storage that is unavailable gives a bare 503, never the error", async () => {
   const env = makeEnv();
-  env.PENDING.getByName = () => ({
-    fetch: async () => {
-      throw new Error(`storage down ${MARKER}`);
-    },
-  });
+  env.BUNDLES.fail = () => {
+    throw new Error(`storage down ${MARKER}`);
+  };
   const response = await route(post(VALID), env);
   assert.equal(response.status, 503);
   assert.equal(await response.text(), "");

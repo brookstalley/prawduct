@@ -36,22 +36,23 @@ test("the cron is one daily trigger", () => {
   assert.deepEqual(CONFIG.triggers.crons, ["0 0 * * *"]);
 });
 
-test("the bindings match what the worker reads", () => {
+test("the one binding is the R2 bucket the worker reads", () => {
   assert.equal(CONFIG.main, "src/worker.js");
   assert.ok(existsSync(here("../" + CONFIG.main)));
   assert.deepEqual(
     CONFIG.r2_buckets.map((b) => b.binding),
     ["BUNDLES"],
   );
-  assert.deepEqual(CONFIG.durable_objects.bindings, [{ name: "PENDING", class_name: "PendingReports" }]);
-  assert.equal(typeof workerModule.PendingReports, "function");
   assert.equal(typeof workerModule.default.fetch, "function");
   assert.equal(typeof workerModule.default.scheduled, "function");
 });
 
-test("the Durable Object class is declared SQLite-backed, in one lifecycle form only", () => {
-  assert.deepEqual(CONFIG.exports.PendingReports, { type: "durable-object", storage: "sqlite" });
-  assert.equal(CONFIG.migrations, undefined, "exports and migrations are mutually exclusive");
+test("no Durable Object: no binding, no class lifecycle, no other storage binding", () => {
+  for (const key of ["durable_objects", "exports", "migrations", "kv_namespaces", "d1_databases", "queues", "analytics_engine_datasets"]) {
+    assert.equal(CONFIG[key], undefined, key);
+  }
+  const classes = Object.entries(workerModule).filter(([, v]) => typeof v === "function" && /^class\b/.test(String(v)));
+  assert.deepEqual(classes.map(([k]) => k), ["JsonNumber"], "the only exported class is the parser's number type");
 });
 
 test("owner values are placeholders, and no route is chosen for the owner", () => {

@@ -1,11 +1,12 @@
 // Done-when 3: the worker never logs and reads no request header beyond
 // content-type and content-length. Greps the source, so a new log line or
 // header read fails here before it can ship. Also pins the worker's embedded
-// allowlist to collector/schema.json, and that file to the plugin's.
+// allowlist to collector/schema.json. That file's byte-for-byte match with the
+// plugin's allowlist is pinned on the plugin side, under tests/.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { SCHEMA } from "../src/worker.js";
 
 const here = (p) => new URL(p, import.meta.url);
@@ -45,7 +46,7 @@ test("the worker imports nothing", () => {
   assert.doesNotMatch(SOURCE, /\brequire\s*\(/);
 });
 
-test("nothing in the worker reads the clock on the store path", () => {
+test("nothing in the worker reads the clock", () => {
   // The only clock-shaped call is flushDay's, on the cron's scheduled time.
   const clocks = [...SOURCE.matchAll(/Date\.now\(|new Date\(([^)]*)\)|performance\.now/g)].map((m) => m[0]);
   assert.deepEqual(clocks, ["new Date(scheduledTime)"]);
@@ -54,10 +55,4 @@ test("nothing in the worker reads the clock on the store path", () => {
 test("the embedded allowlist equals collector/schema.json", () => {
   const file = JSON.parse(readFileSync(here("../schema.json"), "utf8"));
   assert.deepEqual(SCHEMA, file);
-});
-
-test("collector/schema.json is byte-identical to the plugin's allowlist", (t) => {
-  const plugin = here("../../plugin/lib/contribution_schema.json");
-  if (!existsSync(plugin)) return t.skip("the collector is not inside the prawduct repo");
-  assert.ok(readFileSync(here("../schema.json")).equals(readFileSync(plugin)));
 });

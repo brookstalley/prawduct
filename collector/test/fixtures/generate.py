@@ -1,6 +1,12 @@
 """Regenerate the collector's Python-parity fixtures from the real client.
 
-Run from the repository root:  python3 collector/test/fixtures/generate.py
+Run from the repository root:
+
+    python3 collector/test/fixtures/generate.py [PLUGIN_DIR]
+
+PLUGIN_DIR is the plugin whose client to use (default: this repository's
+``plugin/``). Its ``lib/contribution_schema.json`` must be byte-identical to
+``collector/schema.json``, or nothing is written.
 
 - python-step-values.json: every value contribution.to_step can emit for one
   field of each distinct (step, min, max), as json.dumps writes it.
@@ -17,8 +23,12 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parents[2] / "plugin"))
+PLUGIN = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else HERE.parents[2] / "plugin"
+sys.path.insert(0, str(PLUGIN))
 from lib import contribution as c  # noqa: E402
+
+if c.SCHEMA_PATH.read_bytes() != (HERE.parents[1] / "schema.json").read_bytes():
+    sys.exit(f"generate: {c.SCHEMA_PATH} differs from collector/schema.json; copy it first")
 
 SCHEMA = c.load_schema()
 FIELDS = SCHEMA["fields"]
@@ -85,6 +95,9 @@ BODIES = [
     with_field('"review_minutes_per_scope_median":6000'),
     with_field('"review_minutes_per_scope_median":5999.5'),
     with_field('"review_minutes_per_scope_median":1e400'),
+    with_field('"review_minutes_per_scope_median":' + "9" * 400),
+    with_field('"transfer_grants_per_session":0.7'),
+    with_field('"transfer_grants_per_session":0.75'),
     "[]",
     '"a report"',
     "null",

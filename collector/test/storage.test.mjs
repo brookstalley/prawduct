@@ -1,12 +1,12 @@
-// Done-when 2: a stored report persists as its canonical bytes only, with no
-// address, header or time anywhere in storage. Also the canonical-bytes parity
+// Done-when 2: a stored report persists as its canonical bytes only, in one R2
+// object with no metadata, under a key that encodes neither sender nor time. Also the canonical-bytes parity
 // with Python's json.dumps(report, sort_keys=True, separators=(",", ":")).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { admit, route, SCHEMA, JsonNumber, canonicalize } from "../src/worker.js";
-import { BASE, makeEnv, post, storageOf } from "./support/fakes.mjs";
+import { admit, route, SCHEMA, JsonNumber, canonicalize, PENDING_PREFIX } from "../src/worker.js";
+import { BASE, makeEnv, post } from "./support/fakes.mjs";
 import { PYTHON_REPORTS } from "./support/reports.mjs";
 
 const SENDER = {
@@ -77,66 +77,64 @@ test("a repeated key keeps its last value, as Python's json.loads does", () => {
   assert.deepEqual(admit(text), { ok: true, canonical: PYTHON_REPORTS[0].bytes });
 });
 
-test("a stored report is its canonical bytes and a count, and nothing about the sender", async () => {
+const KEY_RE = /^pending\/([0-9a-f]{64})-([0-9a-f]{32})$/;
+
+async function sha256(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+test("a stored report is one pending object: canonical bytes, no metadata, a hash-and-random key", async () => {
   const env = makeEnv();
   const { report, bytes } = PYTHON_REPORTS[1];
   const response = await route(senderRequest(JSON.stringify(report, null, 1)), env);
   assert.equal(response.status, 204);
 
-  const storage = storageOf(env);
-  assert.deepEqual(storage.rows("pending"), [{ report: bytes, n: 1 }]);
-  assert.deepEqual(storage.rows("claimed"), []);
-  assert.deepEqual(storage.rows("claim"), []);
-
-  const everything = storage.dump();
-  for (const leak of LEAKS) assert.ok(!everything.includes(leak), `storage holds ${leak}`);
-  // No time: no column for one, no current year or epoch-like number anywhere
-  // except inside the report's own bytes.
-  const outsideReport = everything.split(bytes).join("");
-  assert.ok(!/\b(time|date|ts|ip|addr|header|agent|seen|arriv)/i.test(outsideReport), outsideReport);
-  assert.ok(!/\b20[0-9]{2}\b|\b1[0-9]{9,12}\b/.test(outsideReport), outsideReport);
+  const [entry, ...rest] = env.BUNDLES.entries();
+  assert.equal(rest.length, 0, "one report, one object, nothing else written");
+  assert.equal(entry.text, bytes);
+  assert.deepEqual(entry.customMetadata, {});
+  assert.deepEqual(entry.httpMetadata, {});
+  assert.deepEqual(entry.options, [], "put was called with no options at all");
+  const m = KEY_RE.exec(entry.key);
+  assert.ok(m, entry.key);
+  assert.equal(m[1], await sha256(bytes));
 });
 
-test("only the canonical bytes cross to the Durable Object: no sender header, no cf object", async () => {
+test("nothing about the sender or the time reaches the object's key, body or metadata", async () => {
   const env = makeEnv();
+  const before = Date.now();
   await route(senderRequest(PYTHON_REPORTS[0].bytes), env);
-  assert.equal(env.PENDING.received.length, 1);
-  const forwarded = env.PENDING.received[0];
-  for (const [name] of forwarded.headers) {
-    assert.ok(!(name in SENDER) || name === "content-type", `header ${name} crossed`);
-    for (const leak of LEAKS) assert.ok(!forwarded.headers.get(name).includes(leak));
+  const [entry] = env.BUNDLES.entries();
+  const visible = [entry.key, entry.text, JSON.stringify(entry.customMetadata), JSON.stringify(entry.httpMetadata)].join("\n");
+  for (const leak of LEAKS) assert.ok(!visible.includes(leak), `storage holds ${leak}`);
+  // No clock reading: neither epoch milliseconds or seconds nor an ISO time.
+  const outsideReport = visible.split(PYTHON_REPORTS[0].bytes).join("");
+  for (const t of [before, Date.now()]) {
+    assert.ok(!outsideReport.includes(String(t).slice(0, 8)), "epoch milliseconds in storage");
+    assert.ok(!outsideReport.includes(String(Math.floor(t / 1000)).slice(0, 7)), "epoch seconds in storage");
   }
-  assert.equal(forwarded.cf, undefined);
-  assert.equal(await forwarded.text(), PYTHON_REPORTS[0].bytes);
+  assert.doesNotMatch(outsideReport, /20[0-9]{2}-[01][0-9]-[0-3][0-9]|T[0-2][0-9]:[0-5][0-9]/);
 });
 
-test("identical reports are one row with a count, so none is lost", async () => {
+test("identical reports from two contributors are two objects, so both are counted", async () => {
   const env = makeEnv();
-  for (let k = 0; k < 3; k++) await route(post(PYTHON_REPORTS[0].bytes), env);
+  await route(post(PYTHON_REPORTS[0].bytes), env);
+  await route(post(PYTHON_REPORTS[0].bytes), env);
   await route(post(PYTHON_REPORTS[2].bytes), env);
-  const rows = storageOf(env).rows("pending");
-  assert.deepEqual(
-    rows.sort((a, b) => (a.report < b.report ? -1 : 1)),
-    [
-      { report: PYTHON_REPORTS[2].bytes, n: 1 },
-      { report: PYTHON_REPORTS[0].bytes, n: 3 },
-    ].sort((a, b) => (a.report < b.report ? -1 : 1)),
-  );
+  const keys = env.BUNDLES.keys(PENDING_PREFIX);
+  assert.equal(keys.length, 3);
+  const hashes = keys.map((k) => KEY_RE.exec(k)[1]);
+  const same = await sha256(PYTHON_REPORTS[0].bytes);
+  assert.equal(hashes.filter((h) => h === same).length, 2);
+  assert.equal(new Set(keys).size, 3);
 });
 
-test("pending tables keep no insertion order: they are WITHOUT ROWID", () => {
+test("the random suffix varies, so key order is not arrival order", async () => {
   const env = makeEnv();
-  const ddl = storageOf(env).dump();
-  for (const table of ["pending", "claimed", "claim"]) {
-    assert.match(ddl, new RegExp(`CREATE TABLE ${table} \\([^)]*\\) WITHOUT ROWID`));
-  }
-});
-
-test("the Durable Object refuses bytes that are not already canonical", async () => {
-  const env = makeEnv();
-  const stub = env.PENDING.getByName("pending");
-  const spaced = JSON.stringify(PYTHON_REPORTS[0].report, null, 1);
-  const response = await stub.fetch(new Request("https://pending.internal/store", { method: "POST", body: spaced }));
-  assert.equal(response.status, 400);
-  assert.deepEqual(storageOf(env).rows("pending"), []);
+  for (let k = 0; k < 40; k++) await route(post(PYTHON_REPORTS[0].bytes), env);
+  const arrival = env.BUNDLES.puts;
+  const lexical = [...arrival].sort();
+  assert.notDeepEqual(arrival, lexical);
+  assert.equal(new Set(arrival.map((k) => KEY_RE.exec(k)[2])).size, 40);
 });

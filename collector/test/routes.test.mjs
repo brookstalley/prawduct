@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import worker, { route, bundleKey, INDEX_KEY } from "../src/worker.js";
+import worker, { route, bundleKey, INDEX_KEY, PENDING_PREFIX } from "../src/worker.js";
 import { BASE, makeEnv, post } from "./support/fakes.mjs";
 import { PYTHON_REPORTS } from "./support/reports.mjs";
 
@@ -59,6 +59,9 @@ test("other methods on the known paths are 405 with Allow", async () => {
 
 test("every other path is 404, including ones that would reach other bucket keys", async () => {
   const env = await flushedEnv();
+  await route(post(PYTHON_REPORTS[0].bytes), env);
+  const [pendingKey] = env.BUNDLES.keys(PENDING_PREFIX);
+  assert.ok(pendingKey);
   const paths = [
     "/",
     "/v1",
@@ -74,6 +77,10 @@ test("every other path is 404, including ones that would reach other bucket keys
     "/bundles/2026-10-03.jsonl/x",
     "/" + bundleKey("2026-10-03") + "x",
     "/" + INDEX_KEY + "/",
+    "/pending/",
+    "/" + pendingKey,
+    "/claims/current.json",
+    "/bundles/../claims/current.json",
   ];
   for (const path of paths) {
     for (const method of ["GET", "POST"]) {
