@@ -740,6 +740,30 @@ def census(
     }
 
 
+def finding_state(key: "tuple[str, str]", dispositions: dict, resolutions: dict) -> str:
+    """What became of one finding — the one rule every report shares.
+
+    ``dispositions`` is :func:`disposition_index`, ``resolutions`` is
+    :func:`resolution_detail_index`. A resolution outranks any disposition,
+    because it is the only answer an independent verify pass attests; among
+    dispositions the newest wins. A resolution value this plugin does not
+    recognize is shown as ``resolved-<value>`` rather than hidden."""
+    resolution = resolutions.get(key)
+    disposition = ((dispositions.get(key) or {}).get("body")) or {}
+    if resolution in (STATE_FIXED, STATE_WAIVED):
+        return resolution
+    if resolution is not None:
+        return f"resolved-{resolution}"
+    action = disposition.get("action")
+    if action == ACCEPT:
+        return STATE_ACCEPTED
+    if action == FILE:
+        return STATE_FILED
+    if action == FIXED:
+        return STATE_FIXED_FREE
+    return STATE_OPEN
+
+
 def _row(
     review_id: str,
     finding: dict,
@@ -751,19 +775,7 @@ def _row(
     resolution = resolutions.get(key)
     disposition_fact = dispositions.get(key)
     disposition = (disposition_fact or {}).get("body") or {}
-
-    if resolution in (STATE_FIXED, STATE_WAIVED):
-        state = resolution
-    elif resolution is not None:
-        state = f"resolved-{resolution}"
-    elif disposition.get("action") == ACCEPT:
-        state = STATE_ACCEPTED
-    elif disposition.get("action") == FILE:
-        state = STATE_FILED
-    elif disposition.get("action") == FIXED:
-        state = STATE_FIXED_FREE
-    else:
-        state = STATE_OPEN
+    state = finding_state(key, dispositions, resolutions)
 
     return {
         "fid": fid,

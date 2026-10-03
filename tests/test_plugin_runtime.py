@@ -945,11 +945,17 @@ class TestWriteIsolationInvariant:
         src.mkdir()
         (src / "lib.py").write_text("x = 1\n")
 
+        # The shared evidence store is the one write outside `.prawduct/` the
+        # architecture norm admits (it lives in the clone's git common dir so
+        # every worktree shares it); a session boundary records a fact there.
+        evidence_store = Path(".git") / "prawduct" / "evidence.jsonl"
+
         def snapshot() -> dict[str, bytes]:
             out: dict[str, bytes] = {}
             for p in project.rglob("*"):
-                if p.is_file() and ".prawduct" not in p.relative_to(project).parts:
-                    out[str(p.relative_to(project))] = p.read_bytes()
+                rel = p.relative_to(project)
+                if p.is_file() and ".prawduct" not in rel.parts and rel != evidence_store:
+                    out[str(rel)] = p.read_bytes()
             return out
 
         before = snapshot()

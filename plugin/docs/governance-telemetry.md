@@ -141,6 +141,23 @@ The format is lock-in, so the queries came before the fields:
 all four counts, and its human rendering closes with the number question 3
 asks for.
 
+## Control firings and sessions (evidence store)
+
+Two facts outside the ledger feed the friction side of the picture. Both live in
+the clone-shared evidence store, because the ledger is per worktree and
+worktrees get deleted.
+
+- **A Stop-hook block** appends one `guard-refusal` fact per gate that blocked,
+  with `guard` = `stop-gate:<gate id>`. It uses the same sink as every other
+  control firing, so `prawduct-hook evidence list --kind guard-refusal` lists
+  them beside guard refusals. A deferred gate did not block and records nothing.
+- **A session boundary** (startup or `/clear`) appends one `session-start` fact,
+  the denominator for per-session rates.
+
+Their writers are `lib/evidence.py`'s `append_stop_block` and
+`append_session_start`. Neither is read by any gate. A failed append prints a `NOTE:` and changes
+nothing else.
+
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
 Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt
@@ -256,3 +273,69 @@ into noise. An unfamiliar id passes through verbatim (never bucketed
 under a known family). This folds **values, not keys**, so `schema_version`
 holds; the raw id stays in each ledger line untouched, so the fold is a
 read-time view, not a rewrite.
+
+## `prawduct-hook stats [--json] [--since <stamp>] [--until <stamp>]`
+
+What governance cost and what it caught, **per plugin version** (`major.minor`).
+It reads the clone-shared evidence store, not the ledger. Every fact there
+carries the plugin version that wrote it, and nothing is lost when a worktree is
+deleted. `review-stats` answers a different question: what a review costs, by
+mode and model, in this worktree. Exit 0 with a report (an empty store is an
+answer); exit 1 on bad arguments or a store that cannot be read. `--since` and
+`--until` scope facts by their `ts`, and take the same bounds `review-stats`
+does. A finding's outcome is read from every fact, whatever its date, so a
+finding raised inside the window and fixed after it counts as fixed.
+
+The definitions (their one home):
+
+**Cost**
+- **rounds per scope**: reviews per work unit (a review's `scope`, else its
+  branch), as median, p90 (nearest rank) and max. A unit whose reviews span a
+  version bump counts once in each version.
+- **review time**: measured only where the review's dispatch was clocked
+  (`dispatched_at` to the fact's `ts`), as median per review and per scope.
+  Reviews carrying only the reviewer's self-estimate are counted separately and
+  never summed into the measured total, because the estimate runs high.
+- **empty verify rounds**: `verify-resolutions` reviews that confirmed no
+  resolution and raised no blocking or warning finding.
+- **re-reviews**:
+  - *same interval*: a review of exactly the (base, head) tree pair an earlier
+    review covered.
+  - *same head tree*: a review of a head tree already reviewed, whatever its
+    base.
+  - "Already reviewed" reads the whole store, so under `--since` a review of a
+    tree reviewed before the window still counts.
+- **stop blocks**:
+  - Stops blocked, and stops blocked per recorded session. Only sessions with a
+    `session-start` fact are counted, and only blocks from those sessions are
+    divided by them, so a version whose early sessions predate the fact is not
+    inflated.
+  - Blocks by gate.
+  - *loops*: (session, gate) pairs where one gate blocked three or more times in
+    a session. A Stop that passes records nothing, so "consecutive" cannot be
+    measured.
+- **guard refusals**: control firings other than Stop blocks, per recorded
+  session (the same rule) and by guard.
+
+**Benefit**
+- **findings**: per severity, raised, then what became of each one.
+  - Each finding's state comes from the same rule `render-dispositions` uses
+    (`dispositions.finding_state`), so the two reports never disagree about a
+    finding.
+  - A resolution outranks any disposition; among dispositions, the newest
+    wins.
+  - Outcomes are fixed (a verify pass confirmed it), fixed_unreviewed (recorded
+    fixed with no review), filed, accepted, waived and undispositioned. Anything
+    else lands in `other`, including a state a later plugin adds or a malformed
+    finding.
+  - *acted on* = (fixed + fixed_unreviewed + filed) / (those + accepted +
+    waived). Undispositioned findings are left out of the rate and reported
+    beside it.
+- **blocking fixed by goal**, and **blocking and warnings fixed per scope**.
+  Both kinds of fixed count.
+- **red suite runs**: recorded suite runs with a failure.
+
+Rates with no denominator print as `-` (`null` in `--json`), never as zero.
+`--json` carries `schema_version`, `project`, `generated_at`, `window`,
+`schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
+by `major.minor` (`unknown` when a fact names no version).
