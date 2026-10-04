@@ -16,7 +16,9 @@ The receiving end of the telemetry program (#262), and the collector's last crit
   and contributed reports share one shape and one definition of every metric.
 - **Contributed reports** come from bundle files (`--bundles`) or the collector (`--collector`, the
   only path that opens a socket). Every line is re-validated against the allowlist, refused lines
-  are counted, and duplicates are kept. A window a clone already sent is counted once.
+  are counted, and a line written under a newer allowlist schema is counted apart as
+  `schema_ahead`, never as refused. Duplicates are kept. A window a clone already sent is counted
+  once.
 - **Per plugin version**, never pooled across versions: reports by origin, weeks covered, volume
   bands, and each metric's `n`, median and trimmed mean, because bundle lines carry no identity.
 - **The August design is replaced** (owner, 2026-10-03). It read ledgers and broke review cost down
@@ -26,6 +28,7 @@ The receiving end of the telemetry program (#262), and the collector's last crit
 - **Records:** the security model lists the bundle fetch as a fifth network site, and the collector
   entry in `project-state.yaml` states the #954 commitment to keep the workers.dev host live.
   VRF-023, the first live flush, is verified.
+
 ## 2026-10-04: a pruned review tree no longer turns the base-advance transfer into "could not run"
 
 <!-- prawduct: type=bugfix | scope=transfer-pruned-trees -->
