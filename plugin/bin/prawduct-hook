@@ -6001,6 +6001,26 @@ def cmd_contribute(project_dir: Path, argv: list[str]) -> int:
     return contribution.contribute_cmd(project_dir, argv)
 
 
+def cmd_aggregate_stats(argv: list[str]) -> int:
+    """Governance stats pooled across the products the operator names, and the
+    collector's published bundles, per plugin version. Thin wrapper — body
+    lives in ``lib.aggregate.aggregate_stats_cmd``. Takes no project dir: its
+    subject is never the invoking project, only what was named. A missing lib
+    degrades to a note + exit 1, like ``cmd_stats``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import aggregate  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "aggregate-stats unavailable (could not import the plugin lib/ from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return aggregate.aggregate_stats_cmd(argv)
+
+
 def cmd_pr_review_dispatch(project_dir: Path, argv: list[str]) -> int:
     """Mark a PR review as dispatched, NOW, from a clock this code reads.
 
@@ -8342,7 +8362,9 @@ _USAGE = (
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
-    "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|classify-diff-risk [<base>]|"
+    "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|"
+    "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--json]|"
+    "classify-diff-risk [<base>]|"
     "worktrees [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
@@ -8739,6 +8761,9 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "review-stats",
     # Read-only: reads the evidence store and prints a report.
     "stats",
+    # Read-only: reads the evidence stores and bundle files the operator names
+    # and prints a report; it writes nowhere, the invoking project included.
+    "aggregate-stats",
     "test-status",
     "validate-evidence",
     "verify-chunk-refs",
@@ -9281,6 +9306,8 @@ def _dispatch() -> int:
         return cmd_stats(project_dir, sys.argv[2:])
     elif command == "contribute":
         return cmd_contribute(project_dir, sys.argv[2:])
+    elif command == "aggregate-stats":
+        return cmd_aggregate_stats(sys.argv[2:])
     elif command == "worktrees":
         return cmd_worktrees(project_dir, sys.argv[2:])
     elif command == "classify-diff-risk":

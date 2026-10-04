@@ -187,19 +187,21 @@ def window_id(iso_year: int, iso_week: int, bucket: str) -> str:
     return f"{iso_year}-W{iso_week:02d}:{bucket}"
 
 
-def settled_weeks(facts: list[dict], now: datetime) -> list[tuple[int, int]]:
+def settled_weeks(
+    facts: list[dict], now: datetime, max_weeks: "int | None" = MAX_WEEKS
+) -> list[tuple[int, int]]:
     """ISO weeks that ended at least :data:`SETTLE_DAYS` ago and hold at least
-    one fact, newest :data:`MAX_WEEKS` only, oldest first."""
+    one fact, newest ``max_weeks`` only (every one when ``None``), oldest first."""
     settled = (now - timedelta(days=SETTLE_DAYS)).date()
     this_monday = settled - timedelta(days=settled.weekday())
-    earliest = this_monday - timedelta(weeks=MAX_WEEKS)
+    earliest = None if max_weeks is None else this_monday - timedelta(weeks=max_weeks)
     weeks = set()
     for fact in facts:
         instant = parse_instant(fact.get("ts"))
         if instant is None:
             continue
         day = instant.astimezone(timezone.utc).date()
-        if earliest <= day < this_monday:
+        if (earliest is None or earliest <= day) and day < this_monday:
             iso = day.isocalendar()
             weeks.add((iso[0], iso[1]))
     return sorted(weeks)
@@ -288,11 +290,15 @@ def build_report(iso_year: int, iso_week: int, bucket: str, v: dict, schema: dic
     return report
 
 
-def pending_reports(facts: list[dict], now: datetime, sent: set, schema: dict) -> list[dict]:
-    """``[{"window": id, "report": {...}}]`` for every settled, unsent window
-    that holds a review or a recorded session, oldest first."""
-    pending = []
-    for iso_year, iso_week in settled_weeks(facts, now):
+def weekly_reports(
+    facts: list[dict], now: datetime, schema: dict, max_weeks: "int | None" = MAX_WEEKS
+) -> list[dict]:
+    """``[{"window": id, "report": {...}}]`` for every settled window that holds
+    a review or a recorded session, oldest first, sent or not. ``aggregate-stats``
+    reads a product's whole history through this, so a local week is exactly
+    the report that product would contribute for it."""
+    reports = []
+    for iso_year, iso_week in settled_weeks(facts, now, max_weeks):
         monday = date.fromisocalendar(iso_year, iso_week, 1)
         by_bucket = stats.aggregate(
             facts,
@@ -303,10 +309,17 @@ def pending_reports(facts: list[dict], now: datetime, sent: set, schema: dict) -
         for bucket, v in by_bucket.items():
             if bucket == "unknown" or not (v["reviews"]["total"] or v["sessions"]):
                 continue
-            wid = window_id(iso_year, iso_week, bucket)
-            if wid not in sent:
-                pending.append({"window": wid, "report": build_report(iso_year, iso_week, bucket, v, schema)})
-    return pending
+            reports.append({
+                "window": window_id(iso_year, iso_week, bucket),
+                "report": build_report(iso_year, iso_week, bucket, v, schema),
+            })
+    return reports
+
+
+def pending_reports(facts: list[dict], now: datetime, sent: set, schema: dict) -> list[dict]:
+    """The :func:`weekly_reports` of the most recent :data:`MAX_WEEKS` settled
+    weeks whose window this clone has not sent."""
+    return [item for item in weekly_reports(facts, now, schema) if item["window"] not in sent]
 
 
 # --- the bytes ----------------------------------------------------------------
