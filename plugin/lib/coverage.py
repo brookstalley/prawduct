@@ -454,24 +454,21 @@ def diagnose_fix_churn(
 
 #: The one status of :func:`diagnose_base_advance_transfer` that GRANTS.
 TRANSFER_MATCH = "match"
-#: The status naming why a near-miss prior span does not transfer.
-TRANSFER_DENIED = "denied"
 
 
 def classify_transfer(transfer: "dict | None") -> str:
     """The one reading of a :func:`diagnose_base_advance_transfer` result that
     every gate site branches on: ``"absent"`` (no transfer was attempted),
     ``"match"`` (may grant, once a suite run vouches for the tree),
-    ``"denied"`` (it ran and refused a near miss, whose reason is worth
-    naming), ``"unavailable"`` (the check could not run — its remedy is worth
-    naming), or ``"unknown"`` (any other status).
+    ``"unavailable"`` (the check could not run — its remedy is worth naming),
+    or ``"unknown"`` (any other status).
 
     One function rather than a comparison at each call site because the
     decision has several readers — the Stop gate, the PR gate's verdict and the
     PR gate's rendered remedy — and a new status must land on the DENY side at
     every one of them. ``"unknown"`` is that side: it neither grants nor renders
     a remedy, because :func:`gates.transfer_remedy` reads fields only a
-    ``match``, a ``denied`` or an ``unavailable`` carries, and an unmeasured status is not a
+    ``match`` or an ``unavailable`` carries, and an unmeasured status is not a
     near miss a suite run fixes.
     """
     if transfer is None:
@@ -479,8 +476,6 @@ def classify_transfer(transfer: "dict | None") -> str:
     status = transfer.get("status")
     if status == TRANSFER_MATCH:
         return "match"
-    if status == TRANSFER_DENIED:
-        return "denied"
     if status == "unavailable":
         return "unavailable"
     return "unknown"
@@ -543,25 +538,15 @@ def diagnose_base_advance_transfer(
     are garbage-collected while the facts naming them stay. A tree git no
     longer holds cannot be shown byte-identical, so it denies like any other
     mismatch, but the check over the trees git does hold still ran. Reporting
-    it as "could not run" would let one old snapshot mask the honest answer,
-    and with this store's history one nearly always would.
+    it as "could not run" would let one old snapshot, which could never have
+    granted, take over the explanation of the denial.
 
     Returns::
 
         {"status": "match", "prior_fact_id", "prior_reviews", "prior_base",
          "prior_head", "files": [...], "advance_files": [...] | None}
-      | {"status": "denied", "reason": str}     # see below
       | {"status": "unavailable", "reason": str}
       | None                                    # no transferable prior span
-
-    ``denied`` is the one near miss worth naming: a covered review of this
-    exact head tree whose span changed every file this one does and more.
-    That is what a branch stacked on another sees once the lower branch merges
-    into the base: its tree is exactly as reviewed, but the review was of a
-    larger diff, so condition 1 refuses it (the ``files_changed`` prune never
-    even offers it as a candidate). Any other miss returns ``None``, because
-    "this branch changed since its review" is the ordinary uncovered case and
-    needs no note.
 
     ``advance_files`` is ``None`` — not ``[]`` — when the advance's own diff
     could not be read. It is message detail only, so an unreadable one does not
@@ -629,7 +614,7 @@ def diagnose_base_advance_transfer(
         if prior_head not in prior_heads:
             prior_heads.append(prior_head)
     if not prior_bases or not prior_heads:
-        return _stacked_near_miss(facts, required, head_tree, verdict_fn)
+        return None
     pruned = evidence.missing_objects(project_dir, prior_bases + prior_heads)
     if pruned:
         prior_bases = [tree for tree in prior_bases if tree not in pruned]
@@ -707,46 +692,7 @@ def diagnose_base_advance_transfer(
                 ),
             }
 
-    if degraded:
-        return {"status": "unavailable", "reason": degraded}
-    return _stacked_near_miss(facts, required, head_tree, verdict_fn)
-
-
-def _stacked_near_miss(facts, required: set, head_tree: str, verdict_fn) -> "dict | None":
-    """``denied`` with its reason when a covered review of exactly this head
-    tree changed every file the required span does and more; else ``None``.
-
-    String comparisons only, then one composition for the newest such review,
-    so naming the near miss costs no git call."""
-    from . import coverage_algebra  # noqa: PLC0415 -- lazy, as in the caller
-
-    for fact in reversed(facts):
-        if fact.get("kind") != "review":
-            continue
-        body = fact.get("body") or {}
-        changed = body.get("files_changed")
-        if body.get("head_tree") != head_tree or not body.get("base_tree"):
-            continue
-        if not isinstance(changed, list):
-            continue
-        reviewed = set(coverage_algebra.judgeable_files(changed))
-        if not required < reviewed:
-            continue
-        extra = reviewed - required
-        if verdict_fn(facts, body["base_tree"], head_tree).get("status") != "covered":
-            continue
-        named = ", ".join(sorted(extra)[:3]) + (", …" if len(extra) > 3 else "")
-        return {
-            "status": TRANSFER_DENIED,
-            "reason": (
-                f"review {fact.get('id')} covered this exact tree, but its span also "
-                f"changed {len(extra)} file(s) the base now holds ({named}), so it "
-                "reviewed a larger diff than this span's and its coverage does not "
-                "transfer. A branch stacked on another sees this once the lower "
-                "branch merges into the base"
-            ),
-        }
-    return None
+    return {"status": "unavailable", "reason": degraded} if degraded else None
 
 
 def count_branch_rounds(

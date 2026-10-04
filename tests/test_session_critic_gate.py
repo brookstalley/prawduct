@@ -507,21 +507,6 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         assert verdict["status"] == "uncovered"
         assert "could not run" in verdict["reason"]
 
-    def test_a_denied_transfer_names_its_reason_at_the_stop_gate(self, tmp_path, monkeypatch):
-        # The producer's `denied` is pinned at the PR gate on a real stacked
-        # repo (test_cumulative_gate); this pins the Stop gate's rendering of
-        # it, the second of the two sites that read `classify_transfer`.
-        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
-        _write_test_evidence(repo)
-        monkeypatch.setattr(
-            gates.coverage,
-            "diagnose_base_advance_transfer",
-            lambda *a, **k: {"status": gates.coverage.TRANSFER_DENIED, "reason": "the stated why"},
-        )
-        verdict = gates.session_review_verdict(repo)
-        assert verdict["status"] == "uncovered"
-        assert "the base-advance transfer does not apply: the stated why" in verdict["reason"]
-
     def test_a_pruned_reviewed_tree_is_not_a_check_that_never_ran(self, tmp_path):
         repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
         _write_test_evidence(repo)
@@ -600,7 +585,6 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         assert classify(None) == "absent"
         assert classify({"status": gates.coverage.TRANSFER_MATCH}) == "match"
         assert classify({"status": "unavailable", "reason": "r"}) == "unavailable"
-        assert classify({"status": gates.coverage.TRANSFER_DENIED, "reason": "r"}) == "denied"
         assert classify({"status": "partial"}) == "unknown"
         assert classify({}) == "unknown"
 

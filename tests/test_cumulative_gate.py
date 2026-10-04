@@ -758,12 +758,10 @@ class TestBaseAdvanceTransfer:
     def test_a_pruned_candidate_tree_denies_without_reading_as_could_not_run(
         self, tmp_path, capsys
     ):
-        """The contract this test pinned before was that an absent candidate
-        tree means the check "never ran". It did run, over every tree git still
-        holds: a store outlives its objects, and one garbage-collected snapshot
-        among hundreds turned every honest verdict into "could not run" (#956).
-        What still holds is the denial — an absent tree cannot be shown
-        byte-identical, so it never grants."""
+        """A well-formed tree git no longer holds is a garbage-collected
+        snapshot, and the check still ran over every tree git does hold. The
+        absent tree cannot be shown byte-identical, so it denies; it does not
+        get to explain the denial as a check that never ran."""
         repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
         _write_test_evidence(repo)
         self._prune_reviewed_heads(repo)
@@ -787,11 +785,13 @@ class TestBaseAdvanceTransfer:
         assert rc == 1
         assert "base-advance transfer check could not run" in err
 
-    @staticmethod
-    def _stacked_repo(tmp_path, *, findings=None):
-        """``upper`` stacked on ``lower``, reviewed from main to its tip; then
-        ``lower`` merges into main and ``upper`` takes main in a content-free
-        sync, the shape #956 reported."""
+    def test_a_stacked_branch_with_a_pruned_candidate_is_not_could_not_run(
+        self, tmp_path, capsys
+    ):
+        """The shape #956 reported: a stacked branch after its parent merged,
+        with an old review in the store whose tree git has since dropped. Its
+        reviews do not transfer (condition 1, the subject of #895), and the
+        pruned review must not turn that denial into "could not run"."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _git(repo, "init", "-q", "-b", "main")
@@ -801,60 +801,20 @@ class TestBaseAdvanceTransfer:
         _git(repo, "checkout", "-q", "-b", "upper")
         _commit(repo, "upper.py", "up = 1\n", "u1")
         reviewed = _tree(repo)
-        _fact(
-            repo, _tree(repo, "main"), reviewed, ["lower.py", "upper.py"],
-            head_commit=_head(repo), findings=findings,
-        )
+        _fact(repo, _tree(repo, "main"), reviewed, ["lower.py", "upper.py"], head_commit=_head(repo))
+        # An older review of the branch's own file, from a snapshot git dropped.
+        _fact(repo, _tree(repo, "lower"), "0" * 40, ["upper.py"])
         _git(repo, "checkout", "-q", "main")
         _git(repo, "merge", "-q", "--no-ff", "-m", "merge lower", "lower")
         _git(repo, "checkout", "-q", "upper")
         _git(repo, "merge", "-q", "--no-ff", "-m", "sync main", "main")
         assert _tree(repo) == reviewed, "the sync must be content-free"
         _write_test_evidence(repo)
-        return repo
-
-    def test_a_stacked_base_names_why_its_review_does_not_transfer(self, tmp_path, capsys):
-        repo = self._stacked_repo(tmp_path)
         rc, out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "transferred" not in out
-        assert "the base-advance transfer does not apply" in err
-        assert "changed 1 file(s) the base now holds (lower.py)" in err
-        assert "could not run" not in err
-
-    def test_a_same_fileset_review_of_this_tree_is_no_stacked_near_miss(self, tmp_path, capsys):
-        # The control for the stacked note: a review of this exact tree over the
-        # SAME files, denied because the advance moved a branch file under it
-        # (the conflict resolved back to the branch's version), is the ordinary
-        # denial and must not be dressed as "its span changed more files".
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        _git(repo, "init", "-q", "-b", "main")
-        _commit(repo, "code.py", "a = 1\n", "c1")
-        _git(repo, "checkout", "-q", "-b", "feature")
-        _commit(repo, "code.py", "a = 3\n", "f1")
-        reviewed = _tree(repo)
-        _fact(repo, _tree(repo, "main"), reviewed, ["code.py"], head_commit=_head(repo))
-        _git(repo, "checkout", "-q", "main")
-        _commit(repo, "code.py", "a = 2\n", "u1")
-        _git(repo, "checkout", "-q", "feature")
-        _git(repo, "merge", "-q", "--no-ff", "-X", "ours", "-m", "merge main", "main")
-        assert _tree(repo) == reviewed
-        _write_test_evidence(repo)
-        rc, _out, err = _run_gate(repo, capsys)
-        assert rc == 1
         assert "uncovered" in err
-        assert "does not apply" not in err
-
-    def test_a_blocked_stacked_review_is_no_near_miss(self, tmp_path, capsys):
-        # A review with an unresolved blocker covered nothing, so there is no
-        # coverage to say "does not transfer" about.
-        repo = self._stacked_repo(
-            tmp_path, findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "boom"}]
-        )
-        rc, _out, err = _run_gate(repo, capsys)
-        assert rc == 1
-        assert "does not apply" not in err
+        assert "could not run" not in err
 
     def test_a_blocked_prior_span_transfers_nothing(self, tmp_path, capsys):
         repo = _branch_repo(tmp_path)
