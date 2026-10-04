@@ -1809,7 +1809,7 @@ def _merge_base_verdict(
     # reaches the deny path, the side a fail-closed control has to fall on.
     kind = coverage.classify_transfer(transfer)
     if kind != "match":
-        if kind == "unavailable":
+        if kind in ("unavailable", "denied"):
             verdict["transfer_note"] = transfer_remedy(transfer, None)
         return verdict
     tests_ok, tests_reason = suite_vouches_for_tree(project_dir)
@@ -2260,8 +2260,10 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
     the same builder blocked at session end was told less than the one blocked
     at `/prawduct:pr create`, for the identical condition.
 
-    Two conditions, and they prescribe opposite things:
+    Three conditions, and they prescribe different things:
 
+    - a ``denied`` transfer → the check ran and refused a near miss; its reason
+      says why, and the remedy is the ordinary review.
     - ``tests_reason`` given → every transfer condition held except that no
       saved suite run has met this tree. The remedy is a suite run, which is the
       cheapest route the gate has; it names why timing is not the question.
@@ -2272,6 +2274,11 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
     Returned as one paragraph without a severity prefix or indentation — each
     caller owns how it announces the line.
     """
+    if coverage.classify_transfer(transfer) == "denied":
+        return (
+            f"the base-advance transfer does not apply: {transfer['reason']}. "
+            "The span needs its own review"
+        )
     if tests_reason is None:
         return (
             f"the base-advance transfer check could not run ({transfer['reason']}) — "
@@ -2868,7 +2875,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     # review round.
     if transfer_stale is not None:
         print(f"NOTE: {transfer_remedy(transfer, transfer_stale)}", file=sys.stderr)
-    elif coverage.classify_transfer(transfer) == "unavailable":
+    elif coverage.classify_transfer(transfer) in ("unavailable", "denied"):
         print(f"NOTE: {transfer_remedy(transfer, None)}", file=sys.stderr)
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local
     # <b>) drags already-reviewed work into the required span and reads as

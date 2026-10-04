@@ -744,21 +744,117 @@ class TestBaseAdvanceTransfer:
         assert rc == 1
         assert "2 test(s) failing" in err
 
-    def test_unreadable_git_object_fails_closed_and_says_so(self, tmp_path, capsys):
-        # A candidate tree git cannot read must deny the transfer, and the
-        # degraded check must say it never ran — "advice fails soft" is not
-        # "advice fails silent".
-        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
-        _write_test_evidence(repo)
+    @staticmethod
+    def _prune_reviewed_heads(repo):
+        """Point every review at a well-formed head tree git does not hold, as
+        a garbage-collected dirty-tree snapshot leaves the store."""
         store = evidence.store_path(repo)
         lines = [json.loads(line) for line in store.read_text().splitlines()]
         for line in lines:
             if line.get("kind") == "review":
-                line["body"]["head_tree"] = "0" * 40  # well-formed, absent
+                line["body"]["head_tree"] = "0" * 40
         store.write_text("".join(json.dumps(line) + "\n" for line in lines))
+
+    def test_a_pruned_candidate_tree_denies_without_reading_as_could_not_run(
+        self, tmp_path, capsys
+    ):
+        """The contract this test pinned before was that an absent candidate
+        tree means the check "never ran". It did run, over every tree git still
+        holds: a store outlives its objects, and one garbage-collected snapshot
+        among hundreds turned every honest verdict into "could not run" (#956).
+        What still holds is the denial — an absent tree cannot be shown
+        byte-identical, so it never grants."""
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        self._prune_reviewed_heads(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "transferred" not in out
+        assert "uncovered" in err
+        assert "could not run" not in err
+
+    def test_git_unable_to_tell_absence_still_says_could_not_run(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """When git cannot answer which objects it holds, an absent tree is
+        indistinguishable from a failing git, and the check says it never ran:
+        "advice fails soft" is not "advice fails silent"."""
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        self._prune_reviewed_heads(repo)
+        monkeypatch.setattr(evidence, "missing_objects", lambda *a, **k: None)
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 1
         assert "base-advance transfer check could not run" in err
+
+    @staticmethod
+    def _stacked_repo(tmp_path, *, findings=None):
+        """``upper`` stacked on ``lower``, reviewed from main to its tip; then
+        ``lower`` merges into main and ``upper`` takes main in a content-free
+        sync, the shape #956 reported."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "code.py", "x = 1\n", "c1")
+        _git(repo, "checkout", "-q", "-b", "lower")
+        _commit(repo, "lower.py", "low = 1\n", "l1")
+        _git(repo, "checkout", "-q", "-b", "upper")
+        _commit(repo, "upper.py", "up = 1\n", "u1")
+        reviewed = _tree(repo)
+        _fact(
+            repo, _tree(repo, "main"), reviewed, ["lower.py", "upper.py"],
+            head_commit=_head(repo), findings=findings,
+        )
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge lower", "lower")
+        _git(repo, "checkout", "-q", "upper")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "sync main", "main")
+        assert _tree(repo) == reviewed, "the sync must be content-free"
+        _write_test_evidence(repo)
+        return repo
+
+    def test_a_stacked_base_names_why_its_review_does_not_transfer(self, tmp_path, capsys):
+        repo = self._stacked_repo(tmp_path)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "transferred" not in out
+        assert "the base-advance transfer does not apply" in err
+        assert "changed 1 file(s) the base now holds (lower.py)" in err
+        assert "could not run" not in err
+
+    def test_a_same_fileset_review_of_this_tree_is_no_stacked_near_miss(self, tmp_path, capsys):
+        # The control for the stacked note: a review of this exact tree over the
+        # SAME files, denied because the advance moved a branch file under it
+        # (the conflict resolved back to the branch's version), is the ordinary
+        # denial and must not be dressed as "its span changed more files".
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _commit(repo, "code.py", "a = 1\n", "c1")
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _commit(repo, "code.py", "a = 3\n", "f1")
+        reviewed = _tree(repo)
+        _fact(repo, _tree(repo, "main"), reviewed, ["code.py"], head_commit=_head(repo))
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "code.py", "a = 2\n", "u1")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-ff", "-X", "ours", "-m", "merge main", "main")
+        assert _tree(repo) == reviewed
+        _write_test_evidence(repo)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "uncovered" in err
+        assert "does not apply" not in err
+
+    def test_a_blocked_stacked_review_is_no_near_miss(self, tmp_path, capsys):
+        # A review with an unresolved blocker covered nothing, so there is no
+        # coverage to say "does not transfer" about.
+        repo = self._stacked_repo(
+            tmp_path, findings=[{"fid": "R-1", "severity": "BLOCKING", "title": "boom"}]
+        )
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        assert "does not apply" not in err
 
     def test_a_blocked_prior_span_transfers_nothing(self, tmp_path, capsys):
         repo = _branch_repo(tmp_path)
