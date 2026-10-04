@@ -112,7 +112,8 @@ A refusal names the first failing rule, and never echoes input. The rules are `c
 
 ## Bundle format: the aggregator's input contract
 
-This is the input contract for #262's `aggregate-review-stats`.
+This is the input contract for `prawduct-hook aggregate-stats --collector` (#262), which fetches
+every listed bundle and re-validates each line (`plugin/docs/governance-telemetry.md`).
 
 - `bundles/index.json` is `{"days":[…]}`: every day that has a bundle, ascending, as `YYYY-MM-DD`.
 - `bundles/<day>.jsonl` holds one report per line, each a JSON object in canonical form: keys

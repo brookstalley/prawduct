@@ -372,3 +372,52 @@ misspelled or unreadable row reads as `never`.
   reports are waiting, and it names a row that is present but misspelled.
   `/prawduct:janitor` asks once whether to opt in, while the row is absent or
   still unset.
+
+## `prawduct-hook aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]`
+
+Governance stats pooled **across products**, per plugin version. It has two
+inputs, and both are in the contribution report's shape, so every number has
+one definition:
+
+- **Local products the operator names**, as arguments or one per line in
+  `--from-file` (blank and `#` lines are skipped). Each product's evidence store
+  becomes the weekly reports `contribute` would build for it, over every settled
+  week rather than only the eight it offers. Nothing is discovered. A product that
+  cannot be read is skipped with its reason, and the rest still report. The
+  reasons are `invalid-path`, `not-a-git-repo`, `no-store`, `unreadable-store`,
+  `same-store` (a second path into one clone, whose worktrees share a store) and
+  `unreadable-sent-record`.
+- **Contributed reports** from the collector's daily bundles. `--bundles` reads
+  one file, or every `*.jsonl` in a directory. `--collector` fetches every bundle
+  the collector's index lists, from the origin of the pinned upload endpoint.
+  Only `--collector` opens a socket: a GET with redirects refused and each
+  response capped. Every line is re-validated against the allowlist. A line that
+  fails is counted under `refused`; a line written under a newer allowlist
+  schema is counted under `schema_ahead`, since a newer prawduct can read it.
+  Identical lines are kept, because two contributors can send identical reports.
+
+**Counted once.** When contributed data is included, a window the product's
+clone has already sent is left out and counted as `already_contributed`,
+because it is in a bundle. So name every bundle when using `--bundles`: a window
+sent on a day whose bundle is not named appears in neither input. A report sent
+but not yet flushed is missing for up to a day.
+
+**Per version** (`major.minor`, with `-dev` for dev builds; versions never
+pool):
+- reports by origin;
+- the first and last ISO week;
+- a count of reports per volume band;
+- for each metric, `n`, `median` and `trimmed_mean`, which drops a tenth of the
+  values from each end, rounded down.
+
+Each report is one product-week for one version, and every number is over
+reports. A metric a report left out under its floor is absent there, not zero,
+so `n` varies by metric. The view uses medians and trimmed means because bundle
+lines carry no identity, so a poisoned line cannot be found.
+
+Exit 0 with a report (no reports is an answer); exit 1 on bad arguments, a
+`--bundles` path that cannot be read, or a `--collector` fetch that fails, since a
+view missing some bundles would look complete. `--json` carries
+`schema_version`, `generated_at`, `sources` (`local`, `local_skipped`, and
+`contributed`, which is `null` without a bundle source) and `by_version`. It
+writes nothing.

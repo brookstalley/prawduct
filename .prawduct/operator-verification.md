@@ -1450,8 +1450,26 @@ both before and after.
 
 ## VRF-023 — telemetry collector (#950) — the first nightly flush, live
 
-**Status:** pending
+**Status:** verified
+**Verified:** 2026-10-04 00:07 UTC, seven minutes after the first scheduled flush.
 **Added:** 2026-10-03 (`collector/README.md` § Check on the first live flush)
+
+**Result: the first flush published, and left nothing pending.**
+- `GET /bundles/index.json` → `200 {"days":["2026-10-04"]}`.
+- `GET /bundles/2026-10-04.jsonl` → `200`, two lines. They are the VRF-022 round-trip report
+  (`iso_week` 38) and the README fixture (`iso_week` 39), both `"dev":true`, sorted by their bytes
+  (`{"bl…` before `{"de…`).
+- `GET /health` → `200 {"claim_outstanding":false}`.
+- The R2 API listing of `pending/` returns zero objects. The first attempt failed with
+  `Authentication error` because Wrangler's OAuth token had expired. After a refresh (`wrangler
+  whoami`), the listing succeeded. The whole bucket holds `bundles/2026-10-04.jsonl` (545 bytes),
+  `bundles/index.json` (23 bytes) and `claims/current.json` (43 bytes, the retired-claim mark).
+
+**What this run proves, and what it does not.** On the live binding, the create-only claim (`onlyIf`
+with `If-None-Match: *`) and the claim retirement by a conditional overwrite both succeeded. A
+precondition R2 rejected would have left the claim outstanding. It does not show the overlap guard
+refusing a concurrent run, because only one run happened. That case stays covered by the fakes in
+`collector/test/overlap.test.mjs`.
 
 **What to check after 00:00 UTC on 2026-10-04:**
 - `GET /bundles/index.json` lists `2026-10-04`.

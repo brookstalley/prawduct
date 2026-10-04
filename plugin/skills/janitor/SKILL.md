@@ -9,7 +9,7 @@ user-invocable: true
 # needs the interpreter, so the model-initiated path is closed here instead.
 #
 # Every hook subcommand the body instructs — `backlog cache-query`, `archive-plan`,
-# `review-stats`, `stats` — is granted explicitly in BOTH spellings, despite that interpreter
+# `review-stats`, `stats`, `aggregate-stats` — is granted explicitly in BOTH spellings, despite that interpreter
 # grant, because the interpreter grant does NOT cover them where it matters:
 # `Bash(python3 *)` only reaches `python3 plugin/bin/prawduct-hook` in a repo that
 # carries the plugin in its own tree. In a governed product the plugin is installed
@@ -26,8 +26,11 @@ user-invocable: true
 # Without `review-stats`, the Step 1 context read loses the review-cost history and
 # the survey grades maintenance signals it never saw. Without `stats`, it loses the
 # per-plugin-version cost and yield, including Stop-hook blocks per session.
+# Without `aggregate-stats`, the cross-product view Step 1 describes prompts mid-survey.
+# It writes nothing; it opens a socket only under `--collector`, a GET of the
+# collector's public bundles, which Step 1 passes only when the person asks.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.
@@ -199,7 +202,7 @@ Also read `project-preferences.md` (if present in `.prawduct/artifacts/`) to und
 
 **Framework health pre-check.** If `${CLAUDE_SKILL_DIR}/../../templates/` is unreadable, the janitor is running outside the plugin runtime; advise checking the plugin install (`/prawduct:doctor`) before relying on Template Currency.
 
-Run `prawduct-hook review-stats` for the project's review cost / actionable-finding history, and `prawduct-hook stats` for cost and yield per plugin version (`docs/governance-telemetry.md`) — findings-dense paths, low-yield review tiers and a gate that blocks often are maintenance signals.
+Run `prawduct-hook review-stats` for the project's review cost / actionable-finding history, and `prawduct-hook stats` for cost and yield per plugin version (`docs/governance-telemetry.md`) — findings-dense paths, low-yield review tiers and a gate that blocks often are maintenance signals. When the person has other governed products checked out and wants them compared, `prawduct-hook aggregate-stats <paths>` pools those products per plugin version. Pass only the paths they name, because nothing is discovered automatically, and add `--collector` only if they also want the reports other people contributed.
 
 This context shapes how you interpret every theme. "Structural clarity" means something different for a 500-line CLI tool than for a multi-service platform. "Controllability" means something different for firmware with a hardware simulator than for a web app with a dev server.
 
