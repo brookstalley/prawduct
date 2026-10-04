@@ -5,6 +5,24 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-04: a pruned review tree no longer turns the base-advance transfer into "could not run"
+
+<!-- prawduct: type=bugfix | scope=transfer-pruned-trees -->
+
+#956, and the secondary symptom #895 records. After a stacked branch's base merged,
+`check-cumulative-critic` said the transfer check "could not run (a candidate tree could not be
+diffed)".
+
+- **Root cause:** the store outlives its objects. Dirty-tree review snapshots and rebased branches'
+  trees are garbage-collected while the facts naming them stay, and this repo's store named 198
+  such trees. Any one of them among the candidates made the whole check report that it never ran,
+  even though it could never have granted.
+- **Fix:** candidates git no longer holds are dropped in one `cat-file --batch-check` call before
+  any diff. They still never grant. "Could not run" now means git could not say which objects it
+  holds.
+- **The stacked case itself is unchanged:** its reviews still do not transfer, so it reads as the
+  ordinary `uncovered`. Letting it transfer is #895, and the denial's wording is #672.
+
 ## 2026-10-03: the stats collector, a Cloudflare Worker writing to R2
 
 <!-- prawduct: type=feature | scope=telemetry-collector -->
