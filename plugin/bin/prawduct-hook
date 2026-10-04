@@ -8363,7 +8363,7 @@ _USAGE = (
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
     "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|"
-    "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--json]|"
+    "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
     "classify-diff-risk [<base>]|"
     "worktrees [--json]|"
     "cost-of-commit [--json] [<paths>...]|"

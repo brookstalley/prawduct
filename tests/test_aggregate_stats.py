@@ -10,9 +10,12 @@ pinned never to pool.
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -346,3 +349,139 @@ def test_the_hook_dispatches_the_command(tmp_path):
     report = json.loads(result.stdout)
     assert report["sources"]["local"][0]["reports"] == 1
     assert list(report["by_version"]) == ["3.7"]
+
+
+class TestInputErrors:
+    def test_a_from_file_that_cannot_be_read_exits_1(self, tmp_path, capsys):
+        code, out, err = _run(["--from-file", tmp_path / "nope.txt"], capsys)
+        assert code == 1 and out == ""
+        assert "--from-file" in err and "cannot be read" in err
+
+    def test_a_bundle_that_is_not_utf8_exits_1(self, tmp_path, capsys):
+        bad = tmp_path / "b.jsonl"
+        bad.write_bytes(b"\xff\xfe\n")
+        code, out, err = _run(["--bundles", bad], capsys)
+        assert code == 1 and out == ""
+        assert "cannot be read" in err
+
+    def test_a_deeply_nested_line_is_refused_not_a_traceback(self):
+        reports, lines, refused = aggregate.parse_bundle("[" * 100_000 + "\n", SCHEMA)
+        assert (reports, lines, refused) == ([], 1, 1)
+
+
+class _Collector(BaseHTTPRequestHandler):
+    """Serves ``routes``: path → (status, body, location)."""
+
+    routes: dict = {}
+    seen: list = []
+
+    def do_GET(self):
+        type(self).seen.append((self.path, self.headers.get("User-Agent")))
+        status, body, location = type(self).routes.get(self.path, (404, b"", None))
+        self.send_response(status)
+        if location:
+            self.send_header("Location", location)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def collector(monkeypatch):
+    """A local collector the pinned endpoint points at, with no proxy between."""
+    for name in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    _Collector.routes, _Collector.seen = {}, []
+    httpd = HTTPServer(("127.0.0.1", 0), _Collector)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    origin = f"http://127.0.0.1:{httpd.server_address[1]}"
+    monkeypatch.setattr(contribution, "COLLECTOR_ENDPOINT", f"{origin}/v1/report")
+    yield origin
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def _publish(days: dict) -> None:
+    _Collector.routes["/bundles/index.json"] = (200, json.dumps({"days": sorted(days)}).encode(), None)
+    for day, reports in days.items():
+        body = "".join(contribution.canonical_bytes(r).decode() + "\n" for r in reports).encode()
+        _Collector.routes[f"/bundles/{day}.jsonl"] = (200, body, None)
+
+
+class TestCollectorFetch:
+    def test_every_listed_bundle_is_fetched_with_the_prawduct_user_agent(self, collector, capsys):
+        _publish({"2026-10-04": [_report()], "2026-10-05": [_report(), _report(iso_week=38)]})
+        report = _json(["--collector"], capsys)
+        assert report["sources"]["contributed"] == {"bundles": 2, "lines": 3, "refused": 0}
+        assert [path for path, _ in _Collector.seen] == [
+            "/bundles/index.json", "/bundles/2026-10-04.jsonl", "/bundles/2026-10-05.jsonl",
+        ]
+        assert {agent for _, agent in _Collector.seen} == {contribution.USER_AGENT}
+
+    def test_no_index_yet_is_zero_bundles_not_a_failure(self, collector, capsys):
+        report = _json(["--collector"], capsys)
+        assert report["sources"]["contributed"] == {"bundles": 0, "lines": 0, "refused": 0}
+
+    def test_collector_data_leaves_out_windows_the_clone_already_sent(self, tmp_path, collector, capsys):
+        repo = _repo(tmp_path, "a", _reviews(5))
+        contribution.sent_record_path(repo).write_text(
+            json.dumps({"schema": contribution.SENT_RECORD_SCHEMA, "sent": ["2026-W40:3.7"]})
+        )
+        (source,) = _json([repo, "--collector"], capsys)["sources"]["local"]
+        assert (source["reports"], source["already_contributed"]) == (0, 1)
+
+    def test_a_redirect_is_refused_not_followed(self, collector, capsys):
+        _Collector.routes["/bundles/index.json"] = (302, b"", f"{collector}/elsewhere")
+        _Collector.routes["/elsewhere"] = (200, b'{"days": []}', None)
+        code, out, err = _run(["--collector"], capsys)
+        assert code == 1 and out == ""
+        assert "HTTP 302" in err
+        assert [path for path, _ in _Collector.seen] == ["/bundles/index.json"]
+
+    def test_an_oversized_response_exits_1(self, collector, capsys, monkeypatch):
+        _publish({"2026-10-04": [_report()] * 20})
+        monkeypatch.setattr(aggregate, "MAX_RESPONSE_BYTES", 200)
+        code, out, err = _run(["--collector"], capsys)
+        assert code == 1 and out == ""
+        assert "larger than 200 bytes" in err
+
+    def test_an_unreachable_collector_exits_1(self, monkeypatch, capsys):
+        probe = socket.socket()
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        monkeypatch.setattr(contribution, "COLLECTOR_ENDPOINT", f"http://127.0.0.1:{port}/v1/report")
+        code, out, err = _run(["--collector"], capsys)
+        assert code == 1 and out == ""
+        assert "could not be fetched" in err
+
+    @pytest.mark.parametrize("day", ["../claims/current", "2026-10-04/../../x", "２０２６-10-04"])
+    def test_an_index_naming_something_other_than_a_day_is_never_requested(self, collector, capsys, day):
+        _Collector.routes["/bundles/index.json"] = (200, json.dumps({"days": [day]}).encode(), None)
+        code, out, err = _run(["--collector"], capsys)
+        assert code == 1 and out == ""
+        assert "not a day" in err
+        assert [path for path, _ in _Collector.seen] == ["/bundles/index.json"]
+
+    def test_a_listed_bundle_that_is_missing_exits_1(self, collector, capsys):
+        _Collector.routes["/bundles/index.json"] = (200, b'{"days": ["2026-10-04"]}', None)
+        code, out, err = _run(["--collector"], capsys)
+        assert code == 1 and out == ""
+        assert "listed in the index but not published" in err
+
+    def test_without_collector_no_socket_is_opened(self, tmp_path, monkeypatch, capsys):
+        repo = _repo(tmp_path, "a", _reviews(5))
+        bundle = _bundle(tmp_path / "b.jsonl", [_report()])
+
+        def refuse(*args, **kwargs):
+            raise AssertionError("aggregate-stats opened a socket")
+
+        monkeypatch.setattr(socket, "socket", refuse)
+        monkeypatch.setattr(socket, "create_connection", refuse)
+        code, out, err = _run([repo, "--bundles", bundle], capsys)
+        assert code == 0, err
+        assert "3.7 — 2 report(s)" in out

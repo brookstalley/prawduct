@@ -38,7 +38,12 @@ governed_by:
     dispositions:
       - "a fact written by a newer schema is surfaced loudly, never dropped → conforms: each local product's `schema_ahead` count is reported beside its reports"
       - "derived views are never authoritative → conforms: the aggregate is a report no gate reads"
-      - "the rest (verdicts from facts, append-only facts, archival, issue titles, two stores, backlog authority) → inapplicable, because the command writes nothing and decides nothing"
+      - "governance verdicts are computed from the fact ledger, never mutable model-written state → inapplicable, because the command reaches no verdict"
+      - "facts are immutable and append-only → conforms: the command reads the store and appends nothing"
+      - "a governance document reaches a terminal state and is archived, never deleted → inapplicable, because no governance document is created or retired; this plan archives at the release like its siblings"
+      - "every backlog write conforms to the issue standard's title rules → inapplicable, because nothing writes the backlog"
+      - "two stores, two lifetimes: shared answers apart from per-clone nags and caches → conforms: the command reads the per-clone sent-window record and writes neither store"
+      - "backlog_service_repo selects the authoritative backlog → inapplicable, because nothing reads the backlog"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 → inapplicable, because no review changes"
@@ -124,8 +129,8 @@ Done when:
 2. A test proves no socket opens without `--collector`.
 3. The egress site is listed in `security-model.md`'s network paragraph and the collector service
    entry's `egress_boundary` and `scope`, and the paragraph's site count matches its list.
-4. Every surface describing the command agrees: docs, janitor, usage, collector README (a search
-   for `aggregate-review-stats` returns only the requirements doc's history note, if any).
+4. Every surface describing the command agrees: docs, janitor, usage, collector README, and a
+   search for the August name `aggregate-review-stats` finds no live surface.
 5. The full suite is green and recorded at the boundary, and the branch's cumulative review is clean
    of blocking findings.
 

@@ -29,8 +29,9 @@ Each named path is resolved and read through `evidence.read_facts`. Outcomes:
 | Condition | Outcome |
 |---|---|
 | not a directory | skipped, `invalid-path` |
-| not inside a git repository, or the store cannot be read | skipped, with `read_facts`' reason |
+| not inside a git repository | skipped, `not-a-git-repo` |
 | no store yet | skipped, `no-store` |
+| the store cannot be read | skipped, `unreadable-store`, with `read_facts`' reason as `detail` |
 | same store as a path already named | skipped, `same-store` (worktrees share one store) |
 | contributed data included and the sent-window record cannot be read | skipped, `unreadable-sent-record` |
 | readable | included |

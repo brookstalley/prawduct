@@ -10,7 +10,8 @@ shape:
   for it. Nothing is discovered: a product is read only because its path was
   named.
 - **Contributed reports**, from the collector's published daily bundles, read
-  from local files or fetched on request. Every line is re-validated against
+  from local files or fetched from the collector on request (``--collector``,
+  the only path that opens a socket). Every line is re-validated against
   the allowlist, because the reader does not trust the publisher, and a line
   that fails is counted rather than read. Identical lines are distinct
   contributions, so none is merged.
@@ -29,10 +30,12 @@ Informational only: no gate reads it, and it writes nothing.
 from __future__ import annotations
 
 import json
+import re
 import statistics
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from . import contribution, evidence
 
@@ -45,14 +48,27 @@ TRIM_FRACTION = 0.1
 #: The allowlist's volume fields, reported as a count of reports per band.
 VOLUME_FIELDS = ("sessions", "scopes", "reviews")
 
+#: The most one fetched response may hold. A day's bundle holds at most a
+#: flush's claim of small reports, far under this; a larger reply is not a
+#: bundle and is refused before it is parsed.
+MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+FETCH_TIMEOUT_SECONDS = 10
+#: A bundle day as the collector names it. The day is interpolated into a URL
+#: path, so anything else is refused rather than requested.
+_DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
 _USAGE = (
     "usage: aggregate-stats [<product-dir>...] [--from-file <list>] "
-    "[--bundles <file-or-dir>]... [--json]"
+    "[--bundles <file-or-dir>]... [--collector] [--json]"
 )
 
 
 class UsageError(Exception):
     """A bad argument, or an input the operator named that cannot be read."""
+
+
+class FetchError(Exception):
+    """The collector's bundles could not be fetched in full."""
 
 
 # --- local products -----------------------------------------------------------
@@ -127,7 +143,8 @@ def parse_bundle(text: str, schema: dict) -> tuple[list[dict], int, int]:
         lines += 1
         try:
             report = json.loads(line)
-        except ValueError:
+        except (ValueError, RecursionError):
+            # RecursionError: a deeply nested line exhausts the parser's stack.
             refused += 1
             continue
         if contribution.validate(report, schema):
@@ -156,6 +173,71 @@ def read_bundle_paths(paths: list[str]) -> list[str]:
                 texts.append(file.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError) as exc:
                 raise UsageError(f"--bundles {file}: cannot be read ({exc})") from exc
+    return texts
+
+
+def collector_origin() -> str:
+    """The pinned collector's origin. The read side derives it from the write
+    side's constant, so it can never be pointed somewhere the upload is not."""
+    parts = urlsplit(contribution.COLLECTOR_ENDPOINT)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def _get(url: str) -> "bytes | None":
+    """GET one collector path: its body, or ``None`` on a 404. Anything else
+    that is not a 200 raises :class:`FetchError`. Proxies come from the
+    environment, as for the upload, and a redirect is refused rather than
+    followed, because the origin is pinned."""
+    import http.client  # noqa: PLC0415 — lazy: only --collector pays for the network stack
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    request = urllib.request.Request(url, headers={"User-Agent": contribution.USER_AGENT})
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        with opener.open(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            body = response.read(MAX_RESPONSE_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise FetchError(f"{url}: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise FetchError(f"{url}: {exc.reason}") from exc
+    except (OSError, http.client.HTTPException) as exc:
+        raise FetchError(f"{url}: {exc or type(exc).__name__}") from exc
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise FetchError(f"{url}: the response is larger than {MAX_RESPONSE_BYTES} bytes")
+    return body
+
+
+def fetch_collector(origin: str) -> list[str]:
+    """Every published bundle's text, in the index's order. A missing index
+    means nothing is published yet, which is no bundles. Any other failure
+    raises :class:`FetchError`, because a view missing some bundles would look
+    complete."""
+    index = _get(f"{origin}/bundles/index.json")
+    if index is None:
+        return []
+    try:
+        days = json.loads(index)["days"]
+    except (ValueError, TypeError, KeyError) as exc:
+        raise FetchError(f"{origin}/bundles/index.json is not a bundle index") from exc
+    if not isinstance(days, list) or not all(isinstance(d, str) and _DAY.fullmatch(d) for d in days):
+        raise FetchError(f"{origin}/bundles/index.json lists something that is not a day")
+    texts = []
+    for day in days:
+        url = f"{origin}/bundles/{day}.jsonl"
+        body = _get(url)
+        if body is None:
+            raise FetchError(f"{url}: listed in the index but not published")
+        try:
+            texts.append(body.decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            raise FetchError(f"{url}: not UTF-8") from exc
     return texts
 
 
@@ -301,12 +383,14 @@ def _read_path_list(raw: str) -> list[str]:
 
 
 def _parse_args(argv: list[str]) -> dict:
-    args = {"products": [], "bundles": [], "json": False}
+    args = {"products": [], "bundles": [], "collector": False, "json": False}
     rest = list(argv)
     while rest:
         arg = rest.pop(0)
         if arg == "--json":
             args["json"] = True
+        elif arg == "--collector":
+            args["collector"] = True
         elif arg in ("--from-file", "--bundles"):
             if not rest:
                 raise UsageError(f"{arg} needs a value")
@@ -319,7 +403,7 @@ def _parse_args(argv: list[str]) -> dict:
             raise UsageError(f"unknown argument {arg!r}")
         else:
             args["products"].append(arg)
-    if not args["products"] and not args["bundles"]:
+    if not args["products"] and not args["bundles"] and not args["collector"]:
         raise UsageError("name at least one product or bundle source")
     return args
 
@@ -327,7 +411,7 @@ def _parse_args(argv: list[str]) -> dict:
 def aggregate_stats_cmd(argv: list[str], now: "datetime | None" = None) -> int:
     """Body of ``prawduct-hook aggregate-stats``. Exit 0 with a report (no
     reports at all is an answer); exit 1 on a bad argument or a named input
-    that cannot be read."""
+    that cannot be read, or a ``--collector`` fetch that fails."""
     now = now or datetime.now(timezone.utc)
     try:
         args = _parse_args(argv)
@@ -335,8 +419,14 @@ def aggregate_stats_cmd(argv: list[str], now: "datetime | None" = None) -> int:
     except UsageError as exc:
         print(f"aggregate-stats: {exc} ({_USAGE})", file=sys.stderr)
         return 1
+    if args["collector"]:
+        try:
+            texts += fetch_collector(collector_origin())
+        except FetchError as exc:
+            print(f"aggregate-stats: the collector's bundles could not be fetched: {exc}", file=sys.stderr)
+            return 1
     schema = contribution.load_schema()
-    with_contributed = bool(args["bundles"])
+    with_contributed = bool(args["bundles"]) or args["collector"]
     local = read_local(args["products"], now, schema, exclude_sent=with_contributed)
     contributed_reports: list[dict] = []
     contributed = None

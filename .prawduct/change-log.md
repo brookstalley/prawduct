@@ -5,6 +5,28 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-04: aggregate-stats pools governance stats across products, contributed reports included
+
+<!-- prawduct: type=feature | scope=telemetry-aggregate -->
+
+The receiving end of the telemetry program (#262), and the collector's last criterion from #950.
+
+- **`prawduct-hook aggregate-stats`** reads the products the operator names, never discovered ones.
+  It turns each product's evidence store into the weekly reports `contribute` would build, so local
+  and contributed reports share one shape and one definition of every metric.
+- **Contributed reports** come from bundle files (`--bundles`) or the collector (`--collector`, the
+  only path that opens a socket). Every line is re-validated against the allowlist, refused lines
+  are counted, and duplicates are kept. A window a clone already sent is counted once.
+- **Per plugin version**, never pooled across versions: reports by origin, weeks covered, volume
+  bands, and each metric's `n`, median and trimmed mean, because bundle lines carry no identity.
+- **The August design is replaced** (owner, 2026-10-03). It read ledgers and broke review cost down
+  by mode and model after adding a `plugin` field to ledger lines. That field had no reader once the
+  evidence store became the version-aware source, and `review-stats` already gives that breakdown
+  per product.
+- **Records:** the security model lists the bundle fetch as a fifth network site, and the collector
+  entry in `project-state.yaml` states the #954 commitment to keep the workers.dev host live.
+  VRF-023, the first live flush, is verified.
+
 ## 2026-10-03: the stats collector, a Cloudflare Worker writing to R2
 
 <!-- prawduct: type=feature | scope=telemetry-collector -->

@@ -59,7 +59,7 @@ owner owns (audit § Owner decisions; #950).
 
 ## Out of scope
 
-- Ingestion into `aggregate-review-stats`. That tool is #262's, and it does not exist yet. The
+- Ingestion into #262's aggregator, which did not exist when this plan was drawn. The
   public bundle format is its input contract, and #950's ingestion criterion moves to #262.
 - Deploying. That is the owner's action on the owner's account (§ Deploy).
 - Oblivious HTTP, rate limiting by IP (impossible without keeping IPs), and auth.

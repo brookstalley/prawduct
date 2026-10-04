@@ -501,6 +501,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("stats", ["--json"]),
         ("contribute", ["--json"]),
         ("aggregate-stats", ["--json", "--bundles", "b.jsonl"]),
+        ("aggregate-stats", ["../a", "../b", "--collector"]),
         ("classify-diff-risk", ["main"]),
         ("cost-of-commit", ["--json", "a.py", "b.py"]),
         ("check-operator-verification", []),
