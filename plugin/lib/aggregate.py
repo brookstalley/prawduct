@@ -129,29 +129,42 @@ def read_local(paths: list[str], now: datetime, schema: dict, exclude_sent: bool
 # --- contributed reports ------------------------------------------------------
 
 
-def parse_bundle(text: str, schema: dict) -> tuple[list[dict], int, int]:
-    """``(reports, lines, refused)`` from one bundle's text.
+def parse_bundle(text: str, schema: dict) -> dict:
+    """``{"reports", "lines", "refused", "schema_ahead"}`` from one bundle's text.
 
     A line that does not parse, or fails the allowlist, is refused and counted.
-    Nothing from a refused line is echoed, because bundle content is untrusted
-    input. Duplicate lines are kept: two contributors can send identical
-    reports."""
-    reports, lines, refused = [], 0, 0
+    A line naming a newer allowlist ``schema`` than this plugin's is counted
+    apart, as ``schema_ahead``: it is a newer version's report this reader
+    cannot check, not junk, and the view says so. Nothing from either is
+    echoed, because bundle content is untrusted input. Duplicate lines are
+    kept: two contributors can send identical reports."""
+    out = {"reports": [], "lines": 0, "refused": 0, "schema_ahead": 0}
     for line in text.splitlines():
         if not line.strip():
             continue
-        lines += 1
+        out["lines"] += 1
         try:
             report = json.loads(line)
         except (ValueError, RecursionError):
             # RecursionError: a deeply nested line exhausts the parser's stack.
-            refused += 1
+            out["refused"] += 1
+            continue
+        if _schema_ahead(report, schema):
+            out["schema_ahead"] += 1
             continue
         if contribution.validate(report, schema):
-            refused += 1
+            out["refused"] += 1
             continue
-        reports.append(report)
-    return reports, lines, refused
+        out["reports"].append(report)
+    return out
+
+
+def _schema_ahead(report, schema: dict) -> bool:
+    version = report.get("schema") if isinstance(report, dict) else None
+    return (
+        isinstance(version, int) and not isinstance(version, bool)
+        and version > schema["schema"]
+    )
 
 
 def read_bundle_paths(paths: list[str]) -> list[str]:
@@ -224,7 +237,7 @@ def fetch_collector(origin: str) -> list[str]:
         return []
     try:
         days = json.loads(index)["days"]
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, RecursionError) as exc:
         raise FetchError(f"{origin}/bundles/index.json is not a bundle index") from exc
     if not isinstance(days, list) or not all(isinstance(d, str) and _DAY.fullmatch(d) for d in days):
         raise FetchError(f"{origin}/bundles/index.json lists something that is not a day")
@@ -338,9 +351,14 @@ def render_human(report: dict) -> str:
         lines.append(f"skipped: {skip['path']} — {skip['reason']}{same}{detail}")
     contributed = sources["contributed"]
     if contributed is not None:
+        ahead = (
+            f", {contributed['schema_ahead']} written under a newer allowlist "
+            "and not counted (run a newer prawduct to include them)"
+            if contributed["schema_ahead"] else ""
+        )
         lines.append(
             f"contributed: {contributed['lines']} line(s) in {contributed['bundles']} bundle(s), "
-            f"{contributed['refused']} refused by the allowlist"
+            f"{contributed['refused']} refused by the allowlist{ahead}"
         )
     if not report["by_version"]:
         lines.append("no settled weeks to report")
@@ -431,13 +449,12 @@ def aggregate_stats_cmd(argv: list[str], now: "datetime | None" = None) -> int:
     contributed_reports: list[dict] = []
     contributed = None
     if with_contributed:
-        lines = refused = 0
+        contributed = {"bundles": len(texts), "lines": 0, "refused": 0, "schema_ahead": 0}
         for text in texts:
-            reports, n, bad = parse_bundle(text, schema)
-            contributed_reports.extend(reports)
-            lines += n
-            refused += bad
-        contributed = {"bundles": len(texts), "lines": lines, "refused": refused}
+            parsed = parse_bundle(text, schema)
+            contributed_reports.extend(parsed["reports"])
+            for key in ("lines", "refused", "schema_ahead"):
+                contributed[key] += parsed[key]
     report = {
         "schema_version": REPORT_SCHEMA_VERSION,
         "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),

@@ -31,7 +31,7 @@ governed_by:
       - "additive-first evolution → conforms: a new subcommand and a new `contribution.weekly_reports`; no existing flag, exit code or `--json` key changes meaning"
   - artifact: observability-strategy
     dispositions:
-      - "severity-prefix vocabulary and stdout/stderr split → conforms: the report goes to stdout, skips and failures to stderr with the command's prefix"
+      - "severity-prefix vocabulary and stdout/stderr split → conforms: the report, skipped products included, goes to stdout; failures go to stderr with the command's prefix"
       - "the ledger has one writer → inapplicable, because nothing writes the ledger"
       - "emitted text names no internal identifier → conforms: output names versions, metrics and paths the operator supplied"
   - artifact: data-model
@@ -137,4 +137,4 @@ Done when:
 ## Status
 
 - [x] Chunk 01: local products, bundle files and the view
-- [ ] Chunk 02: the collector fetch, the docs and the records
+- [x] Chunk 02: the collector fetch, the docs and the records

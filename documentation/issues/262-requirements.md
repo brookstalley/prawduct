@@ -60,7 +60,9 @@ MUST unless marked SHOULD.
   trusting the publisher. Duplicate lines are kept.
 - **AGG4** Group by plugin version (`major.minor`, with dev builds apart) and report each metric's
   sample size, median and trimmed mean, plus how many reports came from local products and how many
-  were contributed. No single line decides a number.
+  were contributed, so a reader can see how many reports stand behind each number. Medians and
+  trimmed means keep one line from deciding a number once a version has several reports; with one
+  or two, `n` says so.
 - **AGG5** When contributed data is included, a local window that clone has already sent is left
   out, so it is not counted twice.
 - **AGG6** A named product that cannot be read is skipped with a reason, and the rest still report.

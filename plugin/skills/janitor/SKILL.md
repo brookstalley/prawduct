@@ -26,7 +26,7 @@ user-invocable: true
 # Without `review-stats`, the Step 1 context read loses the review-cost history and
 # the survey grades maintenance signals it never saw. Without `stats`, it loses the
 # per-plugin-version cost and yield, including Stop-hook blocks per session.
-# Without `aggregate-stats`, the cross-product view Step 1 offers prompts mid-survey.
+# Without `aggregate-stats`, the cross-product view Step 1 describes prompts mid-survey.
 # It writes nothing; it opens a socket only under `--collector`, a GET of the
 # collector's public bundles, which Step 1 passes only when the person asks.
 disable-model-invocation: true

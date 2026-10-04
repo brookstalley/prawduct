@@ -30,9 +30,9 @@ Each named path is resolved and read through `evidence.read_facts`. Outcomes:
 |---|---|
 | not a directory | skipped, `invalid-path` |
 | not inside a git repository | skipped, `not-a-git-repo` |
+| same store as a path already named | skipped, `same-store` (worktrees share one store) |
 | no store yet | skipped, `no-store` |
 | the store cannot be read | skipped, `unreadable-store`, with `read_facts`' reason as `detail` |
-| same store as a path already named | skipped, `same-store` (worktrees share one store) |
 | contributed data included and the sent-window record cannot be read | skipped, `unreadable-sent-record` |
 | readable | included |
 
@@ -53,7 +53,9 @@ for up to a day; that is accepted.
   response's size. A `404` on the index means nothing is published yet, which is zero reports, not
   a failure.
 - Each non-empty line is parsed and checked with `contribution.validate`. A line that does not parse
-  or fails the allowlist is counted under `refused` and otherwise ignored. Duplicate lines are kept.
+  or fails the allowlist is counted under `refused` and otherwise ignored. A line naming a newer
+  allowlist `schema` is counted under `schema_ahead` instead, because it is a newer version's report
+  this reader cannot check. Duplicate lines are kept.
 
 ## Aggregation (AGG4)
 
@@ -79,7 +81,7 @@ Each report counts once: one product-week for one version. Versions sort by `(ma
   "sources": {
     "local": [{"path": "/abs/product", "reports": 7, "already_contributed": 2, "schema_ahead": 0}],
     "local_skipped": [{"path": "/abs/other", "reason": "no-store"}],
-    "contributed": {"bundles": 3, "lines": 41, "refused": 1}
+    "contributed": {"bundles": 3, "lines": 41, "refused": 1, "schema_ahead": 0}
   },
   "by_version": {
     "3.7": {

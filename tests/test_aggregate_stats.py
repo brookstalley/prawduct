@@ -205,13 +205,35 @@ class TestBundles:
             json.dumps(_report(blocking_per_review=0.33)),
             "",
         ])
-        reports, lines, refused = aggregate.parse_bundle(text, SCHEMA)
-        assert (len(reports), lines, refused) == (1, 4, 3)
+        parsed = aggregate.parse_bundle(text, SCHEMA)
+        assert (len(parsed["reports"]), parsed["lines"], parsed["refused"]) == (1, 4, 3)
+        assert parsed["schema_ahead"] == 0
+
+    def test_a_line_from_a_newer_allowlist_is_counted_apart_from_refusals(self):
+        newer = json.dumps(_report(schema=2, a_field_this_plugin_never_saw=1))
+        garbage = json.dumps(_report(schema=0))
+        parsed = aggregate.parse_bundle(f"{newer}\n{garbage}\n", SCHEMA)
+        assert (parsed["schema_ahead"], parsed["refused"], parsed["reports"]) == (1, 1, [])
+
+    def test_a_newer_allowlist_line_is_named_in_the_view(self, tmp_path, capsys):
+        bundle = tmp_path / "b.jsonl"
+        bundle.write_text(json.dumps(_report(schema=2)) + "\n")
+        report = _json(["--bundles", bundle], capsys)
+        assert report["sources"]["contributed"] == {
+            "bundles": 1, "lines": 1, "refused": 0, "schema_ahead": 1,
+        }
+        code, out, _ = _run(["--bundles", bundle], capsys)
+        assert code == 0
+        assert (
+            "contributed: 1 line(s) in 1 bundle(s), 0 refused by the allowlist, "
+            "1 written under a newer allowlist and not counted "
+            "(run a newer prawduct to include them)"
+        ) in out.splitlines()
 
     def test_identical_lines_are_distinct_contributions(self):
         line = contribution.canonical_bytes(_report()).decode()
-        reports, lines, refused = aggregate.parse_bundle(f"{line}\n{line}\n", SCHEMA)
-        assert (len(reports), lines, refused) == (2, 2, 0)
+        parsed = aggregate.parse_bundle(f"{line}\n{line}\n", SCHEMA)
+        assert (len(parsed["reports"]), parsed["lines"], parsed["refused"]) == (2, 2, 0)
 
     def test_a_directory_is_every_bundle_in_it(self, tmp_path, capsys):
         bundles = tmp_path / "bundles"
@@ -220,7 +242,9 @@ class TestBundles:
         _bundle(bundles / "2026-10-02.jsonl", [_report(), _report(iso_week=38)])
         (bundles / "index.json").write_text('{"days": []}')
         report = _json(["--bundles", bundles], capsys)
-        assert report["sources"]["contributed"] == {"bundles": 2, "lines": 3, "refused": 0}
+        assert report["sources"]["contributed"] == {
+            "bundles": 2, "lines": 3, "refused": 0, "schema_ahead": 0,
+        }
         assert report["by_version"]["3.7"]["reports"] == {"local": 0, "contributed": 3}
 
     def test_a_named_bundle_that_does_not_exist_exits_1(self, tmp_path, capsys):
@@ -365,8 +389,8 @@ class TestInputErrors:
         assert "cannot be read" in err
 
     def test_a_deeply_nested_line_is_refused_not_a_traceback(self):
-        reports, lines, refused = aggregate.parse_bundle("[" * 100_000 + "\n", SCHEMA)
-        assert (reports, lines, refused) == ([], 1, 1)
+        parsed = aggregate.parse_bundle("[" * 100_000 + "\n", SCHEMA)
+        assert (parsed["reports"], parsed["lines"], parsed["refused"]) == ([], 1, 1)
 
 
 class _Collector(BaseHTTPRequestHandler):
@@ -416,7 +440,9 @@ class TestCollectorFetch:
     def test_every_listed_bundle_is_fetched_with_the_prawduct_user_agent(self, collector, capsys):
         _publish({"2026-10-04": [_report()], "2026-10-05": [_report(), _report(iso_week=38)]})
         report = _json(["--collector"], capsys)
-        assert report["sources"]["contributed"] == {"bundles": 2, "lines": 3, "refused": 0}
+        assert report["sources"]["contributed"] == {
+            "bundles": 2, "lines": 3, "refused": 0, "schema_ahead": 0,
+        }
         assert [path for path, _ in _Collector.seen] == [
             "/bundles/index.json", "/bundles/2026-10-04.jsonl", "/bundles/2026-10-05.jsonl",
         ]
@@ -424,7 +450,9 @@ class TestCollectorFetch:
 
     def test_no_index_yet_is_zero_bundles_not_a_failure(self, collector, capsys):
         report = _json(["--collector"], capsys)
-        assert report["sources"]["contributed"] == {"bundles": 0, "lines": 0, "refused": 0}
+        assert report["sources"]["contributed"] == {
+            "bundles": 0, "lines": 0, "refused": 0, "schema_ahead": 0,
+        }
 
     def test_collector_data_leaves_out_windows_the_clone_already_sent(self, tmp_path, collector, capsys):
         repo = _repo(tmp_path, "a", _reviews(5))
@@ -466,6 +494,22 @@ class TestCollectorFetch:
         assert code == 1 and out == ""
         assert "not a day" in err
         assert [path for path, _ in _Collector.seen] == ["/bundles/index.json"]
+
+    @pytest.mark.parametrize(
+        "body", [b"{not json", b'{"no_days": []}', b"[1, 2]", b"[" * 100_000],
+    )
+    def test_an_index_that_is_not_an_index_exits_1(self, collector, capsys, body):
+        _Collector.routes["/bundles/index.json"] = (200, body, None)
+        code, out, err = _run(["--collector"], capsys)
+        assert code == 1 and out == ""
+        assert "is not a bundle index" in err
+
+    def test_a_bundle_that_is_not_utf8_exits_1(self, collector, capsys):
+        _Collector.routes["/bundles/index.json"] = (200, b'{"days": ["2026-10-04"]}', None)
+        _Collector.routes["/bundles/2026-10-04.jsonl"] = (200, b"\xff\xfe\n", None)
+        code, out, err = _run(["--collector"], capsys)
+        assert code == 1 and out == ""
+        assert "not UTF-8" in err
 
     def test_a_listed_bundle_that_is_missing_exits_1(self, collector, capsys):
         _Collector.routes["/bundles/index.json"] = (200, b'{"days": ["2026-10-04"]}', None)

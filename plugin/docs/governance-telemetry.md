@@ -392,8 +392,9 @@ one definition:
   the collector's index lists, from the origin of the pinned upload endpoint.
   Only `--collector` opens a socket: a GET with redirects refused and each
   response capped. Every line is re-validated against the allowlist. A line that
-  fails is counted under `refused`. Identical lines are kept, because two
-  contributors can send identical reports.
+  fails is counted under `refused`; a line written under a newer allowlist
+  schema is counted under `schema_ahead`, since a newer prawduct can read it.
+  Identical lines are kept, because two contributors can send identical reports.
 
 **Counted once.** When contributed data is included, a window the product's
 clone has already sent is left out and counted as `already_contributed`,
