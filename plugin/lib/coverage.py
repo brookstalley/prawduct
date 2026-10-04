@@ -533,6 +533,14 @@ def diagnose_base_advance_transfer(
     whichever branch or worktree it was taken on. What lineage would have bought
     is cost control, and the ``files_changed`` prune below buys that directly.
 
+    **A pruned candidate is skipped, not a failed check.** A store outlives
+    its objects: a dirty-tree review's snapshot and a rebased branch's trees
+    are garbage-collected while the facts naming them stay. A tree git no
+    longer holds cannot be shown byte-identical, so it denies like any other
+    mismatch, but the check over the trees git does hold still ran. Reporting
+    it as "could not run" would let one old snapshot, which could never have
+    granted, take over the explanation of the denial.
+
     Returns::
 
         {"status": "match", "prior_fact_id", "prior_reviews", "prior_base",
@@ -607,6 +615,13 @@ def diagnose_base_advance_transfer(
             prior_heads.append(prior_head)
     if not prior_bases or not prior_heads:
         return None
+    pruned = evidence.missing_objects(project_dir, prior_bases + prior_heads)
+    if pruned:
+        prior_bases = [tree for tree in prior_bases if tree not in pruned]
+        prior_heads = [tree for tree in prior_heads if tree not in pruned]
+    # `None` from `missing_objects` means git could not answer the batch; the
+    # per-candidate diffs below then meet any absent tree and degrade, which
+    # is the right reading when nothing could tell absence from failure.
 
     # Condition 2, one pathspec-limited diff per distinct endpoint: a candidate
     # endpoint survives only when it agrees with the required span's endpoint on
