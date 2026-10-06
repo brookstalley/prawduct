@@ -218,9 +218,12 @@ class TestBackfill:
             _plan("alpha").replace("scope: alpha\n", "scope: alpha\nlifecycle: active\n"),
             encoding="utf-8",
         )
-        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+        # Surveyed before the apply moves the plan, so this can actually fail.
+        survey = plan_backfill.survey(prawduct)
+        assert survey["blocked"] == []
+        assert [c["scope"] for c in survey["shipped"]] == ["alpha"]
 
-        assert plan_backfill.survey(prawduct)["blocked"] == []
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
         assert len(result["archived"]) == 1
         text = (prawduct / "artifacts" / "archive" / "build-plan-alpha.md").read_text()
         assert [ln for ln in text.splitlines() if ln.startswith("lifecycle:")] == [
