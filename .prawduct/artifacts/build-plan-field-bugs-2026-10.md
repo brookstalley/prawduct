@@ -20,13 +20,18 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; no per-subcommand version → conforms: the new subcommand ships at the plugin's version, in the internal tier"
-      - "exit codes are the contract, on the documented scheme → conforms: Chunk 03's subcommand uses the existing scheme (0 report, 1 bad arguments or an unreadable input), stated in its usage text and its api-contract entry"
+      - "exit codes are the contract, on the documented scheme → conforms: Chunk 03's subcommand is a CLI advisory report on the Error Model table (0 whenever a report was produced, ungraded profiles included; 2 on a usage error), stated in its usage text and its api-contract entry"
       - "additive-first evolution → conforms: one new subcommand and no repurposed flag, exit code or `--json` key. Chunk 01 changes when the skew refusal fires, not what it says or the exit code it uses"
   - artifact: data-model
     dispositions:
       - "a governance document reaches a terminal state; it is never deleted → conforms: Chunk 02 removes a refusal that kept live plans from reaching their terminal state"
-      - "facts are immutable and append-only; verdicts read the ledger → inapplicable, because no chunk writes or reads a fact"
+      - "facts are immutable and append-only → inapplicable, because no chunk writes a fact"
       - "two stores, two lifetimes → inapplicable, because no chunk adds persisted state"
+      - "verdicts computed from the fact ledger, never mutable model-written state → inapplicable, because no chunk computes a governance verdict"
+      - "derived views are disposable and never authoritative → inapplicable, because no chunk reads or writes a derived view"
+      - "a fact from a newer schema is a loud block → inapplicable, because no chunk reads facts"
+      - "every issue written to the backlog conforms to the title rules → inapplicable, because no chunk writes an issue; closing #959, #809 and #321 as shipped changes no title"
+      - "backlog_service_repo selects the authoritative store → conforms: items are closed through `/prawduct:backlog`, which routes on it"
   - artifact: nonfunctional-requirements
     dispositions:
       - "proportionality ratchets both ways (a new control emits its yield) → inapplicable because Chunk 03's Health Check #21 is not a control: it blocks nothing, grades no repo, and runs only when an operator invokes doctor, so there is no firing to measure against blocking yield. Recorded as an interpretation, added mid-build when the NFR was found missing from this list | user can veto"
@@ -214,8 +219,8 @@ Each fix is checked the way the user hit it, in addition to its tests:
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
-  3. Chunk marked `[x]` in Status; #959 and #321 marked shipped through `/prawduct:backlog` when
-     the PR merges
+  3. Chunk marked `[x]` in Status; #959, #809 and #321 marked shipped through `/prawduct:backlog`
+     when the PR merges
 
 ## Governance Checkpoints
 

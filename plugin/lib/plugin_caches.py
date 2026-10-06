@@ -23,11 +23,22 @@ the answer with a delete command per directory; ``/prawduct:doctor`` relays it.
   but only for the profile whose record it is; or
 * because it is the plugin running this command.
 
+Records are read under every ``prawduct@<marketplace>`` key, because the
+cache is scanned under every marketplace directory; a record from another
+marketplace protects the directory it names.
+
 **A profile is one cache, not one config root.** Profiles commonly share
 ``plugins/`` through a symlink, and counting each root would multiply one pile
-by the number of roots pointing at it. A profile whose install record is
-missing or unreadable has its versions reported as ungraded, never as stale:
-with no record, every version would look unused.
+by the number of roots pointing at it.
+
+**Anything unreadable grades nothing.** A profile whose install record is
+missing, unreadable, or holds one record this module cannot read has its
+versions reported as ungraded, never as stale: an unreadable record might be
+the one protecting a version, and a delete command for the version a profile
+loads is the one wrong answer this report must never give. The manifest itself
+is read through :func:`lib.plugin_activation.read_installed_plugins`, the one
+reader of that file. A cache directory that cannot be listed is reported, not
+dropped.
 """
 
 from __future__ import annotations
@@ -38,14 +49,19 @@ import shlex
 import sys
 from pathlib import Path
 
+from lib.plugin_activation import (
+    MANIFEST_MISSING,
+    MANIFEST_OK,
+    MANIFEST_UNREADABLE,
+    read_installed_plugins,
+)
 from lib.stranded_work import config_roots
 
 PLUGIN = "prawduct"
 SCHEMA_VERSION = 1
 
-MANIFEST_OK = "ok"
-MANIFEST_MISSING = "missing"
-MANIFEST_UNREADABLE = "unreadable"
+#: The profile's cache could not be listed, so nothing in it was graded.
+CACHE_UNREADABLE = "cache unreadable"
 
 
 def _resolved(path: Path) -> Path | None:
@@ -61,24 +77,34 @@ def _tail(path: Path) -> tuple[str, ...]:
     return tuple(path.parts[-3:])
 
 
-def _records(plugins_dir: Path) -> tuple[str, list[dict]]:
-    """``(manifest status, this plugin's install records)``."""
-    path = plugins_dir / "installed_plugins.json"
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return MANIFEST_MISSING, []
-    except (OSError, UnicodeDecodeError, ValueError):
-        return MANIFEST_UNREADABLE, []
-    plugins = data.get("plugins") if isinstance(data, dict) else None
-    if not isinstance(plugins, dict):
-        return MANIFEST_UNREADABLE, []
-    records: list[dict] = []
-    for key, entries in plugins.items():
-        if key.split("@", 1)[0] != PLUGIN or not isinstance(entries, list):
+def _install_paths(plugins_dir: Path) -> tuple[str, list[Path]]:
+    """``(manifest status, every install path this plugin's records name)``.
+    One record in a shape this cannot read makes the whole file unreadable."""
+    read = read_installed_plugins(plugins_dir / "installed_plugins.json")
+    if read["status"] != MANIFEST_OK:
+        return read["status"], []
+    paths: list[Path] = []
+    for key, entries in read["plugins"].items():
+        if not isinstance(key, str) or key.split("@", 1)[0] != PLUGIN:
             continue
-        records.extend(entry for entry in entries if isinstance(entry, dict))
-    return MANIFEST_OK, records
+        if not isinstance(entries, list):
+            return MANIFEST_UNREADABLE, []
+        for entry in entries:
+            raw = entry.get("installPath") if isinstance(entry, dict) else None
+            if not isinstance(raw, str) or not raw:
+                return MANIFEST_UNREADABLE, []
+            try:
+                paths.append(Path(raw).expanduser())
+            except RuntimeError:  # `~user` naming no user on this host
+                return MANIFEST_UNREADABLE, []
+    return MANIFEST_OK, paths
+
+
+def _exists(path: Path) -> bool:
+    try:
+        return path.exists()
+    except OSError:
+        return False
 
 
 def _disk_bytes(path: Path) -> int:
@@ -86,32 +112,41 @@ def _disk_bytes(path: Path) -> int:
     followed, each hard-linked file once."""
     total = 0
     seen: set[tuple[int, int]] = set()
+    # The directory's own entry counts too: `du` includes it, and on Linux it
+    # holds blocks of its own.
+    entries = [str(path)]
     for dirpath, dirnames, filenames in os.walk(path):
-        for name in dirnames + filenames:
-            try:
-                st = os.lstat(os.path.join(dirpath, name))
-            except OSError:
-                continue
-            key = (st.st_dev, st.st_ino)
-            if key in seen:
-                continue
-            seen.add(key)
-            blocks = getattr(st, "st_blocks", None)
-            total += blocks * 512 if blocks is not None else st.st_size
+        entries.extend(os.path.join(dirpath, name) for name in dirnames + filenames)
+    for entry in entries:
+        try:
+            st = os.lstat(entry)
+        except OSError:
+            continue
+        key = (st.st_dev, st.st_ino)
+        if key in seen:
+            continue
+        seen.add(key)
+        blocks = getattr(st, "st_blocks", None)
+        total += blocks * 512 if blocks is not None else st.st_size
     return total
 
 
-def _version_dirs(plugins_dir: Path) -> list[Path]:
+def _version_dirs(plugins_dir: Path) -> list[Path] | None:
+    """Every version directory of this plugin in the cache, or ``None`` when
+    the cache exists and cannot be listed."""
+    cache = plugins_dir / "cache"
+    if not cache.is_dir():
+        return []
     try:
         return sorted(
             version
-            for marketplace in (plugins_dir / "cache").iterdir()
+            for marketplace in cache.iterdir()
             if (marketplace / PLUGIN).is_dir()
             for version in (marketplace / PLUGIN).iterdir()
             if version.is_dir()
         )
     except OSError:
-        return []
+        return None
 
 
 def scan(
@@ -128,18 +163,14 @@ def scan(
 
     # Every record on the machine, resolved, protects a version in any profile.
     for group in groups.values():
-        group["manifest"], group["records"] = _records(group["plugins_dir"])
+        group["manifest"], group["paths"] = _install_paths(group["plugins_dir"])
     protected: set[Path] = set()
     if running_root is not None and (resolved := _resolved(running_root)) is not None:
         protected.add(resolved)
     for group in groups.values():
         group["by_name"] = set()
-        for record in group["records"]:
-            raw = record.get("installPath")
-            if not isinstance(raw, str) or not raw:
-                continue
-            path = Path(raw).expanduser()
-            if path.exists() and (resolved := _resolved(path)) is not None:
+        for path in group["paths"]:
+            if _exists(path) and (resolved := _resolved(path)) is not None:
                 protected.add(resolved)
             else:
                 group["by_name"].add(_tail(path))
@@ -147,6 +178,14 @@ def scan(
     profiles = []
     for group in groups.values():
         versions = _version_dirs(group["plugins_dir"])
+        if versions is None:
+            profiles.append({
+                "config_roots": [str(root) for root in group["roots"]],
+                "cache": str(group["plugins_dir"] / "cache"),
+                "manifest": CACHE_UNREADABLE,
+                "in_use": [], "stale": [], "stale_bytes": 0, "ungraded": [],
+            })
+            continue
         if not versions:
             continue
         in_use, stale, ungraded = [], [], []
@@ -191,9 +230,12 @@ def render(report: dict) -> str:
         lines.append("")
         lines.append(f"{' + '.join(profile['config_roots'])}")
         lines.append(f"  in use: {', '.join(profile['in_use']) or 'none'}")
-        if profile["manifest"] != MANIFEST_OK:
+        if profile["manifest"] == CACHE_UNREADABLE:
+            lines.append(f"  not graded: {profile['cache']} could not be listed")
+        elif profile["manifest"] != MANIFEST_OK:
+            what = "missing" if profile["manifest"] == MANIFEST_MISSING else "unreadable"
             lines.append(
-                f"  not graded: its installed_plugins.json is {profile['manifest']}, so "
+                f"  not graded: its installed_plugins.json is {what}, so "
                 f"nothing here can be called unused ({', '.join(profile['ungraded'])})"
             )
         for item in profile["stale"]:

@@ -15,9 +15,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from lib import plugin_caches
 
@@ -130,6 +133,14 @@ class TestWhatIsStale:
         assert all(size >= 5000 for size in sizes)
         assert report["stale_bytes"] == sum(sizes)
 
+    @pytest.mark.skipif(shutil.which("du") is None, reason="needs du")
+    def test_sizes_agree_with_du(self, tmp_path):
+        """`du -sk` rounds to KiB; within that, the sizes are the same count."""
+        report = _report(_home(tmp_path))
+        for item in (i for p in report["profiles"] for i in p["stale"]):
+            du_kib = int(subprocess.check_output(["du", "-sk", item["path"]]).split()[0])
+            assert abs(du_kib * 1024 - item["bytes"]) < 1024, item["path"]
+
 
 class TestWhatCannotBeGraded:
     def test_a_missing_record_grades_nothing_stale(self, tmp_path):
@@ -146,6 +157,46 @@ class TestWhatCannotBeGraded:
             "{not json", encoding="utf-8")
         box = next(p for p in _report(home)["profiles"] if "box" in p["config_roots"][0])
         assert box["manifest"] == "unreadable"
+        assert box["stale"] == []
+
+    @pytest.mark.parametrize("plugins", [
+        {"prawduct@prawduct": {"installPath": "x"}},           # entry not a list
+        {"prawduct@prawduct": ["not a record"]},               # record not an object
+        {"prawduct@prawduct": [{"version": "1.5.0"}]},          # record without installPath
+        {"prawduct@prawduct": [{"installPath": 7}]},            # installPath not a string
+        {"prawduct@other": [{}], "prawduct@prawduct": []},      # bad record under another marketplace
+    ])
+    def test_a_record_it_cannot_read_grades_nothing_stale(self, tmp_path, plugins):
+        """An unreadable record might be the one naming the version a profile
+        loads, so its profile gets no delete command at all."""
+        home = _home(tmp_path)
+        (home / ".claude-box-devcontainer" / "plugins" / "installed_plugins.json").write_text(
+            json.dumps({"version": 2, "plugins": plugins}), encoding="utf-8")
+        box = next(p for p in _report(home)["profiles"] if "box" in p["config_roots"][0])
+        assert box["manifest"] == "unreadable"
+        assert box["stale"] == []
+        assert sorted(box["ungraded"]) == ["0.9.0", "1.5.0"]
+
+    def test_another_plugins_odd_record_does_not_ungrade_the_profile(self, tmp_path):
+        home = _home(tmp_path)
+        path = home / ".claude-box-devcontainer" / "plugins" / "installed_plugins.json"
+        data = json.loads(path.read_text())
+        data["plugins"]["someone-else@market"] = "anything"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        box = next(p for p in _report(home)["profiles"] if "box" in p["config_roots"][0])
+        assert box["manifest"] == "ok"
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads unreadable directories")
+    def test_a_cache_it_cannot_list_is_reported_not_dropped(self, tmp_path):
+        home = _home(tmp_path)
+        cache = home / ".claude-box-devcontainer" / "plugins" / "cache"
+        cache.chmod(0)
+        try:
+            report = _report(home)
+        finally:
+            cache.chmod(0o755)
+        box = next(p for p in report["profiles"] if "box" in p["config_roots"][0])
+        assert box["manifest"] == "cache unreadable"
         assert box["stale"] == []
 
     def test_a_root_without_a_prawduct_cache_is_not_a_profile(self, tmp_path):

@@ -65,6 +65,63 @@ ACTIVE = "active"
 INACTIVE = "inactive"
 UNKNOWN = "unknown"
 
+#: How a read of the manifest went. ``missing`` is kept apart from
+#: ``unreadable`` because a profile that never installed a plugin is ordinary,
+#: while a file that exists and cannot be read is a question left unanswered.
+MANIFEST_OK = "ok"
+MANIFEST_MISSING = "missing"
+MANIFEST_UNREADABLE = "unreadable"
+
+
+def read_installed_plugins(path: Path) -> dict:
+    """The manifest's ``plugins`` mapping, read and shape-checked once for
+    every reader of the file.
+
+    Returns ``{"status", "reason", "plugins", "version"}``: ``status`` is one of
+    the ``MANIFEST_*`` values, ``reason`` names the problem (``None`` when
+    ``ok``), ``plugins`` is the mapping (empty unless ``ok``) and ``version`` is
+    the top-level ``version`` for diagnostics. Only the file and its top-level
+    shape are checked here; what a record must carry depends on the question
+    asked of it, so each caller validates the records it reads and must treat a
+    record it cannot read as an unanswered question, never as an absent one.
+    """
+    def failed(status: str, reason: str, version=None) -> dict:
+        return {"status": status, "reason": reason, "plugins": {}, "version": version}
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return failed(
+            MANIFEST_MISSING,
+            "the harness's installed-plugins manifest does not exist at this "
+            "path, so what is installed cannot be read",
+        )
+    except (OSError, UnicodeDecodeError) as exc:
+        return failed(
+            MANIFEST_UNREADABLE,
+            f"the installed-plugins manifest could not be read "
+            f"({exc.__class__.__name__})",
+        )
+    try:
+        manifest = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return failed(
+            MANIFEST_UNREADABLE,
+            f"the installed-plugins manifest is not valid JSON (line {exc.lineno})",
+        )
+    if not isinstance(manifest, dict):
+        return failed(MANIFEST_UNREADABLE, "the installed-plugins manifest is not a JSON object")
+    version = manifest.get("version")
+    plugins = manifest.get("plugins")
+    if not isinstance(plugins, dict):
+        return failed(
+            MANIFEST_UNREADABLE,
+            "the installed-plugins manifest has no `plugins` object — its shape "
+            "is not the one this check knows how to read",
+            version,
+        )
+    return {"status": MANIFEST_OK, "reason": None, "plugins": plugins, "version": version}
+
 
 def default_plugins_file() -> Path:
     """The harness's installed-plugins manifest, honouring ``CLAUDE_CONFIG_DIR``.
@@ -132,44 +189,11 @@ def plugin_activation_status(
             f"the target path could not be resolved ({exc.__class__.__name__})",
         )
 
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return _unknown(
-            plugin_id, str(target), path,
-            "the harness's installed-plugins manifest does not exist at this "
-            "path, so what is installed cannot be read",
-        )
-    except (OSError, UnicodeDecodeError) as exc:
-        return _unknown(
-            plugin_id, str(target), path,
-            f"the installed-plugins manifest could not be read "
-            f"({exc.__class__.__name__})",
-        )
-
-    try:
-        manifest = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        return _unknown(
-            plugin_id, str(target), path,
-            f"the installed-plugins manifest is not valid JSON (line {exc.lineno})",
-        )
-
-    if not isinstance(manifest, dict):
-        return _unknown(
-            plugin_id, str(target), path,
-            "the installed-plugins manifest is not a JSON object",
-        )
-
-    version = manifest.get("version")
-    plugins = manifest.get("plugins")
-    if not isinstance(plugins, dict):
-        return _unknown(
-            plugin_id, str(target), path,
-            "the installed-plugins manifest has no `plugins` object — its shape "
-            "is not the one this check knows how to read",
-            manifest_version=version,
-        )
+    read = read_installed_plugins(path)
+    version = read["version"]
+    if read["status"] != MANIFEST_OK:
+        return _unknown(plugin_id, str(target), path, read["reason"], manifest_version=version)
+    plugins = read["plugins"]
 
     records = plugins.get(plugin_id)
     if records is None:
