@@ -293,7 +293,8 @@ def _is_own_key(line: str) -> bool:
 
 
 def read_completion(content: str) -> dict[str, str] | None:
-    """The completion keys recorded in ``content``, or ``None`` if it records none.
+    """The completion keys recorded in ``content``, or ``None`` if it records no
+    terminal state.
 
     The round-trip partner of :func:`apply_completion_frontmatter`, and the
     predicate a reader uses to answer "is this current?" without inferring it
@@ -321,7 +322,10 @@ def read_completion(content: str) -> dict[str, str] | None:
             if line.startswith(prefix):
                 found[key] = _parse_scalar(line[len(prefix) :])
                 break
-    if LIFECYCLE_KEY not in found:
+    # Only a terminal state is an end of life. A live plan may carry a
+    # `lifecycle:` that names none (`active` is the common one); reading that as
+    # a recorded end would refuse the archive the plan is waiting for.
+    if found.get(LIFECYCLE_KEY) not in TERMINAL_STATES:
         return None
     return found
 

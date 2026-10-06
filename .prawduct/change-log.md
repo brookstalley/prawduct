@@ -15,6 +15,12 @@
   A repo is now a checkout when that manifest names `prawduct`. When the manifest cannot be read
   or carries no name, the presence of `plugin/bin/prawduct-hook` decides, so a real checkout with
   a broken manifest still refuses a foreign binary. Both skew checks ask the one predicate.
+- **#809 (and #960, merged into it): `archive-plan` and `plan-backfill --apply` archive a plan
+  whose frontmatter says `lifecycle: active`.** The re-archive guard refused any `lifecycle:`
+  value, and said the plan "has an end of life already". Only `completed` and `superseded` count
+  now. The fix is in `read_completion`, the "does this plan record an end?" check, rather than
+  in the guard alone, so any future caller of that check gets the same answer. Archiving replaces
+  the old value, so the result carries one `lifecycle:` line.
 
 ## 2026-10-04: aggregate-stats pools governance stats across products, contributed reports included
 
