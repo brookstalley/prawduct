@@ -101,9 +101,9 @@ below as a vetoable decision.
 ## Status
 
 - [x] Chunk 01: The skew guard recognises prawduct by its manifest name (#959)
-- [ ] Chunk 02: Only a terminal lifecycle blocks a re-archive (#809)
+- [x] Chunk 02: Only a terminal lifecycle blocks a re-archive (#809)
 - [ ] Chunk 03: Doctor reports stale plugin cache directories (#321)
-Context: Approved 2026-10-06. Chunk 01 built, reviewed (0 findings) and committed. Next: Chunk 02. All three chunks touch a declared risk surface (`plugin/bin/*hook*`, `plugin/skills/`), so this is not a short plan: chunks 01 and 02 get a `chunk` review each, and Chunk 03's `cumulative` is the boundary review.
+Context: Approved 2026-10-06. Chunks 01 and 02 built, reviewed (0 findings each) and committed. Next: Chunk 03. All three chunks touch a declared risk surface (`plugin/bin/*hook*`, `plugin/skills/`), so this is not a short plan: chunks 01 and 02 get a `chunk` review each, and Chunk 03's `cumulative` is the boundary review.
 
 ## Verification Strategy
 
