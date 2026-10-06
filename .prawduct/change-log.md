@@ -21,6 +21,16 @@
   now. The fix is in `read_completion`, the "does this plan record an end?" check, rather than
   in the guard alone, so any future caller of that check gets the same answer. Archiving replaces
   the old value, so the result carries one `lifecycle:` line.
+- **#321: `prawduct-hook stale-plugin-caches` lists the prawduct cache versions no install
+  uses**, in every config profile on the machine, with disk sizes and a delete command each. It
+  deletes nothing. `/prawduct:doctor` Health Check #21 relays it as a recommendation that never
+  grades the repo. A version counts as in use when any install record names its path, when a
+  record whose path exists only inside a container names its version in the same profile, or
+  when it is the plugin running the command. Profiles that share a cache through a symlinked
+  `plugins/` are one entry, and a profile whose record cannot be read is reported ungraded.
+  On the owner's machine it found 22 unused directories, about 154 MB, in 4 caches.
+  `stranded_work.config_roots` gained a `holding=` argument so both readers share one way of
+  finding config roots.
 
 ## 2026-10-04: aggregate-stats pools governance stats across products, contributed reports included
 

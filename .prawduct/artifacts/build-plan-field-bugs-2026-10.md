@@ -27,6 +27,12 @@ governed_by:
       - "a governance document reaches a terminal state; it is never deleted → conforms: Chunk 02 removes a refusal that kept live plans from reaching their terminal state"
       - "facts are immutable and append-only; verdicts read the ledger → inapplicable, because no chunk writes or reads a fact"
       - "two stores, two lifetimes → inapplicable, because no chunk adds persisted state"
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "proportionality ratchets both ways (a new control emits its yield) → inapplicable because Chunk 03's Health Check #21 is not a control: it blocks nothing, grades no repo, and runs only when an operator invokes doctor, so there is no firing to measure against blocking yield. Recorded as an interpretation, added mid-build when the NFR was found missing from this list | user can veto"
+      - "review rigor is stage-keyed → conforms: chunks 01-02 take inner `chunk` reviews, Chunk 03 the boundary `cumulative`"
+      - "review wall-clock is P0 → conforms: no review mode, roster or payload changes"
+      - "state-file growth is an advisory, never a hard block → inapplicable, because no state file's size behaviour changes"
 partition: serial — 01 and 03 both edit `plugin/bin/prawduct-hook`, and 02 is too small to repay a delegate's brief
 ---
 
@@ -52,10 +58,12 @@ machine in a state they cannot see.
 - **#321. Old plugin cache directories pile up in every config profile.** Claude Code keeps every
   version directory under `~/.claude*/plugins/cache/<marketplace>/prawduct/`, and
   `claude plugin prune` does not remove them. Measured on the owner's machine on 2026-10-06:
-  `ls -d ~/.claude*/plugins/cache/*/prawduct/* | wc -l` found 77 version directories across 6
-  profiles, and `du -sh ~/.claude*/plugins/cache/*/prawduct` totalled about 785 MB. The
-  pre-v3.1.1 copies still hold prawduct's own `.prawduct/`, tests and documentation. Nothing
-  tells the user any of this.
+  `prawduct-hook stale-plugin-caches` (the command Chunk 03 builds) found 22 unused version
+  directories, about 154 MB, across 4 distinct caches. Six profile directories share those 4
+  caches through symlinked `plugins/` directories; a first count of 77 directories and about
+  785 MB, taken with `ls` and `du` over every profile directory, counted the shared cache three
+  times. The pre-v3.1.1 copies still hold prawduct's own `.prawduct/`, tests and documentation.
+  Nothing tells the user any of this.
 
 ## Success
 

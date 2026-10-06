@@ -5941,6 +5941,30 @@ def cmd_worktrees(project_dir: Path, argv: list[str]) -> int:
     return stranded_work.worktrees_cmd(project_dir, argv)
 
 
+def cmd_stale_plugin_caches(argv: list[str]) -> int:
+    """List the prawduct plugin cache versions no install record uses, in every
+    config profile on the machine. Read-only. Thin wrapper — body lives in
+    ``lib.plugin_caches``; ``/prawduct:doctor`` relays the report."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plugin_caches  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "stale-plugin-caches unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The plugin executing this is in use by a live session whatever the
+    # install records now say.
+    return plugin_caches.stale_plugin_caches_cmd(
+        argv, running_root=Path(__file__).resolve().parent.parent
+    )
+
+
 def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     """Aggregate the governance ledger into review cost / yield numbers.
     Thin wrapper — body lives in ``lib.telemetry.review_stats``
@@ -8366,6 +8390,7 @@ _USAGE = (
     "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
     "classify-diff-risk [<base>]|"
     "worktrees [--json]|"
+    "stale-plugin-caches [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
@@ -8784,6 +8809,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "version",
     # Read-only: git reads with --no-optional-locks and file mtimes.
     "worktrees",
+    # Read-only: lists and sizes plugin cache directories under the home dir.
+    "stale-plugin-caches",
 })
 
 # Read-only reports that mutate only under `--apply` — a third shape, neither
@@ -9322,6 +9349,8 @@ def _dispatch() -> int:
         return cmd_aggregate_stats(sys.argv[2:])
     elif command == "worktrees":
         return cmd_worktrees(project_dir, sys.argv[2:])
+    elif command == "stale-plugin-caches":
+        return cmd_stale_plugin_caches(sys.argv[2:])
     elif command == "classify-diff-risk":
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":
