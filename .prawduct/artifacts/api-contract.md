@@ -189,7 +189,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   disk sizes and a delete command for each; it deletes nothing. What counts as in use, and why a
   profile with an unreadable record is ungraded, is `lib/plugin_caches.py`'s docstring.
   `/prawduct:doctor` Health Check #21 relays it. Exit 0 whenever a report was produced, ungraded
-  profiles included, and 2 on an unknown argument.
+  profiles included, and 2 on an unknown argument. `--json` keys: `schema_version`,
+  `stale_count`, `stale_bytes`, and `profiles[]`, each with `config_roots[]`, `cache`,
+  `cache_readable`, `manifest` (`ok` | `missing` | `unreadable`), `ungraded_reason` (`null` when
+  graded), `in_use[]`, `stale[]{path, bytes}`, `stale_bytes` and `ungraded[]`.
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
@@ -452,6 +455,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     **A successful `--apply` returns `ok`**, not the status it repaired: a graded status describes
     the state on the way IN, and a consumer reading it back after a write would report the condition
     that was just fixed.
+  - `stale-plugin-caches --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #21
+    runs the command and relays its human form. The key set is listed once, in the § Operations
+    "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it
+    graded, so its empty `stale[]` means *not looked at*, not *nothing unused*.
     **HC#4 is not the JSON consumer** — it parses nothing, and a contract asserting a consumer it
     does not have is how a `--json` shape drifts from the command that emits it.
     Dry run exits 0 when it ran and 1 only when it could not; `--apply`

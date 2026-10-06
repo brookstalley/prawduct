@@ -28,8 +28,10 @@
   record whose path exists only inside a container names its version in the same profile, or
   when it is the plugin running the command. Profiles that share a cache through a symlinked
   `plugins/` are one entry. A profile whose record file, or any one record in it, cannot be read
-  is reported ungraded, and a cache that cannot be listed is reported rather than dropped, because
-  an unreadable record might be the one protecting the version that profile loads.
+  is reported ungraded with the reason, naming the record, and a cache that cannot be listed is
+  reported rather than dropped, because an unreadable record might be the one protecting the
+  version that profile loads. Doctor's scope now says it also covers the machine-level state
+  prawduct's own install leaves (`docs/doctor-vs-janitor.md`).
   On the owner's machine it found 22 unused directories, about 154 MB, in 4 caches.
 - **One reader of `installed_plugins.json`.** `plugin_activation.read_installed_plugins` reads and
   shape-checks the file for both `check-plugin-active` and the cache report; each checks the record

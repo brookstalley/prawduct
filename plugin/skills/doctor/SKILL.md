@@ -6,7 +6,7 @@ disable-model-invocation: false
 allowed-tools: Bash(prawduct-hook print-install-reference), Bash(prawduct-hook learnings-compact*), Bash(prawduct-hook verify-operator-verification*), Bash(prawduct-hook norm-index-scaffold*), Bash(prawduct-hook reanchor*), Bash(prawduct-hook lifecycle-repair*), Bash(prawduct-hook plan-backfill*), Bash(prawduct-hook archive-plan*), Bash(prawduct-hook update-gitignore*), Bash(prawduct-hook check-plugin-active*), Bash(prawduct-hook stale-plugin-caches*), Bash(prawduct-hook coverage-status*), Bash(prawduct-hook coverage-scaffold*), Bash(prawduct-hook backlog reconcile-labels*), Bash(python3 plugin/bin/prawduct-hook backlog reconcile-labels*), Bash(git check-attr *), Read, Glob, Edit, Write
 ---
 
-You are managing prawduct product-repo health under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Every flow operates on the consumer's own repo: there is no framework checkout to call back to.
+You are managing prawduct product-repo health under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Every flow operates on the consumer's own repo, plus the machine-level state prawduct's own install leaves behind (its install record and its plugin caches): there is no framework checkout to call back to.
 
 This skill is for a repo that is **already onboarded**. To set up a new or existing repo, use **`/prawduct:onboard`** instead.
 
@@ -14,7 +14,7 @@ This skill is for a repo that is **already onboarded**. To set up a new or exist
 
 `doctor` owns **prawduct governance/install conformance** — is *this repo* correctly set up and
 governed (install reference, distribution, anchor, core state, discovery captured, gitignore
-contract, recorded decisions)? It **reports and guides**; it does not fix the product's own code.
+contract, recorded decisions), and is prawduct's own installation on this machine sound? It **reports and guides**; it does not fix the product's own code.
 For the product's **own codebase craft** — code/docs/tests/dependency quality and currency — use
 **`/prawduct:janitor`**. Full split, and the rule for where a new concern belongs: `docs/doctor-vs-janitor.md`.
 

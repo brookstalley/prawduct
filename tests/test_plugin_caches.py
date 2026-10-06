@@ -148,6 +148,7 @@ class TestWhatCannotBeGraded:
         (home / ".claude-box-devcontainer" / "plugins" / "installed_plugins.json").unlink()
         box = next(p for p in _report(home)["profiles"] if "box" in p["config_roots"][0])
         assert box["manifest"] == "missing"
+        assert "does not exist" in box["ungraded_reason"]
         assert box["stale"] == []
         assert sorted(box["ungraded"]) == ["0.9.0", "1.5.0"]
 
@@ -176,6 +177,8 @@ class TestWhatCannotBeGraded:
         assert box["manifest"] == "unreadable"
         assert box["stale"] == []
         assert sorted(box["ungraded"]) == ["0.9.0", "1.5.0"]
+        assert "installed_plugins.json" in box["ungraded_reason"]
+        assert "prawduct@" in box["ungraded_reason"], "the reason must name the record"
 
     def test_another_plugins_odd_record_does_not_ungrade_the_profile(self, tmp_path):
         home = _home(tmp_path)
@@ -196,7 +199,8 @@ class TestWhatCannotBeGraded:
         finally:
             cache.chmod(0o755)
         box = next(p for p in report["profiles"] if "box" in p["config_roots"][0])
-        assert box["manifest"] == "cache unreadable"
+        assert box["cache_readable"] is False
+        assert "could not be listed" in box["ungraded_reason"]
         assert box["stale"] == []
 
     def test_a_root_without_a_prawduct_cache_is_not_a_profile(self, tmp_path):
@@ -238,6 +242,33 @@ class TestTheCommand:
         deletes = [line for line in result.stdout.splitlines() if "rm -rf" in line]
         assert {Path(line.split()[-1].strip("'")).name for line in deletes} == {"1.0.0", "0.9.0"}
         assert "close" in result.stdout.lower(), "the running-session warning is missing"
+
+    def test_the_plugin_running_the_command_is_never_offered_for_deletion(self, tmp_path):
+        """The wiring, not the predicate: a hook executing from inside a cache
+        version that no record names must protect its own directory."""
+        home = _home(tmp_path)
+        running = home / ".claude" / "plugins" / "cache" / "prawduct" / "prawduct" / "1.0.0"
+        (running / "bin").mkdir(parents=True)
+        shutil.copy2(HOOK, running / "bin" / "prawduct-hook")
+        env = {**os.environ, "HOME": str(home),
+               "CLAUDE_PLUGIN_ROOT": str(HOOK.parent.parent)}  # the real lib/ to import
+        env.pop("CLAUDE_CONFIG_DIR", None)
+        result = subprocess.run(
+            [sys.executable, str(running / "bin" / "prawduct-hook"), "stale-plugin-caches", "--json"],
+            capture_output=True, text=True, env=env, cwd=str(home),
+        )
+        assert result.returncode == 0, result.stderr
+        stale = {Path(i["path"]).name for p in json.loads(result.stdout)["profiles"] for i in p["stale"]}
+        assert stale == {"0.9.0"}, "the running version, or the control, was misclassified"
+
+    def test_an_ungraded_profile_says_why_in_the_human_report(self, tmp_path):
+        home = _home(tmp_path)
+        (home / ".claude-box-devcontainer" / "plugins" / "installed_plugins.json").write_text(
+            json.dumps({"version": 2, "plugins": {"prawduct@prawduct": [{"version": "1"}]}}),
+            encoding="utf-8")
+        result = self._run(home)
+        line = next(l for l in result.stdout.splitlines() if "not graded" in l)
+        assert "installPath" in line and "0.9.0" in line
 
     def test_json_carries_the_report(self, tmp_path):
         result = self._run(_home(tmp_path), "--json")
