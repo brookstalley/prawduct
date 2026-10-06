@@ -8602,16 +8602,28 @@ _DATA_PLANE_COMMANDS = frozenset({
 
 
 def _repo_plugin_dir(project_dir: Path) -> "Path | None":
-    """The plugin directory THIS repo carries, or None if it carries none.
+    """The prawduct plugin directory THIS repo carries, or None if it carries none.
 
-    A repo is a framework checkout iff it holds `plugin/.claude-plugin/plugin.json`.
-    Product repos hold none and are therefore untouched by the guard — they
-    legitimately run the installed binary, and firing there would break every
-    governed repo in the fleet.
+    A repo is a framework checkout iff its `plugin/.claude-plugin/plugin.json`
+    names `prawduct`. The layout alone is not enough: a governed product may ship
+    a Claude Code plugin of its own at `plugin/`, and product repos legitimately
+    run the installed binary, so firing there leaves them unable to record any
+    review. When the manifest cannot say — unreadable, unparseable, or nameless —
+    the presence of prawduct's own `plugin/bin/prawduct-hook` decides, so a real
+    checkout whose manifest is broken mid-edit still fails closed.
     """
     try:
         candidate = Path(project_dir) / "plugin"
-        if (candidate / ".claude-plugin" / "plugin.json").is_file():
+        manifest = candidate / ".claude-plugin" / "plugin.json"
+        if not manifest.is_file():
+            return None
+        try:
+            name = json.loads(manifest.read_text(encoding="utf-8")).get("name")
+        except (OSError, UnicodeDecodeError, ValueError, AttributeError):
+            name = None
+        if isinstance(name, str):
+            return candidate.resolve() if name == "prawduct" else None
+        if (candidate / "bin" / "prawduct-hook").is_file():
             return candidate.resolve()
     except OSError:
         return None

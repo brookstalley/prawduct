@@ -27,13 +27,17 @@ authority fails closed, advice fails soft): a governance **write** refuses, and
 everything else degrades to a loud stderr note. Neither is silent, which is the
 whole point.
 
-Product repos carry no `plugin/.claude-plugin/plugin.json` and legitimately run
-the installed binary, so they must be entirely unaffected — that is the
-over-fire case, and the one a careless fix breaks.
+Product repos legitimately run the installed binary, so they must be entirely
+unaffected — that is the over-fire case, and the one a careless fix breaks. A
+product may still ship a plugin of its own at `plugin/`, so the layout alone does
+not identify a checkout; the manifest's name does.
 """
 
 from __future__ import annotations
 
+import functools
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shutil
@@ -65,6 +69,20 @@ def _make_framework_checkout(root: Path, version: str = "9.9.9") -> Path:
 def _make_product_repo(root: Path) -> Path:
     """A repo with no plugin of its own — the ordinary governed product."""
     (root / ".prawduct").mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _make_product_with_own_plugin(root: Path, manifest: str) -> Path:
+    """A governed product that ships its OWN Claude Code plugin at `plugin/`.
+
+    `manifest` is written verbatim, so a case can be a valid manifest naming
+    another plugin or a file that does not parse. No `plugin/bin/prawduct-hook`
+    is created: a product's plugin has no reason to carry prawduct's binary.
+    """
+    manifest_dir = root / "plugin" / ".claude-plugin"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / "plugin.json").write_text(manifest, encoding="utf-8")
+    (root / ".prawduct").mkdir(exist_ok=True)
     return root
 
 
@@ -308,6 +326,78 @@ class TestProductRepoUnaffected:
         result = _run(repo, "version", binary=foreign)
         assert result.returncode == 0
         assert _SKEW_MARKER not in result.stderr
+
+
+class TestProductShippingItsOwnPluginIsNotACheckout:
+    """A product may ship its own plugin at `plugin/`; that does not make it
+    prawduct. The checkout test reads the manifest's name, and falls back to
+    the presence of prawduct's own binary only when the manifest cannot say."""
+
+    def test_data_plane_write_is_not_refused(self, tmp_path):
+        repo = _make_product_with_own_plugin(
+            tmp_path / "prod", json.dumps({"name": "other", "version": "1.0.0"})
+        )
+        foreign = _install_binary_at(tmp_path / "installed")
+        result = _run(repo, "critic-consolidate", binary=foreign)
+        combined = result.stdout + result.stderr
+        assert _SKEW_MARKER not in combined, (
+            "a product's own plugin is not a prawduct checkout — refusing here "
+            "leaves the product unable to record any Critic review"
+        )
+
+    def test_unreadable_manifest_beside_prawducts_binary_still_refuses(self, tmp_path):
+        """Authority fails closed: a real checkout whose manifest is broken
+        mid-edit must keep refusing a foreign binary."""
+        repo = _make_product_with_own_plugin(tmp_path / "fw", "{not json")
+        (repo / "plugin" / "bin").mkdir(parents=True)
+        (repo / "plugin" / "bin" / "prawduct-hook").write_text("", encoding="utf-8")
+        foreign = _install_binary_at(tmp_path / "installed")
+        result = _run(repo, "critic-consolidate", binary=foreign)
+        assert result.returncode == 1
+        assert _SKEW_MARKER in result.stdout + result.stderr
+
+    def test_unreadable_manifest_without_prawducts_binary_is_untouched(self, tmp_path):
+        repo = _make_product_with_own_plugin(tmp_path / "prod", "{not json")
+        foreign = _install_binary_at(tmp_path / "installed")
+        result = _run(repo, "critic-consolidate", binary=foreign)
+        assert _SKEW_MARKER not in result.stdout + result.stderr
+
+    def test_both_skew_axes_share_the_answer(self, tmp_path, monkeypatch):
+        """`_binary_skew` and `_lib_skew` both ask `_repo_plugin_dir`; pin each
+        caller, since a fix inlined into one would leave the other misfiring."""
+        hook = _hook_module()
+        installed = tmp_path / "installed"
+        _install_binary_at(installed)
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(installed))
+        product = _make_product_with_own_plugin(
+            tmp_path / "prod", json.dumps({"name": "other"})
+        )
+        checkout = _make_framework_checkout(tmp_path / "fw")
+
+        assert hook._repo_plugin_dir(product) is None
+        assert hook._binary_skew(product) is None
+        assert hook._lib_skew(product) is None
+        assert hook._repo_plugin_dir(checkout) == (checkout / "plugin").resolve()
+        assert hook._lib_skew(checkout) is not None
+
+    def test_manifest_without_a_name_falls_back_to_the_binary(self, tmp_path):
+        hook = _hook_module()
+        nameless = _make_product_with_own_plugin(tmp_path / "a", json.dumps({"version": "1"}))
+        assert hook._repo_plugin_dir(nameless) is None
+        (nameless / "plugin" / "bin").mkdir(parents=True)
+        (nameless / "plugin" / "bin" / "prawduct-hook").write_text("", encoding="utf-8")
+        assert hook._repo_plugin_dir(nameless) == (nameless / "plugin").resolve()
+
+
+@functools.lru_cache(maxsize=1)
+def _hook_module():
+    """The extensionless hook script, imported so its predicates can be called
+    directly. Its module name is not ``__main__``, so the CLI does not run."""
+    loader = importlib.machinery.SourceFileLoader("prawduct_hook_skew", str(HOOK))
+    spec = importlib.util.spec_from_loader("prawduct_hook_skew", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
 
 
 class TestLibSkewRefusesOnTheDataPlane:

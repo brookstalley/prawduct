@@ -5,6 +5,17 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-06: three bugs users hit — a product's own plugin, active plans, stale caches
+
+<!-- prawduct: type=bugfix | scope=field-bugs-2026-10 -->
+
+- **#959: a product that ships its own Claude Code plugin at `plugin/` can record reviews again.**
+  The skew guard took any repo with `plugin/.claude-plugin/plugin.json` for a prawduct checkout,
+  so every data-plane command refused there and pointed at a `prawduct-hook` that did not exist.
+  A repo is now a checkout when that manifest names `prawduct`. When the manifest cannot be read
+  or carries no name, the presence of `plugin/bin/prawduct-hook` decides, so a real checkout with
+  a broken manifest still refuses a foreign binary. Both skew checks ask the one predicate.
+
 ## 2026-10-04: aggregate-stats pools governance stats across products, contributed reports included
 
 <!-- prawduct: type=feature | scope=telemetry-aggregate -->
