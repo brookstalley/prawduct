@@ -21,10 +21,7 @@ the develop track pick up `junit-unreached-963-strip-code-966`. Owner-directed, 
   suite under any other wrapper (a `<testsuites>` nested inside the root, which merged CI reports
   produce) was never classified: a failure there recorded green and exited 0. The walk now
   descends through every element that is not a suite or a case, so it reaches all of them by
-  construction rather than by a list of known wrappers. A first cut refused a report holding a
-  `<testcase>` the walk missed; the Critic found it still passed a summary-only suite under a
-  wrapper and refused reports the importer could read, so it was replaced before merge. The
-  reported shape — a failure two `<testsuite>` levels deep — was already counted, and a test now
+  construction rather than by a list of known wrappers. The reported shape — a failure two `<testsuite>` levels deep — was already counted, and a test now
   pins it. The same class one level in, also closed: a suite with no `<testcase>` (one that died
   before emitting any) nested inside a suite that has cases had its `errors=` ignored, because a
   populated suite was read by its leaves alone. Its outermost case-less suites are now read by
