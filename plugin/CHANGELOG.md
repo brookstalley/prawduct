@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.1-dev.1
+## v3.7.1-dev.2
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
@@ -45,6 +45,15 @@ the space before punctuation (fusing commands in code blocks) and stripped trail
 (dropping Markdown hard breaks). Only the lines a removal changed are tidied now. A metadata comment
 in the middle of a line no longer joins two rules, and the last line of a section keeps its
 trailing spaces.
+
+**`junit-unreached-963-strip-code-966`** (#963, #966): **a JUnit report's tests are counted
+wherever they sit.** `test-evidence record` used to skip any `<testcase>` or suite under a wrapper
+other than the root, such as a `<testsuites>` nested inside the root by a merged CI report, so a
+failure there recorded a passing run. It now reads through any wrapper. A suite with no tests
+that sits inside a suite that has them (one that died before emitting any) now counts too; v3.2.3
+left that case at zero. Separately,
+`learnings-migrate` no longer removes the space before punctuation inside a code span that shares a
+line with a removed pointer.
 
 ## v3.7.0
 

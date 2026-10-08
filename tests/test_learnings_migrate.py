@@ -290,6 +290,44 @@ class TestStripLinks:
         text = "- **A rule.** Body. [detail](learnings-detail.md#a)\n" + line + "\n"
         assert lm.strip_links(text).split("\n")[1] == line
 
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            (
+                "Run `ls -la .git` first (detail in learnings-detail.md.)",
+                "Run `ls -la .git` first",
+            ),
+            (
+                "Call `f(a , b) ; g( x )` [detail](learnings-detail.md#f) here.",
+                "Call `f(a , b) ; g( x )` here.",
+            ),
+        ],
+    )
+    def test_the_pointers_own_line_is_tidied_only_at_the_cut(
+        self, source: str, expected: str
+    ):
+        """#966: tidying the whole pointer line still rewrote a code span on it —
+        `ls -la .git` became `ls -la.git`. Only the blanks the cut left are its
+        to remove."""
+        assert lm.strip_links(source) == expected
+
+    def test_a_blank_the_cut_strands_before_punctuation_is_removed(self):
+        """The tidy's own job, pinned beside the narrowing above: the blank after
+        the pointer and before the `;` belongs to the cut."""
+        source = "- **A rule.** Body [detail](learnings-detail.md#a) ; then more."
+        assert lm.strip_links(source) == "- **A rule.** Body; then more."
+
+    def test_blanks_the_cut_leaves_at_the_line_end_are_removed(self):
+        """The line-end half of the tidy: blanks after a pointer that ended
+        the line go with it, and the next line keeps its own."""
+        source = (
+            "- **A rule.** Body [detail](learnings-detail.md#a)  \n"
+            "- **Hard break.** Two trailing spaces  \n"
+        )
+        assert lm.strip_links(source) == (
+            "- **A rule.** Body\n- **Hard break.** Two trailing spaces  \n"
+        )
+
     def test_a_line_after_a_removed_metadata_comment_is_untouched(self):
         text = (
             "- **A rule.**\n"

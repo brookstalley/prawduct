@@ -5,6 +5,33 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-08: develop opens 3.7.1-dev.2
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.7.1-dev.2 -->
+
+The dev track's version moves from `3.7.1-dev.1` to `3.7.1-dev.2` in the four carriers, so repos on
+the develop track pick up `junit-unreached-963-strip-code-966`. Owner-directed, 2026-10-08.
+
+## 2026-10-08: test-evidence reads JUnit cases under any wrapper; learnings-migrate leaves code spans alone
+
+<!-- prawduct: type=bugfix | scope=junit-unreached-963-strip-code-966 -->
+
+- **#963: `test-evidence record` reads every `<testsuite>` and `<testcase>` in a JUnit report,
+  under any wrapper.** The walk read only the root's direct children, so a case or a summary-only
+  suite under any other wrapper (a `<testsuites>` nested inside the root, which merged CI reports
+  produce) was never classified: a failure there recorded green and exited 0. The walk now
+  descends through every element that is not a suite or a case, so it reaches all of them by
+  construction rather than by a list of known wrappers. The reported shape — a failure two `<testsuite>` levels deep — was already counted, and a test now
+  pins it. The same class one level in, also closed: a suite with no `<testcase>` (one that died
+  before emitting any) nested inside a suite that has cases had its `errors=` ignored, because a
+  populated suite was read by its leaves alone. Its outermost case-less suites are now read by
+  their attributes too.
+- **#966: `strip_links` tidies only the blanks a cut left.** #930 confined the tidy to lines that
+  held a pointer, but on such a line it still ran over the whole line, so a code span beside the
+  pointer lost the space before its punctuation (`ls -la .git` became `ls -la.git`). The tidy now
+  removes only the blanks next to the removal marker when punctuation or the line's end follows.
+  The patterns already take the blanks before a pointer, so nothing else needed them.
+
 ## 2026-10-08: develop opens 3.7.1-dev.1
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.1-dev.1 -->
