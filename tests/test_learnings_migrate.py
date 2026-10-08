@@ -273,6 +273,53 @@ class TestStripLinks:
         )
         assert lm.strip_links(text).split("\n")[1].startswith("- **Second.**")
 
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "    ls -la .git",
+            '    grep -rn "pattern" .somedir/*.md',
+            "    f(a , b) ; g( x )",
+            "- **Hard break.** Two trailing spaces  ",
+        ],
+    )
+    def test_a_line_with_no_pointer_survives_byte_for_byte(self, line: str):
+        """The tidy-up after a removal is for the line the pointer left. Run on
+        every line, it fuses commands in code blocks and drops a Markdown hard
+        break — and the byte accounting cannot see it, because it cleans its
+        source side with this same function."""
+        text = "- **A rule.** Body. [detail](learnings-detail.md#a)\n" + line + "\n"
+        assert lm.strip_links(text).split("\n")[1] == line
+
+    def test_a_line_after_a_removed_metadata_comment_is_untouched(self):
+        text = (
+            "- **A rule.**\n"
+            "<!-- prawduct-learning: id=LRN-1 -->\n"
+            "    ls -la .git\n"
+        )
+        assert lm.strip_links(text) == "- **A rule.**\n    ls -la .git\n"
+
+    def test_a_metadata_comment_ends_at_its_own_close(self):
+        """A comment opening a line with text after it is not a whole-line
+        comment; the removal must not run on to a LATER `-->` that does end a
+        line and take every rule in between."""
+        text = (
+            "<!-- prawduct-learning: id=1 --> - **Rule A.** body\n"
+            "- **Rule B.** body <!-- prawduct-learning: id=2 -->\n"
+            "- **Rule C.** body <!-- an author's note -->\n"
+        )
+        assert lm.strip_links(text) == (
+            "- **Rule A.** body\n"
+            "- **Rule B.** body\n"
+            "- **Rule C.** body <!-- an author's note -->\n"
+        )
+
+    def test_a_trailing_metadata_comment_never_joins_two_lines(self):
+        text = (
+            "- **First.** Body. <!-- prawduct-learning: id=LRN-1 -->\n"
+            "- **Second.** Body.\n"
+        )
+        assert lm.strip_links(text) == "- **First.** Body.\n- **Second.** Body.\n"
+
 
 class TestSlug:
     @pytest.mark.parametrize(
@@ -454,6 +501,46 @@ class TestByteAccounting:
         assert all(
             rule in output for section in sections for rule in section.rules
         )
+
+    @pytest.mark.parametrize("mapped", [False, True], ids=["core", "area"])
+    def test_a_line_holding_no_pointer_lands_byte_for_byte(
+        self, tmp_path: Path, mapped: bool
+    ):
+        """The accounting above compares both sides after `strip_links`, so a
+        rewrite of text the cleaner had no business touching shows up on both
+        sides and passes. This compares against the RAW source, through the
+        command an operator runs, into each writer: core alone, and an area
+        file when the section is mapped."""
+        root = repo(tmp_path, "topic")
+        untouched = [
+            '    grep -rn "pattern" .somedir/*.md',
+            "    ls -la .git",
+            "  Hard break before this line ends  ",
+        ]
+        corpus = root / lf.LEGACY_REL
+        corpus.write_text(
+            legacy_text(root)
+            + "\n## Shell\n"
+            + "- **Look before deleting.** [detail](learnings-detail.md#look)\n"
+            + "\n".join(untouched)
+            + "\n",
+            encoding="utf-8",
+        )
+        _git(root, "commit", "-qam", "code in a rule")
+        argv = ["--apply"]
+        if mapped:
+            map_file = tmp_path / "map.txt"
+            map_file.write_text("shell: [scripts/**]\n", encoding="utf-8")
+            argv += ["--map", str(map_file)]
+
+        proc = run_hook(root, *argv)
+
+        assert proc.returncode == 0, proc.stderr
+        written = root / lf.RULES_DIR_REL / ("shell.md" if mapped else lf.CORE_NAME)
+        output = written.read_text(encoding="utf-8")
+        assert "- **Look before deleting.**\n" in output
+        for line in untouched:
+            assert f"\n{line}\n" in output
 
     def test_the_check_is_not_vacuous(self, tmp_path: Path):
         """A parse that found no rules would make every assertion above pass."""
