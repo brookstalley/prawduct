@@ -10,7 +10,7 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.1-dev
+## v3.7.1-dev.1
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
@@ -38,6 +38,13 @@ counts base-advance transfer grants apart from guard refusals, because a grant s
 `node --test 'dir/*.mjs'`) is read intact. It used to lose its final quote and crash
 `prawduct-hook test-evidence record`. A command that cannot be split is now refused before any suite
 runs.
+
+**`learnings-migrate-punctuation-930`** (#930): **`learnings-migrate` no longer rewrites lines
+it had no reason to touch.** After removing a pointer it tidied every line in the file: it deleted
+the space before punctuation (fusing commands in code blocks) and stripped trailing spaces
+(dropping Markdown hard breaks). Only the lines a removal changed are tidied now. A metadata comment
+in the middle of a line no longer joins two rules, and the last line of a section keeps its
+trailing spaces.
 
 ## v3.7.0
 

@@ -150,9 +150,18 @@ class MigrateInterrupted(RuntimeError):
 _DEAD_FILES = r"learnings-(?:detail|history)\.md"
 
 #: ``<!-- prawduct-learning: … -->``, possibly spanning lines. Prawduct's own
-#: bookkeeping about a rule, which the new layout keeps nowhere.
+#: bookkeeping about a rule, which the new layout keeps nowhere. A comment that
+#: is its own line takes that line with it; one sharing a line keeps the newline,
+#: or the line after it would be joined on. The body stops at the first ``-->``:
+#: a lazy match that must also reach a line end would run on to a later comment
+#: and take the rules between.
+_METADATA_BODY = r"<!--\s*prawduct-learning:(?:(?!-->).)*-->"
+_METADATA_COMMENT_LINE = re.compile(
+    r"^[ \t]*" + _METADATA_BODY + r"[ \t]*\n",
+    re.DOTALL | re.IGNORECASE | re.MULTILINE,
+)
 _METADATA_COMMENT = re.compile(
-    r"[ \t]*<!--\s*prawduct-learning:.*?-->[ \t]*\n?", re.DOTALL | re.IGNORECASE
+    r"[ \t]*" + _METADATA_BODY + r"[ \t]*", re.DOTALL | re.IGNORECASE
 )
 
 #: ``Detail: [ZMQ & Multi-Process Details](learnings-detail.md#…).`` — a whole
@@ -190,6 +199,12 @@ _DEAD_PARENTHETICAL = re.compile(
 _DEAD_ARROW = re.compile(r"[ \t]*→[ \t]*detail\.?")
 
 
+#: Left where a pointer was cut so the tidy-up can find the lines it touched.
+#: NUL because a Markdown corpus never holds one; if one did, it would be dropped
+#: with the marker and its line tidied.
+_REMOVED = "\x00"
+
+
 def strip_links(text: str) -> str:
     """Remove pointers into the files this migration deletes, and nothing else.
 
@@ -205,17 +220,26 @@ def strip_links(text: str) -> str:
     learnings-detail.md.)``, where dropping the parentheses would take a date
     and a scope name with it.
     """
-    text = _METADATA_COMMENT.sub("", text)
-    text = _DEAD_PARENTHETICAL.sub("", text)
-    text = _DEAD_CLAUSE.sub("", text)
-    text = _DEAD_SENTENCE.sub("", text)
-    text = _DEAD_LINK.sub("", text)
-    text = _DEAD_BRACKET.sub("", text)
-    text = _DEAD_ARROW.sub("", text)
-    # Cleaning leaves the punctuation that led into the pointer stranded a space
-    # from its sentence. Per-line so a removal can never join two lines.
+    text = _METADATA_COMMENT_LINE.sub("", text)
+    for pattern in (
+        _METADATA_COMMENT,
+        _DEAD_PARENTHETICAL,
+        _DEAD_CLAUSE,
+        _DEAD_SENTENCE,
+        _DEAD_LINK,
+        _DEAD_BRACKET,
+        _DEAD_ARROW,
+    ):
+        text = pattern.sub(_REMOVED, text)
+    # A removal can strand the punctuation that led into the pointer a space
+    # from its sentence, or leave trailing blanks. Tidy only the lines a pointer
+    # left: on any other line the same rewrite fuses commands in code blocks and
+    # drops Markdown hard breaks.
     return "\n".join(
-        re.sub(r"[ \t]+([.,;)])", r"\1", line).rstrip() for line in text.split("\n")
+        re.sub(r"[ \t]+([.,;)])", r"\1", line.replace(_REMOVED, "")).rstrip()
+        if _REMOVED in line
+        else line
+        for line in text.split("\n")
     )
 
 
@@ -742,7 +766,8 @@ class _Destination:
 def _area_content(destination: _Destination) -> str:
     paths = "\n".join(f'  - "{g}"' for g in destination.globs)
     body = "\n\n".join(
-        f"# {s.title}\n\n{s.body}".rstrip() for s in destination.sections
+        # Newlines only: trailing spaces on the last line are the author's bytes.
+        f"# {s.title}\n\n{s.body}".rstrip("\n") for s in destination.sections
     )
     return f"---\npaths:\n{paths}\n---\n\n{body}\n"
 
@@ -750,7 +775,7 @@ def _area_content(destination: _Destination) -> str:
 def _core_content(topics: list[Section], rules: list[Section]) -> str:
     parts = [learnings_files.CORE_HEADER.rstrip("\n")]
     for section in topics:
-        parts.append(f"## {section.title}\n\n{section.body}".rstrip())
+        parts.append(f"## {section.title}\n\n{section.body}".rstrip("\n"))
     if rules:
         unsorted = [f"## {UNSORTED_HEADING}"]
         for section in rules:
