@@ -34,7 +34,7 @@ governed_by:
       - "backlog_service_repo selects the authoritative store → conforms: items are closed through `/prawduct:backlog`, which routes on it"
   - artifact: doctor-vs-janitor (plugin/docs/doctor-vs-janitor.md, the binding placement rule)
     dispositions:
-      - "[DECISION: doctor's subject widens from this repo's prawduct setup to also include the machine-level state prawduct's own install leaves (its install record, its unused plugin caches); placement rule 1 and the Subject row say so | Health Check #19 already read the machine-level install record, and #321's harm is prawduct's own leftovers, which are conformance of prawduct's installation rather than the product's craft, so janitor is the wrong home; widening the rule is what makes #21 a placement rather than an exception | user can veto — pending owner confirmation, asked 2026-10-06]"
+      - "[DECISION: doctor's subject widens from this repo's prawduct setup to also include the machine-level state prawduct's own install leaves (its install record, its unused plugin caches); placement rule 1 and the Subject row say so | Health Check #19 already read the machine-level install record, and #321's harm is prawduct's own leftovers, which are conformance of prawduct's installation rather than the product's craft, so janitor is the wrong home; widening the rule is what makes #21 a placement rather than an exception | confirmed by the owner 2026-10-08]"
   - artifact: nonfunctional-requirements
     dispositions:
       - "proportionality ratchets both ways (a new control emits its yield) → inapplicable because Chunk 03's Health Check #21 is not a control: it blocks nothing, grades no repo, and runs only when an operator invokes doctor, so there is no firing to measure against blocking yield. Recorded as an interpretation, added mid-build when the NFR was found missing from this list | user can veto"
@@ -119,7 +119,7 @@ below as a vetoable decision.
 - [x] Chunk 01: The skew guard recognises prawduct by its manifest name (#959)
 - [x] Chunk 02: Only a terminal lifecycle blocks a re-archive (#809)
 - [x] Chunk 03: Doctor reports stale plugin cache directories (#321)
-Context: Approved 2026-10-06. All three chunks built, reviewed and committed; the boundary cumulative (rev-20261006T213802Z-85a97af3) and its verify-resolutions pass are clean. Open: the owner has not yet confirmed the doctor-vs-janitor scope DECISION in governed_by. Next: `/prawduct:pr create` when the owner asks. All three chunks touch a declared risk surface (`plugin/bin/*hook*`, `plugin/skills/`), so this is not a short plan: chunks 01 and 02 get a `chunk` review each, and Chunk 03's `cumulative` is the boundary review.
+Context: Approved 2026-10-06. All three chunks built, reviewed and committed; the boundary cumulative (rev-20261006T213802Z-85a97af3) and its verify-resolutions pass are clean. The owner confirmed the doctor-vs-janitor scope DECISION in governed_by on 2026-10-08 and asked for the PR. Next: `/prawduct:pr create`. All three chunks touch a declared risk surface (`plugin/bin/*hook*`, `plugin/skills/`), so this is not a short plan: chunks 01 and 02 get a `chunk` review each, and Chunk 03's `cumulative` is the boundary review.
 
 ## Verification Strategy
 

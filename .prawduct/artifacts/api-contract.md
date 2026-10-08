@@ -455,10 +455,6 @@ files to touch previews first. That framing is descriptive — the binding rule 
     **A successful `--apply` returns `ok`**, not the status it repaired: a graded status describes
     the state on the way IN, and a consumer reading it back after a write would report the condition
     that was just fixed.
-  - `stale-plugin-caches --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #21
-    runs the command and relays its human form. The key set is listed once, in the § Operations
-    "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it
-    graded, so its empty `stale[]` means *not looked at*, not *nothing unused*.
     **HC#4 is not the JSON consumer** — it parses nothing, and a contract asserting a consumer it
     does not have is how a `--json` shape drifts from the command that emits it.
     Dry run exits 0 when it ran and 1 only when it could not; `--apply`
@@ -466,6 +462,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
     to repair, the second is an anchor the owner has edited, which this command reports and
     declines to overwrite.
+  - `stale-plugin-caches --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #21
+    runs the command and relays its human form. The key set is listed once, in the § Operations
+    "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it
+    graded, so its empty `stale[]` means *not looked at*, not *nothing unused*.
   - `learnings-obligation --json` → **no skill consumer today** (`status` — one of `ok` / `missing` /
     `misplaced` / `absent` / `unreadable` — plus `path`, `marker`, `marker_lines[]`,
     `first_rule_line`, `detail`, `repairable`, `applied`, `insert_before_line`, `insert_text`).

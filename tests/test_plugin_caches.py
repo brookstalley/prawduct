@@ -276,6 +276,18 @@ class TestTheCommand:
         data = json.loads(result.stdout)
         assert data["schema_version"] == 1
         assert data["stale_count"] == 2
+        # The key sets are the ones api-contract.md publishes for `stale-plugin-caches --json`;
+        # an exact set catches an added key as well as a dropped one.
+        assert set(data) == {"schema_version", "stale_count", "stale_bytes", "profiles"}
+        assert data["profiles"]
+        for profile in data["profiles"]:
+            assert set(profile) == {
+                "config_roots", "cache", "cache_readable", "manifest", "ungraded_reason",
+                "in_use", "stale", "stale_bytes", "ungraded",
+            }
+            for item in profile["stale"]:
+                assert set(item) == {"path", "bytes"}
+        assert any(profile["stale"] for profile in data["profiles"])
 
     def test_an_unknown_argument_is_a_usage_error(self, tmp_path):
         result = self._run(_home(tmp_path), "--delete")
