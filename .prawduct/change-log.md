@@ -5,6 +5,13 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-08: develop opens 3.7.1-dev.2
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.7.1-dev.2 -->
+
+The dev track's version moves from `3.7.1-dev.1` to `3.7.1-dev.2` in the four carriers, so repos on
+the develop track pick up `junit-unreached-963-strip-code-966`. Owner-directed, 2026-10-08.
+
 ## 2026-10-08: test-evidence reads JUnit cases under any wrapper; learnings-migrate leaves code spans alone
 
 <!-- prawduct: type=bugfix | scope=junit-unreached-963-strip-code-966 -->
