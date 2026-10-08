@@ -5,6 +5,27 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-08: develop opens 3.7.1-dev.1
+
+<!-- prawduct: type=chore | scope=dev-track-bump-3.7.1-dev.1 -->
+
+The dev track's version moves from `3.7.1-dev` to `3.7.1-dev.1` in the four carriers, so repos on
+the develop track pick up `learnings-migrate-punctuation-930`. The public changelog's rolling notes
+gain its consumer-facing summary. Owner-directed, 2026-10-08.
+
+## 2026-10-08: learnings-migrate tidies only the lines a removed pointer left
+
+<!-- prawduct: type=bugfix | scope=learnings-migrate-punctuation-930 -->
+
+#930: `strip_links` ran its post-removal tidy on every line, so it deleted whitespace before
+punctuation (fusing commands in code blocks) and stripped trailing spaces (dropping Markdown hard
+breaks) on lines that held no pointer. A mid-line metadata comment also ate its newline and joined
+two rules, and both section writers right-stripped the last line's trailing spaces. Removals now
+leave a marker and only marked lines are tidied; the writers strip newlines only; the metadata
+comment body stops at its first close. The byte-accounting test cleans both sides with
+`strip_links`, so it cannot see this class; a new `--apply` test compares against the raw source
+through both the core and area writers.
+
 ## 2026-10-06: three bugs users hit — a product's own plugin, active plans, stale caches
 
 <!-- prawduct: type=bugfix | scope=field-bugs-2026-10 -->
