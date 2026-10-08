@@ -5,6 +5,24 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-08: test-evidence refuses a report with unreached cases; learnings-migrate leaves code spans alone
+
+<!-- prawduct: type=bugfix | scope=junit-unreached-963-strip-code-966 -->
+
+- **#963: `test-evidence record` refuses a JUnit report holding a `<testcase>` its walk never
+  reaches.** The walk reads cases directly under the root and at any depth below the root's direct
+  `<testsuite>` children. A case under any other wrapper (a `<testsuites>` nested inside the root,
+  which merged CI reports produce) was never classified, so a failure there recorded green and
+  exited 0. The importer now counts every `<testcase>` in the document, refuses when the walk
+  reached fewer, and names the first one it missed. The check runs before the "no tests collected"
+  refusal, so a report whose only cases are unreached says so. The reported shape — a failure two
+  `<testsuite>` levels deep — was already counted, and a test now pins it.
+- **#966: `strip_links` tidies only the blanks a cut left.** #930 confined the tidy to lines that
+  held a pointer, but on such a line it still ran over the whole line, so a code span beside the
+  pointer lost the space before its punctuation (`ls -la .git` became `ls -la.git`). The tidy now
+  removes only the blanks next to the removal marker when punctuation or the line's end follows.
+  The patterns already take the blanks before a pointer, so nothing else needed them.
+
 ## 2026-10-08: develop opens 3.7.1-dev.1
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.1-dev.1 -->

@@ -46,6 +46,14 @@ the space before punctuation (fusing commands in code blocks) and stripped trail
 in the middle of a line no longer joins two rules, and the last line of a section keeps its
 trailing spaces.
 
+**`junit-unreached-963-strip-code-966`** (#963, #966): **a JUnit report with tests the importer
+cannot reach is refused instead of recorded green.** `test-evidence record` used to skip any
+`<testcase>` sitting under a wrapper other than a top-level `<testsuite>`, such as a `<testsuites>`
+nested inside the root by a merged CI report, so a failure there recorded a passing run. It now
+refuses the record and names the first test it could not reach. Separately, `learnings-migrate`
+no longer removes the space before punctuation inside a code span that shares a line with a removed
+pointer.
+
 ## v3.7.0
 
 **Prawduct's prompts are rewritten for Opus 5.5, every learnings rule is one line under a `core.md` cap only you can raise, and a chunk you committed before its review gets a chunk review instead of a full bundle review.** Thirty-four scopes since v3.6.1, counting release housekeeping. Three changes you will notice in an ordinary session. First, the session digest, gate output, review prompts, methodology guides and skills are shorter and plainer, and they tell the model to take the next step rather than announce it; each `final` or `cumulative` Critic reviewer loads about 7,800 fewer tokens. Second, a learnings rule is one line of at most 250 characters, and a corpus over the new limits does not break: it stops growing until you compact it with `prawduct-hook learnings-compact`. Third, a mid-plan `/prawduct:critic` reviews only what has not been reviewed yet, and the reflection and Critic gates wait while a turn closes `RUNNING` and `DO NOT CLEAR`. SessionStart and Stop also stop slowing down as a repo's review history grows. Three gates are new in this release: `learnings-rule-too-long`, `learnings-rule-body` and `clear-verdict`.

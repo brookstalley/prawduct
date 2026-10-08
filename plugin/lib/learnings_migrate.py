@@ -204,6 +204,13 @@ _DEAD_ARROW = re.compile(r"[ \t]*→[ \t]*detail\.?")
 #: with the marker and its line tidied.
 _REMOVED = "\x00"
 
+#: A cut with the blanks around it, where what follows is punctuation or the end
+#: of the line. The patterns above already take the blanks before a pointer, so
+#: these are the ones it leaves on either side of the marker.
+_TIDY_AT_CUT = re.compile(
+    r"[ \t]*" + _REMOVED + r"[ \t]*(?=[.,;)]|$)", re.MULTILINE
+)
+
 
 def strip_links(text: str) -> str:
     """Remove pointers into the files this migration deletes, and nothing else.
@@ -231,16 +238,12 @@ def strip_links(text: str) -> str:
         _DEAD_ARROW,
     ):
         text = pattern.sub(_REMOVED, text)
-    # A removal can strand the punctuation that led into the pointer a space
-    # from its sentence, or leave trailing blanks. Tidy only the lines a pointer
-    # left: on any other line the same rewrite fuses commands in code blocks and
-    # drops Markdown hard breaks.
-    return "\n".join(
-        re.sub(r"[ \t]+([.,;)])", r"\1", line.replace(_REMOVED, "")).rstrip()
-        if _REMOVED in line
-        else line
-        for line in text.split("\n")
-    )
+    # A removal can strand the punctuation that followed the pointer a space
+    # from its sentence, or leave trailing blanks. Tidy only the whitespace at a
+    # cut: anywhere else — another line, or a code span on the pointer's own
+    # line — the same rewrite fuses commands and drops Markdown hard breaks.
+    text = _TIDY_AT_CUT.sub("", text)
+    return text.replace(_REMOVED, "")
 
 
 def slug(title: str) -> str:

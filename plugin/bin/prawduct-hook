@@ -4704,6 +4704,28 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 suites += [
                     (root_index, el) for el in root if el.tag in ("testsuite", "testcase")
                 ]
+        # The walk above reads leaves only under the root's direct <testsuite>
+        # and <testcase> children, so a case under any other wrapper — a
+        # <testsuites> nested inside the root, which merged CI reports produce —
+        # is never classified, and a failure there records green (#963). Rather
+        # than guess at each wrapper a runner might invent, check that the walk
+        # reached every <testcase> in the document and refuse when it did not:
+        # counts that leave cases out are not evidence about the run.
+        reached = {id(c) for _, s in suites for c in s.iter("testcase")}
+        unreached = [c for root in roots for c in root.iter("testcase") if id(c) not in reached]
+        if unreached:
+            print(
+                f"error: refusing to record — {len(unreached)} <testcase> "
+                "element(s) in the report sit where the importer does not read "
+                "(it reads cases directly under the root, and at any depth "
+                "under the root's direct <testsuite> children), so its counts "
+                "would leave them out. First unreached: "
+                f"{_junit_case_id(unreached[0])!r}. Re-emit the report with every "
+                "<testsuite> directly under one <testsuites> root, or pass each "
+                "nested report to its own --from-junit.",
+                file=sys.stderr,
+            )
+            return 2
         if not suites:
             print(
                 "error: the test run produced no <testsuite> or <testcase> "
