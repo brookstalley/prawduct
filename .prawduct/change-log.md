@@ -5,6 +5,39 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-06: three bugs users hit — a product's own plugin, active plans, stale caches
+
+<!-- prawduct: type=bugfix | scope=field-bugs-2026-10 -->
+
+- **#959: a product that ships its own Claude Code plugin at `plugin/` can record reviews again.**
+  The skew guard took any repo with `plugin/.claude-plugin/plugin.json` for a prawduct checkout,
+  so every data-plane command refused there and pointed at a `prawduct-hook` that did not exist.
+  A repo is now a checkout when that manifest names `prawduct`. When the manifest cannot be read
+  or carries no name, the presence of `plugin/bin/prawduct-hook` decides, so a real checkout with
+  a broken manifest still refuses a foreign binary. Both skew checks ask the one predicate.
+- **#809 (and #960, merged into it): `archive-plan` and `plan-backfill --apply` archive a plan
+  whose frontmatter says `lifecycle: active`.** The re-archive guard refused any `lifecycle:`
+  value, and said the plan "has an end of life already". Only `completed` and `superseded` count
+  now. The fix is in `read_completion`, the "does this plan record an end?" check, rather than
+  in the guard alone, so any future caller of that check gets the same answer. Archiving replaces
+  the old value, so the result carries one `lifecycle:` line.
+- **#321: `prawduct-hook stale-plugin-caches` lists the prawduct cache versions no install
+  uses**, in every config profile on the machine, with disk sizes and a delete command each. It
+  deletes nothing. `/prawduct:doctor` Health Check #21 relays it as a recommendation that never
+  grades the repo. A version counts as in use when any install record names its path, when a
+  record whose path exists only inside a container names its version in the same profile, or
+  when it is the plugin running the command. Profiles that share a cache through a symlinked
+  `plugins/` are one entry. A profile whose record file, or any one record in it, cannot be read
+  is reported ungraded with the reason, naming the record, and a cache that cannot be listed is
+  reported rather than dropped, because an unreadable record might be the one protecting the
+  version that profile loads. Doctor's scope now says it also covers the machine-level state
+  prawduct's own install leaves (`docs/doctor-vs-janitor.md`).
+  On the owner's machine it found 22 unused directories, about 154 MB, in 4 caches.
+- **One reader of `installed_plugins.json`.** `plugin_activation.read_installed_plugins` reads and
+  shape-checks the file for both `check-plugin-active` and the cache report; each checks the record
+  fields its own question needs. `stranded_work.config_roots` gained a `holding=` argument so both
+  of its callers find config roots the same way.
+
 ## 2026-10-04: aggregate-stats pools governance stats across products, contributed reports included
 
 <!-- prawduct: type=feature | scope=telemetry-aggregate -->

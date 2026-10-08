@@ -98,6 +98,10 @@ class TestCompletionFrontmatter:
         asks "is this current?" gets a false positive on work in flight."""
         assert plan_archive.read_completion(PLAN) is None
         assert plan_archive.read_completion("# no frontmatter at all\n") is None
+        active = PLAN.replace("scope: demo\n", "scope: demo\nlifecycle: active\n")
+        assert plan_archive.read_completion(active) is None, (
+            "`active` names no end of life, so a plan carrying it is current"
+        )
 
     def test_the_no_longer_maintained_statement_is_prose_not_only_data(self):
         """`maintained: false` is for a parser. A person opening the file reads
@@ -559,6 +563,37 @@ class TestArchiveRefusesWhatIsNotItsToMove:
         assert result["status"] == "refused"
         assert "superseded" in result["reason"]
         assert "lifecycle: superseded" in plan.read_text()
+
+    def test_a_completed_plan_is_refused_and_the_value_named(self, tmp_path: Path):
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        plan = artifacts / "build-plan-demo.md"
+        plan.write_text(
+            "---\nartifact: build-plan\nlifecycle: completed\narchived: 2026-01-01\n---\n",
+            encoding="utf-8",
+        )
+        result = plan_archive.archive_plan(plan, artifacts, state="superseded",
+                                           date="2026-08-10", superseded_by="x")
+        assert result["status"] == "refused"
+        assert "'completed'" in result["reason"]
+
+    @pytest.mark.parametrize("value", ["active", "draft"])
+    def test_a_non_terminal_lifecycle_is_replaced_not_refused(self, tmp_path: Path, value):
+        """Only an end of life blocks a re-archive. A live plan may carry a
+        `lifecycle:` that names no end (`active`, or a value nothing defines);
+        refusing it left the plan unarchivable without a hand edit."""
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        plan = artifacts / "build-plan-demo.md"
+        plan.write_text(PLAN.replace("scope: demo\n", f"scope: demo\nlifecycle: {value}\n"),
+                        encoding="utf-8")
+
+        assert plan_archive.refusal_reason(plan, artifacts, state="completed") is None
+        result = plan_archive.archive_plan(plan, artifacts, state="completed", date="2026-08-10")
+        assert result["status"] == "archived", result
+        text = Path(result["destination"]).read_text(encoding="utf-8")
+        lines = [ln for ln in text.splitlines() if ln.startswith("lifecycle:")]
+        assert lines == ["lifecycle: completed"]
 
     def test_the_preview_refuses_exactly_what_the_write_refuses(self, tmp_path: Path):
         """The preview and the write share one predicate, so they cannot disagree.

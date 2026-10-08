@@ -153,6 +153,7 @@ _REFUSAL_VERIFIED = {
     "check-released": "explicit token scan; exits 2",
     "plan-backfill": "explicit token scan; exits 2",
     "worktrees": "lib.stranded_work.worktrees_cmd names the token; exits 2 (bare exits 0)",
+    "stale-plugin-caches": "lib.plugin_caches names the token; exits 2 (bare exits 0)",
 }
 
 # Refusing is the wrong behaviour for these, for the same reasons the
@@ -586,6 +587,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "repo-disable",
         "reanchor",
         "worktrees",
+        "stale-plugin-caches",
     }
     assert set(_dispatch_branches()) == listed
 
