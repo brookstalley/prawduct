@@ -317,6 +317,17 @@ class TestStripLinks:
         source = "- **A rule.** Body [detail](learnings-detail.md#a) ; then more."
         assert lm.strip_links(source) == "- **A rule.** Body; then more."
 
+    def test_blanks_the_cut_leaves_at_the_line_end_are_removed(self):
+        """The line-end half of the tidy: blanks after a pointer that ended
+        the line go with it, and the next line keeps its own."""
+        source = (
+            "- **A rule.** Body [detail](learnings-detail.md#a)  \n"
+            "- **Hard break.** Two trailing spaces  \n"
+        )
+        assert lm.strip_links(source) == (
+            "- **A rule.** Body\n- **Hard break.** Two trailing spaces  \n"
+        )
+
     def test_a_line_after_a_removed_metadata_comment_is_untouched(self):
         text = (
             "- **A rule.**\n"

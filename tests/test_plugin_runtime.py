@@ -1969,7 +1969,7 @@ class TestJunitLeafCounting:
 
     # #963: a failing case two <testsuite> levels deep — the shape the report
     # described. Leaves are read at any depth below a top-level suite, so it is
-    # counted and named; this pins that the refusal below did not narrow it.
+    # counted and named; this pins it.
     def test_a_failure_two_suites_deep_is_counted(self, tmp_path):
         repo = self._repo(tmp_path)
         junit = self._write(repo, """
@@ -1990,8 +1990,8 @@ class TestJunitLeafCounting:
         assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 1, 0)
         assert ev["failed_tests"] == ["deep failure"]
 
-    # A merged CI report nests a <testsuites> inside the root. The walk reads
-    # only the root's direct children, so before #963 the failing case under the
+    # A merged CI report nests a <testsuites> inside the root. Before #963 the
+    # walk read only the root's direct children, so the failing case under the
     # inner wrapper was never classified and this recorded 1 passed, 0 failed,
     # exit 0.
     MERGED_WRAPPER = """
@@ -2007,20 +2007,61 @@ class TestJunitLeafCounting:
 </testsuites>
 """
 
-    def test_a_case_the_walk_does_not_reach_refuses_the_record(self, tmp_path):
+    def test_a_case_under_a_nested_wrapper_is_counted(self, tmp_path):
         repo = self._repo(tmp_path)
         junit = self._write(repo, self.MERGED_WRAPPER)
         res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
-        assert res.returncode == 2, res.stderr
-        assert "refusing to record — 1 <testcase>" in res.stderr
-        assert "First unreached: 'hidden failure'" in res.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (1, 1, 0)
+        assert ev["failed_tests"] == ["hidden failure"]
 
-    def test_a_report_whose_only_cases_are_unreached_names_them(self, tmp_path):
-        # With nothing reachable the walk finds no suite at all. The refusal
-        # must say the cases were unreached, not that no tests were collected —
-        # the report holds tests, and "no tests collected?" sends the operator
-        # looking at the runner instead of the report's shape.
+    def test_a_summary_only_suite_under_a_nested_wrapper_is_counted(self, tmp_path):
+        # The shape a <testcase>-only completeness check misses: the wrapped
+        # suite has no cases, so its attributes are the only record of its
+        # failure. Unread, the run records green.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, """
+<testsuites>
+  <testsuite name="direct" tests="1" failures="0" errors="0" skipped="0" time="1.0">
+    <testcase name="passes"/>
+  </testsuite>
+  <testsuites name="merged">
+    <testsuite name="summary" tests="3" failures="1" errors="0" skipped="0" time="1.0"/>
+  </testsuites>
+</testsuites>
+""")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (3, 1, 0)
+
+    def test_a_dead_suite_inside_a_populated_one_is_counted(self, tmp_path):
+        # A suite that died before emitting any <testcase>, nested inside one
+        # that has cases: reading the outer suite's leaves alone never sees the
+        # inner one's `errors=`, so the run records green. Ant-style, the outer
+        # `tests=` would count it too, but leaves win for a populated suite.
+        repo = self._repo(tmp_path)
+        junit = self._write(repo, """
+<testsuites>
+  <testsuite name="outer" tests="3" failures="0" errors="1" skipped="0" time="1.0">
+    <testcase name="a"/><testcase name="b"/>
+    <testsuite name="died" tests="1" failures="0" errors="1" skipped="0" time="0.0">
+      <testsuite name="inner-also-empty" tests="1" failures="0" errors="1" skipped="0"/>
+    </testsuite>
+  </testsuite>
+</testsuites>
+""")
+        res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
+        assert res.returncode == 1, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        # 2 leaves plus the outermost dead suite's 1 error; its Ant-style inner
+        # suite is already counted in its attributes, so it adds nothing.
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 1, 0)
+
+    def test_a_report_whose_only_cases_are_wrapped_records(self, tmp_path):
+        # With only the root's direct children read, this report held no unit
+        # at all and was refused as "no tests collected?" — it holds two.
         repo = self._repo(tmp_path)
         junit = self._write(repo, """
 <testsuites><testsuites name="merged">
@@ -2028,10 +2069,9 @@ class TestJunitLeafCounting:
 </testsuites></testsuites>
 """)
         res = _run_in(repo, "test-evidence", "record", "--from-junit", str(junit))
-        assert res.returncode == 2, res.stderr
-        assert "refusing to record — 2 <testcase>" in res.stderr
-        assert "no tests collected" not in res.stderr
-        assert not (repo / ".prawduct" / ".test-evidence.json").exists()
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert (ev["passed"], ev["failed"], ev["skipped"]) == (2, 0, 0)
 
 class TestFromCountsIngest:
     """`record --from-counts passed=N failed=M skipped=K [duration=S]` records

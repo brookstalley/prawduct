@@ -46,13 +46,14 @@ the space before punctuation (fusing commands in code blocks) and stripped trail
 in the middle of a line no longer joins two rules, and the last line of a section keeps its
 trailing spaces.
 
-**`junit-unreached-963-strip-code-966`** (#963, #966): **a JUnit report with tests the importer
-cannot reach is refused instead of recorded green.** `test-evidence record` used to skip any
-`<testcase>` sitting under a wrapper other than a top-level `<testsuite>`, such as a `<testsuites>`
-nested inside the root by a merged CI report, so a failure there recorded a passing run. It now
-refuses the record and names the first test it could not reach. Separately, `learnings-migrate`
-no longer removes the space before punctuation inside a code span that shares a line with a removed
-pointer.
+**`junit-unreached-963-strip-code-966`** (#963, #966): **a JUnit report's tests are counted
+wherever they sit.** `test-evidence record` used to skip any `<testcase>` or suite under a wrapper
+other than the root, such as a `<testsuites>` nested inside the root by a merged CI report, so a
+failure there recorded a passing run. It now reads through any wrapper. A suite with no tests
+that sits inside a suite that has them (one that died before emitting any) now counts too; v3.2.3
+left that case at zero. Separately,
+`learnings-migrate` no longer removes the space before punctuation inside a code span that shares a
+line with a removed pointer.
 
 ## v3.7.0
 

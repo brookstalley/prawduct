@@ -4659,9 +4659,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     except OSError:
                         pass
 
-    # Aggregate across ALL top-level <testsuite> elements and root-level
-    # <testcase> elements (skipped entirely when counts come from --from-counts
-    # or --no-rerun — there is no XML root).
+    # Aggregate across every <testsuite> and <testcase> in each report, under
+    # any wrapper (skipped entirely when counts come from --from-counts or
+    # --no-rerun — there is no XML root).
     if from_counts is None and not no_rerun:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
@@ -4696,36 +4696,24 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # case itself. Units are read in document order, so `failed_tests` keeps
         # report order. Each carries the index of the root it came from, so a
         # command's failures can be checked against that command's exit status.
-        suites = []  # (root index, <testsuite> or root-level <testcase>)
-        for root_index, root in enumerate(roots):
-            if root.tag == "testsuite":
-                suites.append((root_index, root))
+        #
+        # Any other element is a wrapper to look inside, at any depth (#963). A
+        # merged CI report nests a <testsuites> inside the root; reading only the
+        # root's direct children never classified the cases under it, so a
+        # failure there — or a summary-only suite's `failures=` — recorded green.
+        # Descending through every non-unit element reaches every <testcase>
+        # and every suite by construction, rather than by a list of wrappers.
+        def _units(el):
+            if el.tag in ("testsuite", "testcase"):
+                yield el
             else:
-                suites += [
-                    (root_index, el) for el in root if el.tag in ("testsuite", "testcase")
-                ]
-        # The walk above reads leaves only under the root's direct <testsuite>
-        # and <testcase> children, so a case under any other wrapper — a
-        # <testsuites> nested inside the root, which merged CI reports produce —
-        # is never classified, and a failure there records green (#963). Rather
-        # than guess at each wrapper a runner might invent, check that the walk
-        # reached every <testcase> in the document and refuse when it did not:
-        # counts that leave cases out are not evidence about the run.
-        reached = {id(c) for _, s in suites for c in s.iter("testcase")}
-        unreached = [c for root in roots for c in root.iter("testcase") if id(c) not in reached]
-        if unreached:
-            print(
-                f"error: refusing to record — {len(unreached)} <testcase> "
-                "element(s) in the report sit where the importer does not read "
-                "(it reads cases directly under the root, and at any depth "
-                "under the root's direct <testsuite> children), so its counts "
-                "would leave them out. First unreached: "
-                f"{_junit_case_id(unreached[0])!r}. Re-emit the report with every "
-                "<testsuite> directly under one <testsuites> root, or pass each "
-                "nested report to its own --from-junit.",
-                file=sys.stderr,
-            )
-            return 2
+                for child in el:
+                    yield from _units(child)
+
+        suites = [  # (root index, <testsuite> or a <testcase> outside any suite)
+            (root_index, unit) for root_index, root in enumerate(roots)
+            for unit in _units(root)
+        ]
         if not suites:
             print(
                 "error: the test run produced no <testsuite> or <testcase> "
@@ -4740,51 +4728,60 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             raw = (suite.get(name) or "").strip()
             return int(raw) if raw else 0
 
-        # The leaf-vs-attribute choice is made PER TOP-LEVEL SUITE, never once for
-        # the whole ingest. The condition the fallback exists for — attributes with
+        def _summary_suites(el):
+            """The case-less suites inside a unit that carries cases: each
+            <testsuite> with no <testcase> below it, outermost only, since an
+            Ant-style outer suite's attributes already count its inner ones."""
+            for child in el:
+                if child.tag == "testsuite" and next(child.iter("testcase"), None) is None:
+                    yield child
+                elif child.tag != "testcase":
+                    yield from _summary_suites(child)
+
+        # The leaf-vs-attribute choice is made PER SUITE, never once for the
+        # whole ingest. The condition the fallback exists for — attributes with
         # no <testcase> children — is a property of an individual suite, so deciding
         # globally makes every summary-only suite contribute 0 the moment any other
         # suite carries leaves. That is a false GREEN rather than an undercount:
         # `failed` drives both this command's exit status and `tests_are_current`
         # in lib/gates.py, so a dropped failing environment would let the stop gate
-        # pass on evidence that never saw it. Two reachable shapes — repeated
-        # --from-junit (the documented multi-command on-ramp), and one report mixing
+        # pass on evidence that never saw it. Three reachable shapes — repeated
+        # --from-junit (the documented multi-command on-ramp), one report mixing
         # a populated suite with a <testsuite errors="1"> that died before emitting
-        # any <testcase>.
+        # any <testcase>, and that dead suite nested inside a populated one.
         total = failures = errors = skipped = 0
         failed_by_root = [0] * len(roots)
         try:
             for root_index, s in suites:
                 before = failures + errors
                 leaves = list(s.iter("testcase"))
-                if leaves:
-                    total += len(leaves)
-                    # Each leaf is classified ONCE, and the failing ids are
-                    # collected from that same verdict, so the names and the
-                    # counts cannot come to disagree. Precedence, most severe
-                    # first: a case carrying both <error> and <failure> counts
-                    # once, as an error. `skipped` loses to both — a case that
-                    # errored is not a skip, whatever else it carries.
-                    for c in leaves:
-                        if c.find("error") is not None:
-                            errors += 1
-                        elif c.find("failure") is not None:
-                            failures += 1
-                        elif c.find("skipped") is not None:
-                            skipped += 1
-                            continue
-                        else:
-                            continue
-                        failed_ids.append(_junit_case_id(c))
-                else:
-                    # Summary-only suite: its attributes are the only evidence it
-                    # carries, so recording a confident 0 would discard a whole
-                    # environment. Ant-style double-counting cannot arise here — a
-                    # suite reaching this branch has no descendant leaves at all.
-                    total += _attr_int(s, "tests")
-                    failures += _attr_int(s, "failures")
-                    errors += _attr_int(s, "errors")
-                    skipped += _attr_int(s, "skipped")
+                total += len(leaves)
+                # Each leaf is classified ONCE, and the failing ids are
+                # collected from that same verdict, so the names and the
+                # counts cannot come to disagree. Precedence, most severe
+                # first: a case carrying both <error> and <failure> counts
+                # once, as an error. `skipped` loses to both — a case that
+                # errored is not a skip, whatever else it carries.
+                for c in leaves:
+                    if c.find("error") is not None:
+                        errors += 1
+                    elif c.find("failure") is not None:
+                        failures += 1
+                    elif c.find("skipped") is not None:
+                        skipped += 1
+                        continue
+                    else:
+                        continue
+                    failed_ids.append(_junit_case_id(c))
+                # Summary-only suites: their attributes are the only evidence
+                # they carry, so recording a confident 0 would discard a whole
+                # environment. Ant-style double-counting cannot arise here — a
+                # suite read this way has no descendant leaves at all.
+                for summary in [s] if not leaves else _summary_suites(s):
+                    total += _attr_int(summary, "tests")
+                    failures += _attr_int(summary, "failures")
+                    errors += _attr_int(summary, "errors")
+                    skipped += _attr_int(summary, "skipped")
                 failed_by_root[root_index] += failures + errors - before
         except ValueError as exc:
             print(

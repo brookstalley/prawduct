@@ -199,9 +199,9 @@ _DEAD_PARENTHETICAL = re.compile(
 _DEAD_ARROW = re.compile(r"[ \t]*→[ \t]*detail\.?")
 
 
-#: Left where a pointer was cut so the tidy-up can find the lines it touched.
-#: NUL because a Markdown corpus never holds one; if one did, it would be dropped
-#: with the marker and its line tidied.
+#: Left where a pointer was cut so the tidy-up can find the cut. NUL because a
+#: Markdown corpus never holds one; if one did, it would be dropped with the
+#: marker, and the blanks beside it tidied as a cut's.
 _REMOVED = "\x00"
 
 #: A cut with the blanks around it, where what follows is punctuation or the end
