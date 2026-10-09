@@ -28,7 +28,7 @@ These are independent dimensions, not categories — a product can have any comb
 
 After detecting structural characteristics, assess risk; risk drives how much discovery you do, always under the pacing judgment in "Read the room on pacing" below:
 
-**Low risk** (family utility, personal tool, 1-3 users): a round or two. Infer aggressively. Move fast.
+**Low risk** (family utility, personal tool, 1-3 users): a round or two. Infer freely, say what you inferred, move fast.
 
 **Medium risk** (team tool, small marketplace, modest user base): confirm key assumptions; cover structural implications.
 
@@ -42,15 +42,9 @@ Discovery isn't a phase — it's a mode you enter every time the project takes o
 
 One common entry point is **a backlog item at an early `stage:`** (`idea`/`research`/`requirements`). When `/prawduct:backlog pick` surfaces one, the next work is discovery, *not* implementation — a vague item is an undocumented requirement (Principle 6), and writing/researching it is the task. When discovery resolves it, advance the item with `/prawduct:backlog update <id> stage=design|ready` and add a `refs:` link to the doc you produced.
 
-**Initial discovery** establishes the product's foundation — structural characteristics, personas, scope, success criteria — captured in `project-state.yaml`.
+**Initial discovery** establishes the product's foundation — structural characteristics, personas, scope, success criteria, and where it is headed — captured in `project-state.yaml`. State the near-term and the North Star in prose, in the brief: *"home use for now; eventually thousands of anonymous users"*. Who uses it, and where it runs, often differ between the two, and every later alignment pass reads both — that difference is what decides when to build for the future and when to accept debt.
 
-**Feature-level discovery** is shorter. For each non-trivial new feature, answer three questions in one sentence each:
-
-1. What problem does this solve? (Observable, not abstract.)
-2. What does success look like? (Specific, verifiable.)
-3. What's out of scope for this iteration?
-
-If you can answer all three, capture them in the build plan's Requirements Confidence field and proceed. If you can't answer one in a sentence, one round of clarification will probably get you there — the cheapest close is often a 60-second sketch ("here's what I think you want — confirm?"), not a full discovery session. The build cycle's `Before You Build: Confidence Check` (`methodology/building.md`) is the same pattern at the next stage (Principles 6 and 20).
+**Feature-level discovery** is the alignment pass (`methodology/building.md` "Before You Build"): judge how clear the goals are against the work ahead, then proceed, proceed citing a backlog item or spec, ask in one batch, or hold up — and say which.
 
 **A structural characteristic flipped.** The six characteristics (human interface, unattended,
 programmatic interface, multiple parties, sensitive data, multi-process/distributed) are the
@@ -75,7 +69,7 @@ A product may arrive with material already in hand — an existing codebase, or 
 1. **Read what exists first.** Requirements docs, architecture, a VISION, codebase conventions. Treat these as the user's already-stated answers — don't ask what the docs already say.
 2. **Backfill the source of truth.** Populate `classification` and `product_definition` from the material; detect the six structural characteristics from the docs exactly as you would from conversation.
 3. **Reference, don't duplicate.** Where `docs/` holds the detail, keep it canonical and have `project-state.yaml` point at it — set `open_questions` to the real open questions rather than copying prose into YAML (a drift-prone second copy).
-4. **Confirm the inferred frame, then fill the gaps.** Surface the inferred classification and scope for a quick veto (the `[ASSUMPTION: …]` form below); run normal discovery only for what the material genuinely leaves open.
+4. **Confirm the inferred frame, then fill the gaps.** Surface the inferred classification and scope for a quick veto, marked as inferred; run normal discovery only for what the material genuinely leaves open.
 
 The destination is the same `project-state.yaml` as "What Discovery Produces" — reached by reading rather than only asking.
 
@@ -100,11 +94,7 @@ Questions 2 and 3 are different gaps with different remedies: a knowledge gap wa
 
 Self-check: *"Does this depend on the current state of the world, or a field that moves faster than my training cycle?"* If yes, research before relying on intrinsic knowledge, and say what you checked. If you can't verify, proceed only with the uncertainty labeled — never assert stale knowledge as current (Principle 5).
 
-**Make your inferences explicit (intentional inference).** Answer what you can yourself, and record each answer you *inferred* (rather than confirmed or verified) as a vetoable assumption —
-
-`[ASSUMPTION: <what you assumed> | HIGH/MED/LOW impact | user can correct / override / defer]`
-
-— so an inference is visible and correctable instead of buried. Surface a question to the user only when its answer is both **consequential** and **genuinely unverifiable** by you, and surface it **early** — before you've invested in implementation. The bar that earns a question is impact, not uncertainty alone.
+**Make your inferences explicit (intentional inference).** Answer what you can yourself, and mark each answer you *inferred* — rather than confirmed or verified — in plain words (*"Inferred: one household"*), so it is visible and correctable instead of buried. An example the owner shows — a reference image, a competitor, a default — is evidence of taste, not a spec: ask which of its qualities matter before any one becomes a rule. Research and code answer questions about the world; only the owner answers questions about their intent. Put every question whose answer would change the goals, the architecture, or a high-stakes choice to the owner **together, before a plan is written** — not one at a time, and not mid-build.
 
 ## How to Discover
 
@@ -118,7 +108,7 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 
 **Detect domain-specific concerns dynamically.** Don't rely on hardcoded question lists — your domain knowledge is the source; structural characteristics tell you where to focus it. Some domains imply testing strategies — mathematical operations and data transforms suit property-based testing, event-driven systems suit state-machine testing, APIs suit contract testing. Surface these during discovery so they reach test-specifications. Each characteristic's *Implications* above is where the sweep starts, not where it ends — a marketplace, a data pipeline and a healthcare app each have critical questions no general list names, and finding those is the expertise the user came for (Principle 7).
 
-**Read the room on pacing.** Patience is finite. Fatigue signals — shortening answers, repeated bare agreement ("yes", "sure"), explicit redirects ("just build it") — mean adapt: batch remaining questions into one confirm-or-correct pass, shift to confirmation mode, or infer more aggressively and move on. Under-discovery that preserves engagement beats thorough discovery that loses the user. This isn't a state machine with thresholds — it's a judgment call, and erring toward action is usually correct.
+**Read the room on pacing.** Patience is finite. Fatigue signals — shortening answers, repeated bare agreement ("yes", "sure"), explicit redirects ("just build it") — mean adapt: batch what remains into one confirm-or-correct pass, or take "just build it" as best judgment and write your inferences down where the owner will see them. Never trade a question that would change the goals for momentum; trade the low-stakes ones freely.
 
 ## Surface Prior Art
 
@@ -168,7 +158,7 @@ As structural characteristics emerge, note where components will interact — AP
 
 A `project-state.yaml` with:
 - **Classification**: structural characteristics, domain, risk level, prior art
-- **Product definition**: vision, personas, core flows, scope (v1 / accommodate / later / out of scope)
+- **Product definition**: vision with its near-term and North Star in prose, personas, core flows, scope (v1 / accommodate — what every alignment pass keeps possible / later / out of scope)
 - **Cost awareness**: operational cost estimates and constraints (when applicable)
 - **Accessibility approach** (for human interfaces), **error handling approach**, **infrastructure dependencies**, **observability approach** — each scaled to risk
 - **User expertise profile**: what the user knows and doesn't, inferred from conversation

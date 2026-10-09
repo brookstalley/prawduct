@@ -49,19 +49,25 @@ last_validated: 2026-07-03
 #   maintained: false
 ---
 
-## Requirements Confidence
+## Goals
 
-<!-- Honest self-assessment (Principle 6). High: problem, success, and scope each
-     statable in one sentence. Medium: assumptions inferred — list them. Low: unknowns
-     named + what would resolve them. Not a gate; committing to a level forces honesty. -->
+<!-- The alignment pass's written form (methodology/planning.md "Goals"): a cold session
+     reads this before any chunk, mid-build decisions are made against it, and the
+     boundary review judges the work by it. Mark each inference in plain words. -->
 
-**Level:** High
+**Response taken:** Ask, in one batch — the owner answered 2026-07-02.
 
-**Why:** Problem, success criteria, and scope were confirmed with the user in one discovery round; no fast-moving or post-cutoff dependencies.
+**Product:** A shared grocery list that replaces the paper list on the fridge. The brief's near-term is one household; its North Star is a few households sharing recipes.
 
-**Open assumptions / unknowns:** [ASSUMPTION: single household, no auth beyond a shared device | MED impact | user can override]
+**Architecture:** Runs on a home server, and data stays local. Keep multi-household possible: a household id on every row, nothing else household-specific. *Inferred:* no auth beyond a shared device.
 
-**What would raise confidence:** N/A
+**Constraints:** No paid services (owner).
+
+**Tradeoffs accepted:** Barcode lookup calls OpenFoodFacts directly, with no cache — revisit if lookups feel slow. It may never matter, so no backlog item.
+
+**Decisions made mid-build:** Chunk 02 — store sections as rows, not an enum: the North Star's shared recipes need per-household sections. *(Appended while building; one line each, naming what settled it.)*
+
+**Level:** High — problem, success, and scope confirmed with the owner; no fast-moving dependencies.
 
 ## Status
 

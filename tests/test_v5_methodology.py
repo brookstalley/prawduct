@@ -468,7 +468,18 @@ LAST_MEASURED_TOKENS = {
     # delegate's sweep (B-10) cut; bold emphasis trimmed (B-27). B-16's rule for
     # when a chunk boundary ends the turn was paid for from those cuts, and so
     # was the 3-4-file size the cumulative review found B-25 had dropped (-43 net).
-    "methodology/building.md": 5079,
+    # RAISED 5079 -> 5294 (requirements-alignment w1, 2026-10-09, owner decision): the
+    # Confidence Check becomes the alignment pass (four responses, each acknowledged) and
+    # a new Deciding Mid-Build states the owner's durable-first order. Compressed in place
+    # first (-150 from the first draft); paid in part by deleting the "Pacing blindness"
+    # trap, which Deciding Mid-Build supersedes. DECLARED for the rest: new obligations.
+    # RAISED 5294 -> 5310 (requirements-alignment w1 boundary review, 2026-10-09): a
+    # decision recorded "in a line" had no home, so it now names the plan's Goals, and Hold
+    # up is told apart from Ask by whether the agent can form a reading worth correcting.
+    # Both were review WARNINGs on new text, with no duplication left to pay from. DECLARED.
+    # +17 more, same review (R-3): the alignment pass says its written form scales with the
+    # response, a chunk-01 deliverable the shipped text had dropped. DECLARED.
+    "methodology/building.md": 5327,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -626,7 +637,9 @@ LAST_MEASURED_TOKENS = {
     # +10 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -523 on 2026-09-28 (opus-55-w3b), C-20: the Coordinator Pattern moves to coordinator.md; the ceiling lowered with it.
-    "skills/critic/review-protocol.md": 3803,
+    # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks Goals instead of
+    # Requirements Confidence, in a shorter line that also accepts older plans.
+    "skills/critic/review-protocol.md": 3794,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -723,7 +736,9 @@ LAST_MEASURED_TOKENS = {
     # prompt audit's slice C; the ceiling lowered with it.
     # +5 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
-    "skills/critic/goals-1-3.md": 2667,
+    # -8 on 2026-10-09 (requirements-alignment w1): Goal 2 checks Goals instead of
+    # Requirements Confidence, in a shorter line that also accepts older plans.
+    "skills/critic/goals-1-3.md": 2659,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1098,7 +1113,15 @@ LAST_MEASURED_TOKENS = {
     # which restated each characteristic's Implications, goes (B-21), and so do
     # the per-risk question and search quotas (B-22). B-21 and B-22 were held
     # until a Sonnet 5.5 discovery probe showed no lost critical concern. A CUT.
-    "methodology/discovery.md": 4247,
+    # -12 on 2026-10-09 (requirements-alignment w1): the asking bar is rebalanced
+    # (the owner's intent is the one thing the agent cannot verify; questions go in one
+    # batch before a plan), feature-level discovery points at the alignment pass instead
+    # of restating three questions, and the near-term / North Star enters initial
+    # discovery. The restatements it removed paid for the additions. A READING, no ceiling.
+    # +43 on 2026-10-09 (requirements-alignment w1 trial): an example the owner shows is
+    # evidence of taste, not a spec. The guidance trial's "creative interlocks" case lifted
+    # a reference image's features wholesale, the audit's "round ends" rework. A READING.
+    "methodology/discovery.md": 4278,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1215,7 +1238,14 @@ LAST_MEASURED_TOKENS = {
     # +13 on 2026-09-30 (sibling-hook-perf): the Type field's allowed values
     # name `building.md`'s work types as aliases read as `code` (#934), which
     # authors wrote and the parser used to reject. A READING, no ceiling.
-    "methodology/planning.md": 5722,
+    # +25 on 2026-10-09 (requirements-alignment w1): Requirements Confidence becomes
+    # Goals — the response taken, product/architecture goals, constraints, tradeoffs and
+    # accepted debt, inferences marked in prose. The bracketed [ASSUMPTION] form and its
+    # three-level list were removed to pay for most of it. A READING, no ceiling.
+    # +35 on 2026-10-09 (requirements-alignment w1 boundary review): Goals gains "Decisions
+    # made mid-build", the home building.md's decision line was missing, and the Foreign API
+    # fallback records its assumed surface as an inference in Goals. A READING, no ceiling.
+    "methodology/planning.md": 5782,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1815,8 +1845,15 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # gains one clause (a server or recorder running on its own survives a
     # clear, #932), paid in place by cutting its opening's second sentence,
     # which restated what "Read on demand" says.
-    "framework": 3134,
-    "product": 2194,
+    # framework 3134 -> 3108, product 2194 -> 2232 on 2026-10-09 (requirements-
+    # alignment w1, owner decision). The digest's rigor paragraph becomes the alignment
+    # pass and durable-first mid-build decisions: a new framework-wide default, which the
+    # digest is the only surface to carry to onboarded repos. Compressed in place, and a
+    # redundant closing-turn clause was dropped, holding the digest's 500-char reserve;
+    # the product +38 is DECLARED. The framework session falls because this repo's
+    # CLAUDE.md "Before Building" block became a pointer at the digest's text.
+    "framework": 3108,
+    "product": 2232,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1972,8 +2009,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # 3146 -> 3143 framework on 2026-09-29 (opus-55-w6): ratcheted with the reading's cut.
     # 3143 -> 3135, 2203 -> 2195 on 2026-09-30 (sibling-hook-perf): ratcheted
     # with the reading, one over each.
-    "framework": 3135,
-    "product": 2195,
+    # 3135 -> 3109, 2195 -> 2233 on 2026-10-09 (requirements-alignment w1): one over
+    # each reading; the product raise is declared in the reading table.
+    "framework": 3109,
+    "product": 2233,
 }
 
 
@@ -3290,7 +3329,9 @@ class TestBuildingMethodology:
         # RAISED 5117 -> 5123 (clear-verdict-coherence, 2026-09-27) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5123 -> 5080 (opus-55-w4, 2026-09-28): slice B's cuts, one over
         # the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 5080, f"building.md is ~{tokens} tokens, should be <5080"
+        # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5328, f"building.md is ~{tokens} tokens, should be <5328"
 
 
 # =============================================================================
@@ -4994,7 +5035,8 @@ class TestCriticSkill:
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3804, f"review-protocol.md is ~{tokens} tokens, should be <3804"
+        # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
+        assert tokens < 3795, f"review-protocol.md is ~{tokens} tokens, should be <3795"
 
 
 # =============================================================================
@@ -5275,7 +5317,8 @@ class TestCriticGoals13:
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 2668, f"goals-1-3.md is ~{tokens} tokens, should be <2668"
+        # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
+        assert tokens < 2660, f"goals-1-3.md is ~{tokens} tokens, should be <2660"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5342,7 +5385,7 @@ class TestCriticGoals13:
             "test-status", "verify-coverage", "missing-coverage:", "pre-existing",
             "exact-match", "property-based", "injection", "hardcoded secrets",
             "trust boundaries", "explicitly descoped", "observable behavior",
-            "Requirements Confidence", "record_lint", "project-preferences.md",
+            "Goals present", "record_lint", "project-preferences.md",
             "accessibility", "infrastructure_dependencies", "Foreign API",
             "Exposed API", "api_error_model_approach", "operator-verification",
             "unlisted dependencies", "undocumented architectural", "broad exception",
@@ -6670,3 +6713,39 @@ class TestFarBehindBranchGuidance:
         for phrase in ("tree content, never by ancestry", "REMOVED and what it ADDED",
                        "`merge=union`", "moved goes to its new home"):
             assert phrase in step1, f"PR Step 1 lost: {phrase!r}"
+
+
+# The Requirements Confidence field, its [ASSUMPTION] notation and building.md's
+# Confidence Check were retired for the alignment pass and the plan's Goals
+# (requirements-alignment w1, 2026-10-09). A retired instruction left in live
+# prose tells a builder to fill a field the template no longer has, which the
+# wave's own boundary review found three surfaces still doing.
+RETIRED_REQUIREMENTS_VOCABULARY = ("[ASSUMPTION", "Confidence Check", "Open assumptions")
+# "Requirements Confidence" survives only where a surface accepts plans that
+# predate Goals; each such line names "older plans".
+_OLDER_PLANS_CLAUSE = "older plans"
+
+
+def _live_instruction_files():
+    roots = [REPO_ROOT / "plugin", REPO_ROOT / ".prawduct" / "cross-cutting-concerns.md"]
+    for root in roots:
+        paths = [root] if root.is_file() else sorted(root.rglob("*.md"))
+        for path in paths:
+            if path.name == "CHANGELOG.md":
+                continue  # history: records what each release changed
+            yield path
+
+
+def test_retired_requirements_vocabulary_is_gone_from_live_prose():
+    hits = []
+    for path in _live_instruction_files():
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(term in line for term in RETIRED_REQUIREMENTS_VOCABULARY):
+                hits.append(f"{path.relative_to(REPO_ROOT)}:{n}")
+            elif "Requirements Confidence" in line and _OLDER_PLANS_CLAUSE not in line:
+                hits.append(f"{path.relative_to(REPO_ROOT)}:{n}")
+    assert not hits, (
+        "retired requirements vocabulary (Requirements Confidence, [ASSUMPTION], the "
+        f"Confidence Check) still instructs in live prose: {hits}. The plan's Goals and "
+        "building.md's alignment pass replaced it."
+    )

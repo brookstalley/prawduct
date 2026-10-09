@@ -1306,7 +1306,7 @@ def _plan_description_fallback(plan_path: Path, content: str) -> str:
     """Name the plan when it carries no ``# Build Plan`` H1.
 
     The frontmatter-style plans this repo writes open with a ``---`` block and a
-    ``## Requirements Confidence`` heading — no H1 at all. Requiring one made
+    ``## Goals`` heading (older plans: ``## Requirements Confidence``) — no H1 at all. Requiring one made
     ``description`` empty, and an empty description is not a cosmetic loss: it
     is the sole key gating the handoff's Work In Progress section, so the whole
     section vanished from a live four-chunk plan's handoff. Fall back to the

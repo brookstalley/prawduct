@@ -303,7 +303,7 @@ class TestBuildPlanTemplate:
             "**Tests:**", "**Acceptance criteria:**", "**Done when:**",
             "**Critic mode:**", "**Type:**", "**Foreign API:**",
             "**Visual change:**", "**Level:**",
-            "**Open assumptions / unknowns:**",
+            "**Response taken:**",
         ]:
             assert label in template, f"field label {label} missing from template"
 

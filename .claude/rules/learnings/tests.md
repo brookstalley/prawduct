@@ -50,3 +50,4 @@ Rules that fire while writing or changing a test.
 - A comment saying "X still matches because Y" needs a test with X and no Y — else the suite is green under both the true mechanism and your wrong one, and the next author edits against it. Tell: survival credited to an input feature no test varies
 - On stale test evidence, run the suite THROUGH `test-evidence record`, or run the declared command WITH --junit-xml and ingest via --from-junit (or a contract report); --from-counts is refused. Tell: test-status said stale, you reached for pytest
 - Red CI over a green suite: enumerate EVERY axis the machines differ on before fixing — two-variable bugs need both. Prove the repro can FAIL first. Tell: repro green
+- This shell is zsh: an unquoted `$var` holding a list or a command does NOT word-split — pytest saw one bogus path ("no tests ran") and `$H args` was "no such file". Use xargs, a function, or `${=var}`. Tell: a zero or error over N items

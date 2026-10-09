@@ -54,7 +54,7 @@ characteristic flips alike:
 
 - **Owner-visible and vetoable** — the plan/changeset carries it in the vetoable block form
   `[DECISION: <what was decided> | <why, engaging the norm's why> | user can veto/override]`
-  (the decision sibling of `methodology/planning.md`'s `[ASSUMPTION: …]` form), or the owner
+  (an inference is marked in prose instead — `methodology/planning.md` "Goals"), or the owner
   made the call directly. The builder may *draft* the decision; the owner's veto window is what
   legitimizes it. A builder-authored rationale sentence, alone, is not a recorded decision.
 - **Reasoned** — it engages the norm's why, not just the local convenience.
