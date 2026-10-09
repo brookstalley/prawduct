@@ -7,7 +7,7 @@
 
 ## 2026-10-08: four field bugs for 3.7.1 — quoted `#`, api-versioning wording, scope examples, migrate activation
 
-<!-- prawduct: type=bugfix | scope=patch-3.7.1 -->
+<!-- prawduct: type=bugfix | scope=field-bugs-790-813-765-915 -->
 
 - **#790: a `#` inside a quoted scalar is data.** The advisory answer store cut every
   `project-state.yaml` scalar at its first `#` before unquoting, so `"ratified (#774)"` read back

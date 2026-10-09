@@ -55,7 +55,7 @@ left that case at zero. Separately,
 `learnings-migrate` no longer removes the space before punctuation inside a code span that shares a
 line with a removed pointer.
 
-**`patch-3.7.1`** (#790, #813, #765, #915): **four fixes from the field.** A `#` inside a quoted top-level
+**`field-bugs-790-813-765-915`** (#790, #813, #765, #915): **four fixes from the field.** A `#` inside a quoted top-level
 `project-state.yaml` value (`key: "…"`) is kept rather than read as the start of a comment, so an
 answer that cites an issue like `"ratified (#774)"` reads back whole; list items and nested values
 are not covered yet. The api-versioning advisory now counts a decision recorded under
