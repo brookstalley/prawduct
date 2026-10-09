@@ -68,7 +68,7 @@ The open part is wording, which chunk 03 trials.
 
 - [x] Chunk 01: The alignment pass and durable-first decisions in the build cycle
 - [x] Chunk 02: Every repo hears it — discovery, principles, brief, digest, and the sweep
-- [x] Chunk 03: Guidance trial on replayed audit requests
+- [ ] Chunk 03: Guidance trial on replayed audit requests
 
 ## Build Chunks
 
