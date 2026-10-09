@@ -295,3 +295,63 @@ def test_un_declaring_a_member_that_is_still_there_is_not_a_departure():
         after, {"clear", "build-index", "sketch"}, previous_contract_text=_CONTRACT
     )
     assert out == ()
+
+
+def _state(tmp_path, text):
+    (tmp_path / ".prawduct").mkdir(exist_ok=True)
+    (tmp_path / ".prawduct" / "project-state.yaml").write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # The shape the guides and the template describe: a nested attribute block.
+        "design_decisions:\n  api_versioning_approach:\n    scheme: uri-path\n    status: active\n",
+        # Inline flow mapping, and other indent steps.
+        "design_decisions:\n    api_versioning_approach: {scheme: header, status: active}\n",
+        # "none — internal-only" is a decision like any other.
+        'design_decisions:\n  other: x\n  api_versioning_approach: "none — internal-only"  # c\n',
+    ],
+)
+def test_suppressed_when_the_nested_record_holds_a_decision(tmp_path, text):
+    # A repo that recorded the decision where the guides say to (and where
+    # doctor's check reads it) must not be told it recorded none.
+    (tmp_path / "app.py").write_text("from fastapi import FastAPI\n")
+    _state(tmp_path, text)
+    assert _probe(tmp_path) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "design_decisions:\n  api_versioning_approach: null\n",
+        "design_decisions:\n  api_versioning_approach: ~  # undecided\n",
+        "design_decisions:\n  api_versioning_approach:\n  other: x\n",
+        "design_decisions:\n  other:\n    api_versioning_approach: uri-path\n",
+        "api_versioning_approach: uri-path\ndesign_decisions:\n  other: x\n",
+    ],
+)
+def test_fires_when_the_nested_record_holds_no_decision(tmp_path, text):
+    # The template's null, a bare key, and the key at the wrong level or outside
+    # design_decisions are all unrecorded.
+    (tmp_path / "app.py").write_text("from fastapi import FastAPI\n")
+    _state(tmp_path, text)
+    assert len(_probe(tmp_path)) == 1
+
+
+def test_summary_names_both_places_a_decision_may_live(tmp_path):
+    (tmp_path / "app.py").write_text("from fastapi import FastAPI\n")
+    summary = _probe(tmp_path)[0].trigger_summary
+    assert "design_decisions.api_versioning_approach" in summary
+    assert "`api_versioning_decided`" in summary
+    assert "either" in summary
+
+
+def test_evidence_wording_is_frozen_so_dismissals_survive(tmp_path):
+    # The id hashes the evidence: a reworded evidence string re-raises every
+    # dismissed api-versioning advisory. Change it only with a PROBE_VERSION bump.
+    (tmp_path / "app.py").write_text("from fastapi import FastAPI\n")
+    assert _probe(tmp_path)[0].evidence == (
+        "the product exposes an API but no versioning/deprecation decision "
+        "is recorded (design_decisions.api_versioning_approach)",
+    )

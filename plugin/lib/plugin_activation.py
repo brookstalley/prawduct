@@ -329,6 +329,7 @@ def remediation_command(project_dir: str | Path) -> str:
 
 ONBOARD = "onboard"
 DOCTOR = "doctor"
+MIGRATE = "migrate"
 
 
 def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
@@ -349,7 +350,14 @@ def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
     not name *this* path — a worktree, a moved, renamed or symlinked checkout.
     Relaying the onboard consequence there would send an operator to reinstall a
     working install, which is the false accusation the rest of this module
-    refuses to make. Two consequences, two messages, one home.
+    refuses to make.
+
+    ``/prawduct:migrate`` sits between the two. Like doctor it runs inside a
+    session the plugin loaded, so ``inactive`` cannot prove the repo ungoverned
+    now; unlike doctor it is about to stand the legacy hook down, so if this
+    session loaded the plugin with ``--plugin-dir`` the repo IS ungoverned from
+    the next session on. The check cannot tell those apart, so the message names
+    both and the one command that settles either.
     """
     status = result.get("status")
     if status == ACTIVE:
@@ -371,6 +379,26 @@ def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
         others = result.get("other_paths") or []
         if others:
             lines.extend(["", f"Recorded instead for: {', '.join(others)}"])
+        return lines
+
+    if status == INACTIVE and context == MIGRATE:
+        lines = [
+            f"inactive: {result['reason']}.",
+            "",
+            "This session has the plugin — you are running one of its skills — "
+            "but the install record decides what loads NEXT session, and none "
+            "names this path. If this session loaded the plugin with "
+            "`--plugin-dir`, migrating leaves this repo with NO governance from "
+            "the next session on: the legacy hook stands down and nothing "
+            "replaces it. If this is a git worktree or a moved, renamed or "
+            "symlinked checkout, the plugin is installed and the record is only "
+            "stale. Either way, install before applying:",
+            "",
+            f"Fix: {remediation_command(result['project_path'])}",
+        ]
+        others = result.get("other_paths") or []
+        if others:
+            lines.extend(["", f"Installed instead for: {', '.join(others)}"])
         return lines
 
     if status == INACTIVE:

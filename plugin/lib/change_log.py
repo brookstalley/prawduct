@@ -8,19 +8,19 @@ reached three consumers before anyone generalised it.
 Tagged-entry format — one line after each ``## YYYY-MM-DD:`` header (blank lines
 between are tolerated). **The format a new entry is written in is two keys**::
 
-    <!-- prawduct: scope=v1.4 | release=v1.3.18 -->
+    <!-- prawduct: scope=pantry-v1 | release=v1.3.18 -->
 
 Older entries carry two more, and the parser still accepts them because every
 onboarded repo's committed log is full of them::
 
-    <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=v1.4 -->
+    <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=pantry-v1 -->
 
 **Accepting is not the same as reading.** ``chunks`` and ``status`` are retired
 and inert: nothing consults either, no value of them means anything, and they are
 neither rewritten nor removed. Anything below describing them is describing what
 a *historical* entry may contain. Keys, and who reads them:
 
-* ``scope``   — the rollup identifier. Read by the release gate to enumerate
+* ``scope``   — the work identifier, named for the work rather than a version. Read by the release gate to enumerate
   what has not shipped, and by :mod:`lib.plan_index` to find the plan that
   declares the same scope in its frontmatter.
 * ``release`` — the version that carried this entry. Its ABSENCE is what marks

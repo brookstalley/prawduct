@@ -55,6 +55,16 @@ left that case at zero. Separately,
 `learnings-migrate` no longer removes the space before punctuation inside a code span that shares a
 line with a removed pointer.
 
+**`field-bugs-790-813-765-915`** (#790, #813, #765, #915): **four fixes from the field.** A `#` inside a quoted top-level
+`project-state.yaml` value (`key: "…"`) is kept rather than read as the start of a comment, so an
+answer that cites an issue like `"ratified (#774)"` reads back whole; list items and nested values
+are not covered yet. The api-versioning advisory now counts a decision recorded under
+`design_decisions.api_versioning_approach`, as `/prawduct:doctor` already did, instead of nagging
+until you also set the top-level `api_versioning_decided`. The change-log tag examples use the
+build-plan template's work-named `scope=` instead of a version, matching how plans are named.
+`/prawduct:migrate` checks that the plugin will load for the repo before it removes the framework
+files, and says so when it will not.
+
 ## v3.7.0
 
 **Prawduct's prompts are rewritten for Opus 5.5, every learnings rule is one line under a `core.md` cap only you can raise, and a chunk you committed before its review gets a chunk review instead of a full bundle review.** Thirty-four scopes since v3.6.1, counting release housekeeping. Three changes you will notice in an ordinary session. First, the session digest, gate output, review prompts, methodology guides and skills are shorter and plainer, and they tell the model to take the next step rather than announce it; each `final` or `cumulative` Critic reviewer loads about 7,800 fewer tokens. Second, a learnings rule is one line of at most 250 characters, and a corpus over the new limits does not break: it stops growing until you compact it with `prawduct-hook learnings-compact`. Third, a mid-plan `/prawduct:critic` reviews only what has not been reviewed yet, and the reflection and Critic gates wait while a turn closes `RUNNING` and `DO NOT CLEAR`. SessionStart and Stop also stop slowing down as a repo's review history grows. Three gates are new in this release: `learnings-rule-too-long`, `learnings-rule-body` and `clear-verdict`.

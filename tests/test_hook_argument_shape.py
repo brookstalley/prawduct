@@ -546,6 +546,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-plugin-active", ["--path", "/tmp/x", "--json"]),
         ("check-plugin-active", ["--path", "/tmp/x", "--context", "doctor"]),
         ("check-plugin-active", ["--context", "onboard"]),
+        ("check-plugin-active", ["--context", "migrate"]),
         ("check-learnings-pairing", []),
         ("check-learnings-pairing", ["--json"]),
         ("learnings-migrate", []),

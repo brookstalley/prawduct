@@ -506,11 +506,11 @@ review_round_budget: 6
 # The committed "answer store" fact the `api-versioning` sync probe consults.
 # When the product exposes a programmatic interface (detected from the code —
 # web framework, OpenAPI/proto), the probe raises a dismissable, auto-resolving
-# session advisory until a versioning decision is recorded. Set this to the
-# decision summary (e.g. "uri-path-v1", "header", "none-internal-only",
-# "deferred:<revisit-trigger>") to resolve it — it mirrors
-# design_decisions.api_versioning_approach. Unset/absent = undecided. Recording
-# "none-internal-only" resolves it; this is NOT a mandate to version.
+# session advisory until a versioning decision is recorded — here, or under
+# design_decisions.api_versioning_approach; either one resolves it. This is the
+# short form: the decision summary (e.g. "uri-path-v1", "header",
+# "none-internal-only", "deferred:<revisit-trigger>"). Unset/absent = undecided.
+# Recording "none-internal-only" resolves it; this is NOT a mandate to version.
 #
 # api_versioning_decided:
 

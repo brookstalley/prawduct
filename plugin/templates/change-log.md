@@ -13,13 +13,15 @@
 
          ## YYYY-MM-DD: title (vN.M.P)
 
-         <!-- prawduct: scope=v1.4 | release=v1.3.18 -->
+         <!-- prawduct: scope=pantry-v1 | release=v1.3.18 -->
 
          **Why:** ...
 
      Recognized keys:
-       scope    - rollup identifier (e.g., v1.4), matching the `scope:`
-                  frontmatter of the build plan that governs the work.
+       scope    - the `scope:` frontmatter of the build plan that governs
+                  the work (e.g., pantry-v1), copied exactly. It names the
+                  WORK, not a version: a scope with no plan declaring it
+                  warns at release as work shipping with no plan.
        release  - the version that carried this entry: three or four numeric
                   parts, optionally with a -suffix (release=v1.3.18,
                   release=v1.3.18.2, release=v1.4.0-rc.1). Its ABSENCE is what
