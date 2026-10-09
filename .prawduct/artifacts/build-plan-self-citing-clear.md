@@ -50,6 +50,10 @@ turns get no new step.
   `clear-verdict` pair, this is a fault in the message the reader acts on, fixed by rewriting one
   paragraph, which is the ground that gate was built on. #560 asks whether a note exists, and it must not block; this asks
   whether the stated reason is a reason. The core rule on mechanising rules recall misses applies.
+  *Owner-confirmed 2026-10-09 (review W4):* the owner leaned toward folding this into #560, then
+  chose to keep the gate and cite it from #560 as the check on what the safe-to-clear signal
+  says (#560's option 2). #560 still owns checking that the note exists. The confirmation is also
+  recorded on #560.
 - *Inferred:* detection is a narrow phrase match on the verdict paragraph only: the message, reply,
   response or turn named as where something *is* or as what *holds* it, or something said to be
   above or below. "Conversation" is deliberately out: "nothing lives only in this conversation" is
@@ -87,7 +91,7 @@ real phrasings and session-hygiene.md gives a third.
 
 ## Status
 
-- [ ] Chunk 01: A Stop gate refuses a self-citing SAFE TO CLEAR
+- [x] Chunk 01: A Stop gate refuses a self-citing SAFE TO CLEAR
 
 ## Build Chunks
 
