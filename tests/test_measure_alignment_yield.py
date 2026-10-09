@@ -188,3 +188,77 @@ def test_a_subagents_questions_and_edits_are_not_the_main_agents(tmp_path):
     assert row["requests"] == 1
     assert row.get("substantive", 0) == 0
     assert row.get("mid_build_asks", 0) == 0
+
+
+def test_a_slash_command_opens_its_own_uncounted_turn(tmp_path):
+    """A skill's questions and edits belong to the skill's turn, never to the typed
+    request before it, and the echo itself is not an owner request."""
+    path = _session(tmp_path, "p", [
+        _owner(LONG), _calls("Edit"),
+        _owner("<command-message>prawduct:pr</command-message>\n<command-name>/prawduct:pr</command-name>"),
+        _calls("Edit"), _calls("AskUserQuestion"),
+    ])
+    row = _total(tool.measure([path], None, None, 60, ()))
+    assert row["requests"] == 1
+    assert row["mid_build_asks"] == 0
+
+
+def test_a_session_opening_with_a_slash_command_counts_no_request(tmp_path):
+    path = _session(tmp_path, "p", [
+        _owner("<command-name>/prawduct:critic</command-name>"), _calls("AskUserQuestion"),
+    ])
+    assert _total(tool.measure([path], None, None, 60, ())) == {}
+
+
+def test_unparsed_lines_and_empty_transcripts_are_reported_not_silent(tmp_path):
+    proj = tmp_path / "projects" / "p"
+    proj.mkdir(parents=True)
+    bad = proj / "bad.jsonl"
+    bad.write_bytes(b'{not json\n\xff\xfe binary\n' + json.dumps(_owner(LONG)).encode() + b"\n")
+    renamed = _write(proj / "renamed.jsonl", [{"kind": "user", "text": LONG}])
+    health = __import__("collections").Counter()
+    by = tool.measure([bad, renamed, proj / "gone.jsonl"], None, None, 60, (), health=health)
+    assert _total(by)["requests"] == 1
+    assert health["lines_unparsed"] == 2
+    assert health["transcripts_without_owner_turns"] == 1
+    assert health["transcripts_unreadable"] == 1
+
+
+def test_an_owner_quoting_the_digest_does_not_govern_the_session(tmp_path):
+    gone = "/nonexistent/repo"
+    path = _session(tmp_path, "q", [
+        _owner(f"why does it say '{tool.DIGEST_MARKER} Prawduct' here?", cwd=gone), _calls("Edit"),
+    ])
+    by = tool.measure([path], None, None, 60, ())
+    assert _total(by, governed=True) == {}
+    assert _total(by, governed=False)["requests"] == 1
+
+
+def test_a_turn_without_a_timestamp_is_outside_every_window(tmp_path):
+    rec = _owner(LONG)
+    del rec["timestamp"]
+    path = _session(tmp_path, "p", [rec, _calls("Edit")])
+    health = __import__("collections").Counter()
+    for since, until in (("2026-01-01", None), (None, "2026-10-09")):
+        assert _total(tool.measure([path], since, until, 60, (), health=health)) == {}
+    assert health["turns_without_timestamp"] == 2
+    assert _total(tool.measure([path], None, None, 60, ()))["requests"] == 1
+
+
+def test_json_totals_carry_every_count_even_when_zero(tmp_path, capsys):
+    _session(tmp_path, "p", [_owner("short", cwd="/work/app")])
+    tool.main(["--glob", str(tmp_path / "projects" / "*" / "*.jsonl"), "--json"])
+    out = json.loads(capsys.readouterr().out)
+    for side in ("governed", "ungoverned"):
+        assert set(out["total"][side]) == set(tool.KEYS)
+    assert out["projects"][0]["corrections"] == 0
+    assert "health" in out
+
+
+def test_an_agent_reading_the_digest_file_does_not_govern_the_session(tmp_path):
+    """The realistic false positive: a tool result carrying session-digest.md's text."""
+    gone = "/nonexistent/repo"
+    result = _tool_result(cwd=gone)
+    result["message"]["content"][0]["content"] = tool.DIGEST_MARKER + " **Prawduct**"
+    path = _session(tmp_path, "r", [_owner(LONG, cwd=gone), _calls("Edit"), result])
+    assert _total(tool.measure([path], None, None, 60, ()), governed=True) == {}

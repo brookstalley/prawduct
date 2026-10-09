@@ -23,8 +23,9 @@
   per project and window, asked-before-build, mid-build questions and correction leads from
   transcripts. The audit's 24/138 came from a hand-selected subset and is not reproducible, so the
   script's own figures are the baseline: `tools/measure-alignment-yield.py --until 2026-10-09`
-  (governed sessions, read 2026-10-09: asked first on 143 of 986 substantive requests; 365 mid-build
-  questions; 18 correction leads). Re-run near 2026-11-20 with `--since 2026-10-09`.
+  (governed sessions, read 2026-10-09: asked first on 140 of 963 substantive requests; 349 mid-build
+  questions; 18 correction leads). Each run also prints a health line (unparsed lines, transcripts
+  with no owner turns), because a transcript format change shows up only as falling counts. Re-run near 2026-11-20 with `--since 2026-10-09`.
 
 ## 2026-10-09: the alignment pass — ask together, up front, then decide well alone
 

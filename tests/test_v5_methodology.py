@@ -639,10 +639,10 @@ LAST_MEASURED_TOKENS = {
     # -523 on 2026-09-28 (opus-55-w3b), C-20: the Coordinator Pattern moves to coordinator.md; the ceiling lowered with it.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks Goals instead of
     # Requirements Confidence, in a shorter line that also accepts older plans.
-    # +90 on 2026-10-09 (requirements-alignment w2, #975): Goal 5 judges the work against the
+    # +104 on 2026-10-09 (requirements-alignment w2, #975): Goal 5 judges the work against the
     # plan's Goals and the brief, and lists mid-build decisions for the owner. DECLARED with the
     # route sums in test_reviewer_payload_budget.py. A READING.
-    "skills/critic/review-protocol.md": 3884,
+    "skills/critic/review-protocol.md": 3898,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -5046,9 +5046,9 @@ class TestCriticSkill:
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
-        # RAISED 3795 -> 3885 (requirements-alignment w2, 2026-10-09): the goals check, declared
+        # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3885, f"review-protocol.md is ~{tokens} tokens, should be <3885"
+        assert tokens < 3899, f"review-protocol.md is ~{tokens} tokens, should be <3899"
 
 
 # =============================================================================

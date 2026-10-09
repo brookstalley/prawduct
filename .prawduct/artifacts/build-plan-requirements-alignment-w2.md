@@ -17,9 +17,11 @@ governed_by:
       - "an independent reviewer never mutates the session → conforms: the reviewer reads the plan and brief, writes only its partial"
       - "authority fails closed; advice fails soft → conforms: an unconfirmed goal is a WARNING, because only the owner can discharge it and the owner may be away"
       - "the plugin writes nothing into a governed repo but its own state → conforms: the measure script lives in this repo's tools/, not the plugin"
+      - "local-first governance, no third-party governance dependencies → conforms: the script reads local transcripts with the stdlib and sends nothing anywhere"
+      - "prawduct guides and reviews; it never implements → conforms: the review lists decisions and inferences for the owner; it changes no product code"
       - "never specific to Python → conforms: the guidance is language-neutral; the script is a framework-maintainer tool"
       - "goals and verification bind; prescribed method is advice → conforms, and is this wave's thesis: review judges against goals"
-      - "every fact has one home → conforms: the goals check lives once, in review-protocol.md Goal 2; the brief rules live once, in discovery.md, with the template pointing there"
+      - "every fact has one home → conforms: the goals check lives once, in review-protocol.md Goal 5; the brief rules live once, in discovery.md, with the template pointing there"
 partition: serial — chunks 01 and 02 share vocabulary (inferred vs owner-said, confirmed lines) that the Critic check reads; chunk 03 is disjoint but small, and a delegate's integration cost (plan, change-log) exceeds its wall-clock saving
 last_validated: 2026-10-09
 ---
@@ -65,7 +67,7 @@ what an owner would say in a sentence.
 
 - [x] Chunk 01: The brief reads as current and says who said what (#974)
 - [x] Chunk 02: The boundary review judges against goals (#975)
-- [ ] Chunk 03: Commit the alignment pass's yield measure (#978)
+- [x] Chunk 03: Commit the alignment pass's yield measure (#978)
 
 ## Build Chunks
 
