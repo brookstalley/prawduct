@@ -14,6 +14,11 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`self-citing-clear`**: **a new Stop gate, `clear-reason`, refuses a `SAFE TO CLEAR` whose reason
+is the message itself**, such as "the questions are in this message". A clear deletes the message,
+so write the findings to `.prawduct/.handoff-notes.md` and give that as the reason, or name the
+commit, file or issue that holds them. A reason like "nothing changed in this turn" is unaffected.
+
 **`requirements-alignment`**: **before building, the agent aligns with you on goals, all at
 once and up front.** For any substantive request it takes one of four responses and says which:
 proceed; proceed citing a backlog item or spec; ask its questions in one batch; or hold up when it

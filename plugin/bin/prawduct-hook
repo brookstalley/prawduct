@@ -2639,7 +2639,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     (``lib/gates.turn_declares_in_flight``). The same field drives the
     clear-verdict gate, which neither deferral touches: a turn that hands the
     session over (``YOUR TURN`` / ``COMPLETE``) while saying ``DO NOT CLEAR``
-    is refused (``lib/gates.turn_contradicts_its_verdict``).
+    is refused (``lib/gates.turn_contradicts_its_verdict``), and so is a
+    ``SAFE TO CLEAR`` whose reason is the turn itself (the ``clear-reason``
+    gate, ``lib/gates.turn_cites_itself_as_record``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     stop_input = stop_input or {}
@@ -2712,6 +2714,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  A process that runs on its own (a server, a recorder, an app you\n"
             "  launched) is not that: a clear ends the conversation, not the process.\n"
             "  Name it in the copy and close `SAFE TO CLEAR`.\n"
+            "  See `/prawduct:methodology session-hygiene`.\n"
+        ))
+    # The other way a clear verdict misleads: `SAFE TO CLEAR` whose reason is
+    # the turn itself, which is exactly what a clear deletes. Its own gate id,
+    # so its firings count apart from the pair check's.
+    self_cited = _gates().turn_cites_itself_as_record(stop_input)
+    if self_cited:
+        clear_blockers.append(_attributed("clear-reason",
+            f"CLEAR VERDICT: this turn closes `SAFE TO CLEAR` and gives itself as the\n"
+            f"  record (\"{self_cited}\"). A clear deletes this message, so a reason\n"
+            "  that points at it is not a reason. Write what only this conversation\n"
+            "  holds (findings, the pending questions, where you stopped) to\n"
+            "  .prawduct/.handoff-notes.md, then give THAT as the reason, or name the\n"
+            "  commit, file or issue that already holds it.\n"
             "  See `/prawduct:methodology session-hygiene`.\n"
         ))
 
@@ -3762,9 +3778,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             )
             for blocker in verdict_deferred:
                 print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
-            # A contradiction and this deferral cannot both hold (one needs
-            # RUNNING, the other YOUR TURN or COMPLETE), so `clear_blockers` is
-            # empty on this path.
+            # Neither clear check can hold beside this deferral: a
+            # contradiction needs YOUR TURN or COMPLETE where this needs RUNNING,
+            # and a self-citation needs SAFE TO CLEAR where this needs DO NOT
+            # CLEAR. So `clear_blockers` is empty on this path.
             if not blockers:
                 _emit_stop_advisories(stop_advisories)
                 return 0

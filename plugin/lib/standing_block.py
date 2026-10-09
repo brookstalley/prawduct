@@ -38,6 +38,11 @@ hours or days later, so both owe ``SAFE TO CLEAR``: whatever only the
 conversation holds is written to disk before the turn is handed over. A block
 pairing either with ``DO NOT CLEAR`` tells its reader two incompatible things,
 and :func:`contradiction` names it so the Stop hook can refuse it.
+
+``SAFE TO CLEAR`` is a claim about disk and process state, so its stated reason
+must point at something a clear leaves behind. A reason that points at the turn
+itself ("the questions are in this message") names the one thing a clear
+deletes; :func:`self_citation` finds it so the Stop hook can refuse that too.
 """
 
 from __future__ import annotations
@@ -139,6 +144,81 @@ def contradiction(text: str) -> str | None:
         return None
     stated = disposition(text)
     return stated if stated in HANDED_OVER_DISPOSITIONS else None
+
+
+# A SAFE TO CLEAR reason that cites the turn as the record: something said to
+# BE in the turn ("the questions are in this message", "exists only in this
+# reply"), the turn said to hold it, or something said to be above or below at
+# the end of a clause. A bare "in this turn" means "during this turn" ("nothing
+# changed in this turn") and is not a citation, so the "in" form needs a verb of
+# being in front of it. "Conversation" is deliberately absent: "nothing lives
+# only in this conversation" is a sound reason, not a self-citation.
+_SELF_CITATIONS = (
+    re.compile(
+        r"(?:\b(?:is|are|lives?|sits?|stays?|exists?)|'re)(?: (?:all|only|still))? "
+        r"in (?:this|the|my) (?:message|reply|response|turn)\b",
+        re.I,
+    ),
+    re.compile(
+        r"\b(?:this|the|my) (?:message|reply|response|turn) "
+        r"(?:itself|holds|has|contains|carries|records)\b",
+        re.I,
+    ),
+    re.compile(
+        r"(?:\b(?:is|are)|'re)(?: all)? (?:above|below)(?=\s*(?:[.;,:)]|$))|\bsee above\b",
+        re.I,
+    ),
+)
+
+# A reason that also names a durable record is not resting on the turn alone
+# ("everything in this reply is also in the handoff notes").
+_DURABLE_RECORD = re.compile(
+    r"\bhandoff\b|\bnotes?\b|\bon disk\b|\bcommit(?:ted|s)?\b|\.md\b|\bbacklog\b"
+    r"|#\d+|\bfiles?\b|\bpushed\b|\bchange-log\b|\bissues?\b",
+    re.I,
+)
+
+# A clause that denies ("No open question is in this message", "nothing
+# produced here lives only in this message", "this reply has nothing unsaved")
+# is the sound reason, stated negatively. Judged per clause, so "Nothing is
+# running, and the plan is all in this message" is still a citation.
+_CLAUSE_BREAK = re.compile(r"[.;,:!?\u2014\u2013]|\s-\s|\b(?:and|but|so)\b", re.I)
+_DENIAL = re.compile(r"\b(?:no|nothing|none)\b", re.I)
+
+
+def _clause_around(text: str, start: int, end: int) -> str:
+    """The clause of ``text`` holding ``text[start:end]``."""
+    left = max((m.end() for m in _CLAUSE_BREAK.finditer(text, 0, start)), default=0)
+    right = _CLAUSE_BREAK.search(text, end)
+    return text[left:right.start() if right else len(text)]
+
+
+def self_citation(text: str) -> str | None:
+    """The phrase by which a ``SAFE TO CLEAR`` turn gives itself as the record,
+    or ``None``.
+
+    Reads only the verdict paragraph, and only when :func:`clear_verdict` reads
+    ``SAFE TO CLEAR`` there. A reason that also names a durable record (notes,
+    a commit, a file, an issue) returns ``None``, and so does a citation inside
+    a clause that denies ("no open question is in this message"): neither rests
+    on the turn alone. The match is narrow on purpose, because the caller blocks on it: a
+    miss leaves the prose rule as the only guard, as before, while a false hit
+    costs a rewritten line.
+    """
+    if clear_verdict(text) != SAFE_TO_CLEAR:
+        return None
+    reason = _paragraphs(closing_block(text))[-1]
+    at = reason.find(SAFE_TO_CLEAR)
+    if at < 0:  # unreachable while clear_verdict matches the label exactly
+        return None
+    reason = reason[at + len(SAFE_TO_CLEAR):]
+    if _DURABLE_RECORD.search(reason):
+        return None
+    for pattern in _SELF_CITATIONS:
+        for found in pattern.finditer(reason):
+            if not _DENIAL.search(_clause_around(reason, found.start(), found.end())):
+                return found.group(0)
+    return None
 
 
 def clear_verdict(text: str) -> str | None:
