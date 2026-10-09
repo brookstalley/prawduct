@@ -5,6 +5,42 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-08: four field bugs for 3.7.1 — quoted `#`, api-versioning wording, scope examples, migrate activation
+
+<!-- prawduct: type=bugfix | scope=patch-3.7.1 -->
+
+- **#790: a `#` inside a quoted scalar is data.** The advisory answer store cut every
+  `project-state.yaml` scalar at its first `#` before unquoting, so `"ratified (#774)"` read back
+  as `ratified (`. The same quote-blind split sat in `core.read_scalar_yaml_key` (every
+  `read_str_yaml_key` caller: `active_build_plan`, `test_command`, …) and its inline mirror in the
+  hook. All three now strip comments through one rule, `core.strip_scalar_comment`: a single
+  quoted scalar keeps everything through its closing quote; otherwise a comment is a `#` that
+  starts the value or follows whitespace, outside any quoted word. `foo#bar` now stays whole, as
+  YAML reads it. The answer store also unquotes through `core.unquote_scalar` instead of a bare
+  `strip("\"'")`. The issue's doctor/state workarounds never landed, so there was nothing to remove.
+  Block-list and nested readers (`core.read_yaml_block`, the hook's list mirror,
+  `coverage_probes`) still split at the first `#`; filed as #968.
+- **#813: the api-versioning advisory counts the nested decision.** It said "records no versioning
+  decision" to repos that had recorded one under `design_decisions.api_versioning_approach`, where
+  the guides say to put it, because it read only the top-level `api_versioning_decided` scalar.
+  `/prawduct:doctor`'s check already accepted either. The probe now reads the nested record from the
+  raw file (a non-null value or an attribute block; `null`, `~`, a bare key, or the key at another
+  level read as unrecorded), so either place resolves it and the two surfaces apply one rule. The
+  evidence string is unchanged, so the advisory id, and every dismissal of it, holds.
+- **#765: the change-log tag examples use a work-named scope.** The template and
+  `lib/change_log.py` showed `scope=v1.4`, while the build-plan template declares `scope:
+  pantry-v1` and a scope resolves to exactly one plan, so an entry copied from the example warned at
+  release as work with no plan. The examples now use the build-plan template's scope, and a test
+  pins that they agree.
+- **#915: `/prawduct:migrate` checks that the plugin will load before it applies.** It never ran
+  `check-plugin-active`, so a repo with no install record for its path was migrated, had its
+  legacy hook stand down, and was told it was governed. The check now runs before the destructive
+  apply, under a new `--context migrate` whose `inactive` wording names both readings (a
+  `--plugin-dir` session whose repo is ungoverned once migrated, or a stale record for a worktree
+  or moved checkout). An `inactive` result recommends installing first, the check's exit-0
+  could-not-load NOTE routes to "not established", and the closing message claims governance only
+  on `active`.
+
 ## 2026-10-08: develop opens 3.7.1-dev.2
 
 <!-- prawduct: type=chore | scope=dev-track-bump-3.7.1-dev.2 -->

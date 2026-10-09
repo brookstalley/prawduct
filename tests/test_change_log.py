@@ -796,3 +796,27 @@ class TestRetiredKeysOn:
         )
         assert entries[0].tags["chunks"] == ["01", "02"]
         assert entries[0].tags["status"] == "shipped"
+
+
+class TestShippedScopeExamplesResolve:
+    """The change-log tag examples are what a release step gets written against.
+    Their ``scope=`` must be one the build-plan template's frontmatter declares,
+    or an entry copied from them warns at release as work with no plan."""
+
+    def _example_scopes(self) -> set[str]:
+        import re
+
+        sources = (
+            (_REPO_ROOT / "templates" / "change-log.md").read_text(encoding="utf-8"),
+            change_log.__doc__ or "",
+        )
+        return {m for text in sources for m in re.findall(r"scope=([^\s|>]+)", text)}
+
+    def test_every_example_scope_is_the_build_plan_templates_scope(self):
+        from lib import plan_index
+
+        plan = (_REPO_ROOT / "templates" / "build-plan.md").read_text(encoding="utf-8")
+        _present, plan_scope = plan_index.parse_build_plan_frontmatter_scope(plan)
+        scopes = self._example_scopes()
+        assert scopes, "no scope= example found — the extraction is not reading the sources"
+        assert scopes == {plan_scope}

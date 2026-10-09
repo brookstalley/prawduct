@@ -316,6 +316,51 @@ def unquote_scalar(value: str) -> str:
     return value
 
 
+def strip_scalar_comment(value: str) -> str:
+    """A scalar's text with its trailing ``#`` comment removed, quote-aware.
+
+    A ``#`` inside a quoted scalar is data — this repo spells backlog ids
+    ``#772``, and a recorded answer quoting one must round-trip whole. So a
+    single quoted scalar keeps everything through its closing quote (honouring
+    its escapes), and only what follows can be a comment. Otherwise a comment
+    starts at a ``#`` that begins the value or follows whitespace (YAML's rule,
+    so ``foo#bar`` stays whole) and sits outside any quoted word — a declared
+    command is several quoted words (``"$VENV/bin/pytest" -k "not #slow"``), and
+    a quote only opens a word, so the apostrophe in ``Ada's`` opens nothing.
+    An unterminated quote keeps the rest of the line rather than guessing where
+    it meant to end.
+    """
+    value = value.strip()
+    if value[:1] in ("\"", "'"):
+        quote = value[0]
+        i = 1
+        while i < len(value):
+            if quote == '"' and value[i] == "\\":
+                i += 2
+                continue
+            if value[i] == quote:
+                if quote == "'" and value[i + 1:i + 2] == "'":
+                    i += 2  # '' is an escaped quote inside a single-quoted scalar
+                    continue
+                rest = value[i + 1:].lstrip()
+                if not rest or rest[0] == "#":
+                    return value[: i + 1]
+                break  # several quoted words, not one quoted scalar
+            i += 1
+        else:
+            return value
+    in_quote = None
+    for i, char in enumerate(value):
+        if in_quote:
+            if char == in_quote:
+                in_quote = None
+        elif char in ("\"", "'") and (i == 0 or value[i - 1] in " \t"):
+            in_quote = char
+        elif char == "#" and (i == 0 or value[i - 1] in " \t"):
+            return value[:i].rstrip()
+    return value
+
+
 def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]":
     """``(state, value)`` for a top-level (column-0) ``key: value`` scalar.
 
@@ -344,10 +389,9 @@ def read_scalar_yaml_key(state_path: Path, key: str) -> "tuple[str, str | None]"
     for raw in content.splitlines():
         if raw[:1] in (" ", "\t"):
             continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith(needle):
+        if not raw.startswith(needle):
             continue
-        value = unquote_scalar(line.split(":", 1)[1].strip())
+        value = unquote_scalar(strip_scalar_comment(raw[len(needle):]))
         if not value or value.lower() in ("null", "~"):
             return YAML_SCALAR_NULL, None
         return YAML_SCALAR_VALUE, value

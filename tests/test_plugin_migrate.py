@@ -889,6 +889,25 @@ def test_migrate_skill_exists_and_is_scoped():
     assert "Bash(...)" not in text and "Bash(*)" not in text
 
 
+def test_migrate_proves_activation_before_it_applies():
+    # Migration stands the legacy hook down, so a repo with no install record for
+    # this path ends ungoverned. The skill must be granted the activation check,
+    # run it before the destructive apply, and gate its success claim on it.
+    text = (ROOT / "skills" / "migrate" / "SKILL.md").read_text()
+    frontmatter = text.split("---", 2)[1]
+    assert "Bash(prawduct-hook check-plugin-active*)" in frontmatter
+    flow = text.split("## Flow", 1)[1]
+    check = flow.index("prawduct-hook check-plugin-active --context migrate")
+    apply_ = flow.index("prawduct-hook migrate-plugin --apply")
+    assert check < apply_, "activation must be checked before the cutover is applied"
+    for status in ("`active`", "`inactive`", "`unknown`"):
+        assert status in flow[check:apply_]
+    # The lib-import failure exits 0 with a NOTE and no status word; the step
+    # must route that to unknown rather than read exit 0 as active.
+    assert "starts `NOTE:`" in flow[check:apply_]
+    assert "Only on an `active` result" in flow[apply_:]
+
+
 def test_hook_dispatches_migrate_plugin():
     src = HOOK.read_text()
     assert 'command == "migrate-plugin"' in src

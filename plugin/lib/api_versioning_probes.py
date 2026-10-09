@@ -29,9 +29,11 @@ this leg's.
 
 **Force the decision, don't mandate the answer.** The nudge is ``info``-priority
 and dismissable; a legitimately-unversioned internal API silences it with one
-recorded fact (``api_versioning_decided`` — "none — internal-only" is a valid
-recorded decision). Resolution is the committed answer-store fact, so a
-teammate's recorded decision clears the advisory for everyone on next sync.
+recorded decision ("none — internal-only" is a valid one), under
+``design_decisions.api_versioning_approach`` or as the top-level
+``api_versioning_decided`` short form. Both live in the committed
+``project-state.yaml``, so a teammate's recorded decision clears the advisory
+for everyone on next sync.
 
 Detection is a polyglot ``Codebase`` scan (the motivating product, scriob, is a
 JS/TS app — a Python-only scan would miss the very case this feature exists for):
@@ -49,18 +51,22 @@ import re
 from dataclasses import dataclass
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
+from .core import strip_scalar_comment, unquote_scalar
+from .coverage_probes import _opens_nested_block
 
 FEATURE = "api-design"
 PROBE_TYPE = "api-versioning"
 PROBE_VERSION = 1
 
-# The answer-store fact (top-level scalar; Chunk 01 documents it in
-# templates/project-state.yaml). Truthy = a versioning + deprecation decision, an
-# explicit dated deferral, or "none — internal-only" was recorded → suppress.
-# Top-level on purpose: load_project_state reads only column-0 scalars, so the
-# probe cannot consult nested classification.structural.* — this flat mirror is
-# the readable resolution signal.
+# The two places a decision may be recorded; either one suppresses the nudge,
+# the same rule `/prawduct:doctor`'s API-versioning check applies. The nested
+# record is where the discovery and planning guides put it; the top-level
+# answer-store fact is the short form. load_project_state reads only column-0
+# scalars, so the nested record is read from the raw file
+# (:func:`_nested_decision_recorded`).
 RESOLUTION_FACT = "api_versioning_decided"
+NESTED_BLOCK = "design_decisions"
+NESTED_KEY = "api_versioning_approach"
 
 # Python web/API frameworks — import-detected (Codebase.has_imports scans *.py).
 # `rest_framework` is Django REST Framework's import name (the "django-rest"
@@ -106,12 +112,54 @@ def _exposes_api(codebase: Codebase) -> bool:
     return False
 
 
+def _nested_decision_recorded(codebase: Codebase) -> bool:
+    """True when ``design_decisions.api_versioning_approach`` holds a decision.
+
+    A decision is a non-null inline value (including "none — internal-only", a
+    decision like any other) or a nested attribute block under the key. The
+    template's ``null``, a missing key, and an unreadable file all read as
+    unrecorded, so the nudge fails toward speaking, as the flat fact's own
+    absence does. The key level is the first indent seen under the block, so a
+    file reformatted to other indent steps still reads.
+    """
+    path = codebase.root / ".prawduct" / "project-state.yaml"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return False
+    in_block = False
+    key_indent: int | None = None
+    for idx, line in enumerate(lines):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent == 0:
+            in_block = line.startswith(f"{NESTED_BLOCK}:")
+            key_indent = None
+            continue
+        if not in_block:
+            continue
+        if key_indent is None:
+            key_indent = indent
+        if indent != key_indent:
+            continue
+        key, _, rest = line.strip().partition(":")
+        if key != NESTED_KEY:
+            continue
+        value = unquote_scalar(strip_scalar_comment(rest))
+        if value:
+            return value.lower() not in ("null", "~")
+        return _opens_nested_block(lines, idx, key_indent)
+    return False
+
+
 def probe_api_versioning_undecided(state: ProjectState, codebase: Codebase):
     """Fire when the repo exposes an API but no versioning decision is recorded.
 
-    Suppressed when (a) the ``api_versioning_decided`` answer-store fact is truthy
-    (a decision, a dated deferral, or "none — internal-only" was recorded), or
-    (b) no exposed API is detected. Both reads are non-raising, and ``run_all_probes``
+    Suppressed when (a) a decision is recorded — the ``api_versioning_decided``
+    answer-store fact is truthy, or ``design_decisions.api_versioning_approach``
+    holds one (a scheme, a dated deferral, or "none — internal-only") — or
+    (b) no exposed API is detected. Every read is non-raising, and ``run_all_probes``
     additionally guards each probe, so a faulty scan fails open (no nudge) rather
     than blocking the sync — no broad ``except`` is needed in the probe body.
 
@@ -119,21 +167,25 @@ def probe_api_versioning_undecided(state: ProjectState, codebase: Codebase):
     advisory id, so the id stays put regardless of which signal tripped) — the
     nudge is one stable advisory, not a churn of per-framework ids (D14).
     """
-    if state.get(RESOLUTION_FACT):
+    if state.get(RESOLUTION_FACT) or _nested_decision_recorded(codebase):
         return []
     if not _exposes_api(codebase):
         return []
     return [
         AdvisoryCandidate(
             type=PROBE_TYPE,
+            # Unchanged wording on purpose: evidence is hashed into the advisory
+            # id, so rewording it would re-raise every dismissed nudge.
             evidence=(
                 "the product exposes an API but no versioning/deprecation decision "
                 "is recorded (design_decisions.api_versioning_approach)",
             ),
             trigger_summary=(
                 "This product exposes an API but records no versioning decision — "
-                "choose a versioning + deprecation scheme (or a dated deferral, or "
-                "\"none — internal-only\") and record it to silence this nudge"
+                f"neither design_decisions.{NESTED_KEY} nor the top-level "
+                f"`{RESOLUTION_FACT}` is set. Choose a versioning + deprecation scheme "
+                "(or a dated deferral, or \"none — internal-only\") and record it in "
+                "either to silence this nudge"
             ),
             owner_action=(
                 "Decide how this product's interface is allowed to change: versioned, free "

@@ -255,3 +255,49 @@ class TestScalarUnquoting:
         path.write_text(text, encoding="utf-8")
         assert read_str_yaml_key(path, "test_command") == self.CASES[text]
         assert _hook._read_str_yaml_key(path, "test_command") == self.CASES[text]
+
+
+class TestScalarCommentStripping:
+    """A ``#`` inside a quoted scalar is data, not a comment — backlog ids are
+    spelled ``#772`` and a recorded answer quoting one must read back whole.
+    Every scalar reader (lib's, the hook's mirror, the advisory answer store)
+    strips comments through the same rule, so they agree here."""
+
+    CASES = {
+        'k: "ratified (#774); migrate:#772"\n': "ratified (#774); migrate:#772",
+        "k: 'see #12'  # trailing\n": "see #12",
+        # An escaped quote does not close the scalar; the value keeps its quotes
+        # because unquote_scalar declines to unescape, but the `#` survives.
+        'k: "a \\" #b"\n': '"a \\" #b"',
+        "k: 'it''s #1'\n": "'it''s #1'",
+        'k: "$VENV/bin/pytest" -k "not #slow"  # c\n': '"$VENV/bin/pytest" -k "not #slow"',
+        "k: Ada's app # c\n": "Ada's app",
+        "k: value  # a trailing comment\n": "value",
+        "k: value\t# tab before the comment\n": "value",
+        "k: foo#bar\n": "foo#bar",
+        "k: # only a comment\n": None,
+        'k: "unterminated #x\n': '"unterminated #x',
+    }
+
+    @pytest.mark.parametrize("text", sorted(CASES))
+    def test_lib_and_hook_readers_agree(self, tmp_path, text):
+        from lib.core import read_str_yaml_key
+
+        path = tmp_path / "project-state.yaml"
+        path.write_text(text, encoding="utf-8")
+        assert read_str_yaml_key(path, "k") == self.CASES[text]
+        assert _hook._read_str_yaml_key(path, "k") == self.CASES[text]
+
+    @pytest.mark.parametrize("text", sorted(CASES))
+    def test_advisory_answer_store_agrees(self, tmp_path, text):
+        from lib.advisory_store import load_project_state
+
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text(text, encoding="utf-8")
+        assert load_project_state(tmp_path).get("k") == self.CASES[text]
+
+    @pytest.mark.parametrize("value", ["", "  ", "a", "#", '"', "'", "x #", '"a"#b', "a\\", '"a" b #c', "it's #x"])
+    def test_hook_mirror_matches_lib_on_raw_values(self, value):
+        from lib.core import strip_scalar_comment
+
+        assert _hook._strip_scalar_comment(value) == strip_scalar_comment(value)

@@ -3,7 +3,7 @@ description: Migrate this repo from committed file-sync framework files onto the
 argument-hint: ""
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook migrate-plugin*), Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Read, Glob
+allowed-tools: Bash(prawduct-hook migrate-plugin*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Read, Glob
 ---
 
 You are performing the **file-sync → plugin cutover** for the current repo. This is the
@@ -62,14 +62,28 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
      `state_keys_removed` keys, and the `gitignored` marker. Surface that this is destructive
      but reversible.
 
-3. **Confirm intent** with the user before mutating anything. **Name `state_keys_removed` in
+3. **Prove the plugin will load here.** Run `prawduct-hook check-plugin-active --context migrate`.
+   Running this skill does not prove it: the install record decides what loads next session, and a
+   session started with `--plugin-dir`, or a checkout the record does not name, has the plugin now
+   and possibly none next session. Once migrated, the legacy file-sync hook stands down, so a repo
+   with no install record goes from governed to **ungoverned** — no briefing, no `/prawduct:*`
+   skills, no Stop-hook gates — and nothing left in it can say so. Route on what it prints, not on
+   the exit code alone (two of these exit 0):
+
+   | Output | Status | What to do |
+   |---|---|---|
+   | starts `active:` (exit 0) | `active` | Continue. |
+   | starts `inactive:` (exit 1) | `inactive` | Relay the command's own output (it names the exact `claude plugin install` line) and **recommend installing before applying**. Proceed only if the operator says to, and then never report the repo as governed (step 7). |
+   | starts `NOTE:` (exit 3, or exit 0 when the check could not load) | `unknown` | Say activation **was not established**, never that it passed; carry that into the confirmation and step 7. |
+
+4. **Confirm intent** with the user before mutating anything. **Name `state_keys_removed` in
    the confirmation** when it is non-empty — it is the one part of the blast radius that lands
    inside a file the product hand-authored, so it is the part an operator would want to have
    been told about rather than to discover in the diff.
 
-4. **Apply.** Run `prawduct-hook migrate-plugin --apply --json`. Relay the result.
+5. **Apply.** Run `prawduct-hook migrate-plugin --apply --json`. Relay the result.
 
-5. **Review + commit as one commit.** Run `git status --short` and skim `git diff --stat` to
+6. **Review + commit as one commit.** Run `git status --short` and skim `git diff --stat` to
    confirm the change set matches the plan and that no product file under `.prawduct/`
    (learnings, backlog, change-log, artifacts) was modified. Then:
    ```
@@ -81,10 +95,12 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    all non-framework files are preserved. Reversible via git revert."
    ```
 
-6. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
+7. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
    Stop hook + SessionStart digest, skills are `/prawduct:*`, and framework updates arrive via
-   the marketplace with zero repo diff. If the plugin was loaded via `--plugin-dir` for this
-   session, no restart is needed; if they just installed it, a reopen activates it.
+   the marketplace with zero repo diff. **Only on an `active` result from step 3** — after
+   `inactive` say the files migrated but the repo is ungoverned until they run the install line;
+   after `unknown`, say activation was not established and to confirm by reopening the repo and
+   looking for the prawduct session briefing. If they just installed it, a reopen activates it.
 
 ## Notes
 
