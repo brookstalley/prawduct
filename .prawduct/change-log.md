@@ -5,6 +5,21 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-09: a SAFE TO CLEAR that cites the message is refused
+
+<!-- prawduct: type=fix | scope=self-citing-clear -->
+
+- **The `clear-verdict` Stop gate refuses a `SAFE TO CLEAR` whose reason is the turn itself**
+  (#977). Before, the gate caught only `YOUR TURN`/`COMPLETE` with `DO NOT CLEAR`. That was
+  checked by running a red case, which passed straight through. So "the questions are in this
+  message" relied on recall, and the wave-1 trial missed it in 2 of 7 agents. `standing_block.self_citation`
+  matches the reason paragraph narrowly. It looks for the message, reply, response or turn named
+  as where something is or what holds it, or for something said to sit above or below. A reason
+  that names a durable record (notes, a commit, a file, an issue), or denies that anything lives
+  only in the message, passes. Tuned on this machine's transcripts: 15 of 1,252 `SAFE TO CLEAR`
+  closes match, and each reads as a genuine instance. The refusal costs one rewritten line. No
+  new gate id: it joins the gate's recorded NFR exception, whose text now names it.
+
 ## 2026-10-09: the review judges against goals, the brief stays current, and the pass is measured
 
 <!-- prawduct: type=methodology | scope=requirements-alignment-w2 -->

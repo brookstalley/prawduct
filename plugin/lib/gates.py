@@ -952,6 +952,22 @@ def turn_contradicts_its_verdict(stop_input) -> str | None:
     return standing_block.contradiction(message)
 
 
+def turn_cites_itself_as_record(stop_input) -> str | None:
+    """The phrase by which a turn closing ``SAFE TO CLEAR`` gives itself as the
+    record (``standing_block.self_citation``), or ``None``.
+
+    ``SAFE TO CLEAR`` tells a reader who may return days later that a clear
+    loses nothing. A reason that points at the turn ("the questions are in this
+    message") points at what the clear deletes. Same payload handling as
+    :func:`turn_contradicts_its_verdict`: a missing field or an unclear block
+    returns ``None``, because the caller blocks on it.
+    """
+    message = _last_message(stop_input)
+    if message is None:
+        return None
+    return standing_block.self_citation(message)
+
+
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _CRITIC_MODE_FINAL = "final (full review, ready for push)"
 _CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"

@@ -59,7 +59,7 @@
       "id": "clear-verdict",
       "name": "clear-verdict",
       "since": "3.7.0",
-      "summary": "a turn that hands the session over (`YOUR TURN` or `COMPLETE`) must close `SAFE TO CLEAR`; `DO NOT CLEAR` belongs only to a `RUNNING` turn"
+      "summary": "a turn that hands the session over (`YOUR TURN` or `COMPLETE`) must close `SAFE TO CLEAR`; `DO NOT CLEAR` belongs only to a `RUNNING` turn; and a `SAFE TO CLEAR` reason must not be the turn itself"
     }
   ]
 }

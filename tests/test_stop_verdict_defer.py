@@ -11,14 +11,16 @@ fails closed.
 
 ``YOUR TURN`` or ``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the
 reader is handed the session and told not to end it, and may sit on both for
-days — so it defers nothing and the clear-verdict gate refuses it.
+days — so it defers nothing and the clear-verdict gate refuses it. The same
+gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
+questions are in this message"), because a clear deletes exactly that (#977).
 
 Three layers, each pinned where it can fail:
 
 * ``standing_block`` — what counts as the closing verdict and the disposition,
   and when the two contradict;
-* ``gates.turn_declares_in_flight`` / ``turn_contradicts_its_verdict`` — the
-  payload degradation ladder;
+* ``gates.turn_declares_in_flight`` / ``turn_contradicts_its_verdict`` /
+  ``turn_cites_itself_as_record`` — the payload degradation ladder;
 * ``prawduct-hook stop`` end to end — which blockers defer and which do not.
 
 The payload shape is the one Claude Code 2.1.282 writes to a Stop hook's stdin,
@@ -228,6 +230,66 @@ class TestContradiction:
         )
 
 
+# Self-citing reasons, verbatim from the 2026-10-09 wave-1 trial (#977) and from
+# consumer-repo transcripts, plus session-hygiene.md's own example of the tell.
+SELF_CITING_REASONS = [
+    ("the questions are in this message", "in this message"),
+    ("this message holds the whole ask", "this message holds"),
+    ("the analysis is above", "is above"),
+    ("The plan exists only in this reply, so clearing now would lose it.", "in this reply"),
+    ("Nothing is in flight. This message has the full recommendation.", "This message has"),
+]
+# Sound reasons that use the same words: each must pass.
+SOUND_REASONS = [
+    "the decision is in the notes.",
+    "nothing lives only in this conversation.",
+    "the findings above are in .prawduct/.handoff-notes.md.",
+    "no files changed in this turn.",
+    "nothing is outstanding.",
+    "everything in this reply is also in the handoff notes.",
+    "No work is in flight and nothing produced here lives only in this message.",
+    "Every finding is saved as a comment on its issue, so none of it exists only in this message.",
+]
+
+
+class TestSelfCitation:
+    @pytest.mark.parametrize(("reason", "phrase"), SELF_CITING_REASONS)
+    def test_a_reason_that_is_the_turn_is_named(self, reason, phrase):
+        assert standing_block.self_citation(
+            _block("YOUR TURN", "SAFE TO CLEAR", reason)
+        ) == phrase
+
+    def test_the_bolded_label_form_is_read(self):
+        text = (
+            "Three questions.\n\n---\n\n**STATE:** nothing changed.\n\n"
+            "**YOUR TURN:** answer them.\n\n"
+            "**SAFE TO CLEAR:** the questions are in this message"
+        )
+        assert standing_block.self_citation(text) == "in this message"
+
+    @pytest.mark.parametrize("reason", SOUND_REASONS)
+    def test_a_sound_reason_passes(self, reason):
+        assert standing_block.self_citation(
+            _block("YOUR TURN", "SAFE TO CLEAR", reason)
+        ) is None
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # DO NOT CLEAR says nothing about what survives a clear.
+            _block("RUNNING", "DO NOT CLEAR", "the questions are in this message."),
+            # The phrase outside the verdict paragraph is prose, not the reason.
+            "The questions are in this message.\n\n---\n\n`STATE` — none.\n\n"
+            "`YOUR TURN` — answer.\n\n`SAFE TO CLEAR` — the questions are in the notes.",
+            "Just an answer; it is all in this message.",
+            "",
+        ],
+        ids=["dnc", "phrase-above-verdict", "no-block", "empty"],
+    )
+    def test_no_safe_verdict_names_nothing(self, text):
+        assert standing_block.self_citation(text) is None
+
+
 # ---------------------------------------------------------------------------
 # The payload ladder
 # ---------------------------------------------------------------------------
@@ -277,6 +339,23 @@ class TestTurnDeclaresInFlight:
     )
     def test_contradiction_ladder(self, stop_input, expected):
         assert gates.turn_contradicts_its_verdict(stop_input) == expected
+
+    @pytest.mark.parametrize(
+        ("stop_input", "expected"),
+        [
+            ({"last_assistant_message": _block(
+                "YOUR TURN", "SAFE TO CLEAR", "the questions are in this message.")},
+             "in this message"),
+            ({"last_assistant_message": ASK_SAFE_TURN}, None),
+            ({"last_assistant_message": ASK_DNC_TURN}, None),
+            ({"last_assistant_message": None}, None),
+            ({}, None),
+            ("not a dict", None),
+        ],
+        ids=["self-citing", "your-turn-safe", "your-turn-dnc", "null", "empty", "str"],
+    )
+    def test_self_citation_ladder(self, stop_input, expected):
+        assert gates.turn_cites_itself_as_record(stop_input) == expected
 
     def test_transcript_is_not_a_fallback(self, tmp_path):
         """With the field absent, a transcript that DOES close on DO NOT CLEAR is
@@ -510,6 +589,28 @@ class TestClearVerdictGate:
         blocked = _blocked_section(result.stderr)
         assert "gate: clear-verdict" in blocked
         assert "gate: critic-review" not in blocked
+
+    @pytest.mark.parametrize(("reason", "phrase"), SELF_CITING_REASONS[:3])
+    def test_a_self_citing_safe_to_clear_blocks(self, tmp_path, reason, phrase):
+        """The trial's phrasings: no other gate fires, so the reason alone blocks."""
+        self._quiet_repo(tmp_path)
+        message = _block("YOUR TURN", "SAFE TO CLEAR", reason)
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(message))
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        blocked = _blocked_section(result.stderr)
+        assert "gate: clear-verdict" in blocked
+        assert f'("{phrase}")' in blocked
+        assert ".prawduct/.handoff-notes.md" in blocked
+
+    def test_background_work_does_not_swallow_a_self_citation(self, tmp_path):
+        _plan_repo(tmp_path, reflected=True)
+        stdin = _payload(
+            _block("YOUR TURN", "SAFE TO CLEAR", "the questions are in this message."),
+            background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
+        )
+        result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "gate: clear-verdict" in _blocked_section(result.stderr)
 
     def test_the_gate_has_a_registry_row(self):
         registry = json.loads((PLUGIN / "hooks" / "gates.json").read_text())

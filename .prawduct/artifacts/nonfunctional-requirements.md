@@ -44,7 +44,8 @@ last_validated: null
   referring path when it moves (the sibling #13 cite two lines below already carries the
   post-archive form, and had to be edited by hand to get there).
   Live exception: **the `clear-verdict` Stop gate** (shipped with `clear-verdict-coherence`,
-  2026-09-27; it refuses a turn closing `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR`) is a
+  2026-09-27; it refuses a turn closing `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR`, and since
+  2026-10-09 (#977) a `SAFE TO CLEAR` whose stated reason is the turn itself) is a
   recorded **bounded exception** to the emission arm, on the `check-branch-pushed` grounds above:
   the ledger's non-review kinds are the derived `learning.*` pair, and a `gate.*` kind for one
   Stop gate is a persisted-format lock-in taken for a single control. The right home is one
@@ -52,7 +53,10 @@ last_validated: null
   **Why a gate and not prose alone:** the pair was reported across every consuming repo, and a
   standing-block rule is one the agent must RECALL at the turn's last line. The digest has no
   headroom left to restate it, and a refusal that costs one rewritten paragraph is the cheapest
-  mechanism that does not depend on recall.
+  mechanism that does not depend on recall. The self-citing check joined the same gate on the
+  same ground: the 2026-10-09 wave-1 trial had 2 of 7 fresh agents give the message as the record
+  despite the prose rule, and 15 of 1,252 `SAFE TO CLEAR` closes in this machine's transcripts
+  matched it, each on reading a genuine instance (a narrow phrase match, tuned on that corpus).
   **Expected yield, named now so the query has something to answer:** firings should fall
   toward zero, because the corrected precedence rule and the narrowed deferral remove both reasons
   the pair was written. Firings that persist a quarter after release are evidence the prose alone
