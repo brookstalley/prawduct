@@ -36,21 +36,24 @@ There are no phases. The depth of governance scales with two dimensions:
 
 Classification heuristic: file count is a proxy for risk. 1-2 files = trivial/small; 3-4 files = small; 5+ files = medium; new directory structure or API surface = large. Whatever the count, a change that crosses a contract surface, adds a dependency, or touches state outliving the process is at least medium.
 
-## Before You Build: Confidence Check
+## Before You Build: The Alignment Pass
 
-Before any non-trivial work cycle, answer three questions in one sentence each:
+Before non-trivial work, judge how clear the goals already are (request, brief, backlog) against how much work and risk lie ahead, take one of four responses, and **say which in a line** — that acknowledgement is how the owner catches a misreading before it is built:
 
-1. **What problem are we solving?** (Observable, not abstract.)
-2. **What does success look like?** "User can do X and see Y," not "it works."
-3. **What's out of scope?** What you're deliberately not doing.
+- **Proceed** — clear by nature, however large: a bug with a repro defines its own success. Restate the target and go.
+- **Proceed, citing it** — a backlog item or spec already says what this is for, what success is, and what is out of scope. Restate its goals, name what it leaves open and what you inferred there, and go.
+- **Ask, in one batch** — a high-level goal or key architecture choice is missing. Lead with your own reading, so the owner corrects rather than authors.
+- **Hold up** — a lot of work and goals you don't understand: offer to discuss, or to use best judgment. Best judgment is a legitimate answer; proceed with your inferences written down for the boundary review to show the owner.
 
-If any can't be answered, requirements aren't clear enough (Principle 6 — Requirements Precede Code). Three options: **close the gap** with one targeted question or an inference to confirm; **sketch and confirm** by writing the answers and presenting them; or **proceed knowingly** by declaring the unknowns in the plan's Requirements Confidence as Medium or Low. Surface unknowns early — never silently build on guesses. Apply for any chunk that touches behavior; skip for trivial (typo, config). For unclear or multi-file work, Plan Mode is the native clarify-before-build vehicle. Same model as `discovery.md` "Calibrate Rigor".
+This is the moment for questions: the owner's intent is the one thing you cannot verify, and an owner would rather answer everything now than have a long build stop for it. The written form is the plan's `## Goals` (`methodology/planning.md`); Plan Mode is a native vehicle (Principles 6 and 20). **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
 
-**Re-check the plan's `[ASSUMPTION: …]` entries as code reveals new facts.** They are recorded at plan time and, unchecked, stay recorded: an assumption nobody revisited is a decision taken on the user's behalf that nobody confirmed.
+### Deciding Mid-Build
+
+Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, or work out of proportion to the benefit. Prefer the durable choice to the merely reversible one. Record each decision in a line naming what settled it; one the goals did not settle is an alignment-pass miss — flag it for the boundary review.
 
 ### A Requirement Surfaced Mid-Build
 
-The Confidence Check runs at a chunk's *start*; requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently in chat and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume.*
+Requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently in chat and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume* — one you write is an inference, flagged for the boundary.
 
 ### A Norm Surfaced Mid-Build
 
@@ -217,8 +220,6 @@ A broad catch is legitimate at system boundaries, event loops and top-level supe
 **Tuning a mechanism you haven't read**: read it first (Principle 24).
 
 **Boundary blindness**: Modifying a contract surface without checking consumers. The canary catches this at session end; checking proactively is cheaper.
-
-**Pacing blindness**: Asking implementation questions when the user is waiting for progress. Decide autonomously on minor details unless genuinely blocked.
 
 **Unnecessary backwards compatibility**: Adding migration paths or fallbacks when there's no existing deployment to migrate. Backwards compatibility is a requirement to be elicited, not an assumption.
 

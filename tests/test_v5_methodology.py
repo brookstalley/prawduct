@@ -468,7 +468,12 @@ LAST_MEASURED_TOKENS = {
     # delegate's sweep (B-10) cut; bold emphasis trimmed (B-27). B-16's rule for
     # when a chunk boundary ends the turn was paid for from those cuts, and so
     # was the 3-4-file size the cumulative review found B-25 had dropped (-43 net).
-    "methodology/building.md": 5079,
+    # RAISED 5079 -> 5294 (requirements-alignment w1, 2026-10-09, owner decision): the
+    # Confidence Check becomes the alignment pass (four responses, each acknowledged) and
+    # a new Deciding Mid-Build states the owner's durable-first order. Compressed in place
+    # first (-150 from the first draft); paid in part by deleting the "Pacing blindness"
+    # trap, which Deciding Mid-Build supersedes. DECLARED for the rest: new obligations.
+    "methodology/building.md": 5294,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -626,7 +631,9 @@ LAST_MEASURED_TOKENS = {
     # +10 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -523 on 2026-09-28 (opus-55-w3b), C-20: the Coordinator Pattern moves to coordinator.md; the ceiling lowered with it.
-    "skills/critic/review-protocol.md": 3803,
+    # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks Goals instead of
+    # Requirements Confidence, in a shorter line that also accepts older plans.
+    "skills/critic/review-protocol.md": 3794,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -723,7 +730,9 @@ LAST_MEASURED_TOKENS = {
     # prompt audit's slice C; the ceiling lowered with it.
     # +5 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
-    "skills/critic/goals-1-3.md": 2667,
+    # -8 on 2026-10-09 (requirements-alignment w1): Goal 2 checks Goals instead of
+    # Requirements Confidence, in a shorter line that also accepts older plans.
+    "skills/critic/goals-1-3.md": 2659,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1215,7 +1224,11 @@ LAST_MEASURED_TOKENS = {
     # +13 on 2026-09-30 (sibling-hook-perf): the Type field's allowed values
     # name `building.md`'s work types as aliases read as `code` (#934), which
     # authors wrote and the parser used to reject. A READING, no ceiling.
-    "methodology/planning.md": 5722,
+    # +25 on 2026-10-09 (requirements-alignment w1): Requirements Confidence becomes
+    # Goals — the response taken, product/architecture goals, constraints, tradeoffs and
+    # accepted debt, inferences marked in prose. The bracketed [ASSUMPTION] form and its
+    # three-level list were removed to pay for most of it. A READING, no ceiling.
+    "methodology/planning.md": 5747,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3290,7 +3303,8 @@ class TestBuildingMethodology:
         # RAISED 5117 -> 5123 (clear-verdict-coherence, 2026-09-27) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5123 -> 5080 (opus-55-w4, 2026-09-28): slice B's cuts, one over
         # the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 5080, f"building.md is ~{tokens} tokens, should be <5080"
+        # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5295, f"building.md is ~{tokens} tokens, should be <5295"
 
 
 # =============================================================================
@@ -4994,7 +5008,8 @@ class TestCriticSkill:
         # RATCHETED 4356 -> 4350 (review-interval-extension, 2026-09-22) with the reading.
         # RAISED 4350 -> 4393 (reviewer-prompt-file-list, 2026-09-22) — see LAST_MEASURED_TOKENS.
         # RAISED 4393 -> 4400 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3804, f"review-protocol.md is ~{tokens} tokens, should be <3804"
+        # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
+        assert tokens < 3795, f"review-protocol.md is ~{tokens} tokens, should be <3795"
 
 
 # =============================================================================
@@ -5275,7 +5290,8 @@ class TestCriticGoals13:
         # BLOCKING set, stated in full because this file may point nowhere —
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
-        assert tokens < 2668, f"goals-1-3.md is ~{tokens} tokens, should be <2668"
+        # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
+        assert tokens < 2660, f"goals-1-3.md is ~{tokens} tokens, should be <2660"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5342,7 +5358,7 @@ class TestCriticGoals13:
             "test-status", "verify-coverage", "missing-coverage:", "pre-existing",
             "exact-match", "property-based", "injection", "hardcoded secrets",
             "trust boundaries", "explicitly descoped", "observable behavior",
-            "Requirements Confidence", "record_lint", "project-preferences.md",
+            "Goals present", "record_lint", "project-preferences.md",
             "accessibility", "infrastructure_dependencies", "Foreign API",
             "Exposed API", "api_error_model_approach", "operator-verification",
             "unlisted dependencies", "undocumented architectural", "broad exception",

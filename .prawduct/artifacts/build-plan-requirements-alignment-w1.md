@@ -66,7 +66,7 @@ The open part is wording, which chunk 03 trials.
 
 ## Status
 
-- [ ] Chunk 01: The alignment pass and durable-first decisions in the build cycle
+- [x] Chunk 01: The alignment pass and durable-first decisions in the build cycle
 - [ ] Chunk 02: Every repo hears it — discovery, principles, brief, digest, and the sweep
 - [ ] Chunk 03: Guidance trial on replayed audit requests
 
@@ -103,7 +103,7 @@ The open part is wording, which chunk 03 trials.
 - **Acceptance criteria:**
   - A falsifying grep for "Confidence Check" and "Requirements Confidence" across `plugin/`,
     `documentation/` (excluding archives), and `tests/` returns only deliberate historical
-    mentions.
+    mentions, or surfaces chunk 02 owns (`discovery.md`, the digest, the work-model docs).
   - Each of the four responses is defined in exactly one place, `building.md`.
 - **Done when:**
   1. Acceptance criteria met and tests pass
