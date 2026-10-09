@@ -87,6 +87,7 @@ downgrade.
 ### 5. Decisions Were Deliberate
 - **A decision without a recorded why** → **WARNING**: a new external dependency, an architectural pattern, or a major technology choice with alternatives considered, each in the artifact that owns it.
 - If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was *downstream* consumer impact investigated? → **WARNING** if no evidence. The inverse — a consumer mismodelling what the producer emits — is Goal 1's cross-component contract check, not this one.
+- **Judged against the goals:** the `## Goals` of the build plan the manifest names, and the product brief's near-term and North Star where there is a brief, not only the chunks. Work that drops or alters a goal the owner stated → **BLOCKING** under Goal 2 (a dropped requirement); a goal still marked inferred → **WARNING** naming it. List the plan's mid-build decisions, what settled each and any alignment-pass miss, in one **NOTE** (recommendation scope `none`) for the owner.
 - **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. Goal 3 asks whether the work exceeded its *plan*; this asks whether the plan traced to a *requirement*, and whether anything reaches the result. Open the title with `scope-trace:` so its yield stays countable.
 
 ### 6. The System Can Be Understood

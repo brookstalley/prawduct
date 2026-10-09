@@ -216,7 +216,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
-    "single-pass-full": 11421,
+    # +104 on 2026-10-09 (requirements-alignment w2, #975), DECLARED: Goal 5 judges the work against
+    # the plan's Goals and the brief, reports a goal still marked inferred, and lists the mid-build
+    # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
+    # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
+    # almost entirely to goals the plan misread, the level no other check here reads.
+    "single-pass-full": 11525,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -279,18 +284,28 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
-    "dispatched-reviewer": 10852,
+    # +104 on 2026-10-09 (requirements-alignment w2, #975), DECLARED: Goal 5 judges the work against
+    # the plan's Goals and the brief, reports a goal still marked inferred, and lists the mid-build
+    # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
+    # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
+    # almost entirely to goals the plan misread, the level no other check here reads.
+    "dispatched-reviewer": 10956,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
-    "coordinator-fork": 12015,
+    # +104 on 2026-10-09 (requirements-alignment w2, #975), DECLARED: Goal 5 judges the work against
+    # the plan's Goals and the brief, reports a goal still marked inferred, and lists the mid-build
+    # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
+    # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
+    # almost entirely to goals the plan misread, the level no other check here reads.
+    "coordinator-fork": 12119,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5799,
-    "single-pass-full": 11422,
-    "dispatched-reviewer": 10853,
-    "coordinator-fork": 12016,
+    "single-pass-full": 11526,
+    "dispatched-reviewer": 10957,
+    "coordinator-fork": 12120,
 }
 
 
