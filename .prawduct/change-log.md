@@ -24,6 +24,9 @@
   batch before building and never mid-build. The brief template gains a near-term goal and a North
   Star, and `discovery.md` says to ask which qualities of an owner's example matter before any one
   becomes a rule.
+  `scope.accommodate` is now read where plans state their architecture goals, and the brief and
+  project-state templates describe it as what every alignment pass keeps possible. Backlog `pick`
+  notes that a ready item's pass is usually "proceed, citing it".
 - **Retired vocabulary is tested out of live prose.** A test fails on Requirements Confidence,
   `[ASSUMPTION]` and the Confidence Check in plugin prose and the cross-cutting registry.
 - **Trialled before shipping.** Six requests replayed from the 2026-10-08 transcript audit against

@@ -14,6 +14,16 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`requirements-alignment`**: **before building, the agent aligns with you on goals, all at
+once and up front.** For any substantive request it takes one of four responses and says which:
+proceed; proceed citing a backlog item or spec; ask its questions in one batch; or hold up when it
+cannot yet form a reading worth correcting. Once the build starts it decides on its own, durable
+choice first, and stops only for high stakes. Build plans now open with **Goals**, which replaces
+Requirements Confidence. The owner's words are kept separate from the agent's inferences, written
+as plain prose rather than `[ASSUMPTION]` tags; older plans are still accepted. The product brief
+states a near-term goal and a North Star, and discovery asks which qualities of an example you give
+matter. Principles 6 and 20 and the session digest now carry the same guidance.
+
 **`telemetry-stats`**: **`prawduct-hook stats` shows what governance cost and caught, per plugin
 version.** It reads this clone's evidence store and reports:
 - **cost:** review rounds per piece of work, measured review time (a reviewer's self-estimate is
