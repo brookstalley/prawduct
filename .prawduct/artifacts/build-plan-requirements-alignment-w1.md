@@ -62,13 +62,13 @@ The open part is wording, which chunk 03 trials.
 **Out of scope (wave 2, filed):**
 - The Critic judging against goals, and listing mid-build decisions at the boundary.
 - Brief coherence (#974).
-- A committed script for the yield measure.
+- A committed script for the yield measure (#978).
 
 ## Status
 
 - [x] Chunk 01: The alignment pass and durable-first decisions in the build cycle
 - [x] Chunk 02: Every repo hears it — discovery, principles, brief, digest, and the sweep
-- [ ] Chunk 03: Guidance trial on replayed audit requests
+- [x] Chunk 03: Guidance trial on replayed audit requests
 
 ## Build Chunks
 
@@ -173,7 +173,8 @@ The open part is wording, which chunk 03 trials.
       ask in one batch, and the batch includes the use-case and deployment fork.
     - puzzles' "more creative interlocks" with a reference image: ask, and no example promoted to
       a rule.
-    - A vague, large "make art discovery better": hold up.
+    - A vague, large "make art discovery better": hold up. (Corrected to Ask after the run; see
+      the Decision on T5 under Trial.)
     - A mid-build fork between a quick reversible patch and the durable design that matches a
       backlog item: the durable choice, recorded in a line.
   - Results recorded in this plan's Trial section. Guidance is fixed where a case fails, and the
@@ -198,8 +199,10 @@ with on-demand access to the plugin guides and no sight of the expected response
 | T2 backlog item that answers the questions | Proceed, citing it | Proceed, citing it; named what the item leaves open (exit-code clash, saved progress) | pass |
 | T3 "split into server and player" (postarr) | Ask in one batch, including the use-case and deployment fork | Ask in one batch, before any plan; asked "auth and multiple households: now or later?" with its inference stated | pass |
 | T4 "more creative, like this reference" (puzzles) | Ask; no single feature of the example promoted to a rule | First run: asked, but read the image's round, bulbous ends as the spec, and its best-judgment default baked them in, the audit's "round ends" rework. Guidance fixed (see below). Rerun: asked what made the image appealing (swirl, round ends, varied tabs, whimsy) and said it was treating the image as taste, not a spec | fail, then pass |
-| T5 "make art discovery better" | Hold up, or Ask with its own reading | Ask, leading with a three-way reading (sourcing, matching, feedback) and offering best judgment | pass, at the floor |
+| T5 "make art discovery better" | Ask (corrected from Hold up; see the decision below) | Ask, leading with a three-way reading (sourcing, matching, feedback) and offering best judgment. Rerun after sharpening: Ask again, citing that the brief gave it a reading worth correcting, which is what separates Ask from Hold up | pass, after the expectation was corrected |
 | T6 mid-build: quick reversible patch or durable design matching a backlog item | Durable, no stop, decision recorded | Took the durable option, recorded a line naming the goal and #120, did not stop | pass |
+
+**Decision on T5:** `[DECISION: T5's expected response is Ask, not Hold up | the plan expected Hold up, but building.md never said what separates the two; the boundary review flagged the widened expectation. building.md now draws the line: Hold up is for when the agent can't form a reading worth correcting. T5's brief supports a clear reading, and both runs used it | user can veto/override]`. If you'd rather a vague, large request always produced Hold up, the wording is what changes, and T5 reruns.
 
 **Fix from T4:** `discovery.md` now says an example the owner shows is evidence of taste, not a
 spec, and the agent asks which of its qualities matter before any one becomes a rule.

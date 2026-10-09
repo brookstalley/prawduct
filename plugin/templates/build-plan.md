@@ -65,6 +65,8 @@ last_validated: 2026-07-03
 
 **Tradeoffs accepted:** Barcode lookup calls OpenFoodFacts directly, with no cache — revisit if lookups feel slow. It may never matter, so no backlog item.
 
+**Decisions made mid-build:** Chunk 02 — store sections as rows, not an enum: the North Star's shared recipes need per-household sections. *(Appended while building; one line each, naming what settled it.)*
+
 **Level:** High — problem, success, and scope confirmed with the owner; no fast-moving dependencies.
 
 ## Status

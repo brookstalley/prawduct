@@ -473,7 +473,13 @@ LAST_MEASURED_TOKENS = {
     # a new Deciding Mid-Build states the owner's durable-first order. Compressed in place
     # first (-150 from the first draft); paid in part by deleting the "Pacing blindness"
     # trap, which Deciding Mid-Build supersedes. DECLARED for the rest: new obligations.
-    "methodology/building.md": 5294,
+    # RAISED 5294 -> 5310 (requirements-alignment w1 boundary review, 2026-10-09): a
+    # decision recorded "in a line" had no home, so it now names the plan's Goals, and Hold
+    # up is told apart from Ask by whether the agent can form a reading worth correcting.
+    # Both were review WARNINGs on new text, with no duplication left to pay from. DECLARED.
+    # +17 more, same review (R-3): the alignment pass says its written form scales with the
+    # response, a chunk-01 deliverable the shipped text had dropped. DECLARED.
+    "methodology/building.md": 5327,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1236,7 +1242,10 @@ LAST_MEASURED_TOKENS = {
     # Goals — the response taken, product/architecture goals, constraints, tradeoffs and
     # accepted debt, inferences marked in prose. The bracketed [ASSUMPTION] form and its
     # three-level list were removed to pay for most of it. A READING, no ceiling.
-    "methodology/planning.md": 5747,
+    # +35 on 2026-10-09 (requirements-alignment w1 boundary review): Goals gains "Decisions
+    # made mid-build", the home building.md's decision line was missing, and the Foreign API
+    # fallback records its assumed surface as an inference in Goals. A READING, no ceiling.
+    "methodology/planning.md": 5782,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3321,7 +3330,8 @@ class TestBuildingMethodology:
         # LOWERED 5123 -> 5080 (opus-55-w4, 2026-09-28): slice B's cuts, one over
         # the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5295, f"building.md is ~{tokens} tokens, should be <5295"
+        # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5328, f"building.md is ~{tokens} tokens, should be <5328"
 
 
 # =============================================================================
@@ -6703,3 +6713,39 @@ class TestFarBehindBranchGuidance:
         for phrase in ("tree content, never by ancestry", "REMOVED and what it ADDED",
                        "`merge=union`", "moved goes to its new home"):
             assert phrase in step1, f"PR Step 1 lost: {phrase!r}"
+
+
+# The Requirements Confidence field, its [ASSUMPTION] notation and building.md's
+# Confidence Check were retired for the alignment pass and the plan's Goals
+# (requirements-alignment w1, 2026-10-09). A retired instruction left in live
+# prose tells a builder to fill a field the template no longer has, which the
+# wave's own boundary review found three surfaces still doing.
+RETIRED_REQUIREMENTS_VOCABULARY = ("[ASSUMPTION", "Confidence Check", "Open assumptions")
+# "Requirements Confidence" survives only where a surface accepts plans that
+# predate Goals; each such line names "older plans".
+_OLDER_PLANS_CLAUSE = "older plans"
+
+
+def _live_instruction_files():
+    roots = [REPO_ROOT / "plugin", REPO_ROOT / ".prawduct" / "cross-cutting-concerns.md"]
+    for root in roots:
+        paths = [root] if root.is_file() else sorted(root.rglob("*.md"))
+        for path in paths:
+            if path.name == "CHANGELOG.md":
+                continue  # history: records what each release changed
+            yield path
+
+
+def test_retired_requirements_vocabulary_is_gone_from_live_prose():
+    hits = []
+    for path in _live_instruction_files():
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(term in line for term in RETIRED_REQUIREMENTS_VOCABULARY):
+                hits.append(f"{path.relative_to(REPO_ROOT)}:{n}")
+            elif "Requirements Confidence" in line and _OLDER_PLANS_CLAUSE not in line:
+                hits.append(f"{path.relative_to(REPO_ROOT)}:{n}")
+    assert not hits, (
+        "retired requirements vocabulary (Requirements Confidence, [ASSUMPTION], the "
+        f"Confidence Check) still instructs in live prose: {hits}. The plan's Goals and "
+        "building.md's alignment pass replaced it."
+    )

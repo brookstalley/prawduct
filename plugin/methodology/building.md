@@ -43,13 +43,13 @@ Before non-trivial work, judge how clear the goals already are (request, brief, 
 - **Proceed** — clear by nature, however large: a bug with a repro defines its own success. Restate the target and go.
 - **Proceed, citing it** — a backlog item or spec already says what this is for, what success is, and what is out of scope. Restate its goals, name what it leaves open and what you inferred there, and go.
 - **Ask, in one batch** — a high-level goal or key architecture choice is missing. Lead with your own reading, so the owner corrects rather than authors.
-- **Hold up** — a lot of work and goals you don't understand: offer to discuss, or to use best judgment. Best judgment is a legitimate answer; proceed with your inferences written down for the boundary review to show the owner.
+- **Hold up** — a lot of work, and you can't yet form a reading of the goals worth correcting: offer to discuss, or to use best judgment. Best judgment is a legitimate answer; proceed with your inferences written down for the boundary review to show the owner.
 
-This is the moment for questions: the owner's intent is the one thing you cannot verify, and an owner would rather answer everything now than have a long build stop for it. The written form is the plan's `## Goals` (`methodology/planning.md`); Plan Mode is a native vehicle (Principles 6 and 20). **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
+This is the moment for questions: the owner's intent is the one thing you cannot verify, and an owner would rather answer everything now than have a long build stop for it. The written form scales with the response — a sentence to proceed, the plan's `## Goals` (`methodology/planning.md`) to ask or hold up; Plan Mode is a native vehicle (Principles 6 and 20). **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
 
 ### Deciding Mid-Build
 
-Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, or work out of proportion to the benefit. Prefer the durable choice to the merely reversible one. Record each decision in a line naming what settled it; one the goals did not settle is an alignment-pass miss — flag it for the boundary review.
+Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, or work out of proportion to the benefit. Prefer the durable choice to the merely reversible one. Record each decision in a line in the plan's Goals, naming what settled it; one the goals did not settle is an alignment-pass miss — mark it so for the boundary review.
 
 ### A Requirement Surfaced Mid-Build
 
