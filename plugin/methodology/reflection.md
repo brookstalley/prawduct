@@ -34,6 +34,8 @@ Don't fix the symptom — ask "what about the system allowed this?" and chain th
 
 Fixing a shallow cause patches one instance; fixing a deep cause prevents a class of problems.
 
+**A mid-build decision the owner corrects** went against their intent, so it is a miss by the alignment pass (`methodology/building.md` "Before You Build"), the main signal for improving it: name the question the pass should have asked, or the goal it should have recorded.
+
 **Where to stop.** At the shallowest cause you can change here that would have prevented this instance *and* instances that don't look like this one. A cause you can only report becomes a learning or a backlog item, and the fix goes to the deepest cause you can change. A terminal that restates the failure — "the model made a mistake", "we were in a hurry", "nobody reviewed it" — is not a cause.
 
 ### Step 4: Capture — route what you learned to the one place it fires

@@ -48,8 +48,11 @@ what an owner would say in a sentence.
   findings summary carries it to where the owner looks on return.
 - *Inferred:* an inferred, never-confirmed goal is a WARNING at `boundary`. A goal the work
   contradicts that the owner *did* state is already a dropped requirement, BLOCKING under Goal 2.
-- *Inferred:* the goals check is a Goal 2 bullet run by the correctness reviewer, not a new
-  cross-check; "is the plan faithful to the goals" is the same question as "is anything missing".
+- *Inferred, revised mid-build:* the goals check is a Goal 5 bullet ("Decisions Were Deliberate"),
+  run by the sustainability reviewer on a coordinator roster, not a new cross-check. Planned for
+  Goal 2; moved because Goals 1-3 are mirrored into chunk mode's `goals-1-3.md` under a parity
+  test, and a boundary-only check has no place in the inner-stage file. Goal 5 already asks whether
+  each capability traces to a requirement, which is the same question one level up.
 - *Inferred, changes #978's acceptance:* the audit's 24/138 rests on a hand-selected subset of
   build turns (114 of the 180 a length-and-built filter yields), so no script reproduces it. The
   committed script defines "substantive" mechanically, and its own figures on the window before
@@ -60,7 +63,7 @@ what an owner would say in a sentence.
 ## Status
 
 - [x] Chunk 01: The brief reads as current and says who said what (#974)
-- [ ] Chunk 02: The boundary review judges against goals (#975)
+- [x] Chunk 02: The boundary review judges against goals (#975)
 - [ ] Chunk 03: Commit the alignment pass's yield measure (#978)
 
 ## Build Chunks
@@ -83,7 +86,7 @@ what an owner would say in a sentence.
 - **Type:** doc-only
 - **Depends on:** Chunk 01 (the confirmed-line form is what the reviewer reads)
 - **Deliverables:**
-  - `plugin/skills/critic/review-protocol.md` Goal 2: at `boundary`, judge the work against the
+  - `plugin/skills/critic/review-protocol.md` Goal 5 (see the revised inference above): judge the work against the
     plan's `## Goals` and the brief's near-term and North Star; list the plan's mid-build decisions
     for the owner in one NOTE; an inferred goal still unconfirmed is a WARNING; a decision marked
     as an alignment-pass miss is listed as such. Paid inside the payload ceilings.
@@ -112,4 +115,18 @@ what an owner would say in a sentence.
 
 ## Trial
 
-Not yet run.
+Run 2026-10-09 for #975. A fresh agent read `review-protocol.md` and ran Goal 5 at `boundary` over
+a fixture: a brief with one inferred line, a plan with one inferred architecture goal and two
+recorded mid-build decisions (one settled by the brief, one marked an alignment-pass miss that
+changed the owner's "next three days" goal to per-category windows).
+
+| Expected | Got | Verdict |
+|---|---|---|
+| WARNING naming the plan's unconfirmed inferred goal | WARNING, with the design it would force a rebuild of | pass |
+| One NOTE (`scope: none`) listing both decisions, what settled each, the miss flagged | One NOTE, both decisions, the miss flagged and tied to the goal it departs from | pass |
+| — | A `scope-trace:` WARNING on the per-category thresholds (no parent requirement, nothing writes them) | correct, from the existing scope pressure-test |
+
+The reviewer named one ambiguity: the protocol said "missing" an owner-stated goal, and the miss
+*altered* one. It chose not to rate BLOCKING. Fixed: the bullet now reads "drops or alters". The
+brief's own inferred line went into the NOTE rather than its own WARNING because nothing in the
+changeset rested on it, which is the Severity Levels consequence test working as intended.
