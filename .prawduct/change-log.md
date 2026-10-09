@@ -5,6 +5,18 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-09: a corrupted-store test no longer races git maintenance
+
+<!-- prawduct: type=fix | scope=test-git-maintenance-race -->
+
+- `tests/test_critic_dispatch_refusal.py` failed once in CI on PR #982 with a `FileNotFoundError`
+  on `.git/objects/maintenance.lock`. Every `git commit` starts a detached
+  `git maintenance run --auto`, and `test_an_uncomputable_diff_never_refuses` changes the
+  permissions of every file in the object store, so the lock could vanish mid-walk. The file's
+  `_init_repo` now sets `maintenance.auto=false` before the first commit. No other test walks
+  `.git/objects`. A `conftest.py` setting would not reach this file, because its git calls run
+  with a closed environment.
+
 ## 2026-10-09: a SAFE TO CLEAR that cites the message is refused
 
 <!-- prawduct: type=fix | scope=self-citing-clear -->
