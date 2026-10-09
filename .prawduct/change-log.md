@@ -5,6 +5,32 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-09: the alignment pass — ask together, up front, then decide well alone
+
+<!-- prawduct: type=methodology | scope=requirements-alignment -->
+
+- **The Confidence Check becomes the alignment pass** (`building.md`). Before a plan exists the
+  agent takes one of four responses, says which in a line, and the owner can catch a misreading
+  before it is built: proceed; proceed citing a backlog item or spec; ask in one batch; or hold up.
+  Hold up is for when the agent cannot form a reading worth correcting; otherwise it asks.
+- **Mid-build decisions are durable-first** (`building.md` "Deciding Mid-Build"): do it right,
+  match the product's other choices and the backlog, stop only for high stakes, prefer the durable
+  choice, and record the decision in the plan's Goals.
+- **Plans open with Goals** (`planning.md`, build-plan template, Critic Goal 2). They replace
+  Requirements Confidence. The owner's words stay distinguishable from inferences, which are marked
+  in prose rather than with `[ASSUMPTION]`. Older plans are still accepted.
+- **Every governed repo hears it.** The session digest's rigor paragraph was rewritten in place
+  within its reserve. Principles 6 and 20 and `discovery.md` now ask goal-shaping questions in one
+  batch before building and never mid-build. The brief template gains a near-term goal and a North
+  Star, and `discovery.md` says to ask which qualities of an owner's example matter before any one
+  becomes a rule.
+- **Retired vocabulary is tested out of live prose.** A test fails on Requirements Confidence,
+  `[ASSUMPTION]` and the Confidence Check in plugin prose and the cross-cutting registry.
+- **Trialled before shipping.** Six requests replayed from the 2026-10-08 transcript audit against
+  fresh agents (results in the plan's Trial section). Budgets: `building.md` and the injected
+  product-session text raised by declaration. The Critic files and reviewer payloads were ratcheted
+  down.
+
 ## 2026-10-08: four field bugs for 3.7.1 — quoted `#`, api-versioning wording, scope examples, migrate activation
 
 <!-- prawduct: type=bugfix | scope=field-bugs-790-813-765-915 -->
