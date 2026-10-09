@@ -1121,7 +1121,11 @@ LAST_MEASURED_TOKENS = {
     # +43 on 2026-10-09 (requirements-alignment w1 trial): an example the owner shows is
     # evidence of taste, not a spec. The guidance trial's "creative interlocks" case lifted
     # a reference image's features wholesale, the audit's "round ends" rework. A READING.
-    "methodology/discovery.md": 4278,
+    # +61 on 2026-10-09 (requirements-alignment w2, #974): the brief is the product-level
+    # goals statement, rewritten in place on amendment, and an inference keeps its mark until
+    # the owner confirms it. Merged into the existing inference paragraph rather than added
+    # beside it; nothing else here restates it. A READING.
+    "methodology/discovery.md": 4339,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision

@@ -44,6 +44,9 @@ One common entry point is **a backlog item at an early `stage:`** (`idea`/`resea
 
 **Initial discovery** establishes the product's foundation — structural characteristics, personas, scope, success criteria, and where it is headed — captured in `project-state.yaml`. State the near-term and the North Star in prose, in the brief: *"home use for now; eventually thousands of anonymous users"*. Who uses it, and where it runs, often differ between the two, and every later alignment pass reads both — that difference is what decides when to build for the future and when to accept debt.
 
+**The brief is the product-level goals statement**, so it reads as current: an amendment rewrites
+the part it changes, and history stays in git and the change log.
+
 **Feature-level discovery** is the alignment pass (`methodology/building.md` "Before You Build"): judge how clear the goals are against the work ahead, then proceed, proceed citing a backlog item or spec, ask in one batch, or hold up — and say which.
 
 **A structural characteristic flipped.** The six characteristics (human interface, unattended,
@@ -94,7 +97,7 @@ Questions 2 and 3 are different gaps with different remedies: a knowledge gap wa
 
 Self-check: *"Does this depend on the current state of the world, or a field that moves faster than my training cycle?"* If yes, research before relying on intrinsic knowledge, and say what you checked. If you can't verify, proceed only with the uncertainty labeled — never assert stale knowledge as current (Principle 5).
 
-**Make your inferences explicit (intentional inference).** Answer what you can yourself, and mark each answer you *inferred* — rather than confirmed or verified — in plain words (*"Inferred: one household"*), so it is visible and correctable instead of buried. An example the owner shows — a reference image, a competitor, a default — is evidence of taste, not a spec: ask which of its qualities matter before any one becomes a rule. Research and code answer questions about the world; only the owner answers questions about their intent. Put every question whose answer would change the goals, the architecture, or a high-stakes choice to the owner **together, before a plan is written** — not one at a time, and not mid-build.
+**Make your inferences explicit (intentional inference).** Answer what you can yourself, and mark each answer you *inferred* — rather than confirmed or verified — in plain words (*"Inferred: one household"*), so it is visible and correctable instead of buried; the mark comes off only when the owner confirms, so no later session cites your guess as their ruling. An example the owner shows — a reference image, a competitor, a default — is evidence of taste, not a spec: ask which of its qualities matter before any one becomes a rule. Research and code answer questions about the world; only the owner answers questions about their intent. Put every question whose answer would change the goals, the architecture, or a high-stakes choice to the owner **together, before a plan is written** — not one at a time, and not mid-build.
 
 ## How to Discover
 
