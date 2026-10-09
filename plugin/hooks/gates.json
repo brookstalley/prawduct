@@ -59,7 +59,13 @@
       "id": "clear-verdict",
       "name": "clear-verdict",
       "since": "3.7.0",
-      "summary": "a turn that hands the session over (`YOUR TURN` or `COMPLETE`) must close `SAFE TO CLEAR`; `DO NOT CLEAR` belongs only to a `RUNNING` turn; and a `SAFE TO CLEAR` reason must not be the turn itself"
+      "summary": "a turn that hands the session over (`YOUR TURN` or `COMPLETE`) must close `SAFE TO CLEAR`; `DO NOT CLEAR` belongs only to a `RUNNING` turn"
+    },
+    {
+      "id": "clear-reason",
+      "name": "clear-reason",
+      "since": "3.7.1",
+      "summary": "a `SAFE TO CLEAR` reason must point at something a clear leaves behind (notes, a commit, a file, an issue), never at the turn itself (\"the questions are in this message\")"
     }
   ]
 }

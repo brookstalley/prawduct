@@ -11,8 +11,8 @@ fails closed.
 
 ``YOUR TURN`` or ``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the
 reader is handed the session and told not to end it, and may sit on both for
-days — so it defers nothing and the clear-verdict gate refuses it. The same
-gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
+days — so it defers nothing and the clear-verdict gate refuses it. The
+clear-reason gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
 questions are in this message"), because a clear deletes exactly that (#977).
 
 Three layers, each pinned where it can fail:
@@ -233,14 +233,25 @@ class TestContradiction:
 # Self-citing reasons, verbatim from the 2026-10-09 wave-1 trial (#977) and from
 # consumer-repo transcripts, plus session-hygiene.md's own example of the tell.
 SELF_CITING_REASONS = [
-    ("the questions are in this message", "in this message"),
+    ("the questions are in this message", "are in this message"),
     ("this message holds the whole ask", "this message holds"),
     ("the analysis is above", "is above"),
-    ("The plan exists only in this reply, so clearing now would lose it.", "in this reply"),
+    ("The plan exists only in this reply, so clearing now would lose it.",
+     "exists only in this reply"),
     ("Nothing is in flight. This message has the full recommendation.", "This message has"),
+    ("The three SHAs are the only thing worth keeping, and they're in this message.",
+     "'re in this message"),
+    # A denial in ANOTHER clause does not excuse the citation.
+    ("Nothing is running, and the recommendation is all in this message.",
+     "is all in this message"),
 ]
-# Sound reasons that use the same words: each must pass.
+# Sound reasons that use the same words: each must pass. The first four name no
+# durable record, so only the patterns' own shape lets them through.
 SOUND_REASONS = [
+    "Nothing changed in this turn.",
+    "nothing was started in this turn.",
+    "context is below half.",
+    "context stays below the limit.",
     "the decision is in the notes.",
     "nothing lives only in this conversation.",
     "the findings above are in .prawduct/.handoff-notes.md.",
@@ -249,6 +260,9 @@ SOUND_REASONS = [
     "everything in this reply is also in the handoff notes.",
     "No work is in flight and nothing produced here lives only in this message.",
     "Every finding is saved as a comment on its issue, so none of it exists only in this message.",
+    "No open question is in this message.",
+    "Nothing this turn has produced needs keeping.",
+    "This reply has nothing unsaved.",
 ]
 
 
@@ -265,7 +279,7 @@ class TestSelfCitation:
             "**YOUR TURN:** answer them.\n\n"
             "**SAFE TO CLEAR:** the questions are in this message"
         )
-        assert standing_block.self_citation(text) == "in this message"
+        assert standing_block.self_citation(text) == "are in this message"
 
     @pytest.mark.parametrize("reason", SOUND_REASONS)
     def test_a_sound_reason_passes(self, reason):
@@ -345,7 +359,7 @@ class TestTurnDeclaresInFlight:
         [
             ({"last_assistant_message": _block(
                 "YOUR TURN", "SAFE TO CLEAR", "the questions are in this message.")},
-             "in this message"),
+             "are in this message"),
             ({"last_assistant_message": ASK_SAFE_TURN}, None),
             ({"last_assistant_message": ASK_DNC_TURN}, None),
             ({"last_assistant_message": None}, None),
@@ -598,7 +612,8 @@ class TestClearVerdictGate:
         result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(message))
         assert result.returncode == 2, (result.stdout, result.stderr)
         blocked = _blocked_section(result.stderr)
-        assert "gate: clear-verdict" in blocked
+        assert "gate: clear-reason" in blocked
+        assert "gate: clear-verdict" not in blocked
         assert f'("{phrase}")' in blocked
         assert ".prawduct/.handoff-notes.md" in blocked
 
@@ -610,11 +625,11 @@ class TestClearVerdictGate:
         )
         result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
         assert result.returncode == 2, (result.stdout, result.stderr)
-        assert "gate: clear-verdict" in _blocked_section(result.stderr)
+        assert "gate: clear-reason" in _blocked_section(result.stderr)
 
-    def test_the_gate_has_a_registry_row(self):
+    def test_the_gates_have_registry_rows(self):
         registry = json.loads((PLUGIN / "hooks" / "gates.json").read_text())
-        assert "clear-verdict" in {g["id"] for g in registry["gates"]}
+        assert {"clear-verdict", "clear-reason"} <= {g["id"] for g in registry["gates"]}
 
 
 # ---------------------------------------------------------------------------

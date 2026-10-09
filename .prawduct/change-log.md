@@ -9,16 +9,19 @@
 
 <!-- prawduct: type=fix | scope=self-citing-clear -->
 
-- **The `clear-verdict` Stop gate refuses a `SAFE TO CLEAR` whose reason is the turn itself**
-  (#977). Before, the gate caught only `YOUR TURN`/`COMPLETE` with `DO NOT CLEAR`. That was
-  checked by running a red case, which passed straight through. So "the questions are in this
-  message" relied on recall, and the wave-1 trial missed it in 2 of 7 agents. `standing_block.self_citation`
-  matches the reason paragraph narrowly. It looks for the message, reply, response or turn named
-  as where something is or what holds it, or for something said to sit above or below. A reason
-  that names a durable record (notes, a commit, a file, an issue), or denies that anything lives
-  only in the message, passes. Tuned on this machine's transcripts: 15 of 1,252 `SAFE TO CLEAR`
-  closes match, and each reads as a genuine instance. The refusal costs one rewritten line. No
-  new gate id: it joins the gate's recorded NFR exception, whose text now names it.
+- **A new Stop gate, `clear-reason`, refuses a `SAFE TO CLEAR` whose reason is the turn itself**
+  (#977). Before, only the `clear-verdict` gate read the close, and it caught only
+  `YOUR TURN`/`COMPLETE` with `DO NOT CLEAR`. A red case confirmed that: "the questions are in this
+  message" passed straight through, so the rule relied on recall, and the wave-1 trial missed it
+  in 2 of 7 agents. `standing_block.self_citation` matches the reason paragraph narrowly. It looks
+  for something said to be *in* the message, reply, response or turn ("are in this message",
+  "exists only in this reply"), the turn said to hold it, or something said to be above or below
+  at the end of a clause. "Nothing changed in this turn" passes, and so does a reason that names a
+  durable record (notes, a commit, a file, an issue), or cites the message only inside a
+  denying clause ("No open question is in this message"). `tools/measure-self-citing-clear.py` re-derives the tuning. Read 2026-10-09, it matched
+  18 of 1,533 `SAFE TO CLEAR` closes on this machine, each a genuine instance on reading. It has
+  its own gate id so its firings count apart (`stats` → `stop_blocks.by_gate`) and the version
+  banner announces it. The NFR records its expected yield.
 
 ## 2026-10-09: the review judges against goals, the brief stays current, and the pass is measured
 
