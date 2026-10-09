@@ -1112,7 +1112,10 @@ LAST_MEASURED_TOKENS = {
     # batch before a plan), feature-level discovery points at the alignment pass instead
     # of restating three questions, and the near-term / North Star enters initial
     # discovery. The restatements it removed paid for the additions. A READING, no ceiling.
-    "methodology/discovery.md": 4235,
+    # +43 on 2026-10-09 (requirements-alignment w1 trial): an example the owner shows is
+    # evidence of taste, not a spec. The guidance trial's "creative interlocks" case lifted
+    # a reference image's features wholesale, the audit's "round ends" rework. A READING.
+    "methodology/discovery.md": 4278,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision

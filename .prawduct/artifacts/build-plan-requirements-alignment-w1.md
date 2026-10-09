@@ -68,7 +68,7 @@ The open part is wording, which chunk 03 trials.
 
 - [x] Chunk 01: The alignment pass and durable-first decisions in the build cycle
 - [x] Chunk 02: Every repo hears it — discovery, principles, brief, digest, and the sweep
-- [ ] Chunk 03: Guidance trial on replayed audit requests
+- [x] Chunk 03: Guidance trial on replayed audit requests
 
 ## Build Chunks
 
@@ -185,3 +185,25 @@ The open part is wording, which chunk 03 trials.
   1. Acceptance criteria met
   2. `/prawduct:critic cumulative` run and blocking findings resolved
   3. Committed and chunk marked `[x]` in Status
+
+## Trial
+
+Run 2026-10-09. Each case went to a fresh agent briefed with this branch's emitted digest verbatim,
+with on-demand access to the plugin guides and no sight of the expected response. Cases replay the
+2026-10-08 audit's failures; their product contexts are fictionalised.
+
+| Case | Expected | Got | Verdict |
+|---|---|---|---|
+| T1 large mechanical bug with repro | Proceed | Proceed; restated the target; its expert take routed 15 scattered exit paths through one owner | pass |
+| T2 backlog item that answers the questions | Proceed, citing it | Proceed, citing it; named what the item leaves open (exit-code clash, saved progress) | pass |
+| T3 "split into server and player" (postarr) | Ask in one batch, including the use-case and deployment fork | Ask in one batch, before any plan; asked "auth and multiple households: now or later?" with its inference stated | pass |
+| T4 "more creative, like this reference" (puzzles) | Ask; no single feature of the example promoted to a rule | First run: asked, but read the image's round, bulbous ends as the spec, and its best-judgment default baked them in, the audit's "round ends" rework. Guidance fixed (see below). Rerun: asked what made the image appealing (swirl, round ends, varied tabs, whimsy) and said it was treating the image as taste, not a spec | fail, then pass |
+| T5 "make art discovery better" | Hold up, or Ask with its own reading | Ask, leading with a three-way reading (sourcing, matching, feedback) and offering best judgment | pass, at the floor |
+| T6 mid-build: quick reversible patch or durable design matching a backlog item | Durable, no stop, decision recorded | Took the durable option, recorded a line naming the goal and #120, did not stop | pass |
+
+**Fix from T4:** `discovery.md` now says an example the owner shows is evidence of taste, not a
+spec, and the agent asks which of its qualities matter before any one becomes a rule.
+
+**Observed, not this work's:** T5 and the T4 rerun both closed `SAFE TO CLEAR` citing the
+message itself, which the digest's closing rule already forbids: two of seven agents. That is a
+recall failure on an existing rule, so it is filed to the backlog rather than fixed in this wave.
