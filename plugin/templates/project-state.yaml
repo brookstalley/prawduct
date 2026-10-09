@@ -62,7 +62,8 @@ classification:
 # Populated during discovery and definition.
 
 product_definition:
-  # One-sentence description of what this product is and why it exists.
+  # One-sentence description of what this product is and why it exists. The
+  # near-term and North Star live in prose in the product brief's Vision section.
   vision: null
 
   # Measurable success criteria. What does "this worked" look like?
@@ -85,7 +86,7 @@ product_definition:
   # Scope decisions.
   scope:
     v1: []                # Must have for initial release
-    accommodate: []       # Design for but don't build yet
+    accommodate: []       # Design for but don't build yet; every alignment pass keeps these possible
     later: []             # Not needed for v1 to be useful
     never: []             # Explicitly out of scope. Each: { item, rationale }
 

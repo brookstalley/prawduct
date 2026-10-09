@@ -23,18 +23,11 @@ When someone opens this directory, route on what they came for:
 | **Review product feedback** — *"what have my products learned?"* | Scan known product directories for `.claude/rules/learnings/`, looking for methodology friction; summarize it and propose framework updates. Also triage upstream bug reports about prawduct itself: they arrive as issues, the `untriaged-upstream-reports` advisory counts them, and staging one clears it (`/prawduct:backlog`; intake set and steps: `/prawduct:report-bug`). |
 | **First contact** — *"what is this?"* | Prawduct helps you build software by guiding structured discovery, producing quality specifications, governing the build, and learning from experience. It installs as a Claude Code plugin; product repos commit a small install reference and no framework files. |
 
-## Before Building: Requirements Clarity
+## Before Building: The Alignment Pass
 
-When the user says "build X," "implement Y," or "let's add Z" — this fires before a plan exists,
-which is before `building.md` is read — check three things:
-
-1. **What problem does this solve?** (Observable, not abstract.)
-2. **What does success look like?** (Specific, verifiable.)
-3. **What's out of scope?** (What you're deliberately not doing.)
-
-If any is unclear, **don't start building.** State the gap, offer the cheapest close — one targeted
-question, an inferred assumption to confirm, or a 5-line scope sketch — then proceed. One round of
-clarification is cheap; building the wrong thing is not.
+When the user says "build X," "implement Y," or "let's add Z", run the alignment pass the session
+digest describes before a plan exists: proceed, proceed citing a backlog item or spec, ask in one
+batch, or hold up — and say which. Full text: `plugin/methodology/building.md` "Before You Build".
 
 ## Methodology
 

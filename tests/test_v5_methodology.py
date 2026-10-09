@@ -1107,7 +1107,12 @@ LAST_MEASURED_TOKENS = {
     # which restated each characteristic's Implications, goes (B-21), and so do
     # the per-risk question and search quotas (B-22). B-21 and B-22 were held
     # until a Sonnet 5.5 discovery probe showed no lost critical concern. A CUT.
-    "methodology/discovery.md": 4247,
+    # -12 on 2026-10-09 (requirements-alignment w1): the asking bar is rebalanced
+    # (the owner's intent is the one thing the agent cannot verify; questions go in one
+    # batch before a plan), feature-level discovery points at the alignment pass instead
+    # of restating three questions, and the near-term / North Star enters initial
+    # discovery. The restatements it removed paid for the additions. A READING, no ceiling.
+    "methodology/discovery.md": 4235,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1828,8 +1833,15 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # gains one clause (a server or recorder running on its own survives a
     # clear, #932), paid in place by cutting its opening's second sentence,
     # which restated what "Read on demand" says.
-    "framework": 3134,
-    "product": 2194,
+    # framework 3134 -> 3108, product 2194 -> 2232 on 2026-10-09 (requirements-
+    # alignment w1, owner decision). The digest's rigor paragraph becomes the alignment
+    # pass and durable-first mid-build decisions: a new framework-wide default, which the
+    # digest is the only surface to carry to onboarded repos. Compressed in place, and a
+    # redundant closing-turn clause was dropped, holding the digest's 500-char reserve;
+    # the product +38 is DECLARED. The framework session falls because this repo's
+    # CLAUDE.md "Before Building" block became a pointer at the digest's text.
+    "framework": 3108,
+    "product": 2232,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -1985,8 +1997,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # 3146 -> 3143 framework on 2026-09-29 (opus-55-w6): ratcheted with the reading's cut.
     # 3143 -> 3135, 2203 -> 2195 on 2026-09-30 (sibling-hook-perf): ratcheted
     # with the reading, one over each.
-    "framework": 3135,
-    "product": 2195,
+    # 3135 -> 3109, 2195 -> 2233 on 2026-10-09 (requirements-alignment w1): one over
+    # each reading; the product raise is declared in the reading table.
+    "framework": 3109,
+    "product": 2233,
 }
 
 

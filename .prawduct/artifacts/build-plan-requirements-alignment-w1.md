@@ -67,7 +67,7 @@ The open part is wording, which chunk 03 trials.
 ## Status
 
 - [x] Chunk 01: The alignment pass and durable-first decisions in the build cycle
-- [ ] Chunk 02: Every repo hears it — discovery, principles, brief, digest, and the sweep
+- [x] Chunk 02: Every repo hears it — discovery, principles, brief, digest, and the sweep
 - [ ] Chunk 03: Guidance trial on replayed audit requests
 
 ## Build Chunks
@@ -136,8 +136,9 @@ The open part is wording, which chunk 03 trials.
   - `session-digest.md`
     - The rigor paragraph is rewritten in place: the alignment pass before building, and mid-build
       decisions made against the goals with the durable choice first.
-    - "Closing the turn" is reconciled. A question from the alignment pass is the case where "only
-      the user can unblock it".
+    - "Closing the turn" is reconciled. Its "only the user can unblock it" already covers an
+      alignment question, once the rigor paragraph says to ask before a plan exists. No new clause
+      is needed, and the budget has no room for a redundant one.
     - The emitted digest stays within its working budget.
   - Every remaining surface that describes the old model is swept: `documentation/work-model*.md`
     (current, not archived), skill prose, and the backlog `pick` route (an item that already
