@@ -60,6 +60,12 @@ what an owner would say in a sentence.
   committed script defines "substantive" mechanically, and its own figures on the window before
   2026-10-09 become the baseline the November re-run compares like with like. Recorded in the
   change-log and the PR that closes #978.
+- *Decided mid-build, departs from Constraints:* Goal 5's bullet could not be paid inside the
+  reviewer payload ceilings by cutting duplication; the three full-review ceilings
+  (`single-pass-full`, `dispatched-reviewer`, `coordinator-fork`) and `review-protocol.md`'s rise
+  by +104 tokens, declared with its price in `tests/test_reviewer_payload_budget.py` and the
+  change-log. What settled it: the check reads the one level no other check reads (goals the plan
+  misread, where the audit's rework sorted), so +104 per full review is the cheaper side.
 
 **Level:** High. All three items carry acceptance criteria and scope-outs under a settled design.
 
@@ -92,11 +98,14 @@ what an owner would say in a sentence.
   - `plugin/skills/critic/review-protocol.md` Goal 5 (see the revised inference above): judge the work against the
     plan's `## Goals` and the brief's near-term and North Star; list the plan's mid-build decisions
     for the owner in one NOTE; an inferred goal still unconfirmed is a WARNING; a decision marked
-    as an alignment-pass miss is listed as such. Paid inside the payload ceilings.
+    as an alignment-pass miss is listed as such. Planned inside the payload ceilings;
+    shipped as a declared +104 raise (Inferred decisions, last entry).
   - `plugin/methodology/reflection.md`: a mid-build decision that went against the owner's intent
     is an alignment-pass miss, and the reflection says what the pass should have asked.
   - Every surface describing what the boundary review judges is swept for the claim (review-cycle,
     building.md, the PR protocol, the w1 plan's "Tradeoffs accepted").
+    Swept at the boundary (2026-10-09): none of the four states what the boundary review judges in
+    terms Goal 5 contradicts, so none changed.
 - **Acceptance criteria:** #975's four boxes. The fixture box is met by a trial: a fresh agent
   given the protocol and a fixture plan with one unconfirmed inferred goal and two mid-build
   decisions reports the WARNING and the decisions NOTE. Results recorded under Trial below.
