@@ -56,7 +56,8 @@ what an owner would say in a sentence.
 - *Inferred, changes #978's acceptance:* the audit's 24/138 rests on a hand-selected subset of
   build turns (114 of the 180 a length-and-built filter yields), so no script reproduces it. The
   committed script defines "substantive" mechanically, and its own figures on the window before
-  2026-10-09 become the baseline the November re-run compares like with like. Recorded on #978.
+  2026-10-09 become the baseline the November re-run compares like with like. Recorded in the
+  change-log and the PR that closes #978.
 
 **Level:** High. All three items carry acceptance criteria and scope-outs under a settled design.
 
@@ -108,7 +109,9 @@ what an owner would say in a sentence.
     per project and window, substantive requests, asked-before-build, mid-build AskUserQuestion
     calls, and correction-like owner turns (a lead, not a verdict).
   - A test over a synthetic transcript fixture covering each measure, including a negative case.
-  - The baseline on the window before 2026-10-09 recorded on #978 as the command plus its output.
+  - The baseline on the window before 2026-10-09, recorded in the change-log as the command plus
+    its output and carried into the PR that closes #978. Governance is read from the session
+    digest in the transcript, because deleted worktrees and cloud containers fail a disk check.
 - **Acceptance criteria:** the revised #978 criterion above; the test passes and has been seen red.
 - **Done when:** criteria met; `/prawduct:critic cumulative` run and blocking findings resolved;
   committed, ticked.

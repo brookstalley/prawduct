@@ -5,6 +5,27 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-09: the review judges against goals, the brief stays current, and the pass is measured
+
+<!-- prawduct: type=methodology | scope=requirements-alignment-w2 -->
+
+- **The boundary review judges the work against its goals** (#975; Critic Goal 5). It reads the
+  plan's Goals and the brief's near-term and North Star, not only the chunks. Work that drops or
+  alters a goal the owner stated is a dropped requirement (BLOCKING). A goal still marked inferred
+  is a WARNING naming it. The plan's mid-build decisions reach the owner in one NOTE, with what
+  settled each and any alignment-pass miss, and from there into the PR description. `reflection.md`
+  names a mid-build decision the owner corrects as an alignment-pass miss. Trialled on a fixture
+  (results in the plan's Trial section). The reviewer payload raise is declared with its price.
+- **The brief reads as current and says who said what** (#974). An amendment rewrites the part it
+  changes rather than appending. An inference keeps its plain-words mark until the owner confirms
+  it. The template shows a line before and after confirmation.
+- **The alignment pass's yield is committed** (#978): `tools/measure-alignment-yield.py` reports,
+  per project and window, asked-before-build, mid-build questions and correction leads from
+  transcripts. The audit's 24/138 came from a hand-selected subset and is not reproducible, so the
+  script's own figures are the baseline: `tools/measure-alignment-yield.py --until 2026-10-09`
+  (governed sessions, read 2026-10-09: asked first on 143 of 986 substantive requests; 365 mid-build
+  questions; 18 correction leads). Re-run near 2026-11-20 with `--since 2026-10-09`.
+
 ## 2026-10-09: the alignment pass — ask together, up front, then decide well alone
 
 <!-- prawduct: type=methodology | scope=requirements-alignment -->
