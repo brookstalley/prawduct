@@ -1,7 +1,13 @@
 # Issue #221 — Worktree-fork state pollution: Design
 
-`status: draft · stage: design · area: worktree · added: 2026-08-07 · source:
+`status: superseded · stage: design · area: worktree · added: 2026-08-07 · source:
 scheduled backlog session · issue: https://github.com/brookstalley/prawduct/issues/221`
+
+**Superseded 2026-10-10.** Measured on Claude Code 2.1.296, a `context: fork` skill follows
+`EnterWorktree` and `isolation: "worktree"`, so the launch-dir pinning this document guards against
+no longer reproduces, and its marker-and-guard mechanism was not built. The live defect was the
+ad-hoc delegate dispatch shape, fixed in `plugin/methodology/delegation.md`. Measurements:
+https://github.com/brookstalley/prawduct/issues/221#issuecomment-6098003082
 
 Builds on `documentation/issues/221-requirements.md` (Decisions 1–5, requirements WT1–WT6). This
 document resolves the requirements doc's named design-stage scope-out ("the exact detection/marker

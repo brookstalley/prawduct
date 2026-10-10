@@ -1471,7 +1471,14 @@ LAST_MEASURED_TOKENS = {
     # ownership bullet names the budgets the delegate's files sit under (a W3
     # delegate met its ceilings only as red tests). Mostly paid in place by
     # cutting two incident stories (B-33); the rest is a RAISE, on-demand class.
-    "methodology/delegation.md": 2776,
+    # +82 on 2026-10-10 (#221/#791): the ad-hoc dispatch shape was wrong, not
+    # wordy. A worktree the coordinator creates and points a delegate at does
+    # not hold (the harness keeps no Bash `cd` between calls, and skills fork in
+    # the session's directory), so the paragraph now says to dispatch with
+    # isolation, where the brief goes, and WHY the pointed-at shape fails — the
+    # reason is what stops it being restored. A RAISE, on-demand class: paid
+    # only by a session already about to delegate.
+    "methodology/delegation.md": 2858,
 }
 
 
@@ -3673,6 +3680,30 @@ class TestAdHocDelegation:
                 f"the section no longer refuses a {refused}, which is the "
                 "sentence stopping the next editor from adding one"
             )
+
+    def test_a_delegate_reaches_its_worktree_by_isolation_not_by_path(self):
+        """The dispatch shape is pinned because the obvious one silently fails.
+        A worktree the coordinator creates and names in the prompt does not
+        hold: the harness keeps no Bash `cd` between calls, and a skill forks
+        in the session's own directory, so the delegate's commits and reviews
+        land in the coordinator's checkout and report success. Harness
+        isolation is the only shape that moves it, and the brief is writable
+        because the launch result names the tree.
+        """
+        section = self._section()
+        assert 'isolation: "worktree"' in section, (
+            "the ad-hoc dispatch no longer uses harness isolation, so a "
+            "delegate is placed by a path its own Bash calls do not keep"
+        )
+        assert ".claude/worktrees/agent-<id>" in section, (
+            "the section no longer says where an isolated delegate's tree is, "
+            "so the coordinator cannot write the brief into it"
+        )
+        lower = section.lower()
+        assert "does not persist" in lower, (
+            "the section dropped WHY a pointed-at worktree fails, which is the "
+            "sentence stopping the next editor from restoring that shape"
+        )
 
     def test_dispatch_is_bounded_by_whether_this_session_can_reap_it(self):
         """R9. The worst outcome available is not a bad delegate — it is an
