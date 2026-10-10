@@ -5,6 +5,23 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-10: ad-hoc delegates are dispatched with harness isolation, not pointed at a worktree
+
+<!-- prawduct: type=fix | scope=delegate-isolation-dispatch -->
+
+- `methodology/delegation.md` told the coordinator to create a delegate's worktree and point the
+  agent at it. That shape does not hold: the harness keeps no Bash `cd` between calls, and a skill
+  forks in the session's own directory. So the delegate's commits and reviews landed in the
+  coordinator's checkout and reported success (#791, merged into #221). The guide now dispatches in
+  the background with `isolation: "worktree"`, and the coordinator writes the brief into
+  `.claude/worktrees/agent-<id>` from the launch result. The delegate stays on the harness's
+  scratch branch, where `prawduct-hook` already refuses `.prawduct/` writes, so the no-governance
+  rule is enforced rather than requested. `building.md` points there, and a test pins the shape and
+  the reason.
+- #221's marker-and-guard design is superseded rather than built. Probes on Claude Code 2.1.296
+  showed forked skills already follow `EnterWorktree` and isolation, so the guard would have added
+  a hook and a per-write check for a failure that no longer reproduces.
+
 ## 2026-10-10: a measured study of governance cost against quality
 
 <!-- prawduct: type=docs | scope=governance-roi-study -->
@@ -15,7 +32,7 @@
   rewrite. Governed and ungoverned work showed no detectable difference in defect density (ratio
   1.25, CI 0.66-2.38) or in throughput. 46% of escapes could have been caught by code review.
   Late requirements are the largest cause of rework, and about 4 in 5 non-fix rewrites could not
-  have been prevented by asking up front. Follow-ups: #984, #985, #986, and the dated re-run #987.
+  have been prevented by asking up front. Follow-ups: #984, #989, #986, and the dated re-run #987.
 - The tooling is in `.prawduct/research/escape-2026-10/`. `test_escape.sh` is the detector's
   known-answer test, `build_batches.py` and `branch_landings.py` rebuild the study's inputs byte
   for byte, and `stats.py` re-derives every computed number in the artifact. Every repo except prawduct is anonymised.

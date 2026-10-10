@@ -1,6 +1,6 @@
 # Governance tax vs quality — cross-repo study, 2026-10-10
 
-`status: findings · source: owner request 2026-10-09 ("quantify and adjust the governance tax versus quality benefits … I have both kinds of repos") · related: roi-audit-2026-10-02, #951 (found_by / B5), #262, #984, #985, #986`
+`status: findings · source: owner request 2026-10-09 ("quantify and adjust the governance tax versus quality benefits … I have both kinds of repos") · related: roi-audit-2026-10-02, #951 (found_by / B5), #262, #984, #989, #986`
 
 ## Question
 
