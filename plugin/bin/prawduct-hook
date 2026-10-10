@@ -2421,7 +2421,7 @@ def cmd_critic_restore(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-def cmd_critic_consolidate(project_dir: Path) -> int:
+def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> int:
     """Merge complete reviewer partials into evidence facts + the derived cache.
 
     The deterministic write path of the Critic data plane (kernel v3 D8):
@@ -2431,13 +2431,31 @@ def cmd_critic_consolidate(project_dir: Path) -> int:
     session-end backstop — appends the review fact (idempotent by dispatch
     id), appends any resolution facts, and regenerates .critic-findings.json
     as a derived view carrying its source fact_id. See
-    ``lib/critic_consolidate.py`` for the full contract and exit codes."""
+    ``lib/critic_consolidate.py`` for the full contract and exit codes.
+
+    One optional argument: ``--tree-changed-by-builder "<reason>"``, the
+    builder's attestation that the working tree changed after dispatch because
+    of their own edits. Only the main session passes it; the hook and the
+    backstop never do, so a changed tree leaves the review for it to decide."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
 
-    return critic_consolidate.consolidate(project_dir)
+    flag = critic_consolidate.TREE_CHANGED_FLAG
+    rest = list(args or [])
+    reason = None
+    if flag in rest:
+        at = rest.index(flag)
+        reason = rest[at + 1].strip() if at + 1 < len(rest) else ""
+        if not reason or reason.startswith("--"):
+            print(f'critic-consolidate: {flag} needs a non-empty "<reason>"', file=sys.stderr)
+            return 2
+        del rest[at:at + 2]
+    rejected = _reject_unknown_args("critic-consolidate", rest, {flag})
+    if rejected is not None:
+        return rejected
+    return critic_consolidate.consolidate(project_dir, tree_changed_by_builder=reason)
 
 
 def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
@@ -3343,8 +3361,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     blockers.append(_attributed("critic",
                         "CRITIC REVIEW (consolidation failed): every reviewer reported, but\n"
                         "  the partials could not be consolidated — the specific cause is on\n"
-                        "  stderr above (e.g. HEAD moved since dispatch, a malformed partial,\n"
-                        "  or a ledger failure). Fix the cause or re-run the review:\n"
+                        "  stderr above (e.g. the working tree changed since dispatch, a\n"
+                        "  malformed partial, or a ledger failure). Follow its remedy, or\n"
+                        "  re-run the review:\n"
                         "    /prawduct:critic\n"
                     ))
             elif state == "incomplete":
@@ -9250,7 +9269,6 @@ _NO_ARGUMENT_COMMANDS = frozenset({
     "check-cumulative-critic",
     "check-operator-verification",
     "check-pr-doc-only",
-    "critic-consolidate",
     "critic-discard",
     "critic-end",
     "print-install-reference",
@@ -9379,7 +9397,7 @@ def _dispatch() -> int:
     elif command == "critic-restore":
         return cmd_critic_restore(project_dir, sys.argv[2:])
     elif command == "critic-consolidate":
-        return cmd_critic_consolidate(project_dir)
+        return cmd_critic_consolidate(project_dir, sys.argv[2:])
     elif command == "subagent-stop":
         return cmd_subagent_stop(project_dir, _read_stop_stdin())
     elif command == "jurisdiction":

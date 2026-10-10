@@ -528,6 +528,11 @@ class TestBaseAdvanceTransfer:
         assert rc == 0, err
         assert "transferred across base advance" in out
         assert prior_base[:12] in out
+        # The PR payload reads the transferred-from reviews by this key.
+        answer = gates.branch_coverage_verdict(repo)
+        assert answer["status"] == "transferred"
+        ids = answer["transfer"]["prior_review_ids"]
+        assert ids and ids[-1] == answer["transfer"]["prior_fact_id"]
         assert "byte-identical" in out
 
     def test_transfer_survives_a_verify_pass_between_review_and_sync(

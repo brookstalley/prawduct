@@ -5,6 +5,27 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-10: consolidation refuses a review during which the tree changed
+
+<!-- prawduct: type=feature | scope=critic-tree-unchanged -->
+
+- A reviewer's `Bash` patterns and `Write` paths are a contract the harness does not enforce, and
+  nothing checked that a review left the product alone (#992, part of the #928 R-8 parity bar).
+  `critic-begin` now records the whole working tree in the manifest as `dispatch_tree`, and
+  `critic-consolidate` compares it with the tree it finds. Any change outside prawduct's own
+  session files (`core.GITIGNORE_ENTRIES`, read with gitignore's anchoring) refuses the review and
+  names the paths. The partials stay on disk.
+- A diff cannot say who made a change, and `review-cycle.md` asks the builder to prep while a
+  review runs, so the refusal is not final. The main session can consolidate with
+  `--tree-changed-by-builder "<reason>"`, which writes the paths and the reason into the review
+  fact and `.critic-findings.json` (owner ruling 2026-10-10). The SubagentStop hook and the
+  session-end backstop never pass the flag. So a session that edits after an unconsolidated review
+  is now blocked at Stop until it attests.
+- The PR review payload gains a `review_tree_changes` section listing the attested paths and
+  reasons for the reviews the branch's coverage rests on (via a new `prior_review_ids` key in the
+  coverage composition), and `review-protocol.md` tells the PR reviewer to judge each attestation
+  against the paths it covers.
+
 ## 2026-10-10: ad-hoc delegates are dispatched with harness isolation, not pointed at a worktree
 
 <!-- prawduct: type=fix | scope=delegate-isolation-dispatch -->
