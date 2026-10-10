@@ -5,6 +5,22 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-10: a measured study of governance cost against quality
+
+<!-- prawduct: type=docs | scope=governance-roi-study -->
+
+- `.prawduct/artifacts/governance-roi-study-2026-10.md` reports a study over the owner's and a
+  collaborator's 42 repos. It combined a blind, independently verified Opus review of recently
+  merged code, a git-only rework detector, and classifications of what caused each fix and
+  rewrite. Governed and ungoverned work showed no detectable difference in defect density (ratio
+  1.25, CI 0.66-2.38) or in throughput. 46% of escapes could have been caught by code review.
+  Late requirements are the largest cause of rework, and about 4 in 5 non-fix rewrites could not
+  have been prevented by asking up front. Follow-ups: #984, #985, #986, and the dated re-run #987.
+- The tooling is in `.prawduct/research/escape-2026-10/`. `test_escape.sh` is the detector's
+  known-answer test, `build_batches.py` and `branch_landings.py` rebuild the study's inputs byte
+  for byte, and `stats.py` re-derives every computed number in the artifact. Every repo except prawduct is anonymised.
+  The raw data stays off this public repo, because it describes private code.
+
 ## 2026-10-09: a corrupted-store test no longer races git maintenance
 
 <!-- prawduct: type=fix | scope=test-git-maintenance-race -->
