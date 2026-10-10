@@ -100,11 +100,15 @@ requirements after the contract is proven (R-14).
   relies on (SubagentStop, Stop with block semantics, SessionStart context injection), the
   adapter's doctor reports it and the gate does **not** silently become advisory. Where a
   documented backstop exists (idempotent consolidation at Stop), the contract names it.
-- **R-8 (must).** Critic independence is demonstrated, not asserted: on the target host, a test
-  shows the reviewer cannot write product files and cannot run arbitrary shell, using the
-  host's *actual refusal* (per the learnings rule: never write "structurally enforced" without
-  having watched the harness refuse it). If a host cannot meet this, that host's Critic runs as
-  a separate constrained session or the adapter is not "supported" (see D-4).
+- **R-8 (must).** Critic independence on the target host is at parity with what Claude Code
+  actually delivers, shown live and not asserted (owner ruling 2026-10-10, D-5). Three parts:
+  (a) the host *refuses* any tool outside the reviewer's declared set (no edit tool), watched in
+  a live test; (b) the reviewer starts from fresh context, without the builder's reasoning;
+  (c) the reviewer's shell scope and write paths, which are a contract on Claude and not a fence,
+  are backed by a host-neutral core check that fails the review when the working tree changed
+  outside the reviewer's own files between `critic-begin` and consolidation. A host that cannot
+  meet (a) and (b) runs its Critic as a separate constrained session, or the adapter is not
+  "supported" (see D-4).
 - **R-9 (must).** Consolidation stays deterministic and host-agnostic: reviewer output enters via
   the existing `critic-consolidate` path with the same validation.
 - **R-10 (should).** `doctor` gains an adapter-aware check: plugin active, hooks trusted and
@@ -153,13 +157,50 @@ Code users install or invoke Prawduct.
   engine touches. The adapter author marks each one for Codex (supported, fallback, or
   unsupported) and proposes the seams. The owner rules on that proposal at design.
   One item is already decided: the governance anchor moves to `AGENTS.md`, and `CLAUDE.md`
-  becomes an `@AGENTS.md` import plus Claude-only lines. Claude Code reads `AGENTS.md` natively
-  only as a fallback when no `CLAUDE.md` exists, so the import is what makes it load in every
-  Claude session. That change is its own backlog item and ships independently of the adapter.
+  becomes the one line `@AGENTS.md` (narrowed from "plus Claude-only lines" on 2026-10-10, D-8).
+  Claude Code reads `AGENTS.md` natively only when no `CLAUDE.md`, `.claude/CLAUDE.md` or
+  `CLAUDE.local.md` exists in the working directory or above it, so the import is what makes it
+  load in every Claude session. That change is #942 and ships independently of the adapter.
 - **D-4 "Officially supported" means R-1 to R-13 met on a pinned host version range, with R-8
   shown live.** Anything short of that is labelled *experimental*. The adapter has one named
   maintainer, and it is demoted to experimental when it falls a set number of host releases
   behind without an update (the number is set at design).
+
+## Decisions (owner, 2026-10-10): rulings on the inventory
+
+Rulings on the decisions the adapter author's inventory proposal (PR #944) asked for. Row numbers
+refer to § Host-surface inventory.
+
+- **D-5 R-8 is a parity bar (rows 21, 23).** As written on 2026-09-30, R-8 asked the host to refuse
+  arbitrary shell and product writes. Claude Code refuses neither: the reviewer's `Bash(...)`
+  patterns and `Write` paths are a contract (`agents/critic-reviewer.md` says so), and
+  consolidation validated only the partial. Codex was being held to a bar the Claude adapter
+  fails. R-8 now requires host-enforced tool *set*, fresh context, and a host-neutral core check
+  that the tree did not change outside the reviewer's files during the review. That check is #992 and
+  benefits Claude independently of the adapter.
+- **D-6 Protected paths stay core-owned (row 30).** `AGENTS.md` joins the protected-prose set as
+  part of #942 (already in its acceptance criteria). Adapters may propose additive entries
+  upstream and never remove one.
+- **D-7 Core learnings reach Codex through SessionStart injection (rows 26, 27).** Claude keeps
+  loading `.claude/rules/learnings/` through the harness, unchanged. The Codex adapter injects
+  `core.md` as SessionStart context alongside the digest. Area learnings load on both hosts through
+  the explicit `learnings-files --for-diff` read. Rejected: importing `core.md` from `AGENTS.md`
+  (Codex documents no include syntax, and Claude would load it twice through rules), and inlining
+  the rules into `AGENTS.md` (learnings would become protected prose, reopening the Critic gate on
+  every new rule, and the learnings writer would edit a section of a user-owned file).
+- **D-8 `CLAUDE.md` is the one line `@AGENTS.md` (row 29).** Deleting `CLAUDE.md` outright would
+  fail open: a consumer's `CLAUDE.local.md`, or a `CLAUDE.md` in a parent directory, stops Claude
+  reading `AGENTS.md` with no warning. The import costs nothing; Claude documents that it never
+  loads `AGENTS.md` twice.
+- **D-9 Context over the SessionStart limit is loud at session start (row 13).** The adapter
+  measures the injected context when it builds it. Over the host's limit, it puts a one-line notice
+  first in that context, raises a standing advisory that shows in every briefing until resolved,
+  and doctor reports it too. Doctor alone runs too rarely. Design also checks the learnings budget
+  gate against the host limit so learnings growth cannot cause the overflow.
+- **D-10 D-2 scope.** In the supported contract: normalizing each host payload into one event shape,
+  and root resolution. Skill packaging (rows 19, 24, 25, 36) is in, because gates depend on it,
+  and canonical skill prose stays single-source (R-3, R-4). Out of the supported contract for now:
+  install, provenance, repo-toggle and remedy-text rows (18, 31 to 34, 38), which are UX.
 
 ## Host-surface inventory
 
@@ -234,9 +275,9 @@ Not host-specific but external: the Stop PR check shells out to `gh`; hooks.json
 
 ## Next step
 
-The adapter author fills the Codex and Proposed seam columns above, starting with the **gate**
-rows, and posts the feasibility evidence on #928. R-8 comes first: whether a reviewer-specific
-policy can take shell access away from the Critic on Codex, or whether the Critic has to run as a
-separate constrained session. Then design: the concrete seam, and the Codex feasibility spike
-(the issue's Phase 1) scoped to one skill, the session briefing and one Stop gate, with a live
-probe for each host-behaviour assumption.
+The inventory is filled (PR #944) and ruled on (D-5 to D-10). Next, the adapter author posts the
+evidence the inventory cites (F1, O1, O4, O5, E5) on #928. Then the R-8 probe against the parity
+bar: does Codex refuse a tool outside the reviewer's declared set, in-session or as a separate
+constrained session? Then design: the concrete seam, and the Codex feasibility spike (the issue's
+Phase 1) scoped to one skill, the session briefing and one Stop gate, with a live probe for each
+host-behaviour assumption.
