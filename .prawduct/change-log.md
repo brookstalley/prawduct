@@ -21,6 +21,10 @@
   fact and `.critic-findings.json` (owner ruling 2026-10-10). The SubagentStop hook and the
   session-end backstop never pass the flag. So a session that edits after an unconsolidated review
   is now blocked at Stop until it attests.
+- The PR review payload gains a `review_tree_changes` section listing the attested paths and
+  reasons for the reviews the branch's coverage rests on (via a new `prior_review_ids` key in the
+  coverage composition), and `review-protocol.md` tells the PR reviewer to judge each attestation
+  against the paths it covers.
 
 ## 2026-10-10: ad-hoc delegates are dispatched with harness isolation, not pointed at a worktree
 
