@@ -100,7 +100,9 @@ prompt in `wf-cause-classification.js`:
 ### 5. Throughput
 
 Merged source kLOC per active day since 2026-09-01. Repo F's integration-branch landings exclude
-everything its `develop` already contains, so nothing is counted twice:
+commits its `develop` already contains. One of them merged `develop` into the branch, so its 993
+lines (0.6% of the branch total, not sampled for review) may repeat lines already counted; no
+figure below changes at the precision shown:
 - repo F (ungoverned) 6.7
 - the two largest governed repos 6.7 and 6.6
 - pooled: ungoverned 4.7, governed 4.4
