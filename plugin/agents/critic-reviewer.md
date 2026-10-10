@@ -19,8 +19,8 @@ mutate the session you are reviewing. Review through code analysis only; the bui
 before requesting review.
 
 Your `Write` tool is not path-scoped, but your contract is to write exactly two files — your
-started marker, then your partial (both below); consolidation validates the partial and treats
-anything else as out of bounds.
+started marker, then your partial (both below); consolidation validates the partial and refuses
+the review if anything else changed.
 
 ## What the coordinator gives you
 

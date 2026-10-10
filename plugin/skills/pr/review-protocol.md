@@ -19,7 +19,7 @@ Three review layers are explicitly distinct: the per-chunk Critic reviews local 
    verdict, the build plan's `## Status` boxes verbatim, this bundle's change-log entry, every
    backlog item the commits or that entry cite — already resolved against the live backlog, **each
    marked as either a closure the branch CLAIMS or a mere mention** (R-2 below turns on that
-   difference) — **the repo's `default_branch`**, which the closing-keyword rule needs, and **`learnings_cap`**, which names any change to `core.md`'s cap: a raise whose owner approval the PR description does not quote is a WARNING. None of it is
+   difference) — **the repo's `default_branch`**, which the closing-keyword rule needs, and **`learnings_cap`**, which names any change to `core.md`'s cap: a raise whose owner approval the PR description does not quote is a WARNING. **`review_tree_changes`** lists reviews this branch relies on that were consolidated over a tree changed during the review, on the builder's word; a path the stated reason does not account for (product code under a reason that names prep) is a WARNING. None of it is
    the builder's reasoning: it is the same words out of the same files you would have opened
    yourself, which is why reading it costs your independence nothing.
    **It fails per section, and a degraded section names the check it leaves unanswered.** An

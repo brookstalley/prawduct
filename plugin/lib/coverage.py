@@ -682,6 +682,9 @@ def diagnose_base_advance_transfer(
                 "status": TRANSFER_MATCH,
                 "prior_fact_id": reviews[-1].get("id") if reviews else None,
                 "prior_reviews": len(reviews),
+                # Every review the transferred coverage rests on, so a reader
+                # that must inspect them (the PR payload) need not recompose.
+                "prior_review_ids": [step.get("id") for step in reviews],
                 "prior_base": prior_base,
                 "prior_head": prior_head,
                 "files": paths,

@@ -178,6 +178,14 @@ refer to § Host-surface inventory.
   fails. R-8 now requires host-enforced tool *set*, fresh context, and a host-neutral core check
   that the tree did not change outside the reviewer's files during the review. That check is #992 and
   benefits Claude independently of the adapter.
+  - *Owner ruling 2026-10-10, on building #992.* A tree diff cannot say who changed a path, and
+    `review-cycle.md` asks the builder to prep while a review runs. So a changed tree refuses
+    consolidation without destroying the review, and the main session may consolidate with
+    `critic-consolidate --tree-changed-by-builder "<reason>"`. That writes the paths and the reason
+    into the review fact, and the PR payload's `review_tree_changes` section shows them to the
+    independent PR reviewer. The hook and the session-end backstop never pass the flag. The
+    check (c) still holds: no change goes unrecorded. Chosen over a strict fail (which loses valid
+    reviews to builder prep) and over a warning-only record.
 - **D-6 Protected paths stay core-owned (row 30).** `AGENTS.md` joins the protected-prose set as
   part of #942 (already in its acceptance criteria). Adapters may propose additive entries
   upstream and never remove one.
@@ -239,7 +247,7 @@ proposed for it.
 | 18 | `CLAUDE_CONFIG_DIR` and `~/.claude*` roots | `hooks/banner.py`; `lib/plugin_activation.py`; `lib/stranded_work.py` | Install detection; transcript roots for liveness | UX / fallback | | |
 | 19 | `${CLAUDE_SKILL_DIR}` in skill prose | critic, pr, methodology, janitor, runbook, report-bug skills; `lib/buildplan_refs.py` | Loading the Critic and PR protocols and the methodology guides next to their skill | gate in effect | | |
 | 20 | Transcript directory mtimes (content never read) | `lib/stranded_work.py` | Worktree liveness in the briefing and `worktrees` | fallback (reflog, session markers, file mtimes) | | |
-| 21 | Reviewer agents' `tools:` allowlists (`Bash(pattern)`, `Write`) | `agents/critic-reviewer.md`, `agents/pr-reviewer.md` | Reviewer isolation. On Claude the tool *set* is enforced; `Bash` patterns and `Write` paths are a contract the reviewer keeps, backed by consolidation validating each partial | gate (R-8) | | |
+| 21 | Reviewer agents' `tools:` allowlists (`Bash(pattern)`, `Write`) | `agents/critic-reviewer.md`, `agents/pr-reviewer.md` | Reviewer isolation. On Claude the tool *set* is enforced; `Bash` patterns and `Write` paths are a contract the reviewer keeps, backed by consolidation validating each partial and refusing a review during which the working tree changed outside prawduct's session files (#992) | gate (R-8) | | |
 | 22 | `model: inherit`; `omitClaudeMd: true` on the PR reviewer | `agents/*.md` | Same-model review; PR reviewer isolated from instructions and memory | fallback (isolation weakens) | | |
 | 23 | Subagent dispatch through the Agent tool, three reviewers concurrently | `skills/critic/coordinator.md`; `skills/pr/SKILL.md` | Independent multi-role Critic; the PR reviewer | gate (single-pass roster is the fallback) | | |
 | 24 | Skill frontmatter `context: fork` | critic, backlog, advisory skills | Critic runs outside the builder's context; backlog out of main context | gate (critic), UX (others) | | |

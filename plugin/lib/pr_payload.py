@@ -60,6 +60,7 @@ SECTION_NAMES = (
     "backlog",
     "default_branch",
     "learnings_cap",
+    "review_tree_changes",
 )
 
 
@@ -730,6 +731,54 @@ def _section_learnings_cap(project_dir: Path, prawduct_dir: Path, base: str) -> 
     ))
 
 
+def _section_review_tree_changes(project_dir: Path) -> Section:
+    """Builder attestations on the reviews this branch's coverage rests on.
+
+    ``critic-consolidate --tree-changed-by-builder`` is the builder's word that
+    files changed during a review were theirs, not a reviewer's. A single-pass
+    reviewer runs consolidation itself, so the attestation needs a reader other
+    than its author, and this is the one independent reader at the boundary.
+    Scoped to the review steps on the composed coverage path — the reviews the
+    gate actually credits — because facts carry no branch.
+    """
+    from . import critic_consolidate, evidence  # noqa: PLC0415 — lazy; only this section needs them
+
+    lib = _lib()
+    try:
+        answer = lib.gates.branch_coverage_verdict(project_dir)
+        read = evidence.read_facts(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- an evidence read must not end the run
+        return Section("review_tree_changes", degraded=(
+            f"review facts unreadable ({exc.__class__.__name__}) — whether any review "
+            "this branch relies on was consolidated over a changed tree is UNANSWERED"
+        ))
+    path = (answer.get("verdict") or {}).get("path") or []
+    on_path = {step.get("id") for step in path if step.get("kind") == "review"}
+    # A base-advance transfer credits the reviews of the span it transferred
+    # from; the required span itself has no path.
+    if answer.get("status") == "transferred":
+        on_path |= set((answer.get("transfer") or {}).get("prior_review_ids") or [])
+    if not on_path:
+        return Section("review_tree_changes", body=(
+            f"no review is on a composed coverage path (coverage: {answer.get('status')}), "
+            "so there is no attestation to read"
+        ))
+    lines = []
+    for fact in evidence.facts_of_kind(read, "review"):
+        changed = (fact.get("body") or {}).get(critic_consolidate.TREE_CHANGED_KEY)
+        if fact.get("id") in on_path and changed:
+            lines.append(f"- {fact['id']}: {critic_consolidate.describe_tree_change(changed)}")
+    if not lines:
+        return Section("review_tree_changes", body=(
+            "every review this branch relies on consolidated over the tree it was "
+            "dispatched on"
+        ))
+    return Section("review_tree_changes", body=(
+        "These reviews were consolidated over a working tree that changed after "
+        "dispatch, on the builder's word that the changes were theirs:\n" + "\n".join(lines)
+    ))
+
+
 def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
     """Build every section. Returns ``(sections, hard_failure_reason)``.
 
@@ -796,6 +845,7 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
     )
     sections.append(_section_default_branch(project_dir))
     sections.append(_section_learnings_cap(project_dir, prawduct_dir, base))
+    sections.append(_section_review_tree_changes(project_dir))
 
     # The roster is the promise, so reconcile against it rather than trusting the
     # list just built. A builder that raised, or a section quietly dropped in a

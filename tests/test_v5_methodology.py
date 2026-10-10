@@ -912,7 +912,11 @@ LAST_MEASURED_TOKENS = {
     # -3231 on 2026-09-28 (opus-55-w3b), C-8: the reviewer-facing Type selector and cross-checks move to cross-checks.md; the ceiling lowered with it.
     # -9 on 2026-09-29 (opus-55-w6, the Fable coherence pass): a quote of a building.md sentence
     # that no longer exists, and a claim the close directive prints this paragraph verbatim, cut.
-    "skills/critic/review-cycle.md": 7460,
+    # +77 on 2026-10-10 (#992), DECLARED: the prep paragraph says builder prep that edits a repo
+    # file makes consolidation refuse until attested, and the manifest keys name `dispatch_tree`.
+    # Compressed in place first (+145 -> +77). Read by the reviewing fork and the builder each
+    # review; without it the builder's encouraged prep meets an unexplained refusal.
+    "skills/critic/review-cycle.md": 7537,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -5955,7 +5959,8 @@ class TestReviewCycle:
         # RAISED 11233 -> 11318 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 7461, f"review-cycle.md is ~{tokens} tokens, should be <7461"
+        # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 7538, f"review-cycle.md is ~{tokens} tokens, should be <7538"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

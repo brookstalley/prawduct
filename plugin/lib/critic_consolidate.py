@@ -75,7 +75,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import coverage_algebra, critic_marker, evidence, gates, gitstate, ledger
-from .core import atomic_write_text
+from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
 MANIFEST_NAME = "manifest.json"
@@ -3440,6 +3440,12 @@ def begin_review(
         # already writes. Advisory: nothing gates on it, and an older manifest
         # without the key is still valid.
         "seed": capture.get("seed"),
+        # The WHOLE working tree at dispatch, whatever interval the mode chose.
+        # Consolidation compares it with the tree it finds, because a
+        # reviewer's tool grants are a contract the harness does not enforce
+        # (`agents/critic-reviewer.md`) and this is the one place that can
+        # notice a review that changed the product it was judging.
+        "dispatch_tree": capture["tree"],
     }
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
@@ -3787,7 +3793,7 @@ def validate_manifest(data) -> tuple[bool, str]:
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
-                "chunk_type", "signals"):
+                "chunk_type", "signals", "dispatch_tree"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -4830,7 +4836,7 @@ def fact_to_cache_record(
         verdict = "Changes ready to proceed."
     roster = body.get("roster") or []
     models = [r.get("model") for r in roster if r.get("model")]
-    return {
+    record = {
         "timestamp": fact.get("ts"),
         "duration_seconds": body.get("duration_seconds"),
         "mode": body.get("mode"),
@@ -4864,6 +4870,11 @@ def fact_to_cache_record(
             body.get("findings") or []
         ),
     }
+    # Only when the builder attested a change: the next builder and the PR
+    # reviewer read this file, and an absent key means the tree was unchanged.
+    if body.get(TREE_CHANGED_KEY):
+        record[TREE_CHANGED_KEY] = body[TREE_CHANGED_KEY]
+    return record
 
 
 # ---------------------------------------------------------------------------
@@ -5094,7 +5105,102 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     )
 
 
-def consolidate(project_dir: Path) -> int:
+#: The flag that consolidates a review over a tree that changed after
+#: dispatch. Named here because the refusal tells the builder to pass it and
+#: the CLI parses it — one spelling for both.
+TREE_CHANGED_FLAG = "--tree-changed-by-builder"
+
+#: The review-fact body key (and findings-cache key) carrying the attestation.
+TREE_CHANGED_KEY = "tree_changed_during_review"
+
+
+def describe_tree_change(changed: dict) -> str:
+    """One rendering of an attestation, for every surface that shows one."""
+    paths = ", ".join(changed.get("paths") or []) or "(tree unverifiable)"
+    return f"{paths} — builder's reason: {changed.get('reason')}"
+
+
+def tree_changed_since_dispatch(
+    project_dir: Path, manifest: dict
+) -> "tuple[str, list[str] | str | None]":
+    """Compare the working tree recorded at dispatch with the one now.
+
+    Returns ``("unrecorded", None)`` for a manifest written before
+    ``dispatch_tree`` existed, ``("unchanged", [])``, ``("changed", paths)``,
+    or ``("unverifiable", reason)`` when either tree cannot be read.
+
+    Prawduct's own session files (``core.GITIGNORE_ENTRIES``) are exempt by
+    path rather than by trusting the product's ``.gitignore``: dispatch itself
+    writes the marker and the dispatch clock after capturing the tree, and the
+    reviewer must write its started marker and partial, so a repo missing the
+    ignore entries would otherwise refuse every review over them. Nothing else
+    is exempt, because a diff cannot say who changed a path — that is the
+    builder's call, made with the flag."""
+    dispatch_tree = manifest.get("dispatch_tree")
+    if not dispatch_tree:
+        return "unrecorded", None
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok":
+        return "unverifiable", f"tree capture failed: {capture.get('reason', 'unknown')}"
+    if capture["tree"] == dispatch_tree:
+        return "unchanged", []
+    changed = evidence.tree_diff(project_dir, dispatch_tree, capture["tree"])
+    if changed is None:
+        return "unverifiable", f"could not diff against dispatch tree {dispatch_tree[:12]}"
+    # `tree_diff` paths are repo-root relative; the entries are project relative.
+    rc, prefix, err = evidence.run_git(project_dir, "rev-parse", "--show-prefix")
+    if rc != 0:
+        return "unverifiable", f"could not locate the project in its repo ({err})"
+    paths = [c for c in changed if not _is_session_file(c, prefix)]
+    return ("changed", paths) if paths else ("unchanged", [])
+
+
+def _is_session_file(path: str, prefix: str) -> bool:
+    """Whether a repo-relative ``path`` is one of ``GITIGNORE_ENTRIES``, read
+    with gitignore's own anchoring: an entry containing a ``/`` before its end
+    is anchored at the project root (``prefix``); one without (``__pycache__/``)
+    matches at any depth. A trailing ``/`` names a directory."""
+    parts = path.split("/")
+    for entry in GITIGNORE_ENTRIES:
+        is_dir = entry.endswith("/")
+        name = entry.rstrip("/")
+        if "/" in name:
+            anchored = prefix + name
+            if path == anchored or (is_dir and path.startswith(anchored + "/")):
+                return True
+        elif (name in parts[:-1]) if is_dir else (parts[-1] == name):
+            return True
+    return False
+
+
+def _tree_changed_refusal(review_id: str, state: str, detail: "list[str] | str") -> str:
+    if state == "changed":
+        what = (
+            "the working tree changed between dispatch and consolidation: "
+            + ", ".join(detail)  # type: ignore[arg-type]
+        )
+    else:
+        what = f"could not confirm the working tree is unchanged since dispatch ({detail})"
+    return (
+        f"critic-consolidate: {what}. A reviewer may write only its started "
+        f"marker and partial, so {review_id} is NOT consolidated; its partials "
+        "stay on disk. This is the main session's decision, never a reviewer's:\n"
+        "  - If a reviewer made the change: revert it, then `prawduct-hook "
+        "critic-discard` and re-run the review.\n"
+        "  - If you (the builder) made it while the review ran: `prawduct-hook "
+        f'critic-consolidate {TREE_CHANGED_FLAG} "<what you changed and why>"` '
+        "— the paths and your reason are written into the review fact."
+    )
+
+
+def _tree_changed_line(body: dict) -> str:
+    changed = body.get(TREE_CHANGED_KEY)
+    if not changed:
+        return ""
+    return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
+
+
+def consolidate(project_dir: Path, *, tree_changed_by_builder: "str | None" = None) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
     cache. Idempotent.
 
@@ -5109,8 +5215,10 @@ def consolidate(project_dir: Path) -> int:
         cleared, partials removed.
       - ``1`` — fail-closed: malformed manifest/partial, a partial reviewed a
         different commit than dispatched, off-protocol resolutions, a
-        resolution referencing a finding the store doesn't hold, a store
-        write failure, or a ledger failure. Nothing partial is persisted as
+        resolution referencing a finding the store doesn't hold, a working
+        tree that changed since dispatch without ``tree_changed_by_builder``
+        (:func:`tree_changed_since_dispatch`), a store write failure, or a
+        ledger failure. Nothing partial is persisted as
         complete; the manifest is left in place so the fix can retry (fact
         appends already made are healed by the id-idempotency probe).
     """
@@ -5296,6 +5404,18 @@ def consolidate(project_dir: Path) -> int:
             prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
         )
         body = build_fact_body(manifest, partials, dispatched_at=dispatched_at)
+        tree_state, tree_detail = tree_changed_since_dispatch(project_dir, manifest)
+        if tree_state in ("changed", "unverifiable"):
+            if not tree_changed_by_builder:
+                print(_tree_changed_refusal(review_id, tree_state, tree_detail),
+                      file=sys.stderr)
+                return 1
+            body[TREE_CHANGED_KEY] = {
+                "paths": tree_detail if tree_state == "changed" else [],
+                "reason": tree_changed_by_builder,
+            }
+            if tree_state == "unverifiable":
+                body[TREE_CHANGED_KEY]["unverifiable"] = tree_detail
         result = evidence.append_fact(project_dir, "review", review_id, body)
         if result["status"] != "appended":
             print(
@@ -5552,6 +5672,8 @@ def consolidate(project_dir: Path) -> int:
         # Only when there is something to fix — a clean pass that ended with a
         # fix strategy attached would read as work it does not have.
         + (_BATCH_FIX_DIRECTIVE if all_findings else "")
+        # Last: the directive above continues the summary sentence inline.
+        + _tree_changed_line(fact_body)
     )
     # The single-pass reviewer runs this command itself, so everything above
     # lands in the REVIEWER's context and dies there — the builder never sees a
