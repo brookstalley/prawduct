@@ -62,6 +62,7 @@ def _event(
     observations: list[dict] | None = None,
     stage: str | None = None,
     dispatched_at: str | None = None,
+    trigger: str | None = None,
     ts: str = "2026-06-10T12:00:00Z",
 ) -> dict:
     event = {
@@ -96,6 +97,8 @@ def _event(
     # the key, so the default is the population the split exists to separate.
     if dispatched_at is not None:
         event["dispatched_at"] = dispatched_at
+    if trigger is not None:
+        event["trigger"] = trigger
     return event
 
 
@@ -302,6 +305,46 @@ class TestObservationCounts:
         assert "observations not recorded" in old
 
 
+class TestConsolidatedBy:
+    """Which path consolidated each Critic review. The three leave identical
+    state, so a dead one shows only as its count sitting at zero — which is
+    why every path is listed even at zero."""
+
+    def test_counts_each_trigger_and_lists_absent_ones_at_zero(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(trigger="explicit"),
+            _event(trigger="explicit"),
+            _event(trigger="session-end-backstop"),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["consolidated_by"] == {
+            "subagent-stop": 0, "explicit": 2,
+            "session-end-backstop": 1, "unrecorded": 0,
+        }
+
+    def test_untriggered_and_unknown_values_are_unrecorded_and_pr_is_excluded(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(),                       # written before the key existed
+            _event(trigger="hook"),         # not a path this reader knows
+            _event(kind="review.pr", role="pr"),
+            _event(trigger="subagent-stop"),
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["consolidated_by"] == {
+            "subagent-stop": 1, "explicit": 0,
+            "session-end-backstop": 0, "unrecorded": 2,
+        }
+
+    def test_the_human_report_names_every_path(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(trigger="explicit")])
+        out = _run(repo).stdout
+        assert ("critic reviews consolidated by: subagent-stop 0, explicit 1, "
+                "session-end-backstop 0, unrecorded 0") in out
+
+
 class TestStageRollup:
     """The yield-by-stage query the stage-keyed rigor norm was drawn to answer
     (`nonfunctional-requirements.md` § Direction). `critic-begin` stamps
@@ -439,7 +482,7 @@ class TestJsonSchemaStability:
         assert list(report) == [
             "schema_version", "project", "generated_at", "window", "events_total",
             "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage",
-            "top_files", "files_attributed_total", "learning",
+            "consolidated_by", "top_files", "files_attributed_total", "learning",
         ]
         # 1 -> 2 when the `learning` block arrived. A key change, so the
         # version moves with it — that is the whole contract this class exists
@@ -459,7 +502,9 @@ class TestJsonSchemaStability:
         # one, and a `remedies` block on every stat block. Both ADDED; no key
         # was removed or repurposed, which is what `api-contract.md`'s
         # additive-first norm permits and what this pin exists to hold you to.
-        assert report["schema_version"] == 7
+        # 7 -> 8 (#182): a `consolidated_by` count of which path consolidated
+        # each Critic review joined the top level (a key change).
+        assert report["schema_version"] == 8
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -729,7 +774,7 @@ class TestDurationProvenanceSplit:
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 7
+        assert report["schema_version"] == 8
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 

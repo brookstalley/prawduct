@@ -273,6 +273,14 @@ clock — and a performance target stated against an estimate is a target stated
   `.prawduct/.pr-review-dispatch.json`) are **Tier 3 per-clone state** — stopwatches, not answers —
   and are gitignored.
 
+**`trigger` (envelope key, `review.critic` only).** Which code path consolidated the review:
+`subagent-stop`, `explicit` (`critic-consolidate`) or `session-end-backstop` (the Stop hook's
+self-heal). Each caller passes its own name; `consolidate()` cannot infer it, because the three
+paths reach it with identical state — which is how a dead `SubagentStop` hook once hid behind the
+backstop. Required at `ledger-append` for `review.critic`, refused for `review.pr`. Lines written
+before the key existed lack it; read absence as *not recorded*, never as any particular path.
+`review-stats` reads it (`consolidated_by`, report schema 8).
+
 ### Tier 2 — Committed curated state (shared, source of truth for its domain)
 
 #### Project State — `.prawduct/project-state.yaml`

@@ -3555,6 +3555,40 @@ class TestConsolidateIntegration:
             "unestablished for any other mode"
         )
 
+    def test_the_subagent_stop_hook_records_its_own_trigger(self, tmp_path):
+        """The hook path names itself. Without this, a working hook and a dead
+        one covered by the backstop leave the same ledger line."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        result = subprocess.run(
+            ["python3", str(HOOK), "subagent-stop"],
+            input=json.dumps({"cwd": str(repo),
+                              "agent_type": "prawduct:critic-reviewer"}),
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        events = [json.loads(line) for line in
+                  (repo / LEDGER_REL).read_text().strip().splitlines()]
+        assert [ev["trigger"] for ev in events] == ["subagent-stop"]
+
+    def test_an_unknown_trigger_raises_before_touching_the_review(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        with pytest.raises(ValueError, match="trigger"):
+            cc.consolidate(repo, trigger="hook")
+        assert (repo / MARKER_REL).is_file()
+        assert not (repo / LEDGER_REL).exists()
+        assert _store_facts(repo, "review") == []
+
     def test_complete_partials_at_head_consolidates(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -3595,6 +3629,8 @@ class TestConsolidateIntegration:
         event = json.loads(ledger_lines[0])
         assert event["event"] == "review.critic"
         assert event["scope"] == "demo-scope"
+        # The CLI is the explicit path, and says so.
+        assert event["trigger"] == "explicit"
 
         # Marker cleared + partials removed.
         assert not (repo / MARKER_REL).is_file()

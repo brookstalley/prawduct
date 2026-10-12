@@ -133,12 +133,17 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 >    "debugged").
 > 2. **Attribute the consolidation, do not just observe it.** Three things can consolidate:
 >    this hook, the skill's own explicit `critic-consolidate`, and the session-end backstop.
->    Nothing currently RECORDS which one fired — so "findings appeared" is consistent with
+>    Until #182 nothing recorded which one fired — so "findings appeared" was consistent with
 >    the hook still being dead. That ambiguity is precisely why this went unnoticed for 17
 >    days, and it bit again during the 2026-07-27 review, where the reviewing agent reported
 >    the trigger "did consolidate without an explicit call" and had no way to know that.
->    Until a trigger is recorded on the `review.critic` event, this step must be run with the
->    skill's explicit consolidate call suppressed, or the verdict means nothing.
+>    **Since #182 (2026-10-12) the `review.critic` ledger event carries `trigger`** — read it
+>    (`grep '"event": "review.critic"' .prawduct/.governance-ledger.jsonl | tail -1` — not a
+>    bare `tail -1`: consolidation appends `learning.fired` lines after the review's) instead of inferring from what appeared:
+>    `subagent-stop` passes, `session-end-backstop` fails (the hook did not fire), and
+>    `explicit` is no verdict (an explicit call got there first). Run it on a three-reviewer
+>    `final`/`cumulative` roster: a single-pass review dispatches no `critic-reviewer`
+>    subagent, so it cannot exercise this hook at all.
 
 **Added:** 2026-07-10 (critic-persistence-redesign Chunk 04)
 
@@ -153,11 +158,12 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 > fact 2 was resolved by analysis on 2026-07-27, was a real defect from birth, and is now pinned
 > by `tests/test_critic_reviewer_agent.py`. Only *delivery* is still owed.
 >
-> **Blocked for an unambiguous verdict, and sequence matters.** Three things can consolidate —
-> this hook, the skill's explicit call, and the session-end backstop — and nothing records which
-> one did (`#182`). Until a trigger is recorded on the `review.critic` event, a run that sees
-> findings appear cannot distinguish a working hook from a dead one, which is exactly how this
-> went unnoticed for seventeen days. **Do #182 first, or the live run cannot answer.**
+> **Was blocked for an unambiguous verdict; unblocked 2026-10-12 by #182.** Three things can
+> consolidate — this hook, the skill's explicit call, and the session-end backstop — and until
+> #182 nothing recorded which one did, so a run that saw findings appear could not distinguish a
+> working hook from a dead one. The `review.critic` event now carries `trigger`, set by each
+> caller; the verdict is that field (rule in addition 2 above). Still owed: the live run, on a
+> released plugin that carries #182 — the installed plugin, not this checkout, is what fires.
 **Where to verify:** A real Claude Code session in this repo AFTER the plugin is
 updated to a version carrying `agents/critic-reviewer.md` + the `SubagentStop` hook
 (this session runs the plugin from `~/.claude/plugins/cache/.../2.3.0`, so the new
