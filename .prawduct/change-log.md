@@ -5,6 +5,25 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-12: the ledger records which path consolidated a Critic review
+
+<!-- prawduct: type=bugfix | scope=consolidate-trigger -->
+
+- Three paths reach `consolidate()` — the `SubagentStop` hook, `critic-consolidate`, and the Stop
+  hook's self-heal — and they left identical state, so a dead hook covered by the backstop looked
+  like a working one (why the bare-matcher defect hid for seventeen days; #182). `consolidate()`
+  now takes a required `trigger` that each caller sets (`subagent-stop`, `explicit`,
+  `session-end-backstop`), never inferred inside it, and an unknown value raises before anything
+  is read. `ledger-append` requires `--trigger` for `review.critic`, refuses it for `review.pr`,
+  and writes it as the `trigger` envelope key. `explicit` does not split the skill's own call
+  from a human's: both run the same CLI, and a flag the skill passed to say so is one a human
+  could type too, so the split would not hold. VRF-002 only needs hook-or-not.
+- Two readers, so the field is not write-only. `review-stats` gains `consolidated_by` (report
+  schema 7 → 8): Critic reviews per path, every path listed even at zero, so a dead hook shows as
+  `subagent-stop 0` in a routine report rather than only to someone who opens the ledger. And
+  VRF-002, which was blocked on this, now takes its verdict from `trigger` instead of from findings
+  merely appearing; it still needs the live run on a released plugin.
+
 ## 2026-10-10: consolidation refuses a review during which the tree changed
 
 <!-- prawduct: type=feature | scope=critic-tree-unchanged -->

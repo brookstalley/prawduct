@@ -5200,9 +5200,17 @@ def _tree_changed_line(body: dict) -> str:
     return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
 
 
-def consolidate(project_dir: Path, *, tree_changed_by_builder: "str | None" = None) -> int:
+def consolidate(
+    project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
+) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
     cache. Idempotent.
+
+    ``trigger`` names the calling path (one of ``ledger.CONSOLIDATION_TRIGGERS``)
+    and is recorded on the ``review.critic`` ledger event. Required, and never
+    derived here: every path reaches this function with the same state, so only
+    the caller knows which one it is. An unknown value raises ``ValueError``
+    before anything is read or written — it is a caller bug, not a review state.
 
     Exit codes:
       - ``0`` + ``no-op:`` — nothing to do (no manifest, or roster incomplete —
@@ -5222,6 +5230,12 @@ def consolidate(project_dir: Path, *, tree_changed_by_builder: "str | None" = No
         complete; the manifest is left in place so the fix can retry (fact
         appends already made are healed by the id-idempotency probe).
     """
+
+    if trigger not in ledger.CONSOLIDATION_TRIGGERS:
+        raise ValueError(
+            f"consolidate: trigger must be one of {ledger.CONSOLIDATION_TRIGGERS}, "
+            f"got {trigger!r}"
+        )
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)
@@ -5562,7 +5576,7 @@ def consolidate(project_dir: Path, *, tree_changed_by_builder: "str | None" = No
         )
     else:
         models = [p.get("model") for p in partials if p.get("model")]
-        argv = ["--event", "review.critic"]
+        argv = ["--event", "review.critic", "--trigger", trigger]
         if manifest.get("scope"):
             argv += ["--scope", manifest["scope"]]
         if manifest.get("chunk"):

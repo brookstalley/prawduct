@@ -41,7 +41,7 @@ from pathlib import Path
 from statistics import median
 
 from . import gitstate
-from .ledger import ledger_path
+from .ledger import CONSOLIDATION_TRIGGERS, ledger_path
 from .timewindow import in_window, is_usable_bound
 
 #: Report schema. Bumped to 2 when the learning-loop block arrived, to 3 when
@@ -54,7 +54,10 @@ from .timewindow import in_window, is_usable_bound
 #: for the whole corpus, the second reports whether a finding ships a fix plan.
 #: The contract's prose home is ``docs/governance-telemetry.md``; a bump that
 #: does not reach it leaves the published shape and its description disagreeing.
-REPORT_SCHEMA_VERSION = 7
+#: Bumped to 8 when `consolidated_by` joined: which path consolidated each Critic
+#: review, so a dead `SubagentStop` hook reads as a zero instead of hiding behind
+#: the paths that cover for it.
+REPORT_SCHEMA_VERSION = 8
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -332,11 +335,15 @@ def _extract_row(event: dict) -> dict:
     # about its stage. Deriving it here would silently backfill history with a
     # mapping this reader would then own a second copy of.
     stage = event["review"].get("stage")
+    trigger = event.get("trigger")
     return {
         "role": role if isinstance(role, str) else None,
         "model": _canonical_model(model),
         "mode": _short_mode(event["review"].get("mode")),
         "stage": stage if stage in _STAGES else None,
+        # Read, never inferred — an event written before the key existed says
+        # nothing about which path consolidated it.
+        "trigger": trigger if trigger in CONSOLIDATION_TRIGGERS else None,
         "scope": scope if isinstance(scope, str) else None,
         "duration": duration,
         # The measured interval where there is one, else None — never a fallback
@@ -625,6 +632,15 @@ def format_round_price(price: dict) -> str:
     )
 
 
+def _consolidated_by(rows: list[dict]) -> dict:
+    counts = {trigger: 0 for trigger in CONSOLIDATION_TRIGGERS}
+    counts["unrecorded"] = 0
+    for row in rows:
+        if row["role"] == "critic":
+            counts[row["trigger"] or "unrecorded"] += 1
+    return counts
+
+
 def aggregate_review_stats(
     events: list[dict], skipped: dict, learning: "dict | None" = None
 ) -> dict:
@@ -671,6 +687,12 @@ def aggregate_review_stats(
                 key=lambda kv: _STAGES.index(kv[0]) if kv[0] in _STAGES else len(_STAGES),
             )
         ],
+        # Which path consolidated each Critic review. The three leave identical
+        # state, so the only symptom of a dead path is its count here sitting at
+        # zero while the others carry the load. Every known path is listed even
+        # at zero — a missing key would hide exactly that — and `unrecorded`
+        # holds events written before the field existed.
+        "consolidated_by": _consolidated_by(rows),
         "top_files": top_files,
         "files_attributed_total": files_attributed_total,
         # The learning loop's own numbers. `written`/`fired` count EVENTS and
@@ -793,6 +815,9 @@ def _render_human(report: dict, ledger_rel: str) -> str:
     lines += ["", "by stage:"]
     for entry in report["by_stage"]:
         lines.append(f"  {entry['stage'] or '(unrecorded)'}: {_fmt_stats(entry)}")
+    lines += ["", "critic reviews consolidated by: " + ", ".join(
+        f"{trigger} {count}" for trigger, count in report["consolidated_by"].items()
+    )]
     lines += ["", f"top files by actionable findings (cap {TOP_FILES_LIMIT}):"]
     if report["top_files"]:
         for entry in report["top_files"]:

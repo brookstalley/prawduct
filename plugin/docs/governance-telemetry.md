@@ -20,6 +20,7 @@ kind-named key (`review` for `review.*`):
 {"schema_version": 1,
  "event": "review.critic",
  "ts": "2026-06-10T16:20:00Z",
+ "trigger": "subagent-stop",
  "duration_seconds": 720,
  "project": "my-product",
  "scope": "my-feature",
@@ -38,6 +39,12 @@ kind-named key (`review` for `review.*`):
   reviewer was spawned; its interval ends at `ts` (at `review_written_at` on a `review.pr` that
   carries it). An absent key means *not measured*, never zero. `lib/review_dispatch.py` owns the
   interval, and every reader goes through it.
+- `trigger` is on every `review.critic` event and no other kind: which code path consolidated the
+  review — `subagent-stop` (the hook), `explicit` (`critic-consolidate`) or `session-end-backstop`
+  (the Stop hook's self-heal). The caller names itself (`ledger-append` refuses a `review.critic`
+  without one) because the three leave identical state, so a dead trigger covered by another looks
+  like a working one. Lines written before the field existed lack it. `review-stats` counts it as
+  `consolidated_by`, where a dead path reads as a zero beside the paths covering for it.
 - `review.critic` (the Critic, after writing its findings file) and
   `review.pr` (the `/prawduct:pr` skill after the PR review, via
   `--findings <evidence-path>` — required for `review.pr`, rejected for
@@ -198,6 +205,9 @@ overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
+consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
+                 — review.critic events per `trigger`, every path listed even
+                 at zero; `unrecorded` is events without a known value
 top_files        [{path, actionable_findings, findings}]
 files_attributed_total  count behind the top_files cap
 learning         {written, fired, units_written, units_fired, units_uncited}

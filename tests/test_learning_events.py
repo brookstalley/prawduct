@@ -524,7 +524,7 @@ class TestConsolidateTelemetryIsBestEffort:
             raise OSError("ledger is on fire")
 
         monkeypatch.setattr(cc.ledger, "append_learning_event", _boom)
-        rc = cc.consolidate(repo)
+        rc = cc.consolidate(repo, trigger="explicit")
         assert rc == 0
         assert _events(repo, "learning.fired") == []
         assert (repo / ".prawduct" / ".critic-findings.json").is_file()
@@ -536,7 +536,7 @@ class TestConsolidateTelemetryIsBestEffort:
             cc.ledger, "append_learning_event",
             lambda *a, **k: (_ for _ in ()).throw(OSError("ledger is on fire")),
         )
-        cc.consolidate(repo)
+        cc.consolidate(repo, trigger="explicit")
         err = capsys.readouterr().err
         assert "`learning.fired` was not recorded" in err
         assert "never-fired" in err

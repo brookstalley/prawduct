@@ -162,6 +162,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   inverse), `evidence status|list`, `ledger-append`
   (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
   as well as `review.pr`, and writes the optional `dispatched_at` envelope key when one is present;
+  `--trigger subagent-stop|explicit|session-end-backstop` is required for `review.critic` and
+  refused for `review.pr`, and lands as the `trigger` envelope key (a required flag on a
+  shipped verb, safe because `critic-consolidate` is the only `review.critic` appender and no
+  skill or doc tells a human to append one);
   each kind owns its own marker, so an append can never reach another kind's — `data-model.md`
   § Direction), `pr-review-dispatch --begin` (write the PR reviewer's dispatch mark, mutating — a
   per-clone stopwatch, never an answer; the Critic's equivalent is written by `critic-begin` itself

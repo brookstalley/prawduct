@@ -229,7 +229,7 @@ _VALID_INVOCATIONS = {
         "test-evidence", "record", "--from-counts", "passed=1", "failed=0", "skipped=0",
     ],
     "advisory": ["advisory", "list"],
-    "ledger-append": ["ledger-append", "--event", "review.critic"],
+    "ledger-append": ["ledger-append", "--event", "review.critic", "--trigger", "explicit"],
     "critic-begin": ["critic-begin", "--mode", "chunk"],
     "critic-restore": ["critic-restore", "rev-20260101T000000Z-abcdef12"],
     "handoff": ["handoff", "preview"],

@@ -360,6 +360,13 @@ class TestChunk05ConsolidateOrBlock:
         assert not (prawduct / ".critic-active").is_file()
         assert not (prawduct / ".critic-partials").exists()
         assert "self-healed" in result.stderr
+        # The backstop names itself on the ledger, so a session that relied on
+        # it is distinguishable from one whose SubagentStop hook did the work.
+        events = [json.loads(line) for line in
+                  (prawduct / ".governance-ledger.jsonl").read_text().splitlines()]
+        assert [ev["trigger"] for ev in events if ev["event"] == "review.critic"] == [
+            "session-end-backstop"
+        ]
 
     def test_incomplete_partials_block_naming_missing(self, tmp_path):
         """Marker + manifest but a missing reviewer → block naming who's missing;
@@ -592,8 +599,6 @@ class TestASelfHealSurvivesTheSessionBoundary:
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
         )
 
-        # The self-heal ran: the review was consolidated, its fact recorded, and
-        # the marker cleared by the act that consumed it.
         # The backstop REACHED the kept review — the boundary did not cost it
         # its self-heal — and refused it, because this session changed the tree
         # after dispatch and a diff cannot say the builder, not a reviewer, did.
