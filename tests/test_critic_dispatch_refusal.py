@@ -77,6 +77,10 @@ def _init_repo(repo: Path) -> None:
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "config", "user.name", "Test")
     _git(repo, "config", "commit.gpgsign", "false")
+    # Every commit otherwise spawns a detached `git maintenance run --auto`,
+    # whose transient objects/maintenance.lock can vanish between the
+    # object-store walk and the chmod in the corrupted-store test.
+    _git(repo, "config", "maintenance.auto", "false")
     (repo / ".prawduct").mkdir(exist_ok=True)
 
 

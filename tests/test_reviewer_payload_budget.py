@@ -187,7 +187,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -12 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
-    "single-pass-inner": 5806,
+    # -8 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
+    "single-pass-inner": 5798,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -214,7 +215,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -7855 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
-    "single-pass-full": 11430,
+    # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
+    # +104 on 2026-10-09 (requirements-alignment w2, #975), DECLARED: Goal 5 judges the work against
+    # the plan's Goals and the brief, reports a goal still marked inferred, and lists the mid-build
+    # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
+    # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
+    # almost entirely to goals the plan misread, the level no other check here reads.
+    "single-pass-full": 11525,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -276,17 +283,29 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -7843 on 2026-09-28 (opus-55-w3b), DECLARED: review-cycle.md's builder lifecycle leaves every reviewer route
     # (C-8, into cross-checks.md) and the coordinator's dispatch steps leave the reviewer's protocol (C-20,
     # into coordinator.md, which only the coordinator fork reads).
-    "dispatched-reviewer": 10861,
+    # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
+    # +104 on 2026-10-09 (requirements-alignment w2, #975), DECLARED: Goal 5 judges the work against
+    # the plan's Goals and the brief, reports a goal still marked inferred, and lists the mid-build
+    # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
+    # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
+    # almost entirely to goals the plan misread, the level no other check here reads.
+    "dispatched-reviewer": 10956,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
-    "coordinator-fork": 12024,
+    # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
+    # +104 on 2026-10-09 (requirements-alignment w2, #975), DECLARED: Goal 5 judges the work against
+    # the plan's Goals and the brief, reports a goal still marked inferred, and lists the mid-build
+    # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
+    # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
+    # almost entirely to goals the plan misread, the level no other check here reads.
+    "coordinator-fork": 12119,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5807,
-    "single-pass-full": 11431,
-    "dispatched-reviewer": 10862,
-    "coordinator-fork": 12025,
+    "single-pass-inner": 5799,
+    "single-pass-full": 11526,
+    "dispatched-reviewer": 10957,
+    "coordinator-fork": 12120,
 }
 
 

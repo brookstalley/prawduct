@@ -6,10 +6,12 @@ judgment, not mechanically.
 Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled by
 size and by type — the table is in `/prawduct:methodology building`.
 
-Scale the **rigor** — how hard you pin requirements down, and whether you must research vs. rely
-on intrinsic knowledge — to **stakes × knowledge-confidence × volatility** (fast-moving /
-post-cutoff data must be verified, not recalled); fill what you can infer and record each
-inference as a vetoable assumption. Full model: `methodology/discovery.md` "Calibrate Rigor".
+**Align on goals before building.** Judge how clear they are against the work ahead, then proceed,
+proceed citing a backlog item or spec, ask everything in one batch before a plan exists, or hold up
+— and say which. Mid-build, decide what the goals settle — do it right, match the product's
+choices and backlog, prefer the durable choice — stopping only for high stakes. Scale
+**rigor** to **stakes × knowledge-confidence × volatility** — fast-moving data is verified, not
+recalled (`methodology/discovery.md` "Calibrate Rigor").
 
 Before writing code against a build plan, read the build cycle (`/prawduct:methodology building`);
 coding without it is the most common governance failure.

@@ -517,6 +517,31 @@ def test_cli_doctor_context_does_not_accuse_the_repo_of_being_ungoverned(
     assert "stale install record" in doctor.stderr
 
 
+def test_cli_migrate_context_names_both_meanings_and_says_install_first(
+    tmp_path, config_dir
+):
+    """From migrate the plugin loaded THIS session, so ``inactive`` may be a stale
+    record (worktree, moved checkout) or a ``--plugin-dir`` session whose repo is
+    ungoverned once the legacy hook stands down. The message must name both and
+    the one command that settles either — not onboard's flat accusation, not
+    doctor's all-clear."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    cfg = config_dir({"version": 2, "plugins": {pa.PLUGIN_ID: [_record(other)]}})
+
+    migrate = _run(["--path", str(repo), "--context", "migrate"], config_dir=cfg)
+
+    assert migrate.returncode == 1
+    assert migrate.stderr.startswith("inactive:")
+    assert "--plugin-dir" in migrate.stderr
+    assert "worktree" in migrate.stderr
+    assert "install before applying" in migrate.stderr
+    assert pa.remediation_command(repo) in migrate.stderr
+    assert "stale install record:" not in migrate.stderr
+
+
 def test_remediation_command_survives_a_path_with_a_space(tmp_path):
     """`tmp_path` never contains a space, so this needs its own fixture."""
     spaced = tmp_path / "my repo"

@@ -84,7 +84,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
-- **Requirements Confidence field present** (`High | Medium | Low`). Missing → **WARNING**. If Medium/Low, the plan must list open assumptions and what would resolve them — missing either → **WARNING**.
+- **Goals present** (`methodology/planning.md`; older plans: Requirements Confidence) — response taken, inferences marked, a Level. Missing, or Medium/Low without what would raise it → **WARNING**.
 - Record checks, chunk deliverables included, come from `record_lint` above.
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.

@@ -627,6 +627,51 @@ class _GateMessage(str):
 # into code nothing calls, on its fourth rework. Deleted instead (Principle 25).
 
 
+# prawduct:allow prawduct/duplication -- intentional inline mirror of lib.core.unquote_scalar; pinned by tests/test_hook_yaml_readers.py
+def _unquote_scalar(value: str) -> str:
+    """Mirror of ``lib.core.unquote_scalar``: strip one pair of quotes only when
+    they wrap the WHOLE value. Kept in step by tests/test_hook_yaml_readers.py."""
+    if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0] and value[0] not in value[1:-1]:
+        return value[1:-1]
+    return value
+
+
+# prawduct:allow prawduct/duplication -- intentional inline mirror of lib.core.strip_scalar_comment; pinned by tests/test_hook_yaml_readers.py
+def _strip_scalar_comment(value: str) -> str:
+    """Mirror of ``lib.core.strip_scalar_comment``: drop a trailing ``#``
+    comment, keeping a ``#`` inside a quoted scalar. Kept in step by
+    tests/test_hook_yaml_readers.py."""
+    value = value.strip()
+    if value[:1] in ("\"", "'"):
+        quote = value[0]
+        i = 1
+        while i < len(value):
+            if quote == '"' and value[i] == "\\":
+                i += 2
+                continue
+            if value[i] == quote:
+                if quote == "'" and value[i + 1:i + 2] == "'":
+                    i += 2
+                    continue
+                rest = value[i + 1:].lstrip()
+                if not rest or rest[0] == "#":
+                    return value[: i + 1]
+                break  # several quoted words, not one quoted scalar
+            i += 1
+        else:
+            return value
+    in_quote = None
+    for i, char in enumerate(value):
+        if in_quote:
+            if char == in_quote:
+                in_quote = None
+        elif char in ("\"", "'") and (i == 0 or value[i - 1] in " \t"):
+            in_quote = char
+        elif char == "#" and (i == 0 or value[i - 1] in " \t"):
+            return value[:i].rstrip()
+    return value
+
+
 # prawduct:allow prawduct/duplication -- intentional inline mirror (import-light hot path); pinned by TestProductHookMirrorParity
 def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
     """Value of a top-level (column-0) ``key: value`` scalar, or None.
@@ -643,10 +688,9 @@ def _read_str_yaml_key(state_path: Path, key: str) -> str | None:
     for raw in content.splitlines():
         if raw[:1] in (" ", "\t"):
             continue
-        line = raw.split("#", 1)[0].rstrip()
-        if not line.startswith(needle):
+        if not raw.startswith(needle):
             continue
-        value = line.split(":", 1)[1].strip().strip("\"'")
+        value = _unquote_scalar(_strip_scalar_comment(raw[len(needle):]))
         if not value or value.lower() in ("null", "~"):
             return None
         return value
@@ -692,7 +736,7 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
             break  # next top-level key ends the block cleanly
         if not stripped.startswith("- "):
             return None
-        value = stripped[2:].strip().strip("\"'")
+        value = _unquote_scalar(stripped[2:].strip())
         if not value:
             return None  # an empty item is an authoring error, not skippable
         items.append(value)
@@ -1053,6 +1097,45 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     except (OSError, ImportError) as exc:
         print(
             f"NOTE: could not write .session-start ({exc}) — freshness gates will fail closed this session",
+            file=sys.stderr,
+        )
+
+
+def _record_session_start(project_dir: Path) -> None:
+    """Append this boundary's ``session-start`` fact — the denominator for every
+    per-session rate ``prawduct-hook stats`` reports. Advice: a failure is a
+    NOTE and never blocks session start."""
+    try:
+        from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+        result = evidence.append_session_start(project_dir)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- recording a session is advice; it must never fail session start
+        result = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
+    if result.get("status") != "appended":
+        print(
+            f"NOTE: this session's start was not recorded ({result.get('reason', 'unknown')}) "
+            "— per-session rates in `prawduct-hook stats` will undercount sessions",
+            file=sys.stderr,
+        )
+
+
+def _record_stop_block(project_dir: Path, blockers: list) -> None:
+    """Append one fact per gate that blocked this Stop, so a gate's firing rate
+    is a query rather than a transcript search. A blocker that carries no gate
+    id is recorded as ``unattributed`` so the count stays complete. Advice: the
+    block stands whether or not its record lands, and a failure says so."""
+    gates_blocking = list(
+        dict.fromkeys(getattr(b, "gate", None) or "unattributed" for b in blockers)
+    )
+    try:
+        from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+        results = evidence.append_stop_block(project_dir, gates_blocking)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- recording a block is advice; an escape here would end the session instead of blocking it
+        results = [{"status": "error", "reason": f"{type(exc).__name__}: {exc}"}]
+    failed = [r for r in results if r.get("status") != "appended"]
+    if failed:
+        print(
+            f"NOTE: this block was not recorded ({failed[0].get('reason', 'unknown')}) "
+            "— `prawduct-hook stats` will undercount Stop blocks",
             file=sys.stderr,
         )
 
@@ -1746,6 +1829,7 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     # Session BOUNDARY region 2 of 2 — skipped on a continuation (SCN-5B8Q).
     if not brief_only:
         _boundary_capture_git_anchors(project_dir, prawduct_dir)
+        _record_session_start(project_dir)
     elif not (prawduct_dir / ".session-base-tree").is_file():
         # The continuation path never writes an anchor — correct, because stamping
         # a resume-time clock onto a session that began earlier narrows the very
@@ -2337,7 +2421,7 @@ def cmd_critic_restore(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-def cmd_critic_consolidate(project_dir: Path) -> int:
+def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> int:
     """Merge complete reviewer partials into evidence facts + the derived cache.
 
     The deterministic write path of the Critic data plane (kernel v3 D8):
@@ -2347,13 +2431,31 @@ def cmd_critic_consolidate(project_dir: Path) -> int:
     session-end backstop — appends the review fact (idempotent by dispatch
     id), appends any resolution facts, and regenerates .critic-findings.json
     as a derived view carrying its source fact_id. See
-    ``lib/critic_consolidate.py`` for the full contract and exit codes."""
+    ``lib/critic_consolidate.py`` for the full contract and exit codes.
+
+    One optional argument: ``--tree-changed-by-builder "<reason>"``, the
+    builder's attestation that the working tree changed after dispatch because
+    of their own edits. Only the main session passes it; the hook and the
+    backstop never do, so a changed tree leaves the review for it to decide."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
 
-    return critic_consolidate.consolidate(project_dir)
+    flag = critic_consolidate.TREE_CHANGED_FLAG
+    rest = list(args or [])
+    reason = None
+    if flag in rest:
+        at = rest.index(flag)
+        reason = rest[at + 1].strip() if at + 1 < len(rest) else ""
+        if not reason or reason.startswith("--"):
+            print(f'critic-consolidate: {flag} needs a non-empty "<reason>"', file=sys.stderr)
+            return 2
+        del rest[at:at + 2]
+    rejected = _reject_unknown_args("critic-consolidate", rest, {flag})
+    if rejected is not None:
+        return rejected
+    return critic_consolidate.consolidate(project_dir, tree_changed_by_builder=reason)
 
 
 def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
@@ -2555,7 +2657,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     (``lib/gates.turn_declares_in_flight``). The same field drives the
     clear-verdict gate, which neither deferral touches: a turn that hands the
     session over (``YOUR TURN`` / ``COMPLETE``) while saying ``DO NOT CLEAR``
-    is refused (``lib/gates.turn_contradicts_its_verdict``).
+    is refused (``lib/gates.turn_contradicts_its_verdict``), and so is a
+    ``SAFE TO CLEAR`` whose reason is the turn itself (the ``clear-reason``
+    gate, ``lib/gates.turn_cites_itself_as_record``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     stop_input = stop_input or {}
@@ -2628,6 +2732,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  A process that runs on its own (a server, a recorder, an app you\n"
             "  launched) is not that: a clear ends the conversation, not the process.\n"
             "  Name it in the copy and close `SAFE TO CLEAR`.\n"
+            "  See `/prawduct:methodology session-hygiene`.\n"
+        ))
+    # The other way a clear verdict misleads: `SAFE TO CLEAR` whose reason is
+    # the turn itself, which is exactly what a clear deletes. Its own gate id,
+    # so its firings count apart from the pair check's.
+    self_cited = _gates().turn_cites_itself_as_record(stop_input)
+    if self_cited:
+        clear_blockers.append(_attributed("clear-reason",
+            f"CLEAR VERDICT: this turn closes `SAFE TO CLEAR` and gives itself as the\n"
+            f"  record (\"{self_cited}\"). A clear deletes this message, so a reason\n"
+            "  that points at it is not a reason. Write what only this conversation\n"
+            "  holds (findings, the pending questions, where you stopped) to\n"
+            "  .prawduct/.handoff-notes.md, then give THAT as the reason, or name the\n"
+            "  commit, file or issue that already holds it.\n"
             "  See `/prawduct:methodology session-hygiene`.\n"
         ))
 
@@ -3243,8 +3361,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     blockers.append(_attributed("critic",
                         "CRITIC REVIEW (consolidation failed): every reviewer reported, but\n"
                         "  the partials could not be consolidated — the specific cause is on\n"
-                        "  stderr above (e.g. HEAD moved since dispatch, a malformed partial,\n"
-                        "  or a ledger failure). Fix the cause or re-run the review:\n"
+                        "  stderr above (e.g. the working tree changed since dispatch, a\n"
+                        "  malformed partial, or a ledger failure). Follow its remedy, or\n"
+                        "  re-run the review:\n"
                         "    /prawduct:critic\n"
                     ))
             elif state == "incomplete":
@@ -3678,9 +3797,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             )
             for blocker in verdict_deferred:
                 print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
-            # A contradiction and this deferral cannot both hold (one needs
-            # RUNNING, the other YOUR TURN or COMPLETE), so `clear_blockers` is
-            # empty on this path.
+            # Neither clear check can hold beside this deferral: a
+            # contradiction needs YOUR TURN or COMPLETE where this needs RUNNING,
+            # and a self-citation needs SAFE TO CLEAR where this needs DO NOT
+            # CLEAR. So `clear_blockers` is empty on this path.
             if not blockers:
                 _emit_stop_advisories(stop_advisories)
                 return 0
@@ -3705,6 +3825,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             for f in canary_findings:
                 print(f"  {f}", file=sys.stderr)
             print("", file=sys.stderr)
+        _record_stop_block(project_dir, blockers)
         return 2
 
     # No blockers — print canary to stderr (visible in verbose mode only)
@@ -4342,6 +4463,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
         for command in declared_commands:
+            try:
+                shlex.split(command)
+            except ValueError as exc:
+                # Checked here, before any suite runs: split inside the run
+                # loop, a malformed later command fails only after the earlier
+                # suites have spent their minutes.
+                print(
+                    f"error: declared test command {command!r} in project-state.yaml "
+                    f"cannot be split into arguments ({exc}). Check its quoting.",
+                    file=sys.stderr,
+                )
+                return 2
             if "{junit_xml}" not in command:
                 print(
                     f"error: declared test command {command!r} must contain "
@@ -4513,7 +4646,6 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # compound invocations (&&, pipes, env vars) belong in a script the
         # command points at. Split BEFORE substituting so a report path
         # containing spaces/quotes lands as one intact token.
-        import shlex  # noqa: PLC0415 — only this branch needs it
         # Bracket the run: the tree it STARTS on, checked against the one it ends
         # on below, because a file edited while the suite runs may never be
         # loaded by it and must not end up inside the stamp as though tested.
@@ -4598,9 +4730,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     except OSError:
                         pass
 
-    # Aggregate across ALL top-level <testsuite> elements and root-level
-    # <testcase> elements (skipped entirely when counts come from --from-counts
-    # or --no-rerun — there is no XML root).
+    # Aggregate across every <testsuite> and <testcase> in each report, under
+    # any wrapper (skipped entirely when counts come from --from-counts or
+    # --no-rerun — there is no XML root).
     if from_counts is None and not no_rerun:
         # pytest emits one <testsuite>, but `test_command` invites arbitrary
         # runners (jest-junit, go-junit-report, merged CI reports) whose
@@ -4635,14 +4767,24 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # case itself. Units are read in document order, so `failed_tests` keeps
         # report order. Each carries the index of the root it came from, so a
         # command's failures can be checked against that command's exit status.
-        suites = []  # (root index, <testsuite> or root-level <testcase>)
-        for root_index, root in enumerate(roots):
-            if root.tag == "testsuite":
-                suites.append((root_index, root))
+        #
+        # Any other element is a wrapper to look inside, at any depth (#963). A
+        # merged CI report nests a <testsuites> inside the root; reading only the
+        # root's direct children never classified the cases under it, so a
+        # failure there — or a summary-only suite's `failures=` — recorded green.
+        # Descending through every non-unit element reaches every <testcase>
+        # and every suite by construction, rather than by a list of wrappers.
+        def _units(el):
+            if el.tag in ("testsuite", "testcase"):
+                yield el
             else:
-                suites += [
-                    (root_index, el) for el in root if el.tag in ("testsuite", "testcase")
-                ]
+                for child in el:
+                    yield from _units(child)
+
+        suites = [  # (root index, <testsuite> or a <testcase> outside any suite)
+            (root_index, unit) for root_index, root in enumerate(roots)
+            for unit in _units(root)
+        ]
         if not suites:
             print(
                 "error: the test run produced no <testsuite> or <testcase> "
@@ -4657,51 +4799,60 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             raw = (suite.get(name) or "").strip()
             return int(raw) if raw else 0
 
-        # The leaf-vs-attribute choice is made PER TOP-LEVEL SUITE, never once for
-        # the whole ingest. The condition the fallback exists for — attributes with
+        def _summary_suites(el):
+            """The case-less suites inside a unit that carries cases: each
+            <testsuite> with no <testcase> below it, outermost only, since an
+            Ant-style outer suite's attributes already count its inner ones."""
+            for child in el:
+                if child.tag == "testsuite" and next(child.iter("testcase"), None) is None:
+                    yield child
+                elif child.tag != "testcase":
+                    yield from _summary_suites(child)
+
+        # The leaf-vs-attribute choice is made PER SUITE, never once for the
+        # whole ingest. The condition the fallback exists for — attributes with
         # no <testcase> children — is a property of an individual suite, so deciding
         # globally makes every summary-only suite contribute 0 the moment any other
         # suite carries leaves. That is a false GREEN rather than an undercount:
         # `failed` drives both this command's exit status and `tests_are_current`
         # in lib/gates.py, so a dropped failing environment would let the stop gate
-        # pass on evidence that never saw it. Two reachable shapes — repeated
-        # --from-junit (the documented multi-command on-ramp), and one report mixing
+        # pass on evidence that never saw it. Three reachable shapes — repeated
+        # --from-junit (the documented multi-command on-ramp), one report mixing
         # a populated suite with a <testsuite errors="1"> that died before emitting
-        # any <testcase>.
+        # any <testcase>, and that dead suite nested inside a populated one.
         total = failures = errors = skipped = 0
         failed_by_root = [0] * len(roots)
         try:
             for root_index, s in suites:
                 before = failures + errors
                 leaves = list(s.iter("testcase"))
-                if leaves:
-                    total += len(leaves)
-                    # Each leaf is classified ONCE, and the failing ids are
-                    # collected from that same verdict, so the names and the
-                    # counts cannot come to disagree. Precedence, most severe
-                    # first: a case carrying both <error> and <failure> counts
-                    # once, as an error. `skipped` loses to both — a case that
-                    # errored is not a skip, whatever else it carries.
-                    for c in leaves:
-                        if c.find("error") is not None:
-                            errors += 1
-                        elif c.find("failure") is not None:
-                            failures += 1
-                        elif c.find("skipped") is not None:
-                            skipped += 1
-                            continue
-                        else:
-                            continue
-                        failed_ids.append(_junit_case_id(c))
-                else:
-                    # Summary-only suite: its attributes are the only evidence it
-                    # carries, so recording a confident 0 would discard a whole
-                    # environment. Ant-style double-counting cannot arise here — a
-                    # suite reaching this branch has no descendant leaves at all.
-                    total += _attr_int(s, "tests")
-                    failures += _attr_int(s, "failures")
-                    errors += _attr_int(s, "errors")
-                    skipped += _attr_int(s, "skipped")
+                total += len(leaves)
+                # Each leaf is classified ONCE, and the failing ids are
+                # collected from that same verdict, so the names and the
+                # counts cannot come to disagree. Precedence, most severe
+                # first: a case carrying both <error> and <failure> counts
+                # once, as an error. `skipped` loses to both — a case that
+                # errored is not a skip, whatever else it carries.
+                for c in leaves:
+                    if c.find("error") is not None:
+                        errors += 1
+                    elif c.find("failure") is not None:
+                        failures += 1
+                    elif c.find("skipped") is not None:
+                        skipped += 1
+                        continue
+                    else:
+                        continue
+                    failed_ids.append(_junit_case_id(c))
+                # Summary-only suites: their attributes are the only evidence
+                # they carry, so recording a confident 0 would discard a whole
+                # environment. Ant-style double-counting cannot arise here — a
+                # suite read this way has no descendant leaves at all.
+                for summary in [s] if not leaves else _summary_suites(s):
+                    total += _attr_int(summary, "tests")
+                    failures += _attr_int(summary, "failures")
+                    errors += _attr_int(summary, "errors")
+                    skipped += _attr_int(summary, "skipped")
                 failed_by_root[root_index] += failures + errors - before
         except ValueError as exc:
             print(
@@ -5880,6 +6031,30 @@ def cmd_worktrees(project_dir: Path, argv: list[str]) -> int:
     return stranded_work.worktrees_cmd(project_dir, argv)
 
 
+def cmd_stale_plugin_caches(argv: list[str]) -> int:
+    """List the prawduct plugin cache versions no install record uses, in every
+    config profile on the machine. Read-only. Thin wrapper — body lives in
+    ``lib.plugin_caches``; ``/prawduct:doctor`` relays the report."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import plugin_caches  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "stale-plugin-caches unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The plugin executing this is in use by a live session whatever the
+    # install records now say.
+    return plugin_caches.stale_plugin_caches_cmd(
+        argv, running_root=Path(__file__).resolve().parent.parent
+    )
+
+
 def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
     """Aggregate the governance ledger into review cost / yield numbers.
     Thin wrapper — body lives in ``lib.telemetry.review_stats``
@@ -5900,6 +6075,64 @@ def cmd_review_stats(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     return telemetry.review_stats(project_dir, argv)
+
+
+def cmd_stats(project_dir: Path, argv: list[str]) -> int:
+    """What governance cost and caught, per plugin version, from the evidence
+    store. Thin wrapper — body lives in ``lib.stats.stats_cmd``. Informational,
+    never a gate; a missing lib degrades to a note + exit 1, like
+    ``cmd_review_stats``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import stats  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "stats unavailable (could not import the plugin lib/ from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return stats.stats_cmd(project_dir, argv)
+
+
+def cmd_contribute(project_dir: Path, argv: list[str]) -> int:
+    """Preview the anonymous stats reports this clone would contribute, or send
+    them under the product's own consent (``--send``). Thin wrapper — body
+    lives in ``lib.contribution.contribute_cmd``. A missing lib
+    degrades to a note + exit 1, like ``cmd_stats``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import contribution  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "contribute unavailable (could not import the plugin lib/ from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return contribution.contribute_cmd(project_dir, argv)
+
+
+def cmd_aggregate_stats(argv: list[str]) -> int:
+    """Governance stats pooled across the products the operator names, and the
+    collector's published bundles, per plugin version. Thin wrapper — body
+    lives in ``lib.aggregate.aggregate_stats_cmd``. Takes no project dir: its
+    subject is never the invoking project, only what was named. A missing lib
+    degrades to a note + exit 1, like ``cmd_stats``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import aggregate  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "aggregate-stats unavailable (could not import the plugin lib/ from ${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+    return aggregate.aggregate_stats_cmd(argv)
 
 
 def cmd_pr_review_dispatch(project_dir: Path, argv: list[str]) -> int:
@@ -6019,7 +6252,9 @@ def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
     A subject that could not be read is not that.
 
     ``--context doctor`` selects the wording for a caller running INSIDE a
-    session the plugin loaded, where ``inactive`` cannot mean "ungoverned".
+    session the plugin loaded, where ``inactive`` cannot mean "ungoverned";
+    ``--context migrate`` for the cutover, where it may mean "ungoverned next
+    session" (``lib.plugin_activation.report_lines`` says why).
     """
     flags = {"--json"}
     rest = []
@@ -6038,10 +6273,10 @@ def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
             if arg == "--path":
                 target = argv[i + 1]
             else:
-                if argv[i + 1] not in ("onboard", "doctor"):
+                if argv[i + 1] not in ("onboard", "doctor", "migrate"):
                     print(
                         f"check-plugin-active: unknown --context "
-                        f"{argv[i + 1]!r} (expected 'onboard' or 'doctor')",
+                        f"{argv[i + 1]!r} (expected 'onboard', 'doctor' or 'migrate')",
                         file=sys.stderr,
                     )
                     return 2
@@ -8243,14 +8478,17 @@ _USAGE = (
     "ledger-append --event <kind> [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
     "pr-review-dispatch --begin|pr-review-payload [--json] [<project dir>]|"
-    "review-stats [--json] [--since <stamp>] [--until <stamp>]|classify-diff-risk [<base>]|"
+    "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|"
+    "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
+    "classify-diff-risk [<base>]|"
     "worktrees [--json]|"
+    "stale-plugin-caches [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-branch-pushed [<branch>]|"
     "check-releasability [--release vX.Y.Z]|"
-    "check-plugin-active [--path P] [--context onboard|doctor] [--json]|"
+    "check-plugin-active [--path P] [--context onboard|doctor|migrate] [--json]|"
     "check-learnings-pairing [deprecated, inert]|"
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
@@ -8481,16 +8719,28 @@ _DATA_PLANE_COMMANDS = frozenset({
 
 
 def _repo_plugin_dir(project_dir: Path) -> "Path | None":
-    """The plugin directory THIS repo carries, or None if it carries none.
+    """The prawduct plugin directory THIS repo carries, or None if it carries none.
 
-    A repo is a framework checkout iff it holds `plugin/.claude-plugin/plugin.json`.
-    Product repos hold none and are therefore untouched by the guard — they
-    legitimately run the installed binary, and firing there would break every
-    governed repo in the fleet.
+    A repo is a framework checkout iff its `plugin/.claude-plugin/plugin.json`
+    names `prawduct`. The layout alone is not enough: a governed product may ship
+    a Claude Code plugin of its own at `plugin/`, and product repos legitimately
+    run the installed binary, so firing there leaves them unable to record any
+    review. When the manifest cannot say — unreadable, unparseable, or nameless —
+    the presence of prawduct's own `plugin/bin/prawduct-hook` decides, so a real
+    checkout whose manifest is broken mid-edit still fails closed.
     """
     try:
         candidate = Path(project_dir) / "plugin"
-        if (candidate / ".claude-plugin" / "plugin.json").is_file():
+        manifest = candidate / ".claude-plugin" / "plugin.json"
+        if not manifest.is_file():
+            return None
+        try:
+            name = json.loads(manifest.read_text(encoding="utf-8")).get("name")
+        except (OSError, UnicodeDecodeError, ValueError, AttributeError):
+            name = None
+        if isinstance(name, str):
+            return candidate.resolve() if name == "prawduct" else None
+        if (candidate / "bin" / "prawduct-hook").is_file():
             return candidate.resolve()
     except OSError:
         return None
@@ -8638,6 +8888,11 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "render-dispositions",
     "resolve-base",
     "review-stats",
+    # Read-only: reads the evidence store and prints a report.
+    "stats",
+    # Read-only: reads the evidence stores and bundle files the operator names
+    # and prints a report; it writes nowhere, the invoking project included.
+    "aggregate-stats",
     "test-status",
     "validate-evidence",
     "verify-chunk-refs",
@@ -8646,6 +8901,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "version",
     # Read-only: git reads with --no-optional-locks and file mtimes.
     "worktrees",
+    # Read-only: lists and sizes plugin cache directories under the home dir.
+    "stale-plugin-caches",
 })
 
 # Read-only reports that mutate only under `--apply` — a third shape, neither
@@ -9012,7 +9269,6 @@ _NO_ARGUMENT_COMMANDS = frozenset({
     "check-cumulative-critic",
     "check-operator-verification",
     "check-pr-doc-only",
-    "critic-consolidate",
     "critic-discard",
     "critic-end",
     "print-install-reference",
@@ -9141,7 +9397,7 @@ def _dispatch() -> int:
     elif command == "critic-restore":
         return cmd_critic_restore(project_dir, sys.argv[2:])
     elif command == "critic-consolidate":
-        return cmd_critic_consolidate(project_dir)
+        return cmd_critic_consolidate(project_dir, sys.argv[2:])
     elif command == "subagent-stop":
         return cmd_subagent_stop(project_dir, _read_stop_stdin())
     elif command == "jurisdiction":
@@ -9176,8 +9432,16 @@ def _dispatch() -> int:
         return cmd_pr_review_payload(project_dir, sys.argv[2:])
     elif command == "review-stats":
         return cmd_review_stats(project_dir, sys.argv[2:])
+    elif command == "stats":
+        return cmd_stats(project_dir, sys.argv[2:])
+    elif command == "contribute":
+        return cmd_contribute(project_dir, sys.argv[2:])
+    elif command == "aggregate-stats":
+        return cmd_aggregate_stats(sys.argv[2:])
     elif command == "worktrees":
         return cmd_worktrees(project_dir, sys.argv[2:])
+    elif command == "stale-plugin-caches":
+        return cmd_stale_plugin_caches(sys.argv[2:])
     elif command == "classify-diff-risk":
         return cmd_classify_diff_risk(project_dir, sys.argv[2:])
     elif command == "cost-of-commit":

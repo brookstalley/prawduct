@@ -106,7 +106,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run` today; `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
@@ -179,6 +179,18 @@ An absent file is the empty store.
   **Droppability:** a refusal sits on no coverage path and targets no other fact, so it is droppable
   at any time — dropping one loses a data point about the guard's yield, never a governance answer.
   Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
+  **Stop-hook blocks ride this kind** rather than one of their own, because a Stop gate is a control
+  like any guard and #563's owner decision (2026-09-30) asks for one firing shape across the class:
+  one fact per gate that blocked a Stop, `guard` = `stop-gate:<gate id>`, with `gate`, a `stop` id
+  shared by the facts of one Stop, and `co_gates` (the others that blocked it). A blocker carrying no
+  gate id records as `unattributed`. A deferred gate records nothing, since it did not block. Written
+  by `evidence.append_stop_block`.
+- **Session-start fact `body`** — empty: the envelope (`ts`, `actor.session`, `actor.plugin`) is the
+  record. One per session boundary (startup or `/clear`; a resume, compact or fork is a continuation
+  and records none), written by `evidence.append_session_start` from `cmd_clear`. It is the
+  denominator that turns a count of Stop blocks or guard firings into a per-session rate. No gate
+  reads it, and it is one of `evidence.OBSERVATIONAL_KINDS`. **Droppability:** droppable at any time
+  — dropping one undercounts sessions, never changes a governance answer.
 - **Test-run fact `body`** — one recorded suite run (#653): the `tree` it met (as `capture_tree`
   returned it just before a live run started — a run records no fact when that capture failed or
   when `gates._test_evidence_tree_valid` cannot confirm the tree held until it ended — or at ingest

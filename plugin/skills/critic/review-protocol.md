@@ -59,7 +59,7 @@ downgrade.
 ### 2. Nothing Is Missing
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
-- **Requirements Confidence field present** (`High | Medium | Low`, see `methodology/planning.md`). Missing → **WARNING**. If Medium/Low, plan must list open assumptions and what would resolve them — missing either → **WARNING**.
+- **Goals present** (`methodology/planning.md`; older plans: Requirements Confidence) — response taken, inferences marked, a Level. Missing, or Medium/Low without what would raise it → **WARNING**.
 - **Record checks are machine-answered: read the manifest's `record_lint`, don't re-derive it** (chunk deliverables included). Severities and `unchecked`: `cross-checks.md` "Record-Lint".
 - **`prior_dispositions` carries findings already accepted or filed, with reasons, for these files. Do not re-raise one absent material change in its cited files** — acknowledge it in one line under a `priors:` note instead.
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
@@ -87,6 +87,7 @@ downgrade.
 ### 5. Decisions Were Deliberate
 - **A decision without a recorded why** → **WARNING**: a new external dependency, an architectural pattern, or a major technology choice with alternatives considered, each in the artifact that owns it.
 - If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was *downstream* consumer impact investigated? → **WARNING** if no evidence. The inverse — a consumer mismodelling what the producer emits — is Goal 1's cross-component contract check, not this one.
+- **Judged against the goals:** the `## Goals` of the build plan the manifest names, and the product brief's near-term and North Star where there is a brief, not only the chunks. Work that drops or alters a goal the owner stated → **BLOCKING** under Goal 2 (a dropped requirement); a goal still marked inferred → **WARNING** naming it. List the plan's mid-build decisions, what settled each and any alignment-pass miss, in one **NOTE** (recommendation scope `none`) for the owner.
 - **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. Goal 3 asks whether the work exceeded its *plan*; this asks whether the plan traced to a *requirement*, and whether anything reaches the result. Open the title with `scope-trace:` so its yield stays countable.
 
 ### 6. The System Can Be Understood

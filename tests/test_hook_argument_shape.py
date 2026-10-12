@@ -146,10 +146,14 @@ _REFUSAL_VERIFIED = {
     "render-dispositions": "exits 2 on an unknown token",
     "cost-of-commit": "exits 1 on an unknown token",
     "review-stats": "exits 1 on an unknown token",
+    "stats": "exits 1 on an unknown token",
+    "contribute": "exits 1 on an unknown token",
+    "aggregate-stats": "exits 1 on an unknown token",
     "check-releasability": "explicit token scan; exits 2",
     "check-released": "explicit token scan; exits 2",
     "plan-backfill": "explicit token scan; exits 2",
     "worktrees": "lib.stranded_work.worktrees_cmd names the token; exits 2 (bare exits 0)",
+    "stale-plugin-caches": "lib.plugin_caches names the token; exits 2 (bare exits 0)",
 }
 
 # Refusing is the wrong behaviour for these, for the same reasons the
@@ -495,6 +499,10 @@ def test_documented_invocations_are_not_refused(capsys):
         ("ledger-append", ["--event", "review.pr"]),
         ("handoff", ["preview"]),
         ("review-stats", ["--json"]),
+        ("stats", ["--json"]),
+        ("contribute", ["--json"]),
+        ("aggregate-stats", ["--json", "--bundles", "b.jsonl"]),
+        ("aggregate-stats", ["../a", "../b", "--collector"]),
         ("classify-diff-risk", ["main"]),
         ("cost-of-commit", ["--json", "a.py", "b.py"]),
         ("check-operator-verification", []),
@@ -538,6 +546,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("check-plugin-active", ["--path", "/tmp/x", "--json"]),
         ("check-plugin-active", ["--path", "/tmp/x", "--context", "doctor"]),
         ("check-plugin-active", ["--context", "onboard"]),
+        ("check-plugin-active", ["--context", "migrate"]),
         ("check-learnings-pairing", []),
         ("check-learnings-pairing", ["--json"]),
         ("learnings-migrate", []),
@@ -560,7 +569,8 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "critic-consolidate", "subagent-stop", "stop", "jurisdiction", "test-status",
         "validate-evidence", "test-evidence", "check-cumulative-critic",
         "verify-chunk-refs", "verify-records", "verify-coverage", "ledger-append",
-        "handoff", "review-stats", "classify-diff-risk", "cost-of-commit",
+        "handoff", "review-stats", "stats", "contribute", "aggregate-stats", "classify-diff-risk",
+        "cost-of-commit",
         "pr-review-dispatch", "pr-review-payload",
         "check-operator-verification", "accept-operator-verification",
         "verify-operator-verification", "check-change-log-entry",
@@ -578,6 +588,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "repo-disable",
         "reanchor",
         "worktrees",
+        "stale-plugin-caches",
     }
     assert set(_dispatch_branches()) == listed
 

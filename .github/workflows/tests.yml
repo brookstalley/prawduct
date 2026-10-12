@@ -118,3 +118,18 @@ jobs:
 
       - name: Run the suite
         run: python -m pytest
+
+  collector:
+    # The stats collector (`collector/`) is a Cloudflare Worker with no
+    # dependencies; its suite runs on node's built-in test runner, each file in
+    # its own process. Pinned to the Active LTS; the suite was verified on 22,
+    # 24 and 25.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Run the collector suite
+        run: node --test 'collector/test/*.test.mjs'

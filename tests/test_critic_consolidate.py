@@ -8476,3 +8476,191 @@ class TestOneFixOrderEverywhere:
         old = (" Everything else moves the tree and must land BEFORE the verify pass:"
                " code, config, data, tests.")
         assert self._order_violations(old)
+
+
+# ---------------------------------------------------------------------------
+# The tree a review was dispatched over must be the tree it consolidates over
+# ---------------------------------------------------------------------------
+
+
+def _run_consolidate_args(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["python3", str(HOOK), "critic-consolidate", *args],
+        cwd=str(repo), capture_output=True, text=True,
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    )
+
+
+class TestTreeUnchangedDuringReview:
+    """A reviewer's `Bash(...)` grants and Write paths are a contract, not a
+    fence (`agents/critic-reviewer.md`), so consolidation is where "the review
+    changed no product file" gets checked. A tree diff cannot say WHO changed a
+    path — the builder may legitimately prep while a review runs — so a change
+    refuses without destroying the review, and the builder's explicit
+    `--tree-changed-by-builder` consolidates it with the paths on the record."""
+
+    def _dispatch(self, tmp_path) -> tuple[Path, dict]:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, "src/other.py", "y = 1\n", "other")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        begin = _run_begin(repo, "--mode", "chunk", "--chosen-by", "rule-4",
+                           "--scope", "demo")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        return repo, manifest
+
+    def _review(self, repo: Path, manifest: dict) -> None:
+        rid = manifest["id"]
+        (repo / PARTIALS_REL / f"reviewer.{rid}.started").write_text("")
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+
+    def test_begin_records_the_working_tree_it_dispatched_over(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        before = evidence.capture_tree(repo)["tree"]
+        assert _run_begin(repo, "--mode", "chunk", "--chosen-by", "rule-4").returncode == 0
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        # The working tree, not the interval's head: a cumulative review's
+        # head_tree is committed HEAD, and its dirty tree must be watched too.
+        assert manifest["dispatch_tree"] == before
+
+    @pytest.mark.parametrize("path, exempt", [
+        (".prawduct/.critic-active", True),
+        (".prawduct/.critic-partials/reviewer.x.json", True),
+        (".prawduct/.critic-review-dispatch.json", True),
+        ("pkg/__pycache__/m.cpython-312.pyc", True),
+        (".prawduct/project-state.yaml", False),
+        ("src/.critic-active", False),
+        ("src/app.py", False),
+    ])
+    def test_session_files_follow_gitignore_anchoring(self, path, exempt):
+        assert cc._is_session_file(path, "") is exempt
+
+    def test_a_product_file_changed_during_the_review_refuses(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+        (repo / "src/other.py").write_text("y = 'edited by a reviewer'\n")
+        (repo / "src/new.py").write_text("z = 1\n")  # untracked counts too
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 1, result.stdout
+        assert "src/other.py" in result.stderr
+        assert "src/new.py" in result.stderr
+        assert "--tree-changed-by-builder" in result.stderr
+        # Refused, not destroyed: the review is still on disk to decide about.
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()
+        assert (repo / PARTIALS_REL / f"reviewer.{manifest['id']}.json").is_file()
+        assert (repo / MARKER_REL).is_file()
+        assert _store_facts(repo, "review") == []
+
+    def test_only_the_reviewers_own_files_consolidates(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert "tree_changed_during_review" not in fact["body"]
+
+    def test_the_data_plane_files_are_exempt_even_when_not_gitignored(self, tmp_path):
+        """Product repos gitignore the partials dir, but the exemption must not
+        rest on that: a repo missing the entry would otherwise refuse every
+        review over the reviewer's own partial."""
+        repo, manifest = self._dispatch(tmp_path)
+        assert not (repo / ".gitignore").exists()
+        self._review(repo, manifest)
+        (repo / ".prawduct" / ".critic-partials-archive").mkdir()
+        (repo / ".prawduct" / ".critic-partials-archive" / "x").write_text("")
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_the_builder_override_consolidates_with_the_paths_on_record(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+        (repo / "src/other.py").write_text("y = 2\n")
+
+        result = _run_consolidate_args(
+            repo, "--tree-changed-by-builder", "drafted the change-log entry")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["tree_changed_during_review"] == {
+            "paths": ["src/other.py"],
+            "reason": "drafted the change-log entry",
+        }
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert record["tree_changed_during_review"]["paths"] == ["src/other.py"]
+        assert "src/other.py" in result.stdout
+
+    def test_the_override_on_an_unchanged_tree_records_nothing(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+
+        result = _run_consolidate_args(repo, "--tree-changed-by-builder", "prep")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert "tree_changed_during_review" not in fact["body"]
+
+    @pytest.mark.parametrize("args", [
+        ("--tree-changed-by-builder",),
+        ("--tree-changed-by-builder", "   "),
+        ("--bogus",),
+    ])
+    def test_a_malformed_argument_is_refused(self, tmp_path, args):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+
+        result = _run_consolidate_args(repo, *args)
+
+        assert result.returncode != 0
+        assert _store_facts(repo, "review") == []
+
+    def test_a_manifest_from_before_the_field_still_consolidates(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        del manifest["dispatch_tree"]
+        (repo / PARTIALS_REL / "manifest.json").write_text(json.dumps(manifest))
+        self._review(repo, manifest)
+        (repo / "src/other.py").write_text("y = 2\n")
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_an_uncapturable_tree_refuses_rather_than_passing(self, tmp_path, monkeypatch):
+        repo, manifest = self._dispatch(tmp_path)
+        monkeypatch.setattr(evidence, "capture_tree",
+                            lambda _d: {"status": "error", "reason": "index locked"})
+        state, detail = cc.tree_changed_since_dispatch(repo, manifest)
+        assert state == "unverifiable" and "index locked" in detail
+
+    def test_an_undiffable_dispatch_tree_refuses_rather_than_passing(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        manifest["dispatch_tree"] = "0" * 40  # an object the store does not hold
+        state, detail = cc.tree_changed_since_dispatch(repo, manifest)
+        assert state == "unverifiable"
+
+    def test_a_project_in_a_repo_subdirectory_exempts_its_own_session_files(self, tmp_path):
+        """`tree_diff` paths are repo-root relative and the session-file entries
+        project relative, so a nested project must anchor them at its prefix."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "proj/src/app.py", "x = 1\n", "init")
+        proj = repo / "proj"
+        (proj / ".prawduct").mkdir()
+        before = evidence.capture_tree(proj)["tree"]
+        (proj / ".prawduct" / ".critic-active").write_text("{}")
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / ".critic-active").write_text("{}")  # NOT this project's
+        state, detail = cc.tree_changed_since_dispatch(proj, {"dispatch_tree": before})
+        assert (state, detail) == ("changed", [".prawduct/.critic-active"])

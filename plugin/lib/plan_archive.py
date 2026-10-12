@@ -293,21 +293,19 @@ def _is_own_key(line: str) -> bool:
 
 
 def read_completion(content: str) -> dict[str, str] | None:
-    """The completion keys recorded in ``content``, or ``None`` if it records none.
+    """The completion keys recorded in ``content``, or ``None`` if it records no
+    terminal state.
 
     The round-trip partner of :func:`apply_completion_frontmatter`, and the
     predicate a reader uses to answer "is this current?" without inferring it
     from the file's location — a plan can be read from a link or a grep hit, and
     "it was under ``archive/``" is not information the reader has then.
 
-    **Its production consumer is :func:`archive_plan`'s re-archive refusal.** That
-    is worth naming because the function shipped without one: every other
-    archive-awareness decision in the tree is path-based, so for one chunk this
-    was a producer whose only caller was its own test — the produced-and-never-
-    consumed shape this codebase treats as a defect rather than an inefficiency.
-    The consumer that closed it is the one place the *content* of the stamp
-    matters rather than its location: a plan already recording ``superseded``
-    must not be silently re-stamped ``completed`` by a sweep.
+    **Its production consumer is :func:`archive_plan`'s re-archive refusal**, the
+    one place the *content* of the stamp matters rather than its location: every
+    other archive-awareness decision in the tree is path-based, and a plan already
+    recording ``superseded`` must not be silently re-stamped ``completed`` by a
+    sweep.
     """
     fm = plan_index.frontmatter_lines(content)
     if fm is None:
@@ -321,7 +319,10 @@ def read_completion(content: str) -> dict[str, str] | None:
             if line.startswith(prefix):
                 found[key] = _parse_scalar(line[len(prefix) :])
                 break
-    if LIFECYCLE_KEY not in found:
+    # Only a terminal state is an end of life. A live plan may carry a
+    # `lifecycle:` that names none (`active` is the common one); reading that as
+    # a recorded end would refuse the archive the plan is waiting for.
+    if found.get(LIFECYCLE_KEY) not in TERMINAL_STATES:
         return None
     return found
 
