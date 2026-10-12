@@ -227,11 +227,11 @@ proposed for it.
 
 Evidence labels for the Codex 0.156.1 mapping:
 
-- **F1:** [Bounded non-interactive Stop and R-8 probe record](ISSUE_COMMENT_URL), Codex CLI `0.156.1`; a project-hook Stop fixture passed its bounded matrix, while reviewer tool refusal was not reached.
+- **F1:** [Bounded non-interactive Stop and R-8 probe record](https://github.com/brookstalley/prawduct/issues/928#issuecomment-6115715618), Codex CLI `0.156.1`; a project-hook Stop fixture passed its bounded matrix, while reviewer tool refusal was not reached.
 - **O1:** [Official Codex Hooks documentation](https://learn.chatgpt.com/docs/hooks), current unversioned documentation consulted for the `0.156.1` mapping.
 - **O4:** [Official Codex Subagents documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents), current unversioned documentation consulted for the `0.156.1` mapping.
 - **O5:** [Official Codex Worktrees documentation](https://learn.chatgpt.com/docs/environments/git-worktrees), current unversioned desktop-app documentation consulted for the `0.156.1` mapping; it is not a stable CLI worktree-path contract.
-- **E5:** [Independent 39-row inventory analysis and reconciliation](ISSUE_COMMENT_URL), Codex CLI `0.156.1`; analysis rather than an additional live test.
+- **E5:** [Independent 39-row inventory analysis and reconciliation](https://github.com/brookstalley/prawduct/issues/928#issuecomment-6115715618), Codex CLI `0.156.1`; analysis rather than an additional live test.
 
 Per D-10, the supported host contract includes normalized event payloads, root resolution, and skill packaging (rows 19, 24, 25, and 36). Install, provenance, repo-toggle, and remedy-text rows (18, 31–34, and 38) remain UX proposals outside that contract for now. The new read-only plugin-cache surface is provisionally grouped in rows 18 and 33; Brooks is asked to confirm that placement or request a separate row.
 
