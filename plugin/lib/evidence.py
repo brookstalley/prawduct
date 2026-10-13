@@ -721,32 +721,6 @@ def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
     return [f for f in read_result.get("facts", []) if f.get("kind") == kind]
 
 
-def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
-    """``(review_id, oid)`` → the observation its review fact recorded.
-
-    The observation twin of :func:`findings_index`. A verify pass may confirm
-    an observation fix, and its resolution names the ``O-n`` id in the same
-    ``finding.fid`` slot a disposition already uses for one; ``R-n`` and ``O-n``
-    never collide, so every reader joining on that slot keeps working. This is
-    the existence check such a resolution must pass.
-    """
-    index: dict[tuple[str, str], dict] = {}
-    for fact in facts_of_kind(read_result, "review"):
-        review_id = fact.get("id")
-        if not isinstance(review_id, str) or not review_id:
-            continue
-        observations = (fact.get("body") or {}).get("observations")
-        if not isinstance(observations, list):
-            continue
-        for observation in observations:
-            if not isinstance(observation, dict):
-                continue
-            oid = observation.get("oid")
-            if isinstance(oid, str) and oid.strip():
-                index[(review_id, oid)] = observation
-    return index
-
-
 def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
     """``(review_id, fid)`` → the finding entry its review fact recorded.
 
@@ -786,10 +760,12 @@ def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
     reading, and deliberately not work the record demands. It is recorded so a
     builder can answer it and so the demotion's yield is queryable — never so a
     gate can read it. Merging the two indexes would put observations one
-    ``.get`` away from every consumer that joins on a finding, including the
-    resolution existence check, and the only thing keeping an observation out
-    of a verdict would be each caller remembering to filter. Two indexes, and
-    the callers that want both say so.
+    ``.get`` away from every consumer that joins on a finding, and the only
+    thing keeping an observation out of a verdict would be each caller
+    remembering to filter. Two indexes, and the callers that want both say so:
+    the resolution existence check does, because a verify pass may confirm an
+    observation fix — and it accepts only ``fixed`` for one, which no gate
+    reads, since gates filter blocking findings and an observation is never one.
 
     Observation ids live in their own namespace (``O-1``), so a
     ``(review_id, id)`` pair is unambiguous across both.

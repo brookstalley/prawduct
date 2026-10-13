@@ -15,7 +15,7 @@ governed_by:
       - "verdicts come from the append-only fact ledger, no model in a fact's write path → conforms: observation resolutions are written by critic-consolidate from a validated partial, like finding resolutions"
       - "facts are immutable and append-only → conforms: a confirmed observation fix is a new resolution fact"
       - "derived views are never authoritative → conforms: no gate reads an observation resolution; coverage_algebra keys on fid and ignores them"
-      - "a fact from a newer schema is a loud block → conforms: the new target is additive (`oid` beside the existing `fid`), so an older reader's resolution index skips it rather than misreading it; no schema bump"
+      - "a fact from a newer schema is a loud block → conforms: an observation resolution reuses the existing `fid` slot with an `O-n` id, so an older reader's resolution index skips it rather than misreading it; no schema bump"
       - "a governance document reaches a terminal state, never deleted → inapplicable because no document's lifecycle is touched"
       - "backlog issue titles conform to the issue standard → inapplicable because nothing is written to the backlog store"
       - "two stores, two lifetimes: shared answers vs per-clone nags → inapplicable because no answer or nag is added"
@@ -34,7 +34,7 @@ governed_by:
     dispositions:
       - "whole-surface semver; evidence store independently versioned → conforms: the evidence-store change is additive"
       - "exit codes are the contract → conforms: no exit code changes; `deferred` is an existing inference answer"
-      - "additive-first evolution → conforms: `oid` on a resolution and `about` on an observation are new optional keys"
+      - "additive-first evolution → conforms: an `O-n` id in a resolution's existing `fid` slot, and `about` on an observation, are additive"
 partition: serial — 01 and 02 both edit critic_consolidate.py, and 03 reuses 02's target validation
 last_validated: 2026-10-13
 ---
@@ -73,7 +73,7 @@ puzzles; verify rounds whose scope had no open blocking or warning finding at di
 - "A later review is owed" gets one owner in `lib/critic_mode.py`. Three surfaces read it:
   inference, the Stop gate's extension deferral, and the close directive's `rides_next_review`.
   Today each derives it from `later_review_owed(progress)` alone.
-- Observation resolutions extend the existing resolution fact with an `oid` target. Gates never
+- Observation resolutions reuse the existing resolution fact, with the `O-n` id in `fid`. Gates never
   read them: `coverage_algebra.resolution_index` keys on `fid`.
 
 **Constraints.**
@@ -94,7 +94,7 @@ puzzles; verify rounds whose scope had no open blocking or warning finding at di
 - *Inferred:* a short plan's last chunk also owes its boundary `cumulative`, so the same predicate
   covers it. This is the plan shape `short_plan_deferral` already names.
 - *Inferred:* B's scoping is mechanical, not prose-only. In `verify-resolutions`, an observation
-  must carry `about: {review_id, fid|oid}` naming an existing prior finding or observation whose fix
+  must carry `about: {review_id, fid}` (an `R-n` or `O-n` id) naming an existing prior finding or observation whose fix
   it is about. One without it is dropped from the fact (counted in the consolidation output). The
   reviewer prompt says to report only those. Prose alone is the weak form (core rule on mechanising
   rules recall misses).
@@ -128,9 +128,9 @@ verify rounds with nothing open falls back toward the pre-3.7 ~5%.
 ## Status
 
 - [x] Chunk 01: an owed boundary review counts as a later review (A)
-- [ ] Chunk 02: a verify pass can confirm an observation fix (C)
+- [x] Chunk 02: a verify pass can confirm an observation fix (C)
 - [ ] Chunk 03: a verify pass reports observations only about the fixes it verifies (B)
-Context: Plan written 2026-10-13 from the investigation in `.prawduct/.handoff-notes.md`. Chunk 01 is built, reviewed (rev-20261013T161914Z-bf769839, then its verify pass rev-20261013T162339Z-45fc3bc5 clean) and committed. Riding into Chunk 02: tighten the post-cumulative inference test to assert the positive mode (the verify pass's observation). Next: Chunk 02.
+Context: Chunks 01 and 02 are built, reviewed and committed (Chunk 02 review rev-20261013T163757Z-abaea6f1, clean). A follow-up commit pays Chunk 02's token-budget overage in place and deletes a duplicate `evidence.observations_index` the review found. That judgeable edit, and Chunk 01's tightened post-cumulative test, ride Chunk 03's review. Next: Chunk 03, the last, whose boundary review is the plan's `cumulative`.
 
 ## Verification Strategy
 
@@ -191,10 +191,10 @@ Each chunk is verified by unit tests over fact lists and plan fixtures, as the n
   `{review_id, fid: "O-n", disposition: "fixed"}` (see Decisions made mid-build). `waived` is meaningless for an observation, which gates
   nothing, so it is refused.
 - `critic_consolidate` validates that the target observation exists in the store (fail-closed, like
-  finding targets) and writes a resolution fact whose `finding` is `{review_id, oid}`.
+  finding targets) and writes a resolution fact whose `finding` is `{review_id, fid: "O-n"}`.
 - Readers:
   - `dispositions._observation_row` reports a resolved observation as `fixed`, and
-    `resolution_detail_index` / `_target` handle the `oid` key.
+    `resolution_detail_index` / `_target` key it unchanged.
   - `stats` counts the round as having verified something (`verified_by`).
   - `coverage_algebra.resolution_index` is unchanged and ignores the new facts. A test pins that no
     gate verdict moves.
@@ -205,7 +205,7 @@ Each chunk is verified by unit tests over fact lists and plan fixtures, as the n
 
 **Done when:**
 1. Tests cover the round trip: partial → fact → census row `fixed`.
-2. Tests cover the refusals: unknown `oid`, `waived` on an `oid`, both `fid` and `oid` on one entry.
+2. Tests cover the refusals: an unknown observation id, and `waived` on an observation.
 3. A test shows `resolution_index` and the Stop/PR verdicts unchanged by observation resolutions.
 4. A `stats` test shows a verify round confirming only an observation is not empty.
 5. A Critic chunk review has run, with no open blocker.
@@ -215,7 +215,7 @@ Each chunk is verified by unit tests over fact lists and plan fixtures, as the n
 **Type:** code
 
 **Delivers.**
-- In `verify-resolutions`, an observation must carry `about: {review_id, fid|oid}` naming an
+- In `verify-resolutions`, an observation must carry `about: {review_id, fid}` (an `R-n` or `O-n` id) naming an
   existing finding or observation. It uses the same target validation as Chunk 02.
 - An observation without a valid `about` is dropped from the review fact.
   - The consolidation prints how many were dropped and why.

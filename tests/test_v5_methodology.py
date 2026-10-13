@@ -741,7 +741,9 @@ LAST_MEASURED_TOKENS = {
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -8 on 2026-10-09 (requirements-alignment w1): Goal 2 checks Goals instead of
     # Requirements Confidence, in a shorter line that also accepts older plans.
-    "skills/critic/goals-1-3.md": 2659,
+    # -10 on 2026-10-13 (empty-verify-rounds): `resolutions` now names observation fixes too, in a
+    # paragraph compressed in place; the observations line drops a builder-facing reason review-cycle.md owns.
+    "skills/critic/goals-1-3.md": 2649,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -5368,7 +5370,8 @@ class TestCriticGoals13:
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
-        assert tokens < 2660, f"goals-1-3.md is ~{tokens} tokens, should be <2660"
+        # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
+        assert tokens < 2650, f"goals-1-3.md is ~{tokens} tokens, should be <2650"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
