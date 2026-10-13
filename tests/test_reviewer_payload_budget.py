@@ -191,7 +191,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -10 on 2026-10-13 (empty-verify-rounds): goals-1-3.md's `resolutions` paragraph gains observation
     # resolutions, compressed in place, and the observations line drops the builder-facing reason
     # review-cycle.md already owns.
-    "single-pass-inner": 5788,
+    # +21 the same day, DECLARED (net +11 on the branch): goals-1-3.md states that a verify-mode
+    # observation carries `about` or is dropped — the verify reviewer reads nothing else, so without
+    # it every observation vanishes. Priced against the SUM: +21 per inner review against the verify
+    # round each off-topic observation bought (median ~2 min, about a third of the empty rounds).
+    "single-pass-inner": 5809,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -305,7 +309,7 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5789,
+    "single-pass-inner": 5810,
     "single-pass-full": 11526,
     "dispatched-reviewer": 10957,
     "coordinator-fork": 12120,

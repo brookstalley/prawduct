@@ -187,3 +187,26 @@ class TestAVerifyPassObservesOnlyNamedFixes:
         review = next(f for f in evidence.facts_of_kind(_store(repo), "review") if f["id"] == rid)
         assert [o["oid"] for o in review["body"]["observations"]] == ["O-1"]
         assert "about" not in review["body"]["observations"][0]
+
+
+class TestTheDropLeavesATrace:
+    """A verify pass that noticed nothing and one whose every observation was
+    dropped must not read alike, or the narrowing's yield cannot be measured."""
+
+    def _fact(self, repo: Path, observations: list) -> dict:
+        begin = _run_begin(repo, "--mode", "verify-resolutions")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], observations=observations)
+        assert _run_consolidate(repo).returncode == 0
+        return next(f for f in evidence.facts_of_kind(_store(repo), "review")
+                    if f["id"] == manifest["id"])["body"]
+
+    def test_the_dropped_count_is_on_the_fact(self, tmp_path):
+        repo, _rid = _review_with_observation(tmp_path)
+        body = self._fact(repo, [TestAVerifyPassObservesOnlyNamedFixes.TIGHTER_PROSE])
+        assert body["observations_dropped"] == 1
+
+    def test_a_pass_that_dropped_nothing_carries_no_count(self, tmp_path):
+        repo, _rid = _review_with_observation(tmp_path)
+        assert "observations_dropped" not in self._fact(repo, [])

@@ -175,7 +175,7 @@ class TestReviewClose:
         assert cc._RIDE_ALONG_ROUTE.strip() in line
 
     def test_a_blocking_close_is_unchanged_mid_plan(self):
-        line = cc.next_action_line("rev-x", 1, 0, 0, rides_next_review=True)
+        line = cc.next_action_line("rev-x", 1, 0, 0, rides_next_review=critic_mode.OWED_LATER_CHUNK)
         assert "This plan still owes a later review" not in line
         assert "verify-resolutions" in line
 
@@ -521,6 +521,11 @@ class TestBoundaryReviewOwed:
         mode, why = infer_mode(repo, None)
         assert mode == "final", why
         assert why.startswith("rule-3 final"), why
+        # And the Stop gate's message agrees: it no longer says "then cumulative".
+        _arm_stop(repo / ".prawduct")
+        result = _run_stop(repo)
+        assert result.returncode == 2, result.stderr
+        assert "last chunk is `Type: cumulative-final`" not in result.stderr
 
 
 class TestShortPlanBoundaryOwed:

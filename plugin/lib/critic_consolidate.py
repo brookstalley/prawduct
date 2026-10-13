@@ -813,7 +813,7 @@ def next_action_line(
     span: "str | None" = None,
     observations: int = 0,
     cost: "str | None" = None,
-    rides_next_review: "str | bool | None" = None,
+    rides_next_review: "str | None" = None,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -4840,7 +4840,7 @@ def fact_to_cache_record(
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
     cost: "str | None" = None,
-    rides_next_review: "str | bool | None" = None,
+    rides_next_review: "str | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -5478,6 +5478,7 @@ def consolidate(
                 )
                 return 1
 
+    dropped = 0
     if is_verify:
         partials, dropped = scope_verify_observations(partials, store)
         if dropped:
@@ -5508,6 +5509,11 @@ def consolidate(
             prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
         )
         body = build_fact_body(manifest, partials, dispatched_at=dispatched_at)
+        if dropped:
+            # On the fact, not only stderr: without it a verify pass that noticed
+            # nothing and one whose every observation was dropped read alike, and
+            # the narrowing's own yield could not be measured.
+            body["observations_dropped"] = dropped
         tree_state, tree_detail = tree_changed_since_dispatch(project_dir, manifest)
         if tree_state in ("changed", "unverifiable"):
             if not tree_changed_by_builder:

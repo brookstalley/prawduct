@@ -118,7 +118,10 @@ An absent file is the empty store.
   `files_reviewed`/`files_changed`, `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
-  `recommendation` and no severity. An observation is carried on `record_lint`'s terms: data
+  `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
+  `about: {review_id, fid}` names the finding or observation whose fix they judge; it counts the rest
+  in `observations_dropped` (absent when none), so "noticed nothing" and "everything dropped" stay
+  distinguishable. An observation is carried on `record_lint`'s terms: data
   *about* the review, not a finding *in* it. It never reaches `counts`, composition walks
   `findings` alone, and so no gate can read one. What it buys is an id the builder can answer
   against, so declining an observation stops costing the reasoning — before it had one, the only

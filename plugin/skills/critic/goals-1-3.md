@@ -12,7 +12,8 @@ requirement; exploitable security in changed code; a cross-component contract br
 departure without a recorded decision; an unlisted dependency — and nothing else:
 only **BLOCKING** is a finding, and only from that set. Every other verdict the goals below state
 (`→ WARNING`, `→ NOTE`, a `→ BLOCKING` outside the set) is the boundary rating — report it,
-record-lint entries included, as an observation, never in `findings`. **Deliver every observation
+record-lint entries included, as an observation, never in `findings`; in `verify-resolutions` only one
+judging a named fix, with `about: {review_id, fid}` — others are dropped. **Deliver every observation
 pre-priced:** ACCEPT is the default disposition; fixing one re-opens the gate and costs a round;
 batch any survivor into an already-planned commit.
 

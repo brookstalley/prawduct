@@ -357,7 +357,7 @@ def infer_mode(
         # cumulative re-derives, and any fix it prompts then buys a verify pass
         # the cumulative would have covered too. Measured on consumers: every
         # cumulative-final plan inspected ran final → verify → cumulative.
-        if _boundary_cumulative_still_owed(project_dir, prawduct_dir, plan, progress):
+        if boundary_cumulative_still_owed(project_dir, prawduct_dir, plan, progress):
             return MODE_DEFERRED, (
                 f"cumulative-final deferral: {final_reason}, and the chunk declares "
                 f"`Type: cumulative-final`; {LAST_CHUNK_BOUNDARY_STEP}. An explicit "
@@ -1220,7 +1220,7 @@ def review_owed_after(
     return None
 
 
-def _boundary_cumulative_still_owed(project_dir: Path, prawduct_dir: Path, plan, progress) -> bool:
+def boundary_cumulative_still_owed(project_dir: Path, prawduct_dir: Path, plan, progress) -> bool:
     """Whether a ``Type: cumulative-final`` last chunk's boundary ``cumulative``
     has yet to run on this branch — asked of :func:`review_owed_after` over the
     newest review's chain, so once that cumulative stands, a later edit gets a

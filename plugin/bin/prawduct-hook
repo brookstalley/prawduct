@@ -180,17 +180,21 @@ def _extension_deferral(project_dir: Path, prawduct_dir: Path, plan):
 
 
 def _cumulative_final_last_chunk(project_dir: Path, prawduct_dir: Path, plan) -> bool:
-    """Whether the branch's plan is on its last chunk and that chunk declares
-    ``Type: cumulative-final`` — so its review is the boundary ``cumulative``,
-    which inference sends the builder to commit before running.
+    """Whether the branch's plan is on its last chunk, that chunk declares
+    ``Type: cumulative-final``, and its boundary ``cumulative`` has not run yet
+    — so inference sends the builder to commit before running it.
 
+    Asks the same question inference does
+    (``critic_mode.boundary_cumulative_still_owed``), because once that
+    cumulative stands inference asks for a ``final`` or a verify pass, and a
+    message still saying "then cumulative" would buy a second full one.
     Changes only the block message, never whether the gate blocks, so ``False``
     on any failure leaves the message it would have printed anyway.
     """
     try:
         progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
-        return progress.total - progress.complete == 1 and _critic_mode().declares_boundary_cumulative(
-            prawduct_dir, plan
+        return progress.total - progress.complete == 1 and _critic_mode().boundary_cumulative_still_owed(
+            project_dir, prawduct_dir, plan, progress
         )
     except Exception:  # prawduct:allow prawduct/broad-except -- a message refinement must not crash the Stop gate
         return False

@@ -192,10 +192,10 @@ lower.
 bound is narrower than it first reads, and the weaker reading is the honest one: `verify-resolutions`
 is never a first review (`critic-begin` demotes when no usable prior fact exists), so the tree
 *beneath* the fix was fully reviewed — but the fix delta's own content was not, and post-cumulative
-fixes route here too. What holds is that the builder meets every observation twice: in the report,
-under an `### Observations` section with a stated count, and on the review fact under an `O-n` id —
-which makes it **answerable** (`disposition <review-id> O-1 --accept "<reason>"`). Declining one
-stops costing the reasoning, which is what made fixing it the only answer that left a trace.
+fixes route here too, and an observation judging no named fix is dropped (counted on the fact as
+`observations_dropped`) — the boundary review re-reads that delta. A kept one the builder meets twice:
+in the report, and on the fact under an `O-n` id, which makes it **answerable**
+(`disposition <review-id> O-1 --accept "<reason>"`).
 
 *Yield is emitted on both arms.* `review-stats` shows under-firing as B/W/N and over-firing — real
 work suppressed — as the `observations` count beside it, derived from the items riding the review

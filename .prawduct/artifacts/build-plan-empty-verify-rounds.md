@@ -43,6 +43,11 @@ last_validated: 2026-10-13
 
 ## Goals
 
+**Backlog:** addresses part of #724 ("most verify-resolutions rounds find nothing"). It doesn't
+close that item: its R1–R4, R7 and R8 remain. #911, a deferral crediting a parked chunk, is neither
+fixed nor worsened here, because the new boundary arm needs exactly one unticked chunk and #911's
+parked case needs two or more.
+
 **Response taken:** Ask, in one batch. The owner answered on 2026-10-13: "yes ABC as one plan". That
 followed the sibling-repo audit and the investigation that diagnosed three causes (A, B, C below).
 
@@ -131,6 +136,17 @@ puzzles; verify rounds whose scope had no open blocking or warning finding at di
   because both sit at pinned budgets. *Not settled by the goals*; flagged for the boundary review.
 - Chunk 03 is declared `Type: cumulative-final`, dogfooding Chunk 01: commit, then one `cumulative`
   that is both its review and the plan's boundary review, instead of final → verify → cumulative.
+- Boundary cumulative (rev-20261013T182630Z-260e9948): 0 blocking, 4 warnings, 7 notes. Fixed in
+  one batch:
+  - R-1/R-4: the Stop note now asks `critic_mode.boundary_cumulative_still_owed`, the question
+    inference asks, so after the cumulative it stops saying "then cumulative".
+  - R-2/R-3: goals-1-3.md, the only file a verify reviewer reads, now states the `about` rule,
+    declared at +21 tokens (net +11 on the branch). review-cycle.md's "every observation met twice"
+    claim is rewritten.
+  - R-6: the dropped count goes on the fact as `observations_dropped`.
+  - R-5: `rides_next_review` is `str | None`.
+  - R-7: data-model.md documents `about` and `observations_dropped`.
+  - The plan now cites #724 and #911.
 
 **Level:** Medium. The causes are measured, but the rates come from about 32 rounds in four repos.
 What would raise it: re-running the cohort scripts two weeks after release, to confirm the share of
@@ -140,8 +156,8 @@ verify rounds with nothing open falls back toward the pre-3.7 ~5%.
 
 - [x] Chunk 01: an owed boundary review counts as a later review (A)
 - [x] Chunk 02: a verify pass can confirm an observation fix (C)
-- [ ] Chunk 03: a verify pass reports observations only about the fixes it verifies (B)
-Context: Chunks 01 and 02 are built, reviewed and committed. Chunk 03 is built and red-verified (two mutations, each caught). It will be committed, then reviewed by one `cumulative`, which is also the plan's boundary review; its box is ticked after that passes.
+- [x] Chunk 03: a verify pass reports observations only about the fixes it verifies (B)
+Context: All three chunks built, reviewed and committed. Boundary `cumulative` rev-20261013T182630Z-260e9948: 0 blocking. Its warnings were fixed and verified (rev-20261013T193457Z-ff971d45, clean), and every finding and observation is dispositioned. Suite green (9023 passed). Next: `/prawduct:pr create` when the owner asks.
 
 ## Verification Strategy
 
