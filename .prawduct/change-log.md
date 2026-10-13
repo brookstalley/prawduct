@@ -15,7 +15,9 @@
   "a later review will cover this": a later chunk's review, or the plan's boundary `cumulative`
   when the last chunk is `Type: cumulative-final` or the plan is short. The Stop gate's deferral,
   `cost-of-commit` and the review close read it. Inference on an uncommitted cumulative-final last
-  chunk answers `deferred` instead of running a `final` the cumulative would repeat.
+  chunk answers `deferred` instead of running a `final` the cumulative would repeat, and the Stop
+  gate's note for that chunk asks the same question, so it stops saying "then cumulative" once the
+  cumulative has run.
 - **A verify pass can confirm an observation fix.** A resolution may name a prior observation's
   `O-n` id in the existing `finding.fid` slot; only `fixed` is accepted for one, and gates never
   read it. `stats` stops counting such a round empty, and the census reports the fix as `fixed`.
