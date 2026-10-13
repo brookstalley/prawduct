@@ -516,8 +516,11 @@ class TestBoundaryReviewOwed:
         # And inference no longer defers the chunk to a cumulative that has
         # already run: a later edit is reviewed, not sent to a second one.
         (repo / "src/later.py").write_text("z = 1  # an edit after the boundary review\n")
+        # Rule 3 is reached and answers `final` (not rule 4 falling through),
+        # so it is the post-cumulative check that withholds the deferral.
         mode, why = infer_mode(repo, None)
-        assert not why.startswith("cumulative-final deferral"), why
+        assert mode == "final", why
+        assert why.startswith("rule-3 final"), why
 
 
 class TestShortPlanBoundaryOwed:

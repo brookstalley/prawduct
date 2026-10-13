@@ -721,6 +721,32 @@ def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
     return [f for f in read_result.get("facts", []) if f.get("kind") == kind]
 
 
+def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
+    """``(review_id, oid)`` → the observation its review fact recorded.
+
+    The observation twin of :func:`findings_index`. A verify pass may confirm
+    an observation fix, and its resolution names the ``O-n`` id in the same
+    ``finding.fid`` slot a disposition already uses for one; ``R-n`` and ``O-n``
+    never collide, so every reader joining on that slot keeps working. This is
+    the existence check such a resolution must pass.
+    """
+    index: dict[tuple[str, str], dict] = {}
+    for fact in facts_of_kind(read_result, "review"):
+        review_id = fact.get("id")
+        if not isinstance(review_id, str) or not review_id:
+            continue
+        observations = (fact.get("body") or {}).get("observations")
+        if not isinstance(observations, list):
+            continue
+        for observation in observations:
+            if not isinstance(observation, dict):
+                continue
+            oid = observation.get("oid")
+            if isinstance(oid, str) and oid.strip():
+                index[(review_id, oid)] = observation
+    return index
+
+
 def findings_index(read_result: dict) -> dict[tuple[str, str], dict]:
     """``(review_id, fid)`` → the finding entry its review fact recorded.
 

@@ -5407,13 +5407,30 @@ def consolidate(
         return 1
     if resolutions:
         known = _known_findings_index(store)
+        # A verify pass may also confirm an observation fix, named by its `O-n`
+        # id in the same slot. Recording it is what lets the round count as
+        # having verified something, and the fix as fixed rather than accepted.
+        observed = set(evidence.observations_index(store))
         for r in resolutions:
-            if (r["review_id"], r["fid"]) not in known:
+            key = (r["review_id"], r["fid"])
+            if key in observed and key not in known:
+                if r["disposition"] != "fixed":
+                    print(
+                        f"critic-consolidate: resolution of observation "
+                        f"{r['fid']!r} of review {r['review_id']!r} is "
+                        f"{r['disposition']!r} — an observation gates nothing, so "
+                        "the only verdict that records anything is 'fixed'; "
+                        "fail-closed.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                continue
+            if key not in known:
                 print(
                     f"critic-consolidate: resolution targets finding "
                     f"{r['fid']!r} of review {r['review_id']!r}, which the "
                     "evidence store does not hold — a resolution must "
-                    "reference a recorded finding; fail-closed.",
+                    "reference a recorded finding or observation; fail-closed.",
                     file=sys.stderr,
                 )
                 return 1

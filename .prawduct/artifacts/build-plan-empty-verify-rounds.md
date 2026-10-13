@@ -113,6 +113,13 @@ puzzles; verify rounds whose scope had no open blocking or warning finding at di
   untested, now pinned. Its O-2 was fixed too: rule 3 now asks `review_owed_after` over the newest
   review's chain, so it stops deferring once the cumulative has run. That observation fix has no way
   onto the record until Chunk 02 lands, which is cause C in miniature.
+- Chunk 02: an observation resolution names the `O-n` id in the existing `finding.fid` slot, not a
+  new `oid` key as this plan first said. Dispositions already store an observation there, and `R-n`
+  and `O-n` never collide. So every reader keeps working, an older plugin misreads nothing, and
+  there is no new key to version. Gates are unaffected because they filter blocking findings, which
+  carry `R-n`. The verify dispatch needed no change: `.critic-findings.json` already lists the prior
+  review's observations with their ids. Settled by "every fact has one home" and additive-first
+  evolution.
 
 **Level:** Medium. The causes are measured, but the rates come from about 32 rounds in four repos.
 What would raise it: re-running the cohort scripts two weeks after release, to confirm the share of
@@ -181,7 +188,7 @@ Each chunk is verified by unit tests over fact lists and plan fixtures, as the n
 
 **Delivers.**
 - In `verify-resolutions`, a partial's `resolutions` entry may target a prior observation:
-  `{review_id, oid, disposition: "fixed"}`. `waived` is meaningless for an observation, which gates
+  `{review_id, fid: "O-n", disposition: "fixed"}` (see Decisions made mid-build). `waived` is meaningless for an observation, which gates
   nothing, so it is refused.
 - `critic_consolidate` validates that the target observation exists in the store (fail-closed, like
   finding targets) and writes a resolution fact whose `finding` is `{review_id, oid}`.

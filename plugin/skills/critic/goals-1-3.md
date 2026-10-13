@@ -149,7 +149,8 @@ dies in your context, and the builder is what terminates the review loop.
 it to leave a trace; one from the inner BLOCKING set belongs in `findings`.
 **`resolutions` is `verify-resolutions` mode ONLY** — your judgment on each prior BLOCKING/WARNING
 finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or
-`waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a
+`waived` (`waived` requires a `rationale`). A prior observation the delta fixed goes in too, its
+`O-n` as `fid`, `fixed` only. Consolidation validates every entry and fails closed on a
 mismatch, so match this schema exactly.
 
 Then report to the user: the manifest's `signals` line verbatim, what you reviewed, each finding
