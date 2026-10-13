@@ -2588,12 +2588,19 @@ class TestVerifyRatesBlockingOnlyDirective:
         are surest deserves a WARNING" sentence was removed as coaching, and the
         record-gap sentence it followed became the imperative close. The
         ceiling came down by the same amount.
+
+        809 -> 811 on 2026-10-13 (empty-verify-rounds), DECLARED: an
+        observation now judges a NAMED fix and carries `about`, and the list
+        inviting naming/prose/test-shape notes is gone. Those notes were the
+        treadmill: fixing one bought the next verify round. Paid by cutting
+        "the builder still reads your observations", which the scoping made
+        false.
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 809, (
+        assert tokens == 811, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 809. Update it to {tokens} and say in the docstring what paid "
+            f"says 811. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
         assert tokens < 865, (
@@ -4181,9 +4188,14 @@ class TestResolutionFacts:
         assert fact["body"]["stage"] is None  # recorded as absent, never invented
         assert len(fact["body"]["observations"]) == 1
 
-    def test_observations_persist_from_a_verify_dispatch(self, tmp_path):
+    def test_observations_that_judge_a_named_fix_persist_from_a_verify_dispatch(self, tmp_path):
         """The path that must work: a verify pass's demoted items reach the
-        review fact with ids a builder can answer against."""
+        review fact with ids a builder can answer against — when they judge a
+        NAMED fix. Renegotiated 2026-10-13 (empty-verify-rounds): a verify
+        observation about anything else (here, a helper's name) was what the
+        builder fixed next, buying the following verify round, so in this mode
+        one must carry `about: {review_id, fid}` and one without it is dropped.
+        Kept invariant: what survives is recorded with an answerable `O-n` id."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -4194,13 +4206,19 @@ class TestResolutionFacts:
                         roster=["reviewer"])
         _write_partial(repo, "reviewer", head, observations=[
             {"name": "The helper reads as a verb", "goal": "Nothing Is Unintended",
-             "recommendation": "Rename it"}
+             "recommendation": "Rename it"},
+            {"name": "The fix guards one caller of two", "goal": "Nothing Is Broken",
+             "recommendation": "Guard the second caller too",
+             "about": {"review_id": "rev-prior-0001", "fid": "R-1"}},
         ])
         result = _run_consolidate(repo)
         assert result.returncode == 0, result.stderr
         fact = [f for f in _store_facts(repo, "review")
                 if f["id"] == "rev-verify-0002"][0]
-        assert [o["oid"] for o in fact["body"]["observations"]] == ["O-1"]
+        assert [(o["oid"], o["title"]) for o in fact["body"]["observations"]] == [
+            ("O-1", "The fix guards one caller of two")
+        ]
+        assert "dropped 1 observation(s)" in result.stderr
         assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
 
     def test_resolution_of_unknown_finding_fails_closed(self, tmp_path):

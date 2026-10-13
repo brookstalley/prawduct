@@ -132,3 +132,58 @@ class TestRefusals:
         assert rc == 1
         assert "recorded finding or observation" in err
         assert evidence.facts_of_kind(_store(repo), "resolution") == []
+
+
+def _verify_with_observations(repo: Path, observations: list):
+    begin = _run_begin(repo, "--mode", "verify-resolutions")
+    assert begin.returncode == 0, begin.stderr
+    manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+    _write_partial(repo, "reviewer", manifest["commit_reviewed"], observations=observations)
+    done = _run_consolidate(repo)
+    assert done.returncode == 0, done.stderr
+    fact = next(f for f in evidence.facts_of_kind(_store(repo), "review") if f["id"] == manifest["id"])
+    next_action = next(l for l in done.stdout.splitlines() if l.startswith("NEXT-ACTION:"))
+    return fact["body"].get("observations") or [], done.stderr, next_action
+
+
+class TestAVerifyPassObservesOnlyNamedFixes:
+    """A verify pass's observation about anything but a named fix is what the
+    builder fixes next, which buys the next verify round. So in that mode an
+    observation must say, in `about`, whose fix it judges; one that names none
+    is dropped from the record (advice: never refused)."""
+
+    TIGHTER_PROSE = {"name": "Tighten the docstring", "goal": "Everything Is Coherent",
+                     "recommendation": "Say it in fewer words"}
+
+    def test_one_that_names_the_fix_it_judges_is_kept(self, tmp_path):
+        repo, rid = _review_with_observation(tmp_path)
+        judged = {**self.TIGHTER_PROSE, "name": "The constant is named but not used twice",
+                  "about": {"review_id": rid, "fid": "O-1"}}
+        kept, err, line = _verify_with_observations(repo, [judged])
+        assert [o["about"] for o in kept] == [{"review_id": rid, "fid": "O-1"}]
+        assert "dropped" not in err
+        assert "1 observation(s)" in line
+
+    def test_one_that_names_no_fix_is_dropped_and_counted(self, tmp_path):
+        repo, rid = _review_with_observation(tmp_path)
+        judged = {**self.TIGHTER_PROSE, "name": "Judged", "about": {"review_id": rid, "fid": "O-1"}}
+        kept, err, line = _verify_with_observations(repo, [self.TIGHTER_PROSE, judged])
+        assert [o["title"] for o in kept] == ["Judged"]
+        assert "dropped 1 observation(s) that judge no named fix" in err
+        assert "1 observation(s)" in line
+
+    def test_one_naming_an_unrecorded_target_is_dropped(self, tmp_path):
+        repo, rid = _review_with_observation(tmp_path)
+        stray = {**self.TIGHTER_PROSE, "about": {"review_id": rid, "fid": "R-7"}}
+        kept, err, line = _verify_with_observations(repo, [stray])
+        assert kept == []
+        assert "dropped 1 observation(s)" in err
+        assert "observation(s)" not in line
+
+    def test_a_chunk_review_keeps_observations_without_about(self, tmp_path):
+        """Control: the scoping is verify-only. The chunk review in the fixture
+        recorded its observation with no `about`."""
+        repo, rid = _review_with_observation(tmp_path)
+        review = next(f for f in evidence.facts_of_kind(_store(repo), "review") if f["id"] == rid)
+        assert [o["oid"] for o in review["body"]["observations"]] == ["O-1"]
+        assert "about" not in review["body"]["observations"][0]

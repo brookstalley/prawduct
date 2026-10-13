@@ -164,10 +164,9 @@ Everything above is the **demand** side — what the builder does with findings 
 is the **supply** side, and without it the demand-side rules are asked to absorb an inflow the
 framework itself creates.
 
-**In `verify-resolutions`, a new finding is BLOCKING or it is not a finding.** Anything lesser the
-reviewer notices is reported as an **OBSERVATION** in prose and never enters `findings`. (The stage
-norm above generalizes the demotion to every inner-stage mode; this section keeps the reasoning that
-first earned it.)
+**In `verify-resolutions`, a new finding is BLOCKING or it is not a finding.** Anything lesser is an
+**OBSERVATION** only when its `about` names the fix it judges; consolidation drops the rest. (The stage
+norm above generalizes the demotion to every inner-stage mode; this section keeps its reasoning.)
 
 *Why this mode and not the others.* A verify pass exists to answer one question — were the named
 findings resolved? Walking the fix delta at full severity on top of that turns round N's fix into

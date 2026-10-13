@@ -1158,12 +1158,14 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " undocumented decision that departs from no norm) is an observation here,"
     " and so is everything a table rates lower, record-lint entries included."
     " Observations go in your report under an"
-    " `### Observations` heading, in prose, and NOT into `findings`: a name you"
-    " would have chosen differently, prose that could be tighter, a test you"
-    " would have structured another way. Put each one in your partial's"
-    " `observations` array TOO — `{name, goal, recommendation, files?}`, a"
-    " finding minus its severity — which is what lets the builder ACCEPT it on"
-    " the record instead of fixing it just to leave a trace. An entry you rate"
+    " `### Observations` heading, in prose, and NOT into `findings` — and only"
+    " one that judges a NAMED fix: incomplete, or right in one place and missed"
+    " in another. Put each in your partial's `observations` array TOO —"
+    " `{name, goal, recommendation, about: {review_id, fid}}`, `about` naming"
+    " the prior finding or observation whose fix it judges; one without it is"
+    " dropped. A name, tighter prose, another test shape: leave it, because the"
+    " boundary review re-reads this delta at full severity, and your note would"
+    " buy a round to fix it now. An entry you rate"
     " `blocking` is refused there: a BLOCKING item is a finding."
     " The set is the norm's and it is exact — it neither adds a class the norm"
     " does not name nor drops one it does. Five shapes a fix delta actually"
@@ -1181,9 +1183,7 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " a WARNING recorded here becomes a fix commit, the commit moves the tree,"
     " the moved tree reopens coverage, and the next pass reviews the prose this"
     " fix just wrote — measured at ten rounds on one branch, where rounds five"
-    " onward were entirely self-inflicted. The builder still reads your"
-    " observations and can act on them; they are simply not work the record"
-    " demands."
+    " onward were entirely self-inflicted."
     " **BLOCKING means the tree must not move again without this fix — not"
     " merely that the fix is owed.** The two come apart on RECORD gaps: a"
     " registry row, a doc table, an artifact that lags the code it describes."
@@ -4367,6 +4367,46 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     return findings
 
 
+def observation_about(observation: dict) -> "tuple[str, str] | None":
+    """The ``(review_id, fid)`` an observation says it judges the fix of, or
+    ``None`` when it names none usable. ``fid`` may be a finding's ``R-n`` or an
+    observation's ``O-n``."""
+    about = observation.get("about")
+    if not isinstance(about, dict):
+        return None
+    review_id, fid = about.get("review_id"), about.get("fid")
+    if _nonempty_str(review_id) and _nonempty_str(fid):
+        return review_id.strip(), fid.strip()
+    return None
+
+
+def scope_verify_observations(partials: list[dict], store: dict) -> "tuple[list[dict], int]":
+    """``partials`` with every observation dropped that does not judge a named
+    fix, and how many were dropped.
+
+    A ``verify-resolutions`` pass exists to say whether named fixes held. An
+    observation about anything else in the fix delta (a name, prose, a test's
+    shape) is what the builder then fixes, which moves the tree and buys the
+    next verify round: measured on sibling repos on 3.7.x, about a third of the
+    verify rounds with nothing open to verify followed another verify pass.
+    The boundary review re-reads the delta at full severity, so nothing is lost
+    for good. Dropping, not refusing, because an observation is advice: a
+    malformed one must never cost the round that carried it.
+
+    Kept: an observation whose ``about`` names a finding or an observation the
+    store records.
+    """
+    targets = set(evidence.findings_index(store)) | set(evidence.observations_index(store))
+    scoped: list[dict] = []
+    dropped = 0
+    for partial in partials:
+        observations = partial.get("observations") or []
+        kept = [o for o in observations if observation_about(o) in targets]
+        dropped += len(observations) - len(kept)
+        scoped.append({**partial, "observations": kept} if observations else partial)
+    return scoped, dropped
+
+
 def merge_observations(partials: list[dict]) -> list[dict]:
     """Union every reviewer's observations into the fact-body shape,
     de-duplicated by ``(goal, name, files)`` with sequential ``oid``s assigned
@@ -4398,6 +4438,9 @@ def merge_observations(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            about = observation_about(o)
+            if about is not None:
+                entry["about"] = {"review_id": about[0], "fid": about[1]}
             merged[key] = entry
     observations = list(merged.values())
     for idx, entry in enumerate(observations, start=1):
@@ -5434,6 +5477,17 @@ def consolidate(
                     file=sys.stderr,
                 )
                 return 1
+
+    if is_verify:
+        partials, dropped = scope_verify_observations(partials, store)
+        if dropped:
+            print(
+                f"critic-consolidate: dropped {dropped} observation(s) that judge no "
+                "named fix — in `verify-resolutions` an observation carries "
+                "`about: {review_id, fid}` naming the prior finding or observation "
+                "whose fix it judges; anything else waits for the boundary review.",
+                file=sys.stderr,
+            )
 
     # All preconditions met — append the review fact (idempotent by id: the
     # CRT-4B7X double-consolidate race appends exactly one).

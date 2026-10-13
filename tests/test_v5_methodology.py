@@ -921,7 +921,9 @@ LAST_MEASURED_TOKENS = {
     # -3 on 2026-10-13 (empty-verify-rounds): a `cumulative-final` last chunk's uncommitted
     # work now infers `deferred`, not `final`; the sentence saying so replaced the old one,
     # and the fix-rides-the-cumulative advice stays with the close and the Stop gate that print it.
-    "skills/critic/review-cycle.md": 7534,
+    # -2 the same day: a verify-pass observation must name the fix it judges, said in a sentence
+    # rewritten in place.
+    "skills/critic/review-cycle.md": 7532,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -5966,8 +5968,8 @@ class TestReviewCycle:
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
-        # RATCHETED 7538 -> 7535 (empty-verify-rounds, 2026-10-13) with the reading.
-        assert tokens < 7535, f"review-cycle.md is ~{tokens} tokens, should be <7535"
+        # RATCHETED 7538 -> 7533 (empty-verify-rounds, 2026-10-13) with the reading.
+        assert tokens < 7533, f"review-cycle.md is ~{tokens} tokens, should be <7533"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

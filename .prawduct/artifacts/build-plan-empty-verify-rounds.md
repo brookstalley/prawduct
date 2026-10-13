@@ -120,6 +120,17 @@ puzzles; verify rounds whose scope had no open blocking or warning finding at di
   carry `R-n`. The verify dispatch needed no change: `.critic-findings.json` already lists the prior
   review's observations with their ids. Settled by "every fact has one home" and additive-first
   evolution.
+- Chunk 03: the verify dispatch directive was the treadmill's source. It explicitly invited
+  observations about "a name you would have chosen differently, prose that could be tighter, a test
+  you would have structured another way". That list is replaced by "only one that judges a NAMED
+  fix", and the sentence "the builder still reads your observations and can act on them", which the
+  scoping made false, is cut (net +2 tokens, declared on its pin).
+- Chunk 03: `SKILL.md`'s per-mode summary and `review-protocol.md`'s schema line still describe
+  observations without the verify-only `about` rule. Both stay true at the level they speak, and
+  the verify dispatch directive states the rule at the moment the reviewer acts. They are not edited
+  because both sit at pinned budgets. *Not settled by the goals*; flagged for the boundary review.
+- Chunk 03 is declared `Type: cumulative-final`, dogfooding Chunk 01: commit, then one `cumulative`
+  that is both its review and the plan's boundary review, instead of final → verify → cumulative.
 
 **Level:** Medium. The causes are measured, but the rates come from about 32 rounds in four repos.
 What would raise it: re-running the cohort scripts two weeks after release, to confirm the share of
@@ -130,7 +141,7 @@ verify rounds with nothing open falls back toward the pre-3.7 ~5%.
 - [x] Chunk 01: an owed boundary review counts as a later review (A)
 - [x] Chunk 02: a verify pass can confirm an observation fix (C)
 - [ ] Chunk 03: a verify pass reports observations only about the fixes it verifies (B)
-Context: Chunks 01 and 02 are built, reviewed and committed (Chunk 02 review rev-20261013T163757Z-abaea6f1, clean). A follow-up commit pays Chunk 02's token-budget overage in place and deletes a duplicate `evidence.observations_index` the review found. That judgeable edit, and Chunk 01's tightened post-cumulative test, ride Chunk 03's review. Next: Chunk 03, the last, whose boundary review is the plan's `cumulative`.
+Context: Chunks 01 and 02 are built, reviewed and committed. Chunk 03 is built and red-verified (two mutations, each caught). It will be committed, then reviewed by one `cumulative`, which is also the plan's boundary review; its box is ticked after that passes.
 
 ## Verification Strategy
 
@@ -212,7 +223,7 @@ Each chunk is verified by unit tests over fact lists and plan fixtures, as the n
 
 ## Chunk 03: a verify pass reports observations only about the fixes it verifies (B)
 
-**Type:** code
+**Type:** cumulative-final
 
 **Delivers.**
 - In `verify-resolutions`, an observation must carry `about: {review_id, fid}` (an `R-n` or `O-n` id) naming an
