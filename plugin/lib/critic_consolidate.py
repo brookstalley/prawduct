@@ -557,6 +557,18 @@ _RIDES_NEXT_REVIEW_LEAD = (
     " run `verify-resolutions` for it. "
 )
 
+#: The same lead when what the plan still owes is its boundary ``cumulative``
+#: (a ``Type: cumulative-final`` last chunk, or a short plan): that review spans
+#: the branch from the merge-base, so it covers a fix committed before it just
+#: as a later chunk's review would. Its own text because the chunk wording
+#: would promise a chunk review that is not coming.
+_RIDES_BOUNDARY_REVIEW_LEAD = (
+    "This plan still owes its boundary `cumulative`, which reviews the branch"
+    " from the merge-base. So commit this tree as it stands, then fix what is"
+    " worth fixing and commit that too: the cumulative covers the fix, not a"
+    " round of its own. Don't run `verify-resolutions` for it. "
+)
+
 
 #: What fixing a non-blocking item costs, and how to find out before paying it.
 #:
@@ -801,7 +813,7 @@ def next_action_line(
     span: "str | None" = None,
     observations: int = 0,
     cost: "str | None" = None,
-    rides_next_review: bool = False,
+    rides_next_review: "str | bool | None" = None,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -855,7 +867,14 @@ def next_action_line(
     # blockers clear only through `verify-resolutions`, whatever is owed later.
     fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price
     if rides_next_review:
-        lead, fix_tail = _RIDES_NEXT_REVIEW_LEAD, ""
+        from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
+
+        lead = (
+            _RIDES_BOUNDARY_REVIEW_LEAD
+            if rides_next_review == critic_mode.OWED_BOUNDARY
+            else _RIDES_NEXT_REVIEW_LEAD
+        )
+        fix_tail = ""
     # `span` is :func:`span_clause`'s output, rendered by the caller for the
     # same reason `price_sentence` is. Absent (every mode but a clean
     # `verify-resolutions` close) the clause stays what it always was: go ask
@@ -4740,36 +4759,36 @@ def finding_fix_cost(files: "list | None") -> str:
 def _plan_owes_a_later_review(
     project_dir: Path, prawduct_dir: Path, facts: "list[dict] | None" = None,
     fact: "dict | None" = None,
-) -> bool:
-    """Whether the branch's plan owes a review after the one just consolidated.
+) -> "str | None":
+    """Which review the branch's plan owes after the one just consolidated —
+    ``critic_mode.OWED_LATER_CHUNK`` or ``OWED_BOUNDARY`` — or ``None``.
 
     The close's half of the interval-extension deferral: the review just
     written covers its tree with no blocker (the caller only asks on a
-    zero-blocking close), so once that tree is committed it IS the covered
-    frontier, and the only open question is whether a later review will start
-    from it — ``critic_mode.later_review_owed``. ``False`` on any failure: this
+    zero-blocking close), so once that tree is committed a later chunk review
+    starts from it, and the boundary ``cumulative`` spans it from the
+    merge-base. Either covers a fix committed now; the answer is
+    ``critic_mode.review_owed_after``'s, which also says nothing is owed once a
+    ``cumulative`` stands on ``fact``'s chain. ``None`` on any failure: this
     changes advice, and advice that cannot be derived keeps the older wording.
-
-    Not after the boundary: when ``fact`` stands on a chain holding a
-    ``cumulative`` (``critic_mode.boundary_review_on_chain``), the unticked boxes
-    are chunks awaiting their tick, not chunks still to build, and the close
-    must not promise a review that is not coming.
     """
     try:
         from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
         plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
         if plan.path is None:
-            return False
-        if fact is not None and critic_mode.boundary_review_on_chain(
-            critic_mode.review_chain(facts or [], fact)
-        ):
-            return False
-        return critic_mode.later_review_owed(
-            buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+            return None
+        chain = critic_mode.review_chain(facts or [], fact) if fact is not None else []
+        owed = critic_mode.review_owed_after(
+            project_dir,
+            prawduct_dir,
+            plan,
+            buildplan_refs.resolve_chunk_progress(project_dir, plan.path),
+            chain,
         )
+        return owed[0] if owed else None
     except (OSError, ValueError):
-        return False
+        return None
 
 
 def fact_to_cache_record(
@@ -4778,7 +4797,7 @@ def fact_to_cache_record(
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
     cost: "str | None" = None,
-    rides_next_review: bool = False,
+    rides_next_review: "str | bool | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
