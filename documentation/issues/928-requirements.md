@@ -106,7 +106,7 @@ requirements after the contract is proven (R-14).
   a live test; (b) the reviewer starts from fresh context, without the builder's reasoning;
   (c) the reviewer's shell scope and write paths, which are a contract on Claude and not a fence,
   are backed by a host-neutral core check that fails the review when the working tree changed
-  outside the reviewer's own files between `critic-begin` and consolidation. A host that cannot
+  between `critic-begin` and consolidation outside prawduct's own session files (D-11). A host that cannot
   meet (a) and (b) runs its Critic as a separate constrained session, or the adapter is not
   "supported" (see D-4).
 - **R-9 (must).** Consolidation stays deterministic and host-agnostic: reviewer output enters via
@@ -176,7 +176,7 @@ refer to § Host-surface inventory.
   patterns and `Write` paths are a contract (`agents/critic-reviewer.md` says so), and
   consolidation validated only the partial. Codex was being held to a bar the Claude adapter
   fails. R-8 now requires host-enforced tool *set*, fresh context, and a host-neutral core check
-  that the tree did not change outside the reviewer's files during the review. That check is #992 and
+  that the tree did not change outside prawduct's session files during the review (scope: D-11). That check is #992 and
   benefits Claude independently of the adapter.
   - *Owner ruling 2026-10-10, on building #992.* A tree diff cannot say who changed a path, and
     `review-cycle.md` asks the builder to prep while a review runs. So a changed tree refuses
@@ -210,6 +210,21 @@ refer to § Host-surface inventory.
   and canonical skill prose stays single-source (R-3, R-4). Out of the supported contract for now:
   install, provenance, repo-toggle and remedy-text rows (18, 31 to 34, 38), which are UX.
 
+## Decisions (owner, 2026-10-13): answers to PR #944
+
+- **D-11 R-8(c) is scoped to what #992 checks (row 21).** R-8(c) said "outside the reviewer's own
+  files". #992 exempts every path in `core.GITIGNORE_ENTRIES`, and gitignored paths never enter
+  the tree it captures. The wording now matches the code. Narrowing the code to the reviewer's
+  marker and partial would refuse a review whenever the builder writes its own session files
+  during it (handoff notes, test evidence, the ledger), which `review-cycle.md` asks it to do. That
+  would charge the builder on every review cycle to close a small gap. Known residual: a reviewer
+  could write to the ledger or another reviewer's partial without being caught. That gap is the
+  same on Claude, so it is not a Codex parity gap, and partial validation at consolidation is
+  still the backstop.
+- **D-12 The plugin-cache report stays in rows 18 and 33.** It reads config roots (row 18) and
+  installed-plugin state (row 33), and it is doctor hygiene. Like those rows, it is outside the
+  supported contract (D-10). It needs no row of its own.
+
 ## Host-surface inventory
 
 Every place the engine depends on Claude Code specifically, taken from `develop` at `2caeca96`
@@ -233,7 +248,7 @@ Evidence labels for the Codex 0.156.1 mapping:
 - **O5:** [Official Codex Worktrees documentation](https://learn.chatgpt.com/docs/environments/git-worktrees), current unversioned desktop-app documentation consulted for the `0.156.1` mapping; it is not a stable CLI worktree-path contract.
 - **E5:** [Independent 39-row inventory analysis and reconciliation](https://github.com/brookstalley/prawduct/issues/928#issuecomment-6115715618), Codex CLI `0.156.1`; analysis rather than an additional live test.
 
-Per D-10, the supported host contract includes normalized event payloads, root resolution, and skill packaging (rows 19, 24, 25, and 36). Install, provenance, repo-toggle, and remedy-text rows (18, 31–34, and 38) remain UX proposals outside that contract for now. The new read-only plugin-cache surface is provisionally grouped in rows 18 and 33; Brooks is asked to confirm that placement or request a separate row.
+Per D-10, the supported host contract includes normalized event payloads, root resolution, and skill packaging (rows 19, 24, 25, and 36). Install, provenance, repo-toggle, and remedy-text rows (18, 31–34, and 38) remain UX proposals outside that contract for now. The read-only plugin-cache surface (`lib/plugin_caches.py`) belongs in rows 18 and 33 (D-12).
 
 | # | Surface | Where | Governance uses it for | Class | Codex | Proposed seam |
 |---|---|---|---|---|---|---|
@@ -257,7 +272,7 @@ Per D-10, the supported host contract includes normalized event payloads, root r
 | 18 | `CLAUDE_CONFIG_DIR` and `~/.claude*` roots | `hooks/banner.py`; `lib/plugin_activation.py`; `lib/stranded_work.py`; `lib/plugin_caches.py` | Install detection; transcript roots for liveness; read-only unused-plugin-cache report | UX / fallback | **Partial/fallback.** Codex uses `~/.codex`; hooks provide `transcript_path`, whose format is explicitly unstable. Plugin activation is configured through Codex plugin/config surfaces. | Host capability object supplies config root, plugin activation, and optional transcript liveness path; never parse transcript contents. |
 | 19 | `${CLAUDE_SKILL_DIR}` in skill prose | critic, pr, methodology, janitor, runbook, report-bug skills; `lib/buildplan_refs.py` | Loading the Critic and PR protocols and the methodology guides next to their skill | gate in effect | **Partial/fallback; Claude form unsupported.** No equivalent variable is established, but Codex skills package colocated references and scripts. | Propose portable relative resource references or a generated host launcher that resolves the active skill directory. Until packaging proof exists, affected gates remain unavailable/fail closed. Any edit to canonical Claude-facing skill prose must preserve R-3 and R-4 and requires upstream review. |
 | 20 | Transcript directory mtimes (content never read) | `lib/stranded_work.py` | Worktree liveness in the briefing and `worktrees` | fallback (reflog, session markers, file mtimes) | **Partial/fallback.** A transcript path may exist, but its format and availability are not stable contracts. | Treat transcript mtime as an optional host signal behind the existing reflog/session-marker/file-mtime backstops. |
-| 21 | Reviewer agents' `tools:` allowlists (`Bash(pattern)`, `Write`) | `agents/critic-reviewer.md`, `agents/pr-reviewer.md` | Reviewer isolation. On Claude the tool *set* is enforced; `Bash` patterns and `Write` paths are a contract the reviewer keeps, backed by consolidation validating each partial and refusing a review during which the working tree changed outside prawduct's session files (#992) | gate (R-8) | **Not verified for R-8; direct Claude `tools:` form unsupported.** O4 documents no per-agent exact tool allowlist and says subagents inherit the parent sandbox. F1's attempted constrained subject self-reported forbidden surfaces and omitted all five approved tools, so no tested topology reached the refusal test. | Under D-5, require a live Codex host refusal of a tool outside the reviewer’s declared set and fresh reviewer context; either in-session or separate-session dispatch may qualify. Core #992 compares the dispatch and consolidation trees, but its current implementation exempts all Prawduct session entries and gitignored paths, not solely the reviewer’s own files; record the difference from D-5(c)'s reviewer-own-files wording for Brooks to confirm before any parity claim. Older manifests without `dispatch_tree` return `unrecorded` and still consolidate, so the new check is not enforced for them. Only the main session may pass `critic-consolidate --tree-changed-by-builder <reason>`, which records paths and the builder’s attestation for independent PR review, not proof of authorship. Hooks and Stop cannot pass the flag. F1 reached no undeclared-tool refusal; R-8 remains unverified and the Critic gate closed. Exact shell-pattern scoping is not required. |
+| 21 | Reviewer agents' `tools:` allowlists (`Bash(pattern)`, `Write`) | `agents/critic-reviewer.md`, `agents/pr-reviewer.md` | Reviewer isolation. On Claude the tool *set* is enforced; `Bash` patterns and `Write` paths are a contract the reviewer keeps, backed by consolidation validating each partial and refusing a review during which the working tree changed outside prawduct's session files (#992) | gate (R-8) | **Not verified for R-8; direct Claude `tools:` form unsupported.** O4 documents no per-agent exact tool allowlist and says subagents inherit the parent sandbox. F1's attempted constrained subject self-reported forbidden surfaces and omitted all five approved tools, so no tested topology reached the refusal test. | Under D-5, require a live Codex host refusal of a tool outside the reviewer’s declared set and fresh reviewer context; either in-session or separate-session dispatch may qualify. Core #992 compares the dispatch and consolidation trees, but its current implementation exempts all Prawduct session entries and gitignored paths, not solely the reviewer’s own files; D-11 rules that this is the scope R-8(c) requires. Older manifests without `dispatch_tree` return `unrecorded` and still consolidate, so the new check is not enforced for them. Only the main session may pass `critic-consolidate --tree-changed-by-builder <reason>`, which records paths and the builder’s attestation for independent PR review, not proof of authorship. Hooks and Stop cannot pass the flag. F1 reached no undeclared-tool refusal; R-8 remains unverified and the Critic gate closed. Exact shell-pattern scoping is not required. |
 | 22 | `model: inherit`; `omitClaudeMd: true` on the PR reviewer | `agents/*.md` | Same-model review; PR reviewer isolated from instructions and memory | fallback (isolation weakens) | **Partial/fallback.** Custom agents can select a model/sandbox/MCP/skills and otherwise inherit settings; no exact `omitClaudeMd` equivalent is established. | Define explicit reviewer profile inputs: model policy, context seed, instruction sources, sandbox, and tool manifest. Refuse unsupported omission/isolation claims. |
 | 23 | Subagent dispatch through the Agent tool, three reviewers concurrently | `skills/critic/coordinator.md`; `skills/pr/SKILL.md` | Independent multi-role Critic; the PR reviewer | gate (single-pass roster is the fallback) | **Partial/fallback.** Codex supports concurrent subagents, but F1 did not prove the constrained Critic tool surface. | Host dispatch may run the roster concurrently only after the R-8 tool-set refusal, fresh-context and #992 tree-change requirements are proved for its actual topology. D-5 permits either in-session or separate-session dispatch; neither is presumed necessary or sufficient. The upstream single-pass roster remains the named backstop. Any durable `.prawduct/` field is a Brooks-owned R-5/R-9 format proposal. |
 | 24 | Skill frontmatter `context: fork` | critic, backlog, advisory skills | Critic runs outside the builder's context; backlog out of main context | gate (critic), UX (others) | **Partial/fallback; Claude form unsupported.** Codex has subagents but no established automatic mapping from this field. | Propose a small skill-manifest translator: Critic becomes explicit fresh-context dispatch; UX-only forks may run inline when declared safe. Upstream names no fallback for this row, so isolation-sensitive dispatch blocks until the translation is proven. |
@@ -293,9 +308,11 @@ Not host-specific but external: the Stop PR check shells out to `gh`; hooks.json
 
 ## Next step
 
-The inventory is filled (PR #944) and ruled on (D-5 to D-10). Next, the adapter author posts the
-evidence the inventory cites (F1, O1, O4, O5, E5) on #928. Then the R-8 probe against the parity
-bar: does Codex refuse a tool outside the reviewer's declared set, in-session or as a separate
-constrained session? Then design: the concrete seam, and the Codex feasibility spike (the issue's
-Phase 1) scoped to one skill, the session briefing and one Stop gate, with a live probe for each
-host-behaviour assumption.
+The inventory is merged (PR #944), its evidence is on #928, and it is ruled on (D-5 to D-12). Next
+is the R-8(a) probe. It passes on a recorded live refusal of a tool outside the reviewer's declared
+set. It does not need a witness that no other host configuration (cloud-managed hooks included) is
+in play. A separate `codex exec` reviewer session whose PreToolUse hook denies everything outside
+the declared set is an acceptable topology under D-5. Then design: the concrete seam, and the Codex
+feasibility spike (the issue's Phase 1) scoped to one skill, the session briefing and one Stop gate,
+with a live probe for each host-behaviour assumption. Target: the 3.8 release. 3.7 is closing
+without it.
