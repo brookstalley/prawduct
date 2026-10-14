@@ -865,7 +865,7 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     # THE predicate again (CRT-5D8Q). This was a FIFTH bare-suffix classifier,
     # found by the class scan the change-log-gate fix triggered — the same
     # `.endswith(".md")` shape, and wrong in the same direction: governance-
-    # protected prose (`skills/`, `methodology/`, `templates/`, root CLAUDE.md)
+    # protected prose (`skills/`, `methodology/`, `templates/`, root CLAUDE.md, AGENTS.md)
     # IS judgeable, so a committed delta of only skill prose used to suppress the
     # verify-resolutions suggestion as though nothing reviewable had landed.
     judgeable_delta = coverage_algebra.judgeable_files(sorted(delta))

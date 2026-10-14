@@ -929,7 +929,9 @@ LAST_MEASURED_TOKENS = {
     # rewritten in place.
     # -15 the same day (boundary review): the "every observation met twice" claim, false once a
     # verify pass drops off-topic ones, is rewritten to say what is dropped and counted.
-    "skills/critic/review-cycle.md": 7517,
+    # -10 on 2026-10-14 (agents-md-anchor): the protected set names root AGENTS.md, paid in
+    # place by folding "let the gate say otherwise; it is the gate's answer" into one clause.
+    "skills/critic/review-cycle.md": 7507,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1269,7 +1271,9 @@ LAST_MEASURED_TOKENS = {
     # +35 on 2026-10-09 (requirements-alignment w1 boundary review): Goals gains "Decisions
     # made mid-build", the home building.md's decision line was missing, and the Foreign API
     # fallback records its assumed surface as an inference in Goals. A READING, no ceiling.
-    "methodology/planning.md": 5782,
+    # +4 on 2026-10-14 (agents-md-anchor): the trivial bound's file-set list names root
+    # AGENTS.md, which the protected set now includes. A READING, no ceiling.
+    "methodology/planning.md": 5786,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -5982,7 +5986,8 @@ class TestReviewCycle:
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
-        assert tokens < 7518, f"review-cycle.md is ~{tokens} tokens, should be <7518"
+        # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
+        assert tokens < 7508, f"review-cycle.md is ~{tokens} tokens, should be <7508"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

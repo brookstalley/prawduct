@@ -74,6 +74,15 @@ in place by tightening the anchor's own prose, not by raising the ceiling.
 - Chunk 01 — doctor Health Check #4's status descriptions moved into this chunk from Chunk 03,
   because a test derives the status list from the code. A chunk boundary defers a deletion, not
   a correction.
+- Chunk 02 — the Critic's "CLAUDE.md size" rule in `review-protocol.md` is left as it is. The
+  session briefing now measures `CLAUDE.md` plus an imported `AGENTS.md`, so the warning reaches
+  the owner without a second copy. Adding the clause would also have raised every reviewer's
+  per-mode load past its ceiling. Settled by "every fact has one home" and the payload budget.
+- Chunk 02 — `building.md`'s "CLAUDE.md is instructions" sentence is left as it is, for the same
+  reason: it stays true with an imported `AGENTS.md`, and the file sits at its ceiling.
+- Chunk 02 — migrate reports "the governance anchor was not placed" when `AGENTS.md` links
+  outside the pair. This was a Chunk 01 review observation, carried by Chunk 02's commit;
+  outside the chunk's described scope, so recorded here.
 - Chunk 01 — the reanchor JSON gains a `writes` list (path, how, exact text) beside
   `replacement`, which stays the anchor text, so the preview shows both files' bytes without
   changing an existing key's type.
@@ -120,7 +129,7 @@ Claude-only shim in `CLAUDE.md`, so everything the anchor says moves to `AGENTS.
 
 ## Status
 
-- [ ] Chunk 01 — The anchor moves to AGENTS.md; writers and anchor_repair move together
+- [x] Chunk 01 — The anchor moves to AGENTS.md; writers and anchor_repair move together
 - [ ] Chunk 02 — Readers and the protected-path classifier know AGENTS.md
 - [ ] Chunk 03 — This repo onto the layout, doctor text, release notes, live check
 
@@ -196,7 +205,7 @@ rather than adding beside them.
 
 **Acceptance criteria:**
 - A root `AGENTS.md` edit reopens the Critic gate and fails the trivial bound, exactly as root
-  `CLAUDE.md` does. A nested `foo/AGENTS.md` does not.
+  `CLAUDE.md` does. A nested AGENTS.md, one in a subdirectory, does not.
 - The onboarding-marker probe finds a marker in `AGENTS.md` alone.
 - The jurisdiction corpus includes a root `AGENTS.md`.
 - The claim sweep's grep returns only sentences true of the new layout.

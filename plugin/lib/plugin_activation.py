@@ -3,8 +3,9 @@
 A repo can carry a byte-perfect install reference — ``.claude/settings.json``
 with ``extraKnownMarketplaces.prawduct`` and
 ``enabledPlugins["prawduct@prawduct"] = true`` — a fully scaffolded
-``.prawduct/``, and a ``CLAUDE.md`` promising that "the plugin's Stop hook runs
-at session end and blocks", and still have **no governance whatsoever**: no
+``.prawduct/``, and a governance anchor (in ``AGENTS.md``, imported by
+``CLAUDE.md``) describing a Stop hook that blocks, and still have **no
+governance whatsoever**: no
 session banner, no ``/prawduct:*`` skills, no hooks. Project-scope *enablement*
 is not *installation*. The harness additionally requires a record in
 ``~/.claude/plugins/installed_plugins.json`` whose ``projectPath`` is that repo.
@@ -13,8 +14,8 @@ is not *installation*. The harness additionally requires a record in
 "is this repo healthy" check prawduct owns runs *inside* the repo's own session —
 an advisory probe, or a ``/prawduct:doctor`` step. Neither can reach this failure,
 because both are delivered BY the plugin: when the plugin does not load, the
-probe does not run and the skill cannot be invoked. The agent reads the CLAUDE.md
-stanza, believes it, and proceeds ungoverned. So the detector has to run from
+probe does not run and the skill cannot be invoked. The agent reads the anchor,
+and unless it notices the plugin is absent, proceeds ungoverned. So the detector has to run from
 *outside* the repo — from the onboarding session, which lives elsewhere and can
 see the target. That is why this module takes an explicit ``project_dir`` rather
 than inferring one, and why its caller is ``/prawduct:onboard`` rather than a
@@ -409,7 +410,7 @@ def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
             "— the harness needs a record naming this path, and there is none. "
             "This repo will start a session with NO governance: no session "
             "briefing, no `/prawduct:*` skills, and no Stop-hook gates — while "
-            "its CLAUDE.md states that governance is enforced.",
+            "its governance anchor describes gates that are not there.",
             "",
             f"Fix: {remediation_command(result['project_path'])}",
         ]

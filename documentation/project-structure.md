@@ -94,7 +94,8 @@ A v2 product repo commits only its own state plus a small install reference — 
 
 ```
 my-product/
-├── CLAUDE.md                          # product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── AGENTS.md                          # a thin static governance anchor (PRAWDUCT:ANCHOR), read by every agent host
+├── CLAUDE.md                          # product instructions + `@AGENTS.md`, which imports the anchor
 ├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)

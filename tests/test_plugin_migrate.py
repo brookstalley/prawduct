@@ -1173,3 +1173,27 @@ def test_the_anchor_insert_does_not_leave_a_bare_cr_on_a_crlf_file(tmp_path: Pat
     assert b"\r\r" not in raw
     assert b"\r\n\r\n\r\n" not in raw
     assert raw.count(b"\n") == raw.count(b"\r\n")
+
+
+def test_migrate_says_so_when_an_outside_agents_link_leaves_the_anchor_unplaced(tmp_path: Path):
+    """With AGENTS.md linked outside the repo, the writer leaves the pre-2.0
+    block where it is rather than delete it with nowhere to put the anchor.
+    That is correct, and silent success would hide it — so the result says
+    what the owner has to do."""
+    import os as _os
+
+    root = make_filesync_repo(tmp_path / "linked")
+    shared = tmp_path / "org-rules.md"
+    shared.write_text("# Org-wide rules\n")
+    _os.symlink(shared, root / "AGENTS.md")
+    before = (root / "CLAUDE.md").read_text()
+
+    result = run_migrate(root, "--apply")
+    assert (root / "CLAUDE.md").read_text() == before, "nothing may be deleted"
+    assert any("not placed" in note for note in result["notes"]), result["notes"]
+    assert shared.read_text() == "# Org-wide rules\n"
+
+
+def test_migrate_adds_no_placement_note_on_an_ordinary_repo(repo: Path):
+    result = run_migrate(repo, "--apply")
+    assert not any("not placed" in note for note in result["notes"])

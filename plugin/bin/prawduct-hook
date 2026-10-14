@@ -2786,7 +2786,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     has_changes = _gs.git_has_session_changes(project_dir, status_output)
     # "Doc-only" = no session-changed file is judgeable (THE predicate,
     # coverage_algebra.is_judgeable_path via gates — kernel-v3 chunk 04). A
-    # governance-protected .md (skills/, methodology/, templates/, CLAUDE.md)
+    # governance-protected .md (skills/, methodology/, templates/, root CLAUDE.md or AGENTS.md)
     # is judgeable, so it no longer skips the reflection/Critic gates.
     doc_only = _gates().session_changes_all_non_judgeable(project_dir, status_output) if has_changes else False
 
@@ -8583,7 +8583,8 @@ def _work_model_load_lib():
 
 def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path]:
     """The governing corpus ``jurisdiction`` matches against: every markdown
-    artifact under ``.prawduct/artifacts/``, plus the repo's CLAUDE.md and all
+    artifact under ``.prawduct/artifacts/``, plus the repo's AGENTS.md and
+    CLAUDE.md and all
     ``docs/`` / ``methodology/`` markdown, recursively (gate-noise: product
     repos keep governing vocabulary in doc subdirectories, and the earlier
     top-level-only globs missed it). Missing directories simply contribute
@@ -8598,9 +8599,11 @@ def _work_model_corpus_paths(project_dir: Path, prawduct_dir: Path) -> list[Path
     ``test_jurisdiction_corpus_covers_claude_md_docs_subdirs_and_methodology``
     exists to catch."""
     paths = sorted((prawduct_dir / "artifacts").glob("*.md"))
-    claude_md = project_dir / "CLAUDE.md"
-    if claude_md.is_file():
-        paths.append(claude_md)
+    # Both root instruction files: AGENTS.md carries the anchor (and may carry the
+    # whole contract, with CLAUDE.md only importing it).
+    for name in ("AGENTS.md", "CLAUDE.md"):
+        if (project_dir / name).is_file():
+            paths.append(project_dir / name)
     for sub in ("docs", "methodology"):
         paths.extend(sorted((project_dir / sub).rglob("*.md")))
     return paths

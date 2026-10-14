@@ -963,6 +963,16 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
 
     edited: list[str] = []
     edited.extend(apply_governance_anchor(project_dir))
+    if not agents_can_hold_anchor(project_dir):
+        # The writer will not write through an AGENTS.md that links outside the
+        # pair, so the anchor (or the pre-2.0 block) stays where it was. Said
+        # here because the migration otherwise reports success with the
+        # governance text not where a second host would read it.
+        result["notes"].append(
+            f"{AGENTS_REL} is a symlink prawduct will not write through, so the "
+            f"governance anchor was not placed — put it in the file {AGENTS_REL} "
+            "points at, then run `prawduct-hook reanchor`"
+        )
     if transform_settings(project_dir):
         edited.append(".claude/settings.json")
     # Before the append, so the distribution marker lands at the end of a state

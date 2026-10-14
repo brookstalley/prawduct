@@ -1040,7 +1040,7 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     are reported separately because the remedies differ — one needs a review,
     the other needs a suite run. A
     governance-protected ``.md`` (``skills/``, ``methodology/``,
-    ``templates/``, root ``CLAUDE.md`` — PR-5K8D) is judgeable, so it still
+    ``templates/``, root ``CLAUDE.md`` or ``AGENTS.md`` — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
     for False (``no-base``, ``git-failed``, ``empty-diff``,
     ``not-doc-only: <files>``) so both the CLI gate and the stop-hook Gate 3
@@ -1167,7 +1167,7 @@ def check_change_log_entry(project_dir: Path) -> int:
     **Judgeability is not "is it ``.md``", and this docstring used to say it
     was.** Session metadata under ``.prawduct/`` is not ``.md`` and is *not*
     judgeable; governance-protected prose (``skills/``, ``methodology/``,
-    ``templates/``, root ``CLAUDE.md``) *is* ``.md`` and *is* judgeable, because
+    ``templates/``, root ``CLAUDE.md`` or ``AGENTS.md``) *is* ``.md`` and *is* judgeable, because
     skill prose is behavioral logic. Cite the predicate rather than restating its
     rule here — a prose copy is the fourth classifier this function shipped once
     already.

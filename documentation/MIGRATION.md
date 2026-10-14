@@ -119,7 +119,7 @@ prawduct ever placed," only known framework files.
   and **not the plugin** — Claude Code does not auto-install a repository-sourced plugin. There IS
   a setup step for the next person: `claude plugin install prawduct@prawduct`, once per machine.
   Until they run it their clone has no hooks, no `/prawduct:*` and no gates, with nothing said
-  about it; the `CLAUDE.md` anchor is the one surface that reaches that session, and
+  about it; the governance anchor (in `AGENTS.md`, imported by `CLAUDE.md`) is the one surface that reaches that session, and
   `/prawduct:doctor` Health Check #4 keeps it current.
 
 ## Rollback

@@ -3067,19 +3067,23 @@ def _parse_build_plan_chunk_trivial_rationale(
 #                   that follows — the one file where "free to edit" compounds.
 #   CLAUDE.md     — the project's top-level operating contract (exact match —
 #                   a nested ``foo/CLAUDE.md`` is ordinary product doc).
+#   AGENTS.md     — the same contract for every agent host: it carries the
+#                   governance anchor, and CLAUDE.md imports it, so an unreviewed
+#                   edit here changes what every session is told (exact match).
 _TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
     ("skills/", False, "skill-file-edited"),
     ("methodology/", False, "methodology-edited"),
     ("templates/", False, "template-edited"),
     ("agents/", False, "agent-file-edited"),
     ("CLAUDE.md", True, "claude-md-edited"),
+    ("AGENTS.md", True, "agents-md-edited"),
 })
 
 
 def protected_path_violation(path: str) -> str | None:
     """Return the violation label (``"<reason_label>: <path>"``) when *path*
     falls under a governance-protected bound (``skills/``, ``methodology/``,
-    ``templates/``, ``agents/``, root ``CLAUDE.md``), else ``None``.
+    ``templates/``, ``agents/``, root ``CLAUDE.md`` or ``AGENTS.md``), else ``None``.
 
     Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
     and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-

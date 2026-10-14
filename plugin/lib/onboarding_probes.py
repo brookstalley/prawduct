@@ -41,7 +41,7 @@ path?** — which rules out most of what an onboarded repo contains:
   probe on its own subject.
 
 What survives the test is written by ``lib.init_product`` / ``lib.migrate_plugin``
-and by nothing else: the ``CLAUDE.md`` governance marker (either generation), the
+and by nothing else: the governance marker in ``AGENTS.md`` or ``CLAUDE.md`` (any generation), the
 ``distribution: plugin`` key, and the pre-2.0 sync manifest. Each is read through
 the owning module's own constant rather than transcribed, so a rename tracks.
 
@@ -95,15 +95,15 @@ PROBE_VERSION = 1
 _STATE_REL = (".prawduct", "project-state.yaml")
 
 
-def _claude_md_text(root: Path) -> str:
-    """``CLAUDE.md``'s text, or empty when it is absent, a directory, or not UTF-8.
+def _instruction_text(root: Path, rel: str) -> str:
+    """``rel``'s text, or empty when it is absent, a directory, or not UTF-8.
 
     Empty means "no marker found", which fires. That is the right direction: a
     file that cannot be read is not evidence an onboard wrote to it, and the cost
     of the wrong answer here is a dismissable nudge rather than a missed install.
     """
     try:
-        return (root / "CLAUDE.md").read_text(encoding="utf-8")
+        return (root / rel).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return ""
 
@@ -128,16 +128,18 @@ def onboarding_markers(project_dir) -> list[str]:
     if read_str_yaml_key(root.joinpath(*_STATE_REL), DISTRIBUTION_KEY) == DISTRIBUTION_VALUE:
         markers.append(f"project-state.yaml records `{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}`")
 
-    # The CLAUDE.md governance marker, in either generation: the plugin-era static
-    # anchor (migrate_plugin.apply_governance_anchor) or the pre-2.0 file-sync block.
-    # The BEGIN marker is matched on its own rather than through core.extract_block
+    # The governance marker, in any generation: the static anchor in AGENTS.md
+    # (where migrate_plugin.apply_governance_anchor writes it now) or in CLAUDE.md
+    # (where every earlier onboard wrote it), or the pre-2.0 file-sync block. The
+    # BEGIN marker is matched on its own rather than through core.extract_block
     # because a half-written block is still proof the generator ran — well-formedness
     # is the migrator's problem, not the question being asked here.
-    claude_md = _claude_md_text(root)
-    if ANCHOR_SENTINEL in claude_md:
-        markers.append(f"CLAUDE.md carries the {ANCHOR_SENTINEL} governance anchor")
-    elif BLOCK_BEGIN in claude_md:
-        markers.append("CLAUDE.md carries a pre-2.0 PRAWDUCT governance block")
+    for rel in ("AGENTS.md", "CLAUDE.md"):
+        text = _instruction_text(root, rel)
+        if ANCHOR_SENTINEL in text:
+            markers.append(f"{rel} carries the {ANCHOR_SENTINEL} governance anchor")
+        elif BLOCK_BEGIN in text:
+            markers.append(f"{rel} carries a pre-2.0 PRAWDUCT governance block")
 
     # Pre-2.0 file-sync state. A file-sync repo predates both markers above but was
     # onboarded — to the previous model — and its route is /prawduct:migrate, which
@@ -177,7 +179,8 @@ def probe_never_onboarded(state: ProjectState, codebase: Codebase):
             type="never-onboarded",
             evidence=(
                 "no artifact that /prawduct:onboard or /prawduct:migrate writes exists in this "
-                "repo: CLAUDE.md carries no prawduct governance marker, project-state.yaml does "
+                "repo: neither AGENTS.md nor CLAUDE.md carries a prawduct governance marker, "
+                "project-state.yaml does "
                 f"not record `{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}`, and there is no pre-2.0 "
                 "sync manifest",
                 "the plugin's hooks run from the moment it is enabled and write session state "
@@ -190,18 +193,19 @@ def probe_never_onboarded(state: ProjectState, codebase: Codebase):
                 "PRAWDUCT IS NOT SET UP IN THIS REPO. The plugin is enabled and its hooks are "
                 "running — that is what filled .prawduct/ and produced this advisory list — but "
                 "onboarding never ran, so nothing it writes is here: no governance anchor in "
-                "CLAUDE.md, no `distribution: plugin` in project-state.yaml. Governance is "
+                "AGENTS.md, no `distribution: plugin` in project-state.yaml. Governance is "
                 "watching a product it has never been told about. Run /prawduct:onboard to set "
                 "it up; every other advisory here is a consequence of this one, so fix the cause "
                 "and re-check rather than repairing each symptom."
             ),
             # The one advisory whose owner action is a genuine yes/no rather than a
-            # ratification: onboarding writes into CLAUDE.md and project-state.yaml
+            # ratification: onboarding writes AGENTS.md, CLAUDE.md and project-state.yaml
             # in a repo that never asked for it, and a repo may legitimately have
             # the plugin enabled without wanting to be governed by it.
             owner_action=(
                 "Say go and I will set this repo up: it writes a governance anchor into "
-                "CLAUDE.md and a few keys into project-state.yaml, both committed files you "
+                "AGENTS.md, the line `@AGENTS.md` into CLAUDE.md and a few keys into "
+                "project-state.yaml, all committed files you "
                 "will see a diff for. Say no if this repo is deliberately not governed — the "
                 "reminder stays, but nothing else here is worth fixing until you decide, "
                 "because every other advisory in this list is downstream of this one."

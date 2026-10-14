@@ -25,9 +25,11 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
   prawduct-doctor), `tools/product-hook`, framework `tools/lib/*`, the framework protocol docs
   `.prawduct/{critic-review,pr-review,build-governance}.md`, and the now-inert
   `.prawduct/sync-manifest.json`.
-- **EDITED in place**: `CLAUDE.md` (the heavy `PRAWDUCT:BEGIN/END` block is stripped and a
-  thin **static governance anchor** is inserted in its place — a small, version-free pointer
-  to the plugin plus the few hardest rules; the full methodology now lives in the plugin),
+- **EDITED in place**: `CLAUDE.md` (the heavy `PRAWDUCT:BEGIN/END` block is stripped and the
+  line `@AGENTS.md` is inserted in its place), and `AGENTS.md`, which receives the thin
+  **static governance anchor** — a small, version-free pointer to the plugin plus the few
+  hardest rules, read by every agent host; the full methodology now lives in the plugin.
+  `AGENTS.md` is created when absent, and an existing one keeps its text above the anchor;
   `.claude/settings.json` (prawduct hook wiring + the framework banner removed; the plugin
   install reference added — your own keys/hooks/marketplaces are preserved), and
   `.prawduct/project-state.yaml` (a `distribution: plugin` line appended, and **retired

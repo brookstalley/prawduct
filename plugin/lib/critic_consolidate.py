@@ -340,7 +340,7 @@ _BATCH_FIX_DIRECTIVE = (
     " Free to write at any time: everything under `.prawduct/` (change-log,"
     " backlog, project-state, build plans), `.claude/settings.json`, and `.md`"
     " files outside `skills/`, `methodology/`, `templates/` and a root"
-    " `CLAUDE.md`. Everything else moves the tree: code, config, data, tests and"
+    " `CLAUDE.md` or `AGENTS.md`. Everything else moves the tree: code, config, data, tests and"
     " those protected `.md` files (a comment-only edit to a code file counts)."
 )
 
@@ -3247,7 +3247,7 @@ def begin_review(
     # Same predicate, same inputs, moved upstream of the cost — so nothing that
     # could not already merge becomes mergeable, and this is not a new escape
     # hatch. Do NOT re-key it on "looks like docs": `skills/`, `methodology/`,
-    # `templates/` and root `CLAUDE.md` are judgeable `.md`, and a private
+    # `templates/` and root `CLAUDE.md` / `AGENTS.md` are judgeable `.md`, and a private
     # notion of "docs" is how a skip-gate and its gate drift apart.
     #
     # BOTH conjuncts are load-bearing. Without the first, reviews of real code

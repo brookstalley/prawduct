@@ -1892,6 +1892,7 @@ _DIRECTIVE_PATH_CLASSES = {
     "`methodology/`": ("plugin/methodology/building.md", True),
     "`templates/`": ("plugin/templates/runbook.md", True),
     "`CLAUDE.md`": ("CLAUDE.md", True),
+    "`AGENTS.md`": ("AGENTS.md", True),
 }
 
 
