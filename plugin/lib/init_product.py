@@ -18,7 +18,8 @@ Creates:
   - ``.prawduct/artifacts/project-preferences.md``    (template)
   - ``.prawduct/artifacts/boundary-patterns.md``      (template)
   - ``.prawduct/.pr-reviews/``                        (dir)
-  - ``CLAUDE.md``                                     (thin static governance anchor — §4)
+  - ``AGENTS.md``                                     (thin static governance anchor — §4)
+  - ``CLAUDE.md``                                     (the one line ``@AGENTS.md``)
   - ``.claude/settings.json``                         (committed install reference)
   - ``.gitignore``                                    (session files + version marker)
 
@@ -39,12 +40,12 @@ from pathlib import Path
 
 from . import core, learnings_files
 from .migrate_plugin import (
-    ANCHOR_SENTINEL,
     BASE_BRANCH_KEY,
     DISTRIBUTION_VALUE,
     INSTALL_REFERENCE,
-    apply_claude_anchor,
+    apply_governance_anchor,
     detect_base_branch,
+    governance_anchor_pending,
     ensure_marker_gitignored,
     record_base_branch,
     record_distribution,
@@ -226,17 +227,13 @@ def init_product(
         if apply:
             learnings_files.scaffold_core(project_dir)
 
-    # CLAUDE.md — thin static governance anchor (created fresh, or anchored into an
-    # existing product CLAUDE.md). Same anchor a migrated repo keeps (Chunk 10).
-    claude = project_dir / "CLAUDE.md"
-    claude_exists = claude.is_file()
-    anchor_needed = (not claude_exists) or (
-        ANCHOR_SENTINEL not in claude.read_text(encoding="utf-8")
-    )
-    if anchor_needed:
-        (edited if claude_exists else created).append("CLAUDE.md")
-        if apply:
-            apply_claude_anchor(project_dir)
+    # AGENTS.md carries the thin static governance anchor (created fresh, or
+    # appended to an existing product AGENTS.md), and CLAUDE.md imports it. Same
+    # layout a migrated repo gets.
+    for rel in governance_anchor_pending(project_dir):
+        (edited if (project_dir / rel).is_file() else created).append(rel)
+    if apply:
+        apply_governance_anchor(project_dir)
 
     # .claude/settings.json — committed install reference (merged, preserving any
     # existing user keys/hooks/marketplaces).

@@ -7348,13 +7348,14 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_reanchor(project_dir: Path, argv: list[str]) -> int:
-    """Detect — and on ``--apply`` replace — a governance anchor that lacks one of
-    the current text's load-bearing sentences: the plugin-absent notice, or the
-    rule that review rigor is stage-keyed (``lib/anchor_repair.SUBSTANCE`` is the
-    roster; the command's detail names which one is missing).
+    """Detect — and on ``--apply`` repair — a governance anchor that is in the
+    wrong place (still in ``CLAUDE.md`` rather than ``AGENTS.md``, or not imported
+    by ``CLAUDE.md``) or lacks one of the current text's load-bearing sentences:
+    the plugin-absent notice, or the rule that review rigor is stage-keyed
+    (``lib/anchor_repair.SUBSTANCE`` is the roster; the detail names which one).
 
-    ``apply_claude_anchor`` returns the moment it sees the sentinel, so it converges
-    repos that have NO anchor and never repairs one that is merely old. That was
+    ``apply_governance_anchor`` returns the moment it sees the sentinel, so it
+    converges repos that have NO anchor and never repairs one that is merely old. That was
     harmless while the anchor's text was advisory and stopped being harmless when it
     became the only thing a plugin-less clone reads: every anchor shipped before the
     notice tells such a session a Stop hook will block it, and never names the one
@@ -7397,12 +7398,13 @@ def cmd_reanchor(project_dir: Path, argv: list[str]) -> int:
         print(f"reanchor ({'apply' if apply else 'dry-run'}): {status}")
         print(f"  {result['detail']}")
         if result["repairable"] and not result["applied"]:
-            # The informed confirmation: the whole replacement, so `--apply` is a
-            # yes to text the owner has actually read. One approval covers the act.
-            verb = "insert into" if status == anchor_repair.STATUS_ABSENT else "rewrite"
-            print(f"  Would {verb} {result['path']} (--apply to write it):")
-            for line in (result["replacement"] or "").split("\n"):
-                print(f"    | {line}")
+            # The informed confirmation: every file the act writes, with the
+            # exact text, so `--apply` is a yes to bytes the owner has actually
+            # read. One approval covers the whole act.
+            for write in result["writes"]:
+                print(f"  Would {write['how']}: {write['path']} (--apply to write it)")
+                for line in write["text"].split("\n"):
+                    print(f"    | {line}")
 
     if apply:
         return 0 if result["applied"] or status == anchor_repair.STATUS_OK else 1

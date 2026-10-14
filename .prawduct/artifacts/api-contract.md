@@ -454,8 +454,10 @@ files to touch previews first. That framing is descriptive — the binding rule 
     write or idempotent no-op and 1 on refusal.
   - `reanchor --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #4 runs the
     command and relays its human form; the `--json` shape is published for programmatic consumers
-    and carries `status` — one of `ok` / `stale` / `stale-modified` / `legacy-block` / `absent` /
-    `unreadable` / `unwritable` — plus `path`, `repairable`, `detail`, `applied`, `replacement`.
+    and carries `status` — one of `ok` / `stale` / `stale-modified` / `legacy-layout` /
+    `import-missing` / `legacy-block` / `absent` / `unreadable` / `unwritable` — plus `path`,
+    `repairable`, `detail`, `applied`, `replacement` (the anchor text), and `writes` (each file
+    the repair would write: `path`, `how`, and the exact `text`).
     **A successful `--apply` returns `ok`**, not the status it repaired: a graded status describes
     the state on the way IN, and a consumer reading it back after a write would report the condition
     that was just fixed.

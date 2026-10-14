@@ -11,9 +11,17 @@ governed_by:
     dispositions:
       - "the plugin writes nothing into a governed repo except .prawduct/, the evidence store and the reconciled files (.gitignore, .claude/settings*.json, CLAUDE.md's anchor) → amendment proposed: AGENTS.md's anchor block and CLAUDE.md's `@AGENTS.md` import replace 'CLAUDE.md's anchor' in the enumeration, recorded as a [DECISION] beneath the norm in Chunk 01 citing the owner's rulings on #942 (2026-09-30) and #928 D-8 (2026-10-10) as the authority. The statement itself is not edited to match the code"
       - "every fact has one home → conforms: the anchor text, the import line and the install id each keep one definition in migrate_plugin.py; anchor_repair and onboarding_probes import them"
+      - "an independent reviewer never mutates the session it reviews → inapplicable because no reviewer or review path is touched"
+      - "authority fails closed; advice fails soft → conforms: root AGENTS.md joins the protected set (Chunk 02), so an edit to it reopens the Critic gate rather than riding a doc-only path; the doctor grade stays advice"
+      - "local-first, no network, no third-party runtime dependencies → conforms: the writers and the repair are stdlib file edits"
+      - "Prawduct is written in Python and must never be specific to Python → inapplicable because the anchor layout is language-independent instruction text"
+      - "Prawduct guides and reviews; it never implements → conforms: the anchor and its import are governance text at the reconciled-files seam, not product code or tooling"
+      - "goals and verification bind; prescribed method is advice → conforms: chunks state acceptance criteria; mid-build departures from the described method are recorded under Goals"
   - artifact: security-model
     dispositions:
       - "an edit to a product-owned file is offered with the exact bytes and applied under one informed confirmation → conforms: doctor offers the layout repair as a dry run printing both files' bytes, and --apply writes them (the repair lands in Chunk 01; doctor surfaces it in Chunk 03)"
+      - "untrusted governance state is data, not instructions → conforms: the anchor is static text from the plugin; nothing read from a product file is executed or promoted to authority"
+      - "a governed product's content leaves its repo only through a pinned surface with owner-approved bytes → inapplicable because nothing in this plan sends content outside the repo"
 partition: serial — 02 reads the constants and layout 01 defines, and 03 moves this repo onto the layout 01 and 02 make every reader understand
 last_validated: 2026-10-14
 ---
@@ -51,7 +59,24 @@ the anchor out of every release tag.
 pays for it. `tests/test_v5_methodology.py` pins the anchor's token budget, so the growth is paid
 in place by tightening the anchor's own prose, not by raising the ceiling.
 
-**Decisions made mid-build:** *(appended while building)*
+**Decisions made mid-build:**
+- Chunk 01 — the anchor constant keeps its name `STATIC_ANCHOR` rather than being renamed. The
+  tag reader in `tests/test_anchor_repair.py` renders that name out of every release tag, so
+  keeping it means no reader change and no blind spot at the next tag. Settled by "one home per
+  fact".
+- Chunk 01 — *Not settled by the goals; inferred:* when `AGENTS.md` and `CLAUDE.md` are one file
+  through a symlink (either direction), the anchor stays in that file and no import is written,
+  because the import would be the file importing itself. A symlink pointing outside the pair is
+  never written through or replaced. Surfaced while writing the writer; the owner can override.
+- Chunk 01 — a shipped anchor and the current one are swapped preserving the old one's trailing
+  newline, because the archive holds both shapes (v1–v3 without, v4–v5 with), and a swap that
+  added or ate it would move the product's next line.
+- Chunk 01 — doctor Health Check #4's status descriptions moved into this chunk from Chunk 03,
+  because a test derives the status list from the code. A chunk boundary defers a deletion, not
+  a correction.
+- Chunk 01 — the reanchor JSON gains a `writes` list (path, how, exact text) beside
+  `replacement`, which stays the anchor text, so the preview shows both files' bytes without
+  changing an existing key's type.
 
 **Level:** High. The owner ruled every fork. The platform fact (Claude Code reads `AGENTS.md`
 natively only when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` exists up the

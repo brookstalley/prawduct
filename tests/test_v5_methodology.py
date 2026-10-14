@@ -1886,8 +1886,12 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # redundant closing-turn clause was dropped, holding the digest's 500-char reserve;
     # the product +38 is DECLARED. The framework session falls because this repo's
     # CLAUDE.md "Before Building" block became a pointer at the digest's text.
+    # product 2232 -> 2226 on 2026-10-14 (agents-md-anchor): the anchor moved to
+    # AGENTS.md and gained a host-labelled Claude Code line. Paid in place by
+    # folding the opening into one clause and the Critic bullet's command into
+    # the digest's, which carries it.
     "framework": 3108,
-    "product": 2232,
+    "product": 2226,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2045,8 +2049,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # with the reading, one over each.
     # 3135 -> 3109, 2195 -> 2233 on 2026-10-09 (requirements-alignment w1): one over
     # each reading; the product raise is declared in the reading table.
+    # 2233 -> 2227 product on 2026-10-14 (agents-md-anchor): ratcheted with the
+    # reading, one over.
     "framework": 3109,
-    "product": 2233,
+    "product": 2227,
 }
 
 

@@ -198,7 +198,10 @@ def test_learnings_scaffolded_as_a_harness_rules_file(scaffolded: Path):
 
 
 def test_static_anchor_present(scaffolded: Path):
-    text = (scaffolded / "CLAUDE.md").read_text()
+    """The anchor lives in AGENTS.md, which every agent host reads, and CLAUDE.md
+    is exactly the import that makes Claude Code read it (#942, #928 D-8)."""
+    assert (scaffolded / "CLAUDE.md").read_text() == "@AGENTS.md\n"
+    text = (scaffolded / "AGENTS.md").read_text()
     assert "PRAWDUCT:ANCHOR" in text
     assert "/prawduct:methodology building" in text  # the anchor points at the build cycle
     # A newly scaffolded repo must carry the plugin-absent notice too, and this is

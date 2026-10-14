@@ -129,7 +129,7 @@ def onboarding_markers(project_dir) -> list[str]:
         markers.append(f"project-state.yaml records `{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}`")
 
     # The CLAUDE.md governance marker, in either generation: the plugin-era static
-    # anchor (migrate_plugin.apply_claude_anchor) or the pre-2.0 file-sync block.
+    # anchor (migrate_plugin.apply_governance_anchor) or the pre-2.0 file-sync block.
     # The BEGIN marker is matched on its own rather than through core.extract_block
     # because a half-written block is still proof the generator ran — well-formedness
     # is the migrator's problem, not the question being asked here.
