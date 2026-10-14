@@ -45,7 +45,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable
 
-from .core import atomic_write_text
+from .core import atomic_write_text, strip_scalar_comment, unquote_scalar
 
 # Schema version of the on-disk store. Incremented only on breaking changes;
 # read-tolerance / forward-migration is implemented by ``_migrate_store`` (A7).
@@ -479,7 +479,7 @@ def load_project_state(product_dir) -> ProjectState:
             continue
         key, _, rest = line.partition(":")
         key = key.strip()
-        val = rest.split("#", 1)[0].strip().strip("\"'")
+        val = unquote_scalar(strip_scalar_comment(rest))
         if val == "":
             continue  # nested-block header, not a scalar
         data[key] = _coerce_scalar(val)

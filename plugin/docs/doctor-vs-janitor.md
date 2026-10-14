@@ -9,7 +9,8 @@ full version.
 
 - **`/prawduct:doctor`** — is *prawduct itself* correctly set up and governed in this repo?
   Governance/install **conformance**: install reference, distribution, anchor, core state,
-  discovery captured, gitignore contract, recorded decisions. It **reports and guides** — it never
+  discovery captured, gitignore contract, recorded decisions, and the machine-level state
+  prawduct's own install leaves (its install record, its unused plugin caches). It **reports and guides** — it never
   edits the product's code.
 - **`/prawduct:janitor`** — is the *product's own* code, docs, tests, and dependencies well-built
   and current? Codebase **craft maintenance**: it **surveys, then fixes** through the standard
@@ -19,7 +20,7 @@ full version.
 
 | Axis | doctor | janitor |
 |---|---|---|
-| **Subject** | prawduct scaffolding & recorded decisions (`.prawduct/`, `.claude/settings.json`, the CLAUDE.md anchor, the gitignore *contract*) | the product's own source, tests, docs, dependencies, git history |
+| **Subject** | prawduct scaffolding & recorded decisions (`.prawduct/`, `.claude/settings.json`, the CLAUDE.md anchor, the gitignore *contract*), and the machine-level state prawduct's own install leaves | the product's own source, tests, docs, dependencies, git history |
 | **Action model** | report & present the exact edit; never auto-fixes (plus the bounded `prawduct-hook` operations it drives, each owner-invoked — `skills/doctor/SKILL.md` and its flows are their one roster, so this row does not keep a second copy) | survey, then fix through a full build plan + Critic |
 | **Question type** | "is X present / recorded / correct?" — conformance, roughly binary | "is X well-built / current / proportionate?" — craft, graded |
 
@@ -30,8 +31,10 @@ time away.
 ## Placement rule — which skill owns a new concern
 
 1. Does it ask whether prawduct governance is set up, or a required decision/state is
-   *recorded · present · correct*? → **doctor** (a conformance check answered by reading
-   `.prawduct/` / `.claude/` / the anchor; reported-and-guided, never auto-fixed).
+   *recorded · present · correct*, or whether prawduct's own installation on this machine is
+   sound? → **doctor** (a conformance check answered by reading `.prawduct/` / `.claude/` / the
+   anchor, or the install state prawduct leaves under the Claude config roots;
+   reported-and-guided, never auto-fixed).
 2. Does it ask whether the product's own code/docs/tests/deps are *well-built · current ·
    proportionate*? → **janitor** (a craft survey resolved by fixing through the build cycle).
 3. Does it have **both** facets — a governance-conformance facet *and* a craft-quality facet? →

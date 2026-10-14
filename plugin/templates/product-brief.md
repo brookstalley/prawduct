@@ -5,6 +5,14 @@
      This is typically the first artifact generated and the one most other
      artifacts depend on. Keep it proportionate to the product's risk level:
      ~1-2 pages for a low-risk utility, longer for complex platforms.
+
+     This brief is the product-level goals statement every alignment pass,
+     plan and boundary review reads (methodology/discovery.md). Keep it
+     current: an amendment rewrites the part it changes, never appends.
+     A line the owner did not say reads as an inference, and loses the word
+     once they confirm it:
+       Inferred: no accounts; one shared device.   (before)
+       No accounts; one shared device.              (after the owner confirms)
 -->
 ---
 artifact: product-brief
@@ -21,7 +29,12 @@ last_validated: null
 
 <!-- GENERATION GUIDANCE: One clear sentence from product_definition.vision.
      This anchors every downstream artifact — errors here propagate everywhere.
-     Source: project-state.yaml → product_definition.vision -->
+     Source: project-state.yaml → product_definition.vision
+
+     Then, in prose, the near-term and the North Star — who uses it and where it
+     runs, now and eventually: "Home use for now; eventually thousands of anonymous
+     users." They often differ, and every alignment pass reads both to decide when
+     to build for the future and when to accept debt. This section is their home. -->
 
 ## Landscape
 
@@ -74,7 +87,7 @@ last_validated: null
 
 <!-- What's in, what's out, and why.
      - v1: Must have for initial release
-     - Accommodate: Design for but don't build yet
+     - Accommodate: Design for but don't build yet — every alignment pass keeps these possible
      - Later: Genuinely deferred
      - Out of scope: Explicitly excluded, with rationale
      Source: project-state.yaml → product_definition.scope -->

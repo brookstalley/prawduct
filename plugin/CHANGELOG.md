@@ -10,9 +10,79 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.0-dev.3
+## v3.7.1-dev.2
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
+**`self-citing-clear`**: **a new Stop gate, `clear-reason`, refuses a `SAFE TO CLEAR` whose reason
+is the message itself**, such as "the questions are in this message". A clear deletes the message,
+so write the findings to `.prawduct/.handoff-notes.md` and give that as the reason, or name the
+commit, file or issue that holds them. A reason like "nothing changed in this turn" is unaffected.
+
+**`requirements-alignment`**: **before building, the agent aligns with you on goals, all at
+once and up front.** For any substantive request it takes one of four responses and says which:
+proceed; proceed citing a backlog item or spec; ask its questions in one batch; or hold up when it
+cannot yet form a reading worth correcting. Once the build starts it decides on its own, durable
+choice first, and stops only for high stakes. Build plans now open with **Goals**, which replaces
+Requirements Confidence. The owner's words are kept separate from the agent's inferences, written
+as plain prose rather than `[ASSUMPTION]` tags; older plans are still accepted. The product brief
+states a near-term goal and a North Star, and discovery asks which qualities of an example you give
+matter. Principles 6 and 20 and the session digest now carry the same guidance.
+
+**`telemetry-stats`**: **`prawduct-hook stats` shows what governance cost and caught, per plugin
+version.** It reads this clone's evidence store and reports:
+- **cost:** review rounds per piece of work, measured review time (a reviewer's self-estimate is
+  never added to it), verify rounds that found nothing and confirmed nothing, re-reviews of
+  unchanged code, Stop-hook blocks per session and by gate, and guard refusals;
+- **benefit:** findings by severity and what became of them (fixed, filed, accepted, waived),
+  blocking findings fixed by goal, and red recorded suite runs.
+
+The Stop hook now records each block, and each session start is recorded too, so block rates are
+available from now on. `/prawduct:janitor` reads the report. Nothing leaves your machine unless
+you opt in to contribution (below).
+
+**`telemetry-contribution`**: **you can contribute anonymous stats to help improve prawduct, and
+it is off unless you opt in.** A new `Stats contribution` row in `project-preferences.md` reads
+`never` by default; `/prawduct:janitor` asks once whether you want `ask` (you approve the exact
+bytes of every send) or `always`. `prawduct-hook contribute` shows exactly what would be sent:
+weekly, coarsened numbers from a public allowlist, with no names, paths, branches, text or
+identifiers. Reports go to prawduct's own collector, whose daily bundles are public. `prawduct-hook stats` now
+counts base-advance transfer grants apart from guard refusals, because a grant saves a review.
+
+**Fix:** a `test_command` or `test_commands` entry ending in a quoted argument (for example
+`node --test 'dir/*.mjs'`) is read intact. It used to lose its final quote and crash
+`prawduct-hook test-evidence record`. A command that cannot be split is now refused before any suite
+runs.
+
+**`learnings-migrate-punctuation-930`** (#930): **`learnings-migrate` no longer rewrites lines
+it had no reason to touch.** After removing a pointer it tidied every line in the file: it deleted
+the space before punctuation (fusing commands in code blocks) and stripped trailing spaces
+(dropping Markdown hard breaks). Only the lines a removal changed are tidied now. A metadata comment
+in the middle of a line no longer joins two rules, and the last line of a section keeps its
+trailing spaces.
+
+**`junit-unreached-963-strip-code-966`** (#963, #966): **a JUnit report's tests are counted
+wherever they sit.** `test-evidence record` used to skip any `<testcase>` or suite under a wrapper
+other than the root, such as a `<testsuites>` nested inside the root by a merged CI report, so a
+failure there recorded a passing run. It now reads through any wrapper. A suite with no tests
+that sits inside a suite that has them (one that died before emitting any) now counts too; v3.2.3
+left that case at zero. Separately,
+`learnings-migrate` no longer removes the space before punctuation inside a code span that shares a
+line with a removed pointer.
+
+**`field-bugs-790-813-765-915`** (#790, #813, #765, #915): **four fixes from the field.** A `#` inside a quoted top-level
+`project-state.yaml` value (`key: "…"`) is kept rather than read as the start of a comment, so an
+answer that cites an issue like `"ratified (#774)"` reads back whole; list items and nested values
+are not covered yet. The api-versioning advisory now counts a decision recorded under
+`design_decisions.api_versioning_approach`, as `/prawduct:doctor` already did, instead of nagging
+until you also set the top-level `api_versioning_decided`. The change-log tag examples use the
+build-plan template's work-named `scope=` instead of a version, matching how plans are named.
+`/prawduct:migrate` checks that the plugin will load for the repo before it removes the framework
+files, and says so when it will not.
+
+## v3.7.0
+
+**Prawduct's prompts are rewritten for Opus 5.5, every learnings rule is one line under a `core.md` cap only you can raise, and a chunk you committed before its review gets a chunk review instead of a full bundle review.** Thirty-four scopes since v3.6.1, counting release housekeeping. Three changes you will notice in an ordinary session. First, the session digest, gate output, review prompts, methodology guides and skills are shorter and plainer, and they tell the model to take the next step rather than announce it; each `final` or `cumulative` Critic reviewer loads about 7,800 fewer tokens. Second, a learnings rule is one line of at most 250 characters, and a corpus over the new limits does not break: it stops growing until you compact it with `prawduct-hook learnings-compact`. Third, a mid-plan `/prawduct:critic` reviews only what has not been reviewed yet, and the reflection and Critic gates wait while a turn closes `RUNNING` and `DO NOT CLEAR`. SessionStart and Stop also stop slowing down as a repo's review history grows. Three gates are new in this release: `learnings-rule-too-long`, `learnings-rule-body` and `clear-verdict`.
 
 **`opus-55-w1-always-on`**: **the always-loaded guidance is retuned for Opus 5.5.** The session
 digest now tells the model to take the next step when it can, instead of ending a turn to announce
@@ -106,6 +176,30 @@ whose tags have four numeric parts can now stamp them (`release=v1.2.3.4`, with 
 `archive-change-log` and `check-releasability`. Placeholders such as `release=unreleased`, and
 two- or five-part values, are still refused. The refusal now tells you what to do in each case:
 if the entry shipped, correct the value; if it has not, delete the tag.
+
+**`record-lint-945-939`** (#945, #939) — **fewer false blockers from the deliverable check, and
+retired change-log keys stop at the PR.** A plan that names an absolute path (`/usr/local/bin/x`),
+a home path (`~/runs`) or your repo's own `owner/repo` no longer draws a BLOCKING
+`chunk-ref-missing`. The slug is excused only when git lists it as one of your remotes, so
+`docs/api` and other repos' names are still checked. Separately, when your change-log is
+committed, `check-change-log-entry` now refuses a tag line that the branch adds or edits if it
+still carries the retired `chunks=` or `status=` key. Delete the key and re-run. Old entries are never flagged unless you
+edit them.
+
+**`update-body-lint`** (#898) — **backlog `update` now checks the body it writes.** On the
+Issues backend, `add` reported issue-standard body findings (the word budget, missing sections)
+and `update` never did, so an edit could push a body far past the standard and come back looking
+clean. `update --body` now returns the same findings in `lint`, as warnings that never block, and
+returns `lint: []` when the new body conforms. An `update` that doesn't touch the body still
+reports nothing about it.
+
+**`dead-why-reaffirmed`** (#818) — **a norm you have re-affirmed stops coming back.** The
+`dead-why` advisory flagged any norm whose `Why:` cited a finished backlog item, and asked again
+every session even after you had kept the norm. Record the answer in the Direction entry as
+`Re-affirmed: <date> (owner) — <id>: <why it still holds>` and that citation is no longer asked
+about. The answer covers only the ids it names in that entry. It does not answer an in-transition
+`Status:` line whose tracking item finished: settle that status or point it at the remaining work,
+which is what the advisory now tells you for that case.
 
 **`test-evidence-root-testcases`** (#912, #913) — **a failing top-level node:test case is no
 longer recorded as passing.** node:test writes a `test()` outside any `describe()` as a

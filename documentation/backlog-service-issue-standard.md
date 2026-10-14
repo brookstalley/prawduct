@@ -104,7 +104,9 @@ enforcing ≤72 alone entrenches an over-split backlog; §1).
 > non-title update proceeds and emits a non-blocking finding saying the title was left alone. This
 > blockquote states what is built, so it must not borrow a future ruling's tense. In the `file` path
 > (`core.file_item`) the title is normalized first and the refusal reads the normalized string —
-> the one actually written — with body findings still riding the envelope's `lint` field. The
+> the one actually written — with body findings still riding the envelope's `lint` field. An
+> `update` that writes the body runs the same body lints on it (`issuefmt.lint_body`, #898), so a
+> body is audited whichever verb wrote it; an `update` leaving the body alone does not lint it. The
 > **MG6 migration pre-pass (§5) is
 > implemented** — `lib/backlog/restructure.py` (fail-closed plan validation, application through
 > the shared composer, `original_*` preservation per Data Model §2) + `import --restructure` +

@@ -19,7 +19,7 @@ Three review layers are explicitly distinct: the per-chunk Critic reviews local 
    verdict, the build plan's `## Status` boxes verbatim, this bundle's change-log entry, every
    backlog item the commits or that entry cite — already resolved against the live backlog, **each
    marked as either a closure the branch CLAIMS or a mere mention** (R-2 below turns on that
-   difference) — **the repo's `default_branch`**, which the closing-keyword rule needs, and **`learnings_cap`**, which names any change to `core.md`'s cap: a raise whose owner approval the PR description does not quote is a WARNING. None of it is
+   difference) — **the repo's `default_branch`**, which the closing-keyword rule needs, and **`learnings_cap`**, which names any change to `core.md`'s cap: a raise whose owner approval the PR description does not quote is a WARNING. **`review_tree_changes`** lists reviews this branch relies on that were consolidated over a tree changed during the review, on the builder's word; a path the stated reason does not account for (product code under a reason that names prep) is a WARNING. None of it is
    the builder's reasoning: it is the same words out of the same files you would have opened
    yourself, which is why reading it costs your independence nothing.
    **It fails per section, and a degraded section names the check it leaves unanswered.** An
@@ -72,7 +72,7 @@ This is the largest single class of finding you file, and the change-log entry i
 — a deliverable its prose omits ships invisibly.
 
 - **The change-log entry describes what the diff actually ships**, all of it. A multi-chunk bundle whose entry narrates one chunk's mechanism has dropped the others from the release note. Read the entry the payload's `change_log` section carries against the diffstat, not against the commit subjects, which agree with the entry by construction.
-- **Tag keys are the ones the gates read, with the values they read.** `scope=` pairs to a build plan by exact string, so a scope copied from a neighbouring entry attributes this work to someone else's plan and *both* readings stay quiet. `release=` absence IS the release-pending state, so any value at all — a placeholder included — drops the entry's whole scope out of the pending set and unships the work silently. A retired key (`chunks=`) left standing reads as a live one.
+- **Tag keys are the ones the gates read, with the values they read.** `scope=` pairs to a build plan by exact string, so a scope copied from a neighbouring entry attributes this work to someone else's plan and *both* readings stay quiet. `release=` absence IS the release-pending state, so any value at all — a placeholder included — drops the entry's whole scope out of the pending set and unships the work silently. A retired key (`chunks=`, `status=`) on a tag line the branch adds reads as live: flag it. Step 1c's probe refuses one when the log is tracked, so one reaching you usually means it is not.
 - The changeset hangs together as a coherent story — commit messages, and the diff they describe, read as one logical progression
 - An unfamiliar reviewer could understand the changeset from commits + diff
 - Key design decisions are documented (in commits, artifacts, or code comments)

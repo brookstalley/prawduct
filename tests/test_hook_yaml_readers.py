@@ -70,6 +70,9 @@ CASES = {
     "empty_item": "risk_surfaces:\n  - \n",
     "nested_mapping": "risk_surfaces:\n  path: a\n",
     "empty_block": "risk_surfaces:\nbase_branch: develop\n",
+    "item_ending_in_a_quoted_argument": "risk_surfaces:\n  - node --test 'a/*.mjs'\n  - x \"y\"\n",
+    "item_quoted_at_both_ends_but_not_whole": "risk_surfaces:\n  - \"$V/pytest\" -k \"not slow\"\n",
+    "quoted_empty_item": "risk_surfaces:\n  - ''\n",
 }
 
 #: ``(status, items)`` the canonical reader must produce for each case above.
@@ -90,6 +93,9 @@ EXPECTED = {
     "empty_item": (YAML_UNPARSEABLE, ()),
     "nested_mapping": (YAML_UNPARSEABLE, ()),
     "empty_block": (YAML_DECLARED, ()),
+    "item_ending_in_a_quoted_argument": (YAML_DECLARED, ("node --test 'a/*.mjs'", 'x "y"')),
+    "item_quoted_at_both_ends_but_not_whole": (YAML_DECLARED, ('"$V/pytest" -k "not slow"',)),
+    "quoted_empty_item": (YAML_UNPARSEABLE, ()),
 }
 
 
@@ -226,3 +232,72 @@ class TestThePerKeyPolicyOnUnparseable:
 
         assert rv._read_declaration("release_version_files: [a, b]\n") == []
         assert rv._read_declaration("base_branch: develop\n") is None
+
+
+class TestScalarUnquoting:
+    """A declared command scalar (``test_command:``) can end in a quoted
+    argument. Both scalar readers unquote only a value wholly wrapped in one
+    matching pair of quotes, and agree with each other."""
+
+    CASES = {
+        'test_command: "pytest -q"\n': "pytest -q",
+        "test_command: 'pytest -q'\n": "pytest -q",
+        "test_command: node --test 'a/*.mjs'\n": "node --test 'a/*.mjs'",
+        'test_command: run "x" --flag "y"\n': 'run "x" --flag "y"',
+        'test_command: "$VENV/bin/pytest" tests/ -k "not slow"\n': '"$VENV/bin/pytest" tests/ -k "not slow"',
+    }
+
+    @pytest.mark.parametrize("text", sorted(CASES))
+    def test_both_readers_keep_inner_quotes(self, tmp_path, text):
+        from lib.core import read_str_yaml_key
+
+        path = tmp_path / "project-state.yaml"
+        path.write_text(text, encoding="utf-8")
+        assert read_str_yaml_key(path, "test_command") == self.CASES[text]
+        assert _hook._read_str_yaml_key(path, "test_command") == self.CASES[text]
+
+
+class TestScalarCommentStripping:
+    """A ``#`` inside a quoted scalar is data, not a comment — backlog ids are
+    spelled ``#772`` and a recorded answer quoting one must read back whole.
+    Every scalar reader (lib's, the hook's mirror, the advisory answer store)
+    strips comments through the same rule, so they agree here."""
+
+    CASES = {
+        'k: "ratified (#774); migrate:#772"\n': "ratified (#774); migrate:#772",
+        "k: 'see #12'  # trailing\n": "see #12",
+        # An escaped quote does not close the scalar; the value keeps its quotes
+        # because unquote_scalar declines to unescape, but the `#` survives.
+        'k: "a \\" #b"\n': '"a \\" #b"',
+        "k: 'it''s #1'\n": "'it''s #1'",
+        'k: "$VENV/bin/pytest" -k "not #slow"  # c\n': '"$VENV/bin/pytest" -k "not #slow"',
+        "k: Ada's app # c\n": "Ada's app",
+        "k: value  # a trailing comment\n": "value",
+        "k: value\t# tab before the comment\n": "value",
+        "k: foo#bar\n": "foo#bar",
+        "k: # only a comment\n": None,
+        'k: "unterminated #x\n': '"unterminated #x',
+    }
+
+    @pytest.mark.parametrize("text", sorted(CASES))
+    def test_lib_and_hook_readers_agree(self, tmp_path, text):
+        from lib.core import read_str_yaml_key
+
+        path = tmp_path / "project-state.yaml"
+        path.write_text(text, encoding="utf-8")
+        assert read_str_yaml_key(path, "k") == self.CASES[text]
+        assert _hook._read_str_yaml_key(path, "k") == self.CASES[text]
+
+    @pytest.mark.parametrize("text", sorted(CASES))
+    def test_advisory_answer_store_agrees(self, tmp_path, text):
+        from lib.advisory_store import load_project_state
+
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text(text, encoding="utf-8")
+        assert load_project_state(tmp_path).get("k") == self.CASES[text]
+
+    @pytest.mark.parametrize("value", ["", "  ", "a", "#", '"', "'", "x #", '"a"#b', "a\\", '"a" b #c', "it's #x"])
+    def test_hook_mirror_matches_lib_on_raw_values(self, value):
+        from lib.core import strip_scalar_comment
+
+        assert _hook._strip_scalar_comment(value) == strip_scalar_comment(value)

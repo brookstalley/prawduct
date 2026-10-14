@@ -414,6 +414,15 @@ class TestUpdateCli:
         assert code == 4  # conflict exit class (stale)
         assert json.loads(out)["error"]["code"] == "conflict"
 
+    def test_update_body_surfaces_body_lint_without_failing(self, capsys):
+        """#898, at the layer it was reported: an over-budget `--body` on update
+        reaches the operator as a `lint:` line, and the exit code stays 0."""
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, "--body", " ".join(["word"] * 400)], fake, capsys)
+        assert code == 0
+        assert "lint: ~400 visible words" in err
+
     def test_update_no_fields_is_validation(self, capsys):
         fake = FakeGitHub()
         item_id = _file(fake, capsys)

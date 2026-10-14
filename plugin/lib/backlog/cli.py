@@ -1797,7 +1797,7 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
         for warning in result.get("warnings", []):
             print(f"warning: {warning}", file=sys.stderr)
         # Standard lint findings — emitted by `file` (body/label) and by `update`
-        # (a stored title left unconformed). Advisory by construction: a finding
+        # (a body it wrote, and a stored title left unconformed). Advisory by construction: a finding
         # that BLOCKS never reaches here, because it returned a validation error
         # instead. So these never affect the exit code, and stay distinct from
         # operational warnings.

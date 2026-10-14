@@ -1,0 +1,90 @@
+---
+artifact: build-plan
+version: 1
+scope: short-plan-tick
+branch: fix/short-plan-tick-deadlock
+partition: serial — one chunk, five small files
+depends_on:
+  - artifact: build-plan-opus-55-w1-always-on
+governed_by:
+  - artifact: nonfunctional-requirements
+    dispositions:
+      - "review rigor is stage-keyed → conforms: the fix restores the boundary review a short plan owes; it adds no review and removes none"
+      - "review wall-clock is P0 → conforms: inference reaches `cumulative` without an explicit override, saving a wasted dispatch that answers `deferred`"
+      - "proportionality ratchets both ways → inapplicable, because no control is added or removed; an existing inference answer becomes reachable"
+      - "state-file growth is an advisory, never a hard block → inapplicable, because no state file's size behaviour changes"
+  - artifact: architecture
+    dispositions:
+      - "every fact has one home → conforms: the tick-at-commit rule is stated once, in planning.md (the tick definition and the short-plan bullet beside it); the digest and the deferral rationale restate only the trigger. It stays out of review-cycle.md because every reviewer loads that file and this is builder guidance"
+      - "goals and verification bind; prescribed method is advice → conforms: the tick rule is a definition the gates read, not method"
+      - "an independent reviewer never mutates the session it reviews → inapplicable, because no reviewer path changes"
+      - "authority fails closed; advice fails soft → conforms: the Stop gate still blocks an unreviewed last chunk; only the advisory rationale text changes"
+      - "local-first governance coordination → inapplicable, because no coordination mechanism changes"
+      - "the plugin writes nothing into a governed repo except its own state… → inapplicable, because nothing new is written"
+      - "written in Python, never specific to Python → inapplicable, because no language-dispatched check changes"
+      - "prawduct guides and reviews, it never implements → inapplicable, because only prawduct's own inference text and methodology change"
+lifecycle: completed
+archived: 2026-10-02
+released_in: v3.7.0
+maintained: false
+---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
+
+# Build Plan: short-plan tick deadlock
+
+## Problem
+
+On a short plan (at most 3 chunks, no risk surface), no chunk before the last gets a review of its
+own; the boundary `cumulative` is every chunk's review. Two rules then contradict each other:
+
+- **The tick rule** (digest, `planning.md`) says tick a box only after its chunk's review. A
+  deferred chunk has no review until the boundary, so a builder who follows the rule leaves every
+  box unticked.
+- **The inference** (`critic_mode._mid_plan_start`) counts 2 or more unticked boxes as mid-plan.
+  On a short plan, mid-plan answers `deferred`, so `cumulative` is never inferred.
+
+The deferral rationale also says `cumulative` is "inferred once the last chunk is committed". The
+predicate reads ticks, not commits, so that claim is false. W1 hit this on 2026-09-28 and had to
+dispatch `cumulative` explicitly. The code was built for ticks at commit: the test fixture lands
+each chunk's tick in its own commit. Only the prose disagrees.
+
+## Success
+
+- A deferred chunk's box is ticked when its chunk is committed. Only the last box waits for the
+  boundary review. This is stated once, in `planning.md`, where ticks are defined, and the
+  digest's tick bullet agrees with it.
+- The deferral rationale tells the builder to tick the box and says what the inference actually
+  counts.
+- A test pins that the rationale names the tick. A second test pins the shape of the deadlock: all
+  chunks committed, none ticked, a clean tree. There the answer is still `deferred`, but its
+  rationale now names the remedy.
+
+## Out of scope
+
+- Changing the inference. Git cannot tell "committed, not ticked" apart from "not built yet", so
+  ticks remain the signal.
+
+## Requirements Confidence: High
+
+The owner confirmed the direction in session on 2026-09-28: tick deferred chunks at commit, with
+the last box waiting for the cumulative. The alternative was to change the inference and leave the
+rule alone. It was rejected because the Stop gate reads the same ticks: with every box unticked it
+would only warn at session end, so a short plan could close without its boundary review.
+
+## Status
+
+- [x] Chunk 01: the tick rule, the rationale, and their tests
+
+## Chunk 01: the tick rule, the rationale, and their tests
+
+**Type:** code
+**Files:** `plugin/lib/critic_mode.py` (`_deferral_rationale`), `tests/test_short_plan_deferral.py`,
+`tests/test_mid_plan_mode.py` (the deadlock test),
+`plugin/methodology/planning.md`,
+`plugin/methodology/session-digest.md`, `plugin/bin/prawduct-hook` (both Stop-gate short-plan messages
+compose `short_plan_next_step`), `plugin/templates/build-plan.md`, `plugin/skills/pr/SKILL.md`,
+`documentation/release-process.md`, `plugin/lib/buildplan_refs.py` (docstring), and the token
+readings the suite reports.
+**Done when:** the deadlock test's rationale names the tick. The suite passes. The cumulative
+Critic review has run.

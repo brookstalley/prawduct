@@ -533,6 +533,14 @@ def diagnose_base_advance_transfer(
     whichever branch or worktree it was taken on. What lineage would have bought
     is cost control, and the ``files_changed`` prune below buys that directly.
 
+    **A pruned candidate is skipped, not a failed check.** A store outlives
+    its objects: a dirty-tree review's snapshot and a rebased branch's trees
+    are garbage-collected while the facts naming them stay. A tree git no
+    longer holds cannot be shown byte-identical, so it denies like any other
+    mismatch, but the check over the trees git does hold still ran. Reporting
+    it as "could not run" would let one old snapshot, which could never have
+    granted, take over the explanation of the denial.
+
     Returns::
 
         {"status": "match", "prior_fact_id", "prior_reviews", "prior_base",
@@ -607,6 +615,13 @@ def diagnose_base_advance_transfer(
             prior_heads.append(prior_head)
     if not prior_bases or not prior_heads:
         return None
+    pruned = evidence.missing_objects(project_dir, prior_bases + prior_heads)
+    if pruned:
+        prior_bases = [tree for tree in prior_bases if tree not in pruned]
+        prior_heads = [tree for tree in prior_heads if tree not in pruned]
+    # `None` from `missing_objects` means git could not answer the batch; the
+    # per-candidate diffs below then meet any absent tree and degrade, which
+    # is the right reading when nothing could tell absence from failure.
 
     # Condition 2, one pathspec-limited diff per distinct endpoint: a candidate
     # endpoint survives only when it agrees with the required span's endpoint on
@@ -667,6 +682,9 @@ def diagnose_base_advance_transfer(
                 "status": TRANSFER_MATCH,
                 "prior_fact_id": reviews[-1].get("id") if reviews else None,
                 "prior_reviews": len(reviews),
+                # Every review the transferred coverage rests on, so a reader
+                # that must inspect them (the PR payload) need not recompose.
+                "prior_review_ids": [step.get("id") for step in reviews],
                 "prior_base": prior_base,
                 "prior_head": prior_head,
                 "files": paths,
@@ -1158,13 +1176,14 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the diff is empty, or holds no judgeable file, or
       * a judgeable diff includes ``.prawduct/change-log.md`` AND that diff
         ADDS at least one entry header (a ``+## `` line) — merely editing an
-        existing entry's text does not vouch for new work, or
+        existing entry's text does not vouch for new work — and no tag line it
+        adds carries a retired key (``change_log.RETIRED_TAG_KEYS``), or
       * the log is UNTRACKED and the copy on disk holds at least one entry
         (``entry-present-untracked`` — the weaker check of
         :func:`_entry_check_without_history`, which says so).
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
-    ``entry-edited-not-added``, ``no-base``, ``git-failed``). Un-evaluable
+    ``entry-edited-not-added``, ``retired-key``, ``no-base``, ``git-failed``). Un-evaluable
     git state fails closed — the caller falls back to manual judgment rather
     than silently skipping the probe (same posture as ``check_pr_doc_only``).
     An untracked log is not un-evaluable and must not be read as absent: the
@@ -1275,6 +1294,28 @@ def check_change_log_entry(project_dir: Path) -> int:
             f"entry-edited-not-added: {CHANGE_LOG_REL_PATH} changed but no new "
             f"entry header (+## ...) was added — editing an existing entry does "
             f"not vouch for this branch's code changes.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The entry is written HERE, at Step 1c, after the last Critic review, so
+    # this probe is the one point that sees a retired key on the new tag line
+    # before the PR reviewer does — and refusing it here costs one edit, not a
+    # review round.
+    from . import change_log  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    retired = sorted({
+        key
+        for line in proc2.stdout.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+        for key in change_log.retired_keys_on(line[1:])
+    })
+    if retired:
+        print(
+            f"retired-key: a tag line this branch adds or edits in {CHANGE_LOG_REL_PATH} "
+            "carries " + ", ".join(f"`{k}=`" for k in retired) + ", which "
+            "nothing reads. Delete it from that tag line (which chunks "
+            "shipped belongs in the entry body), commit, and re-run.",
             file=sys.stderr,
         )
         return 1

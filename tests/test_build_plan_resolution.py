@@ -2262,8 +2262,10 @@ class TestIssueRefsAreNotFilePaths:
 
 class TestPathShapedAmbiguityIsReported:
     """A gate that guesses "probably prose" fails open on the exact input it
-    exists to judge. A bare `owner/repo` slug is path-shaped and stays checked;
-    the author disambiguates in the plan (`<owner>/<repo>`, or unbackticked).
+    exists to judge. A bare `owner/repo` slug is path-shaped and stays checked
+    unless git names it as one of the checkout's remotes
+    (`TestOutOfRepoTokensAreNotFilePaths`); otherwise the author disambiguates
+    in the plan (`<owner>/<repo>`, or unbackticked).
 
     These pin the ABSENCE of a fail-open heuristic — if a later change teaches
     the verifier to skip extension-less refs whose first segment is missing,
@@ -2293,6 +2295,91 @@ class TestPathShapedAmbiguityIsReported:
     def test_placeholder_form_is_the_disambiguator(self):
         # The escape hatch the docstring points authors at, already supported.
         assert not _bpr._looks_like_file_path("<owner>/<repo>")
+
+
+class TestOutOfRepoTokensAreNotFilePaths:
+    """A token anchored outside the repo, or naming the repo itself, is not a
+    deliverable. Each shape drew a BLOCKING `chunk-ref-missing` against a
+    correct plan in a sibling repo."""
+
+    @pytest.mark.parametrize(
+        "token",
+        [
+            "/usr/local/bin/lane-status",
+            "/etc/systemd/system/app.service",
+            "~/testruns",
+            "~/.config/app/settings.toml",
+            "~deploy/releases",
+            # The slash-command carveout this generalises.
+            "/prawduct:pr",
+            "/prawduct:backlog",
+        ],
+    )
+    def test_anchored_tokens_are_excluded_with_or_without_a_repo(self, token, tmp_path):
+        assert not _bpr._looks_like_file_path(token)
+        assert not _bpr._looks_like_file_path(token, tmp_path)
+
+    @staticmethod
+    def _repo_with_remotes(tmp_path: Path, **remotes: str) -> Path:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        for name, url in remotes.items():
+            subprocess.run(["git", "remote", "add", name, url], cwd=repo, check=True)
+        _bpr._GIT_REMOTE_SLUGS_CACHE.pop(str(repo), None)
+        return repo
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "git@github.com:brookstalley/arrt.git",
+            "https://github.com/brookstalley/arrt.git",
+            "https://github.com/brookstalley/arrt",
+        ],
+    )
+    def test_a_configured_remote_slug_is_excluded(self, tmp_path, url):
+        repo = self._repo_with_remotes(tmp_path, origin=url)
+        assert not _bpr._looks_like_file_path("brookstalley/arrt", repo)
+        # GitHub slugs are case-insensitive; a plan may not match the URL's case.
+        assert not _bpr._looks_like_file_path("BrooksTalley/ARRT", repo)
+
+    def test_every_remote_counts_not_only_origin(self, tmp_path):
+        repo = self._repo_with_remotes(
+            tmp_path,
+            origin="git@github.com:me/fork.git",
+            upstream="https://github.com/them/project.git",
+        )
+        assert not _bpr._looks_like_file_path("them/project", repo)
+        assert not _bpr._looks_like_file_path("me/fork", repo)
+
+    def test_a_two_segment_path_is_still_checked(self, tmp_path):
+        # Excused by git's answer, not by shape: `docs/api` is the same shape.
+        repo = self._repo_with_remotes(tmp_path, origin="git@github.com:brookstalley/arrt.git")
+        assert _bpr._looks_like_file_path("docs/api", repo)
+        assert _bpr._looks_like_file_path("brookstalley/prawduct", repo)
+        # A deeper path under the slug is a path, not the slug.
+        assert _bpr._looks_like_file_path("brookstalley/arrt/README.md", repo)
+
+    def test_no_remote_and_no_repo_keep_the_slug_checked(self, tmp_path):
+        repo = self._repo_with_remotes(tmp_path)
+        assert _bpr._looks_like_file_path("brookstalley/arrt", repo)
+        not_a_repo = tmp_path / "bare"
+        not_a_repo.mkdir()
+        assert _bpr._looks_like_file_path("brookstalley/arrt", not_a_repo)
+
+    def test_the_remote_slug_is_not_reported_end_to_end(self, tmp_path):
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- deploys from `brookstalley/arrt` to `/opt/arrt/bin` via `~/deploy.sh`; touches `lib/nope.py`\n"
+        )
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:brookstalley/arrt.git"],
+            cwd=project, check=True,
+        )
+        _bpr._GIT_REMOTE_SLUGS_CACHE.pop(str(project), None)
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        missing = _bpr._verify_chunk_refs(project, refs)
+        assert [m["ref"] for m in missing] == ["lib/nope.py"]
 
 
 def test_the_heading_label_reaches_the_completed_chunk_join():

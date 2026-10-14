@@ -812,3 +812,26 @@ class TestConfigureClaimsTheRunIncomplete:
             "a previous run's `full` verdict survived into this run — it now "
             "vouches for a report it never saw"
         )
+
+
+def test_an_unsplittable_declared_command_refuses_before_any_suite_runs(tmp_path):
+    """Every declared command is split before the first one runs, so a bad
+    quote in the second entry is refused at once, not after the first suite
+    has spent its minutes."""
+    repo = tmp_path / "declared"
+    (repo / ".prawduct").mkdir(parents=True)
+    ran = repo / "first-suite-ran"
+    (repo / "first.py").write_text(f"open({str(ran)!r}, 'w').close()\n")
+    (repo / ".prawduct" / "project-state.yaml").write_text(
+        "test_commands:\n"
+        f"  - {sys.executable} {repo / 'first.py'} {{junit_xml}}\n"
+        "  - node --test --dest={junit_xml} 'unbalanced\n"
+    )
+    for cmd in (("init", "-b", "main"), ("add", "-A"), ("-c", "user.email=t@t",
+                "-c", "user.name=t", "commit", "-m", "c1")):
+        subprocess.run(["git", *cmd], cwd=repo, capture_output=True, check=True)
+    res = _run_hook(repo, "test-evidence", "record")
+    assert res.returncode == 2, res.stdout + res.stderr
+    assert "cannot be split into arguments" in res.stderr and "'unbalanced" in res.stderr
+    assert not ran.exists(), "the first suite ran before the refusal"
+    assert "Traceback" not in res.stderr

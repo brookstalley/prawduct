@@ -103,7 +103,7 @@ def test_the_ledger_records_the_label_not_the_mount_path(tmp_path):
     }))
     env = {**os.environ, "CLAUDE_PROJECT_DIR": str(repo)}
     r = subprocess.run(
-        [sys.executable, str(HOOK), "ledger-append", "--event", "review.critic"],
+        [sys.executable, str(HOOK), "ledger-append", "--event", "review.critic", "--trigger", "explicit"],
         cwd=str(repo), capture_output=True, text=True, timeout=60, env=env,
     )
     assert r.returncode == 0, r.stderr

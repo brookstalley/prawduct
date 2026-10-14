@@ -1,0 +1,2 @@
+# Wrangler's local cache and temp files, written on every deploy.
+.wrangler/

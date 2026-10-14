@@ -754,3 +754,69 @@ class TestSameLineDuplicateKeys:
         entries = change_log.parse_change_log(log.read_text(encoding="utf-8"))
         offenders = [e.title for e in entries if e.tag_conflicts]
         assert offenders == [], offenders
+
+
+class TestRetiredKeysOn:
+    """The one reader of :data:`change_log.RETIRED_TAG_KEYS`. The PR entry probe
+    calls it on every tag line a branch adds, so its verdict on prose and on
+    illustrations is the probe's verdict too."""
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            ("<!-- prawduct: chunks=01,02 | scope=x -->", ["chunks"]),
+            ("<!-- prawduct: scope=x | status=shipped -->", ["status"]),
+            # Reported in the set's order, not the line's.
+            ("<!-- prawduct: status=merged | chunks=01 | scope=x -->", ["chunks", "status"]),
+            ("  <!-- prawduct: chunks=01 -->", ["chunks"]),
+        ],
+    )
+    def test_a_tag_line_carrying_a_retired_key_names_it(self, line, expected):
+        assert change_log.retired_keys_on(line) == expected
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "<!-- prawduct: scope=x | release=v1.2.3 -->",
+            # Prose quoting an old tag line documents the format; it writes no entry.
+            "Older entries read `<!-- prawduct: chunks=01 | scope=x -->`.",
+            # An illustration with no real pair is not a tag line.
+            "<!-- prawduct: … -->",
+            "chunks=01 | scope=x",
+            "",
+        ],
+    )
+    def test_anything_else_names_nothing(self, line):
+        assert change_log.retired_keys_on(line) == []
+
+    def test_the_parser_still_reads_a_historical_retired_key(self):
+        """Refusing a key on a NEW line must not stop the history parsing."""
+        entries = change_log.parse_change_log(
+            "## 2026-01-01: old\n\n<!-- prawduct: chunks=01,02 | status=shipped | scope=x -->\n\nbody\n"
+        )
+        assert entries[0].tags["chunks"] == ["01", "02"]
+        assert entries[0].tags["status"] == "shipped"
+
+
+class TestShippedScopeExamplesResolve:
+    """The change-log tag examples are what a release step gets written against.
+    Their ``scope=`` must be one the build-plan template's frontmatter declares,
+    or an entry copied from them warns at release as work with no plan."""
+
+    def _example_scopes(self) -> set[str]:
+        import re
+
+        sources = (
+            (_REPO_ROOT / "templates" / "change-log.md").read_text(encoding="utf-8"),
+            change_log.__doc__ or "",
+        )
+        return {m for text in sources for m in re.findall(r"scope=([^\s|>]+)", text)}
+
+    def test_every_example_scope_is_the_build_plan_templates_scope(self):
+        from lib import plan_index
+
+        plan = (_REPO_ROOT / "templates" / "build-plan.md").read_text(encoding="utf-8")
+        _present, plan_scope = plan_index.parse_build_plan_frontmatter_scope(plan)
+        scopes = self._example_scopes()
+        assert scopes, "no scope= example found — the extraction is not reading the sources"
+        assert scopes == {plan_scope}

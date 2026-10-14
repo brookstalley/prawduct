@@ -2588,12 +2588,19 @@ class TestVerifyRatesBlockingOnlyDirective:
         are surest deserves a WARNING" sentence was removed as coaching, and the
         record-gap sentence it followed became the imperative close. The
         ceiling came down by the same amount.
+
+        809 -> 811 on 2026-10-13 (empty-verify-rounds), DECLARED: an
+        observation now judges a NAMED fix and carries `about`, and the list
+        inviting naming/prose/test-shape notes is gone. Those notes were the
+        treadmill: fixing one bought the next verify round. Paid by cutting
+        "the builder still reads your observations", which the scoping made
+        false.
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 809, (
+        assert tokens == 811, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 809. Update it to {tokens} and say in the docstring what paid "
+            f"says 811. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
         assert tokens < 865, (
@@ -3555,6 +3562,40 @@ class TestConsolidateIntegration:
             "unestablished for any other mode"
         )
 
+    def test_the_subagent_stop_hook_records_its_own_trigger(self, tmp_path):
+        """The hook path names itself. Without this, a working hook and a dead
+        one covered by the backstop leave the same ledger line."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        result = subprocess.run(
+            ["python3", str(HOOK), "subagent-stop"],
+            input=json.dumps({"cwd": str(repo),
+                              "agent_type": "prawduct:critic-reviewer"}),
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        events = [json.loads(line) for line in
+                  (repo / LEDGER_REL).read_text().strip().splitlines()]
+        assert [ev["trigger"] for ev in events] == ["subagent-stop"]
+
+    def test_an_unknown_trigger_raises_before_touching_the_review(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        with pytest.raises(ValueError, match="trigger"):
+            cc.consolidate(repo, trigger="hook")
+        assert (repo / MARKER_REL).is_file()
+        assert not (repo / LEDGER_REL).exists()
+        assert _store_facts(repo, "review") == []
+
     def test_complete_partials_at_head_consolidates(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
@@ -3595,6 +3636,8 @@ class TestConsolidateIntegration:
         event = json.loads(ledger_lines[0])
         assert event["event"] == "review.critic"
         assert event["scope"] == "demo-scope"
+        # The CLI is the explicit path, and says so.
+        assert event["trigger"] == "explicit"
 
         # Marker cleared + partials removed.
         assert not (repo / MARKER_REL).is_file()
@@ -4145,9 +4188,14 @@ class TestResolutionFacts:
         assert fact["body"]["stage"] is None  # recorded as absent, never invented
         assert len(fact["body"]["observations"]) == 1
 
-    def test_observations_persist_from_a_verify_dispatch(self, tmp_path):
+    def test_observations_that_judge_a_named_fix_persist_from_a_verify_dispatch(self, tmp_path):
         """The path that must work: a verify pass's demoted items reach the
-        review fact with ids a builder can answer against."""
+        review fact with ids a builder can answer against — when they judge a
+        NAMED fix. Renegotiated 2026-10-13 (empty-verify-rounds): a verify
+        observation about anything else (here, a helper's name) was what the
+        builder fixed next, buying the following verify round, so in this mode
+        one must carry `about: {review_id, fid}` and one without it is dropped.
+        Kept invariant: what survives is recorded with an answerable `O-n` id."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -4158,13 +4206,19 @@ class TestResolutionFacts:
                         roster=["reviewer"])
         _write_partial(repo, "reviewer", head, observations=[
             {"name": "The helper reads as a verb", "goal": "Nothing Is Unintended",
-             "recommendation": "Rename it"}
+             "recommendation": "Rename it"},
+            {"name": "The fix guards one caller of two", "goal": "Nothing Is Broken",
+             "recommendation": "Guard the second caller too",
+             "about": {"review_id": "rev-prior-0001", "fid": "R-1"}},
         ])
         result = _run_consolidate(repo)
         assert result.returncode == 0, result.stderr
         fact = [f for f in _store_facts(repo, "review")
                 if f["id"] == "rev-verify-0002"][0]
-        assert [o["oid"] for o in fact["body"]["observations"]] == ["O-1"]
+        assert [(o["oid"], o["title"]) for o in fact["body"]["observations"]] == [
+            ("O-1", "The fix guards one caller of two")
+        ]
+        assert "dropped 1 observation(s)" in result.stderr
         assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
 
     def test_resolution_of_unknown_finding_fails_closed(self, tmp_path):
@@ -8476,3 +8530,191 @@ class TestOneFixOrderEverywhere:
         old = (" Everything else moves the tree and must land BEFORE the verify pass:"
                " code, config, data, tests.")
         assert self._order_violations(old)
+
+
+# ---------------------------------------------------------------------------
+# The tree a review was dispatched over must be the tree it consolidates over
+# ---------------------------------------------------------------------------
+
+
+def _run_consolidate_args(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["python3", str(HOOK), "critic-consolidate", *args],
+        cwd=str(repo), capture_output=True, text=True,
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    )
+
+
+class TestTreeUnchangedDuringReview:
+    """A reviewer's `Bash(...)` grants and Write paths are a contract, not a
+    fence (`agents/critic-reviewer.md`), so consolidation is where "the review
+    changed no product file" gets checked. A tree diff cannot say WHO changed a
+    path — the builder may legitimately prep while a review runs — so a change
+    refuses without destroying the review, and the builder's explicit
+    `--tree-changed-by-builder` consolidates it with the paths on the record."""
+
+    def _dispatch(self, tmp_path) -> tuple[Path, dict]:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, "src/other.py", "y = 1\n", "other")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        begin = _run_begin(repo, "--mode", "chunk", "--chosen-by", "rule-4",
+                           "--scope", "demo")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        return repo, manifest
+
+    def _review(self, repo: Path, manifest: dict) -> None:
+        rid = manifest["id"]
+        (repo / PARTIALS_REL / f"reviewer.{rid}.started").write_text("")
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+
+    def test_begin_records_the_working_tree_it_dispatched_over(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        (repo / ".prawduct").mkdir()
+        (repo / "src/app.py").write_text("x = 2\n")
+        before = evidence.capture_tree(repo)["tree"]
+        assert _run_begin(repo, "--mode", "chunk", "--chosen-by", "rule-4").returncode == 0
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        # The working tree, not the interval's head: a cumulative review's
+        # head_tree is committed HEAD, and its dirty tree must be watched too.
+        assert manifest["dispatch_tree"] == before
+
+    @pytest.mark.parametrize("path, exempt", [
+        (".prawduct/.critic-active", True),
+        (".prawduct/.critic-partials/reviewer.x.json", True),
+        (".prawduct/.critic-review-dispatch.json", True),
+        ("pkg/__pycache__/m.cpython-312.pyc", True),
+        (".prawduct/project-state.yaml", False),
+        ("src/.critic-active", False),
+        ("src/app.py", False),
+    ])
+    def test_session_files_follow_gitignore_anchoring(self, path, exempt):
+        assert cc._is_session_file(path, "") is exempt
+
+    def test_a_product_file_changed_during_the_review_refuses(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+        (repo / "src/other.py").write_text("y = 'edited by a reviewer'\n")
+        (repo / "src/new.py").write_text("z = 1\n")  # untracked counts too
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 1, result.stdout
+        assert "src/other.py" in result.stderr
+        assert "src/new.py" in result.stderr
+        assert "--tree-changed-by-builder" in result.stderr
+        # Refused, not destroyed: the review is still on disk to decide about.
+        assert (repo / PARTIALS_REL / "manifest.json").is_file()
+        assert (repo / PARTIALS_REL / f"reviewer.{manifest['id']}.json").is_file()
+        assert (repo / MARKER_REL).is_file()
+        assert _store_facts(repo, "review") == []
+
+    def test_only_the_reviewers_own_files_consolidates(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert "tree_changed_during_review" not in fact["body"]
+
+    def test_the_data_plane_files_are_exempt_even_when_not_gitignored(self, tmp_path):
+        """Product repos gitignore the partials dir, but the exemption must not
+        rest on that: a repo missing the entry would otherwise refuse every
+        review over the reviewer's own partial."""
+        repo, manifest = self._dispatch(tmp_path)
+        assert not (repo / ".gitignore").exists()
+        self._review(repo, manifest)
+        (repo / ".prawduct" / ".critic-partials-archive").mkdir()
+        (repo / ".prawduct" / ".critic-partials-archive" / "x").write_text("")
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_the_builder_override_consolidates_with_the_paths_on_record(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+        (repo / "src/other.py").write_text("y = 2\n")
+
+        result = _run_consolidate_args(
+            repo, "--tree-changed-by-builder", "drafted the change-log entry")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert fact["body"]["tree_changed_during_review"] == {
+            "paths": ["src/other.py"],
+            "reason": "drafted the change-log entry",
+        }
+        record = json.loads((repo / FINDINGS_REL).read_text())
+        assert record["tree_changed_during_review"]["paths"] == ["src/other.py"]
+        assert "src/other.py" in result.stdout
+
+    def test_the_override_on_an_unchanged_tree_records_nothing(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+
+        result = _run_consolidate_args(repo, "--tree-changed-by-builder", "prep")
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert "tree_changed_during_review" not in fact["body"]
+
+    @pytest.mark.parametrize("args", [
+        ("--tree-changed-by-builder",),
+        ("--tree-changed-by-builder", "   "),
+        ("--bogus",),
+    ])
+    def test_a_malformed_argument_is_refused(self, tmp_path, args):
+        repo, manifest = self._dispatch(tmp_path)
+        self._review(repo, manifest)
+
+        result = _run_consolidate_args(repo, *args)
+
+        assert result.returncode != 0
+        assert _store_facts(repo, "review") == []
+
+    def test_a_manifest_from_before_the_field_still_consolidates(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        del manifest["dispatch_tree"]
+        (repo / PARTIALS_REL / "manifest.json").write_text(json.dumps(manifest))
+        self._review(repo, manifest)
+        (repo / "src/other.py").write_text("y = 2\n")
+
+        result = _run_consolidate(repo)
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+    def test_an_uncapturable_tree_refuses_rather_than_passing(self, tmp_path, monkeypatch):
+        repo, manifest = self._dispatch(tmp_path)
+        monkeypatch.setattr(evidence, "capture_tree",
+                            lambda _d: {"status": "error", "reason": "index locked"})
+        state, detail = cc.tree_changed_since_dispatch(repo, manifest)
+        assert state == "unverifiable" and "index locked" in detail
+
+    def test_an_undiffable_dispatch_tree_refuses_rather_than_passing(self, tmp_path):
+        repo, manifest = self._dispatch(tmp_path)
+        manifest["dispatch_tree"] = "0" * 40  # an object the store does not hold
+        state, detail = cc.tree_changed_since_dispatch(repo, manifest)
+        assert state == "unverifiable"
+
+    def test_a_project_in_a_repo_subdirectory_exempts_its_own_session_files(self, tmp_path):
+        """`tree_diff` paths are repo-root relative and the session-file entries
+        project relative, so a nested project must anchor them at its prefix."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "proj/src/app.py", "x = 1\n", "init")
+        proj = repo / "proj"
+        (proj / ".prawduct").mkdir()
+        before = evidence.capture_tree(proj)["tree"]
+        (proj / ".prawduct" / ".critic-active").write_text("{}")
+        (repo / ".prawduct").mkdir()
+        (repo / ".prawduct" / ".critic-active").write_text("{}")  # NOT this project's
+        state, detail = cc.tree_changed_since_dispatch(proj, {"dispatch_tree": before})
+        assert (state, detail) == ("changed", [".prawduct/.critic-active"])

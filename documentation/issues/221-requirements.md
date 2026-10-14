@@ -1,7 +1,13 @@
 # Issue #221 — Worktree-fork state pollution: Requirements
 
-`status: draft · stage: requirements · area: worktree · added: 2026-08-05 · source:
+`status: superseded · stage: requirements · area: worktree · added: 2026-08-05 · source:
 scheduled backlog session · issue: https://github.com/brookstalley/prawduct/issues/221`
+
+**Superseded 2026-10-10.** Measured on Claude Code 2.1.296, a `context: fork` skill follows
+`EnterWorktree` and `isolation: "worktree"`, so the launch-dir pinning this document guards against
+no longer reproduces, and its marker-and-guard mechanism was not built. The live defect was the
+ad-hoc delegate dispatch shape, fixed in `plugin/methodology/delegation.md`. Measurements:
+https://github.com/brookstalley/prawduct/issues/221#issuecomment-6098003082
 
 Related: STH-7W9K (this item's id alias), CRT-3X9D (`plugin/lib/critic_marker.py` — the
 mutation-site guard pattern this item generalizes), STH-4K7N (the main-loop cwd-based resolver

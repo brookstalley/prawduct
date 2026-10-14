@@ -33,7 +33,7 @@ from test_critic_consolidate import (
     _run_consolidate,
     _write_partial,
 )
-from test_short_plan_deferral import _GENERIC_BLOCK, _arm_stop, _run_stop
+from test_short_plan_deferral import _GENERIC_BLOCK, _arm_stop, _run_stop, _short_plan_branch
 
 WARNING = {"name": "Tighten the loop", "goal": "Nothing Is Unintended",
            "severity": "warning", "recommendation": "Tighten", "files": ["src/app.py"]}
@@ -44,11 +44,18 @@ BLOCKING = {"name": "Broken", "goal": "Nothing Is Broken",
 MID, END = 0, 4
 
 
-def _plan(ticked: int) -> str:
+def _plan(ticked: int, last_type: "str | None" = None) -> str:
+    """Five chunks, ``ticked`` of them done. ``last_type`` declares the LAST
+    chunk's ``Type:`` (``cumulative-final`` makes its review the boundary one)."""
     rows = "".join(
         f"- [{'x' if n <= ticked else ' '}] Chunk {n}: part {n}\n" for n in range(1, 6)
     )
-    sections = "".join(f"\n### Chunk {n}: part {n}\n\n- **Delivers:** part {n}\n" for n in range(1, 6))
+    sections = "".join(
+        f"\n### Chunk {n}: part {n}\n\n"
+        + (f"**Type:** {last_type}\n\n" if last_type and n == 5 else "")
+        + f"- **Delivers:** part {n}\n"
+        for n in range(1, 6)
+    )
     return (
         "---\nartifact: build-plan\nscope: work\nbranch: feat/work\n---\n\n"
         f"# Plan\n\n## Status\n\n{rows}{sections}"
@@ -62,7 +69,8 @@ def _commit_all(repo: Path, msg: str) -> str:
 
 
 def _scenario(
-    tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool, commit_reviewed: bool = True
+    tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool, commit_reviewed: bool = True,
+    last_type: "str | None" = None,
 ) -> tuple[Path, str]:
     """The current chunk reviewed with ``findings``, committed verbatim (unless
     ``commit_reviewed`` is False: the fix then goes straight onto the reviewed,
@@ -72,7 +80,7 @@ def _scenario(
     _init_repo(repo)
     _commit_file(repo, "src/app.py", "x = 1\n", "init")
     _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
-    _commit_file(repo, ".prawduct/artifacts/build-plan-work.md", _plan(ticked), "plan")
+    _commit_file(repo, ".prawduct/artifacts/build-plan-work.md", _plan(ticked, last_type), "plan")
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     (repo / "src/app.py").write_text("x = 2\n")
     begin = _run_begin(repo, "--mode", "chunk", "--chunk", str(ticked + 1))
@@ -167,7 +175,7 @@ class TestReviewClose:
         assert cc._RIDE_ALONG_ROUTE.strip() in line
 
     def test_a_blocking_close_is_unchanged_mid_plan(self):
-        line = cc.next_action_line("rev-x", 1, 0, 0, rides_next_review=True)
+        line = cc.next_action_line("rev-x", 1, 0, 0, rides_next_review=critic_mode.OWED_LATER_CHUNK)
         assert "This plan still owes a later review" not in line
         assert "verify-resolutions" in line
 
@@ -372,3 +380,187 @@ class TestReviewChain:
         monkeypatch.setattr(evidence, "read_facts",
                             lambda _p: {"status": "ok", "facts": [chunk, cumulative]})
         assert critic_mode._newest_branch_review(Path("."))["id"] == "r2"
+
+
+CUMULATIVE_FINAL = "cumulative-final"
+
+
+class TestBoundaryReviewOwed:
+    """On a `Type: cumulative-final` plan the last chunk's review IS the boundary
+    `cumulative`, which spans the branch from the merge-base. So a fix after an
+    earlier review of that chunk rides it, and inference does not run a `final`
+    first. Measured on consumers: every cumulative-final plan inspected ran
+    final → verify-resolutions → cumulative, two rounds where one was owed."""
+
+    def _owed(self, repo: Path, chain: list) -> "tuple[str, str] | None":
+        from lib import buildplan_refs
+        prawduct = repo / ".prawduct"
+        plan = buildplan_refs.resolve_branch_plan(repo, prawduct)
+        progress = buildplan_refs.resolve_chunk_progress(repo, plan.path)
+        return critic_mode.review_owed_after(repo, prawduct, plan, progress, chain)
+
+    def test_a_cumulative_final_last_chunk_owes_the_boundary_review(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
+        owed = self._owed(repo, [])
+        assert owed is not None and owed[0] == critic_mode.OWED_BOUNDARY, owed
+
+    def test_a_plain_last_chunk_owes_nothing(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False)
+        assert self._owed(repo, []) is None
+
+    def test_mid_plan_owes_the_later_chunk_review(self, tmp_path):
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
+        owed = self._owed(repo, [])
+        assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+
+    def test_nothing_is_owed_once_a_cumulative_is_on_the_chain(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
+        cumulative = {"kind": "review", "id": "r1",
+                      "body": {"mode": "cumulative (bundle review, ready for merge)"}}
+        assert self._owed(repo, [cumulative]) is None
+
+    def test_an_unreadable_plan_declares_nothing(self, tmp_path):
+        missing = type("Plan", (), {"path": tmp_path / "gone.md", "rel": "gone.md"})
+        assert not critic_mode.declares_boundary_cumulative(tmp_path, missing)
+        assert not critic_mode.declares_boundary_cumulative(tmp_path, None)
+
+    def test_inference_defers_the_uncommitted_last_chunk_to_the_cumulative(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-work.md",
+                     _plan(END, CUMULATIVE_FINAL), "plan")
+        _git(repo, "checkout", "-b", "feat/work", "--quiet")
+        (repo / "src/app.py").write_text("x = 2  # the last chunk, uncommitted\n")
+        mode, why = infer_mode(repo, None)
+        assert mode == MODE_DEFERRED, why
+        assert why.startswith("cumulative-final deferral"), why
+        assert critic_mode.LAST_CHUNK_BOUNDARY_STEP in why
+        # The way back is honoured: an explicit `final` still runs one.
+        assert infer_mode(repo, "final")[0] == "final"
+        # Control: the same state on a plain plan still infers `final`.
+        _commit_file(repo, ".prawduct/artifacts/build-plan-work.md", _plan(END), "plain plan")
+        (repo / "src/app.py").write_text("x = 3  # still uncommitted\n")
+        assert infer_mode(repo, None)[0] == "final"
+
+    def test_the_committed_last_chunk_infers_the_cumulative(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=True, last_type=CUMULATIVE_FINAL)
+        mode, why = infer_mode(repo, None)
+        assert mode == "cumulative", why
+
+    def test_a_fix_in_progress_rides_the_cumulative(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
+        mode, why = infer_mode(repo, None)
+        assert mode == MODE_DEFERRED, why
+        assert "boundary `cumulative`" in why
+
+    def test_the_close_names_the_cumulative_and_drops_the_price(self, tmp_path):
+        _, line = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
+        assert "This plan still owes its boundary `cumulative`" in line
+        assert "This plan still owes a later review" not in line
+        assert cc._RIDE_ALONG_ROUTE.strip() not in line
+        assert cc._IF_YOU_FIX_SOME.strip() not in line
+
+    def test_a_blocking_close_still_verifies(self):
+        line = cc.next_action_line("rev-x", 1, 0, 0, rides_next_review=critic_mode.OWED_BOUNDARY)
+        assert "boundary `cumulative`" not in line
+        assert "verify-resolutions" in line
+
+    def test_the_stop_gate_defers_the_uncovered_fix(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=True, last_type=CUMULATIVE_FINAL)
+        (repo / "src/other.py").write_text("y = 1\n")
+        _arm_stop(repo / ".prawduct")
+        result = _run_stop(repo)
+        assert result.returncode == 0, result.stderr
+        assert _GENERIC_BLOCK not in result.stderr
+        assert "deferred-boundary-review" in result.stderr
+        assert "spans the branch from the merge-base" in result.stderr
+
+    def test_the_commit_is_free(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=True, last_type=CUMULATIVE_FINAL)
+        (repo / "src/other.py").write_text("y = 1\n")
+        answer = TestCostOfCommit()._price(repo)
+        assert answer["verdict"] == "free"
+        assert "boundary `cumulative`" in answer["rides_next_review"]
+
+    def test_an_unreviewed_last_chunk_blocks_and_says_to_commit_first(self, tmp_path):
+        """The gate still blocks the uncovered chunk — its review has not run —
+        but its message agrees with inference: commit, then the cumulative."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-work.md",
+                     _plan(END, CUMULATIVE_FINAL), "plan")
+        _git(repo, "checkout", "-b", "feat/work", "--quiet")
+        (repo / "src/app.py").write_text("x = 2  # the last chunk, unreviewed\n")
+        _arm_stop(repo / ".prawduct")
+        result = _run_stop(repo)
+        assert result.returncode == 2, result.stderr
+        assert "last chunk is `Type: cumulative-final`" in result.stderr
+        assert "no separate `final`" in result.stderr
+
+    def test_after_the_cumulative_nothing_rides_it(self, tmp_path):
+        repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
+        _commit_all(repo, "fix")
+        begin = _run_begin(repo, "--mode", "cumulative", "--chunk", "5")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[WARNING])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        line = next(l for l in done.stdout.splitlines() if l.startswith("NEXT-ACTION:"))
+        assert "This plan still owes" not in line
+        assert cc._RIDE_ALONG_ROUTE.strip() in line
+        # And inference no longer defers the chunk to a cumulative that has
+        # already run: a later edit is reviewed, not sent to a second one.
+        (repo / "src/later.py").write_text("z = 1  # an edit after the boundary review\n")
+        # Rule 3 is reached and answers `final` (not rule 4 falling through),
+        # so it is the post-cumulative check that withholds the deferral.
+        mode, why = infer_mode(repo, None)
+        assert mode == "final", why
+        assert why.startswith("rule-3 final"), why
+        # And the Stop gate's message agrees: it no longer says "then cumulative".
+        _arm_stop(repo / ".prawduct")
+        result = _run_stop(repo)
+        assert result.returncode == 2, result.stderr
+        assert "last chunk is `Type: cumulative-final`" not in result.stderr
+
+
+class TestShortPlanBoundaryOwed:
+    """A short plan's boundary `cumulative` is every chunk's review, so on its
+    last chunk a fix after an earlier review rides it — with no declaration.
+    The 5-chunk fixtures above can never reach this arm (a short plan has at
+    most three chunks)."""
+
+    def _owed(self, repo: Path):
+        from lib import buildplan_refs
+        prawduct = repo / ".prawduct"
+        plan = buildplan_refs.resolve_branch_plan(repo, prawduct)
+        progress = buildplan_refs.resolve_chunk_progress(repo, plan.path)
+        return critic_mode.review_owed_after(repo, prawduct, plan, progress, [])
+
+    def test_the_last_chunk_of_a_short_plan_owes_the_boundary_review(self, tmp_path):
+        _short_plan_branch(tmp_path, chunks=3, committed=("01", "02"))
+        owed = self._owed(tmp_path)
+        assert owed is not None and owed[0] == critic_mode.OWED_BOUNDARY, owed
+        assert "the plan is short" in owed[1]
+
+    def test_a_long_plan_on_its_last_chunk_owes_nothing(self, tmp_path):
+        """Control: same state, five chunks — not short, no declaration."""
+        _short_plan_branch(tmp_path, chunks=5, committed=("01", "02", "03", "04"))
+        assert self._owed(tmp_path) is None
+
+    def test_the_close_after_a_review_of_that_chunk_names_the_cumulative(self, tmp_path):
+        _short_plan_branch(tmp_path, chunks=3, committed=("01", "02"))
+        begin = _run_begin(tmp_path, "--mode", "chunk", "--chunk", "3")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((tmp_path / PARTIALS_REL / "manifest.json").read_text())
+        _write_partial(tmp_path, "reviewer", manifest["commit_reviewed"],
+                       findings=[{**WARNING, "files": ["src/wip.py"]}])
+        done = _run_consolidate(tmp_path)
+        assert done.returncode == 0, done.stderr
+        line = next(l for l in done.stdout.splitlines() if l.startswith("NEXT-ACTION:"))
+        assert "This plan still owes its boundary `cumulative`" in line
+        assert cc._RIDE_ALONG_ROUTE.strip() not in line

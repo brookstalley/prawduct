@@ -89,15 +89,20 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # data plane — ``coverage_algebra`` never reads it. Its readers are the
 # test-evidence freshness fallback (``gates._store_run_vouching``), the one that
 # decides anything, and ``evidence list``, which only displays it.
+#
+# ``session-start`` records one session boundary (startup or /clear, never a
+# resume) — the denominator that turns a count of Stop-hook blocks or guard
+# firings into a per-session rate (:func:`append_session_start`). No gate reads
+# it.
 KNOWN_KINDS = frozenset(
-    {"review", "resolution", "disposition", "guard-refusal", "test-run"}
+    {"review", "resolution", "disposition", "guard-refusal", "test-run", "session-start"}
 )
 
 #: Kinds the coverage verdict never reads, so their lines are left out of
 #: ``coverage_fingerprint`` (:func:`read_facts`). Membership is a claim about
 #: ``coverage_algebra.coverage_verdict``'s inputs — review edges and the
 #: resolution index — and a kind joins only if that function cannot see it.
-OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run"})
+OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run", "session-start"})
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
@@ -441,6 +446,61 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     return append_fact(project_dir, "test-run", fact_id, body)
 
 
+#: Prefix of the ``guard`` a Stop-hook block is recorded under; the gate id
+#: follows it. Readers select Stop blocks from other control firings by it.
+STOP_GATE_PREFIX = "stop-gate:"
+
+#: The ``guard`` a base-advance transfer's GRANT is recorded under. It shares
+#: the guard-refusal sink with the refusals, but it is a pass that saves a
+#: review round, so readers that count friction must leave it out.
+TRANSFER_GRANT_GUARD = "base-advance-transfer"
+
+
+def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
+    """Record one blocked Stop: a ``guard-refusal`` fact per blocking gate.
+
+    A Stop gate is a control like any pre-dispatch guard, so it records through
+    the same class sink (:func:`append_guard_refusal`) rather than a kind of its
+    own — one shape for every control firing, and a kind every plugin already
+    in the field reads as observational. One fact per gate, not per Stop, so
+    "how often does gate G block?" is a count rather than a parse; ``stop`` ties
+    the facts of one Stop together and ``co_gates`` names the others, so "which
+    gates fire together?" needs no join. Each blocked Stop is a separate event
+    (the model was sent back once per block), so there is no dedupe key.
+
+    Returns each sink result. Callers treat a failure as soft: the block is
+    correct whether or not its record lands.
+    """
+    stop_id = "{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+    )
+    results = []
+    for gate in gates:
+        results.append(
+            append_guard_refusal(
+                project_dir,
+                f"{STOP_GATE_PREFIX}{gate}",
+                {
+                    "gate": gate,
+                    "stop": stop_id,
+                    "co_gates": [g for g in gates if g != gate],
+                },
+            )
+        )
+    return results
+
+
+def append_session_start(project_dir: Path) -> dict:
+    """Record one session boundary. The envelope (``ts``, ``actor.session``,
+    ``actor.plugin``) is the whole record. The body is empty: the per-session
+    rates this fact exists for need only that a session began, so the
+    SessionStart payload's ``source`` (``startup`` or ``clear``) is not read."""
+    fact_id = "session-start-{}-{}".format(
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8]
+    )
+    return append_fact(project_dir, "session-start", fact_id, {})
+
+
 def read_facts(project_dir: Path) -> dict:
     """Read the store. Returns::
 
@@ -700,10 +760,12 @@ def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
     reading, and deliberately not work the record demands. It is recorded so a
     builder can answer it and so the demotion's yield is queryable — never so a
     gate can read it. Merging the two indexes would put observations one
-    ``.get`` away from every consumer that joins on a finding, including the
-    resolution existence check, and the only thing keeping an observation out
-    of a verdict would be each caller remembering to filter. Two indexes, and
-    the callers that want both say so.
+    ``.get`` away from every consumer that joins on a finding, and the only
+    thing keeping an observation out of a verdict would be each caller
+    remembering to filter. Two indexes, and the callers that want both say so:
+    the resolution existence check does, because a verify pass may confirm an
+    observation fix — and it accepts only ``fixed`` for one, which no gate
+    reads, since gates filter blocking findings and an observation is never one.
 
     Observation ids live in their own namespace (``O-1``), so a
     ``(review_id, id)`` pair is unambiguous across both.

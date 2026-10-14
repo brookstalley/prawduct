@@ -50,7 +50,7 @@ The stdout envelope is one of two shapes:
   error envelope** — the error path can still carry advisory audit lines, and those are one-shot;
   dropping them loses information permanently.
 
-A `file` result may also carry **`"lint":[{"rule","message","severity":"warn"}]`** — surface these
+A `file` result — and an `update` that wrote `--body` — may also carry **`"lint":[{"rule","message","severity":"warn"}]`** — surface these
 as `WARNING:` issue-standard hints. These body/label findings never change `status` or the exit
 code. **The four §1 TITLE checks are different — they BLOCK**: `file` and `update` refuse a
 non-conforming title with a `validation` error (exit 2) before writing, and `import` refuses the

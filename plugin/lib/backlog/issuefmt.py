@@ -274,7 +274,7 @@ def lint(title: str, body: str, labels: list[str] | None = None) -> list[LintFin
     findings: list[LintFinding] = []
     findings += lint_title(title or "", labels)
     findings += _lint_labels(labels)
-    findings += _lint_body(body or "", labels)
+    findings += lint_body(body or "", labels)
     return findings
 
 
@@ -319,7 +319,14 @@ def _lint_labels(labels: list[str]) -> list[LintFinding]:
     return out
 
 
-def _lint_body(body: str, labels: list[str]) -> list[LintFinding]:
+def lint_body(body: str, labels: list[str] | None = None) -> list[LintFinding]:
+    """The standard's §4 **body** checks, alone — every one WARN-only. Public for
+    the same reason :func:`lint_title` is: ``update`` audits the body it wrote
+    without re-reporting labels it may not have touched.
+
+    ``labels`` picks the section template (by ``kind:``), so pass the issue's
+    labels as they stand after the write."""
+    labels = labels or []
     out: list[LintFinding] = []
 
     # Section presence/emptiness — only when we know the template (kind present).

@@ -75,7 +75,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import coverage_algebra, critic_marker, evidence, gates, gitstate, ledger
-from .core import atomic_write_text
+from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
 MANIFEST_NAME = "manifest.json"
@@ -557,6 +557,18 @@ _RIDES_NEXT_REVIEW_LEAD = (
     " run `verify-resolutions` for it. "
 )
 
+#: The same lead when what the plan still owes is its boundary ``cumulative``
+#: (a ``Type: cumulative-final`` last chunk, or a short plan): that review spans
+#: the branch from the merge-base, so it covers a fix committed before it just
+#: as a later chunk's review would. Its own text because the chunk wording
+#: would promise a chunk review that is not coming.
+_RIDES_BOUNDARY_REVIEW_LEAD = (
+    "This plan still owes its boundary `cumulative`, which reviews the branch"
+    " from the merge-base. So commit this tree as it stands, then fix what is"
+    " worth fixing and commit that too: the cumulative covers the fix, not a"
+    " round of its own. Don't run `verify-resolutions` for it. "
+)
+
 
 #: What fixing a non-blocking item costs, and how to find out before paying it.
 #:
@@ -801,7 +813,7 @@ def next_action_line(
     span: "str | None" = None,
     observations: int = 0,
     cost: "str | None" = None,
-    rides_next_review: bool = False,
+    rides_next_review: "str | None" = None,
 ) -> str:
     """The one sentence the BUILDER needs, computed from the fact's own counts
     and written into ``.critic-findings.json`` by :func:`fact_to_cache_record`.
@@ -855,7 +867,14 @@ def next_action_line(
     # blockers clear only through `verify-resolutions`, whatever is owed later.
     fix_tail = _IF_YOU_FIX_SOME + _RIDE_ALONG_ROUTE + price
     if rides_next_review:
-        lead, fix_tail = _RIDES_NEXT_REVIEW_LEAD, ""
+        from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
+
+        lead = (
+            _RIDES_BOUNDARY_REVIEW_LEAD
+            if rides_next_review == critic_mode.OWED_BOUNDARY
+            else _RIDES_NEXT_REVIEW_LEAD
+        )
+        fix_tail = ""
     # `span` is :func:`span_clause`'s output, rendered by the caller for the
     # same reason `price_sentence` is. Absent (every mode but a clean
     # `verify-resolutions` close) the clause stays what it always was: go ask
@@ -1139,12 +1158,14 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " undocumented decision that departs from no norm) is an observation here,"
     " and so is everything a table rates lower, record-lint entries included."
     " Observations go in your report under an"
-    " `### Observations` heading, in prose, and NOT into `findings`: a name you"
-    " would have chosen differently, prose that could be tighter, a test you"
-    " would have structured another way. Put each one in your partial's"
-    " `observations` array TOO — `{name, goal, recommendation, files?}`, a"
-    " finding minus its severity — which is what lets the builder ACCEPT it on"
-    " the record instead of fixing it just to leave a trace. An entry you rate"
+    " `### Observations` heading, in prose, and NOT into `findings` — and only"
+    " one that judges a NAMED fix: incomplete, or right in one place and missed"
+    " in another. Put each in your partial's `observations` array TOO —"
+    " `{name, goal, recommendation, about: {review_id, fid}}`, `about` naming"
+    " the prior finding or observation whose fix it judges; one without it is"
+    " dropped. A name, tighter prose, another test shape: leave it, because the"
+    " boundary review re-reads this delta at full severity, and your note would"
+    " buy a round to fix it now. An entry you rate"
     " `blocking` is refused there: a BLOCKING item is a finding."
     " The set is the norm's and it is exact — it neither adds a class the norm"
     " does not name nor drops one it does. Five shapes a fix delta actually"
@@ -1162,9 +1183,7 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " a WARNING recorded here becomes a fix commit, the commit moves the tree,"
     " the moved tree reopens coverage, and the next pass reviews the prose this"
     " fix just wrote — measured at ten rounds on one branch, where rounds five"
-    " onward were entirely self-inflicted. The builder still reads your"
-    " observations and can act on them; they are simply not work the record"
-    " demands."
+    " onward were entirely self-inflicted."
     " **BLOCKING means the tree must not move again without this fix — not"
     " merely that the fix is owed.** The two come apart on RECORD gaps: a"
     " registry row, a doc table, an artifact that lags the code it describes."
@@ -3440,6 +3459,12 @@ def begin_review(
         # already writes. Advisory: nothing gates on it, and an older manifest
         # without the key is still valid.
         "seed": capture.get("seed"),
+        # The WHOLE working tree at dispatch, whatever interval the mode chose.
+        # Consolidation compares it with the tree it finds, because a
+        # reviewer's tool grants are a contract the harness does not enforce
+        # (`agents/critic-reviewer.md`) and this is the one place that can
+        # notice a review that changed the product it was judging.
+        "dispatch_tree": capture["tree"],
     }
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
@@ -3787,7 +3812,7 @@ def validate_manifest(data) -> tuple[bool, str]:
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
-                "chunk_type", "signals"):
+                "chunk_type", "signals", "dispatch_tree"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -4342,6 +4367,46 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     return findings
 
 
+def observation_about(observation: dict) -> "tuple[str, str] | None":
+    """The ``(review_id, fid)`` an observation says it judges the fix of, or
+    ``None`` when it names none usable. ``fid`` may be a finding's ``R-n`` or an
+    observation's ``O-n``."""
+    about = observation.get("about")
+    if not isinstance(about, dict):
+        return None
+    review_id, fid = about.get("review_id"), about.get("fid")
+    if _nonempty_str(review_id) and _nonempty_str(fid):
+        return review_id.strip(), fid.strip()
+    return None
+
+
+def scope_verify_observations(partials: list[dict], store: dict) -> "tuple[list[dict], int]":
+    """``partials`` with every observation dropped that does not judge a named
+    fix, and how many were dropped.
+
+    A ``verify-resolutions`` pass exists to say whether named fixes held. An
+    observation about anything else in the fix delta (a name, prose, a test's
+    shape) is what the builder then fixes, which moves the tree and buys the
+    next verify round: measured on sibling repos on 3.7.x, about a third of the
+    verify rounds with nothing open to verify followed another verify pass.
+    The boundary review re-reads the delta at full severity, so nothing is lost
+    for good. Dropping, not refusing, because an observation is advice: a
+    malformed one must never cost the round that carried it.
+
+    Kept: an observation whose ``about`` names a finding or an observation the
+    store records.
+    """
+    targets = set(evidence.findings_index(store)) | set(evidence.observations_index(store))
+    scoped: list[dict] = []
+    dropped = 0
+    for partial in partials:
+        observations = partial.get("observations") or []
+        kept = [o for o in observations if observation_about(o) in targets]
+        dropped += len(observations) - len(kept)
+        scoped.append({**partial, "observations": kept} if observations else partial)
+    return scoped, dropped
+
+
 def merge_observations(partials: list[dict]) -> list[dict]:
     """Union every reviewer's observations into the fact-body shape,
     de-duplicated by ``(goal, name, files)`` with sequential ``oid``s assigned
@@ -4373,6 +4438,9 @@ def merge_observations(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            about = observation_about(o)
+            if about is not None:
+                entry["about"] = {"review_id": about[0], "fid": about[1]}
             merged[key] = entry
     observations = list(merged.values())
     for idx, entry in enumerate(observations, start=1):
@@ -4734,36 +4802,36 @@ def finding_fix_cost(files: "list | None") -> str:
 def _plan_owes_a_later_review(
     project_dir: Path, prawduct_dir: Path, facts: "list[dict] | None" = None,
     fact: "dict | None" = None,
-) -> bool:
-    """Whether the branch's plan owes a review after the one just consolidated.
+) -> "str | None":
+    """Which review the branch's plan owes after the one just consolidated —
+    ``critic_mode.OWED_LATER_CHUNK`` or ``OWED_BOUNDARY`` — or ``None``.
 
     The close's half of the interval-extension deferral: the review just
     written covers its tree with no blocker (the caller only asks on a
-    zero-blocking close), so once that tree is committed it IS the covered
-    frontier, and the only open question is whether a later review will start
-    from it — ``critic_mode.later_review_owed``. ``False`` on any failure: this
+    zero-blocking close), so once that tree is committed a later chunk review
+    starts from it, and the boundary ``cumulative`` spans it from the
+    merge-base. Either covers a fix committed now; the answer is
+    ``critic_mode.review_owed_after``'s, which also says nothing is owed once a
+    ``cumulative`` stands on ``fact``'s chain. ``None`` on any failure: this
     changes advice, and advice that cannot be derived keeps the older wording.
-
-    Not after the boundary: when ``fact`` stands on a chain holding a
-    ``cumulative`` (``critic_mode.boundary_review_on_chain``), the unticked boxes
-    are chunks awaiting their tick, not chunks still to build, and the close
-    must not promise a review that is not coming.
     """
     try:
         from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
         plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
         if plan.path is None:
-            return False
-        if fact is not None and critic_mode.boundary_review_on_chain(
-            critic_mode.review_chain(facts or [], fact)
-        ):
-            return False
-        return critic_mode.later_review_owed(
-            buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+            return None
+        chain = critic_mode.review_chain(facts or [], fact) if fact is not None else []
+        owed = critic_mode.review_owed_after(
+            project_dir,
+            prawduct_dir,
+            plan,
+            buildplan_refs.resolve_chunk_progress(project_dir, plan.path),
+            chain,
         )
+        return owed[0] if owed else None
     except (OSError, ValueError):
-        return False
+        return None
 
 
 def fact_to_cache_record(
@@ -4772,7 +4840,7 @@ def fact_to_cache_record(
     carried: "list[dict] | None" = None,
     span: "str | None" = None,
     cost: "str | None" = None,
-    rides_next_review: bool = False,
+    rides_next_review: "str | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -4830,7 +4898,7 @@ def fact_to_cache_record(
         verdict = "Changes ready to proceed."
     roster = body.get("roster") or []
     models = [r.get("model") for r in roster if r.get("model")]
-    return {
+    record = {
         "timestamp": fact.get("ts"),
         "duration_seconds": body.get("duration_seconds"),
         "mode": body.get("mode"),
@@ -4864,6 +4932,11 @@ def fact_to_cache_record(
             body.get("findings") or []
         ),
     }
+    # Only when the builder attested a change: the next builder and the PR
+    # reviewer read this file, and an absent key means the tree was unchanged.
+    if body.get(TREE_CHANGED_KEY):
+        record[TREE_CHANGED_KEY] = body[TREE_CHANGED_KEY]
+    return record
 
 
 # ---------------------------------------------------------------------------
@@ -5094,9 +5167,112 @@ def _already_consolidated_note(prawduct_dir: Path) -> str:
     )
 
 
-def consolidate(project_dir: Path) -> int:
+#: The flag that consolidates a review over a tree that changed after
+#: dispatch. Named here because the refusal tells the builder to pass it and
+#: the CLI parses it — one spelling for both.
+TREE_CHANGED_FLAG = "--tree-changed-by-builder"
+
+#: The review-fact body key (and findings-cache key) carrying the attestation.
+TREE_CHANGED_KEY = "tree_changed_during_review"
+
+
+def describe_tree_change(changed: dict) -> str:
+    """One rendering of an attestation, for every surface that shows one."""
+    paths = ", ".join(changed.get("paths") or []) or "(tree unverifiable)"
+    return f"{paths} — builder's reason: {changed.get('reason')}"
+
+
+def tree_changed_since_dispatch(
+    project_dir: Path, manifest: dict
+) -> "tuple[str, list[str] | str | None]":
+    """Compare the working tree recorded at dispatch with the one now.
+
+    Returns ``("unrecorded", None)`` for a manifest written before
+    ``dispatch_tree`` existed, ``("unchanged", [])``, ``("changed", paths)``,
+    or ``("unverifiable", reason)`` when either tree cannot be read.
+
+    Prawduct's own session files (``core.GITIGNORE_ENTRIES``) are exempt by
+    path rather than by trusting the product's ``.gitignore``: dispatch itself
+    writes the marker and the dispatch clock after capturing the tree, and the
+    reviewer must write its started marker and partial, so a repo missing the
+    ignore entries would otherwise refuse every review over them. Nothing else
+    is exempt, because a diff cannot say who changed a path — that is the
+    builder's call, made with the flag."""
+    dispatch_tree = manifest.get("dispatch_tree")
+    if not dispatch_tree:
+        return "unrecorded", None
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok":
+        return "unverifiable", f"tree capture failed: {capture.get('reason', 'unknown')}"
+    if capture["tree"] == dispatch_tree:
+        return "unchanged", []
+    changed = evidence.tree_diff(project_dir, dispatch_tree, capture["tree"])
+    if changed is None:
+        return "unverifiable", f"could not diff against dispatch tree {dispatch_tree[:12]}"
+    # `tree_diff` paths are repo-root relative; the entries are project relative.
+    rc, prefix, err = evidence.run_git(project_dir, "rev-parse", "--show-prefix")
+    if rc != 0:
+        return "unverifiable", f"could not locate the project in its repo ({err})"
+    paths = [c for c in changed if not _is_session_file(c, prefix)]
+    return ("changed", paths) if paths else ("unchanged", [])
+
+
+def _is_session_file(path: str, prefix: str) -> bool:
+    """Whether a repo-relative ``path`` is one of ``GITIGNORE_ENTRIES``, read
+    with gitignore's own anchoring: an entry containing a ``/`` before its end
+    is anchored at the project root (``prefix``); one without (``__pycache__/``)
+    matches at any depth. A trailing ``/`` names a directory."""
+    parts = path.split("/")
+    for entry in GITIGNORE_ENTRIES:
+        is_dir = entry.endswith("/")
+        name = entry.rstrip("/")
+        if "/" in name:
+            anchored = prefix + name
+            if path == anchored or (is_dir and path.startswith(anchored + "/")):
+                return True
+        elif (name in parts[:-1]) if is_dir else (parts[-1] == name):
+            return True
+    return False
+
+
+def _tree_changed_refusal(review_id: str, state: str, detail: "list[str] | str") -> str:
+    if state == "changed":
+        what = (
+            "the working tree changed between dispatch and consolidation: "
+            + ", ".join(detail)  # type: ignore[arg-type]
+        )
+    else:
+        what = f"could not confirm the working tree is unchanged since dispatch ({detail})"
+    return (
+        f"critic-consolidate: {what}. A reviewer may write only its started "
+        f"marker and partial, so {review_id} is NOT consolidated; its partials "
+        "stay on disk. This is the main session's decision, never a reviewer's:\n"
+        "  - If a reviewer made the change: revert it, then `prawduct-hook "
+        "critic-discard` and re-run the review.\n"
+        "  - If you (the builder) made it while the review ran: `prawduct-hook "
+        f'critic-consolidate {TREE_CHANGED_FLAG} "<what you changed and why>"` '
+        "— the paths and your reason are written into the review fact."
+    )
+
+
+def _tree_changed_line(body: dict) -> str:
+    changed = body.get(TREE_CHANGED_KEY)
+    if not changed:
+        return ""
+    return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
+
+
+def consolidate(
+    project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
+) -> int:
     """Merge complete reviewer partials into evidence facts + the derived
     cache. Idempotent.
+
+    ``trigger`` names the calling path (one of ``ledger.CONSOLIDATION_TRIGGERS``)
+    and is recorded on the ``review.critic`` ledger event. Required, and never
+    derived here: every path reaches this function with the same state, so only
+    the caller knows which one it is. An unknown value raises ``ValueError``
+    before anything is read or written — it is a caller bug, not a review state.
 
     Exit codes:
       - ``0`` + ``no-op:`` — nothing to do (no manifest, or roster incomplete —
@@ -5109,11 +5285,19 @@ def consolidate(project_dir: Path) -> int:
         cleared, partials removed.
       - ``1`` — fail-closed: malformed manifest/partial, a partial reviewed a
         different commit than dispatched, off-protocol resolutions, a
-        resolution referencing a finding the store doesn't hold, a store
-        write failure, or a ledger failure. Nothing partial is persisted as
+        resolution referencing a finding the store doesn't hold, a working
+        tree that changed since dispatch without ``tree_changed_by_builder``
+        (:func:`tree_changed_since_dispatch`), a store write failure, or a
+        ledger failure. Nothing partial is persisted as
         complete; the manifest is left in place so the fix can retry (fact
         appends already made are healed by the id-idempotency probe).
     """
+
+    if trigger not in ledger.CONSOLIDATION_TRIGGERS:
+        raise ValueError(
+            f"consolidate: trigger must be one of {ledger.CONSOLIDATION_TRIGGERS}, "
+            f"got {trigger!r}"
+        )
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     mpath = manifest_path(prawduct_dir)
@@ -5266,16 +5450,45 @@ def consolidate(project_dir: Path) -> int:
         return 1
     if resolutions:
         known = _known_findings_index(store)
+        # A verify pass may also confirm an observation fix, named by its `O-n`
+        # id in the same slot. Recording it is what lets the round count as
+        # having verified something, and the fix as fixed rather than accepted.
+        observed = set(evidence.observations_index(store))
         for r in resolutions:
-            if (r["review_id"], r["fid"]) not in known:
+            key = (r["review_id"], r["fid"])
+            if key in observed and key not in known:
+                if r["disposition"] != "fixed":
+                    print(
+                        f"critic-consolidate: resolution of observation "
+                        f"{r['fid']!r} of review {r['review_id']!r} is "
+                        f"{r['disposition']!r} — an observation gates nothing, so "
+                        "the only verdict that records anything is 'fixed'; "
+                        "fail-closed.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                continue
+            if key not in known:
                 print(
                     f"critic-consolidate: resolution targets finding "
                     f"{r['fid']!r} of review {r['review_id']!r}, which the "
                     "evidence store does not hold — a resolution must "
-                    "reference a recorded finding; fail-closed.",
+                    "reference a recorded finding or observation; fail-closed.",
                     file=sys.stderr,
                 )
                 return 1
+
+    dropped = 0
+    if is_verify:
+        partials, dropped = scope_verify_observations(partials, store)
+        if dropped:
+            print(
+                f"critic-consolidate: dropped {dropped} observation(s) that judge no "
+                "named fix — in `verify-resolutions` an observation carries "
+                "`about: {review_id, fid}` naming the prior finding or observation "
+                "whose fix it judges; anything else waits for the boundary review.",
+                file=sys.stderr,
+            )
 
     # All preconditions met — append the review fact (idempotent by id: the
     # CRT-4B7X double-consolidate race appends exactly one).
@@ -5296,6 +5509,23 @@ def consolidate(project_dir: Path) -> int:
             prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
         )
         body = build_fact_body(manifest, partials, dispatched_at=dispatched_at)
+        if dropped:
+            # On the fact, not only stderr: without it a verify pass that noticed
+            # nothing and one whose every observation was dropped read alike, and
+            # the narrowing's own yield could not be measured.
+            body["observations_dropped"] = dropped
+        tree_state, tree_detail = tree_changed_since_dispatch(project_dir, manifest)
+        if tree_state in ("changed", "unverifiable"):
+            if not tree_changed_by_builder:
+                print(_tree_changed_refusal(review_id, tree_state, tree_detail),
+                      file=sys.stderr)
+                return 1
+            body[TREE_CHANGED_KEY] = {
+                "paths": tree_detail if tree_state == "changed" else [],
+                "reason": tree_changed_by_builder,
+            }
+            if tree_state == "unverifiable":
+                body[TREE_CHANGED_KEY]["unverifiable"] = tree_detail
         result = evidence.append_fact(project_dir, "review", review_id, body)
         if result["status"] != "appended":
             print(
@@ -5442,7 +5672,7 @@ def consolidate(project_dir: Path) -> int:
         )
     else:
         models = [p.get("model") for p in partials if p.get("model")]
-        argv = ["--event", "review.critic"]
+        argv = ["--event", "review.critic", "--trigger", trigger]
         if manifest.get("scope"):
             argv += ["--scope", manifest["scope"]]
         if manifest.get("chunk"):
@@ -5552,6 +5782,8 @@ def consolidate(project_dir: Path) -> int:
         # Only when there is something to fix — a clean pass that ended with a
         # fix strategy attached would read as work it does not have.
         + (_BATCH_FIX_DIRECTIVE if all_findings else "")
+        # Last: the directive above continues the summary sentence inline.
+        + _tree_changed_line(fact_body)
     )
     # The single-pass reviewer runs this command itself, so everything above
     # lands in the REVIEWER's context and dies there — the builder never sees a

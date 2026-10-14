@@ -360,6 +360,13 @@ class TestChunk05ConsolidateOrBlock:
         assert not (prawduct / ".critic-active").is_file()
         assert not (prawduct / ".critic-partials").exists()
         assert "self-healed" in result.stderr
+        # The backstop names itself on the ledger, so a session that relied on
+        # it is distinguishable from one whose SubagentStop hook did the work.
+        events = [json.loads(line) for line in
+                  (prawduct / ".governance-ledger.jsonl").read_text().splitlines()]
+        assert [ev["trigger"] for ev in events if ev["event"] == "review.critic"] == [
+            "session-end-backstop"
+        ]
 
     def test_incomplete_partials_block_naming_missing(self, tmp_path):
         """Marker + manifest but a missing reviewer → block naming who's missing;
@@ -558,7 +565,7 @@ class TestASelfHealSurvivesTheSessionBoundary:
     lands on the NEXT invocation, so this is where it has to be asserted.
     """
 
-    def test_a_complete_roster_kept_by_the_boundary_still_self_heals(self, tmp_path):
+    def test_a_complete_roster_kept_by_the_boundary_still_reaches_the_backstop(self, tmp_path):
         repo, prawduct, env = _dispatched_real_repo(tmp_path)
         manifest = json.loads(
             (prawduct / ".critic-partials" / "manifest.json").read_text()
@@ -592,23 +599,28 @@ class TestASelfHealSurvivesTheSessionBoundary:
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
         )
 
-        # The self-heal ran: the review was consolidated, its fact recorded, and
-        # the marker cleared by the act that consumed it.
-        assert "self-healed" in result.stderr, (
+        # The backstop REACHED the kept review — the boundary did not cost it
+        # its self-heal — and refused it, because this session changed the tree
+        # after dispatch and a diff cannot say the builder, not a reviewer, did.
+        # The backstop never attests for the builder, so the review waits, intact.
+        assert "changed between dispatch and consolidation: src/new.py" in result.stderr, (
             "the session boundary must not have cost this review its self-heal. "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
+        assert "CRITIC REVIEW (consolidation failed)" in result.stderr
+        assert (prawduct / ".critic-partials" / "manifest.json").is_file()
+        assert _ABANDONED_MSG not in result.stderr
+        assert "CRITIC REVIEW (incomplete)" not in result.stderr
+
+        attested = subprocess.run(
+            ["python3", str(HOOK), "critic-consolidate",
+             "--tree-changed-by-builder", "the new session's own edit"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
+        assert attested.returncode == 0, attested.stderr
         assert (prawduct / ".critic-findings.json").is_file()
         assert not (prawduct / ".critic-active").is_file()
         assert not (prawduct / ".critic-partials").exists()
-        assert _ABANDONED_MSG not in result.stderr
-        assert "CRITIC REVIEW (incomplete)" not in result.stderr
-        # Deliberately NOT asserting a clean exit. This session edited a file
-        # AFTER the review it healed, so the coverage gate has a real gap to
-        # report — a different gate answering a different question. Pinning
-        # rc == 0 here would make this test fail whenever the fixture's
-        # post-boundary edit changes, for a reason that has nothing to do with
-        # whether the boundary preserved the self-heal.
 
 
 class TestNoShippedSurfaceSanctionsTheBareDelete:

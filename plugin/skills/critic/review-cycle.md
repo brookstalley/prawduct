@@ -92,7 +92,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
-**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `.claude/rules/learnings/` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review lands, tell the user what you are waiting on.
+**Prep work before invoking cumulative.** A cumulative review takes ~4-10 minutes. Before invoking it, complete prep that doesn't depend on its findings — `.claude/rules/learnings/` for next topics, draft the PR description, audit the backlog, capture deferred reflections — so you integrate findings the moment it returns. This prep is also what keeps the wait cheap: a session that idles silently while reviewers run lets its prompt cache expire and re-reads its whole context when they land. If the prep runs out before the review lands, tell the user what you are waiting on. Prep that changes a repo file other than prawduct's session files (a learnings rule, a new draft) makes consolidation refuse until you attest: `critic-consolidate --tree-changed-by-builder "<why>"` records the paths and reason in the review fact. Keep drafts in your scratchpad.
 
 ### Verify-resolutions anchoring and demotion
 
@@ -164,10 +164,9 @@ Everything above is the **demand** side — what the builder does with findings 
 is the **supply** side, and without it the demand-side rules are asked to absorb an inflow the
 framework itself creates.
 
-**In `verify-resolutions`, a new finding is BLOCKING or it is not a finding.** Anything lesser the
-reviewer notices is reported as an **OBSERVATION** in prose and never enters `findings`. (The stage
-norm above generalizes the demotion to every inner-stage mode; this section keeps the reasoning that
-first earned it.)
+**In `verify-resolutions`, a new finding is BLOCKING or it is not a finding.** Anything lesser is an
+**OBSERVATION** only when its `about` names the fix it judges; consolidation drops the rest. (The stage
+norm above generalizes the demotion to every inner-stage mode; this section keeps its reasoning.)
 
 *Why this mode and not the others.* A verify pass exists to answer one question — were the named
 findings resolved? Walking the fix delta at full severity on top of that turns round N's fix into
@@ -193,10 +192,10 @@ lower.
 bound is narrower than it first reads, and the weaker reading is the honest one: `verify-resolutions`
 is never a first review (`critic-begin` demotes when no usable prior fact exists), so the tree
 *beneath* the fix was fully reviewed — but the fix delta's own content was not, and post-cumulative
-fixes route here too. What holds is that the builder meets every observation twice: in the report,
-under an `### Observations` section with a stated count, and on the review fact under an `O-n` id —
-which makes it **answerable** (`disposition <review-id> O-1 --accept "<reason>"`). Declining one
-stops costing the reasoning, which is what made fixing it the only answer that left a trace.
+fixes route here too, and an observation judging no named fix is dropped (counted on the fact as
+`observations_dropped`) — the boundary review re-reads that delta. A kept one the builder meets twice:
+in the report, and on the fact under an `O-n` id, which makes it **answerable**
+(`disposition <review-id> O-1 --accept "<reason>"`).
 
 *Yield is emitted on both arms.* `review-stats` shows under-firing as B/W/N and over-firing — real
 work suppressed — as the `observations` count beside it, derived from the items riding the review
@@ -314,7 +313,7 @@ findings with the budget as their reason, and renders the census. It never count
 `verify-resolutions` pass, and never sweeps a BLOCKING finding — so **it can end a review loop and
 can never open a gate**. `--force` buys one anyway; needing that every time means the number is wrong.
 
-**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` infers `final` (the right mid-chunk look); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta. **A short plan gets this sequencing without the declaration**, on every chunk: mid-chunk `/prawduct:critic` answers `deferred` rather than `final`, and the boundary review that follows the last commit is the plan's whole review record. The eligibility is re-asked at every inference and every Stop against the branch's actual paths, so a later chunk that lands on a risk surface owes its review like any other.
+**Last chunk of a `Type: cumulative-final` plan — one review, not two.** Commit the chunk, then run `/prawduct:critic cumulative` ONCE: that single review serves as both the chunk's review and the PR-gate evidence. Don't run a separate `final` first — cumulative runs the same 7 goals plus cross-checks over `merge-base...HEAD`, a scope that already contains the chunk's diff, so a preceding `final` re-pays 4-10 minutes for assurance the cumulative re-derives. Mode inference implements the sequencing: with the last chunk's work still uncommitted, `/prawduct:critic` answers `deferred` (commit first); once committed and clean, it infers `cumulative` — the at-commit review. Post-cumulative fixes take a `verify-resolutions` pass, not a second full one — its fact extends coverage over the fix delta. **A short plan gets this sequencing without the declaration**, on every chunk: mid-chunk `/prawduct:critic` answers `deferred` rather than `final`, and the boundary review that follows the last commit is the plan's whole review record. The eligibility is re-asked at every inference and every Stop against the branch's actual paths, so a later chunk that lands on a risk surface owes its review like any other.
 
 ## Reviewer Cross-Checks
 
@@ -326,13 +325,13 @@ Record-Lint and Governing-Artifact Reconciliation) are in `cross-checks.md`, the
 
 Every review cycle must produce a record — governance without an audit trail is documentation fiction. Every mode records the same way: `critic-begin` writes the dispatch manifest (code), the reviewer(s) write partials, and `prawduct-hook critic-consolidate` appends the review fact to the evidence store and regenerates `.prawduct/.critic-findings.json` from it. No model writes the manifest, the findings file, the store, or the ledger — a clean pass persists an empty findings array through the same path (see `review-protocol.md` "Review Execution").
 
-**Dispatch manifest** (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`; schema/validators in `lib/critic_consolidate.py`). Keys: review `id`, `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale, relayed via `--chosen-by`), `roster` + `roster_chosen_by`, `rendezvous` (each role's resolved partial + started paths, derived from `partial_path`/`started_path`, which own the shape — recorded here so no instruction surface spells a filename), `commit_reviewed` (HEAD at dispatch), the review interval (`base_tree`/`head_tree` + commits), `files_changed` plus its subject/oracle split (`files_reviewed`/`files_oracle`), all derived from the interval, the review `stage` with `judgeable_files`, `chunk_type` and the rendered `signals` line ("Severity is stage-keyed"), and the relayed telemetry `tier`, `scope`, `chunk`, `base_reviewed`. `critic-consolidate` refuses to persist unless every roster role reported a valid partial at the manifest's `commit_reviewed`, carrying the manifest's `id` as its `dispatch_id` — the binding that stops a straggler from a displaced review consolidating as this one.
+**Dispatch manifest** (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`; schema/validators in `lib/critic_consolidate.py`). Keys: review `id`, `mode` (verbose string), `mode_chosen_by` (the `infer-critic-mode` rationale, relayed via `--chosen-by`), `roster` + `roster_chosen_by`, `rendezvous` (each role's resolved partial + started paths, derived from `partial_path`/`started_path`, which own the shape — recorded here so no instruction surface spells a filename), `commit_reviewed` (HEAD at dispatch), the review interval (`base_tree`/`head_tree` + commits), `files_changed` plus its subject/oracle split (`files_reviewed`/`files_oracle`), all derived from the interval, the review `stage` with `judgeable_files`, `chunk_type` and the rendered `signals` line ("Severity is stage-keyed"), and the relayed telemetry `tier`, `scope`, `chunk`, `base_reviewed`. `critic-consolidate` refuses to persist unless every roster role reported a valid partial at the manifest's `commit_reviewed`, carrying the manifest's `id` as its `dispatch_id` — the binding that stops a straggler from a displaced review consolidating as this one. `dispatch_tree` (the whole working tree at dispatch) arms the same refusal for a tree changed since ("Prep work" above).
 
 **The findings cache is a derived view.** `.prawduct/.critic-findings.json` is regenerated from the newest review fact and carries its `fact_id`; builders and briefings read it for *content*, and no gate reads it — gates compose over the store.
 
 ### The Governance-Event Ledger
 
-The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: `critic-consolidate` appends one `review.critic` event per consolidated review (the PR skill appends `review.pr` the same way). `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
+The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: every consolidation path appends one `review.critic` event naming itself as `trigger` (the PR skill appends `review.pr`). `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
 
 Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **derived in code** from the branch name matched against the scopes build plans declare, or passed explicitly as an override. `active_build_plan` is only the last fallback. Do not derive scope yourself and pass it: an agent reading that pointer is what attributed manifests, review facts and ledger events to unrelated plans.
 

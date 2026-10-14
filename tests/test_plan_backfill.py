@@ -210,6 +210,26 @@ class TestBackfill:
         plan_backfill.backfill(prawduct, date=DATE, apply=True)
         assert (prawduct / "artifacts" / "build-plan-beta.md").is_file()
 
+    def test_a_shipped_plan_marked_lifecycle_active_is_archived(self, tmp_path: Path) -> None:
+        """`active` is no end of life, so the sweep archives the plan rather
+        than routing it to ``blocked`` as if it had been archived already."""
+        prawduct = _make_repo(tmp_path, plans=())
+        (prawduct / "artifacts" / "build-plan-alpha.md").write_text(
+            _plan("alpha").replace("scope: alpha\n", "scope: alpha\nlifecycle: active\n"),
+            encoding="utf-8",
+        )
+        # Surveyed before the apply moves the plan, so this can actually fail.
+        survey = plan_backfill.survey(prawduct)
+        assert survey["blocked"] == []
+        assert [c["scope"] for c in survey["shipped"]] == ["alpha"]
+
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+        assert len(result["archived"]) == 1
+        text = (prawduct / "artifacts" / "archive" / "build-plan-alpha.md").read_text()
+        assert [ln for ln in text.splitlines() if ln.startswith("lifecycle:")] == [
+            "lifecycle: completed"
+        ]
+
     def test_unticked_boxes_block_the_AUTOMATIC_sweep(self, tmp_path: Path) -> None:
         """Unticked chunks route to ``blocked``, naming them (#634).
 
