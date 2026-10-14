@@ -123,7 +123,7 @@ def onboarding_markers(project_dir) -> list[str]:
     # framework's OWN "already onboarded" test (init_product.already_scaffolded,
     # migrate_plugin.already_migrated), so its absence is exactly "an onboard here
     # would still do work". It is the only marker prawduct's own checkout carries:
-    # that repo IS the framework, so its CLAUDE.md holds the full methodology
+    # that repo IS the framework, so its AGENTS.md holds the full contract
     # rather than the thin anchor — which is why one marker has to suffice alone.
     if read_str_yaml_key(root.joinpath(*_STATE_REL), DISTRIBUTION_KEY) == DISTRIBUTION_VALUE:
         markers.append(f"project-state.yaml records `{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}`")

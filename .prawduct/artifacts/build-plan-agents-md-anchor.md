@@ -130,7 +130,7 @@ Claude-only shim in `CLAUDE.md`, so everything the anchor says moves to `AGENTS.
 ## Status
 
 - [x] Chunk 01 — The anchor moves to AGENTS.md; writers and anchor_repair move together
-- [ ] Chunk 02 — Readers and the protected-path classifier know AGENTS.md
+- [x] Chunk 02 — Readers and the protected-path classifier know AGENTS.md
 - [ ] Chunk 03 — This repo onto the layout, doctor text, release notes, live check
 
 Context: Re-cut 2026-10-14 from the 2026-09-30 draft. D-8 removed the Claude shim, so the split

@@ -5,6 +5,30 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-14: the governance anchor lives in AGENTS.md; CLAUDE.md imports it
+
+<!-- prawduct: type=feature | scope=agents-md-anchor -->
+
+- #942, under the owner's rulings on #942 (2026-09-30) and #928 D-8 (2026-10-10), plus two
+  answers given in session on 2026-10-14 (the Claude Code line lives inside the `AGENTS.md`
+  block; an existing product `CLAUDE.md` keeps its own text).
+- **The anchor moves.** `STATIC_ANCHOR` is reworded for any host with one Claude Code line, and
+  `migrate_plugin.apply_governance_anchor` writes it to `AGENTS.md` and makes `CLAUDE.md` import
+  it. `CLAUDE.md` gives up its anchor only when `AGENTS.md` can hold it: an `AGENTS.md` linked
+  outside the pair or dangling is never written through, and the anchor stays put. Two names
+  for one file through a symlink keep one anchor and no self-import.
+- **The repair moves fleets.** `anchor_repair` grades the pair, with new `legacy-layout` and
+  `import-missing` statuses; `ANCHOR_V5` (the 3.6–3.7 anchor) joins the archive; the `reanchor`
+  preview lists every file it would write with the exact bytes (`writes` in `--json`). Doctor
+  Health Check #4 describes each status.
+- **Every reader knows `AGENTS.md`.** Root `AGENTS.md` is protected (`agents-md-edited`); the
+  onboarding probe, the briefing's size check and critical-rules read, and `jurisdiction`'s corpus
+  all read it. Migrate says so when it could not place the anchor.
+- **This repo moved too.** Its contract is in `AGENTS.md`, and `CLAUDE.md` is `@AGENTS.md`.
+- A decision is recorded under `architecture.md`'s reconciled-files norm; the norm's wording is
+  left for the owner to amend. The #928 requirements doc's header and inventory rows 29 and 30
+  are updated.
+
 ## 2026-10-13: stop buying verify rounds that have nothing to verify
 
 <!-- prawduct: type=bugfix | scope=empty-verify-rounds -->

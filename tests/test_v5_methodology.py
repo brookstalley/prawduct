@@ -1549,9 +1549,10 @@ def test_recorded_token_count_matches_the_file(rel_path):
 #: "unit-cost is the reviewer's payload, what a mode must load, per-mode and
 #: reducible" -- from reviewer payloads to every injected surface.
 INJECTED_SESSION_SHAPES = {
-    # A framework-repo session: the always-loaded CLAUDE.md plus the one digest
-    # `hooks/digest.py` emits for every governed repo.
-    "framework": ("CLAUDE.md", "methodology/session-digest.md"),
+    # A framework-repo session: the always-loaded CLAUDE.md, the AGENTS.md it
+    # imports (the contract, since #942), plus the one digest `hooks/digest.py`
+    # emits for every governed repo.
+    "framework": ("CLAUDE.md", "AGENTS.md", "methodology/session-digest.md"),
     # A product session: the thin governance anchor `migrate_plugin` writes into
     # a governed repo's CLAUDE.md, plus the full digest every product receives.
     "product": ("<STATIC_ANCHOR>", "methodology/session-digest.md"),
@@ -1894,6 +1895,9 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # AGENTS.md and gained a host-labelled Claude Code line. Paid in place by
     # folding the opening into one clause and the Critic bullet's command into
     # the digest's, which carries it.
+    # framework unchanged at 3108 the same day: this repo's contract moved from
+    # CLAUDE.md to AGENTS.md and the shape gained AGENTS.md as a member; the
+    # import line's cost was paid in place in AGENTS.md's routing sentence.
     "framework": 3108,
     "product": 2226,
 }
@@ -2151,8 +2155,8 @@ def _injected_member_text(member: str) -> str:
         from lib.migrate_plugin import STATIC_ANCHOR
 
         return STATIC_ANCHOR
-    if member == "CLAUDE.md":
-        return (REPO_ROOT / "CLAUDE.md").read_text()
+    if member in ("CLAUDE.md", "AGENTS.md"):
+        return (REPO_ROOT / member).read_text()
     return read_file(member)
 
 
