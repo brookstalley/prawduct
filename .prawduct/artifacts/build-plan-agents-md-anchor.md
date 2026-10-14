@@ -141,13 +141,14 @@ Claude-only shim in `CLAUDE.md`, so everything the anchor says moves to `AGENTS.
 
 - [x] Chunk 01 — The anchor moves to AGENTS.md; writers and anchor_repair move together
 - [x] Chunk 02 — Readers and the protected-path classifier know AGENTS.md
-- [ ] Chunk 03 — This repo onto the layout, doctor text, release notes, live check
+- [x] Chunk 03 — This repo onto the layout, doctor text, release notes, live check
 
-Context: Re-cut 2026-10-14 from the 2026-09-30 draft. D-8 removed the Claude shim, so the split
-into a neutral and a Claude text is gone. This repo's own `CLAUDE.md` moved into scope (#942
-acceptance). The re-cut kept the earlier lesson: `anchor_repair.py` imports the current anchor,
-and `tests/test_anchor_repair.py` renders it out of every release tag, so the anchor's shape and
-the repair change in one chunk.
+Context: All three chunks built, reviewed and committed. Boundary `cumulative`
+rev-20261014T152605Z-da614b2b: 0 blocking; its warnings were fixed through one planner
+(`plan_governance_anchor`) and verified (rev-20261014T155940Z-c2aa7820,
+rev-20261014T160651Z-a06bb46d, both clean); O-2 accepted on the record. Suite green, recorded
+2026-10-14 (`test-status`), run with `--timeout 120` because #997's load-timeout crashes kill
+workers at the suite's 30s default. Plan re-cut 2026-10-14 from the 2026-09-30 draft for D-8.
 
 ## Chunk 01 — The anchor moves to AGENTS.md; writers and anchor_repair move together
 
