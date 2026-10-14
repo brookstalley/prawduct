@@ -157,7 +157,7 @@ verify rounds with nothing open falls back toward the pre-3.7 ~5%.
 - [x] Chunk 01: an owed boundary review counts as a later review (A)
 - [x] Chunk 02: a verify pass can confirm an observation fix (C)
 - [x] Chunk 03: a verify pass reports observations only about the fixes it verifies (B)
-Context: All three chunks built, reviewed and committed. Boundary `cumulative` rev-20261013T182630Z-260e9948: 0 blocking. Its warnings were fixed and verified (rev-20261013T193457Z-ff971d45, clean), and every finding and observation is dispositioned. Suite green (9023 passed). Next: `/prawduct:pr create` when the owner asks.
+Context: All three chunks built, reviewed and committed. Boundary `cumulative` rev-20261013T182630Z-260e9948: 0 blocking. Its warnings were fixed and verified (rev-20261013T193457Z-ff971d45, clean), and every finding and observation is dispositioned. Suite green (8926 passed, 17 skipped; recorded 2026-10-14 at HEAD 3a8d5427 — an earlier note said 9023, which no record backs). Next: `/prawduct:pr create` when the owner asks.
 
 ## Verification Strategy
 
