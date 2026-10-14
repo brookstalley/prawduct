@@ -189,8 +189,11 @@ def run_migrate(project_dir: Path, *flags: str) -> dict:
         [sys.executable, str(HOOK), "migrate-plugin", *flags, "--json"],
         capture_output=True, text=True, env=env, timeout=30,
     )
-    assert proc.returncode == 0, f"migrate failed: {proc.stderr}\n{proc.stdout}"
-    return json.loads(proc.stdout)
+    assert proc.returncode in (0, 1), f"migrate failed: {proc.stderr}\n{proc.stdout}"
+    result = json.loads(proc.stdout)
+    # A refusal is a writer that did not write: exit 1, and only then.
+    assert proc.returncode == (1 if result.get("refused") else 0), proc.stdout
+    return result
 
 
 def _snapshot(root: Path, rels: list[str]) -> dict[str, str]:
@@ -620,16 +623,20 @@ def test_marker_gitignored(repo: Path):
 
 
 # =============================================================================
-# Chunk 10 — thin static CLAUDE.md anchor (design §4)
+# Chunk 10 — thin static anchor (design §4); in AGENTS.md since #942
 # =============================================================================
 
 
 def test_anchor_inserted_in_place_of_block(repo: Path):
-    # Stripping the heavy block leaves the thin static anchor behind, in place.
+    """Renegotiated for #942: the heavy block is replaced in place by the
+    `@AGENTS.md` import, and the anchor itself lands in AGENTS.md, where every
+    agent host reads it."""
     run_migrate(repo, "--apply")
-    text = (repo / "CLAUDE.md").read_text()
-    # The block is gone; the anchor (with its own distinct marker) is present.
-    assert "PRAWDUCT:BEGIN" not in text and "PRAWDUCT:END" not in text
+    claude = (repo / "CLAUDE.md").read_text()
+    assert "PRAWDUCT:BEGIN" not in claude and "PRAWDUCT:END" not in claude
+    assert "PRAWDUCT:ANCHOR" not in claude
+    assert "@AGENTS.md" in claude.splitlines()
+    text = (repo / "AGENTS.md").read_text()
     assert "PRAWDUCT:ANCHOR" in text
     # The few hardest rules + the plugin pointer (design §4).
     assert "/prawduct:methodology building" in text  # read the build cycle before code
@@ -640,14 +647,14 @@ def test_anchor_inserted_in_place_of_block(repo: Path):
     assert result["already_migrated"] is True
 
 
-def test_anchor_sits_between_product_content(repo: Path):
-    # Document shape preserved: product title → governance anchor → product body.
+def test_the_import_sits_between_product_content(repo: Path):
+    # Document shape preserved: product title → the import → product body.
     run_migrate(repo, "--apply")
     text = (repo / "CLAUDE.md").read_text()
     i_title = text.index("# CLAUDE.md — MyProduct")
-    i_anchor = text.index("PRAWDUCT:ANCHOR")
+    i_import = text.index("@AGENTS.md")
     i_product = text.index("Don't touch this product instruction.")
-    assert i_title < i_anchor < i_product, "anchor must land where the block was"
+    assert i_title < i_import < i_product, "the import must land where the block was"
 
 
 def test_anchor_is_version_free(repo: Path):
@@ -655,7 +662,9 @@ def test_anchor_is_version_free(repo: Path):
     # fixture's product content is version-free, so any version-like token in the
     # migrated CLAUDE.md would originate from the framework-authored anchor.
     run_migrate(repo, "--apply")
-    text = (repo / "CLAUDE.md").read_text()
+    # Both files: the anchor lives in AGENTS.md, and CLAUDE.md is where it used to.
+    text = (repo / "AGENTS.md").read_text() + (repo / "CLAUDE.md").read_text()
+    assert "PRAWDUCT:ANCHOR" in text, "the check must reach the anchor it polices"
     current_version = (Path(__file__).resolve().parents[1] / "plugin" / "VERSION").read_text().strip()
     assert current_version not in text, "the current framework version must not be baked in"
     assert re.search(r"\bv?\d+\.\d+", text) is None, "anchor must not embed a version number"
@@ -674,7 +683,7 @@ def test_anchor_tells_a_plugin_less_session_that_governance_is_off(repo: Path):
     better still.
     """
     run_migrate(repo, "--apply")
-    text = (repo / "CLAUDE.md").read_text()
+    text = (repo / "AGENTS.md").read_text()
     assert "governance is OFF" in text, "the anchor must name the condition"
     assert "claude plugin install" in text, "and the command that ends it"
     # Not merely present — the reader is told to hand it to a human, because an
@@ -683,7 +692,7 @@ def test_anchor_tells_a_plugin_less_session_that_governance_is_off(repo: Path):
     # between is formatting, and a test that pins it fails on a reflow that changed
     # nothing.
     flowed = " ".join(text.split())
-    assert "Tell the user to run" in flowed
+    assert "Tell the user" in flowed
     assert "don't proceed as if governed" in flowed
 
 
@@ -724,7 +733,7 @@ def test_anchor_install_command_names_the_id_from_the_install_contract(repo: Pat
 
     # And what the contract enables is what the anchor tells the reader to install.
     run_migrate(repo, "--apply")
-    text = (repo / "CLAUDE.md").read_text()
+    text = (repo / "AGENTS.md").read_text()
     settings = json.loads((repo / ".claude" / "settings.json").read_text())
     (enabled_id,) = settings["enabledPlugins"].keys()
     assert f"claude plugin install {enabled_id}" in text
@@ -746,8 +755,8 @@ def test_anchor_enforcement_claim_is_conditional_on_the_plugin(repo: Path):
     one-home rule forbids.
     """
     run_migrate(repo, "--apply")
-    text = (repo / "CLAUDE.md").read_text()
-    assert "Enforcement is structural — while the plugin is loaded:" in text
+    text = " ".join((repo / "AGENTS.md").read_text().split())
+    assert "Enforcement is structural — while the integration is loaded:" in text
     assert "Enforcement is structural:" not in text, (
         "the unconditional form is the claim this test exists to keep out"
     )
@@ -766,15 +775,17 @@ def test_anchor_not_duplicated_on_reapply(repo: Path):
         ln + "\n" for ln in state.read_text().splitlines()
         if "distribution: plugin" not in ln
     ))
-    first = (repo / "CLAUDE.md").read_text()
+    first = {p: (repo / p).read_text() for p in ("AGENTS.md", "CLAUDE.md")}
 
     result = run_migrate(repo, "--apply")  # already_migrated is now False again
     assert result["already_migrated"] is False
-    assert "CLAUDE.md" not in result["edited"], "anchor already present → not re-edited"
-    text = (repo / "CLAUDE.md").read_text()
-    assert text == first, "re-apply must not mutate an already-anchored CLAUDE.md"
+    assert "CLAUDE.md" not in result["edited"], "import already present → not re-edited"
+    assert "AGENTS.md" not in result["edited"], "anchor already present → not re-edited"
+    assert {p: (repo / p).read_text() for p in first} == first
+    text = (repo / "AGENTS.md").read_text()
     assert text.count("PRAWDUCT:ANCHOR") == 1
     assert text.count("## Governance (Prawduct)") == 1
+    assert (repo / "CLAUDE.md").read_text().count("@AGENTS.md") == 1
 
 
 def test_dry_run_lists_claude_edit_when_anchor_missing(tmp_path: Path):
@@ -786,11 +797,13 @@ def test_dry_run_lists_claude_edit_when_anchor_missing(tmp_path: Path):
 
     plan = run_migrate(root)
     assert "CLAUDE.md" in plan["edited"]
+    assert "AGENTS.md" in plan["edited"]
 
     run_migrate(root, "--apply")
     text = (root / "CLAUDE.md").read_text()
-    assert "PRAWDUCT:ANCHOR" in text
+    assert text.startswith("@AGENTS.md\n\n")
     assert "## Only product content" in text  # pre-existing content kept
+    assert "PRAWDUCT:ANCHOR" in (root / "AGENTS.md").read_text()
 
 
 def test_migrated_claude_has_no_leading_double_blank(tmp_path: Path):
@@ -1156,9 +1169,94 @@ def test_the_anchor_insert_does_not_leave_a_bare_cr_on_a_crlf_file(tmp_path: Pat
     from lib import migrate_plugin
 
     (tmp_path / ".prawduct").mkdir()
-    target = tmp_path / "CLAUDE.md"
+    target = tmp_path / "AGENTS.md"
     target.write_bytes(b"# Product\r\n\r\nSome prose.\r\n\r\n")
-    migrate_plugin.apply_claude_anchor(tmp_path)
+    migrate_plugin.apply_governance_anchor(tmp_path)
     raw = target.read_bytes()
     assert b"\r\r" not in raw
     assert b"\r\n\r\n\r\n" not in raw
+    assert raw.count(b"\n") == raw.count(b"\r\n")
+
+
+def test_migrate_refuses_untouched_when_an_outside_agents_link_leaves_nowhere_for_the_anchor(
+    tmp_path: Path,
+):
+    """Renegotiated from a success-with-a-note: with AGENTS.md linked outside
+    the repo the anchor has nowhere to go, and a migration that went ahead would
+    strip the framework and record `distribution: plugin` with the pre-2.0 block
+    still in place — after which `reanchor` routes to migrate and migrate says
+    "already migrated", a loop with no exit. So migrate refuses before touching
+    anything, and its reason names the owner's fix."""
+    import os as _os
+
+    root = make_filesync_repo(tmp_path / "linked")
+    shared = tmp_path / "org-rules.md"
+    shared.write_text("# Org-wide rules\n")
+    _os.symlink(shared, root / "AGENTS.md")
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts}
+
+    result = run_migrate(root, "--apply")
+    assert result.get("refused") and "symlink" in result["refused"]
+    after = {p: p.read_bytes() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts}
+    assert after == before, "a refused migration must change nothing"
+    assert shared.read_text() == "# Org-wide rules\n"
+
+
+def test_following_the_refusals_fix_completes_the_migration(tmp_path: Path):
+    """The remedy the refusal names must terminate: replace the link with a
+    file, run migrate again, and the repo reaches a healthy anchor layout."""
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+    from lib import anchor_repair
+
+    root = make_filesync_repo(tmp_path / "fixme")
+    shared = tmp_path / "org-rules.md"
+    shared.write_text("# Org-wide rules\n")
+    _os.symlink(shared, root / "AGENTS.md")
+    assert run_migrate(root, "--apply").get("refused")
+
+    (root / "AGENTS.md").unlink()
+    (root / "AGENTS.md").write_text(shared.read_text())
+    result = run_migrate(root, "--apply")
+    assert not result.get("refused")
+    assert anchor_repair.check(root)["status"] == anchor_repair.STATUS_OK
+
+
+def test_migrate_adds_no_placement_note_on_an_ordinary_repo(repo: Path):
+    result = run_migrate(repo, "--apply")
+    assert not any("not placed" in note for note in result["notes"])
+
+
+def test_a_linked_claude_md_remedy_chain_terminates_at_a_healthy_layout(tmp_path: Path):
+    """CLAUDE.md symlinked out of the repo to a file holding the pre-2.0 block:
+    nothing is written through the link, so each owner edit is named in turn.
+    Adding the import alone must NOT read as finished while the block remains —
+    that was the loop — and doing every named edit completes the migration."""
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+    from lib import anchor_repair
+
+    root = make_filesync_repo(tmp_path / "claude-linked")
+    shared = tmp_path / "shared-claude.md"
+    shared.write_text((root / "CLAUDE.md").read_text())
+    (root / "CLAUDE.md").unlink()
+    _os.symlink(shared, root / "CLAUDE.md")
+
+    first = run_migrate(root, "--apply")
+    assert first.get("refused") and "remove the pre-2.0 PRAWDUCT block" in first["refused"]
+
+    shared.write_text("@AGENTS.md\n\n" + shared.read_text())  # the import alone
+    second = run_migrate(root, "--apply")
+    assert second.get("refused") and "pre-2.0" in second["refused"], (
+        "an import added above a leftover block is not a finished layout"
+    )
+
+    import re as _re
+    shared.write_text(_re.sub(r"<!-- PRAWDUCT:BEGIN.*?PRAWDUCT:END -->\n?", "", shared.read_text(), flags=_re.S))
+    third = run_migrate(root, "--apply")
+    assert not third.get("refused"), third
+    assert anchor_repair.check(root)["status"] == anchor_repair.STATUS_OK

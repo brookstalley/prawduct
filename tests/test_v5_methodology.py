@@ -929,7 +929,9 @@ LAST_MEASURED_TOKENS = {
     # rewritten in place.
     # -15 the same day (boundary review): the "every observation met twice" claim, false once a
     # verify pass drops off-topic ones, is rewritten to say what is dropped and counted.
-    "skills/critic/review-cycle.md": 7517,
+    # -10 on 2026-10-14 (agents-md-anchor): the protected set names root AGENTS.md, paid in
+    # place by folding "let the gate say otherwise; it is the gate's answer" into one clause.
+    "skills/critic/review-cycle.md": 7507,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1269,7 +1271,9 @@ LAST_MEASURED_TOKENS = {
     # +35 on 2026-10-09 (requirements-alignment w1 boundary review): Goals gains "Decisions
     # made mid-build", the home building.md's decision line was missing, and the Foreign API
     # fallback records its assumed surface as an inference in Goals. A READING, no ceiling.
-    "methodology/planning.md": 5782,
+    # +5 on 2026-10-14 (agents-md-anchor): the trivial bound's file-set list names root
+    # AGENTS.md and `agents/`, both in the protected set it restates. A READING, no ceiling.
+    "methodology/planning.md": 5787,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1545,9 +1549,10 @@ def test_recorded_token_count_matches_the_file(rel_path):
 #: "unit-cost is the reviewer's payload, what a mode must load, per-mode and
 #: reducible" -- from reviewer payloads to every injected surface.
 INJECTED_SESSION_SHAPES = {
-    # A framework-repo session: the always-loaded CLAUDE.md plus the one digest
-    # `hooks/digest.py` emits for every governed repo.
-    "framework": ("CLAUDE.md", "methodology/session-digest.md"),
+    # A framework-repo session: the always-loaded CLAUDE.md, the AGENTS.md it
+    # imports (the contract, since #942), plus the one digest `hooks/digest.py`
+    # emits for every governed repo.
+    "framework": ("CLAUDE.md", "AGENTS.md", "methodology/session-digest.md"),
     # A product session: the thin governance anchor `migrate_plugin` writes into
     # a governed repo's CLAUDE.md, plus the full digest every product receives.
     "product": ("<STATIC_ANCHOR>", "methodology/session-digest.md"),
@@ -1886,8 +1891,15 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # redundant closing-turn clause was dropped, holding the digest's 500-char reserve;
     # the product +38 is DECLARED. The framework session falls because this repo's
     # CLAUDE.md "Before Building" block became a pointer at the digest's text.
+    # product 2232 -> 2226 on 2026-10-14 (agents-md-anchor): the anchor moved to
+    # AGENTS.md and gained a host-labelled Claude Code line. Paid in place by
+    # folding the opening into one clause and the Critic bullet's command into
+    # the digest's, which carries it.
+    # framework unchanged at 3108 the same day: this repo's contract moved from
+    # CLAUDE.md to AGENTS.md and the shape gained AGENTS.md as a member; the
+    # import line's cost was paid in place in AGENTS.md's routing sentence.
     "framework": 3108,
-    "product": 2232,
+    "product": 2226,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2045,8 +2057,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # with the reading, one over each.
     # 3135 -> 3109, 2195 -> 2233 on 2026-10-09 (requirements-alignment w1): one over
     # each reading; the product raise is declared in the reading table.
+    # 2233 -> 2227 product on 2026-10-14 (agents-md-anchor): ratcheted with the
+    # reading, one over.
     "framework": 3109,
-    "product": 2233,
+    "product": 2227,
 }
 
 
@@ -2141,8 +2155,8 @@ def _injected_member_text(member: str) -> str:
         from lib.migrate_plugin import STATIC_ANCHOR
 
         return STATIC_ANCHOR
-    if member == "CLAUDE.md":
-        return (REPO_ROOT / "CLAUDE.md").read_text()
+    if member in ("CLAUDE.md", "AGENTS.md"):
+        return (REPO_ROOT / member).read_text()
     return read_file(member)
 
 
@@ -5976,7 +5990,8 @@ class TestReviewCycle:
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
-        assert tokens < 7518, f"review-cycle.md is ~{tokens} tokens, should be <7518"
+        # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
+        assert tokens < 7508, f"review-cycle.md is ~{tokens} tokens, should be <7508"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

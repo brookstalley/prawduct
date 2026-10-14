@@ -1027,12 +1027,12 @@ def assemble_session_briefing(
         if relay_advisories:
             lines.append(ADVISORY_RELAY_TEXT)
 
-    # CLAUDE.md size check
-    claude_md_path = project_dir / "CLAUDE.md"
-    if claude_md_path.is_file():
+    # Instruction-file size check, over what Claude Code actually loads: CLAUDE.md
+    # and the AGENTS.md it imports (the governance anchor lives there).
+    loaded = _loaded_instruction_files(project_dir)
+    if loaded:
         try:
-            claude_content = claude_md_path.read_text()
-            claude_lines = claude_content.splitlines()
+            claude_lines = "\n".join(text for _rel, text in loaded).splitlines()
             total_lines = len(claude_lines)
             # Count project-specific lines (outside PRAWDUCT markers)
             in_prawduct = False
@@ -1051,8 +1051,10 @@ def assemble_session_briefing(
             # 250+ line CLAUDE.md is a real problem worth a standing reminder.
             # Re-nagging every session at the soft threshold was pure tax.
             if project_lines > 250:
+                label = " + ".join(rel for rel, _text in loaded)
+                verb = "is" if len(loaded) == 1 else "are"
                 lines.append(
-                    f"CLAUDE.md is large ({project_lines} project lines) — move architecture "
+                    f"{label} {verb} large ({project_lines} project lines) — move architecture "
                     f"docs, config tables, and component inventories to docs/ or .prawduct/artifacts/"
                 )
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
@@ -1424,8 +1426,37 @@ def _humanize_age(age_seconds) -> str:
 # =============================================================================
 
 
+def _loaded_instruction_files(project_dir: Path) -> list[tuple[str, str]]:
+    """``(name, text)`` for each instruction file Claude Code loads at the root.
+
+    ``CLAUDE.md``, plus ``AGENTS.md`` when ``CLAUDE.md`` imports it (where the
+    governance anchor and, in this repo, the whole contract live) or when there
+    is no ``CLAUDE.md`` at all. A file that cannot be read is left out: these
+    readers are best-effort, and a briefing must never block session start.
+    """
+    from .migrate_plugin import anchor_files_are_one, imports_agents  # noqa: PLC0415
+
+    def read(rel: str) -> str | None:
+        path = project_dir / rel
+        if not path.is_file():
+            return None
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    claude = read("CLAUDE.md")
+    loaded = [] if claude is None else [("CLAUDE.md", claude)]
+    if claude is None or (imports_agents(claude) and not anchor_files_are_one(project_dir)):
+        agents = read("AGENTS.md")
+        if agents is not None:
+            loaded.append(("AGENTS.md", agents))
+    return loaded
+
+
 def _extract_critical_rules(project_dir: Path) -> list[str]:
-    """Extract Critical Rules bullet points from the project's CLAUDE.md.
+    """Extract Critical Rules bullet points from the instruction files Claude
+    Code loads (``CLAUDE.md`` and an imported ``AGENTS.md``).
 
     Falls back to a minimal hardcoded set if extraction fails.
     """
@@ -1437,22 +1468,23 @@ def _extract_critical_rules(project_dir: Path) -> list[str]:
         "- While building, run the narrowest tests that prove the change; run the declared suite before the work lands.",
         "- When changes cross boundaries (API, database, IPC), verify consumers.",
     ]
-    claude_md = project_dir / "CLAUDE.md"
-    if not claude_md.is_file():
+    loaded = _loaded_instruction_files(project_dir)
+    if not loaded:
         return fallback
     try:
-        content = claude_md.read_text()
-        # Find Critical Rules section
-        in_section = False
         rules: list[str] = []
-        for line in content.splitlines():
-            if line.strip().startswith("## Critical Rules"):
-                in_section = True
-                continue
-            if in_section and line.strip().startswith("## "):
-                break
-            if in_section and line.strip().startswith("- **"):
-                rules.append(line.strip())
+        # Each file's own Critical Rules section, read file by file so one
+        # file's section never runs on into the next file's opening bullets.
+        for _rel, content in loaded:
+            in_section = False
+            for line in content.splitlines():
+                if line.strip().startswith("## Critical Rules"):
+                    in_section = True
+                    continue
+                if in_section and line.strip().startswith("## "):
+                    break
+                if in_section and line.strip().startswith("- **"):
+                    rules.append(line.strip())
         return rules if rules else fallback
     except Exception:  # prawduct:allow prawduct/broad-except -- rule extraction is best-effort
         return fallback

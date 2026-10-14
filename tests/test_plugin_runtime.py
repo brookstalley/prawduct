@@ -1345,6 +1345,7 @@ class TestDocOnlyProtectedPaths:
             "methodology/building.md",
             "templates/spec.md",
             "CLAUDE.md",
+            "AGENTS.md",
         ],
     )
     def test_protected_md_in_pr_is_not_doc_only(self, gitflow_repo, relpath):

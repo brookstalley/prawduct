@@ -6,7 +6,7 @@ Chunk 6 of the v2.0.0 plugin-distribution build plan. Injects a compact,
 the SessionStart ``additionalContext`` channel (design §4: the full methodology
 lives in the plugin and is read on demand through the ``/prawduct:*`` reader
 skills; this digest is the session-start reminder, not a replacement for the
-authoritative rules in CLAUDE.md).
+authoritative rules in the repo's instruction files).
 
 Output contract (verified against the Claude Code hooks reference, 2026-06-01):
 a SessionStart hook injects context by printing

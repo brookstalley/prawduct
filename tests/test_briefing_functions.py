@@ -542,6 +542,41 @@ class TestExtractCriticalRules:
         rules = briefing._extract_critical_rules(tmp_path)
         assert rules == ["- **Do X** always", "- **Do Y** never"]
 
+    def test_reads_the_rules_from_an_imported_agents_md(self, tmp_path):
+        """Since #942 the contract can live in AGENTS.md with CLAUDE.md the one
+        line `@AGENTS.md`; Claude loads both, so the rules are read from both."""
+        (tmp_path / "CLAUDE.md").write_text("@AGENTS.md\n")
+        (tmp_path / "AGENTS.md").write_text(
+            "# Contract\n\n## Critical Rules\n\n- **Do Z** always\n"
+        )
+        assert briefing._extract_critical_rules(tmp_path) == ["- **Do Z** always"]
+
+    def test_an_agents_md_with_no_claude_md_is_read(self, tmp_path):
+        """With no CLAUDE.md, Claude Code reads AGENTS.md natively, so its rules
+        are the session's rules (before #942 the briefing fell back to its
+        defaults here)."""
+        (tmp_path / "AGENTS.md").write_text("## Critical Rules\n\n- **Only here**\n")
+        assert briefing._extract_critical_rules(tmp_path) == ["- **Only here**"]
+
+    def test_one_file_behind_two_names_is_read_once(self, tmp_path):
+        """CLAUDE.md symlinked to AGENTS.md is one file; read twice, every
+        Critical Rule would be listed twice and every line counted twice."""
+        import os
+
+        (tmp_path / "AGENTS.md").write_text(
+            "@AGENTS.md\n\n## Critical Rules\n\n- **Once**\n"
+        )
+        os.symlink("AGENTS.md", tmp_path / "CLAUDE.md")
+        assert briefing._extract_critical_rules(tmp_path) == ["- **Once**"]
+        assert len(briefing._loaded_instruction_files(tmp_path)) == 1
+
+    def test_an_agents_md_nothing_imports_is_not_read(self, tmp_path):
+        """Claude Code does not load an AGENTS.md beside a CLAUDE.md that does
+        not import it, so its rules are not the session's rules."""
+        (tmp_path / "CLAUDE.md").write_text("## Critical Rules\n\n- **Mine** only\n")
+        (tmp_path / "AGENTS.md").write_text("## Critical Rules\n\n- **Not loaded**\n")
+        assert briefing._extract_critical_rules(tmp_path) == ["- **Mine** only"]
+
     def test_section_without_bold_bullets_falls_back(self, tmp_path):
         (tmp_path / "CLAUDE.md").write_text("## Critical Rules\n\n- plain only\n")
         rules = briefing._extract_critical_rules(tmp_path)
@@ -1123,6 +1158,15 @@ class TestAssembleSessionBriefingSections:
         )
         out = briefing.assemble_session_briefing(tmp_path, [])
         assert "Backlog: 1 pending" in out
+
+    def test_size_warning_counts_the_imported_agents_md(self, tmp_path):
+        """The size check measures what Claude loads: a one-line CLAUDE.md that
+        imports a 260-line AGENTS.md is a 260-line contract."""
+        self._state(tmp_path, "")
+        (tmp_path / "CLAUDE.md").write_text("@AGENTS.md\n")
+        (tmp_path / "AGENTS.md").write_text("\n".join(f"line {i}" for i in range(260)))
+        out = briefing.assemble_session_briefing(tmp_path, [])
+        assert "CLAUDE.md + AGENTS.md are large" in out
 
     def test_claude_md_size_warning_over_threshold(self, tmp_path):
         self._state(tmp_path, "")

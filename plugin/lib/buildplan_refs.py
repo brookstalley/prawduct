@@ -1580,8 +1580,8 @@ def iter_field_declarations(
 # type at a declaration position is the only thing that can bind.
 _BUILD_PLAN_TYPE_RE = field_token_re("Type")
 _BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
-# v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
-# edits under skills/, methodology/, templates/; no CLAUDE.md edit; no
+# `trivial` is in the allowed set. File-set bounds (no edit to a
+# governance-protected path — `protected_path_violation` owns the set; no
 # test deletion; no new files) + required `**Trivial because:**`
 # rationale are enforced structurally; semantic-fit is Critic Goal 3 in
 # Chunk 05. Size is unbounded — trivial is a semantic claim, not a LOC
@@ -3067,19 +3067,23 @@ def _parse_build_plan_chunk_trivial_rationale(
 #                   that follows — the one file where "free to edit" compounds.
 #   CLAUDE.md     — the project's top-level operating contract (exact match —
 #                   a nested ``foo/CLAUDE.md`` is ordinary product doc).
+#   AGENTS.md     — the same contract for every agent host: it carries the
+#                   governance anchor, and CLAUDE.md imports it, so an unreviewed
+#                   edit here changes what every session is told (exact match).
 _TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
     ("skills/", False, "skill-file-edited"),
     ("methodology/", False, "methodology-edited"),
     ("templates/", False, "template-edited"),
     ("agents/", False, "agent-file-edited"),
     ("CLAUDE.md", True, "claude-md-edited"),
+    ("AGENTS.md", True, "agents-md-edited"),
 })
 
 
 def protected_path_violation(path: str) -> str | None:
     """Return the violation label (``"<reason_label>: <path>"``) when *path*
     falls under a governance-protected bound (``skills/``, ``methodology/``,
-    ``templates/``, ``agents/``, root ``CLAUDE.md``), else ``None``.
+    ``templates/``, ``agents/``, root ``CLAUDE.md`` or ``AGENTS.md``), else ``None``.
 
     Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
     and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-

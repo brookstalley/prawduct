@@ -292,10 +292,10 @@ set — README, `docs/**`, product prose. These are **non-judgeable**: a commit 
 composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate
 another review. Two traps, both in the direction of *more* review than the extension suggests: a
 **comment-only edit to a `.py` file still counts as judgeable**, which is how a pure-prose fix
-commit gets pulled back into a full round; and a `.md` file under `skills/`, `methodology/` or
-`templates/`, or a root `CLAUDE.md`, is **governance-protected and therefore judgeable** —
-fork-skill prose is behavioural logic here. When in doubt assume judgeable and let the gate say
-otherwise; it is the gate's answer that binds.
+commit gets pulled back into a full round; and a `.md` file under `skills/`, `methodology/`,
+`templates/` or `agents/`, or a root `CLAUDE.md` or `AGENTS.md`, is **governance-protected, so judgeable** —
+fork-skill prose is behavioural logic. When in doubt assume judgeable; the gate's answer
+binds.
 
 **The reviewer's half of the same rule is a separate pass, not a severity floor.** A record is not a
 per-round subject at all — the bars that decide when one is worth a finding, and the pass that

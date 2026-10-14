@@ -1127,7 +1127,7 @@ def session_changes_all_non_judgeable(
     coverage — the "doc-only" carveout, now answered by THE judgeability
     predicate (``coverage_algebra.is_judgeable_path``, CRT-5D8Q fix) instead
     of a bare ``.endswith(".md")`` copy. A governance-protected ``.md``
-    (``skills/``, ``methodology/``, ``templates/``, root ``CLAUDE.md``) is
+    (the set ``buildplan_refs.protected_path_violation`` owns) is
     judgeable, so editing one no longer skips the reflection/Critic gates.
 
     Replaces ``gitstate._session_changes_are_doc_only`` (one of the three
@@ -2132,8 +2132,8 @@ def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
     file-set bounds. Returns ``(eligible, reason)``.
 
     Bounds (catastrophic-blast-radius classes, regardless of size):
-    no edits under ``skills/``, ``methodology/``, or ``templates/``; no
-    edits to ``CLAUDE.md``; no test-file removals (porcelain ``D`` under
+    no edits to a governance-protected path (the set
+    ``buildplan_refs.protected_path_violation`` owns); no test-file removals (porcelain ``D`` under
     ``tests/`` OR rename whose source path is under ``tests/`` — a
     ``git mv`` out of the test directory is semantically a deletion);
     no newly-tracked files (porcelain ``A`` or ``??``).

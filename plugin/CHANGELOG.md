@@ -14,6 +14,17 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`agents-md-anchor`**: **the governance anchor moves to `AGENTS.md`, and `CLAUDE.md` imports
+it.** `AGENTS.md` is the file every agent host reads, so a second host (Codex, #928) gets the same
+anchor. A new onboard writes the anchor to `AGENTS.md` (appended if the file exists) and a
+`CLAUDE.md` that is exactly `@AGENTS.md`; an existing `CLAUDE.md` keeps its own text, with the
+import in the old anchor's place. Already-onboarded repos: `/prawduct:doctor` Health Check #4
+now reports `legacy-layout`, and `prawduct-hook reanchor --apply` moves the anchor after showing
+each file's exact bytes. Nothing is rewritten without `--apply`. Root `AGENTS.md` is now
+governance-protected like root `CLAUDE.md`. **Rolling back** to an earlier release: don't apply that
+release's anchor repair. It reads only `CLAUDE.md`, reports the anchor absent, and would add a
+second, older copy, while the `AGENTS.md` anchor keeps loading through the import.
+
 **`self-citing-clear`**: **a new Stop gate, `clear-reason`, refuses a `SAFE TO CLEAR` whose reason
 is the message itself**, such as "the questions are in this message". A clear deletes the message,
 so write the findings to `.prawduct/.handoff-notes.md` and give that as the reason, or name the

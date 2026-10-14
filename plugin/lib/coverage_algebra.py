@@ -21,7 +21,7 @@ answered three divergent ways (``cmd_stop``, ``coverage._pr_diff_is_doc_only``,
 the CRT-5D8Q deadlock. It composes the two existing canonical sources:
 ``gitstate.METADATA_PREFIXES`` (framework/session metadata is never
 judgeable) and ``buildplan_refs.protected_path_violation`` (a ``.md`` under
-``skills/``, ``methodology/``, ``templates/``, or root ``CLAUDE.md`` IS
+any path in the protected set that function owns IS
 behavioral logic here — PR-5K8D — so protection overrides the doc carveout).
 
 **Edges (D6).**

@@ -62,7 +62,8 @@ FORBIDDEN = [
     ".prawduct",                        # backlog, learnings, change-log, every build/release plan
     "tests",                            # prawduct's own suite (including this file)
     "documentation",                    # prawduct's own internal requirements/specs
-    "CLAUDE.md",                        # prawduct's own operating instructions
+    "CLAUDE.md",                        # prawduct's own operating instructions (the import)
+    "AGENTS.md",                        # ...and the contract it imports
     "pyproject.toml",
     ".claude",                          # repo-local harness config
     ".gitignore",

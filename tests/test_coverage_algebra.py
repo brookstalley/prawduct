@@ -99,9 +99,11 @@ class TestJudgeablePath:
         "methodology/building.md",
         "templates/build-plan.md",
         "CLAUDE.md",
+        "AGENTS.md",  # carries the anchor every host reads; CLAUDE.md imports it
     ]
     NON_JUDGEABLE = [
         ".prawduct/backlog.md",  # metadata — the CRT-5D8Q boundary, one way
+        "docs/AGENTS.md",  # a nested AGENTS.md is ordinary product doc
         ".prawduct/artifacts/build-plan-x.md",
         ".prawduct/.critic-findings.json",
         ".claude/settings.json",

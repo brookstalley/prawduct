@@ -109,9 +109,11 @@ def _enabled_never_onboarded(tmp_path) -> Path:
 
 
 def _onboarded(tmp_path) -> Path:
-    """A repo `/prawduct:onboard` scaffolded: anchor + `distribution: plugin`."""
+    """A repo `/prawduct:onboard` scaffolded: the anchor in AGENTS.md, a CLAUDE.md
+    importing it, and `distribution: plugin`."""
     _enabled_never_onboarded(tmp_path)
-    _write(tmp_path, "CLAUDE.md", f"# CLAUDE.md\n\n{STATIC_ANCHOR}\n")
+    _write(tmp_path, "AGENTS.md", f"{STATIC_ANCHOR}\n")
+    _write(tmp_path, "CLAUDE.md", "@AGENTS.md\n\n# CLAUDE.md\n\nHouse rules for this codebase.\n")
     _write(
         tmp_path,
         ".prawduct/project-state.yaml",
@@ -196,6 +198,7 @@ def test_silent_for_a_fully_onboarded_repo(tmp_path):
     "surviving_marker",
     [
         "anchor",
+        "agents-anchor",
         "distribution",
         "legacy-block",
         "sync-manifest",
@@ -211,6 +214,10 @@ def test_silent_for_an_onboarded_repo_that_drifted(tmp_path, surviving_marker):
     _enabled_never_onboarded(tmp_path)
     if surviving_marker == "anchor":
         _write(tmp_path, "CLAUDE.md", f"# CLAUDE.md\n\n{ANCHOR_SENTINEL} kept\n")
+    elif surviving_marker == "agents-anchor":
+        # Where every onboard since #942 writes the anchor: CLAUDE.md is the
+        # house rules plus the import, so AGENTS.md is the only marker left.
+        _write(tmp_path, "AGENTS.md", f"# Agents\n\n{ANCHOR_SENTINEL} kept\n")
     elif surviving_marker == "distribution":
         _write(
             tmp_path,
