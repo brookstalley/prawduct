@@ -1580,8 +1580,8 @@ def iter_field_declarations(
 # type at a declaration position is the only thing that can bind.
 _BUILD_PLAN_TYPE_RE = field_token_re("Type")
 _BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
-# v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
-# edits under skills/, methodology/, templates/; no CLAUDE.md edit; no
+# `trivial` is in the allowed set. File-set bounds (no edit to a
+# governance-protected path — `protected_path_violation` owns the set; no
 # test deletion; no new files) + required `**Trivial because:**`
 # rationale are enforced structurally; semantic-fit is Critic Goal 3 in
 # Chunk 05. Size is unbounded — trivial is a semantic claim, not a LOC

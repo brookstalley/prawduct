@@ -593,11 +593,21 @@ def plan_governance_anchor(project_dir: Path) -> AnchorPlan:
             writes.append(write)
 
     if claude_p.is_symlink():
+        # Nothing here is written through the link, so every edit the import side
+        # would make is the owner's — and each must be named, or following one
+        # remedy can leave another leftover in place (an import added above a
+        # pre-2.0 block still reads as a finished layout).
+        todo = []
+        if claude is not None and core.extract_block(claude)[0] is not None:
+            todo.append("remove the pre-2.0 PRAWDUCT block")
+        elif claude is not None and shipped_anchor_in(claude) is not None:
+            todo.append("remove the anchor prawduct shipped there")
         if claude is None or not imports_agents(claude):
+            todo.append(f"add the line `{CLAUDE_IMPORT}`")
+        if todo:
             return AnchorPlan(tuple(writes), (
-                f"{CLAUDE_REL} is a symlink prawduct will not write through, so Claude "
-                f"Code is not told to read {AGENTS_REL} — add the line `{CLAUDE_IMPORT}` "
-                f"to the file {CLAUDE_REL} points at"
+                f"{CLAUDE_REL} is a symlink prawduct will not write through — in the "
+                f"file it points at, {' and '.join(todo)}, then run this again"
             ))
         return AnchorPlan(tuple(writes), None)
 

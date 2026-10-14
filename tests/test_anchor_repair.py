@@ -1113,3 +1113,21 @@ def test_a_write_that_does_not_finish_the_layout_is_reported_as_what_remains(
     result = ar.repair(root, apply=True)
     assert result["applied"] is True
     assert result["status"] == ar.STATUS_LEGACY_LAYOUT
+
+
+def test_a_refused_legacy_layout_promises_no_repair(tmp_path: Path):
+    """A legacy-layout grade the plan cannot finish must not also say "the
+    repair moves it" — an offer beside a refusal is the contradiction."""
+    root = tmp_path / "linked-import-shipped"
+    root.mkdir()
+    target = tmp_path / "shared.md"
+    target.write_text("@AGENTS.md\n\n" + ar.ANCHOR_V5, encoding="utf-8")
+    os.symlink(target, root / "CLAUDE.md")
+    graded = ar.check(root)
+    assert graded["status"] == ar.STATUS_LEGACY_LAYOUT
+    assert graded["repairable"] is False
+    assert "the repair moves it" not in graded["detail"]
+    assert "remove the anchor prawduct shipped there" in graded["detail"]
+
+    healthy = ar.check(_write_claude(tmp_path / "plain-legacy", ar.ANCHOR_V5))
+    assert healthy["repairable"] is True and "the repair moves it" in healthy["detail"]

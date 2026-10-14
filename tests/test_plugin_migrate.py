@@ -1227,3 +1227,36 @@ def test_following_the_refusals_fix_completes_the_migration(tmp_path: Path):
 def test_migrate_adds_no_placement_note_on_an_ordinary_repo(repo: Path):
     result = run_migrate(repo, "--apply")
     assert not any("not placed" in note for note in result["notes"])
+
+
+def test_a_linked_claude_md_remedy_chain_terminates_at_a_healthy_layout(tmp_path: Path):
+    """CLAUDE.md symlinked out of the repo to a file holding the pre-2.0 block:
+    nothing is written through the link, so each owner edit is named in turn.
+    Adding the import alone must NOT read as finished while the block remains —
+    that was the loop — and doing every named edit completes the migration."""
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+    from lib import anchor_repair
+
+    root = make_filesync_repo(tmp_path / "claude-linked")
+    shared = tmp_path / "shared-claude.md"
+    shared.write_text((root / "CLAUDE.md").read_text())
+    (root / "CLAUDE.md").unlink()
+    _os.symlink(shared, root / "CLAUDE.md")
+
+    first = run_migrate(root, "--apply")
+    assert first.get("refused") and "remove the pre-2.0 PRAWDUCT block" in first["refused"]
+
+    shared.write_text("@AGENTS.md\n\n" + shared.read_text())  # the import alone
+    second = run_migrate(root, "--apply")
+    assert second.get("refused") and "pre-2.0" in second["refused"], (
+        "an import added above a leftover block is not a finished layout"
+    )
+
+    import re as _re
+    shared.write_text(_re.sub(r"<!-- PRAWDUCT:BEGIN.*?PRAWDUCT:END -->\n?", "", shared.read_text(), flags=_re.S))
+    third = run_migrate(root, "--apply")
+    assert not third.get("refused"), third
+    assert anchor_repair.check(root)["status"] == anchor_repair.STATUS_OK

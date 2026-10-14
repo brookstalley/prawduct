@@ -219,9 +219,14 @@ def _grade_anchor(rel: str, text: str) -> dict:
 
 _LEGACY_LAYOUT_DETAIL = (
     f"{CLAUDE_REL} carries an anchor prawduct shipped, so a host that reads only "
-    f"{AGENTS_REL} (Codex) is told nothing about how this repo is governed; the "
-    f"repair moves it to {AGENTS_REL} and leaves `@{AGENTS_REL}` in its place, "
-    "so Claude Code still reads it"
+    f"{AGENTS_REL} (Codex) is told nothing about how this repo is governed"
+)
+
+#: Said only when the repair is actually offered — a remedy promised beside a
+#: refusal is the contradiction this split exists to prevent.
+_LEGACY_LAYOUT_REMEDY = (
+    f"; the repair moves it to {AGENTS_REL} and leaves `@{AGENTS_REL}` in its "
+    "place, so Claude Code still reads it"
 )
 
 
@@ -340,6 +345,8 @@ def check(project_dir: Path) -> dict:
     if finding["status"] in _PRAWDUCTS_TO_FIX:
         plan = plan_governance_anchor(project_dir)
         finding["repairable"] = bool(plan.writes) and plan.unplaced is None
+        if finding["status"] == STATUS_LEGACY_LAYOUT and finding["repairable"]:
+            finding["detail"] += _LEGACY_LAYOUT_REMEDY
         if plan.unplaced:
             finding["detail"] += f" — and prawduct cannot fix it here: {plan.unplaced}"
     return finding
