@@ -189,8 +189,11 @@ def run_migrate(project_dir: Path, *flags: str) -> dict:
         [sys.executable, str(HOOK), "migrate-plugin", *flags, "--json"],
         capture_output=True, text=True, env=env, timeout=30,
     )
-    assert proc.returncode == 0, f"migrate failed: {proc.stderr}\n{proc.stdout}"
-    return json.loads(proc.stdout)
+    assert proc.returncode in (0, 1), f"migrate failed: {proc.stderr}\n{proc.stdout}"
+    result = json.loads(proc.stdout)
+    # A refusal is a writer that did not write: exit 1, and only then.
+    assert proc.returncode == (1 if result.get("refused") else 0), proc.stdout
+    return result
 
 
 def _snapshot(root: Path, rels: list[str]) -> dict[str, str]:
@@ -1175,23 +1178,50 @@ def test_the_anchor_insert_does_not_leave_a_bare_cr_on_a_crlf_file(tmp_path: Pat
     assert raw.count(b"\n") == raw.count(b"\r\n")
 
 
-def test_migrate_says_so_when_an_outside_agents_link_leaves_the_anchor_unplaced(tmp_path: Path):
-    """With AGENTS.md linked outside the repo, the writer leaves the pre-2.0
-    block where it is rather than delete it with nowhere to put the anchor.
-    That is correct, and silent success would hide it — so the result says
-    what the owner has to do."""
+def test_migrate_refuses_untouched_when_an_outside_agents_link_leaves_nowhere_for_the_anchor(
+    tmp_path: Path,
+):
+    """Renegotiated from a success-with-a-note: with AGENTS.md linked outside
+    the repo the anchor has nowhere to go, and a migration that went ahead would
+    strip the framework and record `distribution: plugin` with the pre-2.0 block
+    still in place — after which `reanchor` routes to migrate and migrate says
+    "already migrated", a loop with no exit. So migrate refuses before touching
+    anything, and its reason names the owner's fix."""
     import os as _os
 
     root = make_filesync_repo(tmp_path / "linked")
     shared = tmp_path / "org-rules.md"
     shared.write_text("# Org-wide rules\n")
     _os.symlink(shared, root / "AGENTS.md")
-    before = (root / "CLAUDE.md").read_text()
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts}
 
     result = run_migrate(root, "--apply")
-    assert (root / "CLAUDE.md").read_text() == before, "nothing may be deleted"
-    assert any("not placed" in note for note in result["notes"]), result["notes"]
+    assert result.get("refused") and "symlink" in result["refused"]
+    after = {p: p.read_bytes() for p in root.rglob("*") if p.is_file() and ".git" not in p.parts}
+    assert after == before, "a refused migration must change nothing"
     assert shared.read_text() == "# Org-wide rules\n"
+
+
+def test_following_the_refusals_fix_completes_the_migration(tmp_path: Path):
+    """The remedy the refusal names must terminate: replace the link with a
+    file, run migrate again, and the repo reaches a healthy anchor layout."""
+    import os as _os
+    import sys as _sys
+
+    _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
+    from lib import anchor_repair
+
+    root = make_filesync_repo(tmp_path / "fixme")
+    shared = tmp_path / "org-rules.md"
+    shared.write_text("# Org-wide rules\n")
+    _os.symlink(shared, root / "AGENTS.md")
+    assert run_migrate(root, "--apply").get("refused")
+
+    (root / "AGENTS.md").unlink()
+    (root / "AGENTS.md").write_text(shared.read_text())
+    result = run_migrate(root, "--apply")
+    assert not result.get("refused")
+    assert anchor_repair.check(root)["status"] == anchor_repair.STATUS_OK
 
 
 def test_migrate_adds_no_placement_note_on_an_ordinary_repo(repo: Path):

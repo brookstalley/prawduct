@@ -2786,7 +2786,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     has_changes = _gs.git_has_session_changes(project_dir, status_output)
     # "Doc-only" = no session-changed file is judgeable (THE predicate,
     # coverage_algebra.is_judgeable_path via gates — kernel-v3 chunk 04). A
-    # governance-protected .md (skills/, methodology/, templates/, root CLAUDE.md or AGENTS.md)
+    # governance-protected .md (the set buildplan_refs.protected_path_violation owns)
     # is judgeable, so it no longer skips the reflection/Critic gates.
     doc_only = _gates().session_changes_all_non_judgeable(project_dir, status_output) if has_changes else False
 

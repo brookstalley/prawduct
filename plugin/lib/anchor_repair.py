@@ -56,17 +56,25 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import core
+from .anchor_archive import (  # noqa: F401 — re-exported: callers and tests read them here
+    ANCHOR_V1,
+    ANCHOR_V2,
+    ANCHOR_V3,
+    ANCHOR_V4,
+    ANCHOR_V5,
+    SUPERSEDED_ANCHORS,
+    shipped_anchor_in,
+)
 from .migrate_plugin import (
     AGENTS_REL,
     ANCHOR_SENTINEL,
     CLAUDE_REL,
     PLUGIN_ID,
     STATIC_ANCHOR,
-    agents_can_hold_anchor,
     anchor_files_are_one,
     apply_governance_anchor,
-    governance_anchor_pending,
     imports_agents,
+    plan_governance_anchor,
 )
 
 STATUS_OK = "ok"
@@ -128,127 +136,6 @@ def _lacks(rows: list[tuple[str, str, str]]) -> tuple[str, str]:
     return names, costs
 
 
-# --- The archive ------------------------------------------------------------
-# Every anchor prawduct has shipped that predates the current text, stripped
-# exactly as the writer wrote them into ``CLAUDE.md``, oldest first.
-#
-# **Append, never edit.** An entry here is a historical artifact — the literal
-# bytes sitting in real repos — not a description of the current anchor, so
-# "tidying" one makes the repos it exists to match unmatchable.
-#
-# **Derive this set from the release tags, never from "the anchor I just
-# replaced."** Written the second way, it first shipped covering v2.3.0+ only and
-# missing the 31 releases from v2.0.0 to v2.2.3, which differ by a single line
-# (`/prawduct:building`, from before the methodology reader was renamed). The
-# cohort that gap stranded was the OLDEST repos — and it stranded them while
-# reporting that their anchor had been edited locally, blaming an owner for text
-# prawduct wrote. ``test_anchor_repair.py`` now reconstructs the shipped set from
-# the tags themselves and fails when an entry is missing, so the next revision
-# cannot repeat it.
-
-#: v2.0.0 – v2.2.3 (31 releases).
-ANCHOR_V1 = """<!-- PRAWDUCT:ANCHOR — static governance pointer managed by the prawduct plugin. Keep it small and version-free: principles, methodology, and the active version live in the plugin and are injected at session start. -->
-
-## Governance (Prawduct)
-
-This repo is governed by **Prawduct**, installed as a Claude Code plugin — not as
-committed framework files. The principles, methodology, Critic protocol, and PR
-review live in the plugin and are read on demand (run `/prawduct:methodology`);
-they are intentionally not copied into this repo.
-
-**Before writing any code, STOP and read the build cycle: `/prawduct:building`.**
-Skipping it is the #1 governance failure.
-
-The hardest rules (everything else is in the plugin):
-
-- **Tests are contracts** — fix the code, never weaken a test.
-- **No "pre-existing" exception** — fix what you find, or flag why you can't.
-- **Never silently drop a requirement** — say so explicitly.
-- **Run `/prawduct:critic` after medium+ work** — never write Critic findings
-  yourself; the independence is the value.
-
-**Enforcement is structural:** the plugin's Stop hook runs at session end and
-**blocks** if code changed against an active build plan with no Critic findings.
-The session-start banner shows the active version and what changed — this anchor
-stays version-free."""
-
-#: v2.3.0 – v3.4.0 (26 releases). Differs from :data:`ANCHOR_V1` only in the
-#: build-cycle line, which gained the `methodology` reader.
-#:
-#: **This one entry is derived rather than frozen, which bends "append, never
-#: edit" and is worth knowing before you edit V1:** a change to V1 silently
-#: changes V2 too. Kept because the alternative is 1.3 KB of near-duplicate
-#: literal whose only difference is one line — and because the coupling is
-#: guarded rather than trusted: `test_the_archive_covers_every_anchor_prawduct_\
-#: ever_shipped` reconstructs both from the release tags and fails if either
-#: stops matching what shipped.
-ANCHOR_V2 = ANCHOR_V1.replace(
-    "`/prawduct:building`",
-    "`/prawduct:methodology building`",
-)
-
-#: v3.5.0 (1 release). The first anchor carrying the plugin-absent notice, and the
-#: last one before the Critic line said review rigor is stage-keyed. Frozen as a
-#: literal rather than derived from the current anchor: history derived from the
-#: present changes every time the present does, which is the inverse of the V2
-#: coupling above (older history derived from older history, which never moves).
-#: The install command is the id v3.5.0 shipped, spelled out — a later rename of
-#: ``PLUGIN_ID`` must not rewrite the bytes this entry exists to match.
-ANCHOR_V3 = """<!-- PRAWDUCT:ANCHOR — governance pointer managed by the prawduct plugin; keep it small and version-free. -->
-
-## Governance (Prawduct)
-
-This repo is governed by **Prawduct**, a Claude Code plugin; its methodology and
-protocols are read on demand via `/prawduct:methodology`.
-
-**Check first: is the plugin loaded?** If `/prawduct:*` commands are unavailable it
-is not, and **governance is OFF** — no Stop gate, no Critic, nothing below enforced.
-A clone registers the marketplace but installs nothing. Tell the user to
-run `claude plugin install prawduct@prawduct`, then restart — don't proceed as if governed.
-
-**With the plugin loaded — before writing any code, STOP and read the build cycle:
-`/prawduct:methodology building`.** Skipping it is the #1 governance failure.
-
-Hardest rules:
-
-- **Tests are contracts** — fix the code, never weaken a test.
-- **No "pre-existing" exception** — fix what you find, or flag why you can't.
-- **Never silently drop a requirement** — say so explicitly.
-- **Run `/prawduct:critic` after medium+ work** — never write findings
-  yourself; the independence is the value.
-
-**Enforcement is structural — while the plugin is loaded:** its Stop hook runs at
-session end and **blocks** if code changed against an active build plan with no
-Critic findings."""
-
-
-
-#: The DEVELOP anchor superseded by #833 (2026-09-19) before any release
-#: carried it — no release tag ships these bytes, so this entry is deliberately
-#: absent from the tag-derived set the module header tells you to build. Keep
-#: it: repos onboarded off the develop track between v3.5.0 and that commit
-#: hold exactly this text, and they are the only cohort that does.
-#:
-#: **Why it is not optional, stated as the grade it actually prevents.**
-#: Unarchived, `_match_superseded` misses and `_missing_substance` comes back
-#: EMPTY — these bytes carry both `SUBSTANCE` probes, including `stage-keyed` —
-#: so `check()` falls through to `STATUS_OK`. That cohort would be reported
-#: healthy, `repairable: False`, and never offered the repair; no owner is ever
-#: told. A silent `ok` is less visible than a refusal, which is why this entry
-#: matters more than the V1-V3 ones, not less. (Those predate `stage-keyed`, so
-#: an unarchived V1-V3 anchor DOES grade `stale-modified` and surfaces.)
-#: Generated from the bytes HEAD rendered, not retyped.
-ANCHOR_V4 = '<!-- PRAWDUCT:ANCHOR — governance pointer managed by the prawduct plugin; keep it small and version-free. -->\n\n## Governance (Prawduct)\n\nThis repo is governed by **Prawduct**, a Claude Code plugin; its methodology and\nprotocols are read on demand via `/prawduct:methodology`.\n\n**Check first: is the plugin loaded?** If `/prawduct:*` commands are unavailable it\nis not, and **governance is OFF** — no Stop gate, no Critic, nothing below enforced.\nA clone registers the marketplace but installs nothing. Tell the user to\nrun `claude plugin install prawduct@prawduct`, then restart — don\'t proceed as if governed.\n\n**With the plugin loaded — before writing any code, STOP and read the build cycle:\n`/prawduct:methodology building`.** Skipping it is the #1 governance failure.\n\nHardest rules:\n\n- **Tests are contracts** — fix the code, never weaken a test.\n- **No "pre-existing" exception** — fix what you find, or flag why you can\'t.\n- **Never silently drop a requirement** — say so explicitly.\n- **Run `/prawduct:critic` after medium+ work** — never write findings\n  yourself; the independence is the value. Rigor is stage-keyed: a mid-build\n  review blocks only on what would ship broken, the review at the merge\n  boundary runs everything and is never skipped, and unsure defaults to the\n  cheaper mid-build review.\n\n**Enforcement is structural — while the plugin is loaded:** its Stop hook runs at\nsession end and **blocks** if code changed against an active build plan with no\nCritic findings.\n'
-
-
-#: v3.6.x – v3.7.x, the last anchor written into ``CLAUDE.md`` rather than
-#: ``AGENTS.md``. Generated from the bytes HEAD rendered, not retyped.
-ANCHOR_V5 = '<!-- PRAWDUCT:ANCHOR — governance pointer managed by the prawduct plugin; keep it small and version-free. -->\n\n## Governance (Prawduct)\n\nThis repo is governed by **Prawduct**, a Claude Code plugin; its methodology and\nprotocols are read on demand via `/prawduct:methodology`.\n\n**Check first: is the plugin loaded?** If `/prawduct:*` commands are unavailable it\nis not, and **governance is OFF** — no Stop gate, no Critic, nothing below enforced.\nA clone registers the marketplace but installs nothing. Tell the user to\nrun `claude plugin install prawduct@prawduct`, then restart — don\'t proceed as if governed.\n\n**With the plugin loaded — before writing any code, STOP and read the build cycle:\n`/prawduct:methodology building`.** Skipping it is the #1 governance failure.\n\nHardest rules:\n\n- **Tests are contracts** — fix the code, never weaken a test.\n- **No "pre-existing" exception** — fix what you find, or flag why you can\'t.\n  The fix half is bounded to BLOCKING; below it, the flag is the whole answer.\n- **Never silently drop a requirement** — say so explicitly.\n- **Run `/prawduct:critic` after medium+ work** — never write findings\n  yourself; the independence is the value. Rigor is stage-keyed: a mid-build\n  review blocks only on what would ship broken, the review at the merge\n  boundary runs everything and is never skipped, and unsure defaults to the\n  cheaper mid-build review.\n\n**Enforcement is structural — while the plugin is loaded:** its Stop hook runs at\nsession end and **blocks** if code changed against an active build plan with no\nCritic findings.\n'
-
-
-SUPERSEDED_ANCHORS: tuple[str, ...] = (ANCHOR_V1, ANCHOR_V2, ANCHOR_V3, ANCHOR_V4, ANCHOR_V5)
-
-
 #: What a current anchor says, rendered once for both the ``ok`` grade and the
 #: post-repair report — two surfaces, one sentence, so they cannot drift apart.
 _CURRENT_DETAIL = (
@@ -292,34 +179,6 @@ def _read(path: Path) -> tuple[str | None, str | None]:
         return None, f"is not decodable as UTF-8 ({exc.reason} at byte {exc.start})"
     except OSError as exc:
         return None, f"could not be read ({exc.strerror or exc})"
-
-
-def shipped_anchor_in(text: str) -> str | None:
-    """The superseded anchor present verbatim in ``text``, in the file's own line
-    endings — or ``None`` when no shipped anchor is present.
-
-    The archive is stored LF-only because that is how the plugin writes it, but a
-    product's instruction file may be CRLF, and on a CRLF repo an LF-only
-    comparison finds nothing: the repo would be told its anchor had been edited
-    locally, which is a false accusation. So each entry is compared in the file's
-    own ending as well.
-    """
-    for old in SUPERSEDED_ANCHORS:
-        if old in text:
-            return old
-        crlf = old.replace("\n", "\r\n")
-        if crlf in text:
-            return crlf
-    return None
-
-
-def _current_like(shipped: str) -> str:
-    """The current anchor shaped like ``shipped``: its line endings, and a
-    trailing newline only where it had one. The archive holds both shapes, and a
-    swap that added or ate the final newline would move the product's next line.
-    """
-    current = STATIC_ANCHOR.rstrip("\n") + ("\n" if shipped.endswith("\n") else "")
-    return current.replace("\n", "\r\n") if "\r\n" in shipped else current
 
 
 def _finding(status: str, path: str, repairable: bool, detail: str) -> dict:
@@ -366,14 +225,10 @@ _LEGACY_LAYOUT_DETAIL = (
 )
 
 
-def check(project_dir: Path) -> dict:
-    """Grade this repo's governance anchor layout. Reads only; writes nothing.
-
-    The anchor belongs in ``AGENTS.md``, and ``CLAUDE.md`` imports it. The two
-    "not current" answers that route to different people stay distinct:
-    ``stale``, ``legacy-layout`` and ``import-missing`` are prawduct's to fix;
-    ``stale-modified`` is the owner's. Collapsing them would either offer a
-    repair that cannot run or refuse one that can.
+def _grade(project_dir: Path) -> dict:
+    """Grade this repo's governance anchor layout by what it says and where it
+    sits. ``repairable`` here is provisional: :func:`check` settles it against
+    the one layout plan. What each status means is :func:`check`'s to say.
     """
     project_dir = Path(project_dir)
     texts: dict[str, str | None] = {}
@@ -436,28 +291,17 @@ def check(project_dir: Path) -> dict:
                 "rewrite text it did not write",
             )
         if claude is None or not imports_agents(claude):
-            linked = (project_dir / CLAUDE_REL).is_symlink()
             return _finding(
-                STATUS_IMPORT_MISSING, CLAUDE_REL, not linked,
+                STATUS_IMPORT_MISSING, CLAUDE_REL, True,
                 f"{AGENTS_REL} carries the anchor but {CLAUDE_REL} does not import it, "
                 f"so Claude Code never reads it — {CLAUDE_REL} needs the line "
-                f"`@{AGENTS_REL}`"
-                + (f"; {CLAUDE_REL} is a symlink, so that edit is yours" if linked else ""),
+                f"`@{AGENTS_REL}`",
             )
         return graded
 
     if claude is not None and ANCHOR_SENTINEL in claude:
         if shipped_anchor_in(claude) is not None:
-            movable = agents_can_hold_anchor(project_dir)
-            return _finding(
-                STATUS_LEGACY_LAYOUT, CLAUDE_REL, movable,
-                _LEGACY_LAYOUT_DETAIL if movable else (
-                    f"{CLAUDE_REL} carries an anchor prawduct shipped, but {AGENTS_REL} "
-                    "is a symlink prawduct will not write through, so there is nowhere "
-                    f"to move it — put the anchor in the file {AGENTS_REL} points at, "
-                    f"then the repair can leave `@{AGENTS_REL}` in {CLAUDE_REL}"
-                ),
-            )
+            return _finding(STATUS_LEGACY_LAYOUT, CLAUDE_REL, True, _LEGACY_LAYOUT_DETAIL)
         return _finding(
             STATUS_STALE_MODIFIED, CLAUDE_REL, False,
             f"the anchor in {CLAUDE_REL} matches nothing prawduct shipped, so it was "
@@ -466,48 +310,50 @@ def check(project_dir: Path) -> dict:
             "not write",
         )
 
-    foreign = (project_dir / AGENTS_REL).is_symlink()
     return _finding(
-        STATUS_ABSENT, AGENTS_REL, not foreign,
+        STATUS_ABSENT, AGENTS_REL, True,
         f"no {ANCHOR_SENTINEL} block in {AGENTS_REL} or {CLAUDE_REL} — the repo's "
-        "own instructions say nothing about the governance it is under"
-        + (f"; {AGENTS_REL} is a symlink elsewhere, so placing it is yours" if foreign else ""),
+        "own instructions say nothing about the governance it is under",
     )
 
 
-def _planned_writes(project_dir: Path, status: str, path: str) -> list[dict]:
-    """What ``--apply`` would write, file by file, with the exact text."""
-    anchor = STATIC_ANCHOR.strip()
-    writes = []
-    pending = governance_anchor_pending(project_dir)
-    if status == STATUS_STALE:
-        # The in-place swap, plus whatever the layout writer that runs after it
-        # will do — an import it adds is an edit, and the preview is what the
-        # owner's one confirmation covers.
-        writes.append({"path": path, "how": "replace the shipped anchor in place", "text": anchor})
-        pending = [rel for rel in pending if rel != path]
-    for rel in pending:
-        exists = (project_dir / rel).is_file()
-        if rel == CLAUDE_REL and not anchor_files_are_one(project_dir):
-            how = (
-                "replace the shipped anchor in place" if status == STATUS_LEGACY_LAYOUT
-                else "add at the top" if exists else "create"
-            )
-            writes.append({"path": rel, "how": how, "text": f"@{AGENTS_REL}"})
-        else:
-            writes.append({"path": rel, "how": "append" if exists else "create", "text": anchor})
-    return writes
+#: The statuses that are prawduct's to fix — offered as a repair exactly when
+#: the layout plan can finish the job.
+_PRAWDUCTS_TO_FIX = frozenset({
+    STATUS_STALE, STATUS_LEGACY_LAYOUT, STATUS_IMPORT_MISSING, STATUS_ABSENT,
+})
+
+
+def check(project_dir: Path) -> dict:
+    """Grade this repo's governance anchor layout. Reads only; writes nothing.
+
+    The anchor belongs in ``AGENTS.md``, and ``CLAUDE.md`` imports it. The two
+    "not current" answers that route to different people stay distinct:
+    ``stale``, ``legacy-layout``, ``import-missing`` and ``absent`` are
+    prawduct's to fix; ``stale-modified`` is the owner's. Whether prawduct can
+    fix one is the layout plan's answer, never this grade's own: a repair is
+    offered only when the plan's writes complete the layout, and when they
+    cannot, the detail says what is in the way and what the owner can do.
+    """
+    project_dir = Path(project_dir)
+    finding = _grade(project_dir)
+    if finding["status"] in _PRAWDUCTS_TO_FIX:
+        plan = plan_governance_anchor(project_dir)
+        finding["repairable"] = bool(plan.writes) and plan.unplaced is None
+        if plan.unplaced:
+            finding["detail"] += f" — and prawduct cannot fix it here: {plan.unplaced}"
+    return finding
 
 
 def repair(project_dir: Path, apply: bool = False) -> dict:
     """Re-anchor this repo. Dry run by default; ``apply=True`` writes.
 
-    A shipped anchor is swapped by exact match, so everything around it — the
-    product's own title, its instructions, its line endings outside the swapped
-    region — is untouched by construction rather than by care. Moving the
-    anchor into ``AGENTS.md`` and the import into ``CLAUDE.md`` delegates to
-    ``apply_governance_anchor``, which owns the layout; there is no second
-    writer here to disagree with it.
+    The writes are :func:`migrate_plugin.plan_governance_anchor`'s — the same
+    plan the dry run prints — so the preview the owner confirms is exactly what
+    ``--apply`` writes. A shipped anchor is swapped by exact match, so the
+    product's own text and line endings are untouched by construction. After
+    writing, the repo is graded again and that grade is reported: a write that
+    did not reach the healthy layout is never reported as one.
     """
     project_dir = Path(project_dir)
     result = dict(check(project_dir))
@@ -520,26 +366,13 @@ def repair(project_dir: Path, apply: bool = False) -> dict:
 
     status = result["status"]
     result["replacement"] = STATIC_ANCHOR.strip()
-    result["writes"] = _planned_writes(project_dir, status, result["path"])
+    plan = plan_governance_anchor(project_dir)
+    result["writes"] = [{"path": w.path, "how": w.how, "text": w.text} for w in plan.writes]
     if not apply:
         return result
 
     try:
-        swapped = False
-        if status == STATUS_STALE:
-            path = project_dir / result["path"]
-            text, _cause = _read(path)
-            old = shipped_anchor_in(text or "")
-            if text is not None and old is not None:
-                # `1` — replace the one occurrence found. A file carrying the
-                # anchor twice is malformed, and swapping both would hide that.
-                body = text.replace(old, _current_like(old), 1)
-                # `os.replace` so a crash mid-write cannot leave the owner's
-                # instructions truncated, and `newline=""` so the endings this
-                # file already had survive.
-                core.atomic_write_text(path.resolve(), body, encoding="utf-8", newline="")
-                swapped = True
-        changed = apply_governance_anchor(project_dir)
+        apply_governance_anchor(project_dir)
     except (OSError, UnicodeError) as exc:
         # This command is offered BY `/prawduct:doctor` by name, so an
         # unwritable file must come back as a report. A traceback out of a
@@ -551,13 +384,16 @@ def repair(project_dir: Path, apply: bool = False) -> dict:
         })
         return result
 
-    result["applied"] = swapped or bool(changed)
-    if result["applied"]:
-        verb = {
-            STATUS_ABSENT: f"inserted into {AGENTS_REL}",
-            STATUS_STALE: f"rewritten in {result['path']}",
-            STATUS_LEGACY_LAYOUT: f"moved to {AGENTS_REL}, with {CLAUDE_REL} importing it",
-            STATUS_IMPORT_MISSING: f"imported into {CLAUDE_REL}",
-        }.get(status, "repaired")
-        _record_success(result, verb)
+    result["applied"] = True
+    after = check(project_dir)
+    if after["status"] != STATUS_OK:
+        result.update({k: after[k] for k in ("status", "path", "repairable", "detail")})
+        return result
+    verb = {
+        STATUS_ABSENT: f"inserted into {AGENTS_REL}",
+        STATUS_STALE: f"rewritten in {result['path']}",
+        STATUS_LEGACY_LAYOUT: f"moved to {AGENTS_REL}, with {CLAUDE_REL} importing it",
+        STATUS_IMPORT_MISSING: f"imported into {CLAUDE_REL}",
+    }.get(status, "repaired")
+    _record_success(result, verb)
     return result

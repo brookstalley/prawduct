@@ -26,7 +26,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from dataclasses import dataclass
+
 from . import core, lifecycle_repair
+from .anchor_archive import shipped_anchor_in
 
 # The committed install reference (design §8). Pins the marketplace + plugin
 # source to ref:"main" (the release surface, §5b); autoUpdate keeps consumers
@@ -67,8 +70,9 @@ _EDIT_IN_PLACE = frozenset({"CLAUDE.md", ".claude/settings.json"})
 
 # --- Thin static governance anchor (AGENTS.md, imported by CLAUDE.md) ---------
 # The heavy PRAWDUCT block leaves the repo with the plugin; in its place migrate
-# inserts this small, **static, version-free** anchor — the few hardest rules
-# plus a pointer to the plugin. It is a stable contract (it changes rarely, NOT
+# inserts the line ``@AGENTS.md``, and ``AGENTS.md`` receives this small,
+# **static, version-free** anchor — the few hardest rules plus a pointer to the
+# plugin. It is a stable contract (it changes rarely, NOT
 # with every methodology revision) and carries NO version number — the active
 # version is injected at runtime by the SessionStart banner. The single sentinel
 # marker (deliberately NOT the BEGIN/END block markers, so `extract_block` never
@@ -102,12 +106,11 @@ This repo is governed by **Prawduct**, loaded through your agent host's
 Prawduct integration.
 
 **Check first: is that integration loaded?** If not, **governance is OFF** — no
-Stop gate, no Critic, nothing below enforced. Tell the user, and don't proceed as
-if governed.
+Stop gate, no Critic, nothing below enforced. Tell the user; don't proceed as if
+governed. If you can't tell, assume it isn't.
 
-- **Claude Code:** loaded when `/prawduct:*` commands are available. A clone
-  registers the marketplace but installs nothing: run
-  `claude plugin install {PLUGIN_ID}`, then restart.
+- **Claude Code:** loaded when `/prawduct:*` commands are available; if not, run
+  `claude plugin install {PLUGIN_ID}` and restart.
 
 **With it loaded — before writing any code, STOP and read the build cycle**
 (Claude Code: `/prawduct:methodology building`). Skipping it is the #1 governance
@@ -191,44 +194,6 @@ def already_migrated(project_dir: Path) -> bool:
     """True when ``project-state.yaml`` already records ``distribution: plugin``."""
     state = Path(project_dir) / ".prawduct" / "project-state.yaml"
     return core.read_str_yaml_key(state, DISTRIBUTION_KEY) == DISTRIBUTION_VALUE
-
-
-def governance_anchor_pending(project_dir: Path) -> list[str]:
-    """The files ``apply_governance_anchor`` would change, for the dry-run plan.
-
-    A prediction from the same predicates the writers use, read-only. It errs
-    toward listing a file, because the preview is what the operator's single
-    confirmation is given against, and an edit it omitted would be unannounced.
-    """
-    from .anchor_repair import shipped_anchor_in  # noqa: PLC0415 — see apply_claude_import
-
-    project_dir = Path(project_dir)
-
-    def text(rel: str) -> str | None:
-        path = project_dir / rel
-        return _read_own_endings(path) if path.is_file() else None
-
-    if anchor_files_are_one(project_dir):
-        rel = CLAUDE_REL if (project_dir / AGENTS_REL).is_symlink() else AGENTS_REL
-        body = text(rel) or ""
-        pending = ANCHOR_SENTINEL not in body or core.extract_block(body)[0] is not None
-        return [rel] if pending else []
-
-    planned: list[str] = []
-    agents = text(AGENTS_REL)
-    foreign_link = (project_dir / AGENTS_REL).is_symlink()
-    if not foreign_link and (agents is None or ANCHOR_SENTINEL not in agents):
-        planned.append(AGENTS_REL)
-    if agents_can_hold_anchor(project_dir) and not (project_dir / CLAUDE_REL).is_symlink():
-        claude = text(CLAUDE_REL)
-        if (
-            claude is None
-            or core.extract_block(claude)[0] is not None
-            or shipped_anchor_in(claude) is not None
-            or (not imports_agents(claude) and ANCHOR_SENTINEL not in claude)
-        ):
-            planned.append(CLAUDE_REL)
-    return planned
 
 
 #: Where the marketplace entry lives inside the contract. Presence of *this*
@@ -472,130 +437,196 @@ def anchor_files_are_one(project_dir: Path) -> bool:
         return False
 
 
-def agents_can_hold_anchor(project_dir: Path) -> bool:
-    """True when the anchor is, or the writer can put it, in ``AGENTS.md``.
+@dataclass(frozen=True)
+class AnchorWrite:
+    """One file the anchor layout writes: what happens to it, the text placed,
+    and the file's whole new content — the bytes the writer will write."""
 
-    The ``CLAUDE.md`` side of the layout only REMOVES text — it swaps an anchor
-    for the import — so it may act only when the anchor has somewhere to go. An
-    ``AGENTS.md`` that links outside the pair, or dangles, is the owner's: the
-    writer will not write through it, so unless the anchor is already there, a
-    swap in ``CLAUDE.md`` would delete the anchor and put it nowhere.
+    path: str
+    how: str
+    text: str
+    content: str
+
+
+@dataclass(frozen=True)
+class AnchorPlan:
+    """Every write that puts this repo on the anchor layout, and — when prawduct
+    cannot finish the layout itself — why, in words that name the owner's fix.
+
+    The ONE place the layout is decided. The writer executes these writes, the
+    dry-run preview prints them, and ``anchor_repair`` offers a repair only when
+    they complete the layout, so the three cannot disagree about what will happen.
     """
-    agents = Path(project_dir) / AGENTS_REL
-    if not agents.is_symlink() or anchor_files_are_one(project_dir):
-        return True
+
+    writes: tuple[AnchorWrite, ...]
+    unplaced: str | None
+
+    @property
+    def paths(self) -> list[str]:
+        return [w.path for w in self.writes]
+
+
+def _read_layout_file(path: Path) -> tuple[str | None, str | None]:
+    """``(text, None)``; ``(None, None)`` when absent; ``(None, problem)`` when
+    the file exists and cannot be read as text — a directory, a permission
+    error, bytes that are not UTF-8."""
+    if not path.exists():
+        return None, None
+    if path.is_dir():
+        return None, "is a directory"
     try:
-        return agents.is_file() and ANCHOR_SENTINEL in _read_own_endings(agents)
-    except (OSError, UnicodeError):
-        return False
+        return _read_own_endings(path), None
+    except (OSError, UnicodeError) as exc:
+        return None, f"could not be read ({exc})"
 
 
-def _anchor_into(path: Path) -> bool:
-    """Ensure the anchor is in ``path``: strip a pre-2.0 block in its place, or
-    append. A no-op when the sentinel is already present. True iff it wrote.
+def _replace_block(text: str, middle: str) -> str:
+    """``text`` with its pre-2.0 PRAWDUCT block replaced, in place, by ``middle``.
 
-    The anchor replaces a ``PRAWDUCT:BEGIN/END`` block **in place** — between the
-    product's own content above and below — so the document keeps its shape.
+    The replacement sits between the product's own content above and below, so
+    the document keeps its shape; the framework generator comments that bracket
+    the block go with it.
     """
+    _block, before, after = core.extract_block(text)
+    head = _collapse_blank_runs(_drop_generator_comments(before)).rstrip("\n")
+    tail = _collapse_blank_runs(_drop_generator_comments(after)).strip("\n")
+    return "\n\n".join(p for p in (head, middle, tail) if p) + "\n"
+
+
+def _anchor_write(rel: str, text: str | None) -> AnchorWrite | None:
+    """The write that puts the current anchor into ``rel``, or ``None`` when it
+    already carries an anchor prawduct did not ship (current, or the owner's)."""
     anchor = STATIC_ANCHOR.strip()
-    if not path.exists():
-        core.atomic_write_text(path, f"{anchor}\n", encoding="utf-8", newline="")
-        return True
-    original = _read_own_endings(path)
-    block, before, after = core.extract_block(original)
-    if block is not None:
-        head = _collapse_blank_runs(_drop_generator_comments(before)).rstrip("\n")
-        tail = _collapse_blank_runs(_drop_generator_comments(after)).strip("\n")
-        new = "\n\n".join(p for p in (head, anchor, tail) if p) + "\n"
-    elif ANCHOR_SENTINEL in original:
-        return False
+    if text is None:
+        return AnchorWrite(rel, "create", anchor, f"{anchor}\n")
+    if core.extract_block(text)[0] is not None:
+        how, new = "replace the pre-2.0 block", _replace_block(text, anchor)
+    elif ANCHOR_SENTINEL in text:
+        shipped = shipped_anchor_in(text)
+        if shipped is None:
+            return None
+        # The archive holds both trailing-newline shapes; the swap keeps the one
+        # it found, so the product's next line does not move.
+        current = STATIC_ANCHOR.rstrip("\n") + ("\n" if shipped.endswith("\n") else "")
+        if "\r\n" in shipped:
+            current = current.replace("\n", "\r\n")
+        how, new = "replace the shipped anchor in place", text.replace(shipped, current, 1)
     else:
-        base = original.rstrip("\r\n")
-        new = f"{base}\n\n{anchor}\n" if base else f"{anchor}\n"
-    new = _in_own_endings(original, new)
-    if new == original:
-        return False
-    # Atomic: this is the product's own instruction file, and a crash between
-    # truncate and write would leave it half-written. Through the resolved path,
-    # so a symlinked name keeps pointing at the file it pointed at.
-    core.atomic_write_text(path.resolve(), new, encoding="utf-8", newline="")
-    return True
+        base = text.rstrip("\r\n")
+        how, new = "append", (f"{base}\n\n{anchor}\n" if base else f"{anchor}\n")
+    new = _in_own_endings(text, new)
+    return None if new == text else AnchorWrite(rel, how, anchor, new)
 
 
-def apply_agents_anchor(project_dir: Path) -> bool:
-    """Ensure ``AGENTS.md`` carries the anchor — created, or appended after the
-    product's own text, which stays byte-identical. True iff it wrote."""
-    path = Path(project_dir) / AGENTS_REL
-    if path.is_symlink() and not anchor_files_are_one(project_dir):
-        # A link elsewhere is the owner's arrangement; writing through it would
-        # edit a file this repo may not own, and replacing it would break it.
-        return False
-    return _anchor_into(path)
-
-
-def apply_claude_import(project_dir: Path) -> bool:
-    """Make ``CLAUDE.md`` import ``AGENTS.md``. True iff it wrote.
-
-    Created, it is exactly the import. An existing file keeps the product's own
-    text: a pre-2.0 block, or an anchor prawduct shipped (matched byte for byte),
-    is swapped in place for the import; with neither, the import is added at the
-    top. An anchor the owner edited matches nothing prawduct shipped and is left
-    for them (``anchor_repair`` reports it), as is a symlinked ``CLAUDE.md``.
-    """
-    # Lazy: the archive of shipped anchors lives with the detector that grades
-    # them, and that module imports this one.
-    from .anchor_repair import shipped_anchor_in  # noqa: PLC0415
-
-    path = Path(project_dir) / CLAUDE_REL
-    if path.is_symlink():
-        return False
-    if not path.exists():
-        core.atomic_write_text(path, f"{CLAUDE_IMPORT}\n", encoding="utf-8", newline="")
-        return True
-    original = _read_own_endings(path)
-    already = imports_agents(original)
-    block, before, after = core.extract_block(original)
-    if block is not None:
-        head = _collapse_blank_runs(_drop_generator_comments(before)).rstrip("\n")
-        tail = _collapse_blank_runs(_drop_generator_comments(after)).strip("\n")
-        middle = "" if already else CLAUDE_IMPORT
-        new = "\n\n".join(p for p in (head, middle, tail) if p) + "\n"
+def _import_write(text: str | None) -> tuple[AnchorWrite | None, str | None]:
+    """The write that makes ``CLAUDE.md`` import ``AGENTS.md`` and give up any
+    anchor prawduct shipped there, or ``None``; plus why the layout cannot be
+    finished here, when an anchor prawduct did not write sits in the file."""
+    if text is None:
+        return AnchorWrite(CLAUDE_REL, "create", CLAUDE_IMPORT, f"{CLAUDE_IMPORT}\n"), None
+    already = imports_agents(text)
+    if core.extract_block(text)[0] is not None:
+        how, new = "replace the pre-2.0 block", _replace_block(text, "" if already else CLAUDE_IMPORT)
     else:
-        shipped = shipped_anchor_in(original)
+        shipped = shipped_anchor_in(text)
         if shipped is not None:
             # The archived anchors end in a newline; the import keeps it, so an
             # anchor that closed the file leaves the file still newline-terminated.
             line = CLAUDE_IMPORT + ("\n" if shipped.endswith("\n") else "")
-            new = original.replace(shipped, "" if already else line, 1)
-        elif already or ANCHOR_SENTINEL in original:
-            return False
+            how, new = "replace the shipped anchor in place", text.replace(shipped, "" if already else line, 1)
+        elif ANCHOR_SENTINEL in text:
+            return None, (
+                f"{CLAUDE_REL} carries an anchor prawduct did not write, so it is left for "
+                f"you — replace it with the line `{CLAUDE_IMPORT}`"
+            )
+        elif already:
+            return None, None
         else:
-            body = original.lstrip("\r\n")
-            new = f"{CLAUDE_IMPORT}\n\n{body}" if body else f"{CLAUDE_IMPORT}\n"
-    new = _in_own_endings(original, new)
-    if new == original:
-        return False
-    core.atomic_write_text(path, new, encoding="utf-8", newline="")
-    return True
+            body = text.lstrip("\r\n")
+            how, new = "add at the top", (f"{CLAUDE_IMPORT}\n\n{body}" if body else f"{CLAUDE_IMPORT}\n")
+    new = _in_own_endings(text, new)
+    if new == text:
+        return None, None
+    return AnchorWrite(CLAUDE_REL, how, CLAUDE_IMPORT, new), None
 
 
-def apply_governance_anchor(project_dir: Path) -> list[str]:
-    """Put the anchor in ``AGENTS.md`` and make ``CLAUDE.md`` import it.
+def plan_governance_anchor(project_dir: Path) -> AnchorPlan:
+    """Decide every write that puts the anchor in ``AGENTS.md`` and makes
+    ``CLAUDE.md`` import it. Reads only.
 
-    Returns the repo-relative files it changed, in write order; empty means the
-    repo already had the layout. When the two names are one file through a
-    symlink, the anchor goes into that file and no import is written.
+    A ``CLAUDE.md`` prawduct creates is exactly the import; an existing one keeps
+    the product's own text, with a shipped anchor or pre-2.0 block swapped in
+    place for the import, or the import added at the top. Symlinks are never
+    written through or replaced, except where the two names are one file — then
+    the anchor goes into that file once and no import is written, because the
+    file would be importing itself. ``CLAUDE.md`` gives up its anchor only when
+    ``AGENTS.md`` takes it, so a layout prawduct cannot finish never loses one.
     """
     project_dir = Path(project_dir)
+    agents_p, claude_p = project_dir / AGENTS_REL, project_dir / CLAUDE_REL
+
     if anchor_files_are_one(project_dir):
-        rel = CLAUDE_REL if (project_dir / AGENTS_REL).is_symlink() else AGENTS_REL
-        return [rel] if _anchor_into(project_dir / rel) else []
-    changed: list[str] = []
-    if apply_agents_anchor(project_dir):
-        changed.append(AGENTS_REL)
-    if agents_can_hold_anchor(project_dir) and apply_claude_import(project_dir):
-        changed.append(CLAUDE_REL)
-    return changed
+        rel = CLAUDE_REL if agents_p.is_symlink() else AGENTS_REL
+        text, problem = _read_layout_file(project_dir / rel)
+        if problem:
+            return AnchorPlan((), f"{rel} {problem}, so the anchor could not be placed")
+        write = _anchor_write(rel, text)
+        return AnchorPlan((write,) if write else (), None)
+
+    agents, a_problem = _read_layout_file(agents_p)
+    claude, c_problem = _read_layout_file(claude_p)
+    for rel, problem in ((AGENTS_REL, a_problem), (CLAUDE_REL, c_problem)):
+        if problem:
+            return AnchorPlan((), f"{rel} {problem}, so the anchor could not be placed")
+
+    writes: list[AnchorWrite] = []
+    if agents_p.is_symlink():
+        if agents is None or ANCHOR_SENTINEL not in agents:
+            return AnchorPlan((), (
+                f"{AGENTS_REL} is a symlink prawduct will not write through, so the "
+                f"anchor has nowhere to go — put it in the file {AGENTS_REL} points "
+                "at, or replace the link with a file, then run this again"
+            ))
+    else:
+        write = _anchor_write(AGENTS_REL, agents)
+        if write:
+            writes.append(write)
+
+    if claude_p.is_symlink():
+        if claude is None or not imports_agents(claude):
+            return AnchorPlan(tuple(writes), (
+                f"{CLAUDE_REL} is a symlink prawduct will not write through, so Claude "
+                f"Code is not told to read {AGENTS_REL} — add the line `{CLAUDE_IMPORT}` "
+                f"to the file {CLAUDE_REL} points at"
+            ))
+        return AnchorPlan(tuple(writes), None)
+
+    write, unplaced = _import_write(claude)
+    if write:
+        writes.append(write)
+    return AnchorPlan(tuple(writes), unplaced)
+
+
+def apply_governance_anchor(project_dir: Path) -> AnchorPlan:
+    """Execute :func:`plan_governance_anchor` and return the plan it executed.
+
+    Writes go through ``core.atomic_write_text`` (a crash cannot leave the
+    owner's instructions half-written) with ``newline=""`` (the file's own line
+    endings survive), and through the resolved path, so a name that is a
+    symlink to its partner keeps pointing where it did. OSErrors propagate; each
+    caller owns its failure policy.
+    """
+    project_dir = Path(project_dir)
+    plan = plan_governance_anchor(project_dir)
+    for write in plan.writes:
+        target = (project_dir / write.path).resolve()
+        core.atomic_write_text(target, write.content, encoding="utf-8", newline="")
+    return plan
+
+
+def governance_anchor_pending(project_dir: Path) -> list[str]:
+    """The files :func:`apply_governance_anchor` would change — the same plan."""
+    return plan_governance_anchor(project_dir).paths
 
 
 def _state_file_unreadable(project_dir: Path) -> "str | None":
@@ -889,6 +920,18 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         )
         return result
 
+    # Refused before anything is touched when the anchor cannot be placed: a
+    # migration that stripped the framework and recorded `distribution: plugin`
+    # with the old block still in place would leave nothing pointing back here —
+    # `reanchor` declines a pre-2.0 block and routes to this command, which would
+    # then report "already migrated". The reason names the owner's fix, and
+    # re-running after it completes the migration.
+    unplaced = plan_governance_anchor(project_dir).unplaced
+    if unplaced:
+        result["refused"] = unplaced
+        result["notes"].append(f"Not migrated: {unplaced}.")
+        return result
+
     removals = framework_files(project_dir)
     skill_dirs = [d for d in framework_skill_dirs() if (project_dir / d).is_dir()]
     managed_dirs = [d for d in core.MANAGED_DIRS if (project_dir / d).is_dir()]
@@ -962,17 +1005,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
                 result["notes"].append(f"left {rel} in place (not empty)")
 
     edited: list[str] = []
-    edited.extend(apply_governance_anchor(project_dir))
-    if not agents_can_hold_anchor(project_dir):
-        # The writer will not write through an AGENTS.md that links outside the
-        # pair, so the anchor (or the pre-2.0 block) stays where it was. Said
-        # here because the migration otherwise reports success with the
-        # governance text not where a second host would read it.
-        result["notes"].append(
-            f"{AGENTS_REL} is a symlink prawduct will not write through, so the "
-            f"governance anchor was not placed — put it in the file {AGENTS_REL} "
-            "points at, then run `prawduct-hook reanchor`"
-        )
+    edited.extend(apply_governance_anchor(project_dir).paths)
     if transform_settings(project_dir):
         edited.append(".claude/settings.json")
     # Before the append, so the distribution marker lands at the end of a state
@@ -1029,11 +1062,14 @@ def run(project_dir: str | Path, argv: list[str]) -> int:
 
     if json_mode:
         print(json.dumps(result, indent=2))
-        return 0
+        return 1 if result.get("refused") else 0
 
     if result["already_migrated"]:
         print("Already on the plugin (distribution: plugin) — nothing to do.")
         return 0
+    if result.get("refused"):
+        print(f"Not migrated: {result['refused']}.")
+        return 1
 
     verb = "Removed" if apply else "Would remove"
     print(f"prawduct → plugin cutover ({'apply' if apply else 'dry run'})\n")

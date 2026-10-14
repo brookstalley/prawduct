@@ -12,18 +12,24 @@
 - #942, under the owner's rulings on #942 (2026-09-30) and #928 D-8 (2026-10-10), plus two
   answers given in session on 2026-10-14 (the Claude Code line lives inside the `AGENTS.md`
   block; an existing product `CLAUDE.md` keeps its own text).
-- **The anchor moves.** `STATIC_ANCHOR` is reworded for any host with one Claude Code line, and
-  `migrate_plugin.apply_governance_anchor` writes it to `AGENTS.md` and makes `CLAUDE.md` import
-  it. `CLAUDE.md` gives up its anchor only when `AGENTS.md` can hold it: an `AGENTS.md` linked
-  outside the pair or dangling is never written through, and the anchor stays put. Two names
-  for one file through a symlink keep one anchor and no self-import.
+- **The anchor moves.** `STATIC_ANCHOR` is reworded for any host, with one Claude Code line and a
+  rule for a host that cannot tell whether its integration is loaded (assume it is not).
+  `migrate_plugin.plan_governance_anchor` decides every write — the anchor into `AGENTS.md`, the
+  import into `CLAUDE.md` — with each file's exact new content; the writer executes that plan,
+  the `reanchor` preview prints it, and the grade offers a repair only when it completes the
+  layout, so the three cannot disagree. `CLAUDE.md` gives up its anchor only when `AGENTS.md`
+  takes it; symlinks out of the pair are never written through, and two names for one file keep
+  one anchor and no self-import. When the plan cannot finish, migrate refuses before touching
+  anything and onboarding warns, each naming the owner's fix. The shipped-anchor archive moved
+  to its own leaf module, `anchor_archive.py`.
 - **The repair moves fleets.** `anchor_repair` grades the pair, with new `legacy-layout` and
   `import-missing` statuses; `ANCHOR_V5` (the 3.6–3.7 anchor) joins the archive; the `reanchor`
   preview lists every file it would write with the exact bytes (`writes` in `--json`). Doctor
   Health Check #4 describes each status.
 - **Every reader knows `AGENTS.md`.** Root `AGENTS.md` is protected (`agents-md-edited`); the
   onboarding probe, the briefing's size check and critical-rules read, and `jurisdiction`'s corpus
-  all read it. Migrate says so when it could not place the anchor.
+  all read it. The batch-fix directive called `.md` under `agents/` free to write mid-review,
+  though `agents/` is protected; it now names every protected path, checked against the set.
 - **This repo moved too.** Its contract is in `AGENTS.md`, and `CLAUDE.md` is `@AGENTS.md`.
 - A decision is recorded under `architecture.md`'s reconciled-files norm; the norm's wording is
   left for the owner to amend. The #928 requirements doc's header and inventory rows 29 and 30

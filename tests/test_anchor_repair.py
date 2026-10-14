@@ -937,6 +937,9 @@ _LAYOUTS = {
     "shipped-anchor-in-claude": {"CLAUDE.md": "# P\n\n" + ar.ANCHOR_V5},
     "pre-2.0-block": {"CLAUDE.md": "# P\n\n<!-- PRAWDUCT:BEGIN -->\nheavy\n<!-- PRAWDUCT:END -->\n"},
     "current-layout": {"AGENTS.md": STATIC_ANCHOR, "CLAUDE.md": "@AGENTS.md\n"},
+    # Someone copied CLAUDE.md to AGENTS.md before onboarding: both carry the
+    # shipped anchor. The preview once disagreed with the writer on exactly this.
+    "claude-copied-to-agents": {"AGENTS.md": "# P\n\n" + ar.ANCHOR_V5, "CLAUDE.md": "# P\n\n" + ar.ANCHOR_V5},
 }
 
 
@@ -949,9 +952,13 @@ def test_the_dry_run_plan_names_exactly_what_apply_changes(tmp_path: Path, layou
     root.mkdir()
     for name, text in _LAYOUTS[layout].items():
         (root / name).write_text(text, encoding="utf-8")
-    planned = mp.governance_anchor_pending(root)
-    assert mp.apply_governance_anchor(root) == planned
-    assert mp.apply_governance_anchor(root) == [], "a second run must change nothing"
+    plan = mp.plan_governance_anchor(root)
+    assert mp.governance_anchor_pending(root) == plan.paths
+    executed = mp.apply_governance_anchor(root)
+    assert executed == plan, "the writer must execute the plan the preview printed"
+    for write in plan.writes:
+        assert (root / write.path).read_text(encoding="utf-8") == write.content, write.path
+    assert mp.apply_governance_anchor(root).writes == (), "a second run must change nothing"
     assert mp.governance_anchor_pending(root) == []
 
 
@@ -998,7 +1005,9 @@ def test_a_shipped_claude_anchor_is_never_deleted_when_agents_md_cannot_take_it(
     if via == "repair":
         assert ar.repair(root, apply=True)["applied"] is False
     else:
-        assert mp.apply_governance_anchor(root) == []
+        executed = mp.apply_governance_anchor(root)
+        assert executed.writes == ()
+        assert executed.unplaced and "symlink" in executed.unplaced
     assert (root / "CLAUDE.md").read_bytes() == before, "the anchor must survive"
     assert (root / "AGENTS.md").is_symlink()
 
@@ -1010,7 +1019,7 @@ def test_an_outside_link_that_already_carries_the_anchor_takes_the_import(tmp_pa
     target = tmp_path / "shared-anchored.md"
     target.write_text(STATIC_ANCHOR, encoding="utf-8")
     os.symlink(target, root / "AGENTS.md")
-    assert mp.apply_governance_anchor(root) == ["CLAUDE.md"]
+    assert mp.apply_governance_anchor(root).paths == ["CLAUDE.md"]
     assert "@AGENTS.md" in (root / "CLAUDE.md").read_text(encoding="utf-8")
     assert target.read_text(encoding="utf-8") == STATIC_ANCHOR
 
@@ -1028,3 +1037,79 @@ def test_the_stale_preview_names_the_import_the_apply_will_add(tmp_path: Path):
     assert [w["path"] for w in result["writes"]] == ["AGENTS.md", "CLAUDE.md"]
     ar.repair(root, apply=True)
     assert (root / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n\n# Mine\n"
+
+
+
+def test_a_claude_md_linked_outside_is_never_reported_repaired(tmp_path: Path):
+    """With CLAUDE.md a symlink out of the repo, prawduct cannot add the import
+    there, so the repair is not offered — and a repair that could not reach the
+    healthy layout is never reported as `ok`."""
+    root = tmp_path / "claude-linked"
+    root.mkdir()
+    target = tmp_path / "shared-claude.md"
+    target.write_text("# Shared\n\n" + ar.ANCHOR_V5, encoding="utf-8")
+    os.symlink(target, root / "CLAUDE.md")
+
+    graded = ar.check(root)
+    assert graded["status"] == ar.STATUS_LEGACY_LAYOUT
+    assert graded["repairable"] is False
+    assert "symlink" in graded["detail"]
+    result = ar.repair(root, apply=True)
+    assert result["applied"] is False
+    assert result["status"] != ar.STATUS_OK
+    assert target.read_text(encoding="utf-8") == "# Shared\n\n" + ar.ANCHOR_V5
+
+
+@pytest.mark.parametrize("kind", ["directory", "not-utf8"])
+def test_an_unreadable_agents_md_stops_the_writer_without_a_crash(tmp_path: Path, kind):
+    """The writer reads a product's AGENTS.md before deciding anything; one it
+    cannot read is reported as the reason the anchor was not placed, never as a
+    traceback out of onboarding or migration."""
+    root = tmp_path / f"unreadable-{kind}"
+    root.mkdir()
+    (root / "CLAUDE.md").write_text("# P\n\n" + ar.ANCHOR_V5, encoding="utf-8")
+    if kind == "directory":
+        (root / "AGENTS.md").mkdir()
+    else:
+        (root / "AGENTS.md").write_bytes(b"\xff\xfe not utf-8")
+    before = (root / "CLAUDE.md").read_bytes()
+    plan = mp.apply_governance_anchor(root)
+    assert plan.writes == () and plan.unplaced and "AGENTS.md" in plan.unplaced
+    assert (root / "CLAUDE.md").read_bytes() == before
+
+
+def test_init_says_so_when_the_anchor_cannot_be_placed(tmp_path: Path):
+    """Onboarding writes the rest of the scaffold but does not stay silent about
+    an anchor it could not place (AGENTS.md linked outside the repo)."""
+    from lib.init_product import init_product
+
+    root = tmp_path / "init-linked"
+    root.mkdir()
+    shared = tmp_path / "org.md"
+    shared.write_text("# Org\n", encoding="utf-8")
+    os.symlink(shared, root / "AGENTS.md")
+    result = init_product(root, "demo", apply=True)
+    assert any("anchor not placed" in w for w in result["warnings"]), result["warnings"]
+    assert shared.read_text(encoding="utf-8") == "# Org\n"
+
+
+def test_an_ordinary_init_has_no_anchor_warning(tmp_path: Path):
+    from lib.init_product import init_product
+
+    root = tmp_path / "init-plain"
+    root.mkdir()
+    result = init_product(root, "demo", apply=True)
+    assert not any("anchor not placed" in w for w in result["warnings"])
+
+
+def test_a_write_that_does_not_finish_the_layout_is_reported_as_what_remains(
+    tmp_path: Path, monkeypatch
+):
+    """`repair` re-grades after writing and reports that grade, never a blanket
+    `ok`. Pinned by making the writer achieve nothing: the report must still say
+    the layout is unfinished."""
+    root = _write_claude(tmp_path / "noop-writer", ar.ANCHOR_V5)
+    monkeypatch.setattr(ar, "apply_governance_anchor", lambda _pd: None)
+    result = ar.repair(root, apply=True)
+    assert result["applied"] is True
+    assert result["status"] == ar.STATUS_LEGACY_LAYOUT

@@ -60,6 +60,9 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
 2. **Dry run.** Run `prawduct-hook migrate-plugin --json` (no `--apply`). Parse the JSON:
    - If `already_migrated` is true, report "This repo is already on the plugin
      (`distribution: plugin`)." and stop — nothing to do.
+   - If `refused` is set (exit 1), nothing was touched: relay its reason, which names the
+     owner's fix (a symlinked `AGENTS.md` or `CLAUDE.md` the anchor cannot be placed through),
+     and stop. Re-running after that fix migrates.
    - Otherwise present the plan: the `removed` files, `removed_dirs`, `edited` files, the
      `state_keys_removed` keys, and the `gitignored` marker. Surface that this is destructive
      but reversible.

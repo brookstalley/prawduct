@@ -1271,9 +1271,9 @@ LAST_MEASURED_TOKENS = {
     # +35 on 2026-10-09 (requirements-alignment w1 boundary review): Goals gains "Decisions
     # made mid-build", the home building.md's decision line was missing, and the Foreign API
     # fallback records its assumed surface as an inference in Goals. A READING, no ceiling.
-    # +4 on 2026-10-14 (agents-md-anchor): the trivial bound's file-set list names root
-    # AGENTS.md, which the protected set now includes. A READING, no ceiling.
-    "methodology/planning.md": 5786,
+    # +5 on 2026-10-14 (agents-md-anchor): the trivial bound's file-set list names root
+    # AGENTS.md and `agents/`, both in the protected set it restates. A READING, no ceiling.
+    "methodology/planning.md": 5787,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

@@ -1891,6 +1891,7 @@ _DIRECTIVE_PATH_CLASSES = {
     "`skills/`": ("plugin/skills/critic/review-cycle.md", True),
     "`methodology/`": ("plugin/methodology/building.md", True),
     "`templates/`": ("plugin/templates/runbook.md", True),
+    "`agents/`": ("plugin/agents/critic-reviewer.md", True),
     "`CLAUDE.md`": ("CLAUDE.md", True),
     "`AGENTS.md`": ("AGENTS.md", True),
 }
@@ -2026,6 +2027,19 @@ class TestBatchFixDirective:
             "no _DIRECTIVE_PATH_CLASSES entry pins against is_judgeable_path. "
             "Add each with a representative path and its expected judgeability."
         )
+
+    def test_directive_names_every_protected_path_class(self):
+        """The other direction, and the one hand-maintenance missed: every bound
+        in the protected set (`buildplan_refs._TRIVIAL_PROTECTED_PATHS`, the one
+        home) must be named, or the directive calls a protected `.md` free to
+        write mid-review — which moves the tree the review is judging. Derived
+        from the set, so a new member is covered the day it lands."""
+        from lib import buildplan_refs
+
+        for path, _exact, _label in buildplan_refs._TRIVIAL_PROTECTED_PATHS:
+            assert f"`{path}`" in cc._BATCH_FIX_DIRECTIVE, (
+                f"the directive does not name protected path `{path}`"
+            )
 
     def test_directive_names_the_comment_only_trap(self):
         # The single most expensive misread of "free": a `.py` comment edit

@@ -83,6 +83,16 @@ in place by tightening the anchor's own prose, not by raising the ceiling.
 - Chunk 02 — migrate reports "the governance anchor was not placed" when `AGENTS.md` links
   outside the pair. This was a Chunk 01 review observation, carried by Chunk 02's commit;
   outside the chunk's described scope, so recorded here.
+- Boundary review — the layout is decided in ONE place, `plan_governance_anchor`, which
+  returns each write with its exact new content and an `unplaced` reason. The writer, the
+  dry-run preview and `anchor_repair`'s offer all consume it; `repair` re-grades after writing.
+  It replaces four places that worked the layout out separately and disagreed in edge
+  layouts. Settled by "every fact has one home" and the third-rework signal.
+- Boundary review — migrate REFUSES, untouched, when the anchor cannot be placed, rather than
+  completing with a note: a completed migration would leave the pre-2.0 block and an exit loop
+  through `reanchor`. Onboarding still scaffolds and warns. *Inferred; the owner can override.*
+- Boundary review — the anchor gains "If you can't tell, assume it isn't" for a host with no
+  labelled line, because the failure direction otherwise is fail-open. Paid in place.
 - Chunk 01 — the reanchor JSON gains a `writes` list (path, how, exact text) beside
   `replacement`, which stays the anchor text, so the preview shows both files' bytes without
   changing an existing key's type.

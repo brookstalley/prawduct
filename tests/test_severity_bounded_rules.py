@@ -8,8 +8,8 @@ volume at the worst yield of any mode, and **41 of the 83 scopes with two or
 more verify rounds found ZERO blocking findings across all of them**.
 
 **Why a test and not a careful edit.** These two sentences have ten carriers
-across five directories, two of which (`migrate_plugin.py`, `anchor_repair.py`)
-write the text into every governed product's own `CLAUDE.md`. A rule you must
+across five directories, two of which (`migrate_plugin.py`, `anchor_archive.py`)
+hold the anchor text written into every governed product's instruction files. A rule you must
 remember to restate consistently across ten files is the weakest form of that
 rule — `core.md` says to convert it into something that runs. This runs.
 
@@ -58,7 +58,7 @@ RULE_VOCAB = {
 #: released and unreleased sections would need the per-SECTION test instead.
 HISTORY = ("CHANGELOG.md", "change-log.md")
 
-#: `anchor_repair.py` holds ONLY superseded `CLAUDE.md` anchors — the exact bytes
+#: `anchor_archive.py` holds ONLY superseded anchors — the exact bytes
 #: sitting in already-onboarded repos, which `repair` matches byte for byte to
 #: decide whether a repo is repairable. Amending them to carry the bound would
 #: grade every repo onboarded on that version `stale-modified` and refuse it a
@@ -70,7 +70,7 @@ HISTORY = ("CHANGELOG.md", "change-log.md")
 #: `test_the_anchor_archive_holds_no_current_anchor` pins that rather than
 #: leaving it as a comment — an exemption with no reachability check is an
 #: environment-shaped hole.
-ARCHIVE_ONLY = ("anchor_repair.py",)
+ARCHIVE_ONLY = ("anchor_archive.py",)
 
 #: What counts as the bound being present. Matched against the whole semantic
 #: unit, never one physical line — line structure is not semantic structure,
@@ -132,7 +132,7 @@ def test_the_sweep_finds_the_carriers_it_claims_to_scan():
     The three named files are the ones whose absence would be silent and
     expensive: `migrate_plugin.py` propagates into consumer repos,
     `session-digest.md` is always-injected, and `principles.md` is the principle
-    itself. `anchor_repair.py` is the fourth consumer-facing carrier and is
+    itself. `anchor_archive.py` is the fourth consumer-facing carrier and is
     deliberately NOT required here — it is exempt from the sweep as archived
     history, and `test_the_anchor_archive_holds_no_current_anchor` guards it
     instead.
@@ -204,7 +204,7 @@ def test_the_sweep_can_report_a_violation(tmp_path, corrupted, monkeypatch):
 
 
 def test_the_anchor_archive_holds_no_current_anchor():
-    """`anchor_repair.py` is exempt from the sweep because it holds only
+    """`anchor_archive.py` is exempt from the sweep because it holds only
     SUPERSEDED anchors. That premise is checkable, so it is checked here rather
     than trusted from a comment — the day someone moves the live anchor into
     that module, the exemption silently stops covering history and starts
@@ -214,9 +214,9 @@ def test_the_anchor_archive_holds_no_current_anchor():
     asserts the archive module defines no competing one and that every name it
     does define is wired into `SUPERSEDED_ANCHORS`.
     """
-    src = (ROOT / "plugin" / "lib" / "anchor_repair.py").read_text(encoding="utf-8")
+    src = (ROOT / "plugin" / "lib" / "anchor_archive.py").read_text(encoding="utf-8")
     assert "STATIC_ANCHOR =" not in src, (
-        "anchor_repair.py now defines a current anchor, so ARCHIVE_ONLY is "
+        "anchor_archive.py now defines a current anchor, so ARCHIVE_ONLY is "
         "exempting a live carrier from the #833 sweep — move the anchor back to "
         "migrate_plugin.py, or drop the exemption and bound the text"
     )

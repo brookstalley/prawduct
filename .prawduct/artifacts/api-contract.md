@@ -497,7 +497,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     agent reads — the verdict token leads stdout so a caller can branch on one word — and the exit
     code is deliberately NOT the contract here: 0 means "answered", including `unknown`, because
     the command gates nothing; 1 is reserved for bad arguments.
-  - `migrate-plugin --json` → migrate skill; `init-product --json` → onboard skill;
+  - `migrate-plugin --json` → migrate skill (a `refused` reason — the anchor cannot be placed —
+    exits 1 having touched nothing); `init-product --json` → onboard skill;
     `audit-learnings --json` → doctor. **`repo-disable --json` has no consumer** — the
     repo-disable skill documents and runs only the bare form. A row naming a consumer that parses
     nothing is inert, which is exactly why it does not fail — so this list is checked by re-running

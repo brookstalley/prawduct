@@ -19,7 +19,7 @@ Creates:
   - ``.prawduct/artifacts/boundary-patterns.md``      (template)
   - ``.prawduct/.pr-reviews/``                        (dir)
   - ``AGENTS.md``                                     (thin static governance anchor — §4)
-  - ``CLAUDE.md``                                     (the one line ``@AGENTS.md``)
+  - ``CLAUDE.md``                                     (imports AGENTS.md; created as exactly ``@AGENTS.md``)
   - ``.claude/settings.json``                         (committed install reference)
   - ``.gitignore``                                    (session files + version marker)
 
@@ -45,7 +45,7 @@ from .migrate_plugin import (
     INSTALL_REFERENCE,
     apply_governance_anchor,
     detect_base_branch,
-    governance_anchor_pending,
+    plan_governance_anchor,
     ensure_marker_gitignored,
     record_base_branch,
     record_distribution,
@@ -230,8 +230,14 @@ def init_product(
     # AGENTS.md carries the thin static governance anchor (created fresh, or
     # appended to an existing product AGENTS.md), and CLAUDE.md imports it. Same
     # layout a migrated repo gets.
-    for rel in governance_anchor_pending(project_dir):
+    anchor_plan = plan_governance_anchor(project_dir)
+    for rel in anchor_plan.paths:
         (edited if (project_dir / rel).is_file() else created).append(rel)
+    if anchor_plan.unplaced:
+        # Said, never swallowed: the rest of the scaffold is still worth writing,
+        # but a repo whose anchor is not where its agents read it is one a
+        # session will treat as ungoverned.
+        warnings.append(f"Governance anchor not placed: {anchor_plan.unplaced}.")
     if apply:
         apply_governance_anchor(project_dir)
 
