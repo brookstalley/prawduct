@@ -21,7 +21,9 @@ anchor. A new onboard writes the anchor to `AGENTS.md` (appended if the file exi
 import in the old anchor's place. Already-onboarded repos: `/prawduct:doctor` Health Check #4
 now reports `legacy-layout`, and `prawduct-hook reanchor --apply` moves the anchor after showing
 each file's exact bytes. Nothing is rewritten without `--apply`. Root `AGENTS.md` is now
-governance-protected like root `CLAUDE.md`.
+governance-protected like root `CLAUDE.md`. **Rolling back** to an earlier release: don't apply that
+release's anchor repair. It reads only `CLAUDE.md`, reports the anchor absent, and would add a
+second, older copy, while the `AGENTS.md` anchor keeps loading through the import.
 
 **`self-citing-clear`**: **a new Stop gate, `clear-reason`, refuses a `SAFE TO CLEAR` whose reason
 is the message itself**, such as "the questions are in this message". A clear deletes the message,
