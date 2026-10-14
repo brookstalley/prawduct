@@ -5,6 +5,28 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-13: stop buying verify rounds that have nothing to verify
+
+<!-- prawduct: type=bugfix | scope=empty-verify-rounds -->
+
+- In sibling repos on 3.7.x, 20–24% of `verify-resolutions` rounds had no open blocking or warning
+  finding to verify, against about 5% before (part of #724). Three causes, three fixes:
+- **An owed boundary review counts as a later review.** `critic_mode.review_owed_after` now owns
+  "a later review will cover this": a later chunk's review, or the plan's boundary `cumulative`
+  when the last chunk is `Type: cumulative-final` or the plan is short. The Stop gate's deferral,
+  `cost-of-commit` and the review close read it. Inference on an uncommitted cumulative-final last
+  chunk answers `deferred` instead of running a `final` the cumulative would repeat, and the Stop
+  gate's note for that chunk asks the same question, so it stops saying "then cumulative" once the
+  cumulative has run.
+- **A verify pass can confirm an observation fix.** A resolution may name a prior observation's
+  `O-n` id in the existing `finding.fid` slot; only `fixed` is accepted for one, and gates never
+  read it. `stats` stops counting such a round empty, and the census reports the fix as `fixed`.
+- **A verify pass reports observations only about the fixes it verifies.** In
+  `verify-resolutions` an observation must carry `about: {review_id, fid}` naming the prior finding
+  or observation it judges; one without it is dropped (counted on the fact as
+  `observations_dropped`), never refusing the round. The dispatch directive no longer invites
+  open-ended style observations, which drove a fix → verify → new-observation treadmill.
+
 ## 2026-10-12: the ledger records which path consolidated a Critic review
 
 <!-- prawduct: type=bugfix | scope=consolidate-trigger -->

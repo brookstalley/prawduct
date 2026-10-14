@@ -741,7 +741,13 @@ LAST_MEASURED_TOKENS = {
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -8 on 2026-10-09 (requirements-alignment w1): Goal 2 checks Goals instead of
     # Requirements Confidence, in a shorter line that also accepts older plans.
-    "skills/critic/goals-1-3.md": 2659,
+    # -10 on 2026-10-13 (empty-verify-rounds): `resolutions` now names observation fixes too, in a
+    # paragraph compressed in place; the observations line drops a builder-facing reason review-cycle.md owns.
+    # +21 the same day, DECLARED (net +11 on the branch): a verify reviewer reads only this file, and in
+    # that mode an observation without `about` is dropped by consolidation, so the rule has to be stated
+    # here or every observation the reviewer writes vanishes. Priced against the verify round each
+    # off-topic observation used to buy (median ~2 min).
+    "skills/critic/goals-1-3.md": 2670,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -916,7 +922,14 @@ LAST_MEASURED_TOKENS = {
     # file makes consolidation refuse until attested, and the manifest keys name `dispatch_tree`.
     # Compressed in place first (+145 -> +77). Read by the reviewing fork and the builder each
     # review; without it the builder's encouraged prep meets an unexplained refusal.
-    "skills/critic/review-cycle.md": 7537,
+    # -3 on 2026-10-13 (empty-verify-rounds): a `cumulative-final` last chunk's uncommitted
+    # work now infers `deferred`, not `final`; the sentence saying so replaced the old one,
+    # and the fix-rides-the-cumulative advice stays with the close and the Stop gate that print it.
+    # -2 the same day: a verify-pass observation must name the fix it judges, said in a sentence
+    # rewritten in place.
+    # -15 the same day (boundary review): the "every observation met twice" claim, false once a
+    # verify pass drops off-topic ones, is rewritten to say what is dropped and counted.
+    "skills/critic/review-cycle.md": 7517,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -5365,7 +5378,9 @@ class TestCriticGoals13:
         # see LAST_MEASURED_TOKENS.
         # RAISED 2653 -> 2666 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
-        assert tokens < 2660, f"goals-1-3.md is ~{tokens} tokens, should be <2660"
+        # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
+        # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
+        assert tokens < 2671, f"goals-1-3.md is ~{tokens} tokens, should be <2671"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5960,7 +5975,8 @@ class TestReviewCycle:
         # RAISED a further +48 -> 11366 (learnings-one-line, 2026-09-24) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 11366 -> 11368 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 7538, f"review-cycle.md is ~{tokens} tokens, should be <7538"
+        # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
+        assert tokens < 7518, f"review-cycle.md is ~{tokens} tokens, should be <7518"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

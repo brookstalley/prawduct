@@ -12,7 +12,8 @@ requirement; exploitable security in changed code; a cross-component contract br
 departure without a recorded decision; an unlisted dependency — and nothing else:
 only **BLOCKING** is a finding, and only from that set. Every other verdict the goals below state
 (`→ WARNING`, `→ NOTE`, a `→ BLOCKING` outside the set) is the boundary rating — report it,
-record-lint entries included, as an observation, never in `findings`. **Deliver every observation
+record-lint entries included, as an observation, never in `findings`; in `verify-resolutions` only one
+judging a named fix, with `about: {review_id, fid}` — others are dropped. **Deliver every observation
 pre-priced:** ACCEPT is the default disposition; fixing one re-opens the gate and costs a round;
 batch any survivor into an already-planned commit.
 
@@ -145,12 +146,11 @@ dies in your context, and the builder is what terminates the review loop.
 
 `files` per finding is attribution — omit when not file-specific. `findings` is `[]` for a clean pass.
 **`observations` — both modes** (the inner stage's carrier): what you demoted — a finding minus
-`severity`, and carry no `severity` key. Recording it lets the builder ACCEPT one instead of fixing
-it to leave a trace; one from the inner BLOCKING set belongs in `findings`.
+`severity`, and carry no `severity` key; one from the inner BLOCKING set belongs in `findings`.
 **`resolutions` is `verify-resolutions` mode ONLY** — your judgment on each prior BLOCKING/WARNING
-finding, joined by `(review_id, fid)` from the prior findings record; `disposition` is `fixed` or
-`waived` (`waived` requires a `rationale`). Consolidation validates every entry and fails closed on a
-mismatch, so match this schema exactly.
+finding, and each prior observation the delta fixed (`O-n` as `fid`, `fixed` only), joined by
+`(review_id, fid)` from the prior findings record; `disposition` is `fixed` or `waived` (with a
+`rationale`). Consolidation validates each entry and fails closed: match this schema exactly.
 
 Then report to the user: the manifest's `signals` line verbatim, what you reviewed, each finding
 with goal, severity and recommendation, the observations, and a summary by severity saying whether

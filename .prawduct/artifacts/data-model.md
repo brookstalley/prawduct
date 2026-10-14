@@ -118,7 +118,10 @@ An absent file is the empty store.
   `files_reviewed`/`files_changed`, `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
-  `recommendation` and no severity. An observation is carried on `record_lint`'s terms: data
+  `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
+  `about: {review_id, fid}` names the finding or observation whose fix they judge; it counts the rest
+  in `observations_dropped` (absent when none), so "noticed nothing" and "everything dropped" stay
+  distinguishable. An observation is carried on `record_lint`'s terms: data
   *about* the review, not a finding *in* it. It never reaches `counts`, composition walks
   `findings` alone, and so no gate can read one. What it buys is an id the builder can answer
   against, so declining an observation stops costing the reasoning — before it had one, the only
@@ -145,7 +148,10 @@ An absent file is the empty store.
 - **Resolution fact `body`** — points at the finding it resolves (`{review_id, fid}`), the
   `disposition` (`fixed` | `waived`), the `verified_by` review that attests it, the `at_tree` it was
   verified against, and a `rationale` (required for `waived`). A resolution may only originate from a
-  `verify-resolutions` review and must reference a finding already in the store (fail-closed).
+  `verify-resolutions` review and must reference a finding already in the store (fail-closed). It may
+  instead confirm an observation fix: `fid` then carries the observation's `O-n` id (the slot a
+  disposition already uses for one; `R-n` and `O-n` never collide), and only `fixed` is accepted.
+  No gate reads it, because no gate reads observations.
 - **Disposition fact `body`** — the builder's answer to a finding that was *not* fixed: the target
   (`{review_id, fid}` — a finding's `fid` **or** an observation's `oid`, the one widening the
   additive-first norm sanctions), an `action` (`accept` | `file` | `fixed`), a `reason` (accept),
@@ -413,8 +419,9 @@ probe-version bump supersedes the old advisory id with a fresh one.
 - **Facts are append-only.** No tool edits or deletes an existing fact line. (Read repair may skip a
   torn tail line, but never rewrites content.)
 - **A verdict never reads a derived view.** Gates read facts; views are for display only.
-- **A resolution fact requires a `verify-resolutions` origin and a pre-existing target finding** —
-  fail-closed. A `waived` disposition requires a non-empty rationale.
+- **A resolution fact requires a `verify-resolutions` origin and a pre-existing target finding or
+  observation** — fail-closed. A `waived` disposition requires a non-empty rationale; an observation
+  takes `fixed` only.
 - **The evidence store is shared per-clone via the git common dir**; every worktree appends to and
   reads the same log. Single-syscall append writes keep concurrent whole-line writes safe.
 - **Committed vs. gitignored is a deliberate boundary, not incidental**: shared decisions are

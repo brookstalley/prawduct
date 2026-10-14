@@ -760,10 +760,12 @@ def observations_index(read_result: dict) -> dict[tuple[str, str], dict]:
     reading, and deliberately not work the record demands. It is recorded so a
     builder can answer it and so the demotion's yield is queryable — never so a
     gate can read it. Merging the two indexes would put observations one
-    ``.get`` away from every consumer that joins on a finding, including the
-    resolution existence check, and the only thing keeping an observation out
-    of a verdict would be each caller remembering to filter. Two indexes, and
-    the callers that want both say so.
+    ``.get`` away from every consumer that joins on a finding, and the only
+    thing keeping an observation out of a verdict would be each caller
+    remembering to filter. Two indexes, and the callers that want both say so:
+    the resolution existence check does, because a verify pass may confirm an
+    observation fix — and it accepts only ``fixed`` for one, which no gate
+    reads, since gates filter blocking findings and an observation is never one.
 
     Observation ids live in their own namespace (``O-1``), so a
     ``(review_id, id)`` pair is unambiguous across both.

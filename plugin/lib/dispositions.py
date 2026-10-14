@@ -713,7 +713,9 @@ def census(
             oid = observation.get("oid")
             if not _nonempty(oid):
                 continue
-            observation_rows.append(_observation_row(rid, observation, dispositions))
+            observation_rows.append(
+                _observation_row(rid, observation, dispositions, resolutions)
+            )
         reviews.append(
             {
                 "review_id": rid,
@@ -796,19 +798,23 @@ def _row(
 
 
 def _observation_row(
-    review_id: str, observation: dict, dispositions: dict
+    review_id: str, observation: dict, dispositions: dict, resolutions: "dict | None" = None
 ) -> dict:
-    """One observation, with whatever answer the builder recorded against it.
+    """One observation, with whatever answer it got.
 
-    No resolution lookup: a resolution may only target a finding
-    (``critic_consolidate`` checks the finding index alone before persisting
-    one), so an observation can never carry one — and therefore can never carry
-    the answered-twice conflict either.
+    A verify pass that confirmed the fix outranks any disposition, as it does
+    for a finding: it is the only answer an independent pass attests. Its
+    resolution names the ``O-n`` id in the ``finding.fid`` slot, so
+    :func:`resolution_detail_index` keys it like a finding's. Only ``fixed`` is
+    ever recorded for one (``critic_consolidate`` refuses any other verdict on
+    an observation), so there is no answered-twice conflict to report.
     """
     oid = observation["oid"]
     disposition = (dispositions.get((review_id, oid)) or {}).get("body") or {}
     action = disposition.get("action")
-    if action == ACCEPT:
+    if (resolutions or {}).get((review_id, oid)) == STATE_FIXED:
+        state = STATE_FIXED
+    elif action == ACCEPT:
         state = STATE_ACCEPTED
     elif action == FILE:
         state = STATE_FILED

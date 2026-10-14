@@ -179,6 +179,27 @@ def _extension_deferral(project_dir: Path, prawduct_dir: Path, plan):
         return None
 
 
+def _cumulative_final_last_chunk(project_dir: Path, prawduct_dir: Path, plan) -> bool:
+    """Whether the branch's plan is on its last chunk, that chunk declares
+    ``Type: cumulative-final``, and its boundary ``cumulative`` has not run yet
+    — so inference sends the builder to commit before running it.
+
+    Asks the same question inference does
+    (``critic_mode.boundary_cumulative_still_owed``), because once that
+    cumulative stands inference asks for a ``final`` or a verify pass, and a
+    message still saying "then cumulative" would buy a second full one.
+    Changes only the block message, never whether the gate blocks, so ``False``
+    on any failure leaves the message it would have printed anyway.
+    """
+    try:
+        progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
+        return progress.total - progress.complete == 1 and _critic_mode().boundary_cumulative_still_owed(
+            project_dir, prawduct_dir, plan, progress
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- a message refinement must not crash the Stop gate
+        return False
+
+
 #: Stable token on every deferred-review WARNING the Stop gate emits — one
 #: grep-able word for the transcript, so a reader (or the test that pins the
 #: message) finds the deferral without matching its prose. Nothing in the
@@ -3618,6 +3639,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     if deferral is not None and deferral.defers and deferral.last_chunk
                     else ""
                 )
+                if (
+                    not last_chunk_note
+                    and verdict_status == "uncovered"
+                    and _cumulative_final_last_chunk(project_dir, prawduct_dir, gate_plan_obj)
+                ):
+                    last_chunk_note = (
+                        "  This plan's last chunk is `Type: cumulative-final`:\n"
+                        + _wrap_gate_prose(_critic_mode().LAST_CHUNK_BOUNDARY_STEP + ".")
+                    )
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW: no composed review coverage spans this session's\n"
                     f"  changes{span}: {detail}\n"
