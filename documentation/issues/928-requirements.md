@@ -316,3 +316,25 @@ the declared set is an acceptable topology under D-5. Then design: the concrete 
 feasibility spike (the issue's Phase 1) scoped to one skill, the session briefing and one Stop gate,
 with a live probe for each host-behaviour assumption. Target: the 3.8 release. 3.7 is closing
 without it.
+
+**What the Codex source says about a deny-everything PreToolUse hook** (read from the source at
+tag `rust-v0.156.1`, commit `b412ff32`, on 2026-10-15; none of it was run). It shapes the R-8(a)
+probe and does not satisfy it.
+
+- **One hook's allow cannot override another hook's deny.** The outcome blocks if any handler
+  blocked ([`pre_tool_use.rs:115`](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/hooks/src/events/pre_tool_use.rs#L115)),
+  and a block discards every handler's input rewrite (line 129). `permissionDecision: "allow"`
+  with no `updatedInput` is reported as unsupported and decides nothing.
+- **Only synchronous hooks can block** ([`engine/mod.rs:154`](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/hooks/src/engine/mod.rs#L154)).
+- **The hook fails open.** A deny hook that errors, exits with a code other than 0 or 2, exits 2
+  with empty stderr, or prints invalid JSON is recorded as failed and the tool runs
+  ([`pre_tool_use.rs:205-293`](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/hooks/src/events/pre_tool_use.rs#L205-L293)).
+  The reviewer's hook must catch its own errors and still deny.
+- **Not every tool reaches the hook.** Every function tool does by default
+  ([`registry.rs:130`](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/tools/registry.rs#L130)),
+  and so do `apply_patch` (matched as `Write`/`Edit` too), shell (`exec_command`, named `Bash`)
+  and MCP tools. `write_stdin` and the code-mode `wait` skip it on purpose: they continue a call
+  that already passed. Hosted web search is a hosted tool spec, switched off only by config
+  ([`hosted_spec.rs:19`](https://github.com/openai/codex/blob/rust-v0.156.1/codex-rs/core/src/tools/hosted_spec.rs#L19)).
+  No PreToolUse path for it was found. So a reviewer session has to disable it in config. That
+  is parity: on Claude, a tool missing from `tools:` is absent too, not refused.
