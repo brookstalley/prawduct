@@ -123,7 +123,12 @@ settings-precedence notes. The next step goes last in the report, and there is o
 
 When discovery finishes in the target's session, close by recommending `/clear`. This session
 started before `.prawduct/` existed, and the session-start hooks stay silent in a repo without one —
-no briefing, no governance digest — so the next session is the first fully governed one.
+no briefing, no governance digest — so the next session is the first fully governed one. That also
+means this session never received the rule that carries work across a clear, so **first write
+`.prawduct/.handoff-notes.md`**: discovery is done and recorded, planning is next
+(`/prawduct:methodology planning`), and the first governed briefing will list the strategy
+artifacts this product's characteristics call for. That list is planning's agenda, not a defect.
+Add anything the owner said that the state file does not hold.
 
 **During discovery, for products that want minimal documentation** — say so up front: the coverage chain is
 satisfied cheaply and permanently in three steps (record the structural characteristics
