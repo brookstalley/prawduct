@@ -133,7 +133,7 @@ sending them to the GitHub web UI. It scans every page and **refuses** `--per-pa
 stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
 missing data. It is **not** the upstream intake set: a `[prawduct]` report's body
 holds a provenance block, so it is in scope and never appears here — the `untriaged-upstream-reports`
-advisory counts in-scope items with no `stage`, listed by `cache-query unstaged`
+advisory counts open `[prawduct]`-titled items with no `stage`, from `cache-query unstaged`
 (`skills/report-bug/SKILL.md` § Receiving side).
 
 ### get <id> — view one item
