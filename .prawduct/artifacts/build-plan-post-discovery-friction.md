@@ -76,7 +76,7 @@ The four causes, from the testrouter evidence:
 
 ## Status
 
-- [ ] Chunk 01: Template slimmed, oversized advice, onboard forward note, handoff pointer, guide path root
+- [x] Chunk 01: Template slimmed, oversized advice, onboard forward note, handoff pointer, guide path root
 
 ## Build Chunks
 
