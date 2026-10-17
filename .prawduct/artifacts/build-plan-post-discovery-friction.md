@@ -50,6 +50,8 @@ The four causes, from the testrouter evidence:
    `templates/…`, `docs/…`) and nothing states their root. An agent rooting them at a full repo
    checkout lands one level above `plugin/`.
 
+**Level:** High. The testrouter files reproduce each cause, and each fix is checked against them.
+
 **Inferred decisions (for the boundary):**
 - *Inferred:* the moved prose lives in `plugin/docs/project-state-keys.md` and is reached as a new
   `/prawduct:methodology project-state` topic, the established route for plugin docs read from a
@@ -66,6 +68,9 @@ The four causes, from the testrouter evidence:
   and the reserve is held for defaults that must fire unprompted. This topic is a lookup, reached
   from the template line that names it and from the skill's own listing. Settled by the digest
   reserve policy and the owner's standing preference against adding per-session tax.
+- The record check read `${CLAUDE_SKILL_DIR}/../..` in this plan as a missing file (review
+  finding). Fixed in the shared path predicate: a token interpolating a variable is not a repo
+  path, so every plan citing a variable-rooted path benefits.
 - `test_commands:` gained a template hint. The new reference/template agreement test caught that
   it was documented but not hinted.
 
@@ -80,7 +85,7 @@ The four causes, from the testrouter evidence:
 - **Type:** code
 - **Depends on:** none
 - **Deliverables:**
-  - `plugin/docs/project-state-keys.md`: the opt-in key reference, moved verbatim from the template
+  - `plugin/docs/project-state-keys.md`: the opt-in key reference, moved from the template (content kept, recast as markdown sections)
     (active_build_plan through the backlog keys).
   - `plugin/templates/project-state.yaml`: each opt-in section reduced to a one-line purpose, its
     commented example or live default, and a pointer to the reference.

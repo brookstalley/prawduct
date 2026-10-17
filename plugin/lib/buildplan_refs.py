@@ -1861,6 +1861,12 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     surface with a ``#`` in it is not a path either. Sibling of the URL and
     placeholder carveouts above.
 
+    Tokens that interpolate a variable (``${CLAUDE_SKILL_DIR}/../..``,
+    ``$HOME/notes``) contain ``/`` but resolve against whatever the variable
+    holds at run time, so no repo-relative answer exists for them. A literal
+    source path carries no ``$``, ``{`` or ``}``. Same form-family as the
+    placeholder carveout above.
+
     Git branch/ref names (e.g. ``feature/backlog-service-relayout``,
     ``origin/develop``, ``release/v3.2.0``) also contain ``/`` but name a branch,
     not a file — a build/release plan legitimately backticks them in prose.
@@ -1904,6 +1910,8 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     if any(ch in token for ch in "*?["):
         return False
     if "<" in token or ">" in token:
+        return False
+    if any(ch in token for ch in "${}"):
         return False
     if "://" in token:
         return False

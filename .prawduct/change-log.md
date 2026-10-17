@@ -13,7 +13,7 @@
   oversized-state warning, a strategy-artifact notice nobody had framed, a handoff offered as
   context that held only a file list, and a skill path an agent resolved one directory too high.
 - **Template.** `templates/project-state.yaml` was 29 KB, 26.6 KB of it comments, mostly the
-  optional-key reference. That prose moved verbatim to `docs/project-state-keys.md`, reached as
+  optional-key reference. That prose moved to `docs/project-state-keys.md` (content kept, recast as markdown), reached as
   the new `/prawduct:methodology project-state` topic. The template keeps a one-line hint per
   key and is now under 12 KB. The learnings one-line-rule carrier moved with the prose. The
   topic stays out of the digest roster rather than spend the digest's reserved headroom.
@@ -26,7 +26,8 @@
   `/clear`, because that session started ungoverned and never received the rule that carries
   work across a clear. The note frames the strategy-artifact advisory as planning's agenda.
 - **Paths.** `skills/methodology/SKILL.md` states that bare plugin-relative paths in the guides
-  resolve against `${CLAUDE_SKILL_DIR}/../..`.
+  resolve against `${CLAUDE_SKILL_DIR}/../..`. The build-plan ref check no longer reads a
+  variable-rooted token like that one as a missing file (`buildplan_refs._looks_like_file_path`).
 
 ## 2026-10-14: the governance anchor lives in AGENTS.md; CLAUDE.md imports it
 
