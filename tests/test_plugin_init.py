@@ -168,6 +168,19 @@ def test_product_name_rendered(scaffolded: Path):
     assert "{{PRAWDUCT_VERSION}}" not in state, "VERSION placeholder left unrendered"
 
 
+def test_scaffolded_state_file_leaves_room_for_discovery(scaffolded: Path):
+    """A new repo's state file is mostly what its own discovery writes.
+
+    The template once carried ~20 KB of optional-key documentation as comments,
+    so a fresh repo started at three quarters of the oversized-file ceiling and
+    one honest discovery tripped it, asking the owner to judge text they never
+    wrote. That reference lives in the plugin now; this keeps it from creeping
+    back: under 12 KB leaves discovery most of the default ceiling.
+    """
+    size = (scaffolded / ".prawduct" / "project-state.yaml").stat().st_size
+    assert size < 12_000, f"a fresh state file is {size} bytes before discovery writes anything"
+
+
 def test_name_detectable_by_briefing(scaffolded: Path):
     # The "Project: Unknown" fix: the scaffolded project-state carries a
     # product_identity.name block, which is exactly what the SessionStart briefing's

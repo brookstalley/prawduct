@@ -103,12 +103,38 @@ _CHUNK_DETAIL = _Advice(
 )
 
 
+#: The optional-key reference that earlier templates copied into every new
+#: repo's state file as comments — about 20 KB, enough on its own to carry a
+#: fresh repo most of the way to the default threshold before anyone recorded a
+#: decision. It now lives in the plugin's `docs/project-state-keys.md`. Matched by
+#: lines distinctive to that prose rather than by comment volume, because a
+#: comment the product wrote is recorded reasoning and must never be advised away.
+_TEMPLATE_KEY_DOCS = _Advice(
+    present=re.compile(
+        r"^#\s+(?:"
+        r"\*\*This key outranks the remote's answer\*\*"
+        r"|DECLARED, never inferred: the verifier will not guess"
+        r"|\*\*A declared list REPLACES those defaults"
+        r"|\*\*Declaring is what lets a mismatch FAIL your release\.\*\*"
+        r"|The unit is the build-plan SCOPE, not the branch"
+        r")",
+        re.MULTILINE,
+    ),
+    text=(
+        "the `#` comment blocks explaining the optional keys (base branch, risk surfaces, "
+        "release version files, review round budget and the rest) were copied in from the "
+        "template and now live in the plugin (`/prawduct:methodology project-state`) — "
+        "those blocks can go, while a comment this repo wrote stays"
+    ),
+)
+
 
 _MEASURED: tuple[_Measured, ...] = (
     _Measured(
         type="oversized-project-state",
         rel=".prawduct/project-state.yaml",
         advice=(
+            _TEMPLATE_KEY_DOCS,
             _CHUNK_DETAIL,
             _Advice(
                 present=_key("test_history", "tests_passed", "test_count"),

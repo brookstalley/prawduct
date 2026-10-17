@@ -653,6 +653,19 @@ def _handoff_age(handoff_path: Path) -> str | None:
     return _humanize_age(max(0, int(seconds)))
 
 
+def _handoff_lacks_forward_note(handoff_path: Path) -> bool:
+    """True when the generated handoff says its session left no forward note.
+
+    Fails soft to False: an unreadable handoff keeps the ordinary pointer, which
+    still names the file, rather than a claim about content nothing could read.
+    """
+    try:
+        text = handoff_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return any(line.strip() == NO_FORWARD_NOTE_HEADING for line in text.splitlines())
+
+
 def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
     """The briefing's one-line pointer at the previous session's handoff.
 
@@ -669,7 +682,9 @@ def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
     **Never suppressed.** The handoff is advice, and the ratified norm is
     "authority fails closed; advice fails soft" — a redundant or old handoff is
     still offered, the line just stops implying it is news. Suppressing it would
-    turn a visible weak signal into an invisible absent one.
+    turn a visible weak signal into an invisible absent one. At a boundary, a
+    handoff whose session left no forward note is named as exactly that: offered
+    as "context", the reader takes a list of changed files for direction.
 
     **Two-way, not three-way, and deliberately so.** ``--brief-only`` carries
     continuation-vs-boundary and nothing finer, so ``resume``, ``compact`` and
@@ -684,6 +699,12 @@ def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
     age = _handoff_age(handoff_path)
     suffix = f" ({age})" if age else ""
     if not continuation:
+        if _handoff_lacks_forward_note(handoff_path):
+            return (
+                "Previous session left no forward note: .prawduct/.session-handoff.md"
+                f"{suffix} is only a machine record of what changed, not of what comes "
+                "next — take direction from the build plan, the backlog or the user"
+            )
         return f"Previous session context available: read .prawduct/.session-handoff.md{suffix}"
     return (
         "Previous session context: .prawduct/.session-handoff.md predates THIS session"
@@ -1667,6 +1688,12 @@ HANDOFF_MARKER = (
 # The forward channel: the one file in the handoff pair that a model owns.
 HANDOFF_NOTES_NAME = ".handoff-notes.md"
 
+# The heading a generated handoff carries when its session left no forward note.
+# One constant because two readers act on it: the generator writes it, and the
+# session briefing reads it to stop offering such a handoff as "context" — a
+# record of what changed is not a statement of what comes next.
+NO_FORWARD_NOTE_HEADING = "## No Forward Note From The Previous Session"
+
 # What became of the notes file this run. The caller deletes on CARRIED and
 # EMPTY and on nothing else: "absent" has nothing to delete, and the two
 # failure states hold text that never reached the handoff, so unlinking them
@@ -1825,7 +1852,7 @@ def _no_forward_note_section(changed: list[str], commits: list[str]) -> list[str
     if commits:
         did.append(f"{len(commits)} commit{'' if len(commits) == 1 else 's'}")
     return [
-        "## No Forward Note From The Previous Session",
+        NO_FORWARD_NOTE_HEADING,
         "<!-- the machine can report this absence; it cannot fill it -->",
         f"That session ({', '.join(did)}) left no `.prawduct/{HANDOFF_NOTES_NAME}`. "
         "Everything below is machine-derived and backward-looking: a record of what "

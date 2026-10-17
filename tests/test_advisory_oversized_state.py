@@ -129,6 +129,56 @@ class TestBulletsAreGatedOnTheMeasuredFile:
         assert "Nothing this nudge knows how to name is in it" in summary
 
 
+#: Lines exactly as earlier templates shipped them inside the optional-key
+#: comment blocks (copied from the template before those blocks moved to
+#: `docs/project-state-keys.md`). Every repo scaffolded from such a template
+#: carries them, and nothing a product writes for itself would.
+_SHIPPED_KEY_DOC_LINES = (
+    "# **This key outranks the remote's answer**, deliberately: a remote default and a\n"
+    "# DECLARED, never inferred: the verifier will not guess this from your layout,\n"
+    "# **A declared list REPLACES those defaults, it does not add to them** — the\n"
+    "# **Declaring is what lets a mismatch FAIL your release.** Leave it unset and\n"
+    "# The unit is the build-plan SCOPE, not the branch: a branch may carry two\n"
+)
+
+_KEY_DOCS_BULLET = "copied in from the template"
+
+
+class TestTemplateCopiedKeyDocumentation:
+    """A fresh repo's state file used to start at ~30 KB of a 40 KB ceiling,
+    most of it comment prose about optional keys, so one discovery tripped the
+    advisory and asked the owner to judge text they never wrote."""
+
+    @pytest.mark.parametrize("line", _SHIPPED_KEY_DOC_LINES.splitlines(keepends=True))
+    def test_any_one_shipped_block_earns_the_bullet(self, tmp_path, line):
+        # Repos were scaffolded from different template versions; each
+        # fingerprint has to work on its own.
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/project-state.yaml", _FILLER + line)
+        summary = _by_type(repo, "oversized-project-state").trigger_summary
+        assert _KEY_DOCS_BULLET in summary
+        assert "/prawduct:methodology project-state" in summary
+
+    def test_comments_the_product_wrote_are_not_advised_away(self, tmp_path):
+        # Control: the same size of comment prose about the same keys, written
+        # by the product. Recorded reasoning is never the thing to cut.
+        repo = _repo(tmp_path)
+        own = (
+            "# We integrate onto develop because releases are cut from main.\n"
+            "base_branch: develop\n"
+            "# The review round budget is raised for this repo's audit work.\n"
+        )
+        _write(repo, ".prawduct/project-state.yaml", _FILLER + own)
+        summary = _by_type(repo, "oversized-project-state").trigger_summary
+        assert _KEY_DOCS_BULLET not in summary
+
+    def test_the_shipped_template_no_longer_carries_them(self):
+        # The real file: a repo scaffolded today never earns this bullet,
+        # because the prose it names is no longer copied in.
+        template = (core.TEMPLATES_DIR / "project-state.yaml").read_text(encoding="utf-8")
+        assert not osp._TEMPLATE_KEY_DOCS.applies_to(template)
+
+
 class TestTheFileNamedIsTheFileToEdit:
     def test_the_build_plan_is_measured_and_named_in_its_own_right(self, tmp_path):
         repo = _repo(tmp_path)

@@ -14,6 +14,17 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
 
+**`post-discovery-friction`**: **a fresh `project-state.yaml` no longer starts near the
+size ceiling.** The template carried about 20 KB of comments explaining optional keys, so one
+discovery tripped the oversized-state advisory. That reference now lives in the plugin
+(`/prawduct:methodology project-state`), and the template keeps a one-line hint per key. In
+repos already onboarded, the advisory now says those copied comment blocks can go; nothing is
+rewritten for you. The first session after an onboarding discovery also opens better: onboarding
+leaves a forward note saying planning is next, and the briefing says plainly when a handoff has
+no forward note instead of offering it as context. The methodology skill now states that the
+bare `methodology/`, `templates/` and `docs/` paths in its guides are relative to the plugin
+root.
+
 **`agents-md-anchor`**: **the governance anchor moves to `AGENTS.md`, and `CLAUDE.md` imports
 it.** `AGENTS.md` is the file every agent host reads, so a second host (Codex, #928) gets the same
 anchor. A new onboard writes the anchor to `AGENTS.md` (appended if the file exists) and a

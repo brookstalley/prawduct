@@ -1118,6 +1118,39 @@ class TestAssembleSessionBriefingSections:
         )
         assert "predates THIS session" not in out
 
+    def test_a_handoff_without_a_forward_note_is_not_offered_as_context(self, tmp_path):
+        # The first governed session after an onboarding discovery read "Previous
+        # session context available" over a handoff that only listed one changed
+        # file, and reported a handoff document it had yet to read.
+        pr = self._state(tmp_path, "")
+        sections = briefing._no_forward_note_section([".prawduct/project-state.yaml"], [])
+        (pr / ".session-handoff.md").write_text(
+            "# Session Handoff\n\n" + "\n".join(sections), encoding="utf-8"
+        )
+        out = briefing.assemble_session_briefing(tmp_path, [], continuation=False)
+        pointer = next(ln for ln in out.splitlines() if ".session-handoff.md" in ln)
+        assert pointer.startswith("Previous session left no forward note")
+        assert "context available" not in pointer
+        assert ".prawduct/.session-handoff.md (just now)" in pointer
+
+    def test_a_handoff_with_a_forward_note_keeps_the_context_pointer(self, tmp_path):
+        # Control: the heading is what flips it, not the file being machine-made.
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text(
+            "# Session Handoff\n\n## Forward Notes\nPlanning is next.\n", encoding="utf-8"
+        )
+        out = briefing.assemble_session_briefing(tmp_path, [], continuation=False)
+        assert "Previous session context available" in out
+        assert "no forward note" not in out
+
+    def test_a_continuation_pointer_ignores_the_forward_note_heading(self, tmp_path):
+        pr = self._state(tmp_path, "")
+        (pr / ".session-handoff.md").write_text(
+            briefing.NO_FORWARD_NOTE_HEADING + "\n", encoding="utf-8"
+        )
+        out = briefing.assemble_session_briefing(tmp_path, [], continuation=True)
+        assert "predates THIS session" in out
+
     def test_handoff_pointer_defaults_to_the_boundary_reading(self, tmp_path):
         # A caller that does not know its source must not be told a possibly-false
         # thing about its own context.

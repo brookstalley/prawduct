@@ -5,6 +5,29 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-16: the first governed session after an onboarding discovery opens clean
+
+<!-- prawduct: type=bugfix | scope=post-discovery-friction -->
+
+- Field report from a newly onboarded product, which opened its first governed session to an
+  oversized-state warning, a strategy-artifact notice nobody had framed, a handoff offered as
+  context that held only a file list, and a skill path an agent resolved one directory too high.
+- **Template.** `templates/project-state.yaml` was 29 KB, 26.6 KB of it comments, mostly the
+  optional-key reference. That prose moved verbatim to `docs/project-state-keys.md`, reached as
+  the new `/prawduct:methodology project-state` topic. The template keeps a one-line hint per
+  key and is now under 12 KB. The learnings one-line-rule carrier moved with the prose. The
+  topic stays out of the digest roster rather than spend the digest's reserved headroom.
+- **Existing repos.** `oversized_state_probes` gains a bullet, matched on lines found only in
+  the shipped key reference, saying those copied blocks can go. Comments a repo wrote never match.
+- **Handoff.** `briefing.NO_FORWARD_NOTE_HEADING` is now the single source for the heading,
+  used by both the generator and the boundary pointer. The pointer names a handoff with no
+  forward note as a machine record and does not offer it as context.
+- **Onboard.** The discovery close writes `.prawduct/.handoff-notes.md` before recommending
+  `/clear`, because that session started ungoverned and never received the rule that carries
+  work across a clear. The note frames the strategy-artifact advisory as planning's agenda.
+- **Paths.** `skills/methodology/SKILL.md` states that bare plugin-relative paths in the guides
+  resolve against `${CLAUDE_SKILL_DIR}/../..`.
+
 ## 2026-10-14: the governance anchor lives in AGENTS.md; CLAUDE.md imports it
 
 <!-- prawduct: type=feature | scope=agents-md-anchor -->
