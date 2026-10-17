@@ -10,9 +10,14 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.1-dev.3
+## v3.7.1-dev.4
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
+**`upstream-intake-enumeration`**: **triaging upstream bug reports now says how to list them.**
+The receiving-side steps in `/prawduct:report-bug` name `cache-query unstaged` as the list behind
+the `untriaged-upstream-reports` advisory, and warn that `backlog list --untriaged` cannot show a
+filed report (every report carries a provenance block, which puts it in scope).
 
 **`post-discovery-friction`**: **a fresh `project-state.yaml` no longer starts near the
 size ceiling.** The template carried about 20 KB of comments explaining optional keys, so one

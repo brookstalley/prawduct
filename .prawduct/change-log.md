@@ -5,6 +5,24 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-17: upstream-report triage names the query that lists its set
+
+<!-- prawduct: type=bugfix | scope=upstream-intake-enumeration -->
+
+- Found while triaging five upstream reports: `backlog list --untriaged` returned 0 while the
+  `untriaged-upstream-reports` advisory counted them. Both readings were right about their own
+  predicates — `--untriaged` lists issues with no prawduct label *and* no `prawduct:` body block,
+  and every `file-upstream` report carries a provenance block, so it is in scope with no `stage`.
+  The intake procedure counted a set and named no command to list it, so the nearest-named one
+  was used and answered a different question.
+- `skills/report-bug/SKILL.md` § Receiving side now names `cache-query unstaged` (filtered to
+  `[prawduct]` titles) and says why `--untriaged` cannot show a report; `adapter-mode.md`'s
+  `--untriaged` paragraph says the same from the other side.
+- Three spec passages (data model §3, security model F7, API §9) described `--untriaged` as
+  selecting on labels alone and therefore a superset of quarantine that never misses an anonymous
+  filing. The code also excludes blocked issues, so that claim was false; they now state the real
+  predicate and that a blocked unlabeled filing surfaces through `cache-query unstaged` instead.
+
 ## 2026-10-16: the first governed session after an onboarding discovery opens clean
 
 <!-- prawduct: type=bugfix | scope=post-discovery-friction -->
