@@ -209,8 +209,11 @@ reconciled by `/prawduct:onboard`/`doctor` (GV5). **Non-prawduct issues/labels a
 malformed** — the adapter ignores issues carrying no `stage:`/`id:` marker (but see the
 anonymous-quarantine reconciliation, Security Model §6/F7: an unlabeled non-collaborator filing *is*
 the quarantine state, surfaced to triage, not silently ignored). The triage surface that reaches it,
-`list --untriaged`, selects on the LABEL half of that definition only — so it returns every unlabeled
-issue rather than only a non-collaborator's, making it a superset of quarantine (API §9).
+`list --untriaged`, selects on neither half — no namespaced label *and* no `prawduct:` body block
+(`encode.is_prawduct_issue`, inverted) — and on no author, so it returns the owner's own blockless
+drafts too. It is not a superset of quarantine: an unlabeled filing whose body holds a block (every
+`file-upstream` report does) is in scope instead, with no `stage`, and surfaces through
+`cache-query unstaged` (API §9).
 
 ---
 

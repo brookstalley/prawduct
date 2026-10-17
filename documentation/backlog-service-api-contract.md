@@ -424,11 +424,13 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   (§6/F6/F7)** — this surface only exposes the `list` triage query over it.
 - **`quarantine` and `--untriaged` are not the same set, and the difference is an unbuilt predicate.**
   Quarantine is defined by AUTHOR — a *non-collaborator's* unlabeled filing (Security §6/F7).
-  `list --untriaged` selects by LABEL only: every unlabeled issue, whoever filed it, the owner's own
-  hand-filed drafts included (`query.py`, the PROV-2 scope inversion). So quarantine is a strict
-  subset, and today it is served by its superset because the author predicate is not implemented.
-  That direction is deliberate to record: the standing query returns MORE than quarantine, never
-  less, so triage over-includes rather than missing an anonymous filing. Narrowing it to the
+  `list --untriaged` selects issues with no namespaced label *and* no `prawduct:` body block, by no
+  author: the owner's own blockless drafts are included (`query.py`, the PROV-2 scope inversion).
+  So it is not a superset of quarantine either: an unlabeled filing whose body holds a block — every
+  `file-upstream` report — is in scope instead, carrying no `stage`, so it surfaces through
+  `cache-query unstaged` (which the `untriaged-upstream-reports` advisory counts) rather than here.
+  Between the two queries no unlabeled filing is invisible; neither alone is the quarantine set,
+  because the author predicate is not implemented. Narrowing it to the
   specified set is tracked, not assumed — see the backlog item on the author predicate. Neither
   name is retired; they denote different things and collapsing them would lose the author boundary
   that makes quarantine a security concept rather than a hygiene one.

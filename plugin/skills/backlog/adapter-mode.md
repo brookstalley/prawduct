@@ -131,7 +131,10 @@ ones `counts.untriaged` counts), so it is how you show an operator what needs tr
 sending them to the GitHub web UI. It scans every page and **refuses** `--per-page`/`--page`
 (re-run without them); every other filter still applies. These are not items yet — they have no
 stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
-missing data.
+missing data. It is **not** the upstream intake set: a `[prawduct]` report's body
+holds a provenance block, so it is in scope and never appears here — the `untriaged-upstream-reports`
+advisory counts in-scope items with no `stage`, listed by `cache-query unstaged`
+(`skills/report-bug/SKILL.md` § Receiving side).
 
 ### get <id> — view one item
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
