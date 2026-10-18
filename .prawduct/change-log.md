@@ -44,6 +44,7 @@
 - Not in this change, filed as follow-ups: #1013, the same own-target rule for the id-addressed
   writes (`comment`, `update`, `status`, `link`), whose target resolves from the issue id inside
   `core`; and #1014, a label-length preflight for `import`, which today shares #1004's failure.
+
 ## 2026-10-17: prawduct's suite can run on the Testament pool
 
 <!-- prawduct: type=feature | scope=testament-onboarding -->
