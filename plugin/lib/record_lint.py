@@ -162,14 +162,6 @@ _BLOCK_SCALAR_RE = re.compile(
     r"^(?P<indent>\s*)(?:-\s+)?(?:[A-Za-z_][\w.-]*:\s+)[|>][-+]?\d*\s*(?:#.*)?$"
 )
 
-#: A markdown heading, level + text. Local rather than imported: ``norm_probes``
-#: owns the same grammar but answers a different question (every logical *line*
-#: inside a Direction section, for its ``Why:``/``Status:`` scans) and pulls in
-#: the advisory-store, backlog and coverage-probe stack, which is far too heavy
-#: for the ``critic-begin`` dispatch path. If the grammar ever changes, both
-#: matchers change — they are the same six characters of markdown.
-_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
-
 #: A build plan by filename. The `governed_by:` check reads plans only. Two
 #: conventions are live and `core.resolve_build_plan_path` documents both: the
 #: `build-plan-<scope>.md` prefix form, and the scope-named `<scope>-plan.md`
@@ -408,88 +400,30 @@ def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bo
     return any(e.tags.get("scope") == scope.strip() for e in entries)
 
 
-def _norm_field_re():
-    """What a norm entry IS, imported from its one home in ``norm_probes``:
-    ``(field marker, blockquote prefix)``.
-
-    #568 was two definitions of a norm entry disagreeing; closing it with a
-    second *copy* of the marker would have re-created the same defect in a
-    slower-acting form — the copies agree today and drift on the first edit
-    (`architecture.md` § Direction: every fact has one home). Imported lazily
-    because ``norm_probes`` pulls the advisory-store and backlog readers, and
-    this module's top level is on the record-lint path.
-
-    **The blockquote prefix is part of the definition, not a detail of the other
-    module's parsing.** Importing only the marker is what let the two drift when
-    blockquote tolerance landed: ``norm_probes`` strips ``>`` inside
-    ``_direction_lines`` before matching, this module walks raw text, and the
-    identical regex then answered differently on identical input. Sharing both
-    halves is what makes "cannot drift apart on an edit" true rather than
-    merely intended.
-    """
-    from .norm_probes import (  # noqa: PLC0415 — lazy; heavy deps
-        _BLOCKQUOTE_PREFIX_RE,
-        _FIELD_MARKER_RE,
-    )
-
-    return _FIELD_MARKER_RE, _BLOCKQUOTE_PREFIX_RE
-
-
 def direction_norm_count(text: str) -> "int | None":
     """Number of norm entries in a document's ``## Direction`` section, or
     ``None`` when it has no such section.
 
-    A norm is a top-level list bullet **that carries a norm FIELD** — the same
-    definition :func:`lib.norm_probes._has_direction_entry` uses, and the one
-    ``docs/norms.md`` § Anatomy states ("a norm captured without its why is
-    unenforceable at the edges and immortal at the center"; ``Why`` is required,
-    ``Status`` optional). The section opens at a heading whose text is exactly
-    ``Direction`` and closes at the next heading of equal-or-higher level, so
-    prose that merely mentions ``## Direction`` never opens one.
+    A norm is a list bullet **that carries a norm FIELD** — the same definition
+    :func:`lib.norm_probes._has_direction_entry` uses, and the one
+    ``docs/norms.md`` § Anatomy states (``Why`` required, ``Status`` optional).
+    Counting bare bullets was a second, incompatible definition: in the roadmap
+    case — a ``## Direction`` section holding a prioritised list of undone work —
+    the probes saw no norms and this counted one per bullet, so the
+    ``governed_by`` under-disposition lint demanded dispositions for non-norms.
 
-    **Counting bare bullets was a second, incompatible definition of the same
-    thing.** The two disagreed exactly in the roadmap case — a ``## Direction``
-    section holding a prioritised list of undone work — where the probes
-    correctly saw no norms and this counted one per bullet, so the
-    ``governed_by`` under-disposition lint demanded dispositions for items that
-    are not norms. One fact, one home: the marker is imported from
-    :mod:`lib.norm_probes` rather than restated here, so a norm entry is a
-    field-bearing entry everywhere and the two cannot drift apart on an edit.
+    **Delegated whole, not reimplemented over a shared regex.** This module once
+    imported only the field marker and walked raw text itself, and the two
+    answered differently on identical input twice: for a blockquoted ``Why:``
+    and for one written inline after the bold statement (#1011). The count now
+    comes from the reader that feeds the probes, so a tolerance added there
+    reaches this lint in the same edit. Imported lazily because ``norm_probes``
+    pulls the advisory-store and backlog readers, and this module's top level is
+    on the record-lint path.
     """
-    field_re, blockquote_re = _norm_field_re()
-    in_section = False
-    section_level = 0
-    count: "int | None" = None
-    pending_bullet = False
-    for raw in text.splitlines():
-        # Strip blockquote markers exactly as `norm_probes._direction_lines`
-        # does. Sharing the field REGEX is not enough to share the DEFINITION:
-        # that function feeds the probes de-quoted lines, while this walks the
-        # raw text, so a `> **Why:** ...` registry counted N entries there and 0
-        # here — #568 reopening in the blockquote case, silently skipping the
-        # `governed_by` lint for exactly the products the strip was added for.
-        line = blockquote_re.sub("", raw)
-        heading = _HEADING_RE.match(line)
-        if heading:
-            level = len(heading.group(1))
-            if heading.group(2).strip() == "Direction":
-                in_section, section_level = True, level
-                count = 0 if count is None else count
-            elif in_section and level <= section_level:
-                in_section = False
-            pending_bullet = False
-            continue
-        if not in_section:
-            continue
-        if re.match(r"^[-*]\s+\S", line):
-            # A new top-level bullet: whatever the previous one was, it is
-            # settled — it counted when its Why arrived, or never.
-            pending_bullet = True
-            continue
-        if pending_bullet and field_re.match(line):
-            count = (count or 0) + 1
-            pending_bullet = False
-    return count
+    from .norm_probes import _direction_norm_count  # noqa: PLC0415 — lazy; heavy deps
+
+    return _direction_norm_count(text)
 
 
 def _parse_governed_by(text: str) -> list[dict]:

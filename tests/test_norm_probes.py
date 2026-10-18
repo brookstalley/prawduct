@@ -889,11 +889,16 @@ class TestNormRegistryUnratifiedProbe:
         list of undone work, which satisfied the arm completely and would have
         left doctor check #10 reporting findings against a roadmap
         indefinitely.
+
+        The wording changed with #1011: it used to say "no `## Direction`
+        section is ratified", which is false here — the section exists, its
+        bullets just carry no field — and sent an owner looking for a missing
+        ratification instead of at the entries.
         """
         _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
         out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
         assert len(out) == 1
-        assert "no `## Direction` section is ratified" in out[0].trigger_summary
+        assert "`## Direction` sections exist, but no entry" in out[0].trigger_summary
 
     def test_emphasised_why_markers_are_recognised_as_entries(self, tmp_path):
         """Owner decision 2026-08-03: emphasis is tolerated.
@@ -2105,3 +2110,195 @@ class TestBlockquotedHeadingsOpenASection:
         joined = "\n".join(lines)
         assert "because" in joined
         assert "NOT in Direction" not in joined, "a quoted sibling heading must close the section"
+
+
+class TestInlineNormFields:
+    """A field written on the bullet's own line, after the bold statement, is a field.
+
+    Found in the wild (#1011): a product wrote `- **Statement.** Detail. *Why:* reason.`
+    for every norm, and `norm-registry-unratified` reported that no Direction section
+    was ratified while the janitor's sweep counted those same entries as norms. Every
+    field matcher anchors at the start of a logical line, and the soft-wrap joiner
+    leaves an inline `*Why:*` mid-line, so the entry detector, record_lint's count,
+    dead-why and stalled-transition were all blind to it at once.
+
+    Read what authors write (the emphasis and blockquote precedents) — but bounded,
+    because a mid-line `Why:` is far weaker evidence than a line-start one. A marker
+    counts inline only inside a bullet that opens with the bold statement the anatomy
+    requires, and only where a sentence starts (right after the statement, or after
+    `.`/`!`/`?`/`;`). `Status:` never opens a field inline: a roadmap bullet saying
+    "Targeted for Q3. Status: blocked." is the exact false positive #567 removed, so it
+    splits only after another inline field has already made the bullet an entry.
+    """
+
+    # The reporter's shape, verbatim from the issue.
+    _REPORTED = "- **Every public command has a JSON form.** Detail here. *Why:* agents parse output."
+
+    def test_the_reported_shape_is_an_entry_in_both_readers(self):
+        from lib import record_lint
+
+        body = _direction_artifact(self._REPORTED)
+        assert np._has_direction_entry(body) is True
+        assert record_lint.direction_norm_count(body) == 1
+
+    def test_moving_the_field_inline_does_not_change_either_answer(self):
+        """The control: the same norm with its Why at line start reads identically."""
+        from lib import record_lint
+
+        inline = _direction_artifact(self._REPORTED)
+        canonical = _direction_artifact(
+            "- **Every public command has a JSON form.** Detail here.\n  *Why:* agents parse output."
+        )
+        assert np._has_direction_entry(canonical) is True
+        assert record_lint.direction_norm_count(inline) == record_lint.direction_norm_count(canonical) == 1
+
+    def test_every_emphasis_form_counts_inline(self):
+        for marker in TestEmphasisAcrossEveryNormField.MARKERS:
+            body = _direction_artifact(f"- **X.** {marker} because.")
+            assert np._has_direction_entry(body) is True, f"inline {marker} must be an entry"
+
+    def test_every_sentence_end_opens_an_inline_field(self):
+        for end in ".!?;":
+            body = _direction_artifact(f"- **X.** Detail{end} Why: because.")
+            assert np._has_direction_entry(body) is True, f"Why: after {end!r} must be a field"
+
+    def test_a_field_that_soft_wraps_onto_the_bullet_line_counts(self):
+        body = _direction_artifact("- **X.** Detail on line one\n  that wraps. Why: because.")
+        assert np._has_direction_entry(body) is True
+
+    def test_rulings_and_retroactivity_open_an_entry_inline(self):
+        from lib import record_lint
+
+        for field in ("Rulings:", "Retroactivity:"):
+            body = _direction_artifact(f"- **X.** Detail. {field} something.")
+            assert np._has_direction_entry(body) is True, field
+            assert record_lint.direction_norm_count(body) == 1, field
+
+    # --- the bound: what must NOT become an entry ---------------------------------
+
+    def test_mid_sentence_marker_is_not_a_field(self):
+        from lib import record_lint
+
+        body = _direction_artifact("- **Ship the importer.** Users asked Why: nobody knew.")
+        assert np._has_direction_entry(body) is False
+        assert record_lint.direction_norm_count(body) == 0
+
+    def test_bullet_without_a_bold_statement_is_not_split(self):
+        from lib import record_lint
+
+        body = _direction_artifact("- Ship the importer. Why: customers asked.")
+        assert np._has_direction_entry(body) is False
+        assert record_lint.direction_norm_count(body) == 0
+
+    def test_inline_marker_in_a_prose_paragraph_is_not_a_field(self):
+        body = _direction_artifact("This section lists direction. Why: the owner asked.")
+        assert np._has_direction_entry(body) is False
+
+    def test_inline_status_alone_does_not_make_a_roadmap_an_entry(self):
+        from lib import record_lint
+
+        body = _direction_artifact(
+            "- **Ship the importer.** Targeted for Q3. Status: blocked on the schema.",
+            "- **Then the exporter.** Q4. **Status:** not started.",
+        )
+        assert np._has_direction_entry(body) is False
+        assert record_lint.direction_norm_count(body) == 0
+
+    def test_lowercase_why_is_prose(self):
+        body = _direction_artifact("- **X.** Detail. why: lowercase is prose.")
+        assert np._has_direction_entry(body) is False
+
+    # --- the downstream scans see the inline fields too ---------------------------
+
+    def test_dead_why_sees_an_inline_why_citation(self, tmp_path):
+        _write_backlog(tmp_path, _item("MIG-4C1K", section="Archive", status="shipped"))
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **All telemetry rides OpenTelemetry.** One substrate. "
+                "*Why:* the MIG-4C1K migration made a second system redundant."
+            ),
+        )
+        out = np.probe_dead_why(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1 and "observability-strategy.md→MIG-4C1K" in out[0].trigger_summary
+
+    def test_stalled_transition_sees_status_after_an_inline_why(self, tmp_path):
+        # Green before the fix too: the stall scan searches anywhere in a line rather
+        # than anchoring. Pinned so the split, which moves this Status onto its own
+        # logical line, cannot strand the citation on the piece the scan skips.
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))  # added: 120 days ago
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                "- **X.** Detail. Why: causality. Status: in-transition — export tracked in OBS-4C1K."
+            ),
+        )
+        out = np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1 and "observability-strategy.md→OBS-4C1K" in out[0].trigger_summary
+
+    def test_an_inline_reaffirmation_answers_dead_why(self, tmp_path):
+        """`Re-affirmed:` opens an inline field too, and answers as its line-start form does."""
+        why = "- **All telemetry rides OpenTelemetry.** One substrate. Why: MIG-4C1K made it so."
+        _write_backlog(tmp_path, _item("MIG-4C1K", section="Archive", status="shipped"))
+        _write_artifact(tmp_path, "observability-strategy.md", _direction_artifact(why))
+        assert len(np.probe_dead_why(ProjectState({}), _cb(tmp_path))) == 1  # the control
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(why + " Re-affirmed: 2026-09-27 (owner) — MIG-4C1K: holds without it."),
+        )
+        assert np.probe_dead_why(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_an_inline_stopgap_bounds_a_stalled_transition(self, tmp_path):
+        entry = "- **X.** Detail. Why: causality. Status: in-transition — export tracked in OBS-4C1K."
+        _write_backlog(tmp_path, _item("OBS-4C1K", status="open"))  # added: 120 days ago
+        _write_artifact(tmp_path, "observability-strategy.md", _direction_artifact(entry))
+        assert len(np.probe_stalled_transition(ProjectState({}), _cb(tmp_path))) == 1  # the control
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(entry + f" Stopgap: recorded {_days_ago(1)}, expires {_days_ahead(90)}."),
+        )
+        assert np.probe_stalled_transition(ProjectState({}), _cb(tmp_path)) == []
+
+    def test_the_split_does_not_leak_the_field_into_the_statement(self):
+        """Dead-why reads the Why line; the statement line must not carry its text."""
+        lines = [line for line in np._direction_lines(_direction_artifact(self._REPORTED)) if line.strip()]
+        assert lines == ["- **Every public command has a JSON form.** Detail here.", "*Why:* agents parse output."]
+
+
+class TestUnratifiedAdvisoryNamesItsCause:
+    """#1011 part two: 'no section is ratified' was false when sections existed.
+
+    When `## Direction` headings are present but no entry in them carries a field,
+    the advisory must say that, so the owner fixes the entries rather than concluding
+    ratification never happened.
+    """
+
+    def test_headings_without_recognised_entries_say_so(self, tmp_path):
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        summary = out[0].trigger_summary
+        assert "`## Direction` sections exist, but no entry in them carries a field" in summary
+        assert "no `## Direction` section" not in summary
+
+    def test_no_headings_at_all_says_there_are_none(self, tmp_path):
+        _write_artifact(tmp_path, "security-model.md", "# Security Model\n\nDescriptive prose only.\n")
+        out = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))
+        assert len(out) == 1
+        summary = out[0].trigger_summary
+        assert "no artifact has a `## Direction` section" in summary
+        assert "sections exist" not in summary
+
+    def test_the_advisory_id_does_not_change_with_the_wording(self, tmp_path):
+        """The evidence is the id's input; rewording the summary must not re-raise
+        an advisory an owner already dismissed."""
+        _write_artifact(tmp_path, "architecture.md", _roadmap_direction_artifact())
+        a = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))[0]
+        (tmp_path / ".prawduct" / "artifacts" / "architecture.md").unlink()
+        _write_artifact(tmp_path, "security-model.md", "# Security Model\n\nProse.\n")
+        b = np.probe_norm_registry_unratified(ProjectState({}), _cb(tmp_path))[0]
+        assert a.evidence == b.evidence
