@@ -198,6 +198,20 @@ class TestApply:
         assert rec4.labels.count("kind:bug") == 1
         assert same["warnings"] == []
 
+    def test_a_case_variant_kind_is_replaced_not_duplicated(self):
+        """A hand-made `Kind:Feature` is the item's kind (GitHub treats label
+        names case-insensitively), so relabeling replaces it. Red if the strip
+        matches `kind:` case-sensitively: the old label survives beside the new."""
+        records = self._records()
+        rec = next(r for r in records if r.pfx == "DIS-0001")
+        rec.labels = [n for n in rec.labels if not n.casefold().startswith("kind:")]
+        rec.labels.append("Kind:Feature")
+        result = restructure.apply(records, _plan({"DIS-0001": {"kind": "bug"}}))
+        out = next(r for r in result["records"] if r.pfx == "DIS-0001")
+        kinds = [n for n in out.labels if n.casefold().startswith("kind:")]
+        assert kinds == ["kind:bug"]
+        assert any("relabeled 'Feature'" in w for w in result["warnings"])
+
     def test_untouched_records_pass_through_unchanged(self):
         records = self._records()
         result = restructure.apply(records, _plan({"DIS-0001": {"kind": "task"}}))

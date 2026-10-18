@@ -952,7 +952,7 @@ def is_prawduct_issue(issue: dict) -> bool:
         return False
     labels = label_names(issue)
     if any(
-        name.casefold().startswith(prefix.casefold())
+        label_has_prefix(name, prefix)
         for name in labels
         for prefix in NAMESPACED_LABEL_PREFIXES
     ):
@@ -960,26 +960,49 @@ def is_prawduct_issue(issue: dict) -> bool:
     return has_block(issue.get("body"))
 
 
+# Prefixes prawduct mints itself and never reads in another spelling, so they
+# match exactly. `id:` aliases are resolved in `ids`, which compares them as
+# written; folding them here would make two readers disagree about one label.
+_EXACT_LABEL_PREFIXES: frozenset[str] = frozenset({"id:"})
+
+
+def label_has_prefix(name: str, prefix: str) -> bool:
+    """Whether label ``name`` starts with the namespaced ``prefix`` (``"kind:"``).
+
+    The one prefix rule for label names; every module that asks "is this a
+    ``<facet>:`` label" asks here. It matches case-insensitively because GitHub's
+    label names do: ``Source:Review`` and ``source:review`` are one label to
+    GitHub, and a hand-made or pre-existing spelling is the one an issue ends up
+    carrying. A case-sensitive match reads that label as absent, so a write would
+    re-add it, a swap would strip it as the "old" value, and reconcile would call
+    it foreign. The exception is a prefix in ``_EXACT_LABEL_PREFIXES``.
+    """
+    if prefix in _EXACT_LABEL_PREFIXES:
+        return name.startswith(prefix)
+    return name[: len(prefix)].casefold() == prefix.casefold()
+
+
+def label_facet(name: str, facets) -> str | None:
+    """The facet in ``facets`` whose ``<facet>:`` prefix ``name`` carries, in the
+    facet's own spelling, or ``None``. Matches through :func:`label_has_prefix`."""
+    for facet in facets:
+        if label_has_prefix(name, f"{facet}:"):
+            return facet
+    return None
+
+
 def facet_value(labels: list[str], facet: str) -> str | None:
-    """The value of the first ``<facet>:value`` label, or ``None``. The single
-    facet-label scan (shared by decode, the linter, and the restructure
-    pre-pass — one implementation, not per-module copies)."""
+    """The value of the first ``<facet>:value`` label, or ``None``. Reads through
+    :func:`facet_labels`, so the prefix matches as every other facet read does."""
     values = _facet_values(labels, facet)
     return values[0] if values else None
 
 
 def facet_labels(labels: list[str], facet: str) -> list[str]:
-    """The full names of the ``<facet>:`` labels in ``labels``, in source order.
-
-    The prefix matches case-insensitively because GitHub's label names do:
-    ``Source:Review`` and ``source:review`` are one label to GitHub, and a
-    hand-made or pre-existing spelling is the one an issue ends up carrying. A
-    case-sensitive match reads that label as absent, so a write would re-add it
-    and a swap would strip it as the "old" value. Every facet read goes through
-    here so they agree.
-    """
-    prefix = f"{facet}:".casefold()
-    return [name for name in labels if name[: len(prefix)].casefold() == prefix]
+    """The full names of the ``<facet>:`` labels in ``labels``, in source order,
+    matched by :func:`label_has_prefix`."""
+    prefix = f"{facet}:"
+    return [name for name in labels if label_has_prefix(name, prefix)]
 
 
 def _facet_values(labels: list[str], facet: str) -> list[str]:

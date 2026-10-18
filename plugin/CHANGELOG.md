@@ -22,7 +22,7 @@ fixes on the same path: a `--source`, `--area` or other facet value too long to 
 label (50 characters) is refused up front, naming the flag, instead of failing as a bare 422, and
 `update` now refuses it before writing anything rather than after the title change lands; a label
 that already exists under different capitalization (`source:Review`) is reused instead of
-failing the write; and a successful `file` now prints `filed <id>: <url>` first, with each lint
+failing the write, and `reconcile-labels` no longer reports it as a foreign label; and a successful `file` now prints `filed <id>: <url>` first, with each lint
 line marked advisory, so it no longer reads as a refusal that tempts a duplicate re-run.
 
 **`upstream-intake-enumeration`**: **triaging upstream bug reports now says how to list them.**

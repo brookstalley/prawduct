@@ -221,6 +221,15 @@ class TestReconcileLabels:
         names = {label["name"] for label in fake.list_labels(OWNER, REPO)}
         assert {"bug", "wontfix", "priority/high"} <= names
 
+    def test_a_case_variant_prawduct_label_is_not_called_foreign(self, fake):
+        """`Source:Review` is the `source:review` label to GitHub, so it is ours.
+        Red if reconcile classifies facets case-sensitively: it would report the
+        label to the owner as a foreign one it left alone."""
+        fake.seed_labels(OWNER, REPO, ["bug", "Source:Review"])
+        res = core.reconcile_labels(fake, owner=OWNER, repo=REPO)
+        assert res["status"] == "ok"
+        assert res["data"]["foreign_untouched"] == ["bug"]
+
     def test_is_idempotent(self, fake):
         core.reconcile_labels(fake, owner=OWNER, repo=REPO)
         res2 = core.reconcile_labels(fake, owner=OWNER, repo=REPO)

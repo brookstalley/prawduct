@@ -27,9 +27,12 @@
   as existing (the race with another writer). `ensure_labels` returns `applied`, the requested
   names in GitHub's existing spelling, and every caller that applies labels after provisioning
   (`file`, `update` facets and tags, `status`, alias restore, both import paths) applies that
-  list. Reading agrees: `encode.facet_labels` is the one facet-prefix match, case-insensitive,
-  and decode, `is_prawduct_issue`, the status reconciliation and `update`'s facet and tag swaps
-  all go through it; `stage` and `status` values decode to their vocabulary spelling. So
+  list. Reading agrees: `encode.label_has_prefix` is the one label-prefix match, case-insensitive
+  except for prawduct-minted `id:` aliases, and decode, `is_prawduct_issue`, the status
+  reconciliation, `update`'s facet and tag swaps, `reconcile-labels`' foreign/ours split
+  (`provision.facet_of`) and `restructure`'s kind relabel all go through it, so a hand-made
+  `Source:Review` is no longer reported as foreign and relabeling `Kind:Bug` no longer leaves a
+  duplicate kind; `stage` and `status` values decode to their vocabulary spelling. So
   `--area docs` on an item carrying `area:Docs` neither re-adds nor strips it, and an item whose
   only status label is `Status:In-Progress` reads as in progress. The L1 fake now refuses a
   case-variant label create, as GitHub does. `encode.label_fits` is the one label-length rule,
@@ -41,6 +44,13 @@
   tracker is that repo (`fakes.fake_github.own_tracker`); their assertions are unchanged except
   the two pinning the old `lint:` spelling. The gated live smoke test runs from a work tree whose
   own tracker is `$BACKLOG_LIVE_REPO`, since it would otherwise refuse its own `file` calls.
+- The suite now passes when an agent runs it from its own worktree. Tests that assert on all of
+  `prawduct-hook`'s stderr (empty, or its first line) used to inherit the checkout running the
+  suite, so in a `.claude/worktrees/agent-*` tree the hook's linked-worktree NOTE landed on
+  stderr and four of them failed. They now run the hook through one helper,
+  `tests/fixtures/hook_env.isolated_hook_run`, which points the project and `cwd` at a directory
+  the test owns and pins the plugin root, so neither environment notice applies; a positive control
+  shows a real stderr line still reaches the assertion.
 - Not in this change, filed as follow-ups: #1013, the same own-target rule for the id-addressed
   writes (`comment`, `update`, `status`, `link`), whose target resolves from the issue id inside
   `core`; and #1014, a label-length preflight for `import`, which today shares #1004's failure.

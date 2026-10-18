@@ -58,11 +58,17 @@ only to the running repo's own tracker; the three bugs make its failures and suc
   on the issue would be removed as the "old" value. Now case-insensitive. Same rule as #1005.
 - Boundary review (W1, O-2/O-3): reusing GitHub's spelling made the READ side matter, since
   decode matched facet prefixes case-sensitively and would drop a facet carried as
-  `Source:Review`. One helper, `encode.facet_labels`, now owns the prefix match for decode,
+  `Source:Review`. One helper, `encode.facet_labels` (its rule later moved to `label_has_prefix`, below), owns the prefix match for decode,
   `is_prawduct_issue`, status reconciliation and both `update` swaps; closed-vocabulary values
   (`stage`, `status`) decode to their canonical spelling. Settled by "do it right" and the
   one-home norm. `id:` alias labels stay case-sensitive: prawduct mints them, and alias
   resolution in `ids` is outside this path.
+- Cumulative review (R-2): three facet-prefix readers off the `file`/`update` path still matched
+  on their own (`provision.facet_of`, `restructure`'s kind strip, `is_prawduct_issue`'s loop).
+  The rule moved down a level to `encode.label_has_prefix`, which `facet_labels` and all three
+  now call; it keeps `id:` exact. Cumulative review (R-1): tests asserting on all of the hook's
+  stderr failed in agent worktrees on the linked-worktree NOTE; they now run through
+  `tests/fixtures/hook_env.isolated_hook_run`. Settled by the coordinator: fix both in place.
 
 ## Chunk 01 — the four fixes
 

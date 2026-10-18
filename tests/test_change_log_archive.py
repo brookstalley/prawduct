@@ -27,6 +27,12 @@ import pytest
 
 from lib import change_log, change_log_archive as cla, plan_backfill, record_lint
 
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
+
+from fixtures.hook_env import isolated_hook_run  # noqa: E402
+
 _HOOK_PATH = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
 
 HEADER = "# Change Log\n\n<!-- Append new entries at the top. -->\n\n"
@@ -318,7 +324,8 @@ class TestWholeHistoryReaders:
 def _cli(prawduct: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(_HOOK_PATH), "archive-change-log", *args],
-        cwd=str(prawduct.parent), capture_output=True, text=True, timeout=60,
+        capture_output=True, text=True, timeout=60,
+        **isolated_hook_run(prawduct.parent),
     )
 
 

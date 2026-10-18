@@ -77,11 +77,12 @@ class ReconcileResult:
 
 
 def facet_of(name: str) -> str | None:
-    """Return the facet prefix of a ``<facet>:value`` label, or ``None``."""
-    facet, sep, _ = name.partition(":")
-    if sep and facet in KNOWN_FACETS:
-        return facet
-    return None
+    """Return the facet of a ``<facet>:value`` label, or ``None``.
+
+    Matched as every facet read is (``encode.label_has_prefix``), so a hand-made
+    ``Source:Review`` is ours rather than foreign.
+    """
+    return encode.label_facet(name, KNOWN_FACETS)
 
 
 def label_spec(name: str) -> tuple[str, str]:

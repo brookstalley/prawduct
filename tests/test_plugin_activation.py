@@ -35,6 +35,12 @@ if _PLUGIN_ROOT not in sys.path:
 
 from lib import plugin_activation as pa  # noqa: E402
 
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
+
+from fixtures.hook_env import isolated_hook_run  # noqa: E402
+
 
 def _manifest(tmp_path: Path, payload) -> Path:
     path = tmp_path / "installed_plugins.json"
@@ -374,14 +380,18 @@ def test_default_plugins_file_is_resolved_at_call_time(monkeypatch):
 _HOOK = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
 
 
-def _run(args, *, config_dir=None, cwd=None):
+def _run(args, *, config_dir, cwd=None):
+    """Run ``check-plugin-active`` from ``cwd``, or from the test's own tmp dir.
+
+    Never from the ambient checkout: these tests assert on the whole of stderr,
+    and the hook's environment notices would land there (``fixtures.hook_env``).
+    """
     env = dict(os.environ)
-    if config_dir is not None:
-        env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+    env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+    project = Path(cwd) if cwd else Path(config_dir).parent
     return subprocess.run(
         [sys.executable, str(_HOOK), "check-plugin-active", *args],
-        capture_output=True, text=True, env=env,
-        cwd=str(cwd) if cwd else None,
+        capture_output=True, text=True, **isolated_hook_run(project, env=env),
     )
 
 
