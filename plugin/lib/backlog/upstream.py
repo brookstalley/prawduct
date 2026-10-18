@@ -692,6 +692,39 @@ def check_not_self(identities: tuple[str, ...]) -> Refusal | None:
     )
 
 
+def check_own_target(target: str, identities: tuple[str, ...]) -> Refusal | None:
+    """In-repo ``file`` writes only to the running repo's own tracker.
+
+    The mirror of :func:`check_not_self`, for the other operation. ``file`` is the
+    zero-ceremony create, and it can be zero-ceremony only because nothing it
+    writes crosses an owner boundary (design §1: its target is "self, never a free
+    `--repo`"). The adapter files as the session's GitHub user, and a public
+    issue cannot be deleted, so a free ``--repo`` would be an unprompted,
+    permanent, attributed write into someone else's project. That makes the target
+    the adapter's to check, not the skill's to instruct.
+
+    **Empty is a refusal, not a pass**, for the reason ``check_not_self`` gives:
+    an unresolved identity means nothing confirmed the target is this repo.
+    """
+    if not identities:
+        return Refusal(
+            "foreign-target",
+            "this repo's own identity could not be resolved from either "
+            "`backlog_service_repo` or an `origin` remote, so `file` cannot confirm "
+            f"{target} is this repo's tracker — set one of the two and retry",
+            {"reason": "unresolved", "target": target, "identities": []},
+        )
+    if canonical_repo(target) in identities:
+        return None
+    return Refusal(
+        "foreign-target",
+        f"`file` writes only to this repo's own tracker ({', '.join(identities)}), and "
+        f"{target} is another repo — to report a bug in prawduct itself, use "
+        "`file-upstream`, which shows the exact bytes before anything is sent",
+        {"reason": "foreign", "target": target, "identities": list(identities)},
+    )
+
+
 def check_approval(approve: str, digest: str, *, preference: str) -> Refusal | None:
     """§5 check 4 — the approval token must be the digest of the bytes about to go.
 

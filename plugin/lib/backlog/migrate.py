@@ -1433,8 +1433,8 @@ def _restore_alias_label(
     so the alias resolves again (read path) and the next import skips on the fast
     label path. Ensures the label definition first (a human may have deleted it
     too), then adds it — add-only, never removes (DM7)."""
-    provision.ensure_labels(transport, owner, repo, [key_label])
-    transport.add_labels(owner, repo, number, [key_label])
+    prov = provision.ensure_labels(transport, owner, repo, [key_label])
+    transport.add_labels(owner, repo, number, prov.applied)
     warnings.append(
         f"restored missing alias label {key_label} on {_canon(owner, repo, number)} "
         "from the block id_aliases record"
@@ -1449,7 +1449,7 @@ def _create_item(
     Returns the created issue dict."""
     key_label = record.key_label()
     all_labels = list(record.labels) + [key_label]
-    provision.ensure_labels(transport, owner, repo, all_labels)
+    all_labels = provision.ensure_labels(transport, owner, repo, all_labels).applied
     # The body↔block framing is the one in encode (shared with `file`), so the
     # importer's fresh block attaches identically — export round-trips depend on it.
     body = encode.compose_body(record.body, record.block)

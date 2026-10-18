@@ -68,10 +68,24 @@ def live_work_tree(tmp_path_factory):
     """
     path = tmp_path_factory.mktemp("live-backlog-store")
     subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+    # `file` writes only to the running repo's own tracker, so the tree every
+    # call runs from must BE the live repo, as a real caller's checkout is.
+    state = path / ".prawduct" / "project-state.yaml"
+    state.parent.mkdir()
+    state.write_text(f"backlog_service_repo: {_LIVE_REPO}\n", encoding="utf-8")
     return str(path)
 
 
-def _run_cli(capsys, argv, transport, sink, project_dir="."):
+@pytest.fixture(scope="module", autouse=True)
+def _calls_run_from_the_live_repo(live_work_tree):
+    global _DEFAULT_PROJECT_DIR
+    _DEFAULT_PROJECT_DIR = live_work_tree
+
+
+_DEFAULT_PROJECT_DIR = "."
+
+
+def _run_cli(capsys, argv, transport, sink, project_dir=None):
     """Drive the CLI front with ``--json``; return ``(exit_code, envelope)``.
 
     ``--json`` makes the envelope the *sole* stdout content, so ``json.loads`` of
@@ -79,12 +93,11 @@ def _run_cli(capsys, argv, transport, sink, project_dir="."):
     SEC-1 assertion covers the actual bytes a caller would see, not just the
     re-serialized payload.
 
-    ``project_dir`` matters only for the store-backed ops (``pick``, ``sync``,
-    ``refresh-counts``); pass ``live_work_tree`` for those. It was ``None`` for
-    every call until `pick` moved onto the cache, at which point ``Path(None)``
-    raised inside the CLI boundary and came back as a bare ``unavailable``.
+    ``project_dir`` defaults to ``live_work_tree``, whose own tracker is the live
+    repo: ``file`` refuses any other target, and the store-backed ops (``pick``,
+    ``sync``, ``refresh-counts``) need a work tree that is not the developer's clone.
     """
-    exit_code = cli.run(project_dir, [*argv, "--json"], transport=transport)
+    exit_code = cli.run(project_dir or _DEFAULT_PROJECT_DIR, [*argv, "--json"], transport=transport)
     captured = capsys.readouterr()
     sink.append(captured.out)
     sink.append(captured.err)

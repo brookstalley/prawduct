@@ -735,6 +735,11 @@ def affected_matches(entries: list[str], changed_paths) -> list[str]:
 _MAX_LABEL_NAME = 50
 
 
+def label_fits(facet: str, value: str) -> bool:
+    """Whether ``<facet>:<value>`` fits GitHub's label-name limit."""
+    return len(f"{facet}:{value}") <= _MAX_LABEL_NAME
+
+
 def normalize_tags(values: list[str]) -> list[str]:
     """Canonicalize a tag set: trimmed, de-duplicated, **sorted**.
 
@@ -764,7 +769,7 @@ def validate_tags(values: list[str]) -> tuple[list[str], str | None]:
     for value in normalized:
         if "," in value:
             return normalized, f"a tag may not contain a comma (it separates tags): {value!r}"
-        if len(f"{TAG_FACET}:{value}") > _MAX_LABEL_NAME:
+        if not label_fits(TAG_FACET, value):
             return normalized, (
                 f"tag {value!r} is too long — `{TAG_FACET}:<tag>` must fit "
                 f"{_MAX_LABEL_NAME} characters"
@@ -870,7 +875,22 @@ def check_enum(facet: str, value: str) -> EnumCheck:
       warning), never rejected.
     - ``kind``/``area``/``effort``/``impact``/``source`` are **open** — any value
       is accepted with no warning (there is no vocabulary to be unknown against).
+
+    Whatever the vocabulary, every value becomes a ``<facet>:<value>`` label, so
+    one that cannot fit GitHub's label-name limit is refused here, naming the flag.
+    Past this seam it surfaces only as a 422 on the labels endpoint, which names
+    neither the flag nor the limit.
     """
+    if not label_fits(facet, value):
+        return EnumCheck(
+            ok=False,
+            message=(
+                f"--{facet} {value!r} is too long — it becomes the label "
+                f"`{facet}:<value>`, which must fit {_MAX_LABEL_NAME} characters, so "
+                f"--{facet} takes at most {_MAX_LABEL_NAME - len(facet) - 1}; put "
+                "longer context in the body"
+            ),
+        )
     if facet == "status":
         if value not in STATUS_VALUES:
             return EnumCheck(
@@ -931,7 +951,11 @@ def is_prawduct_issue(issue: dict) -> bool:
     if is_pull_request(issue):
         return False
     labels = label_names(issue)
-    if any(name.startswith(prefix) for name in labels for prefix in NAMESPACED_LABEL_PREFIXES):
+    if any(
+        name.casefold().startswith(prefix.casefold())
+        for name in labels
+        for prefix in NAMESPACED_LABEL_PREFIXES
+    ):
         return True
     return has_block(issue.get("body"))
 
@@ -940,16 +964,36 @@ def facet_value(labels: list[str], facet: str) -> str | None:
     """The value of the first ``<facet>:value`` label, or ``None``. The single
     facet-label scan (shared by decode, the linter, and the restructure
     pre-pass — one implementation, not per-module copies)."""
-    prefix = f"{facet}:"
-    for name in labels:
-        if name.startswith(prefix):
-            return name[len(prefix) :]
-    return None
+    values = _facet_values(labels, facet)
+    return values[0] if values else None
+
+
+def facet_labels(labels: list[str], facet: str) -> list[str]:
+    """The full names of the ``<facet>:`` labels in ``labels``, in source order.
+
+    The prefix matches case-insensitively because GitHub's label names do:
+    ``Source:Review`` and ``source:review`` are one label to GitHub, and a
+    hand-made or pre-existing spelling is the one an issue ends up carrying. A
+    case-sensitive match reads that label as absent, so a write would re-add it
+    and a swap would strip it as the "old" value. Every facet read goes through
+    here so they agree.
+    """
+    prefix = f"{facet}:".casefold()
+    return [name for name in labels if name[: len(prefix)].casefold() == prefix]
 
 
 def _facet_values(labels: list[str], facet: str) -> list[str]:
-    prefix = f"{facet}:"
-    return [name[len(prefix) :] for name in labels if name.startswith(prefix)]
+    return [name[len(facet) + 1 :] for name in facet_labels(labels, facet)]
+
+
+def _canonical_value(value: str | None, vocabulary) -> str | None:
+    """``value`` in its vocabulary spelling when it matches one case-insensitively."""
+    if value is None:
+        return None
+    for known in vocabulary:
+        if known.casefold() == value.casefold():
+            return known
+    return value
 
 
 def decode_status(issue: dict, labels: list[str]) -> tuple[str, list[str]]:
@@ -984,7 +1028,7 @@ def decode_status(issue: dict, labels: list[str]) -> tuple[str, list[str]]:
         return status, warnings
 
     # Open issue: status: label precedence.
-    present = _facet_values(labels, "status")
+    present = [_canonical_value(v, STATUS_VALUES) for v in _facet_values(labels, "status")]
     if not present:
         return "open", warnings
     if "in-progress" in present:
@@ -1028,7 +1072,7 @@ def canonical_status_label(status: str) -> str | None:
 
 def status_labels_present(labels: list[str]) -> list[str]:
     """The ``status:`` labels currently on an issue, full names, source order."""
-    return [f"status:{value}" for value in _facet_values(labels, "status")]
+    return facet_labels(labels, "status")
 
 
 def reconcile_status_labels(
@@ -1045,8 +1089,13 @@ def reconcile_status_labels(
     canonical_status_label(decoded_current)`` (``to_add`` is empty — the decoded
     label is already present — and only losers are stripped).
     """
-    to_add = [keep] if (keep and keep not in present_status_labels) else []
-    to_remove = [name for name in present_status_labels if name != keep]
+    folded_keep = keep.casefold() if keep else None
+    to_add = (
+        [keep]
+        if keep and folded_keep not in {name.casefold() for name in present_status_labels}
+        else []
+    )
+    to_remove = [name for name in present_status_labels if name.casefold() != folded_keep]
     return to_add, to_remove
 
 
@@ -1082,7 +1131,7 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "title": issue.get("title"),
         "body": issue.get("body"),
         "status": status,
-        "stage": facet_value(labels, "stage"),
+        "stage": _canonical_value(facet_value(labels, "stage"), STAGE_VALUES),
         "kind": facet_value(labels, "kind"),
         "area": facet_value(labels, "area"),
         "effort": facet_value(labels, "effort"),

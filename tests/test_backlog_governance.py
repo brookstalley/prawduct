@@ -34,7 +34,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import cli, context, core, encode, ids, provision, query, snapshot  # noqa: E402
-from fakes.fake_github import FakeGitHub  # noqa: E402
+from fakes.fake_github import FakeGitHub, own_tracker  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
 SCOPE = f"{OWNER}/{REPO}"
@@ -329,7 +329,7 @@ class TestSec5Withhold:
         # so a test passing "." would sync a fake provider's issues into the
         # developer's own cache — a test with a side effect outside its tmpdir.
         subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-        self._dir = str(tmp_path)
+        self._dir = own_tracker(tmp_path, SCOPE)
 
     def test_write_path_refuses(self, fake):
         rc = cli.run(self._dir, ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
@@ -359,10 +359,10 @@ class TestSec5Withhold:
 
 
 class TestSec6Unattended:
-    def test_unattended_create_stamps_automated_and_worker(self, fake, monkeypatch):
+    def test_unattended_create_stamps_automated_and_worker(self, fake, monkeypatch, tmp_path):
         monkeypatch.setenv("PRAWDUCT_UNATTENDED", "1")
         monkeypatch.setenv("PRAWDUCT_WORKER", "nightly-sweep")
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(own_tracker(tmp_path, SCOPE), ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 0
         # The created issue's block carries the marker (self-asserted audit).
         issue = fake.get_issue(OWNER, REPO, 1)
@@ -372,10 +372,10 @@ class TestSec6Unattended:
         item, _ = encode.decode_item(issue)
         assert item["automated"] is True
 
-    def test_attended_create_has_no_marker(self, fake, monkeypatch):
+    def test_attended_create_has_no_marker(self, fake, monkeypatch, tmp_path):
         monkeypatch.delenv("PRAWDUCT_UNATTENDED", raising=False)
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-        rc = cli.run(".", ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
+        rc = cli.run(own_tracker(tmp_path, SCOPE), ["file", "--repo", SCOPE, "--title", "gov: the x item under test", "--body", "y", "--json"], transport=fake)
         assert rc == 0
         item, _ = encode.decode_item(fake.get_issue(OWNER, REPO, 1))
         assert item["automated"] is False

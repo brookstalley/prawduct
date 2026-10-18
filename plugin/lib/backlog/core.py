@@ -166,7 +166,7 @@ def file_item(
             continue
         check = encode.check_enum(facet, value)
         if not check.ok:
-            return error("validation", check.message or f"invalid {facet}")
+            return error("validation", check.message or f"invalid {facet}", details={"field": facet})
         if check.warning:
             warnings.append(check.warning)
         labels.append(f"{facet}:{value}")
@@ -179,6 +179,7 @@ def file_item(
         if labels:
             prov = provision.ensure_labels(transport, owner, repo, labels)
             warnings.extend(prov.warnings)
+            labels = prov.applied
         full_body = _body_with_block(body, automated=automated, worker=worker, refs=refs)
         issue = transport.create_issue(
             owner, repo, title=title, body=full_body, labels=labels
@@ -602,7 +603,7 @@ def set_status(
         for name in to_add:
             prov = provision.ensure_labels(transport, nid.owner, nid.repo, [name])
             warnings.extend(prov.warnings)
-            transport.add_labels(nid.owner, nid.repo, nid.number, [name])
+            transport.add_labels(nid.owner, nid.repo, nid.number, prov.applied)
         for name in to_remove:
             transport.remove_label(nid.owner, nid.repo, nid.number, name)
 
@@ -832,7 +833,17 @@ def update_item(
         return prepared
     block_values, desired_tags, working_ref = prepared
 
+    # Facet values too: the facet loop below runs after the title/body PATCH, so a
+    # value refused there would leave the item half-updated.
     warnings: list[str] = []
+    for facet in _UPDATE_FACETS:
+        if facet in fields:
+            check = encode.check_enum(facet, fields[facet])
+            if not check.ok:
+                return error("validation", check.message or f"invalid {facet}", details={"field": facet})
+            if check.warning:
+                warnings.append(check.warning)
+
     try:
         # A bare hand-minted PFX resolves via its id:PFX alias inside the transport
         # try (a label search — I/O); a '#' or '/' spelling does no I/O (MG1).
@@ -938,19 +949,16 @@ def update_item(
             if facet not in fields:
                 continue
             value = fields[facet]
-            check = encode.check_enum(facet, value)
-            if not check.ok:
-                return error("validation", check.message or f"invalid {facet}")
-            if check.warning:
-                warnings.append(check.warning)
             new_label = f"{facet}:{value}"
-            present = [n for n in encode.label_names(issue) if n.startswith(f"{facet}:")]
-            if new_label not in present:
+            # Case-insensitive throughout, as GitHub is: `area:Docs` already IS
+            # `area:docs`, and removing it as an "old" value strips the new one.
+            present = encode.facet_labels(encode.label_names(issue), facet)
+            if new_label.casefold() not in {n.casefold() for n in present}:
                 prov = provision.ensure_labels(transport, nid.owner, nid.repo, [new_label])
                 warnings.extend(prov.warnings)
-                transport.add_labels(nid.owner, nid.repo, nid.number, [new_label])
+                transport.add_labels(nid.owner, nid.repo, nid.number, prov.applied)
             for old in present:
-                if old != new_label:
+                if old.casefold() != new_label.casefold():
                     transport.remove_label(nid.owner, nid.repo, nid.number, old)
 
         # Tags — a set reconciliation, not a swap. `desired_tags` is the whole
@@ -959,15 +967,17 @@ def update_item(
         # Add before remove, the same never-empty-window discipline as above.
         if desired_tags is not None:
             prefix = f"{encode.TAG_FACET}:"
-            present_tags = [n for n in encode.label_names(issue) if n.startswith(prefix)]
+            present_tags = encode.facet_labels(encode.label_names(issue), encode.TAG_FACET)
             wanted = [f"{prefix}{value}" for value in desired_tags]
-            to_add = [name for name in wanted if name not in present_tags]
+            present_folded = {n.casefold() for n in present_tags}
+            wanted_folded = {n.casefold() for n in wanted}
+            to_add = [name for name in wanted if name.casefold() not in present_folded]
             if to_add:
                 prov = provision.ensure_labels(transport, nid.owner, nid.repo, to_add)
                 warnings.extend(prov.warnings)
-                transport.add_labels(nid.owner, nid.repo, nid.number, to_add)
+                transport.add_labels(nid.owner, nid.repo, nid.number, prov.applied)
             for old in present_tags:
-                if old not in wanted:
+                if old.casefold() not in wanted_folded:
                     transport.remove_label(nid.owner, nid.repo, nid.number, old)
 
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
@@ -1344,7 +1354,7 @@ def _restore_alias_labels(transport: Transport, owner: str, repo: str) -> list[s
             label = ids.alias_label(pfx)
             if label in label_names:
                 continue  # the alias label is present — nothing to restore
-            provision.ensure_labels(transport, owner, repo, [label])
-            transport.add_labels(owner, repo, number, [label])
+            prov = provision.ensure_labels(transport, owner, repo, [label])
+            transport.add_labels(owner, repo, number, prov.applied)
             restored.append(f"{owner}/{repo}#{number} → {label}")
     return restored

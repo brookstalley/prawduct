@@ -27,13 +27,23 @@ import pytest  # noqa: E402
 
 from lib.backlog import cache, cli, core  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
-from fakes.fake_github import FakeGitHub  # noqa: E402
+from fakes.fake_github import FakeGitHub, own_tracker  # noqa: E402
 
 REPO = "octo/repo"
 
 
+@pytest.fixture(autouse=True)
+def _own_repo_dir(tmp_path, monkeypatch):
+    """Every `_run` executes from a git work tree whose own tracker is `REPO`."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    monkeypatch.setattr(sys.modules[__name__], "_PROJECT_DIR", own_tracker(tmp_path, REPO))
+
+
+_PROJECT_DIR = "."
+
+
 def _run(argv, fake, capsys):
-    code = cli.run(".", argv, transport=fake)
+    code = cli.run(_PROJECT_DIR, argv, transport=fake)
     captured = capsys.readouterr()
     return code, captured.out, captured.err
 
@@ -66,14 +76,18 @@ class TestFileCli:
         assert json.loads(out)["data"]["title"] == "cli: the T item under test"
 
     def test_lint_findings_go_to_stderr_never_block(self, capsys):
-        # A terse, kind-less item lints — findings print to stderr as `lint: …`,
-        # stdout stays clean, and the exit code is still 0 (WARN-only, never blocks).
+        # A terse, kind-less item lints — findings print to stderr, each saying it
+        # is advisory, stdout stays clean, and the exit code is still 0 (WARN-only,
+        # never blocks).
         fake = FakeGitHub()
         code, out, err = _run(["file", "--repo", REPO, "--title", "cli: the fix item under test", "--body", "b"], fake, capsys)
         assert code == 0
-        assert "lint:" in err
-        assert "no kind:" in err  # a specific §4 finding surfaced
-        assert "lint:" not in out  # stdout carries no lint narration
+        lint_lines = [line for line in err.splitlines() if line.startswith("lint")]
+        assert lint_lines and all(
+            line.startswith("lint (advisory, the write succeeded): ") for line in lint_lines
+        )
+        assert any("no kind:" in line for line in lint_lines)  # a specific §4 finding surfaced
+        assert "lint" not in out  # stdout carries no lint narration
 
     def test_lint_findings_ride_inside_json_envelope(self, capsys):
         fake = FakeGitHub()
@@ -83,6 +97,104 @@ class TestFileCli:
         payload = json.loads(out)  # stdout is a single JSON document
         assert payload["status"] == "ok"
         assert any(f["rule"] == "no-kind" for f in payload["lint"])
+
+
+class TestFileWritesOnlyToItsOwnRepo:
+    """#217 — plain `file` refuses a `--repo` that is not the running repo's own tracker."""
+
+    ARGV = ["--title", "cli: the X item under test", "--body", "b", "--json"]
+
+    def _file_into(self, project_dir, target, fake, capsys):
+        code = cli.run(str(project_dir), ["file", "--repo", target, *self.ARGV], transport=fake)
+        return code, json.loads(capsys.readouterr().out)
+
+    def test_a_foreign_repo_is_refused_before_any_request(self, tmp_path, capsys):
+        fake = FakeGitHub()
+        code, envelope = self._file_into(own_tracker(tmp_path, REPO), "someone-else/x", fake, capsys)
+        assert code == 2
+        assert envelope["error"]["code"] == "foreign-target"
+        assert envelope["error"]["retryable"] is False
+        assert envelope["error"]["details"]["reason"] == "foreign"
+        assert "file-upstream" in envelope["error"]["message"]
+        assert fake.calls == []
+
+    def test_its_own_repo_files_in_any_spelling(self, tmp_path, capsys):
+        fake = FakeGitHub()
+        code, envelope = self._file_into(own_tracker(tmp_path, REPO), "Octo/Repo", fake, capsys)
+        assert code == 0, envelope
+        assert envelope["data"]["id"].lower() == "octo/repo#1"
+
+    def test_the_origin_remote_alone_is_an_identity(self, tmp_path, capsys):
+        # A directory of its own: the autouse fixture gave `tmp_path` a configured identity.
+        checkout = tmp_path / "origin-only"
+        checkout.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=checkout, check=True)
+        subprocess.run(
+            ["git", "remote", "add", "origin", "git@github.com:octo/repo.git"], cwd=checkout, check=True
+        )
+        assert not (checkout / ".prawduct").exists()
+        fake = FakeGitHub()
+        code, envelope = self._file_into(checkout, REPO, fake, capsys)
+        assert code == 0, envelope
+        code, envelope = self._file_into(checkout, "someone-else/x", fake, capsys)
+        assert envelope["error"]["code"] == "foreign-target"
+
+    def test_an_unresolved_identity_refuses(self, tmp_path, capsys):
+        bare = tmp_path / "no-identity"
+        bare.mkdir()
+        fake = FakeGitHub()
+        code, envelope = self._file_into(bare, REPO, fake, capsys)
+        assert code == 2
+        assert envelope["error"]["code"] == "foreign-target"
+        assert envelope["error"]["details"]["reason"] == "unresolved"
+        assert fake.calls == []
+
+    def test_the_refusal_holds_unattended(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setenv("PRAWDUCT_UNATTENDED", "1")
+        fake = FakeGitHub()
+        code, envelope = self._file_into(own_tracker(tmp_path, REPO), "someone-else/x", fake, capsys)
+        assert envelope["error"]["code"] == "foreign-target"
+        assert fake.calls == []
+
+
+class TestFileSaysItFiled:
+    """#1006 — a successful `file` reads as a success, ahead of any advisory lint."""
+
+    def test_the_filed_line_leads_and_names_the_url(self, capsys):
+        code, out, err = _run(["file", "--repo", REPO, "--title", "cli: the fix item under test", "--body", "b"], FakeGitHub(), capsys)
+        assert code == 0
+        assert out.splitlines()[0] == "filed octo/repo#1: https://github.com/octo/repo/issues/1"
+
+    def test_get_prints_no_filed_line(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        _code, out, _err = _run(["get", item_id], fake, capsys)
+        assert not out.startswith("filed")
+
+    def test_under_a_buffered_stdout_the_outcome_precedes_the_lint(self, monkeypatch):
+        """A pipe block-buffers stdout and not stderr. Model that: stdout reaches the
+        shared stream only when flushed, stderr immediately."""
+        merged: list[str] = []
+
+        class Buffered(io.StringIO):
+            def flush(self):
+                merged.append(self.getvalue())
+                self.seek(0)
+                self.truncate()
+
+        class Unbuffered(io.StringIO):
+            def write(self, text):
+                merged.append(text)
+                return len(text)
+
+        monkeypatch.setattr(sys, "stdout", Buffered())
+        monkeypatch.setattr(sys, "stderr", Unbuffered())
+        code = cli.run(_PROJECT_DIR, ["file", "--repo", REPO, "--title", "cli: the fix item under test", "--body", "b"], transport=FakeGitHub())
+        sys.stdout.flush()
+        text = "".join(merged)
+        assert code == 0
+        assert "lint (advisory" in text, "the fixture produced no lint to order against"
+        assert text.index("filed octo/repo#1") < text.index("lint (advisory")
 
 
 class TestOutputDiscipline:
@@ -421,7 +533,17 @@ class TestUpdateCli:
         item_id = _file(fake, capsys)
         code, out, err = _run(["update", item_id, "--body", " ".join(["word"] * 400)], fake, capsys)
         assert code == 0
-        assert "lint: ~400 visible words" in err
+        assert "lint (advisory, the write succeeded): ~400 visible words" in err
+
+    def test_update_to_a_case_variant_keeps_the_label(self, capsys):
+        """#1005 on `update`: `area:Docs` already IS `area:docs` to GitHub, so
+        setting `--area docs` must neither re-add it nor strip it as the old value."""
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys, area="Docs")
+        code, out, err = _run(["update", item_id, "--area", "docs", "--json"], fake, capsys)
+        assert code == 0, out
+        labels = [label["name"] for label in fake.get_issue("octo", "repo", 1)["labels"]]
+        assert [name for name in labels if name.lower().startswith("area:")] == ["area:Docs"]
 
     def test_update_no_fields_is_validation(self, capsys):
         fake = FakeGitHub()

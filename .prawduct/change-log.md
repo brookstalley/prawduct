@@ -5,6 +5,46 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-17: backlog file writes only to its own repo, and says when it filed
+
+<!-- prawduct: type=bugfix | scope=backlog-file-path -->
+
+- #217, #1004, #1005, #1006: four fixes on the `backlog file` path, picked as one bundle.
+- **#217.** `file` accepted any well-formed `--repo`, and the backlog skill pre-grants
+  `backlog file --*`, so an agent could create an issue as the user in a foreign public repo
+  without a prompt. `upstream.check_own_target` now refuses (`foreign-target`, exit 2, not
+  retryable) unless `--repo` matches the identity `resolve_self_identity` derives from
+  `backlog_service_repo` or the `origin` remote, case-insensitively; an unresolved identity
+  refuses too. It runs before any request, attended or unattended. `file-upstream` stays the
+  only cross-owner route.
+- **#1004.** `encode.check_enum` refuses any facet value whose `<facet>:<value>` label exceeds
+  GitHub's 50-character limit, naming the flag and the maximum, so a long `--source` no longer
+  dies as an opaque 422 on the labels endpoint. `update_item` now runs that check with its other
+  offline validation, before any request: it used to run after the title/body PATCH, so a refused
+  facet left the item half-updated.
+- **#1005.** `provision._create_missing` matches existing labels case-insensitively, as GitHub
+  does, and a create refused with `validation` re-lists once and counts a label that now exists
+  as existing (the race with another writer). `ensure_labels` returns `applied`, the requested
+  names in GitHub's existing spelling, and every caller that applies labels after provisioning
+  (`file`, `update` facets and tags, `status`, alias restore, both import paths) applies that
+  list. Reading agrees: `encode.facet_labels` is the one facet-prefix match, case-insensitive,
+  and decode, `is_prawduct_issue`, the status reconciliation and `update`'s facet and tag swaps
+  all go through it; `stage` and `status` values decode to their vocabulary spelling. So
+  `--area docs` on an item carrying `area:Docs` neither re-adds nor strips it, and an item whose
+  only status label is `Status:In-Progress` reads as in progress. The L1 fake now refuses a
+  case-variant label create, as GitHub does. `encode.label_fits` is the one label-length rule,
+  shared by `check_enum` and `validate_tags`.
+- **#1006.** A successful human-mode `file` prints `filed <id>: <url>` first, stdout is flushed
+  before stderr is written (a piped stdout is block-buffered, so lint lines used to arrive above
+  the outcome), and ok-envelope lint lines read `lint (advisory, the write succeeded): …`.
+- Tests that filed into a fake `octo/repo` from this checkout now run from a directory whose own
+  tracker is that repo (`fakes.fake_github.own_tracker`); their assertions are unchanged except
+  the two pinning the old `lint:` spelling. The gated live smoke test runs from a work tree whose
+  own tracker is `$BACKLOG_LIVE_REPO`, since it would otherwise refuse its own `file` calls.
+- Not in this change, filed as follow-ups: #1013, the same own-target rule for the id-addressed
+  writes (`comment`, `update`, `status`, `link`), whose target resolves from the issue id inside
+  `core`; and #1014, a label-length preflight for `import`, which today shares #1004's failure.
+
 ## 2026-10-17: upstream-report triage names the query that lists its set
 
 <!-- prawduct: type=bugfix | scope=upstream-intake-enumeration -->

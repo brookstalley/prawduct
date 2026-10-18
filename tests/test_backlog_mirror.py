@@ -34,7 +34,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import cache, cachequery, cli, core, sync  # noqa: E402
-from fakes.fake_github import FakeGitHub  # noqa: E402
+from fakes.fake_github import FakeGitHub, own_tracker  # noqa: E402
 from fixtures.backlog_fixtures import DISCODON_MINI  # noqa: E402
 
 OWNER, REPO_NAME = "octo", "repo"
@@ -50,6 +50,7 @@ def fake():
 def repo_dir(tmp_path):
     """A real git work tree — ``cache_path`` resolves through ``--git-common-dir``."""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    own_tracker(tmp_path, SCOPE)
     return tmp_path
 
 
