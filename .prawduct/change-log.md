@@ -5,6 +5,20 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-17: prawduct's suite can run on the Testament pool
+
+<!-- prawduct: type=feature | scope=testament-onboarding -->
+
+- #1016. `.testament.toml` and `docker/testament.Dockerfile` onboard this repo to Testament
+  (`../testrouter`): container executor, CI's pytest suite installed from `uv.lock` with the `dev`
+  extra, release tags shipped to runners (`[git] tags`). AGENTS.md carries Testament's
+  "Running tests" block, plus a paragraph saying evidence stays with `prawduct-hook
+  test-evidence record` until brookstalley/testament#52 gives `testament run` a JUnit report.
+- A runner's checkout has no history. Running the suite in a history-less single-commit copy found
+  one test that needs it (`test_scaffold_rows_match_the_shipped_history`, which searches history
+  by content and fails rather than skips without it). It is marked `requires_history` (registered
+  in pyproject) and selected out of the pool command; local runs and CI still run it.
+
 ## 2026-10-17: upstream-report triage names the query that lists its set
 
 <!-- prawduct: type=bugfix | scope=upstream-intake-enumeration -->

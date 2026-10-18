@@ -113,6 +113,12 @@ testpaths = ["tests"]
 # It is safe only because `tests/conftest.py` writes the scope record beside the
 # report: with a report always sitting at this path, one from `pytest -k foo`
 # would otherwise be indistinguishable from the suite's.
+# `requires_history`: the test reads this repo's git history by content, so it runs only where
+# history exists (a developer's clone; CI checks out with `fetch-depth: 0`). Testament's runners
+# check out a tree with no history, so `.testament.toml` selects these out of the pool run.
+markers = [
+    "requires_history: reads this repo's full git history; not runnable on a history-less checkout",
+]
 addopts = [
     "-n", "5",
     "--junit-xml=.prawduct/.test-report.xml",

@@ -1,0 +1,30 @@
+# How Testament (`testament run`) runs this repo's pytest suite on its pool. Machine-specific
+# settings (the coordinator's address, this machine's key) live in ~/.config/testament, never here.
+#
+# The suite is the one CI runs (`.github/workflows/tests.yml`: `python -m pytest`, testpaths and
+# options from pyproject's [tool.pytest.ini_options]). On a runner Testament forces `-n 0`, so the
+# `-n`/`--dist` in addopts apply only to local runs; the pool is the parallelism. The collector's
+# node suite is not pytest and stays with `prawduct-hook test-evidence record`.
+#
+# A runner's checkout has the tree but no history, so tests marked `requires_history` are
+# selected out here and run locally and in CI. Release tags do reach runners ([git] below), as
+# trees, which is all the tag-reading tests use.
+manifest_version = 2
+name = "prawduct"
+executor = "container"
+command = ["uv", "run", "--frozen", "--extra", "dev", "python", "-m", "pytest", "-m", "not requires_history"]
+default_selection = ["tests/"]
+env_inputs = ["uv.lock", "pyproject.toml"]
+
+[env]
+UV_CACHE_DIR = "/tr/cache/uv"
+
+[image]
+dockerfile = "docker/testament.Dockerfile"
+inputs = ["docker/testament.Dockerfile"]
+
+[git]
+tags = ["v[0-9]*"]
+
+[setup]
+steps = [["uv", "sync", "--frozen", "--extra", "dev", "--quiet"]]
