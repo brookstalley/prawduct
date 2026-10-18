@@ -74,7 +74,6 @@ Full protocol: `plugin/methodology/reflection.md`.
 
 ## Reference
 
-- `plugin/docs/principles.md` — Full principles with rationale and review perspectives
 - `.claude/rules/learnings/` — Accumulated project wisdom, harness-loaded (`core.md` always; areas on a matching read)
 - `plugin/templates/` — Artifact templates for structured output
 - `.prawduct/cross-cutting-concerns.md` — Cross-cutting concerns registry (pipeline coverage matrix)
@@ -86,6 +85,10 @@ Full protocol: `plugin/methodology/reflection.md`.
 plugin-governed product repo commits (its own state plus a small install reference; no framework
 files). Governance — `/prawduct:*` skills, the SessionStart + Stop hooks, methodology, and the
 Critic/PR protocols — comes from the **plugin**, not the repo.
+
+## Running tests
+
+Run tests with `testament run`, per `documentation/running-tests.md`.
 
 ## Compact Instructions
 
