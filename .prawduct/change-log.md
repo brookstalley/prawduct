@@ -5,6 +5,33 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
+## 2026-10-17: prawduct's suite can run on the Testament pool
+
+<!-- prawduct: type=feature | scope=testament-onboarding -->
+
+- #1016. `.testament.toml` and `docker/testament.Dockerfile` onboard this repo to Testament
+  (`../testrouter`): container executor, CI's pytest suite with the `dev` extra resolved fresh
+  (`uv.lock` is gitignored here), release tags shipped to runners (`[git] tags`). `documentation/running-tests.md` carries
+  Testament's agent block, plus a paragraph saying evidence stays with `prawduct-hook
+  test-evidence record` until brookstalley/testament#52 gives `testament run` a JUnit report.
+  AGENTS.md points to it in one line rather than carrying it: AGENTS.md is injected into every
+  session and the block cost ~390 tokens over the framework footprint ceiling. The pointer is paid
+  for by cutting the Reference list's `plugin/docs/principles.md` entry, which repeated the
+  Principles section; the footprint stays at its recorded 3108. `docker/` joins the packaging
+  test's not-distributed directories.
+- The first pool runs (2026-10-18, after the owner's allow) corrected two assumptions. The setup
+  required `uv.lock`, which this repo gitignores on purpose, so it now resolves the `dev` extra
+  fresh as CI does. And 195 tests failed with `python3` not found: hook tests launch it under a
+  minimal `PATH` (`/usr/bin:/bin`), and the slim image has Python only in `/usr/local/bin`, so the
+  image links it into `/usr/bin`. Then: 9014 tests, all passed or skipped, none missing, over
+  `gpu-bozeman` and `laptop`, in 2:08 cold and 1:13 warm, against 9.5-13 min for the local suite.
+  The tests' summed durations are 14.3 min, so most of a local run's wall clock is overhead (#1015).
+- A runner's checkout has no history. Running the suite in a history-less single-commit copy found
+  one test that needs it (`test_scaffold_rows_match_the_shipped_history`, which searches history
+  by content and fails rather than skips without it). It is marked `requires_history` (registered
+  in pyproject) and selected out of the Testament command; plain `pytest`, the evidence recorder's run and CI
+  still run it.
+
 ## 2026-10-17: upstream-report triage names the query that lists its set
 
 <!-- prawduct: type=bugfix | scope=upstream-intake-enumeration -->

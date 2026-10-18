@@ -195,6 +195,9 @@ NOT_DISTRIBUTED_DIRS = {
     "documentation",
     "plugin",
     "tests",
+    # The image Testament's runners run this repo's own suite in (`.testament.toml`):
+    # test infrastructure for developing prawduct, nothing a governed product uses.
+    "docker",
     # Repo-local analysis scripts that back a claim in an artifact — the committed
     # derivation behind a measured figure, so the number stays falsifiable instead
     # of being a digit transcribed into prose. Deliberately NOT shipped: a product
