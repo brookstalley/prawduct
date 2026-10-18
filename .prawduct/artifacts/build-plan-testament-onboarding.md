@@ -55,6 +55,11 @@ pool (three runners, 30 slots on 2026-10-17). Onboarding follows `testament guid
   AGENTS.md is injected into every session. Moved to an on-demand doc, per that test's own
   remedy; the pointer is paid for by cutting a Reference entry that repeated the Principles
   section. Found by the boundary suite run, not by the targeted tests run before the commit.
+- First pool runs (2026-10-18): setup no longer needs `uv.lock` (gitignored here; resolved fresh,
+  as CI does), and the image links `python3` into `/usr/bin` for hook tests' minimal PATH (195
+  failures, one cause). Then acceptance (b): 9014 tests, 0 failed, 0 missing; the only differences
+  from the local run are the deselected `requires_history` test and one machine-local skip.
+  Wall clock 2:08 cold, 1:13 warm.
 
 ## Chunk 01 — onboard
 
