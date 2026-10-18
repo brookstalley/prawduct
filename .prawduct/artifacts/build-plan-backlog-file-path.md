@@ -83,4 +83,4 @@ stdout. Each red-verified by reinstating its defect.
 
 ## Status
 
-- [ ] Chunk 01 — the four fixes
+- [x] Chunk 01 — the four fixes
