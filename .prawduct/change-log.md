@@ -11,9 +11,14 @@
 
 - #1016. `.testament.toml` and `docker/testament.Dockerfile` onboard this repo to Testament
   (`../testrouter`): container executor, CI's pytest suite installed from `uv.lock` with the `dev`
-  extra, release tags shipped to runners (`[git] tags`). AGENTS.md carries Testament's
-  "Running tests" block, plus a paragraph saying evidence stays with `prawduct-hook
+  extra, release tags shipped to runners (`[git] tags`). `documentation/running-tests.md` carries
+  Testament's agent block, plus a paragraph saying evidence stays with `prawduct-hook
   test-evidence record` until brookstalley/testament#52 gives `testament run` a JUnit report.
+  AGENTS.md points to it in one line rather than carrying it: AGENTS.md is injected into every
+  session and the block cost ~390 tokens over the framework footprint ceiling. The pointer is paid
+  for by cutting the Reference list's `plugin/docs/principles.md` entry, which repeated the
+  Principles section; the footprint stays at its recorded 3108. `docker/` joins the packaging
+  test's not-distributed directories.
 - A runner's checkout has no history. Running the suite in a history-less single-commit copy found
   one test that needs it (`test_scaffold_rows_match_the_shipped_history`, which searches history
   by content and fails rather than skips without it). It is marked `requires_history` (registered

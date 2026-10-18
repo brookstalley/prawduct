@@ -45,12 +45,21 @@ pool (three runners, 30 slots on 2026-10-17). Onboarding follows `testament guid
 - *Inferred:* `[git] tags = ["v[0-9]*"]` so `test_anchor_repair`'s release-tag pin runs on the pool
   rather than skipping. Two other tests skip on a fresh checkout for machine-local reasons (a
   gitignored backlog cache; a branch-derived plan lookup); accepted, since local and CI cover them.
-- *Inferred:* the AGENTS.md block is Testament's, verbatim, plus one paragraph saying evidence
-  stays with `prawduct-hook test-evidence record` until testament#52 ships JUnit output.
+- *Inferred:* Testament's agent block, verbatim, plus one paragraph saying evidence stays with
+  `prawduct-hook test-evidence record` until testament#52 ships JUnit output, lives in
+  `documentation/running-tests.md`; AGENTS.md carries a one-line pointer naming `testament run`
+  (what `testament onboard` checks for).
+
+**Decisions made mid-build:**
+- The verbatim block in AGENTS.md broke the injected-footprint ceiling (~3496 vs 3109 tokens):
+  AGENTS.md is injected into every session. Moved to an on-demand doc, per that test's own
+  remedy; the pointer is paid for by cutting a Reference entry that repeated the Principles
+  section. Found by the boundary suite run, not by the targeted tests run before the commit.
 
 ## Chunk 01 — onboard
 
-**Delivers:** `.testament.toml`; `docker/testament.Dockerfile`; AGENTS.md "Running tests"; the
+**Delivers:** `.testament.toml`; `docker/testament.Dockerfile`; `documentation/running-tests.md`
+and its AGENTS.md pointer; `docker` in the packaging test's not-distributed set; the
 `requires_history` marker (pyproject) on the one history-dependent test.
 
 **Acceptance:** (a) `testament onboard --check` all ok (devcontainer n/a); (b) after the owner allows
