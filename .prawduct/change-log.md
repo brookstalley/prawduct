@@ -17,7 +17,8 @@
 - A runner's checkout has no history. Running the suite in a history-less single-commit copy found
   one test that needs it (`test_scaffold_rows_match_the_shipped_history`, which searches history
   by content and fails rather than skips without it). It is marked `requires_history` (registered
-  in pyproject) and selected out of the pool command; local runs and CI still run it.
+  in pyproject) and selected out of the Testament command; plain `pytest`, the evidence recorder's run and CI
+  still run it.
 
 ## 2026-10-17: upstream-report triage names the query that lists its set
 

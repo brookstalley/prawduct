@@ -40,7 +40,8 @@ pool (three runners, 30 slots on 2026-10-17). Onboarding follows `testament guid
   2026-10-17 by running the full suite in a history-less single-commit copy of the tree: exactly
   one test failed (`test_norm_index_scaffold.py::...test_scaffold_rows_match_the_shipped_history`,
   which searches history by content and fails rather than skips without it, on purpose). It is
-  marked, not changed; local runs and CI still run it.
+  marked, not changed; plain `pytest`, the evidence recorder's run and CI still run it
+  (`testament run`'s local fallback uses the same selection, so it does not).
 - *Inferred:* `[git] tags = ["v[0-9]*"]` so `test_anchor_repair`'s release-tag pin runs on the pool
   rather than skipping. Two other tests skip on a fresh checkout for machine-local reasons (a
   gitignored backlog cache; a branch-derived plan lookup); accepted, since local and CI cover them.

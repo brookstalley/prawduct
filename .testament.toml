@@ -7,8 +7,8 @@
 # node suite is not pytest and stays with `prawduct-hook test-evidence record`.
 #
 # A runner's checkout has the tree but no history, so tests marked `requires_history` are
-# selected out here and run locally and in CI. Release tags do reach runners ([git] below), as
-# trees, which is all the tag-reading tests use.
+# selected out here; a plain `pytest` run, the evidence recorder's run and CI still run them.
+# Release tags do reach runners ([git] below), as trees, which is all the tag-reading tests use.
 manifest_version = 2
 name = "prawduct"
 executor = "container"
