@@ -50,7 +50,13 @@ governed_by:
       - "terminal signals use the severity-prefix vocabulary and the stdout/stderr split → conforms: refusals are `BLOCKED:` and failures `WARNING:` on stderr; the preview is on stdout"
       - "the ledger has one writer → inapplicable, because nothing is written to the ledger"
       - "emitted text names no internal identifier → conforms"
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: telemetry contribution, wave 2 (#949)
 

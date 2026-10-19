@@ -10,9 +10,62 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.1-dev.5
+## v3.7.1
 
-**Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+**Before building, the agent now aligns with you on goals — all its questions in one batch, up front — and the boundary review judges the work against them.** Also in this release: opt-in anonymous stats, the governance anchor moves to `AGENTS.md`, a new `clear-reason` Stop gate, and field fixes to `backlog file`, inline norm fields and test-evidence counting.
+
+**`requirements-alignment-w2`**: **the boundary review judges the work against its goals.** The
+Critic's boundary review reads the plan's Goals and the brief's near-term goal and North Star, not
+only the chunks. Work that drops or changes a goal you stated is BLOCKING, and a goal still marked
+as the agent's inference is a WARNING naming it. Decisions the agent made mid-build reach you in
+one note, and from there in the PR description. The product brief is rewritten in place when it
+changes, rather than appended to, and an inference keeps its mark until you confirm it.
+
+**`critic-tree-unchanged`**: **a Critic review whose working tree changed while it ran is
+refused at consolidation.** `critic-begin` records the tree, and `critic-consolidate` names any
+paths that changed outside prawduct's own session files. Since you may legitimately keep working
+while a review runs, the main session can accept the review with
+`--tree-changed-by-builder "<reason>"`. That attestation is recorded on the review and shown to the
+PR reviewer. The hooks never pass it, so a session that edits after an unconsolidated review is
+blocked at Stop until it attests.
+
+**`empty-verify-rounds`**: **fewer verify rounds with nothing to verify.** A review that a later
+boundary review will cover is no longer bought twice: chunk inference answers `deferred` on an
+uncommitted cumulative-final last chunk. A verify pass can now confirm an observation fix by its
+`O-n` id. Observations in a verify pass must name the prior finding they judge, so the pass no
+longer starts a fix → verify → new-observation loop.
+
+**`delegate-isolation-dispatch`**: **ad-hoc delegates run in a harness-isolated worktree.**
+`methodology/delegation.md` now dispatches them in the background with `isolation: "worktree"`
+instead of pointing an agent at a worktree path. The old way did not hold, because shell `cd`
+does not persist between calls, so the delegate's commits and reviews landed in your checkout.
+
+**`consolidate-trigger`**: **`review-stats` shows which path consolidated each Critic review**
+(`consolidated_by`: `subagent-stop`, `explicit` or `session-end-backstop`; report schema 7 → 8). A
+dead SubagentStop hook now shows up as `subagent-stop 0` in a routine report.
+
+**`telemetry-aggregate`**: **`prawduct-hook aggregate-stats` pools stats across the products you
+name**, plus contributed reports from bundle files or the public collector (`--collector`).
+Results are per plugin version and never pooled across versions. Every contributed line is
+re-checked against the allowlist.
+
+**`field-bugs-2026-10`**: **three fixes from the field.**
+- A product that ships its own Claude Code plugin at `plugin/` can record reviews again. It was
+  mistaken for a prawduct checkout (#959).
+- `archive-plan` and `plan-backfill --apply` archive a plan whose frontmatter says
+  `lifecycle: active` (#809).
+- `prawduct-hook stale-plugin-caches` lists prawduct cache versions no install uses, with sizes
+  and a delete command for each, and deletes nothing itself. `/prawduct:doctor` relays it as a
+  recommendation (#321).
+
+**`transfer-pruned-trees`**: **a garbage-collected review tree no longer makes the base-advance
+transfer "could not run".** Candidates git no longer holds are dropped before any diff (#956).
+
+**`norm-inline-why`**: **a norm field written inline after the bold statement counts as a
+field** (#1011): for example, `- **Statement.** Detail. *Why:* reason.` Ratified norms written
+that way no longer read as missing, and `norm-registry-unratified` stops saying no norms exist. A
+roadmap bullet saying `Status: blocked` stays a roadmap item.
+
 
 **`backlog-file-path`**: **`backlog file` writes only to this repo's own tracker.** A `--repo`
 naming any other repo is refused (`foreign-target`) before anything is sent, attended or not, so an

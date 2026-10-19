@@ -22,7 +22,13 @@ governed_by:
       - "every fact has one home → conforms: the suite's selection lives in `.testament.toml`; the marker's meaning in pyproject's marker registration"
 partition: serial — one chunk; config, one marker, one doc block
 last_validated: 2026-10-17
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: run prawduct's suite on the Testament pool (#1016)
 

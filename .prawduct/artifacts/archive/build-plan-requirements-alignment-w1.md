@@ -24,7 +24,13 @@ governed_by:
       - "every fact has one home → conforms: near-term and North Star live once in the brief, and the pass cites them; the four responses live once in building.md, and every other surface points there"
 partition: serial — every chunk rewrites shared vocabulary (the alignment pass, its four responses, durable-first), and parallel prose edits falsify each other's descriptions
 last_validated: 2026-10-09
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

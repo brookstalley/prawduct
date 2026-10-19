@@ -37,7 +37,13 @@ governed_by:
       - "additive-first evolution → conforms: an `O-n` id in a resolution's existing `fid` slot, and `about` on an observation, are additive"
 partition: serial — 01 and 02 both edit critic_consolidate.py, and 03 reuses 02's target validation
 last_validated: 2026-10-13
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: Stop buying verify rounds that have nothing to verify
 

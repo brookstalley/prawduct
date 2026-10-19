@@ -22,7 +22,13 @@ governed_by:
       - "every fact has one home → conforms: the opt-in key prose moves to one doc and the template points at it; the no-forward-note heading becomes one constant both writer and briefing read"
 partition: serial — one chunk; four small fixes across disjoint files, too small to brief out
 last_validated: 2026-10-16
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: First governed session after onboarding discovery
 

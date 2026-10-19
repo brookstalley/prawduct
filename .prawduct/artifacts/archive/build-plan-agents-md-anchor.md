@@ -24,7 +24,13 @@ governed_by:
       - "a governed product's content leaves its repo only through a pinned surface with owner-approved bytes → inapplicable because nothing in this plan sends content outside the repo"
 partition: serial — 02 reads the constants and layout 01 defines, and 03 moves this repo onto the layout 01 and 02 make every reader understand
 last_validated: 2026-10-14
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build plan: the governance anchor lives in AGENTS.md (#942)
 

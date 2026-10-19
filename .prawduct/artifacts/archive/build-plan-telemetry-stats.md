@@ -43,7 +43,13 @@ governed_by:
       - "terminal signals use the severity-prefix vocabulary and the stdout/stderr split → conforms: a failed append is a `NOTE:` on stderr"
       - "the ledger has one writer → inapplicable, because nothing new is written to the ledger"
       - "emitted text names no internal identifier → conforms: `stats` output names metrics in plain language"
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: telemetry stats, wave 1 (local metrics)
 

@@ -39,7 +39,13 @@ governed_by:
       - "state-file growth past its threshold is advisory → inapplicable, because the collector writes no state file in a governed repo; R2 growth is the owner's to watch"
       - "review rigor is stage-keyed → inapplicable, because no review stage or severity rule changes"
       - "proportionality ratchets both ways; a control emits its yield observably → departs, deliberately: `[DECISION: the collector emits no logs, traces or analytics (observability disabled, no console calls, no Logpush) | goal 2, knowing nothing about the contributor, outranks operability here, and a log line is exactly where an IP or arrival time would leak. The published bundles are its only observable output | owner can override]`"
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: telemetry collector, wave 3 (#950)
 

@@ -24,7 +24,13 @@ governed_by:
       - "every fact has one home → conforms: the goals check lives once, in review-protocol.md Goal 5; the brief rules live once, in discovery.md, with the template pointing there"
 partition: serial — chunks 01 and 02 share vocabulary (inferred vs owner-said, confirmed lines) that the Critic check reads; chunk 03 is disjoint but small, and a delegate's integration cost (plan, change-log) exceeds its wall-clock saving
 last_validated: 2026-10-09
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

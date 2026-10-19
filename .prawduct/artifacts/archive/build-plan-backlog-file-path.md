@@ -22,7 +22,13 @@ governed_by:
       - "every fact has one home → conforms: the identity rule lives in `upstream` beside `check_not_self`; the label-length rule in `check_enum`; label spelling in `provision.ensure_labels`'s `applied`"
 partition: serial — one chunk; four small fixes on one command path
 last_validated: 2026-10-17
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: the `backlog file` path (#217, #1004, #1005, #1006)
 

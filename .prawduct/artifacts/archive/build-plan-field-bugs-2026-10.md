@@ -42,7 +42,13 @@ governed_by:
       - "review wall-clock is P0 → conforms: no review mode, roster or payload changes"
       - "state-file growth is an advisory, never a hard block → inapplicable, because no state file's size behaviour changes"
 partition: serial — 01 and 03 both edit `plugin/bin/prawduct-hook`, and 02 is too small to repay a delegate's brief
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: three bugs users hit (#959, #809, #321)
 

@@ -50,7 +50,13 @@ governed_by:
       - "proportionality ratchets both ways; a control emits its yield → conforms: this is the instrument that measures yield across products; it adds no control"
       - "state-file growth is advisory → inapplicable, because nothing is stored"
       - "review rigor is stage-keyed → inapplicable, because no review stage or severity rule changes"
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: cross-product stats, #262
 

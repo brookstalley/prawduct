@@ -22,7 +22,13 @@ governed_by:
       - "every fact has one home → conforms: the vocabulary and both readers live in `standing_block.py`; the prose rule stays once in session-hygiene.md"
 partition: serial — one chunk, five files around one function
 last_validated: 2026-10-09
+lifecycle: completed
+archived: 2026-10-19
+released_in: v3.7.1
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan: A SAFE TO CLEAR that cites the message is refused (#977)
 
