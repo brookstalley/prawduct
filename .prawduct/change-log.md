@@ -54,6 +54,30 @@
 - Not in this change, filed as follow-ups: #1013, the same own-target rule for the id-addressed
   writes (`comment`, `update`, `status`, `link`), whose target resolves from the issue id inside
   `core`; and #1014, a label-length preflight for `import`, which today shares #1004's failure.
+## 2026-10-18: a norm field written inline after the bold statement is a field
+
+<!-- prawduct: type=bugfix | scope=norm-inline-why -->
+
+- #1011. `- **Statement.** Detail. *Why:* reason.` read as no norm at all: every field matcher
+  anchors at a logical line's start, so `norm-registry-unratified` told a product with ratified
+  norms that none existed, and record_lint's `governed_by` count and dead-why were blind to
+  the same entries. `norm_probes._direction_scan` now splits such a line at the
+  marker, so every matcher reads it as the line-start form. The split is bounded to avoid
+  minting entries from prose: only inside a bullet opening with a bold statement, only at a
+  sentence start (right after the statement, or after `.` `!` `?` `;`), and `Status:` never
+  opens one — a roadmap bullet saying "Status: blocked" stays a roadmap item.
+  Accepting the inline form is the owner's decision (2026-10-18, on #1011's triage: adapt to
+  how authors write, but avoid false positives), the same call as emphasis (2026-08-03) and
+  blockquotes (#637).
+- record_lint's `direction_norm_count` now delegates to `norm_probes._direction_norm_count`
+  instead of walking raw text over a shared regex. That walker diverged from the probes twice
+  (blockquotes, then inline fields), each time because only the reader feeding the probes got
+  the tolerance.
+- The advisory names its cause: "`## Direction` sections exist, but no entry in them carries a
+  field" versus "no artifact has a `## Direction` section". The evidence string is unchanged,
+  so the advisory id — and any dismissal — carries over. One existing test asserted the old
+  wording and was rewritten to the new contract, with the reason in its docstring.
+  `docs/norms.md` § Anatomy states the inline form.
 
 ## 2026-10-17: prawduct's suite can run on the Testament pool
 

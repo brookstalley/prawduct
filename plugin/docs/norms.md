@@ -151,6 +151,11 @@ A Direction entry (or preferences row) carries these parts:
   another entry, is still asked. It never answers an in-transition `Status:` whose tracking item
   finished: that status is stale, so fix it.
 
+Each field starts its own line, as above. A field may instead follow the bold statement on the
+bullet's own line, at a sentence start (`- **Statement.** Detail. Why: …`), and reads the same.
+`Status:` reads inline only after another inline field, so a roadmap bullet saying
+`Status: blocked` stays a roadmap item.
+
 ## Lifecycle Rules
 
 ### Birth — capture and retroactivity
