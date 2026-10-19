@@ -485,20 +485,35 @@ class TestBaseAdvanceTransferAtTheSessionGate:
         assert verdict["status"] == "uncovered"
         assert "no .test-evidence.json on disk" in verdict["reason"]
 
-    def test_a_degraded_transfer_check_says_it_never_ran(self, tmp_path):
-        # "Advice fails soft" is not "advice fails silent": a check that could
-        # not run must not read as a finding that the gap is genuine work.
-        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
-        _write_test_evidence(repo)
+    @staticmethod
+    def _prune_reviewed_heads(repo):
         store = evidence.store_path(repo)
         lines = [json.loads(line) for line in store.read_text().splitlines()]
         for line in lines:
             if line.get("kind") == "review":
                 line["body"]["head_tree"] = "0" * 40  # well-formed, absent
         store.write_text("".join(json.dumps(line) + "\n" for line in lines))
+
+    def test_a_degraded_transfer_check_says_it_never_ran(self, tmp_path, monkeypatch):
+        # "Advice fails soft" is not "advice fails silent": a check that could
+        # not run must not read as a finding that the gap is genuine work. Git
+        # failing to say which objects it holds is what "could not run" means;
+        # an absent tree it CAN name is a pruned snapshot (the test below).
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        self._prune_reviewed_heads(repo)
+        monkeypatch.setattr(evidence, "missing_objects", lambda *a, **k: None)
         verdict = gates.session_review_verdict(repo)
         assert verdict["status"] == "uncovered"
         assert "could not run" in verdict["reason"]
+
+    def test_a_pruned_reviewed_tree_is_not_a_check_that_never_ran(self, tmp_path):
+        repo, _prior_base, _prior_head = _advanced_base_session(tmp_path)
+        _write_test_evidence(repo)
+        self._prune_reviewed_heads(repo)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered"
+        assert "could not run" not in verdict["reason"]
 
     def test_an_unreviewed_branch_gets_the_unchanged_message(self, tmp_path):
         # The still-blocks regression: no prior review means no transfer, and

@@ -168,6 +168,19 @@ def test_product_name_rendered(scaffolded: Path):
     assert "{{PRAWDUCT_VERSION}}" not in state, "VERSION placeholder left unrendered"
 
 
+def test_scaffolded_state_file_leaves_room_for_discovery(scaffolded: Path):
+    """A new repo's state file is mostly what its own discovery writes.
+
+    The template once carried ~20 KB of optional-key documentation as comments,
+    so a fresh repo started at three quarters of the oversized-file ceiling and
+    one honest discovery tripped it, asking the owner to judge text they never
+    wrote. That reference lives in the plugin now; this keeps it from creeping
+    back: under 12 KB leaves discovery most of the default ceiling.
+    """
+    size = (scaffolded / ".prawduct" / "project-state.yaml").stat().st_size
+    assert size < 12_000, f"a fresh state file is {size} bytes before discovery writes anything"
+
+
 def test_name_detectable_by_briefing(scaffolded: Path):
     # The "Project: Unknown" fix: the scaffolded project-state carries a
     # product_identity.name block, which is exactly what the SessionStart briefing's
@@ -198,7 +211,10 @@ def test_learnings_scaffolded_as_a_harness_rules_file(scaffolded: Path):
 
 
 def test_static_anchor_present(scaffolded: Path):
-    text = (scaffolded / "CLAUDE.md").read_text()
+    """The anchor lives in AGENTS.md, which every agent host reads, and CLAUDE.md
+    is exactly the import that makes Claude Code read it (#942, #928 D-8)."""
+    assert (scaffolded / "CLAUDE.md").read_text() == "@AGENTS.md\n"
+    text = (scaffolded / "AGENTS.md").read_text()
     assert "PRAWDUCT:ANCHOR" in text
     assert "/prawduct:methodology building" in text  # the anchor points at the build cycle
     # A newly scaffolded repo must carry the plugin-absent notice too, and this is

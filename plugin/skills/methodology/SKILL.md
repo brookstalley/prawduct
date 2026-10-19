@@ -1,8 +1,8 @@
 ---
-description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|session-hygiene|delegation|principles|norms) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear, delegation before splitting work across subagents, norms for the norm-lifecycle spec (what binds vs what tracks).
+description: Prawduct governance overview and methodology guides — the map of how this repo is governed, and the reader for each guide. Invoke for first contact or to see what governance applies here; pass a topic (building|discovery|planning|reflection|session-hygiene|delegation|principles|norms|project-state) to open that guide directly — building BEFORE writing any code against a build plan, discovery before scoping requirements, planning before designing artifacts or a build plan, reflection at work boundaries and before /clear, delegation before splitting work across subagents, norms for the norm-lifecycle spec (what binds vs what tracks), project-state before setting an optional project-state.yaml key.
 user-invocable: true
 disable-model-invocation: false
-argument-hint: "(omit for the overview) | building | discovery | planning | reflection | session-hygiene | delegation | principles | norms"
+argument-hint: "(omit for the overview) | building | discovery | planning | reflection | session-hygiene | delegation | principles | norms | project-state"
 ---
 
 This repo is governed by **Prawduct** — it turns product ideas into well-built software through structured discovery, quality-governed building, and continuous learning. The full methodology ships with the plugin and is read on demand; this skill is the map and the reader.
@@ -16,6 +16,9 @@ This repo is governed by **Prawduct** — it turns product ideas into well-built
 - `delegation` → `${CLAUDE_SKILL_DIR}/../../methodology/delegation.md` — before splitting work across subagents, and when a tangent arrives mid-chunk.
 - `principles` → `${CLAUDE_SKILL_DIR}/../../docs/principles.md`
 - `norms` → `${CLAUDE_SKILL_DIR}/../../docs/norms.md` — norms bind; descriptions track. The authority rule, the normative-vs-descriptive test, the lifecycle (birth, rulings, amendments, exceptions, transitions), and the enforcement map. Read when work touches a `## Direction` section, a preferences norm row, or a structural-characteristic flip — every other surface that cites `docs/norms.md` reads it through this topic.
+- `project-state` → `${CLAUDE_SKILL_DIR}/../../docs/project-state-keys.md` — the optional `project-state.yaml` keys (base branch, risk surfaces, test command, review round budget and the rest): what reads each one, what setting it trades, and its exact syntax. Read before setting one.
+
+**Paths the guides write bare** — `methodology/…`, `templates/…`, `docs/…`, `skills/…` — are relative to the plugin root, `${CLAUDE_SKILL_DIR}/../..`, not to this repo.
 
 $ARGUMENTS
 

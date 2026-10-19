@@ -50,6 +50,11 @@ class TestProtectedPaths:
     def test_claude_md_edit_is_blocked(self):
         assert _classify("CLAUDE.md") == "claude-md-edited: CLAUDE.md"
 
+    def test_agents_md_edit_is_blocked(self):
+        """Root AGENTS.md carries the governance anchor every host reads, and
+        CLAUDE.md imports it, so it is the same contract under a second name."""
+        assert _classify("AGENTS.md") == "agents-md-edited: AGENTS.md"
+
 
 class TestAgentsAreProtected:
     """`agents/` is a protected class again, because the tree came back.
@@ -142,6 +147,8 @@ class TestProtectedPathsConstant:
         )
         assert _bpr.protected_path_violation("CLAUDE.md") == "claude-md-edited: CLAUDE.md"
         assert _bpr.protected_path_violation("foo/CLAUDE.md") is None
+        assert _bpr.protected_path_violation("AGENTS.md") == "agents-md-edited: AGENTS.md"
+        assert _bpr.protected_path_violation("foo/AGENTS.md") is None
         assert _bpr.protected_path_violation("docs/notes.md") is None
 
 

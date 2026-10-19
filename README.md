@@ -51,7 +51,7 @@ claude
 > /prawduct:onboard .
 ```
 
-This scaffolds `.prawduct/`, a thin `CLAUDE.md` anchor, and the committed install reference — zero
+This scaffolds `.prawduct/`, a thin governance anchor in `AGENTS.md` (imported by `CLAUDE.md`), and the committed install reference — zero
 framework files in your tree. Then describe what you want:
 
 ```
@@ -63,7 +63,7 @@ framework files in your tree. Then describe what you want:
 reference registers the marketplace for them automatically on first trusted open, but Claude Code
 does not auto-install a plugin sourced from a repository, so a clone on a machine that has never
 installed prawduct runs **ungoverned and silent about it**: no hooks, no `/prawduct:*`, no gates,
-and no message saying so. The repo's `CLAUDE.md` anchor tells that session to say so and names the
+and no message saying so. The repo's governance anchor, in `AGENTS.md` and imported by `CLAUDE.md`, tells that session to say so and names the
 install command; `/prawduct:doctor` Health Check #4 keeps the anchor current.
 
 Already onboarded? `/prawduct:doctor` health-checks the repo. Moving a pre-2.0 file-sync repo?
@@ -177,15 +177,18 @@ A: As much or as little as you want. Prawduct is designed to interview you durin
 
 Q: **How do I remove Prawduct from a project?**
 
-A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference (`extraKnownMarketplaces.prawduct` + the `enabledPlugins` entry) from `.claude/settings.json`, 3) remove the `PRAWDUCT:ANCHOR` block from CLAUDE.md. (A v1 file-sync repo that hasn't migrated also has committed framework files to delete — or just `git revert` the migration commit to go back.)
+A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference (`extraKnownMarketplaces.prawduct` + the `enabledPlugins` entry) from `.claude/settings.json`, 3) remove the `PRAWDUCT:ANCHOR` block from `AGENTS.md` and the `@AGENTS.md` line from `CLAUDE.md` (an older onboard has the block in `CLAUDE.md` instead). (A v1 file-sync repo that hasn't migrated also has committed framework files to delete — or just `git revert` the migration commit to go back.)
 
 ## Testing Prawduct
 
-Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance (1,716 tests):
+Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance. The stats
+collector (`collector/`) has its own suite on node's built-in runner, with no dependencies.
+`prawduct-hook test-evidence record` runs both, so recording evidence needs node:
 
 ```bash
 cd prawduct
 python3 -m pytest tests/
+node --test 'collector/test/*.test.mjs'
 ```
 
 Scenario tests in `tests/scenarios/` are end-to-end evaluations — each describes a product, a user persona with scripted responses, and a detailed rubric. Together they cover every structural characteristic, a range of risk levels, diverse tech stacks, and user expertise from novice to deep expert.
@@ -217,7 +220,8 @@ A v2 product repo commits only its own state plus the install reference — no f
 
 ```
 my-product/
-├── CLAUDE.md                    # your product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── AGENTS.md                    # a thin static governance anchor (PRAWDUCT:ANCHOR), read by every agent host
+├── CLAUDE.md                    # your product instructions + `@AGENTS.md`, which imports the anchor
 ├── .claude/rules/learnings/
 │   ├── core.md                  # cross-cutting rules — loaded by the harness in every session
 │   └── <area>.md                # area rules with `paths:` — loaded when a matching file is read

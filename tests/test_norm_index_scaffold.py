@@ -115,6 +115,7 @@ class TestCheck:
             "the shipped template must carry no scaffold rows"
         )
 
+    @pytest.mark.requires_history
     def test_scaffold_rows_match_the_shipped_history(self):
         """The constants are what prawduct really shipped, not what I recall.
 

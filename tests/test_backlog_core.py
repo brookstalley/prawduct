@@ -594,6 +594,165 @@ class TestProvision:
         assert set(second["data"]["existing"]) == set(first["data"]["created"])
 
 
+class TestProvisionAlreadyExists:
+    """#1005 — a label that already exists is what provisioning wanted, never a failure."""
+
+    def test_a_case_variant_is_reused_not_recreated(self, fake):
+        fake.seed_labels(OWNER, REPO, ["source:Review"])
+        result = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b",
+            facets={"source": "review"},
+        )
+        assert result["status"] == "ok", result
+        assert not [c for c in fake.calls if c[0] == "create_label"]
+
+    def test_a_label_created_after_the_listing_counts_as_existing(self, fake):
+        class Racing(FakeGitHub):
+            """Another writer creates the label between our listing and our create."""
+
+            def list_labels(self, owner, repo):
+                listed = super().list_labels(owner, repo)
+                if not getattr(self, "_raced", False):
+                    self._raced = True
+                    self.seed_labels(owner, repo, ["kind:bug"])
+                return listed
+
+        racing = Racing()
+        result = core.file_item(
+            racing, owner=OWNER, repo=REPO, title="core: the X item under test", body="b",
+            facets={"kind": "bug"},
+        )
+        assert result["status"] == "ok", result
+        assert "kind:bug" in encode.label_names(racing.get_issue(OWNER, REPO, 1))
+        assert [c for c in racing.calls if c[0] == "create_label"], "the race never reached a create"
+
+    def test_a_refused_create_for_a_label_still_absent_fails(self, fake):
+        class Refusing(FakeGitHub):
+            def create_label(self, owner, repo, **kwargs):
+                raise TransportError("validation", "GitHub rejected the request as invalid")
+
+        result = core.file_item(
+            Refusing(), owner=OWNER, repo=REPO, title="core: the X item under test", body="b",
+            facets={"kind": "bug"},
+        )
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "validation"
+
+    def test_reconcile_shares_the_rule(self, fake):
+        fake.seed_labels(OWNER, REPO, ["Stage:Ready"])
+        result = core.reconcile_labels(fake, owner=OWNER, repo=REPO)
+        assert result["status"] == "ok", result
+        assert "stage:ready" not in result["data"]["created"]
+        # Matched by the listing itself, not rescued by the refused-create fallback.
+        assert not [c for c in fake.calls if c[0] == "create_label" and c[3].lower() == "stage:ready"]
+
+
+class TestCaseVariantLabels:
+    """#1005's rule wherever a label is read or applied: GitHub's label names are
+    case-insensitive, so a variant spelling already in the repo or on the issue is
+    the label, never a second one and never an "old" value to strip."""
+
+    def test_update_tags_keeps_a_case_variant_already_on_the_issue(self, fake):
+        n = _seed_item(fake, labels=["tag:Foo"])
+        result = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": "foo"})
+        assert result["status"] == "ok", result
+        labels = encode.label_names(fake.get_issue(OWNER, REPO, n))
+        assert [name for name in labels if name.lower().startswith("tag:")] == ["tag:Foo"]
+        assert not [c for c in fake.calls if c[0] == "remove_label"]
+
+    def test_update_tags_removes_a_case_variant_it_no_longer_wants(self, fake):
+        n = _seed_item(fake, labels=["Tag:Foo"])
+        result = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"tags": "bar"})
+        assert result["status"] == "ok", result
+        labels = encode.label_names(fake.get_issue(OWNER, REPO, n))
+        assert [name for name in labels if name.lower().startswith("tag:")] == ["tag:bar"]
+
+    def test_set_status_applies_the_spelling_the_repo_holds(self, fake):
+        n = _seed_item(fake)
+        fake.seed_labels(OWNER, REPO, ["Status:in-progress"])
+        fake.repos[(OWNER, REPO)].labels.pop("status:in-progress", None)
+        result = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="in-progress")
+        assert result["status"] == "ok", result
+        assert result["data"]["status"] == "in-progress"
+        assert "Status:in-progress" in encode.label_names(fake.get_issue(OWNER, REPO, n))
+        assert not [c for c in fake.calls if c[0] == "create_label"]
+
+    def test_set_status_strips_a_case_variant_status_label(self, fake):
+        fake.seed_labels(OWNER, REPO, ["Status:In-Progress"])
+        n = _seed_item(fake, labels=["Status:In-Progress"])
+        assert core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{n}")["data"]["status"] == "in-progress"
+        result = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="open")
+        assert result["status"] == "ok", result
+        labels = encode.label_names(fake.get_issue(OWNER, REPO, n))
+        assert not [name for name in labels if name.lower().startswith("status:")]
+
+    def test_set_status_to_the_current_status_leaves_a_variant_alone(self, fake):
+        fake.seed_labels(OWNER, REPO, ["Status:In-Progress"])
+        n = _seed_item(fake, labels=["Status:In-Progress"])
+        result = core.set_status(fake, id_raw=f"{OWNER}/{REPO}#{n}", target="in-progress")
+        assert result["status"] == "ok", result
+        assert result["data"]["status"] == "in-progress"
+        assert "Status:In-Progress" in encode.label_names(fake.get_issue(OWNER, REPO, n))
+
+    def test_decode_reads_variant_spellings(self):
+        issue = {
+            "number": 1, "state": "open", "title": "core: the t item under test", "body": "b",
+            "labels": [{"name": "Stage:Ready"}, {"name": "Source:Review"}, {"name": "Tag:Foo"}],
+        }
+        item, _warnings = encode.decode_item(issue, canonical_id=f"{OWNER}/{REPO}#1")
+        assert item["stage"] == "ready"
+        assert item["source"] == "Review"
+        assert item["tags"] == ["Foo"]
+        assert encode.is_prawduct_issue(issue)
+
+    def test_import_create_applies_the_spelling_the_repo_holds(self, fake):
+        from lib.backlog import migrate
+
+        fake.seed_labels(OWNER, REPO, ["Area:Docs"])
+        record = migrate.ImportRecord(
+            pfx="BKL-1A2B", title="core: the t item under test", body="b", status="open",
+            labels=["area:docs"], block={},
+        )
+        pacer = migrate.Pacer(per_minute=1000, per_hour=1000, now=lambda: 0.0, sleep=lambda _s: None)
+        issue = migrate._create_item(fake, OWNER, REPO, record, pacer)
+        assert "Area:Docs" in encode.label_names(issue)
+
+
+class TestFacetLabelLength:
+    """#1004 — a facet value that cannot become a label is refused before any request."""
+
+    LONG = "x" * 44  # `source:` + 44 = 51 characters, one past GitHub's label-name limit
+
+    def test_file_refuses_naming_the_flag_and_the_limit(self, fake):
+        result = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b",
+            facets={"source": self.LONG},
+        )
+        assert result["status"] == "error"
+        assert result["error"]["code"] == "validation"
+        assert "--source" in result["error"]["message"] and "50" in result["error"]["message"]
+        assert result["error"]["details"] == {"field": "source"}
+        assert fake.calls == []
+
+    def test_a_value_exactly_at_the_limit_files(self, fake):
+        result = core.file_item(
+            fake, owner=OWNER, repo=REPO, title="core: the X item under test", body="b",
+            facets={"source": "x" * 43},
+        )
+        assert result["status"] == "ok", result
+
+    def test_update_refuses_before_writing_anything(self, fake):
+        n = _seed_item(fake)
+        before = [c for c in fake.calls]
+        result = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}",
+            fields={"title": "core: a retitle that must not land", "area": "a" * 46},
+        )
+        assert result["status"] == "error"
+        assert "--area" in result["error"]["message"]
+        assert fake.calls == before, "a refused update still reached the provider"
+
+
 class TestEnvelopeShape:
     """ERR-3 / ERR-4 — uniform ok/error/warnings structure."""
 

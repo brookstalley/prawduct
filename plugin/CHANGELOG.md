@@ -10,6 +10,167 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.7.1
+
+**Before building, the agent now aligns with you on goals — all its questions in one batch, up front — and the boundary review judges the work against them.** Also in this release: opt-in anonymous stats, the governance anchor moves to `AGENTS.md`, a new `clear-reason` Stop gate, and field fixes to `backlog file`, inline norm fields and test-evidence counting.
+
+**`requirements-alignment-w2`**: **the boundary review judges the work against its goals.** The
+Critic's boundary review reads the plan's Goals and the brief's near-term goal and North Star, not
+only the chunks. Work that drops or changes a goal you stated is BLOCKING, and a goal still marked
+as the agent's inference is a WARNING naming it. Decisions the agent made mid-build reach you in
+one note, and from there in the PR description. The product brief is rewritten in place when it
+changes, rather than appended to, and an inference keeps its mark until you confirm it.
+
+**`critic-tree-unchanged`**: **a Critic review whose working tree changed while it ran is
+refused at consolidation.** `critic-begin` records the tree, and `critic-consolidate` names any
+paths that changed outside prawduct's own session files. Since you may legitimately keep working
+while a review runs, the main session can accept the review with
+`--tree-changed-by-builder "<reason>"`. That attestation is recorded on the review and shown to the
+PR reviewer. The hooks never pass it, so a session that edits after an unconsolidated review is
+blocked at Stop until it attests.
+
+**`empty-verify-rounds`**: **fewer verify rounds with nothing to verify.** A review that a later
+boundary review will cover is no longer bought twice: chunk inference answers `deferred` on an
+uncommitted cumulative-final last chunk. A verify pass can now confirm an observation fix by its
+`O-n` id. Observations in a verify pass must name the prior finding they judge, so the pass no
+longer starts a fix → verify → new-observation loop.
+
+**`delegate-isolation-dispatch`**: **ad-hoc delegates run in a harness-isolated worktree.**
+`methodology/delegation.md` now dispatches them in the background with `isolation: "worktree"`
+instead of pointing an agent at a worktree path. The old way did not hold, because shell `cd`
+does not persist between calls, so the delegate's commits and reviews landed in your checkout.
+
+**`consolidate-trigger`**: **`review-stats` shows which path consolidated each Critic review**
+(`consolidated_by`: `subagent-stop`, `explicit` or `session-end-backstop`; report schema 7 → 8). A
+dead SubagentStop hook now shows up as `subagent-stop 0` in a routine report.
+
+**`telemetry-aggregate`**: **`prawduct-hook aggregate-stats` pools stats across the products you
+name**, plus contributed reports from bundle files or the public collector (`--collector`).
+Results are per plugin version and never pooled across versions. Every contributed line is
+re-checked against the allowlist.
+
+**`field-bugs-2026-10`**: **three fixes from the field.**
+- A product that ships its own Claude Code plugin at `plugin/` can record reviews again. It was
+  mistaken for a prawduct checkout (#959).
+- `archive-plan` and `plan-backfill --apply` archive a plan whose frontmatter says
+  `lifecycle: active` (#809).
+- `prawduct-hook stale-plugin-caches` lists prawduct cache versions no install uses, with sizes
+  and a delete command for each, and deletes nothing itself. `/prawduct:doctor` relays it as a
+  recommendation (#321).
+
+**`transfer-pruned-trees`**: **a garbage-collected review tree no longer makes the base-advance
+transfer "could not run".** Candidates git no longer holds are dropped before any diff (#956).
+
+**`norm-inline-why`**: **a norm field written inline after the bold statement counts as a
+field** (#1011): for example, `- **Statement.** Detail. *Why:* reason.` Ratified norms written
+that way no longer read as missing, and `norm-registry-unratified` stops saying no norms exist. A
+roadmap bullet saying `Status: blocked` stays a roadmap item.
+
+
+**`backlog-file-path`**: **`backlog file` writes only to this repo's own tracker.** A `--repo`
+naming any other repo is refused (`foreign-target`) before anything is sent, attended or not, so an
+agent can no longer file an issue under your GitHub name into someone else's project. Reporting a
+bug in prawduct itself stays `file-upstream`, which shows you the exact bytes first. Three smaller
+fixes on the same path: a `--source`, `--area` or other facet value too long to become a GitHub
+label (50 characters) is refused up front, naming the flag, instead of failing as a bare 422, and
+`update` now refuses it before writing anything rather than after the title change lands; a label
+that already exists under different capitalization (`source:Review`) is reused instead of
+failing the write, and `reconcile-labels` no longer reports it as a foreign label; and a successful `file` now prints `filed <id>: <url>` first, with each lint
+line marked advisory, so it no longer reads as a refusal that tempts a duplicate re-run.
+
+**`upstream-intake-enumeration`**: **triaging upstream bug reports now says how to list them.**
+The receiving-side steps in `/prawduct:report-bug` name `cache-query unstaged` as the list behind
+the `untriaged-upstream-reports` advisory, and warn that `backlog list --untriaged` cannot show a
+filed report (every report carries a provenance block, which puts it in scope).
+
+**`post-discovery-friction`**: **a fresh `project-state.yaml` no longer starts near the
+size ceiling.** The template carried about 20 KB of comments explaining optional keys, so one
+discovery tripped the oversized-state advisory. That reference now lives in the plugin
+(`/prawduct:methodology project-state`), and the template keeps a one-line hint per key. In
+repos already onboarded, the advisory now says those copied comment blocks can go; nothing is
+rewritten for you. The first session after an onboarding discovery also opens better: onboarding
+leaves a forward note saying planning is next, and the briefing says plainly when a handoff has
+no forward note instead of offering it as context. The methodology skill now states that the
+bare `methodology/`, `templates/` and `docs/` paths in its guides are relative to the plugin
+root.
+
+**`agents-md-anchor`**: **the governance anchor moves to `AGENTS.md`, and `CLAUDE.md` imports
+it.** `AGENTS.md` is the file every agent host reads, so a second host (Codex, #928) gets the same
+anchor. A new onboard writes the anchor to `AGENTS.md` (appended if the file exists) and a
+`CLAUDE.md` that is exactly `@AGENTS.md`; an existing `CLAUDE.md` keeps its own text, with the
+import in the old anchor's place. Already-onboarded repos: `/prawduct:doctor` Health Check #4
+now reports `legacy-layout`, and `prawduct-hook reanchor --apply` moves the anchor after showing
+each file's exact bytes. Nothing is rewritten without `--apply`. Root `AGENTS.md` is now
+governance-protected like root `CLAUDE.md`. **Rolling back** to an earlier release: don't apply that
+release's anchor repair. It reads only `CLAUDE.md`, reports the anchor absent, and would add a
+second, older copy, while the `AGENTS.md` anchor keeps loading through the import.
+
+**`self-citing-clear`**: **a new Stop gate, `clear-reason`, refuses a `SAFE TO CLEAR` whose reason
+is the message itself**, such as "the questions are in this message". A clear deletes the message,
+so write the findings to `.prawduct/.handoff-notes.md` and give that as the reason, or name the
+commit, file or issue that holds them. A reason like "nothing changed in this turn" is unaffected.
+
+**`requirements-alignment`**: **before building, the agent aligns with you on goals, all at
+once and up front.** For any substantive request it takes one of four responses and says which:
+proceed; proceed citing a backlog item or spec; ask its questions in one batch; or hold up when it
+cannot yet form a reading worth correcting. Once the build starts it decides on its own, durable
+choice first, and stops only for high stakes. Build plans now open with **Goals**, which replaces
+Requirements Confidence. The owner's words are kept separate from the agent's inferences, written
+as plain prose rather than `[ASSUMPTION]` tags; older plans are still accepted. The product brief
+states a near-term goal and a North Star, and discovery asks which qualities of an example you give
+matter. Principles 6 and 20 and the session digest now carry the same guidance.
+
+**`telemetry-stats`**: **`prawduct-hook stats` shows what governance cost and caught, per plugin
+version.** It reads this clone's evidence store and reports:
+- **cost:** review rounds per piece of work, measured review time (a reviewer's self-estimate is
+  never added to it), verify rounds that found nothing and confirmed nothing, re-reviews of
+  unchanged code, Stop-hook blocks per session and by gate, and guard refusals;
+- **benefit:** findings by severity and what became of them (fixed, filed, accepted, waived),
+  blocking findings fixed by goal, and red recorded suite runs.
+
+The Stop hook now records each block, and each session start is recorded too, so block rates are
+available from now on. `/prawduct:janitor` reads the report. Nothing leaves your machine unless
+you opt in to contribution (below).
+
+**`telemetry-contribution`**: **you can contribute anonymous stats to help improve prawduct, and
+it is off unless you opt in.** A new `Stats contribution` row in `project-preferences.md` reads
+`never` by default; `/prawduct:janitor` asks once whether you want `ask` (you approve the exact
+bytes of every send) or `always`. `prawduct-hook contribute` shows exactly what would be sent:
+weekly, coarsened numbers from a public allowlist, with no names, paths, branches, text or
+identifiers. Reports go to prawduct's own collector, whose daily bundles are public. `prawduct-hook stats` now
+counts base-advance transfer grants apart from guard refusals, because a grant saves a review.
+
+**Fix:** a `test_command` or `test_commands` entry ending in a quoted argument (for example
+`node --test 'dir/*.mjs'`) is read intact. It used to lose its final quote and crash
+`prawduct-hook test-evidence record`. A command that cannot be split is now refused before any suite
+runs.
+
+**`learnings-migrate-punctuation-930`** (#930): **`learnings-migrate` no longer rewrites lines
+it had no reason to touch.** After removing a pointer it tidied every line in the file: it deleted
+the space before punctuation (fusing commands in code blocks) and stripped trailing spaces
+(dropping Markdown hard breaks). Only the lines a removal changed are tidied now. A metadata comment
+in the middle of a line no longer joins two rules, and the last line of a section keeps its
+trailing spaces.
+
+**`junit-unreached-963-strip-code-966`** (#963, #966): **a JUnit report's tests are counted
+wherever they sit.** `test-evidence record` used to skip any `<testcase>` or suite under a wrapper
+other than the root, such as a `<testsuites>` nested inside the root by a merged CI report, so a
+failure there recorded a passing run. It now reads through any wrapper. A suite with no tests
+that sits inside a suite that has them (one that died before emitting any) now counts too; v3.2.3
+left that case at zero. Separately,
+`learnings-migrate` no longer removes the space before punctuation inside a code span that shares a
+line with a removed pointer.
+
+**`field-bugs-790-813-765-915`** (#790, #813, #765, #915): **four fixes from the field.** A `#` inside a quoted top-level
+`project-state.yaml` value (`key: "…"`) is kept rather than read as the start of a comment, so an
+answer that cites an issue like `"ratified (#774)"` reads back whole; list items and nested values
+are not covered yet. The api-versioning advisory now counts a decision recorded under
+`design_decisions.api_versioning_approach`, as `/prawduct:doctor` already did, instead of nagging
+until you also set the top-level `api_versioning_decided`. The change-log tag examples use the
+build-plan template's work-named `scope=` instead of a version, matching how plans are named.
+`/prawduct:migrate` checks that the plugin will load for the repo before it removes the framework
+files, and says so when it will not.
+
 ## v3.7.0
 
 **Prawduct's prompts are rewritten for Opus 5.5, every learnings rule is one line under a `core.md` cap only you can raise, and a chunk you committed before its review gets a chunk review instead of a full bundle review.** Thirty-four scopes since v3.6.1, counting release housekeeping. Three changes you will notice in an ordinary session. First, the session digest, gate output, review prompts, methodology guides and skills are shorter and plainer, and they tell the model to take the next step rather than announce it; each `final` or `cumulative` Critic reviewer loads about 7,800 fewer tokens. Second, a learnings rule is one line of at most 250 characters, and a corpus over the new limits does not break: it stops growing until you compact it with `prawduct-hook learnings-compact`. Third, a mid-plan `/prawduct:critic` reviews only what has not been reviewed yet, and the reflection and Critic gates wait while a turn closes `RUNNING` and `DO NOT CLEAR`. SessionStart and Stop also stop slowing down as a repo's review history grows. Three gates are new in this release: `learnings-rule-too-long`, `learnings-rule-body` and `clear-verdict`.

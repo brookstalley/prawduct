@@ -2,7 +2,7 @@
 name = "prawduct"
 # Vestigial packaging metadata (the repo is not PyPI-published). The canonical
 # plugin version is VERSION / .claude-plugin/plugin.json; keep this in step on release.
-version = "3.7.0"
+version = "3.7.1"
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
@@ -82,6 +82,12 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `requires_history`: the test reads this repo's git history by content, so it runs only where
+# history exists. `.testament.toml` selects these out, so `testament run` (pool or local fallback)
+# never runs them; a plain `pytest` run, the evidence recorder's run and CI (`fetch-depth: 0`) do.
+markers = [
+    "requires_history: reads this repo's full git history; not runnable on a history-less checkout",
+]
 # Worker count is pinned rather than `auto` (owner request 2026-08-19): `auto`
 # takes every core, and a full-suite run then owns the developer's machine for
 # its whole duration — measured at a load average of 24 on a 10-core box with

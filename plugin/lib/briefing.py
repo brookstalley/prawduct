@@ -653,6 +653,19 @@ def _handoff_age(handoff_path: Path) -> str | None:
     return _humanize_age(max(0, int(seconds)))
 
 
+def _handoff_lacks_forward_note(handoff_path: Path) -> bool:
+    """True when the generated handoff says its session left no forward note.
+
+    Fails soft to False: an unreadable handoff keeps the ordinary pointer, which
+    still names the file, rather than a claim about content nothing could read.
+    """
+    try:
+        text = handoff_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return any(line.strip() == NO_FORWARD_NOTE_HEADING for line in text.splitlines())
+
+
 def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
     """The briefing's one-line pointer at the previous session's handoff.
 
@@ -669,7 +682,9 @@ def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
     **Never suppressed.** The handoff is advice, and the ratified norm is
     "authority fails closed; advice fails soft" — a redundant or old handoff is
     still offered, the line just stops implying it is news. Suppressing it would
-    turn a visible weak signal into an invisible absent one.
+    turn a visible weak signal into an invisible absent one. At a boundary, a
+    handoff whose session left no forward note is named as exactly that: offered
+    as "context", the reader takes a list of changed files for direction.
 
     **Two-way, not three-way, and deliberately so.** ``--brief-only`` carries
     continuation-vs-boundary and nothing finer, so ``resume``, ``compact`` and
@@ -684,6 +699,12 @@ def _handoff_pointer(handoff_path: Path, *, continuation: bool) -> str:
     age = _handoff_age(handoff_path)
     suffix = f" ({age})" if age else ""
     if not continuation:
+        if _handoff_lacks_forward_note(handoff_path):
+            return (
+                "Previous session left no forward note: .prawduct/.session-handoff.md"
+                f"{suffix} is only a machine record of what changed, not of what comes "
+                "next — take direction from the build plan, the backlog or the user"
+            )
         return f"Previous session context available: read .prawduct/.session-handoff.md{suffix}"
     return (
         "Previous session context: .prawduct/.session-handoff.md predates THIS session"
@@ -1027,12 +1048,12 @@ def assemble_session_briefing(
         if relay_advisories:
             lines.append(ADVISORY_RELAY_TEXT)
 
-    # CLAUDE.md size check
-    claude_md_path = project_dir / "CLAUDE.md"
-    if claude_md_path.is_file():
+    # Instruction-file size check, over what Claude Code actually loads: CLAUDE.md
+    # and the AGENTS.md it imports (the governance anchor lives there).
+    loaded = _loaded_instruction_files(project_dir)
+    if loaded:
         try:
-            claude_content = claude_md_path.read_text()
-            claude_lines = claude_content.splitlines()
+            claude_lines = "\n".join(text for _rel, text in loaded).splitlines()
             total_lines = len(claude_lines)
             # Count project-specific lines (outside PRAWDUCT markers)
             in_prawduct = False
@@ -1051,8 +1072,10 @@ def assemble_session_briefing(
             # 250+ line CLAUDE.md is a real problem worth a standing reminder.
             # Re-nagging every session at the soft threshold was pure tax.
             if project_lines > 250:
+                label = " + ".join(rel for rel, _text in loaded)
+                verb = "is" if len(loaded) == 1 else "are"
                 lines.append(
-                    f"CLAUDE.md is large ({project_lines} project lines) — move architecture "
+                    f"{label} {verb} large ({project_lines} project lines) — move architecture "
                     f"docs, config tables, and component inventories to docs/ or .prawduct/artifacts/"
                 )
         except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
@@ -1082,6 +1105,22 @@ def assemble_session_briefing(
             lines.append(backlog_line)
     except Exception:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
         pass
+
+    # Stats contribution — silent unless the product's owner opted in and a
+    # collector is pinned; see contribution.briefing_line.
+    try:
+        from . import contribution  # noqa: PLC0415 — lazy; a product at the default never needs it
+
+        stats_line = contribution.briefing_line(project_dir)
+        if stats_line:
+            lines.append(stats_line)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- briefing must never block session start
+        # Under `always` this line is what prompts a send, so a failure that
+        # silenced it would stop contribution with no sign anywhere.
+        lines.append(
+            f"NOTE: stats contribution could not be checked ({type(exc).__name__}: {exc}) — "
+            "`prawduct-hook contribute` shows the state"
+        )
 
     return "\n".join(lines)
 
@@ -1408,8 +1447,37 @@ def _humanize_age(age_seconds) -> str:
 # =============================================================================
 
 
+def _loaded_instruction_files(project_dir: Path) -> list[tuple[str, str]]:
+    """``(name, text)`` for each instruction file Claude Code loads at the root.
+
+    ``CLAUDE.md``, plus ``AGENTS.md`` when ``CLAUDE.md`` imports it (where the
+    governance anchor and, in this repo, the whole contract live) or when there
+    is no ``CLAUDE.md`` at all. A file that cannot be read is left out: these
+    readers are best-effort, and a briefing must never block session start.
+    """
+    from .migrate_plugin import anchor_files_are_one, imports_agents  # noqa: PLC0415
+
+    def read(rel: str) -> str | None:
+        path = project_dir / rel
+        if not path.is_file():
+            return None
+        try:
+            return path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    claude = read("CLAUDE.md")
+    loaded = [] if claude is None else [("CLAUDE.md", claude)]
+    if claude is None or (imports_agents(claude) and not anchor_files_are_one(project_dir)):
+        agents = read("AGENTS.md")
+        if agents is not None:
+            loaded.append(("AGENTS.md", agents))
+    return loaded
+
+
 def _extract_critical_rules(project_dir: Path) -> list[str]:
-    """Extract Critical Rules bullet points from the project's CLAUDE.md.
+    """Extract Critical Rules bullet points from the instruction files Claude
+    Code loads (``CLAUDE.md`` and an imported ``AGENTS.md``).
 
     Falls back to a minimal hardcoded set if extraction fails.
     """
@@ -1421,22 +1489,23 @@ def _extract_critical_rules(project_dir: Path) -> list[str]:
         "- While building, run the narrowest tests that prove the change; run the declared suite before the work lands.",
         "- When changes cross boundaries (API, database, IPC), verify consumers.",
     ]
-    claude_md = project_dir / "CLAUDE.md"
-    if not claude_md.is_file():
+    loaded = _loaded_instruction_files(project_dir)
+    if not loaded:
         return fallback
     try:
-        content = claude_md.read_text()
-        # Find Critical Rules section
-        in_section = False
         rules: list[str] = []
-        for line in content.splitlines():
-            if line.strip().startswith("## Critical Rules"):
-                in_section = True
-                continue
-            if in_section and line.strip().startswith("## "):
-                break
-            if in_section and line.strip().startswith("- **"):
-                rules.append(line.strip())
+        # Each file's own Critical Rules section, read file by file so one
+        # file's section never runs on into the next file's opening bullets.
+        for _rel, content in loaded:
+            in_section = False
+            for line in content.splitlines():
+                if line.strip().startswith("## Critical Rules"):
+                    in_section = True
+                    continue
+                if in_section and line.strip().startswith("## "):
+                    break
+                if in_section and line.strip().startswith("- **"):
+                    rules.append(line.strip())
         return rules if rules else fallback
     except Exception:  # prawduct:allow prawduct/broad-except -- rule extraction is best-effort
         return fallback
@@ -1619,6 +1688,12 @@ HANDOFF_MARKER = (
 # The forward channel: the one file in the handoff pair that a model owns.
 HANDOFF_NOTES_NAME = ".handoff-notes.md"
 
+# The heading a generated handoff carries when its session left no forward note.
+# One constant because two readers act on it: the generator writes it, and the
+# session briefing reads it to stop offering such a handoff as "context" — a
+# record of what changed is not a statement of what comes next.
+NO_FORWARD_NOTE_HEADING = "## No Forward Note From The Previous Session"
+
 # What became of the notes file this run. The caller deletes on CARRIED and
 # EMPTY and on nothing else: "absent" has nothing to delete, and the two
 # failure states hold text that never reached the handoff, so unlinking them
@@ -1777,7 +1852,7 @@ def _no_forward_note_section(changed: list[str], commits: list[str]) -> list[str
     if commits:
         did.append(f"{len(commits)} commit{'' if len(commits) == 1 else 's'}")
     return [
-        "## No Forward Note From The Previous Session",
+        NO_FORWARD_NOTE_HEADING,
         "<!-- the machine can report this absence; it cannot fill it -->",
         f"That session ({', '.join(did)}) left no `.prawduct/{HANDOFF_NOTES_NAME}`. "
         "Everything below is machine-derived and backward-looking: a record of what "

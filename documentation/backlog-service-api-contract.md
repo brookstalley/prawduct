@@ -72,7 +72,7 @@ tier (§7).
 ### 2.1 Item lifecycle
 | Op | Acts on | Safe | Idem | Purpose | Parent |
 |---|---|---|---|---|---|
-| `file` (create) | new Item | – | **no** (unless keyed) | one-call create: `title`+`body` suffice, every other field defaultable; returns the ID **immediately**, dedup candidates **advisory-async** | AG2, AG3 |
+| `file` (create) | new Item | – | **no** (unless keyed) | one-call create: `title`+`body` suffice, every other field defaultable; returns the ID **immediately**, dedup candidates **advisory-async**. Writes only to the **running repo's own tracker**: `--repo` must match the identity resolved from `backlog_service_repo` or the `origin` remote (case-insensitively), and anything else, or an identity that resolves from neither, is refused with `foreign-target` before any request. `file-upstream` is the only route to another repo | AG2, AG3 |
 | `get` / `show` | one Item | ✓ | – | fetch one item (live; or cache w/ visible age) **with its comment thread** — the DM5 drill-down read (oldest-first `{id, author, created_at, body, url}`; `id` is the native comment id, the stable handle should comment-level ops ever exist); a failed thread fetch **degrades** — payload `comments_count` + a warning, never a failed get (G2) | Q1, TF1, DM5 |
 | `update` | one Item | – | field-wise | field-wise edit; **optimistic CAS** on state/`updated_at` → `conflict` for retry | CC2 |
 | `status` (set) | one Item | – | **yes** | the crash-safe two-axis transition — maps to the Data Model's idempotent **`set-status`** primitive (re-run = no-op); a close also records **`closed_by`** (§2.6) | DM2, CC1, GV3 |
@@ -281,8 +281,9 @@ restate the numbers, correctly, because a third copy is a third drift source.
 | `target-not-pinned` | `file-upstream` check 2: `--repo` names something other than the plugin's pinned upstream constant. Refusing beats honouring — a caller-chosen target is the trust boundary this op exists to hold | no | XP7 |
 | `self-file` | `file-upstream` check 3: the running repo resolves to the pinned target, so the filing would be prawduct reporting to itself through the minimized path. The message names the in-repo `file` route; the check **fails closed** when identity resolves from neither `backlog_service_repo` nor the `origin` remote | no | XP7 |
 | `approval-mismatch` | `file-upstream` check 4: `--approve` does not match a digest re-rendered here, so the owner approved bytes other than the ones about to be sent | no | XP7 |
+| `foreign-target` | in-repo `file`: `--repo` is not the running repo's own tracker, or that identity resolved from neither `backlog_service_repo` nor the `origin` remote (`details.reason`: `foreign` / `unresolved`). The message names `file-upstream` as the route to another repo | no | XP7 |
 
-**The four `file-upstream` refusals classify with `validation` at the exit code** (the caller asked for something the contract forbids), and exist as distinct codes only so a caller can tell *which* check refused without parsing prose. The fifth check refuses with `auth` above, which already means what it needs to mean. None is retryable, and none of the five writes anything before refusing — "an error was returned" and "nothing was filed" are different guarantees, and this contract promises the second.
+**The four `file-upstream` refusals, and `file`'s `foreign-target`, classify with `validation` at the exit code** (the caller asked for something the contract forbids), and exist as distinct codes only so a caller can tell *which* check refused without parsing prose. The fifth check refuses with `auth` above, which already means what it needs to mean. None is retryable, and none of the six writes anything before refusing — "an error was returned" and "nothing was filed" are different guarantees, and this contract promises the second.
 
 **Security binding (Security §4).** Errors are built from **known fields, never by echoing raw
 `gh`/subprocess/HTTP output** — that is how a token leaks into an error string; the denylist scrub is
@@ -422,14 +423,18 @@ Authn/authz live in the Security Model; this names the **API-boundary** failure 
   not by a bespoke endpoint. Abuse handling (PV4) is **native GitHub controls + the quarantine**, gated
   structurally on the governed-intake path. The mechanism and trust boundary are the **Security Model's
   (§6/F6/F7)** — this surface only exposes the `list` triage query over it.
-- **`quarantine` and `--untriaged` are not the same set, and the difference is an unbuilt predicate.**
+- **`quarantine` and `--untriaged` are not the same set, and they differ on two axes: an unbuilt author
+  predicate, and the body-block exclusion.**
   Quarantine is defined by AUTHOR — a *non-collaborator's* unlabeled filing (Security §6/F7).
-  `list --untriaged` selects by LABEL only: every unlabeled issue, whoever filed it, the owner's own
-  hand-filed drafts included (`query.py`, the PROV-2 scope inversion). So quarantine is a strict
-  subset, and today it is served by its superset because the author predicate is not implemented.
-  That direction is deliberate to record: the standing query returns MORE than quarantine, never
-  less, so triage over-includes rather than missing an anonymous filing. Narrowing it to the
-  specified set is tracked, not assumed — see the backlog item on the author predicate. Neither
+  `list --untriaged` selects issues with no namespaced label *and* no `prawduct:` body block, by no
+  author: the owner's own blockless drafts are included (`query.py`, the PROV-2 scope inversion).
+  So it is not a superset of quarantine either: an unlabeled filing whose body holds a block — every
+  `file-upstream` report — is in scope instead, carrying no `stage`, so it surfaces through
+  `cache-query unstaged` (its `[prawduct]`-titled rows are what the `untriaged-upstream-reports` advisory counts) rather than here.
+  Between the two queries no unlabeled filing is invisible; neither alone is the quarantine set,
+  because the author predicate is not implemented — and adding it would not
+  make `--untriaged` the quarantine set, since a blocked outside filing would still fall to
+  `unstaged`. Building the specified intake query is tracked, not assumed — see the backlog item on the author predicate. Neither
   name is retired; they denote different things and collapsing them would lose the author boundary
   that makes quarantine a security concept rather than a hygiene one.
 

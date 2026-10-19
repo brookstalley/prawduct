@@ -43,6 +43,7 @@ EXPECTED_SECTIONS = [
     "backlog",
     "default_branch",
     "learnings_cap",
+    "review_tree_changes",
 ]
 
 
@@ -1285,3 +1286,67 @@ class TestLearningsCapSection:
         body = pp._section_learnings_cap(repo, repo / ".prawduct", base).body
         assert "does not rise" in body and "105KB -> 12KB" in body
         assert "quoted in the PR description" not in body and "legacy" not in body
+
+
+class TestReviewTreeChanges:
+    """A builder's `--tree-changed-by-builder` attestation reaches the one
+    independent reader at the boundary — but only for reviews the branch's
+    coverage actually rests on."""
+
+    @staticmethod
+    def _fact(rid, changed=None):
+        body = {"findings": []}
+        if changed:
+            body["tree_changed_during_review"] = changed
+        return {"kind": "review", "id": rid, "body": body}
+
+    def _section(self, monkeypatch, path_ids, facts, status="covered"):
+        from lib import evidence, gates
+        verdict = {"status": status, "path": [
+            {"kind": "review", "id": rid, "src": "a", "dst": "b"} for rid in path_ids
+        ]}
+        monkeypatch.setattr(gates, "branch_coverage_verdict",
+                            lambda _d: {"status": status, "verdict": verdict})
+        monkeypatch.setattr(evidence, "read_facts",
+                            lambda _d: {"status": "ok", "facts": facts})
+        return pr_payload._section_review_tree_changes(Path("."))
+
+    def test_an_attestation_on_the_coverage_path_is_shown(self, monkeypatch):
+        changed = {"paths": ["src/a.py"], "reason": "fixed a typo mid-review"}
+        section = self._section(monkeypatch, ["rev-1"], [self._fact("rev-1", changed)])
+        assert section.ok
+        assert "rev-1: src/a.py" in section.body
+        assert "fixed a typo mid-review" in section.body
+
+    def test_an_attestation_off_the_path_is_not_this_branchs(self, monkeypatch):
+        changed = {"paths": ["src/a.py"], "reason": "elsewhere"}
+        section = self._section(
+            monkeypatch, ["rev-1"], [self._fact("rev-1"), self._fact("rev-2", changed)])
+        assert "rev-2" not in section.body
+        assert "consolidated over the tree it was dispatched on" in section.body
+
+    def test_a_transferred_branch_reads_the_reviews_it_transferred_from(self, monkeypatch):
+        from lib import evidence, gates
+        changed = {"paths": ["src/a.py"], "reason": "prep"}
+        monkeypatch.setattr(gates, "branch_coverage_verdict", lambda _d: {
+            "status": "transferred",
+            "verdict": {"status": "uncovered", "reason": "base advanced"},
+            "transfer": {"status": "match", "prior_review_ids": ["rev-old"]},
+        })
+        monkeypatch.setattr(evidence, "read_facts", lambda _d: {
+            "status": "ok", "facts": [self._fact("rev-old", changed)]})
+        section = pr_payload._section_review_tree_changes(Path("."))
+        assert "rev-old: src/a.py" in section.body
+
+    def test_no_coverage_path_says_so(self, monkeypatch):
+        section = self._section(monkeypatch, [], [], status="uncovered")
+        assert section.ok and "no review is on a composed coverage path" in section.body
+
+    def test_an_unreadable_store_degrades(self, monkeypatch):
+        from lib import gates
+
+        def _boom(_d):
+            raise OSError("disk")
+        monkeypatch.setattr(gates, "branch_coverage_verdict", _boom)
+        section = pr_payload._section_review_tree_changes(Path("."))
+        assert not section.ok and "UNANSWERED" in section.degraded

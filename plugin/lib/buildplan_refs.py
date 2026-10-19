@@ -1306,7 +1306,7 @@ def _plan_description_fallback(plan_path: Path, content: str) -> str:
     """Name the plan when it carries no ``# Build Plan`` H1.
 
     The frontmatter-style plans this repo writes open with a ``---`` block and a
-    ``## Requirements Confidence`` heading — no H1 at all. Requiring one made
+    ``## Goals`` heading (older plans: ``## Requirements Confidence``) — no H1 at all. Requiring one made
     ``description`` empty, and an empty description is not a cosmetic loss: it
     is the sole key gating the handoff's Work In Progress section, so the whole
     section vanished from a live four-chunk plan's handoff. Fall back to the
@@ -1580,8 +1580,8 @@ def iter_field_declarations(
 # type at a declaration position is the only thing that can bind.
 _BUILD_PLAN_TYPE_RE = field_token_re("Type")
 _BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
-# v1.5 Chunk 04 — `trivial` joins the allowed set. File-set bounds (no
-# edits under skills/, methodology/, templates/; no CLAUDE.md edit; no
+# `trivial` is in the allowed set. File-set bounds (no edit to a
+# governance-protected path — `protected_path_violation` owns the set; no
 # test deletion; no new files) + required `**Trivial because:**`
 # rationale are enforced structurally; semantic-fit is Critic Goal 3 in
 # Chunk 05. Size is unbounded — trivial is a semantic claim, not a LOC
@@ -1861,6 +1861,12 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     surface with a ``#`` in it is not a path either. Sibling of the URL and
     placeholder carveouts above.
 
+    Tokens that interpolate a variable (``${CLAUDE_SKILL_DIR}/../..``,
+    ``$HOME/notes``) contain ``/`` but resolve against whatever the variable
+    holds at run time, so no repo-relative answer exists for them. A literal
+    source path carries no ``$``, ``{`` or ``}``. Same form-family as the
+    placeholder carveout above.
+
     Git branch/ref names (e.g. ``feature/backlog-service-relayout``,
     ``origin/develop``, ``release/v3.2.0``) also contain ``/`` but name a branch,
     not a file — a build/release plan legitimately backticks them in prose.
@@ -1904,6 +1910,8 @@ def _looks_like_file_path(token: str, project_dir: "Path | None" = None) -> bool
     if any(ch in token for ch in "*?["):
         return False
     if "<" in token or ">" in token:
+        return False
+    if any(ch in token for ch in "${}"):
         return False
     if "://" in token:
         return False
@@ -3067,19 +3075,23 @@ def _parse_build_plan_chunk_trivial_rationale(
 #                   that follows — the one file where "free to edit" compounds.
 #   CLAUDE.md     — the project's top-level operating contract (exact match —
 #                   a nested ``foo/CLAUDE.md`` is ordinary product doc).
+#   AGENTS.md     — the same contract for every agent host: it carries the
+#                   governance anchor, and CLAUDE.md imports it, so an unreviewed
+#                   edit here changes what every session is told (exact match).
 _TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
     ("skills/", False, "skill-file-edited"),
     ("methodology/", False, "methodology-edited"),
     ("templates/", False, "template-edited"),
     ("agents/", False, "agent-file-edited"),
     ("CLAUDE.md", True, "claude-md-edited"),
+    ("AGENTS.md", True, "agents-md-edited"),
 })
 
 
 def protected_path_violation(path: str) -> str | None:
     """Return the violation label (``"<reason_label>: <path>"``) when *path*
     falls under a governance-protected bound (``skills/``, ``methodology/``,
-    ``templates/``, ``agents/``, root ``CLAUDE.md``), else ``None``.
+    ``templates/``, ``agents/``, root ``CLAUDE.md`` or ``AGENTS.md``), else ``None``.
 
     Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
     and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-

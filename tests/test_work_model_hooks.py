@@ -100,6 +100,7 @@ def test_jurisdiction_corpus_covers_claude_md_docs_subdirs_and_methodology(repo:
     (repo / ".prawduct" / "artifacts" / "spec.md").write_text(
         "# Spec\nThe **quaternion** subsystem.\n", encoding="utf-8")
     (repo / "CLAUDE.md").write_text("# Repo\nThe **holography** rules.\n", encoding="utf-8")
+    (repo / "AGENTS.md").write_text("# Agents\nThe **heliosphere** anchor.\n", encoding="utf-8")
     (repo / "docs" / "nested").mkdir(parents=True)
     (repo / "docs" / "nested" / "deep.md").write_text(
         "# Deep\nThe **magnetosphere** notes.\n", encoding="utf-8")
@@ -107,10 +108,14 @@ def test_jurisdiction_corpus_covers_claude_md_docs_subdirs_and_methodology(repo:
     (repo / "methodology" / "m.md").write_text(
         "# M\nThe **bathysphere** guide.\n", encoding="utf-8")
 
-    out = _run("jurisdiction", repo, stdin="quaternion holography magnetosphere bathysphere").stdout
+    out = _run(
+        "jurisdiction", repo,
+        stdin="quaternion holography heliosphere magnetosphere bathysphere",
+    ).stdout
     for expected in (
         ".prawduct/artifacts/spec.md",
         "CLAUDE.md",
+        "AGENTS.md",
         "docs/nested/deep.md",   # the widening that matters: a doc SUBDIRECTORY
         "methodology/m.md",
     ):

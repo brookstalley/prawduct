@@ -1258,6 +1258,7 @@ class TestDiscoverability:
         assert "PR reviewer" in content or "PR review" in content
 
     def test_framework_claude_mentions_pr(self):
-        """Framework CLAUDE.md should mention /pr."""
-        content = (FRAMEWORK_DIR.parent / "CLAUDE.md").read_text()
+        """The framework's contract should mention /pr. It lives in AGENTS.md;
+        CLAUDE.md is the one line importing it."""
+        content = (FRAMEWORK_DIR.parent / "AGENTS.md").read_text()
         assert "/pr" in content

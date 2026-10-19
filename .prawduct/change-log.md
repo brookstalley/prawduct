@@ -5,261 +5,238 @@
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
 
-## 2026-10-02: develop opens 3.7.0-dev.4
+## 2026-10-17: backlog file writes only to its own repo, and says when it filed
 
-<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.4 | release=v3.7.0 -->
+<!-- prawduct: type=bugfix | scope=backlog-file-path | release=v3.7.1 -->
 
-The dev track's version moves from `3.7.0-dev.3` to `3.7.0-dev.4` in the four carriers, so repos on
-the develop track pick up `record-lint-945-939` (#946). The public changelog's rolling notes gain its
-consumer-facing summary, which that PR did not carry. Owner-directed, 2026-10-02.
+- #217, #1004, #1005, #1006: four fixes on the `backlog file` path, picked as one bundle.
+- **#217.** `file` accepted any well-formed `--repo`, and the backlog skill pre-grants
+  `backlog file --*`, so an agent could create an issue as the user in a foreign public repo
+  without a prompt. `upstream.check_own_target` now refuses (`foreign-target`, exit 2, not
+  retryable) unless `--repo` matches the identity `resolve_self_identity` derives from
+  `backlog_service_repo` or the `origin` remote, case-insensitively; an unresolved identity
+  refuses too. It runs before any request, attended or unattended. `file-upstream` stays the
+  only cross-owner route.
+- **#1004.** `encode.check_enum` refuses any facet value whose `<facet>:<value>` label exceeds
+  GitHub's 50-character limit, naming the flag and the maximum, so a long `--source` no longer
+  dies as an opaque 422 on the labels endpoint. `update_item` now runs that check with its other
+  offline validation, before any request: it used to run after the title/body PATCH, so a refused
+  facet left the item half-updated.
+- **#1005.** `provision._create_missing` matches existing labels case-insensitively, as GitHub
+  does, and a create refused with `validation` re-lists once and counts a label that now exists
+  as existing (the race with another writer). `ensure_labels` returns `applied`, the requested
+  names in GitHub's existing spelling, and every caller that applies labels after provisioning
+  (`file`, `update` facets and tags, `status`, alias restore, both import paths) applies that
+  list. Reading agrees: `encode.label_has_prefix` is the one label-prefix match, case-insensitive
+  except for prawduct-minted `id:` aliases, and decode, `is_prawduct_issue`, the status
+  reconciliation, `update`'s facet and tag swaps, `reconcile-labels`' foreign/ours split
+  (`provision.facet_of`) and `restructure`'s kind relabel all go through it, so a hand-made
+  `Source:Review` is no longer reported as foreign and relabeling `Kind:Bug` no longer leaves a
+  duplicate kind; `stage` and `status` values decode to their vocabulary spelling. So
+  `--area docs` on an item carrying `area:Docs` neither re-adds nor strips it, and an item whose
+  only status label is `Status:In-Progress` reads as in progress. The L1 fake now refuses a
+  case-variant label create, as GitHub does. `encode.label_fits` is the one label-length rule,
+  shared by `check_enum` and `validate_tags`.
+- **#1006.** A successful human-mode `file` prints `filed <id>: <url>` first, stdout is flushed
+  before stderr is written (a piped stdout is block-buffered, so lint lines used to arrive above
+  the outcome), and ok-envelope lint lines read `lint (advisory, the write succeeded): …`.
+- Tests that filed into a fake `octo/repo` from this checkout now run from a directory whose own
+  tracker is that repo (`fakes.fake_github.own_tracker`); their assertions are unchanged except
+  the two pinning the old `lint:` spelling. The gated live smoke test runs from a work tree whose
+  own tracker is `$BACKLOG_LIVE_REPO`, since it would otherwise refuse its own `file` calls.
+- The suite now passes when an agent runs it from its own worktree. Tests that assert on all of
+  `prawduct-hook`'s stderr (empty, or its first line) used to inherit the checkout running the
+  suite, so in a `.claude/worktrees/agent-*` tree the hook's linked-worktree NOTE landed on
+  stderr and four of them failed. They now run the hook through one helper,
+  `tests/fixtures/hook_env.isolated_hook_run`, which points the project and `cwd` at a directory
+  the test owns and pins the plugin root, so neither environment notice applies; a positive control
+  shows a real stderr line still reaches the assertion.
+- Not in this change, filed as follow-ups: #1013, the same own-target rule for the id-addressed
+  writes (`comment`, `update`, `status`, `link`), whose target resolves from the issue id inside
+  `core`; and #1014, a label-length preflight for `import`, which today shares #1004's failure.
 
-## 2026-10-02: record-lint stops flagging out-of-repo refs; the PR entry probe refuses retired tag keys
+## 2026-10-18: a norm field written inline after the bold statement is a field
 
-<!-- prawduct: type=bugfix | scope=record-lint-945-939 | release=v3.7.0 -->
+<!-- prawduct: type=bugfix | scope=norm-inline-why | release=v3.7.1 -->
 
-Two record-lint defects that the sibling-repo audit of 3.7.0-dev counted as review cost.
+- #1011. `- **Statement.** Detail. *Why:* reason.` read as no norm at all: every field matcher
+  anchors at a logical line's start, so `norm-registry-unratified` told a product with ratified
+  norms that none existed, and record_lint's `governed_by` count and dead-why were blind to
+  the same entries. `norm_probes._direction_scan` now splits such a line at the
+  marker, so every matcher reads it as the line-start form. The split is bounded to avoid
+  minting entries from prose: only inside a bullet opening with a bold statement, only at a
+  sentence start (right after the statement, or after `.` `!` `?` `;`), and `Status:` never
+  opens one — a roadmap bullet saying "Status: blocked" stays a roadmap item.
+  Accepting the inline form is the owner's decision (2026-10-18, on #1011's triage: adapt to
+  how authors write, but avoid false positives), the same call as emphasis (2026-08-03) and
+  blockquotes (#637).
+- record_lint's `direction_norm_count` now delegates to `norm_probes._direction_norm_count`
+  instead of walking raw text over a shared regex. That walker diverged from the probes twice
+  (blockquotes, then inline fields), each time because only the reader feeding the probes got
+  the tolerance.
+- The advisory names its cause: "`## Direction` sections exist, but no entry in them carries a
+  field" versus "no artifact has a `## Direction` section". The evidence string is unchanged,
+  so the advisory id — and any dismissal — carries over. One existing test asserted the old
+  wording and was rewritten to the new contract, with the reason in its docstring.
+  `docs/norms.md` § Anatomy states the inline form.
 
-**#945, false `chunk-ref-missing`.** `_looks_like_file_path` treated three non-repo token shapes
-as deliverable paths: absolute paths (a binary on a remote host), `~/` paths, and the repo's own
-`owner/repo` slug. A correct plan therefore drew a BLOCKING finding. These were 12 of the 61
-blocking findings on 3.7.0-dev. **Root cause:** the predicate excused only the slash-command form
-of a leading `/` and had no answer for a slug, so it fell through to "path". **Fix:** a token
-anchored at `/` or `~` is not a repo path. That rule covers slash-commands, so the narrower
-carveout is gone. A slug is excused only when git names it as the GitHub `owner/repo` of a
-configured remote, read once per repo from `git config` and parsed by the existing
-`parse_remote_url`. It is not decided by shape, so `docs/api` and other repos' slugs stay
-checked.
+## 2026-10-17: prawduct's suite can run on the Testament pool
 
-**#939, retired `chunks=` and `status=` keys on new tag lines.** The parser still accepts both
-for history, and nothing told an author they are dead. The PR reviewer caught three
-recurrences. **Root cause:** no check read the added tag lines. **Fix:**
-`change_log.RETIRED_TAG_KEYS` is the one list of retired keys, and `retired_keys_on` reads it.
-On a tracked log, the PR Step 1c entry probe refuses a retired key with `retired-key`, reading
-only the tag lines the branch adds or edits. Step 1c is where the entry is written, after the
-last Critic review, so a record-lint check would have run before the entry existed and caught
-none of the recurrences. It was built and dropped in this change. Untouched historical entries
-still parse and are never flagged. CL4 in `governance-artifact-lifecycle-requirements.md` is
-amended by owner ruling to allow the probe's one tag read.
+<!-- prawduct: type=feature | scope=testament-onboarding | release=v3.7.1 -->
 
-## 2026-09-30: develop opens 3.7.0-dev.3
+- #1016. `.testament.toml` and `docker/testament.Dockerfile` onboard this repo to Testament
+  (`../testrouter`): container executor, CI's pytest suite with the `dev` extra resolved fresh
+  (`uv.lock` is gitignored here), release tags shipped to runners (`[git] tags`). `documentation/running-tests.md` carries
+  Testament's agent block, plus a paragraph saying evidence stays with `prawduct-hook
+  test-evidence record` until brookstalley/testament#52 gives `testament run` a JUnit report.
+  AGENTS.md points to it in one line rather than carrying it: AGENTS.md is injected into every
+  session and the block cost ~390 tokens over the framework footprint ceiling. The pointer is paid
+  for by cutting the Reference list's `plugin/docs/principles.md` entry, which repeated the
+  Principles section; the footprint stays at its recorded 3108. `docker/` joins the packaging
+  test's not-distributed directories.
+- The first pool runs (2026-10-18, after the owner's allow) corrected two assumptions. The setup
+  required `uv.lock`, which this repo gitignores on purpose, so it now resolves the `dev` extra
+  fresh as CI does. And 195 tests failed with `python3` not found: hook tests launch it under a
+  minimal `PATH` (`/usr/bin:/bin`), and the slim image has Python only in `/usr/local/bin`, so the
+  image links it into `/usr/bin`. Then: 9014 tests, all passed or skipped, none missing, over
+  `gpu-bozeman` and `laptop`, in 2:08 cold and 1:13 warm, against 9.5-13 min for the local suite.
+  The tests' summed durations are 14.3 min, so most of a local run's wall clock is overhead (#1015).
+- A runner's checkout has no history. Running the suite in a history-less single-commit copy found
+  one test that needs it (`test_scaffold_rows_match_the_shipped_history`, which searches history
+  by content and fails rather than skips without it). It is marked `requires_history` (registered
+  in pyproject) and selected out of the Testament command; plain `pytest`, the evidence recorder's run and CI
+  still run it.
 
-<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.3 | release=v3.7.0 -->
+## 2026-10-17: upstream-report triage names the query that lists its set
 
-The dev track's version moves from `3.7.0-dev.2` to `3.7.0-dev.3` in the four carriers, so repos on
-the develop track pick up `sibling-hook-perf` (#938). The public changelog's rolling notes gain its
-consumer-facing summary, which that PR did not carry. Owner-directed, 2026-09-30.
+<!-- prawduct: type=bugfix | scope=upstream-intake-enumeration | release=v3.7.1 -->
 
-## 2026-09-30: four governance frictions found in consumer transcripts
+- Found while triaging five upstream reports: `backlog list --untriaged` returned 0 while the
+  `untriaged-upstream-reports` advisory counted them. Both readings were right about their own
+  predicates — `--untriaged` lists issues with no prawduct label *and* no `prawduct:` body block,
+  and every `file-upstream` report carries a provenance block, so it is in scope with no `stage`.
+  The intake procedure counted a set and named no command to list it, so the nearest-named one
+  was used and answered a different question.
+- `skills/report-bug/SKILL.md` § Receiving side now names `cache-query unstaged` (filtered to
+  `[prawduct]` titles) and says why `--untriaged` cannot show a report; `adapter-mode.md`'s
+  `--untriaged` paragraph says the same from the other side.
+- Three spec passages (data model §3, security model F7, API §9) described `--untriaged` as
+  selecting on labels alone and therefore a superset of quarantine that never misses an anonymous
+  filing. The code also excludes blocked issues, so that claim was false; they now state the real
+  predicate and that a blocked unlabeled filing surfaces through `cache-query unstaged` instead.
 
-<!-- prawduct: type=bugfix | scope=sibling-hook-perf | release=v3.7.0 -->
+## 2026-10-16: the first governed session after an onboarding discovery opens clean
 
-Found by the same investigation of consumer sessions as #931.
+<!-- prawduct: type=bugfix | scope=post-discovery-friction | release=v3.7.1 -->
 
-**A process running on its own no longer reads as a reason for `DO NOT CLEAR` (#932).** The
-`clear-verdict` gate fired nine times across fabulous, discodon, puzzles and this repo. Every
-block was correct and each cost a turn. The cause was one belief: that a server or recorder the
-session had started would die with a `/clear`. The digest's precedence line, the verdict paragraph
-in `session-hygiene.md`, and the gate's own message now say that a clear ends the conversation,
-not the process. Tests pin all three places: the digest and `session-hygiene.md` in one, the gate
-message in another. The digest pays for its clause in place by
-dropping an opening sentence that restated "Read on demand", so both injected totals fall and
-their ceilings ratchet down.
+- Field report from a newly onboarded product, which opened its first governed session to an
+  oversized-state warning, a strategy-artifact notice nobody had framed, a handoff offered as
+  context that held only a file list, and a skill path an agent resolved one directory too high.
+- **Template.** `templates/project-state.yaml` was 29 KB, 26.6 KB of it comments, mostly the
+  optional-key reference. That prose moved to `docs/project-state-keys.md` (content kept, recast as markdown), reached as
+  the new `/prawduct:methodology project-state` topic. The template keeps a one-line hint per
+  key and is now under 12 KB. The learnings one-line-rule carrier moved with the prose. The
+  topic stays out of the digest roster rather than spend the digest's reserved headroom.
+- **Existing repos.** `oversized_state_probes` gains a bullet, matched on lines found only in
+  the shipped key reference, saying those copied blocks can go. Comments a repo wrote never match.
+- **Handoff.** `briefing.NO_FORWARD_NOTE_HEADING` is now the single source for the heading,
+  used by both the generator and the boundary pointer. The pointer names a handoff with no
+  forward note as a machine record and does not offer it as context.
+- **Onboard.** The discovery close writes `.prawduct/.handoff-notes.md` before recommending
+  `/clear`, because that session started ungoverned and never received the rule that carries
+  work across a clear. The note frames the strategy-artifact advisory as planning's agenda.
+- **Paths.** `skills/methodology/SKILL.md` states that bare plugin-relative paths in the guides
+  resolve against `${CLAUDE_SKILL_DIR}/../..`. The build-plan ref check no longer reads a
+  variable-rooted token like that one as a missing file (`buildplan_refs._looks_like_file_path`).
 
-**Telemetry labels a repo by its identity, not its directory (#933).** Discodon's devcontainer
-mounts every workspace at `/opt/venv`, so every ledger event since 09-21 read `project: "venv"`.
-`gitstate.project_label` is now the one owner, shared by the ledger and the review-stats header.
-It tries, in order: the committed `product_identity.name` (as a slug), the push remote's
-repository name (so a lone remote not named `origin` counts), the main checkout's directory (which a worktree shares), and only then the
-directory itself. `gitstate.declared_product_name` becomes the one reader of
-`product_identity.name`, and the briefing delegates to it.
-`[DECISION: clones of one repository share a label | identity is what the committed name and the origin carry, and no path survives a container | this changes future labels for three checkouts: samsung-frame-art-loader becomes curatarr (its origin), fabulous-tips becomes fabulous, and prawduct-learning becomes prawduct; worktrees take their main checkout's name; existing rows are not relabelled]`
+## 2026-10-14: the governance anchor lives in AGENTS.md; CLAUDE.md imports it
 
-**`**Type:** bugfix` parses (#934).** `building.md` sizes governance by work type (feature,
-bugfix, refactor, …), and authors carried the word into a chunk's `Type:` field, which reported
-it as unknown on a chunk that ran as `code` anyway. The work types are now aliases for `code`,
-the full protocol, so an alias can never lighten a review. `planning.md` names them. Aliases are
-case-sensitive, like the types: `Bugfix` is reported as unknown, as `Code` always was, and the
-error now lists the aliases beside the types.
+<!-- prawduct: type=feature | scope=agents-md-anchor | release=v3.7.1 -->
 
-**The code-without-tests canary check is deleted (#935, part of #164).** It fired on every
-session that changed code without a test file, a research spike under `docs/` included, and it
-could not recognise test files beyond Python and JS naming. #164, owner-ruled, deletes it with
-Critic Goal 1 as its covering surface. `_is_test_file` goes with it, and `architecture.md`'s
-retroactivity inventory no longer lists it. The surviving canary checks had no tests at all; they
-have them now, including a control showing that the canary still runs when the deleted check
-would have been its only finding. The rest of #164 is still open.
+- #942, under the owner's rulings on #942 (2026-09-30) and #928 D-8 (2026-10-10), plus two
+  answers given in session on 2026-10-14 (the Claude Code line lives inside the `AGENTS.md`
+  block; an existing product `CLAUDE.md` keeps its own text).
+- **The anchor moves.** `STATIC_ANCHOR` is reworded for any host, with one Claude Code line and a
+  rule for a host that cannot tell whether its integration is loaded (assume it is not).
+  `migrate_plugin.plan_governance_anchor` decides every write — the anchor into `AGENTS.md`, the
+  import into `CLAUDE.md` — with each file's exact new content; the writer executes that plan,
+  the `reanchor` preview prints it, and the grade offers a repair only when it completes the
+  layout, so the three cannot disagree. `CLAUDE.md` gives up its anchor only when `AGENTS.md`
+  takes it; symlinks out of the pair are never written through, and two names for one file keep
+  one anchor and no self-import. When the plan cannot finish, migrate refuses before touching
+  anything and onboarding warns, each naming the owner's fix. The shipped-anchor archive moved
+  to its own leaf module, `anchor_archive.py`.
+- **The repair moves fleets.** `anchor_repair` grades the pair, with new `legacy-layout` and
+  `import-missing` statuses; `ANCHOR_V5` (the 3.6–3.7 anchor) joins the archive; the `reanchor`
+  preview lists every file it would write with the exact bytes (`writes` in `--json`). Doctor
+  Health Check #4 describes each status.
+- **Every reader knows `AGENTS.md`.** Root `AGENTS.md` is protected (`agents-md-edited`); the
+  onboarding probe, the briefing's size check and critical-rules read, and `jurisdiction`'s corpus
+  all read it. The batch-fix directive called `.md` under `agents/` free to write mid-review,
+  though `agents/` is protected; it now names every protected path, checked against the set.
+- **This repo moved too.** Its contract is in `AGENTS.md`, and `CLAUDE.md` is `@AGENTS.md`.
+- A decision is recorded under `architecture.md`'s reconciled-files norm; the norm's wording is
+  left for the owner to amend. The #928 requirements doc's header and inventory rows 29 and 30
+  are updated.
 
-## 2026-09-30: hook latency no longer grows with the evidence store
+## 2026-10-13: stop buying verify rounds that have nothing to verify
 
-<!-- prawduct: type=bugfix | scope=sibling-hook-perf | release=v3.7.0 -->
+<!-- prawduct: type=bugfix | scope=empty-verify-rounds | release=v3.7.1 -->
 
-**Root cause (verified by profile and A/B).** Every SessionStart and Stop composes a coverage
-verdict whose free-edge search keys every tree the evidence store mentions, one `git ls-tree`
-each. The keys were memoised only within the process, and the store is append-only and shared by
-every worktree, so hook latency grew with the store's age rather than with the work at hand. On a
-snapshot of the puzzles repo (231 trees), each cached plugin version from 3.5.1-dev.2 to
-3.7.0-dev.2 took about 6.4 s per Stop, of which 4 s was this keying. Field data from the
-transcripts shows the growth: the puzzles Stop p90 went from 3 s to 15 s as its store grew from 20
-trees to 231 between 09-12 and 09-30, and discodon (1,743 trees) reached a p90 of 62 s (#931).
+- In sibling repos on 3.7.x, 20–24% of `verify-resolutions` rounds had no open blocking or warning
+  finding to verify, against about 5% before (part of #724). Three causes, three fixes:
+- **An owed boundary review counts as a later review.** `critic_mode.review_owed_after` now owns
+  "a later review will cover this": a later chunk's review, or the plan's boundary `cumulative`
+  when the last chunk is `Type: cumulative-final` or the plan is short. The Stop gate's deferral,
+  `cost-of-commit` and the review close read it. Inference on an uncommitted cumulative-final last
+  chunk answers `deferred` instead of running a `final` the cumulative would repeat, and the Stop
+  gate's note for that chunk asks the same question, so it stops saying "then cumulative" once the
+  cumulative has run.
+- **A verify pass can confirm an observation fix.** A resolution may name a prior observation's
+  `O-n` id in the existing `finding.fid` slot; only `fixed` is accepted for one, and gates never
+  read it. `stats` stops counting such a round empty, and the census reports the fix as `fixed`.
+- **A verify pass reports observations only about the fixes it verifies.** In
+  `verify-resolutions` an observation must carry `about: {review_id, fid}` naming the prior finding
+  or observation it judges; one without it is dropped (counted on the fact as
+  `observations_dropped`), never refusing the round. The dispatch directive no longer invites
+  open-ended style observations, which drove a fix → verify → new-observation treadmill.
 
-**Fix.** `lib/tree_key_memo.py` persists each computed key beside the evidence store, keyed by the
-tree and by `verdict_cache.code_identity()`. That is now the one identity both per-clone memos
-use: the plugin version, a checkout's plugin tree and the content of its uncommitted edits, and the
-bytes of the modules that decide judgeability and form the key. The last two parts came from the
-boundary review. A same-version install and a second edit to an already-dirty file would
-otherwise have replayed keys formed by older code, and those could grant a free edge. Each tree now
-costs one `git ls-tree` per clone and per code change. A save that fails is reported once and is
-not retried. An unreadable tree
-is never remembered, so it still denies the free edge and is asked again next time. A second
-cost of the same kind: trees that git has collected, which the store keeps naming, cost a failed
-`ls-tree` apiece on every hook (198 of 1,326 here). One `git cat-file --batch-check` now answers
-all of them (`evidence.missing_objects`, reached through the key function's `prime`). The memo
-saves every 100 new keys and at exit, so a cold run that the harness kills keeps its progress.
+## 2026-10-12: the ledger records which path consolidated a Critic review
 
-Measured on the same snapshot, with an edit before each Stop as in a real session: warm Stop hooks
-went from about 6.0 s to about 2.1 s, and the coverage verdict itself from 4.1 s to 0.05 s, with
-identical gate output. This repo's warm Stop went from 34 s to about 6.3 s. The rest is a fixed
-set of git calls spread across other gates, plus the base-advance diagnosis's per-candidate diffs,
-filed separately.
+<!-- prawduct: type=bugfix | scope=consolidate-trigger | release=v3.7.1 -->
 
-**SessionStart's api-versioning probe (#936).** `Codebase` ran an `rglob` per pattern, four per
-sync, each descending into `.git`, `.venv` and `node_modules` before discarding what it found. It
-now walks once, pruning the skip set as it descends, and every scan filters that listing: about
-1.1 s down to 0.18 s on the snapshot, returning exactly the same files as before on puzzles and on
-this repo.
+- Three paths reach `consolidate()` — the `SubagentStop` hook, `critic-consolidate`, and the Stop
+  hook's self-heal — and they left identical state, so a dead hook covered by the backstop looked
+  like a working one (why the bare-matcher defect hid for seventeen days; #182). `consolidate()`
+  now takes a required `trigger` that each caller sets (`subagent-stop`, `explicit`,
+  `session-end-backstop`), never inferred inside it, and an unknown value raises before anything
+  is read. `ledger-append` requires `--trigger` for `review.critic`, refuses it for `review.pr`,
+  and writes it as the `trigger` envelope key. `explicit` does not split the skill's own call
+  from a human's: both run the same CLI, and a flag the skill passed to say so is one a human
+  could type too, so the split would not hold. VRF-002 only needs hook-or-not.
+- Two readers, so the field is not write-only. `review-stats` gains `consolidated_by` (report
+  schema 7 → 8): Critic reviews per path, every path listed even at zero, so a dead hook shows as
+  `subagent-stop 0` in a routine report rather than only to someone who opens the ledger. And
+  VRF-002, which was blocked on this, now takes its verdict from `trigger` instead of from findings
+  merely appearing; it still needs the live run on a released plugin.
 
-## 2026-09-29: develop opens 3.7.0-dev.2
+## 2026-10-10: consolidation refuses a review during which the tree changed
 
-<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.2 | release=v3.7.0 -->
+<!-- prawduct: type=feature | scope=critic-tree-unchanged | release=v3.7.1 -->
 
-The dev track's version moves from `3.7.0-dev.1` to `3.7.0-dev.2` in the four carriers, so repos on
-the develop track pick up `opus-55-w6-reference-docs` (#926). Owner-directed, 2026-09-29.
-
-## 2026-09-29: the reference docs are retuned for Opus 5.5 (audit wave W6)
-
-<!-- prawduct: type=feature | scope=opus-55-w6-reference-docs | release=v3.7.0 -->
-
-Wave W6 of `opus-55-prompt-audit-2026-09.md`, ruled in full on 2026-09-28, and the audit's last.
-It applies slice E's 19 decisions to `plugin/docs/`. `runbook-authoring.md` no longer calls length
-the best-evidenced finding in the literature, which its own evidence section contradicted, and
-drops five competing superlatives (E-1, E-6). Its three self-review passes become the bar a
-finished runbook meets; the subtraction pass stays (E-5, F3). Dated model statistics, a volatile
-benchmark and the guide's research history give way to the rules they supported (E-7 to E-9).
-`norms.md`'s enforcement table points at § Severity instead of restating it as "ratified", the
-threshold the Critic protocol had already dropped in W3 (E-4), and loses a correctness proof and
-three history clauses (E-3, E-10 to E-13). `waivers.md` loses its argument against the retired
-per-rule literals and no longer names a region form it does not parse (E-14, E-15).
-`test-report-contract.md` stops addressing prawduct's maintainers and trims the reviewer-talk
-comments consumers paste (E-2, E-16, E-17). `governance-telemetry.md` and `discipline.md` lose
-ticket ids, audit citations and row history (E-18, E-19). The runbook skill's three copies of
-E-5's self-review instruction are aligned with the guide. No parsed table changed shape, and no
-token ceiling applies to these files.
-
-The Fable final-coherence pass the audit owed ran over the whole cycle (W1 to W6) before this wave
-lands, and its fixes ride here. It found seams between waves, not disagreements of intent. The
-chunk-boundary review exception in `session-hygiene.md` and root `CLAUDE.md` now allows for a short
-plan's single boundary review. `review-cycle.md` no longer quotes a `building.md` sentence that is
-gone, or claims the close directive prints its paragraph verbatim. The backlog skill names the
-change-log's `release=` tag, not the inert `status=shipped`. Two pointers to a nonexistent
-"Coverage Evidence" section, and the preferences template's Goal 4 for norms (it is Goal 3), are
-corrected. The pr skill loses its issue ids, and the backlog and janitor skills their pointers to spec decisions D4 and D14. A `reviews.md` rule loses its
-whole-diff self-scrub, and a `core.md` Tell no longer assumes file-list deliverables. The
-methodology index drops its between-phase validation (B-19's class), and three reviewer directives
-in `critic_consolidate.py` lose their capitals, as A-5 did for NEXT-ACTION.
-`review-cycle.md`'s and the injected footprint's ceilings ratchet down with their readings.
-
-## 2026-09-29: develop opens 3.7.0-dev.1
-
-<!-- prawduct: type=chore | scope=dev-track-bump-3.7.0-dev.1 | release=v3.7.0 -->
-
-The dev track's version moves from `3.6.2-dev.7` to `3.7.0-dev.1` in the four carriers, so repos
-on the develop track pick up `opus-55-w5-operational-skills`. The track now heads for a minor
-release rather than a patch. Owner-directed, 2026-09-29. It rides this PR.
-
-## 2026-09-29: the operational skills are retuned for Opus 5.5 (audit wave W5)
-
-<!-- prawduct: type=feature | scope=opus-55-w5-operational-skills | release=v3.7.0 -->
-
-Wave W5 of `opus-55-prompt-audit-2026-09.md`, ruled in full on 2026-09-28. It applies slice D's
-61 decisions to every skill except `critic` and `pr`. Doctor states "degraded because ungraded"
-once instead of seven times, and its checks keep their statuses and lose the history of why each was
-built (D-1 to D-8, D-30 to D-33). The migration scrub keeps every command, gate and ordering and
-loses its incident stories, version pins, spec ids and a misplaced, duplicated `duplicate_alias`
-remedy (D-9 to D-14, D-35 to D-40). The backlog files drop an envelope no code emits (D-15),
-prohibitions naming retired ops, and second copies of facts that have a home elsewhere (D-24, D-25,
-D-45, D-51). `add` lists delegation last (D-26, F4). `pick` ranks by value per effort and flags
-unassessed items, where it used to compute a score (D-28). The janitor points at
-`/prawduct:methodology` instead of a product `CLAUDE.md` that no longer carries planning guidance
-(D-18). Shouted headings lose their caps (D-54, D-58, D-61). The runbook skill and template lose
-their copies of the overstated "best-evidenced finding" claim and the dated hallucination rate
-(E-1, E-8). The backlog half was built by one worktree delegate. D-23's and D-29's maintainer
-rationale moved into test docstrings, and D-29's two sentence asserts went with it. The
-writable-block-field guard follows D-25's moved sentence to `adapter-mode.md`, and was
-red-verified there. One regression probe (D-28, Opus 5.5) found no regression. No token ceiling
-moved, because no file in this wave has one.
-
-Two changes are more than prose. The janitor's neglected-hygiene check (Backlog Health check 5)
-now runs on the Issues backend too, over `in-progress` rows whose `working_branch` appears merged;
-it had been off there since #529 (now #729), which has shipped. And a test now checks the
-cache-query grant on all four readers of the backlog cache (two agents and two skills), where before only the PR
-reviewer's grant was tested.
-
-## 2026-09-29: the methodology guides and templates are retuned for Opus 5.5 (audit wave W4)
-
-<!-- prawduct: type=feature | scope=opus-55-w4-methodology-templates | release=v3.7.0 -->
-
-Wave W4 of `opus-55-prompt-audit-2026-09.md`, ruled in full on 2026-09-28. It applies slice B's
-decisions to the six methodology guides and the artifact templates: B-1 to B-40 except B-41, a
-flag. The guides no longer license ending a turn with work in hand (B-9, B-16, B-35): a chunk
-boundary ends the turn only when the plan is done, the next chunk needs the user, or the cycle
-has reached what one review covers. The builder is no longer told to scrub its own diff while the
-Critic runs, to review every artifact phase, or to redo a delegate's sweep (B-1, B-19, B-36,
-B-10 to B-12); instead a delegate's brief asks for the output that shows a removal or sweep
-complete. Delegation stops being the default for tangents and no longer requires a subagent for a
-consumer grep (B-2, B-13 to B-15); the delegate criterion is the owner's, wall clock gained
-without conflict. Chunk shape, file-list deliverables and phase choreography become advice
-(B-17 to B-19), which closes #341. `architecture.md`'s "goals bind; method is advice" norm
-therefore moves from `in-transition` to steady-state: its stopgap goes, and its Retroactivity
-line records the migrated sites. B-21 and B-22, discovery's domain-concern table and question
-quotas, were held until a Sonnet 5.5 probe and ship here. On the probe, the new text raised every
-critical concern the old text raised. Templates lose dead component headers, unnamespaced
-commands, incident stories and caps-lock register (B-3 to B-7, B-29 to B-32, B-37, B-38). The
-build-plan template's worked example states deliverables as outcomes, and its cadence line points
-at the short-plan rule. The template half was built by one isolated-worktree delegate. Carried
-from the W3 handoff: `building.md`'s fix-order sentence takes W2's register, and a delegate brief
-names the budgets its files sit under. Token readings drop on five guides. `delegation.md` rises
-by 14, a recorded raise. The fix-order pin now asserts `gates.FIX_ORDER` verbatim, the suite-at-boundary pin follows
-its de-bolded sentence, and
-`docs/discipline.md`'s anchors for rows 4 and 9 follow B-2 and B-24. The template
-`project-state.yaml` loses the removed question quotas, its version fossils, and a claim that
-the backlog probes were unbuilt. The owed Sonnet 5.5 probes
-ran through `claude -p`, because the Agent tool's alias cannot select that model:
-- W3's reviewer surfaces showed no regression.
-- B-12 is the first decision whose control failed and whose treatment fixed it.
-- The longer early-stop probe on Opus 5.5 did not stop early, even on the pre-W1 text. The audit
-  records what that means for per-wave probing.
-
-Also shipping:
-- The scaffolded backlog legend's `closed-by:` names a scope, branch or release tag, never a bare
-  chunk id (B-5), which closes #779. `documentation/backlog-system-requirements.md` takes the
-  same fix.
-- `reflection.md`'s stopping rule and its bug-fix protocol are compressed into one statement each
-  and point at Step 3, rather than restating it.
-- `authoring.md` gains a learning: a new project-wide concept cascades to the product anchor, the
-  Critic and PR protocols, methodology, templates and their budget tests.
-
-Two departures from the owner's ruled text, both vetoable (the plan's cumulative-review record):
-- R-7: B-25's replacement dropped the 3-4-file size, which decides whether a Critic review runs.
-  It is restored as small.
-- R-10: B-24's "file the rest" contradicted `core.md`'s fix-the-class rule. Post-Fix now fixes
-  the class through its one owner when it can be changed here.
-
-Plan: `build-plan-opus-55-w4-methodology-templates.md`.
-
-## 2026-09-29: develop opens 3.6.2-dev.7
-
-<!-- prawduct: type=chore | scope=dev-track-bump-3.6.2-dev.7 | release=v3.7.0 -->
-
-The dev track's version moves from `3.6.2-dev.6` to `3.6.2-dev.7` in the four carriers, so repos
-on the develop track pick up `opus-55-w3b-review-cycle-split`. Owner-directed, 2026-09-28. It rides
-this PR.
+- A reviewer's `Bash` patterns and `Write` paths are a contract the harness does not enforce, and
+  nothing checked that a review left the product alone (#992, part of the #928 R-8 parity bar).
+  `critic-begin` now records the whole working tree in the manifest as `dispatch_tree`, and
+  `critic-consolidate` compares it with the tree it finds. Any change outside prawduct's own
+  session files (`core.GITIGNORE_ENTRIES`, read with gitignore's anchoring) refuses the review and
+  names the paths. The partials stay on disk.
+- A diff cannot say who made a change, and `review-cycle.md` asks the builder to prep while a
+  review runs, so the refusal is not final. The main session can consolidate with
+  `--tree-changed-by-builder "<reason>"`, which writes the paths and the reason into the review
+  fact and `.critic-findings.json` (owner ruling 2026-10-10). The SubagentStop hook and the
+  session-end backstop never pass the flag. So a session that edits after an unconsolidated review
+  is now blocked at Stop until it attests.
+- The PR review payload gains a `review_tree_changes` section listing the attested paths and
+  reasons for the reviews the branch's coverage rests on (via a new `prior_review_ids` key in the
+  coverage composition), and `review-protocol.md` tells the PR reviewer to judge each attestation
+  against the paths it covers.

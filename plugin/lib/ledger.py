@@ -10,13 +10,18 @@ cross-project aggregation (TEL-7A4X). Fields exist to serve those questions.
 
 **Envelope/payload split.** Every event shares the envelope —
 ``{schema_version, event, ts, duration_seconds, project, scope, chunk,
-actor: {role, model}, git: {head, base}}`` — plus one OPTIONAL envelope key,
-``dispatched_at``, written whenever a ``review.*`` append finds the dispatch
+actor: {role, model}, git: {head, base}}`` — plus three OPTIONAL envelope keys.
+``dispatched_at`` is written whenever a ``review.*`` append finds the dispatch
 marker belonging to its OWN kind (``data-model.md`` carries its semantics;
 each consuming kind owns a separate marker file, so both review kinds can be
-in flight at once without either clearing the other's measurement). It is enumerated here because
+in flight at once without either clearing the other's measurement).
+``review_written_at`` rides beside a kept ``dispatched_at`` on a ``review.pr``
+— when the reviewer's evidence was written, where that interval ends.
+``trigger`` is written on every ``review.critic`` event — which of
+:data:`CONSOLIDATION_TRIGGERS` consolidated the review — and on no other kind.
+They are enumerated here because
 this sentence is what a maintainer reads to decide whether a key is envelope or
-payload, and an aggregator written from an enumeration that omits it will not
+payload, and an aggregator written from an enumeration that omits one will not
 find it. The event then nests its kind-specific
 payload beneath a family-named key (``review`` for both ``review.critic``
 and ``review.pr``; ``learning`` for both ``learning.*``). Aggregators key on
@@ -99,6 +104,14 @@ _EVENT_ROLES = {
 #: refusal is what keeps a `learning.*` line meaning what the join assumes.
 _MACHINE_ONLY_PREFIX = "learning."
 
+#: Which code path consolidated a Critic review — the `trigger` envelope key of a
+#: `review.critic` event. Three paths reach the same `consolidate()` and leave the
+#: same fact, findings file and cleared marker, so a dead trigger looks exactly
+#: like a working one while the other two cover for it. The value is named by the
+#: CALLER and never inferred: from inside `consolidate()` the paths are
+#: indistinguishable, which is the whole problem.
+CONSOLIDATION_TRIGGERS = ("subagent-stop", "explicit", "session-end-backstop")
+
 
 def _cli_appendable() -> list[str]:
     """The kinds `ledger-append` accepts, for its own error message — derived
@@ -179,6 +192,7 @@ def _append_event(
     actor_model: str | None = None,
     review_tree: str | None = None,
     review_written_at: str | None = None,
+    trigger: str | None = None,
 ) -> Path:
     """Build the envelope and append ONE line. The only writer.
 
@@ -238,6 +252,8 @@ def _append_event(
         },
         payload_key: payload,
     }
+    if trigger is not None:
+        event["trigger"] = trigger
     # Present only when measured. An absent key is "not measured"; a null or a zero
     # would be a VALUE naming the absence, which reads as deliberate and which every
     # consumer would then have to special-case to avoid averaging into a real one.
@@ -258,10 +274,14 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     """Body of ``prawduct-hook ledger-append`` — see module docstring.
 
     Usage: ``ledger-append --event review.critic|review.pr
-    [--findings <path>] [--scope <scope>] [--chunk <id>] [--model <id>]``.
+    [--findings <path>] [--trigger <t>] [--scope <scope>] [--chunk <id>]
+    [--model <id>]``.
     ``--findings`` is required for ``review.pr`` (the branch-derived evidence
     path the caller computed) and rejected for ``review.critic`` (the
-    canonical ``.critic-findings.json`` is the only trusted source). Exit 0
+    canonical ``.critic-findings.json`` is the only trusted source).
+    ``--trigger`` is the mirror: required for ``review.critic`` (one of
+    :data:`CONSOLIDATION_TRIGGERS`) and rejected for ``review.pr``, which has a
+    single writer and so nothing to attribute. Exit 0
     on append; exit 1 with a stderr reason on bad args, unknown event kind,
     or a missing/invalid findings file (an invalid record must not enter the
     history the PR gate trusts).
@@ -271,10 +291,11 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     chunk: str | None = None
     model: str | None = None
     findings_arg: str | None = None
+    trigger: str | None = None
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("--event", "--scope", "--chunk", "--model", "--findings"):
+        if arg in ("--event", "--scope", "--chunk", "--model", "--findings", "--trigger"):
             if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
                 print(f"ledger-append: {arg} requires a value", file=sys.stderr)
                 return 1
@@ -287,6 +308,8 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
                 chunk = value
             elif arg == "--findings":
                 findings_arg = value
+            elif arg == "--trigger":
+                trigger = value
             else:
                 model = value
             i += 2
@@ -316,6 +339,25 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         print(
             f"ledger-append: unknown event kind {event_kind!r} (allowed: "
             f"{allowed}). Unknown kinds are rejected, not guessed.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if event_kind == "review.critic":
+        if trigger not in CONSOLIDATION_TRIGGERS:
+            got = "none given" if trigger is None else f"got {trigger!r}"
+            print(
+                "ledger-append: review.critic requires --trigger "
+                f"{'|'.join(CONSOLIDATION_TRIGGERS)} ({got}) — the code path that "
+                "consolidated the review names itself, or a dead path is "
+                "indistinguishable from a working one.",
+                file=sys.stderr,
+            )
+            return 1
+    elif trigger is not None:
+        print(
+            f"ledger-append: --trigger is only valid for review.critic — "
+            f"{event_kind} has one writer and nothing to attribute.",
             file=sys.stderr,
         )
         return 1
@@ -412,10 +454,13 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         actor_model=actor_model,
         review_tree=review_tree,
         review_written_at=review_written_at,
+        trigger=trigger,
     )
     print(
         f"appended: {event_kind} -> {path} "
-        f"(scope={scope or '-'}, chunk={chunk or '-'}, model={actor_model or '-'})"
+        f"(scope={scope or '-'}, chunk={chunk or '-'}, model={actor_model or '-'}"
+        + (f", trigger={trigger}" if trigger else "")
+        + ")"
     )
     print(f"duration: {dispatch_reason}")
     return 0

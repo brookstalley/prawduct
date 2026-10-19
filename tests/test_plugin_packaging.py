@@ -62,7 +62,8 @@ FORBIDDEN = [
     ".prawduct",                        # backlog, learnings, change-log, every build/release plan
     "tests",                            # prawduct's own suite (including this file)
     "documentation",                    # prawduct's own internal requirements/specs
-    "CLAUDE.md",                        # prawduct's own operating instructions
+    "CLAUDE.md",                        # prawduct's own operating instructions (the import)
+    "AGENTS.md",                        # ...and the contract it imports
     "pyproject.toml",
     ".claude",                          # repo-local harness config
     ".gitignore",
@@ -187,9 +188,16 @@ NOT_DISTRIBUTED_DIRS = {
     ".claude-plugin",
     ".github",
     ".prawduct",
+    # The stats collector: a Cloudflare Worker deployed from the owner's account.
+    # It is the far end of the opt-in upload, not part of the plugin, and a
+    # governed product must never carry its code.
+    "collector",
     "documentation",
     "plugin",
     "tests",
+    # The image Testament's runners run this repo's own suite in (`.testament.toml`):
+    # test infrastructure for developing prawduct, nothing a governed product uses.
+    "docker",
     # Repo-local analysis scripts that back a claim in an artifact — the committed
     # derivation behind a measured figure, so the number stays falsifiable instead
     # of being a digit transcribed into prose. Deliberately NOT shipped: a product

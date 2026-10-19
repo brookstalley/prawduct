@@ -1959,6 +1959,24 @@ class TestVerifyChunkRefsNonPathTokens:
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert refs["file_paths"] == []
 
+    @pytest.mark.parametrize("token", ["${CLAUDE_SKILL_DIR}/../..", "$HOME/notes/x.md"])
+    def test_a_variable_rooted_token_is_skipped(self, tmp_path: Path, token: str):
+        # A plan describing where plugin paths resolve backticks the variable
+        # form; that is prose about a root, not a deliverable in this repo.
+        project, prawduct = _project_with_chunk(
+            tmp_path, f"- one line stating paths resolve against `{token}`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert refs["file_paths"] == []
+
+    def test_a_literal_path_beside_a_variable_one_is_still_checked(self, tmp_path: Path):
+        # Control: the carveout is per token, not per line.
+        project, prawduct = _project_with_chunk(
+            tmp_path, "- `lib/does_not_exist.py` resolves against `${CLAUDE_SKILL_DIR}/../..`\n"
+        )
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [e["ref"] for e in refs["file_paths"]] == ["lib/does_not_exist.py"]
+
     def test_gitignored_managed_path_not_flagged_missing(self, tmp_path: Path):
         project, prawduct = _project_with_chunk(
             tmp_path, "- the run is recorded in `.prawduct/.test-evidence.json`\n"

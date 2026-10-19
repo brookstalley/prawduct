@@ -496,6 +496,21 @@ class TestTags:
         never faceted is an item — not a plain repo issue to be ignored."""
         assert encode.is_prawduct_issue({"labels": [{"name": "tag:perf"}], "body": ""})
 
+    def test_a_case_variant_facet_label_makes_an_issue_ours(self):
+        """Scoping matches facet prefixes as every facet read does."""
+        assert encode.is_prawduct_issue({"labels": [{"name": "Kind:Bug"}], "body": ""})
+
+    def test_an_id_alias_label_matches_only_as_prawduct_mints_it(self):
+        """`id:` stays exact: prawduct mints alias labels and `ids` resolves them
+        as written, so `ID:` is not one of ours. Paired with the minted
+        spelling so the test cannot pass on a predicate that ignores `id:`."""
+        assert encode.is_prawduct_issue({"labels": [{"name": "id:ABC-1"}], "body": ""})
+        assert not encode.is_prawduct_issue(
+            {"labels": [{"name": "ID:ABC-1"}], "body": ""}
+        )
+        assert encode.label_has_prefix("Source:Review", "source:")
+        assert not encode.label_has_prefix("ID:ABC-1", "id:")
+
     def test_a_comma_is_refused_because_it_separates_tags(self):
         _tags, message = encode.validate_tags(["a,b"])
 

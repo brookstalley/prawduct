@@ -39,7 +39,7 @@ prawduct/
 │   │   └── session-digest.md          # SessionStart additionalContext digest
 │   ├── docs/                          # principles.md (the 26), norms.md, waivers.md, discipline.md,
 │   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md,
-│   │                                  #   test-report-contract.md, examples/
+│   │                                  #   test-report-contract.md, project-state-keys.md, examples/
 │   └── templates/                     # Place-once + planning artifact templates for product repos
 │       ├── project-state.yaml         # Product state template (health_check, build_state)
 │       ├── boundary-patterns.md       # Contract surfaces between components
@@ -94,7 +94,8 @@ A v2 product repo commits only its own state plus a small install reference — 
 
 ```
 my-product/
-├── CLAUDE.md                          # product instructions + a thin static governance anchor (PRAWDUCT:ANCHOR)
+├── AGENTS.md                          # a thin static governance anchor (PRAWDUCT:ANCHOR), read by every agent host
+├── CLAUDE.md                          # product instructions + `@AGENTS.md`, which imports the anchor
 ├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)

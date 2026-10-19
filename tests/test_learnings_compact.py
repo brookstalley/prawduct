@@ -19,7 +19,6 @@ Each test names the change that turns it red.
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +32,12 @@ if str(_PLUGIN_ROOT) not in sys.path:
 from lib import learnings_compact as lc  # noqa: E402
 from lib import learnings_files as lf  # noqa: E402
 from lib import ledger  # noqa: E402
+
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
+
+from fixtures.hook_env import isolated_hook_run  # noqa: E402
 
 HOOK = _PLUGIN_ROOT / "bin" / "prawduct-hook"
 REPO = Path(__file__).resolve().parent.parent
@@ -89,11 +94,9 @@ def _all_rewritten(ws: dict) -> dict:
 
 
 def _hook(repo: Path, *argv: str) -> subprocess.CompletedProcess:
-    env = os.environ.copy()
-    env["CLAUDE_PROJECT_DIR"] = str(repo)
     return subprocess.run(
         [sys.executable, str(HOOK), "learnings-compact", *argv],
-        cwd=str(repo), capture_output=True, text=True, env=env, timeout=60,
+        capture_output=True, text=True, timeout=60, **isolated_hook_run(repo),
     )
 
 

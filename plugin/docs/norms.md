@@ -54,7 +54,7 @@ characteristic flips alike:
 
 - **Owner-visible and vetoable** — the plan/changeset carries it in the vetoable block form
   `[DECISION: <what was decided> | <why, engaging the norm's why> | user can veto/override]`
-  (the decision sibling of `methodology/planning.md`'s `[ASSUMPTION: …]` form), or the owner
+  (an inference is marked in prose instead — `methodology/planning.md` "Goals"), or the owner
   made the call directly. The builder may *draft* the decision; the owner's veto window is what
   legitimizes it. A builder-authored rationale sentence, alone, is not a recorded decision.
 - **Reasoned** — it engages the norm's why, not just the local convenience.
@@ -150,6 +150,11 @@ A Direction entry (or preferences row) carries these parts:
   as the `Why:` does, and name only ids you answered. An id it does not name, or the same id in
   another entry, is still asked. It never answers an in-transition `Status:` whose tracking item
   finished: that status is stale, so fix it.
+
+Each field starts its own line, as above. A field may instead follow the bold statement on the
+bullet's own line, at a sentence start (`- **Statement.** Detail. Why: …`), and reads the same.
+`Status:` reads inline only after another inline field, so a roadmap bullet saying
+`Status: blocked` stays a roadmap item.
 
 ## Lifecycle Rules
 

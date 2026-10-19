@@ -1,8 +1,10 @@
 # Release Plan — v3.7.0, Whole-Develop Promotion
 
-**Status:** IN PROGRESS, 2026-10-02. Phase 0 classified every pending scope and Phase 1 prep is
-on `develop`. Re-derive rather than reading this line as a measurement:
-`prawduct-hook check-releasability --release v3.7.0`, `git log --oneline origin/main -1`.
+**Status:** COMPLETE as measured 2026-10-02. Phases 0–3 ran. `main` was promoted at `7ea3cb85`,
+and the tag and Release `v3.7.0` were published in one call. `check-released v3.7.0` verified 3 of
+3, the hand-dispatched `verify-release` run is green, and `develop` reopened on `3.7.1-dev`.
+Re-derive rather than reading this paragraph as a measurement: `git log --oneline origin/main -1`,
+`prawduct-hook check-released v3.7.0`.
 
 **Version:** v3.7.0, a **minor**, and the owner named the number ("let's get 3.7.0 PR'd and
 released to main", 2026-10-02). The minor was already decided before this cut.

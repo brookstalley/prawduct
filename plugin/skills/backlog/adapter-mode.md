@@ -131,7 +131,10 @@ ones `counts.untriaged` counts), so it is how you show an operator what needs tr
 sending them to the GitHub web UI. It scans every page and **refuses** `--per-page`/`--page`
 (re-run without them); every other filter still applies. These are not items yet — they have no
 stage, kind or area — so render `ID · title` and treat the missing facets as *untriaged*, not as
-missing data.
+missing data. It is **not** the upstream intake set: a `[prawduct]` report's body
+holds a provenance block, so it is in scope and never appears here — the `untriaged-upstream-reports`
+advisory counts open `[prawduct]`-titled items with no `stage`, from `cache-query unstaged`
+(`skills/report-bug/SKILL.md` § Receiving side).
 
 ### get <id> — view one item
 When you need one item's full detail (a direct "show me PFX-XXXX", or before an `update`):
@@ -176,8 +179,12 @@ sections** post-cutover: open/closed state + `status:` labels carry lifecycle pl
 `prawduct-hook backlog file --repo <r> --title T --body B [--stage S] [--kind K] [--area A]
 [--effort E] [--impact I] [--source SRC] [--refs R]`. Author an issue-standard title (`area: summary`, ≤72,
 atomic, 15-72 chars) + a sectioned body; set `--kind`. **A title failing §1 is REFUSED** with a
-`validation` error, not filed — rewrite and retry. The result may carry `lint[]` (body/label
-issue-standard hints — surface, never blocks). **Dedup-on-create runs on the cache**: check with
+`validation` error, not filed — rewrite and retry. `<r>` is this repo's own tracker and nothing
+else: any other repo is refused with `foreign-target` and nothing is sent (a bug in prawduct itself
+goes through `file-upstream`). A facet value too long to become a label (`<facet>:<value>` over 50
+characters) is refused naming its flag; put the detail in the body. Success prints `filed <id>:
+<url>` first. The result may carry `lint[]` (body/label issue-standard hints, printed as `lint
+(advisory, the write succeeded): …` — surface them, never re-file over them). **Dedup-on-create runs on the cache**: check with
 `cache-query search "<the title's distinctive words>" --area <area> --json` before filing. That
 search is deliberately cache-served rather than delegated — the provider's index is not
 read-your-writes, so an item filed seconds ago is invisible to it, which is exactly the moment this

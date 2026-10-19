@@ -106,7 +106,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run` today; `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
@@ -118,7 +118,10 @@ An absent file is the empty store.
   `files_reviewed`/`files_changed`, `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
-  `recommendation` and no severity. An observation is carried on `record_lint`'s terms: data
+  `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
+  `about: {review_id, fid}` names the finding or observation whose fix they judge; it counts the rest
+  in `observations_dropped` (absent when none), so "noticed nothing" and "everything dropped" stay
+  distinguishable. An observation is carried on `record_lint`'s terms: data
   *about* the review, not a finding *in* it. It never reaches `counts`, composition walks
   `findings` alone, and so no gate can read one. What it buys is an id the builder can answer
   against, so declining an observation stops costing the reasoning — before it had one, the only
@@ -145,7 +148,10 @@ An absent file is the empty store.
 - **Resolution fact `body`** — points at the finding it resolves (`{review_id, fid}`), the
   `disposition` (`fixed` | `waived`), the `verified_by` review that attests it, the `at_tree` it was
   verified against, and a `rationale` (required for `waived`). A resolution may only originate from a
-  `verify-resolutions` review and must reference a finding already in the store (fail-closed).
+  `verify-resolutions` review and must reference a finding already in the store (fail-closed). It may
+  instead confirm an observation fix: `fid` then carries the observation's `O-n` id (the slot a
+  disposition already uses for one; `R-n` and `O-n` never collide), and only `fixed` is accepted.
+  No gate reads it, because no gate reads observations.
 - **Disposition fact `body`** — the builder's answer to a finding that was *not* fixed: the target
   (`{review_id, fid}` — a finding's `fid` **or** an observation's `oid`, the one widening the
   additive-first norm sanctions), an `action` (`accept` | `file` | `fixed`), a `reason` (accept),
@@ -179,6 +185,18 @@ An absent file is the empty store.
   **Droppability:** a refusal sits on no coverage path and targets no other fact, so it is droppable
   at any time — dropping one loses a data point about the guard's yield, never a governance answer.
   Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
+  **Stop-hook blocks ride this kind** rather than one of their own, because a Stop gate is a control
+  like any guard and #563's owner decision (2026-09-30) asks for one firing shape across the class:
+  one fact per gate that blocked a Stop, `guard` = `stop-gate:<gate id>`, with `gate`, a `stop` id
+  shared by the facts of one Stop, and `co_gates` (the others that blocked it). A blocker carrying no
+  gate id records as `unattributed`. A deferred gate records nothing, since it did not block. Written
+  by `evidence.append_stop_block`.
+- **Session-start fact `body`** — empty: the envelope (`ts`, `actor.session`, `actor.plugin`) is the
+  record. One per session boundary (startup or `/clear`; a resume, compact or fork is a continuation
+  and records none), written by `evidence.append_session_start` from `cmd_clear`. It is the
+  denominator that turns a count of Stop blocks or guard firings into a per-session rate. No gate
+  reads it, and it is one of `evidence.OBSERVATIONAL_KINDS`. **Droppability:** droppable at any time
+  — dropping one undercounts sessions, never changes a governance answer.
 - **Test-run fact `body`** — one recorded suite run (#653): the `tree` it met (as `capture_tree`
   returned it just before a live run started — a run records no fact when that capture failed or
   when `gates._test_evidence_tree_valid` cannot confirm the tree held until it ended — or at ingest
@@ -260,6 +278,14 @@ clock — and a performance target stated against an estimate is a target stated
 - The markers themselves (`.prawduct/.critic-review-dispatch.json`,
   `.prawduct/.pr-review-dispatch.json`) are **Tier 3 per-clone state** — stopwatches, not answers —
   and are gitignored.
+
+**`trigger` (envelope key, `review.critic` only).** Which code path consolidated the review:
+`subagent-stop`, `explicit` (`critic-consolidate`) or `session-end-backstop` (the Stop hook's
+self-heal). Each caller passes its own name; `consolidate()` cannot infer it, because the three
+paths reach it with identical state — which is how a dead `SubagentStop` hook once hid behind the
+backstop. Required at `ledger-append` for `review.critic`, refused for `review.pr`. Lines written
+before the key existed lack it; read absence as *not recorded*, never as any particular path.
+`review-stats` reads it (`consolidated_by`, report schema 8).
 
 ### Tier 2 — Committed curated state (shared, source of truth for its domain)
 
@@ -393,8 +419,9 @@ probe-version bump supersedes the old advisory id with a fresh one.
 - **Facts are append-only.** No tool edits or deletes an existing fact line. (Read repair may skip a
   torn tail line, but never rewrites content.)
 - **A verdict never reads a derived view.** Gates read facts; views are for display only.
-- **A resolution fact requires a `verify-resolutions` origin and a pre-existing target finding** —
-  fail-closed. A `waived` disposition requires a non-empty rationale.
+- **A resolution fact requires a `verify-resolutions` origin and a pre-existing target finding or
+  observation** — fail-closed. A `waived` disposition requires a non-empty rationale; an observation
+  takes `fixed` only.
 - **The evidence store is shared per-clone via the git common dir**; every worktree appends to and
   reads the same log. Single-syscall append writes keep concurrent whole-line writes safe.
 - **Committed vs. gitignored is a deliberate boundary, not incidental**: shared decisions are

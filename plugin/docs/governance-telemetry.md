@@ -20,6 +20,7 @@ kind-named key (`review` for `review.*`):
 {"schema_version": 1,
  "event": "review.critic",
  "ts": "2026-06-10T16:20:00Z",
+ "trigger": "subagent-stop",
  "duration_seconds": 720,
  "project": "my-product",
  "scope": "my-feature",
@@ -38,6 +39,12 @@ kind-named key (`review` for `review.*`):
   reviewer was spawned; its interval ends at `ts` (at `review_written_at` on a `review.pr` that
   carries it). An absent key means *not measured*, never zero. `lib/review_dispatch.py` owns the
   interval, and every reader goes through it.
+- `trigger` is on every `review.critic` event and no other kind: which code path consolidated the
+  review — `subagent-stop` (the hook), `explicit` (`critic-consolidate`) or `session-end-backstop`
+  (the Stop hook's self-heal). The caller names itself (`ledger-append` refuses a `review.critic`
+  without one) because the three leave identical state, so a dead trigger covered by another looks
+  like a working one. Lines written before the field existed lack it. `review-stats` counts it as
+  `consolidated_by`, where a dead path reads as a zero beside the paths covering for it.
 - `review.critic` (the Critic, after writing its findings file) and
   `review.pr` (the `/prawduct:pr` skill after the PR review, via
   `--findings <evidence-path>` — required for `review.pr`, rejected for
@@ -141,6 +148,23 @@ The format is lock-in, so the queries came before the fields:
 all four counts, and its human rendering closes with the number question 3
 asks for.
 
+## Control firings and sessions (evidence store)
+
+Two facts outside the ledger feed the friction side of the picture. Both live in
+the clone-shared evidence store, because the ledger is per worktree and
+worktrees get deleted.
+
+- **A Stop-hook block** appends one `guard-refusal` fact per gate that blocked,
+  with `guard` = `stop-gate:<gate id>`. It uses the same sink as every other
+  control firing, so `prawduct-hook evidence list --kind guard-refusal` lists
+  them beside guard refusals. A deferred gate did not block and records nothing.
+- **A session boundary** (startup or `/clear`) appends one `session-start` fact,
+  the denominator for per-session rates.
+
+Their writers are `lib/evidence.py`'s `append_stop_block` and
+`append_session_start`. Neither is read by any gate. A failed append prints a `NOTE:` and changes
+nothing else.
+
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
 Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt
@@ -181,6 +205,9 @@ overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
+consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
+                 — review.critic events per `trigger`, every path listed even
+                 at zero; `unrecorded` is events without a known value
 top_files        [{path, actionable_findings, findings}]
 files_attributed_total  count behind the top_files cap
 learning         {written, fired, units_written, units_fired, units_uncited}
@@ -256,3 +283,151 @@ into noise. An unfamiliar id passes through verbatim (never bucketed
 under a known family). This folds **values, not keys**, so `schema_version`
 holds; the raw id stays in each ledger line untouched, so the fold is a
 read-time view, not a rewrite.
+
+## `prawduct-hook stats [--json] [--since <stamp>] [--until <stamp>]`
+
+What governance cost and what it caught, **per plugin version** (`major.minor`).
+It reads the clone-shared evidence store, not the ledger. Every fact there
+carries the plugin version that wrote it, and nothing is lost when a worktree is
+deleted. `review-stats` answers a different question: what a review costs, by
+mode and model, in this worktree. Exit 0 with a report (an empty store is an
+answer); exit 1 on bad arguments or a store that cannot be read. `--since` and
+`--until` scope facts by their `ts`, and take the same bounds `review-stats`
+does. A finding's outcome is read from every fact, whatever its date, so a
+finding raised inside the window and fixed after it counts as fixed.
+
+The definitions (their one home):
+
+**Cost**
+- **rounds per scope**: reviews per work unit (a review's `scope`, else its
+  branch), as median, p90 (nearest rank) and max. A unit whose reviews span a
+  version bump counts once in each version.
+- **review time**: measured only where the review's dispatch was clocked
+  (`dispatched_at` to the fact's `ts`), as median per review and per scope.
+  Reviews carrying only the reviewer's self-estimate are counted separately and
+  never summed into the measured total, because the estimate runs high.
+- **empty verify rounds**: `verify-resolutions` reviews that confirmed no
+  resolution and raised no blocking or warning finding.
+- **re-reviews**:
+  - *same interval*: a review of exactly the (base, head) tree pair an earlier
+    review covered.
+  - *same head tree*: a review of a head tree already reviewed, whatever its
+    base.
+  - "Already reviewed" reads the whole store, so under `--since` a review of a
+    tree reviewed before the window still counts.
+- **stop blocks**:
+  - Stops blocked, and stops blocked per recorded session. Only sessions with a
+    `session-start` fact are counted, and only blocks from those sessions are
+    divided by them, so a version whose early sessions predate the fact is not
+    inflated.
+  - Blocks by gate.
+  - *loops*: (session, gate) pairs where one gate blocked three or more times in
+    a session. A Stop that passes records nothing, so "consecutive" cannot be
+    measured.
+- **guard refusals**: control firings other than Stop blocks, per recorded
+  session (the same rule) and by guard. A base-advance transfer grant shares
+  their sink, but it is a pass, so it is counted under Benefit instead.
+
+**Benefit**
+- **findings**: per severity, raised, then what became of each one.
+  - Each finding's state comes from the same rule `render-dispositions` uses
+    (`dispositions.finding_state`), so the two reports never disagree about a
+    finding.
+  - A resolution outranks any disposition; among dispositions, the newest
+    wins.
+  - Outcomes are fixed (a verify pass confirmed it), fixed_unreviewed (recorded
+    fixed with no review), filed, accepted, waived and undispositioned. Anything
+    else lands in `other`, including a state a later plugin adds or a malformed
+    finding.
+  - *acted on* = (fixed + fixed_unreviewed + filed) / (those + accepted +
+    waived). Undispositioned findings are left out of the rate and reported
+    beside it. The denominator is exported as `answered`.
+- **blocking fixed by goal**, and **blocking and warnings fixed per scope**.
+  Both kinds of fixed count.
+- **red suite runs**: recorded suite runs with a failure.
+- **transfer grants**: base-advance transfers that granted, each a review round
+  the transfer saved, per recorded session.
+
+Rates with no denominator print as `-` (`null` in `--json`), never as zero.
+`--json` carries `schema_version`, `project`, `generated_at`, `window`,
+`schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
+by `major.minor` (`unknown` when a fact names no version).
+
+## `prawduct-hook contribute [--json]` and `contribute --send [--approve sha256:<digest>]`
+
+Anonymous stats contribution, **off unless the product's owner opts in**. The
+`Stats contribution` row in `.prawduct/artifacts/project-preferences.md` says
+`never`, `ask` or `always`. The template ships it unset, and an absent, unset,
+misspelled or unreadable row reads as `never`.
+
+- **Bare** previews every pending report's exact bytes and one digest over them,
+  and opens no socket. `--json` gives `pending` (window and report) and `digest`.
+- **`--send`** sends each report as one POST to prawduct's collector, whose
+  address is a plugin constant. Under `ask` it needs `--approve` with the
+  previewed digest; under `always` it needs none. Exit 2 when the product has not
+  opted in, the digest does not match, or the store holds facts a newer plugin
+  wrote; exit 1 when a send fails.
+- **A report** covers one ISO week for one plugin version, offered once the week
+  ended at least seven days ago, and only the eight most recent such weeks. It
+  carries only keys from `lib/contribution_schema.json`, the allowlist, and every
+  value is an integer, a stepped number, a fixed-list value or a volume band.
+  The metrics are this file's `stats` definitions over that week, coarsened, and
+  a metric whose denominator is under the schema's floor is left out.
+- **Sent at most once.** A window is recorded as sent before its request, in
+  `<git-common-dir>/prawduct/contributions.json`, and the record is withdrawn only
+  when the report provably was not stored: the request never arrived (a refused
+  connection, a failed proxy tunnel or TLS handshake), or the reply says so (400,
+  429 or 503). A send that may have arrived keeps its window spent.
+- **Where it shows up:** under `ask` or `always`, the session briefing says when
+  reports are waiting, and it names a row that is present but misspelled.
+  `/prawduct:janitor` asks once whether to opt in, while the row is absent or
+  still unset.
+
+## `prawduct-hook aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]`
+
+Governance stats pooled **across products**, per plugin version. It has two
+inputs, and both are in the contribution report's shape, so every number has
+one definition:
+
+- **Local products the operator names**, as arguments or one per line in
+  `--from-file` (blank and `#` lines are skipped). Each product's evidence store
+  becomes the weekly reports `contribute` would build for it, over every settled
+  week rather than only the eight it offers. Nothing is discovered. A product that
+  cannot be read is skipped with its reason, and the rest still report. The
+  reasons are `invalid-path`, `not-a-git-repo`, `no-store`, `unreadable-store`,
+  `same-store` (a second path into one clone, whose worktrees share a store) and
+  `unreadable-sent-record`.
+- **Contributed reports** from the collector's daily bundles. `--bundles` reads
+  one file, or every `*.jsonl` in a directory. `--collector` fetches every bundle
+  the collector's index lists, from the origin of the pinned upload endpoint.
+  Only `--collector` opens a socket: a GET with redirects refused and each
+  response capped. Every line is re-validated against the allowlist. A line that
+  fails is counted under `refused`; a line written under a newer allowlist
+  schema is counted under `schema_ahead`, since a newer prawduct can read it.
+  Identical lines are kept, because two contributors can send identical reports.
+
+**Counted once.** When contributed data is included, a window the product's
+clone has already sent is left out and counted as `already_contributed`,
+because it is in a bundle. So name every bundle when using `--bundles`: a window
+sent on a day whose bundle is not named appears in neither input. A report sent
+but not yet flushed is missing for up to a day.
+
+**Per version** (`major.minor`, with `-dev` for dev builds; versions never
+pool):
+- reports by origin;
+- the first and last ISO week;
+- a count of reports per volume band;
+- for each metric, `n`, `median` and `trimmed_mean`, which drops a tenth of the
+  values from each end, rounded down.
+
+Each report is one product-week for one version, and every number is over
+reports. A metric a report left out under its floor is absent there, not zero,
+so `n` varies by metric. The view uses medians and trimmed means because bundle
+lines carry no identity, so a poisoned line cannot be found.
+
+Exit 0 with a report (no reports is an answer); exit 1 on bad arguments, a
+`--bundles` path that cannot be read, or a `--collector` fetch that fails, since a
+view missing some bundles would look complete. `--json` carries
+`schema_version`, `generated_at`, `sources` (`local`, `local_skipped`, and
+`contributed`, which is `null` without a bundle source) and `by_version`. It
+writes nothing.

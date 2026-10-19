@@ -68,21 +68,18 @@ How many plans, and how big, is settled before chunking begins.
 - **A plan that will not ship in about three sessions is a program, not a plan.** Express it as backlog items plus a per-wave plan drawn when that wave starts. A long-lived plan goes stale faster than it is built — its Status boxes stop describing anything, and its frictions accumulate in the learnings rules instead of reaching the next plan.
 - **Push back on a request for one monolithic plan.** Name what it costs — review quality across a large diff, staleness, and the coupling that lets one finding block unrelated work — and propose the split with its wave boundaries. The user decides (Principle 23); they decide with the tradeoff stated.
 
-### Requirements Confidence
+### Goals
 
-Every build plan opens with a **Requirements Confidence** level — an honest self-assessment of whether you understand what to build well enough to build it well (Principle 6):
+Every build plan opens with **Goals** — the alignment pass's written form (`methodology/building.md` "Before You Build"), placed where a cold session reads it before any chunk. Mid-build decisions are made against it, and the boundary review judges the work by it.
 
-- **High**: problem, success criteria, and scope each statable in one sentence, no significant unknowns.
-- **Medium**: most is clear but specific assumptions are unconfirmed. List them; expect to revisit in early chunks.
-- **Low**: significant unknowns remain. List them and what would resolve them. Either the first chunk closes the gap, or you proceed knowingly — silent low-confidence work is the failure mode the field exists to prevent.
+- **Response taken** — which of the four, and when the owner answered.
+- **Product** — what the work is for and for whom. Cite the brief's near-term and North Star rather than restating them.
+- **Architecture** — what must hold, and what must stay possible (the `accommodate` items this work touches).
+- **Constraints**, stated and sourced, and **tradeoffs accepted** — including debt taken knowingly, each with what would make it worth revisiting. Debt that definitely must be paid also gets a backlog item; debt that may never matter does not.
+- **Decisions made mid-build** — appended while building, one line each naming the goal or prior choice that settled it; mark any the goals did not settle.
+- **Level** — High, Medium, or Low: an honest read of whether you understand what to build well enough to build it well (Principle 6). Medium or Low says what would raise it — the cheapest concrete step, not "more thinking".
 
-The field is required but not a gate — committing to a level forces honesty. When Medium or Low, also list *what would raise it*: not "more thinking" but the cheapest concrete step — a clarifying question, a 30-minute spike, a 5-line scope sketch.
-
-**Record inferred answers as vetoable assumptions.** When you fill a requirement yourself rather than confirming it (intentional inference — `methodology/discovery.md` "Calibrate Rigor"), capture it in the plan's **Open assumptions** field:
-
-`[ASSUMPTION: <what you assumed> | HIGH/MED/LOW impact | user can correct / override / defer]`
-
-An assumption is a decision made on the user's behalf, surfaced for correction — the impact tag tells the reader which to check first.
+**Say what the owner said and what you inferred.** Mark each inference in plain words — *"Inferred: one household; no auth beyond a shared device"* — so the owner, and the boundary review, can find it. An inference is a decision made on the owner's behalf: never record one as their ruling.
 
 **Chunks usually work best** as vertical slices (working, testable functionality across layers), in dependency order, each verifiable without later chunks and small enough for one Critic pass — the last is the firm limit. A thin first slice through the whole architecture proves the layers connect before you widen it.
 
@@ -139,8 +136,8 @@ head. A departure from a norm is never silent — you conform, or you record the
 
 `[DECISION: <what was decided> | <why, engaging the norm's why> | user can veto/override]`
 
-— the decision sibling of the `[ASSUMPTION: …]` form above. Amending a norm to bless your own code
-is the laundering tell (`/prawduct:methodology norms`); the Critic routes an unrecorded departure to a
+— the form for a departure; an inference is marked in prose instead ("Goals" above). Amending a
+norm to bless your own code is the laundering tell (`/prawduct:methodology norms`); the Critic routes an unrecorded departure to a
 **BLOCKING** finding.
 
 **New structural context prompt.** When a chunk introduces a new execution context (a process, a
@@ -181,7 +178,7 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 - **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped" and the stop-hook gate also skips. The only Type that bypasses Critic enforcement entirely — use deliberately.
 - **`cumulative-final`** — marker on the last chunk of a multi-chunk plan: the chunk's own review IS the one `/prawduct:critic cumulative` against `merge-base...HEAD` (commit first, run once — cumulative is a strict superset of `final`, so no separate `final`). That review is also the `/prawduct:pr create` gate (Principle 14 at the bundle level).
 - **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small (an 80-LOC project-wide rename can be trivial; a 5-line state-machine change cannot). Two machine-enforced layers at chunk close:
-  1. **File-set bounds (hard):** no edits under `skills/`, `methodology/`, or `templates/`; no edits to `CLAUDE.md`; no test-file deletions; no new files — the catastrophic-blast-radius classes regardless of size.
+  1. **File-set bounds (hard):** no edits under `skills/`, `methodology/`, `templates/` or `agents/`; no edits to root `CLAUDE.md` or `AGENTS.md`; no test-file deletions; no new files — the catastrophic-blast-radius classes regardless of size.
   2. **Required `**Trivial because:**` rationale (hard):** non-empty, or BLOCKING at the stop-hook. The rationale is the semantic claim Critic Goal 3 validates against the diff — strong rationale names the structural property bounding risk (`"project-wide rename of FooBar to BazQux; no behavior change"`); weak rationale describes feeling (`"small change"`) and can't be validated.
 
   **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
@@ -198,7 +195,7 @@ The Critic's ref-drift check (Goal 2) verifies backticked file paths in the curr
 
 When a chunk wraps a foreign API or SDK — anything whose surface the agent doesn't own — the first step is reading source or running discovery probes, not drafting handlers from documentation. Vendor docs lag code; training data lags further; tests written against an assumed signature pass against fakes mirroring the same assumption, then fail at integration time.
 
-**The rule.** The chunk declares `**Foreign API:** <name>` and prepends a `verify-api` step as Done-when step 0 (existing numbering preserved). `verify-api` means, in preference order: read the foreign code directly (SDK/MCP source, `.pyi` stubs); probe a live instance and capture the actual response shape; or, if neither is possible, document the docs consulted and flag the chunk `Requirements Confidence: Medium` with the assumed surface as an open assumption. Fakes are built *after* `verify-api` confirms the real shape. The Critic's Goal 2 emits a WARNING when a chunk declares `Foreign API:` but no `verify-api` step appears in Done-when (case-insensitive substring — the literal token `verify-api` should appear; the filled example in `templates/build-plan.md` shows the shape). When discovery flags an external SDK in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry it into the plan on the chunk that first touches the wrapper — the annotation is what triggers the check.
+**The rule.** The chunk declares `**Foreign API:** <name>` and prepends a `verify-api` step as Done-when step 0 (existing numbering preserved). `verify-api` means, in preference order: read the foreign code directly (SDK/MCP source, `.pyi` stubs); probe a live instance and capture the actual response shape; or, if neither is possible, document the docs consulted and record the assumed surface in the plan's Goals as an inference, with Level Medium. Fakes are built *after* `verify-api` confirms the real shape. The Critic's Goal 2 emits a WARNING when a chunk declares `Foreign API:` but no `verify-api` step appears in Done-when (case-insensitive substring — the literal token `verify-api` should appear; the filled example in `templates/build-plan.md` shows the shape). When discovery flags an external SDK in `infrastructure_dependencies` (see `methodology/discovery.md` "Surface Infrastructure Dependencies"), carry it into the plan on the chunk that first touches the wrapper — the annotation is what triggers the check.
 
 ### Exposed API: Versioning, Deprecation & Error Model
 

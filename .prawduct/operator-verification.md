@@ -133,12 +133,17 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 >    "debugged").
 > 2. **Attribute the consolidation, do not just observe it.** Three things can consolidate:
 >    this hook, the skill's own explicit `critic-consolidate`, and the session-end backstop.
->    Nothing currently RECORDS which one fired — so "findings appeared" is consistent with
+>    Until #182 nothing recorded which one fired — so "findings appeared" was consistent with
 >    the hook still being dead. That ambiguity is precisely why this went unnoticed for 17
 >    days, and it bit again during the 2026-07-27 review, where the reviewing agent reported
 >    the trigger "did consolidate without an explicit call" and had no way to know that.
->    Until a trigger is recorded on the `review.critic` event, this step must be run with the
->    skill's explicit consolidate call suppressed, or the verdict means nothing.
+>    **Since #182 (2026-10-12) the `review.critic` ledger event carries `trigger`** — read it
+>    (`grep '"event": "review.critic"' .prawduct/.governance-ledger.jsonl | tail -1` — not a
+>    bare `tail -1`: consolidation appends `learning.fired` lines after the review's) instead of inferring from what appeared:
+>    `subagent-stop` passes, `session-end-backstop` fails (the hook did not fire), and
+>    `explicit` is no verdict (an explicit call got there first). Run it on a three-reviewer
+>    `final`/`cumulative` roster: a single-pass review dispatches no `critic-reviewer`
+>    subagent, so it cannot exercise this hook at all.
 
 **Added:** 2026-07-10 (critic-persistence-redesign Chunk 04)
 
@@ -153,11 +158,12 @@ open assumption in `artifacts/build-plan-worktree-compat.md`.
 > fact 2 was resolved by analysis on 2026-07-27, was a real defect from birth, and is now pinned
 > by `tests/test_critic_reviewer_agent.py`. Only *delivery* is still owed.
 >
-> **Blocked for an unambiguous verdict, and sequence matters.** Three things can consolidate —
-> this hook, the skill's explicit call, and the session-end backstop — and nothing records which
-> one did (`#182`). Until a trigger is recorded on the `review.critic` event, a run that sees
-> findings appear cannot distinguish a working hook from a dead one, which is exactly how this
-> went unnoticed for seventeen days. **Do #182 first, or the live run cannot answer.**
+> **Was blocked for an unambiguous verdict; unblocked 2026-10-12 by #182.** Three things can
+> consolidate — this hook, the skill's explicit call, and the session-end backstop — and until
+> #182 nothing recorded which one did, so a run that saw findings appear could not distinguish a
+> working hook from a dead one. The `review.critic` event now carries `trigger`, set by each
+> caller; the verdict is that field (rule in addition 2 above). Still owed: the live run, on a
+> released plugin that carries #182 — the installed plugin, not this checkout, is what fires.
 **Where to verify:** A real Claude Code session in this repo AFTER the plugin is
 updated to a version carrying `agents/critic-reviewer.md` + the `SubagentStop` hook
 (this session runs the plugin from `~/.claude/plugins/cache/.../2.3.0`, so the new
@@ -1417,3 +1423,82 @@ whether it changed the action.
 > **Noted because it bears on when this drains:** `operator_verification_required` is `false` in
 > this repo, so nothing blocks on this entry. That is the standing configuration, not a lapse, and
 > it means the entry drains when someone chooses to read it rather than at a gate.
+
+## VRF-022 — telemetry collector (#950) — deployed, and a live round trip from the client
+
+**Status:** verified
+**Verified:** 2026-10-03, on the owner's Cloudflare account (brooks@tangentry.com).
+**Added:** 2026-10-03 (`build-plan-telemetry-collector.md` § Deploy)
+
+**What was deployed.** Bucket `prawduct-telemetry` and Worker `prawduct-collector` (version
+`84518f5e-e084-412b-9ca1-a1d7688b0efb`) at `https://prawduct-collector.brooks-76d.workers.dev`,
+with a `0 0 * * *` cron. The deploy was by Wrangler 4.147.0, from `collector/`.
+
+**Result: every route answers as its contract says.**
+- `GET /health` → `200 {"claim_outstanding":false}`.
+- A posted preview wrapper → `400 {"refused":"unknown-key"}`.
+- The README's `dev:true` fixture report → `204`.
+- An unknown path → `404`. `GET /bundles/index.json` before the first flush → `404`.
+
+**Result: nothing beyond the report is stored.** Each pending object, read back through the R2
+API, has empty `custom_metadata` and `http_metadata`. Its key is a content hash plus random bits,
+with no time in it. Script settings report `logpush: false` and no tail consumers.
+`observability` was also PATCHed explicitly off; the API reports a disabled setting as `null`
+both before and after.
+
+**Result: the client round trip is byte-exact.**
+- A scratch repo (synthetic reviews written as plugin `3.7.1-dev.1`, row
+  `Stats contribution: always`) ran `prawduct-hook contribute --send` against the pinned
+  endpoint. It printed `sent 2026-W38:3.7-dev` and recorded the window.
+- A second send found nothing waiting.
+- The stored object equals the previewed bytes exactly. It is marked `dev:true`, as is the
+  fixture, so both are identifiable as synthetic in the first public bundle.
+
+## VRF-023 — telemetry collector (#950) — the first nightly flush, live
+
+**Status:** verified
+**Verified:** 2026-10-04 00:07 UTC, seven minutes after the first scheduled flush.
+**Added:** 2026-10-03 (`collector/README.md` § Check on the first live flush)
+
+**Result: the first flush published, and left nothing pending.**
+- `GET /bundles/index.json` → `200 {"days":["2026-10-04"]}`.
+- `GET /bundles/2026-10-04.jsonl` → `200`, two lines. They are the VRF-022 round-trip report
+  (`iso_week` 38) and the README fixture (`iso_week` 39), both `"dev":true`, sorted by their bytes
+  (`{"bl…` before `{"de…`).
+- `GET /health` → `200 {"claim_outstanding":false}`.
+- The R2 API listing of `pending/` returns zero objects. The first attempt failed with
+  `Authentication error` because Wrangler's OAuth token had expired. After a refresh (`wrangler
+  whoami`), the listing succeeded. The whole bucket holds `bundles/2026-10-04.jsonl` (545 bytes),
+  `bundles/index.json` (23 bytes) and `claims/current.json` (43 bytes, the retired-claim mark).
+
+**What this run proves, and what it does not.** On the live binding, the create-only claim (`onlyIf`
+with `If-None-Match: *`) and the claim retirement by a conditional overwrite both succeeded. A
+precondition R2 rejected would have left the claim outstanding. It does not show the overlap guard
+refusing a concurrent run, because only one run happened. That case stays covered by the fakes in
+`collector/test/overlap.test.mjs`.
+
+**What to check after 00:00 UTC on 2026-10-04:**
+- `GET /bundles/index.json` lists `2026-10-04`.
+- `GET /bundles/2026-10-04.jsonl` holds the two synthetic `dev:true` lines (VRF-022), sorted by
+  their bytes.
+- `GET /health` reads `{"claim_outstanding":false}`.
+- R2 → `prawduct-telemetry` → Objects, filtered on `pending/`, is empty.
+
+**Why a live check:** the flush's overlap safety rests on R2 honouring `onlyIf` preconditions on
+`put` (`etagMatches`, and `If-None-Match: *` in `Headers`). The in-memory fakes model them; only
+the live binding proves R2 does.
+
+> === 2026-10-03 — DRAIN DISPOSITION: LIVE-ONLY, AND IT DRAINS ITSELF AT THE FIRST FLUSH ===
+>
+> **The static half is already a test.** The flush's merge, sort, idempotence and overlap handling
+> are `collector/test/flush.test.mjs` and `collector/test/overlap.test.mjs`, run against fakes that
+> model both `onlyIf` forms and are red-verified by mutation.
+>
+> **What it turns on:** whether the live R2 binding honours those preconditions, and whether the
+> first scheduled run publishes and empties `pending/`. Only Cloudflare's runtime can show that.
+>
+> **Whose harness answers it:** the Worker's own cron at 2026-10-04 00:00 UTC, read through the
+> public `GET` routes and the R2 object listing. It needs no product and no release.
+>
+> **It gates nothing:** `operator_verification_required` is `false` in this repo. #950 stays open
+> until it is verified.

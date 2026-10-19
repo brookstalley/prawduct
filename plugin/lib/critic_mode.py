@@ -299,8 +299,14 @@ def infer_mode(
     # round for it now — a verify pass over a non-blocking fix, a cumulative
     # over a clean tree mid-plan — answer `deferred` instead. Asked lazily,
     # only when one of those rules fires, because it walks history.
-    def _extension():
-        return extension_deferral(project_dir, prawduct_dir, plan, progress)
+    def _extension(clean_tree: bool = False):
+        owed = extension_deferral_owed(project_dir, prawduct_dir, plan, progress)
+        if owed is None:
+            return None
+        kind, why = owed
+        # On a clean tree the owed boundary `cumulative` is the review to run
+        # now, not one to defer to.
+        return None if clean_tree and kind == OWED_BOUNDARY else why
 
     if _rule_verify_resolutions_fires(prawduct_dir, project_dir):
         ext = _extension()
@@ -321,7 +327,7 @@ def infer_mode(
 
     cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
     if cumulative_reason:
-        ext = _extension()
+        ext = _extension(clean_tree=True)
         if ext:
             return MODE_DEFERRED, f"extension-deferred (mid-plan, clean tree): {ext}"
         mid = _mid_plan_answer(project_dir, prawduct_dir, plan, progress, "rule-2")
@@ -345,6 +351,19 @@ def infer_mode(
 
     final_reason = _rule_final_fires(project_dir, total, complete)
     if final_reason:
+        # A `Type: cumulative-final` last chunk's review IS the boundary
+        # `cumulative` (planning.md), which reviews the committed bundle — so a
+        # `final` of the uncommitted chunk first re-pays 4-10 minutes the
+        # cumulative re-derives, and any fix it prompts then buys a verify pass
+        # the cumulative would have covered too. Measured on consumers: every
+        # cumulative-final plan inspected ran final → verify → cumulative.
+        if boundary_cumulative_still_owed(project_dir, prawduct_dir, plan, progress):
+            return MODE_DEFERRED, (
+                f"cumulative-final deferral: {final_reason}, and the chunk declares "
+                f"`Type: cumulative-final`; {LAST_CHUNK_BOUNDARY_STEP}. An explicit "
+                "`/prawduct:critic final` still reviews the uncommitted chunk first. "
+                f"Grounded on {_plan_relation_note(plan)}"
+            )
         return "final", f"rule-3 final: {final_reason}"
 
     # Rule 4: the default when nothing else fired is the INNER-STAGE review of
@@ -846,7 +865,7 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
     # THE predicate again (CRT-5D8Q). This was a FIFTH bare-suffix classifier,
     # found by the class scan the change-log-gate fix triggered — the same
     # `.endswith(".md")` shape, and wrong in the same direction: governance-
-    # protected prose (`skills/`, `methodology/`, `templates/`, root CLAUDE.md)
+    # protected prose (the set `buildplan_refs.protected_path_violation` owns)
     # IS judgeable, so a committed delta of only skill prose used to suppress the
     # verify-resolutions suggestion as though nothing reviewable had landed.
     judgeable_delta = coverage_algebra.judgeable_files(sorted(delta))
@@ -1120,6 +1139,104 @@ def later_review_owed(progress) -> bool:
     return progress.total - progress.complete >= 2
 
 
+def declares_boundary_cumulative(prawduct_dir: Path, plan) -> bool:
+    """Whether the plan's LAST Status chunk declares ``Type: cumulative-final``.
+
+    That chunk's review is the one boundary ``cumulative`` (planning.md), so a
+    ``final`` before it re-pays what the cumulative re-derives, and a fix made
+    after an earlier review rides it. ``False`` whenever the plan or the chunk's
+    field cannot be read: this only ever relaxes a gate or withholds a round,
+    and a predicate that could not run must do neither.
+    """
+    if plan is None or plan.path is None or not Path(plan.path).is_file():
+        return False
+    try:
+        content = Path(plan.path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    ids = buildplan_refs.status_chunk_ids(content)
+    if not ids:
+        return False
+    chunk_type, _error = buildplan_refs._parse_build_plan_chunk_type(
+        prawduct_dir, ids[-1], Path(plan.path)
+    )
+    return chunk_type == "cumulative-final"
+
+
+#: The two answers :func:`review_owed_after` gives: a later CHUNK's review
+#: starts from the last reviewed state, while the boundary ``cumulative`` spans
+#: the branch from the merge-base. Both cover a fix committed before them, but
+#: the advice names the review that will, so the two stay distinguishable.
+OWED_LATER_CHUNK = "later-chunk"
+OWED_BOUNDARY = "boundary"
+
+
+def review_owed_after(
+    project_dir: Path, prawduct_dir: Path, plan, progress, chain: list[dict]
+) -> "tuple[str, str] | None":
+    """Which review the branch's plan still owes after the newest one, and why.
+
+    The one owner of "a later review will cover this", read by the Stop gate's
+    extension deferral, inference and the review close. ``chain`` is the review
+    chain the newest review stands on (:func:`review_chain`). Returns
+    ``(kind, reason)`` or ``None``:
+
+    - nothing is owed once a ``cumulative`` is on the chain
+      (:func:`boundary_review_on_chain`): after it, unticked boxes cannot say
+      whether a later chunk is still to be built;
+    - :data:`OWED_LATER_CHUNK` when two or more chunks are unticked
+      (:func:`later_review_owed`);
+    - :data:`OWED_BOUNDARY` when one chunk is unticked and the plan's boundary
+      review is a ``cumulative`` that has not run: the last chunk declares
+      ``Type: cumulative-final``, or the plan is short and defers
+      (:func:`short_plan_deferral`). The lone unticked box is ambiguous for a
+      chunk review (just reviewed, or still to build), but not here: whichever
+      it is, the cumulative is still owed, and nothing short of it discharges
+      it.
+
+    ``None`` on any read failure, through the predicates it composes.
+    """
+    if progress.total <= 0 or boundary_review_on_chain(chain):
+        return None
+    left = progress.total - progress.complete
+    if later_review_owed(progress):
+        return OWED_LATER_CHUNK, (
+            f"{left - 1} more chunk(s) of {plan.rel or 'the plan'} follow, so a later "
+            "review is owed"
+        )
+    if left != 1:
+        return None
+    if declares_boundary_cumulative(prawduct_dir, plan):
+        return OWED_BOUNDARY, (
+            "the plan's last chunk is `Type: cumulative-final`, so its review is the "
+            "boundary `cumulative`, which has not run yet"
+        )
+    deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
+    if deferral.defers:
+        return OWED_BOUNDARY, (
+            f"the plan is short ({deferral.reason}), so the boundary `cumulative` is "
+            "every chunk's review and has not run yet"
+        )
+    return None
+
+
+def boundary_cumulative_still_owed(project_dir: Path, prawduct_dir: Path, plan, progress) -> bool:
+    """Whether a ``Type: cumulative-final`` last chunk's boundary ``cumulative``
+    has yet to run on this branch — asked of :func:`review_owed_after` over the
+    newest review's chain, so once that cumulative stands, a later edit gets a
+    ``verify-resolutions`` delta, not a second full cumulative."""
+    if not declares_boundary_cumulative(prawduct_dir, plan):
+        return False
+    newest = _newest_branch_review(project_dir)
+    chain: list[dict] = []
+    if newest is not None:
+        from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        chain = review_chain(evidence.read_facts(project_dir).get("facts") or [], newest)
+    owed = review_owed_after(project_dir, prawduct_dir, plan, progress, chain)
+    return owed is not None and owed[0] == OWED_BOUNDARY
+
+
 def _newest_branch_review(project_dir: Path) -> "dict | None":
     """The most recent ``review`` fact recorded on the checked-out branch, or ``None``.
 
@@ -1209,6 +1326,22 @@ def boundary_review_on_chain(chain: list[dict]) -> bool:
 def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) -> "str | None":
     """Why the next review will cover this state, or ``None`` when it will not.
 
+    :func:`extension_deferral_owed`'s reason without its kind — for the Stop
+    gate and ``cost-of-commit``, which defer either way.
+    """
+    owed = extension_deferral_owed(project_dir, prawduct_dir, plan, progress)
+    return owed[1] if owed else None
+
+
+def extension_deferral_owed(
+    project_dir: Path, prawduct_dir: Path, plan, progress
+) -> "tuple[str, str] | None":
+    """``(kind, reason)`` when the next review will cover this state, else ``None``.
+
+    ``kind`` is :func:`review_owed_after`'s. Inference needs it: on a clean
+    tree the boundary ``cumulative`` is not a review to defer TO, it is the
+    review to run now, so only a later chunk's review defers there.
+
     A review of the uncovered work since the last reviewed tree is not owed NOW
     only when ALL of these hold — each is the answer to a way the deferral can
     skip a review that is owed:
@@ -1230,17 +1363,21 @@ def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) ->
        only through ``verify-resolutions``. Nor a ``cumulative`` on that chain
        (:func:`boundary_review_on_chain`): after the boundary review, unticked
        boxes cannot say whether a later chunk exists.
-    3. **A later review is owed** (:func:`later_review_owed`). With (1), two or
+    3. **A later review is owed** (:func:`review_owed_after`). With (1), two or
        more unticked chunks means "this reviewed chunk, and at least one after
-       it", which is what makes the later review real.
+       it", which is what makes the later review real. On the last chunk, the
+       plan's boundary ``cumulative`` is owed when that chunk declares
+       ``Type: cumulative-final`` or the plan is short — and it spans the branch
+       from the merge-base, so it covers a fix committed before it.
     4. **A covered frontier exists** (``gates.covered_frontier``), so that later
        ``chunk``/``final`` review has a reviewed state to start from and covers
-       everything after it.
+       everything after it. The boundary ``cumulative`` needs none: its interval
+       starts at the merge-base.
 
     ``None`` on any failure, so a predicate that could not run never relaxes
     anything.
     """
-    if not later_review_owed(progress) or progress.current_id is None:
+    if progress.current_id is None or progress.total - progress.complete < 1:
         return None
     newest = _newest_branch_review(project_dir)
     if newest is None:
@@ -1255,15 +1392,24 @@ def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) ->
 
     facts = evidence.read_facts(project_dir).get("facts") or []
     chain = review_chain(facts, newest)
-    if _open_blocker_on_chain(facts, chain) or boundary_review_on_chain(chain):
+    if _open_blocker_on_chain(facts, chain):
         return None
+    owed = review_owed_after(project_dir, prawduct_dir, plan, progress, chain)
+    if owed is None:
+        return None
+    kind, why = owed
+    if kind == OWED_BOUNDARY:
+        return kind, (
+            f"chunk {progress.current_id} was reviewed with no open blocker and {why}. "
+            "That review spans the branch from the merge-base, so it covers this work "
+            "too. Commit, then run `/prawduct:critic` when the chunk is done — it infers "
+            "the cumulative"
+        )
     frontier = gates.covered_frontier(project_dir)
     if frontier is None:
         return None
-    left = progress.total - progress.complete
-    return (
-        f"chunk {progress.current_id} was reviewed with no open blocker and {left - 1} more "
-        f"chunk(s) of {plan.rel or 'the plan'} follow, so a later review is owed, and it "
+    return kind, (
+        f"chunk {progress.current_id} was reviewed with no open blocker and {why}, and it "
         f"starts from the last reviewed state ({frontier['commit'][:12]}) — it covers this "
         "work too. Commit and carry on"
     )
@@ -1309,6 +1455,18 @@ def _unticked_labels(plan_path) -> tuple:
     )
 
 
+#: What a builder does on a plan's last chunk when that chunk's review IS the
+#: boundary ``cumulative`` — a short plan's, or a ``Type: cumulative-final``
+#: chunk's. One statement, because inference, the Stop gate and the short-plan
+#: rationale all say it, and a second wording is how two of them came to
+#: disagree about whether a ``final`` runs first.
+LAST_CHUNK_BOUNDARY_STEP = (
+    "this is the last chunk and the boundary review is its review: "
+    "commit it, then `/prawduct:critic` infers `cumulative`, which is "
+    "this chunk's review and the PR gate's evidence — no separate `final`"
+)
+
+
 def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     """What a builder on a deferring short plan does next — the ONE statement.
 
@@ -1324,11 +1482,7 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     built — so the text says to build it first.
     """
     if deferral.last_chunk:
-        return (
-            "this is the last chunk and the boundary review is its review: "
-            "commit it, then `/prawduct:critic` infers `cumulative`, which is "
-            "this chunk's review and the PR gate's evidence — no separate `final`"
-        )
+        return LAST_CHUNK_BOUNDARY_STEP
     named = (
         f" (unticked now: {', '.join(deferral.unticked)})" if deferral.unticked else ""
     )

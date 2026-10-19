@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "about": "The allowlist for an anonymous prawduct stats report. A report may carry only these keys. Every value is an integer, a number on the field's step, one of the field's enum values, or one of the volume bands below, so no field can hold text. A field naming floor_on is left out of the report when that denominator is under floor.",
+  "floor": 5,
+  "bands": ["0", "1-9", "10-49", "50-199", "200+"],
+  "fields": {
+    "schema": {"type": "integer", "min": 1, "max": 1, "required": true},
+    "iso_year": {"type": "integer", "min": 2025, "max": 2100, "required": true},
+    "iso_week": {"type": "integer", "min": 1, "max": 53, "required": true},
+    "plugin_major": {"type": "integer", "min": 0, "max": 999, "required": true},
+    "plugin_minor": {"type": "integer", "min": 0, "max": 999, "required": true},
+    "dev": {"type": "enum", "values": [false, true], "required": true},
+
+    "sessions": {"type": "band"},
+    "scopes": {"type": "band"},
+    "reviews": {"type": "band"},
+
+    "rounds_per_scope_median": {"type": "number", "step": 0.5, "min": 0, "max": 100, "floor_on": "scopes"},
+    "rounds_per_scope_p90": {"type": "number", "step": 0.5, "min": 0, "max": 100, "floor_on": "scopes"},
+    "review_minutes_median": {"type": "number", "step": 1, "min": 0, "max": 600, "floor_on": "measured_reviews"},
+    "review_minutes_per_scope_median": {"type": "number", "step": 1, "min": 0, "max": 6000, "floor_on": "measured_scopes"},
+    "estimated_only_review_share": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "reviews"},
+    "empty_verify_round_share": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "verify_rounds"},
+    "rereview_same_interval_share": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "reviews"},
+    "rereview_same_head_share": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "reviews"},
+    "stops_blocked_per_session": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "sessions"},
+    "guard_refusals_per_session": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "sessions"},
+    "transfer_grants_per_session": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "sessions"},
+
+    "blocking_per_review": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "reviews"},
+    "warning_per_review": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "reviews"},
+    "note_per_review": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "reviews"},
+    "blocking_acted_on_rate": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "answered_blocking"},
+    "warning_acted_on_rate": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "answered_warning"},
+    "note_acted_on_rate": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "answered_note"},
+    "blocking_fixed_per_scope": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "scopes"},
+    "warning_fixed_per_scope": {"type": "number", "step": 0.1, "min": 0, "max": 100, "floor_on": "scopes"},
+    "red_test_run_share": {"type": "number", "step": 0.05, "min": 0, "max": 1, "floor_on": "test_runs"}
+  }
+}

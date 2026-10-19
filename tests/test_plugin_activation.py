@@ -35,6 +35,12 @@ if _PLUGIN_ROOT not in sys.path:
 
 from lib import plugin_activation as pa  # noqa: E402
 
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
+
+from fixtures.hook_env import isolated_hook_run  # noqa: E402
+
 
 def _manifest(tmp_path: Path, payload) -> Path:
     path = tmp_path / "installed_plugins.json"
@@ -374,14 +380,18 @@ def test_default_plugins_file_is_resolved_at_call_time(monkeypatch):
 _HOOK = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
 
 
-def _run(args, *, config_dir=None, cwd=None):
+def _run(args, *, config_dir, cwd=None):
+    """Run ``check-plugin-active`` from ``cwd``, or from the test's own tmp dir.
+
+    Never from the ambient checkout: these tests assert on the whole of stderr,
+    and the hook's environment notices would land there (``fixtures.hook_env``).
+    """
     env = dict(os.environ)
-    if config_dir is not None:
-        env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+    env["CLAUDE_CONFIG_DIR"] = str(config_dir)
+    project = Path(cwd) if cwd else Path(config_dir).parent
     return subprocess.run(
         [sys.executable, str(_HOOK), "check-plugin-active", *args],
-        capture_output=True, text=True, env=env,
-        cwd=str(cwd) if cwd else None,
+        capture_output=True, text=True, **isolated_hook_run(project, env=env),
     )
 
 
@@ -515,6 +525,31 @@ def test_cli_doctor_context_does_not_accuse_the_repo_of_being_ungoverned(
     assert "NO governance" in onboard.stderr
     assert "NO governance" not in doctor.stderr
     assert "stale install record" in doctor.stderr
+
+
+def test_cli_migrate_context_names_both_meanings_and_says_install_first(
+    tmp_path, config_dir
+):
+    """From migrate the plugin loaded THIS session, so ``inactive`` may be a stale
+    record (worktree, moved checkout) or a ``--plugin-dir`` session whose repo is
+    ungoverned once the legacy hook stands down. The message must name both and
+    the one command that settles either — not onboard's flat accusation, not
+    doctor's all-clear."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    cfg = config_dir({"version": 2, "plugins": {pa.PLUGIN_ID: [_record(other)]}})
+
+    migrate = _run(["--path", str(repo), "--context", "migrate"], config_dir=cfg)
+
+    assert migrate.returncode == 1
+    assert migrate.stderr.startswith("inactive:")
+    assert "--plugin-dir" in migrate.stderr
+    assert "worktree" in migrate.stderr
+    assert "install before applying" in migrate.stderr
+    assert pa.remediation_command(repo) in migrate.stderr
+    assert "stale install record:" not in migrate.stderr
 
 
 def test_remediation_command_survives_a_path_with_a_space(tmp_path):

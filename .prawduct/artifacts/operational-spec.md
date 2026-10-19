@@ -33,7 +33,7 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
 - **Install once per machine, onboard per repo.** The user installs the plugin at the user level
   (`claude plugin marketplace add …` + `plugin install`); each repo they want governed is onboarded
   with `/prawduct:onboard`, which commits only a small **install reference** to the repo's
-  `.claude/settings.json` (marketplace + enabled plugin) plus a thin CLAUDE.md anchor. **No framework
+  `.claude/settings.json` (marketplace + enabled plugin) plus a thin governance anchor in AGENTS.md (imported by CLAUDE.md). **No framework
   files are committed to the repo.**
 - **Updates arrive through the marketplace with zero repo diff.** With auto-update, Claude Code
   re-resolves the latest release at session start — no sync step, no framework files to reconcile.
@@ -136,7 +136,7 @@ explicit repair paths:
   cache key, the consumer re-resolves the older release on next session start.
 - **Uninstall / disable** is clean and reversible: `repo-disable` for one repo (via
   `.claude/settings.json`), or the documented full uninstall (remove `.prawduct/`, the marketplace +
-  enabled-plugin entries, and the CLAUDE.md anchor block). The one destructive operation — migrating
+  enabled-plugin entries, and the anchor block in AGENTS.md or, on an older onboard, CLAUDE.md). The one destructive operation — migrating
   a legacy file-sync repo onto the plugin — lands as a **single revertible commit**.
 - **A stuck in-flight review** self-heals: the active-review marker carries a TTL, and the
   session-end backstop consolidates or blocks with a named remedy rather than leaving the session

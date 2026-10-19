@@ -458,9 +458,9 @@ class FakeGitHub(Transport):
         self._check_fault()
         self.calls.append(("create_label", owner, repo, name))
         state = self._repo(owner, repo)
-        if name in state.labels:
-            # GitHub returns 422 "already_exists" — provision lists-then-creates
-            # so it never reaches here; guard anyway.
+        if any(existing.casefold() == name.casefold() for existing in state.labels):
+            # GitHub returns 422 "already_exists", and compares label names
+            # case-insensitively, so `source:Review` blocks `source:review`.
             raise TransportError(
                 "validation",
                 "label already exists",
@@ -732,3 +732,17 @@ class FakeGitHub(Transport):
                 details={"operation": f"api repos/{owner}/{repo}/issues/{number}/{op}"},
             )
         return issue
+
+
+def own_tracker(directory, scope: str) -> str:
+    """Make ``directory`` a repo whose own tracker is ``scope``; return it as a str.
+
+    ``backlog file`` writes only to the running repo's own tracker, resolved from
+    ``backlog_service_repo`` or the ``origin`` remote. A test that files into a
+    fake ``scope`` needs a project directory that IS that repo, the way a real
+    caller's is, rather than this checkout, whose identity is prawduct's.
+    """
+    state = Path(directory) / ".prawduct" / "project-state.yaml"
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(f"backlog_service_repo: {scope}\n", encoding="utf-8")
+    return str(directory)

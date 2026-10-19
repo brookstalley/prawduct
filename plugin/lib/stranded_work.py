@@ -151,11 +151,15 @@ def encode_project_dir(path: str | Path) -> str:
 # --- signal probes (each returns None on any failure) -------------------------
 
 
-def config_roots(env: dict | None = None, home: Path | None = None) -> list[Path]:
-    """Every Claude config root that holds transcripts: ``$CLAUDE_CONFIG_DIR``,
-    ``~/.claude`` and each ``~/.claude-*``. Deduplicated by resolved path,
-    because ``$CLAUDE_CONFIG_DIR`` usually points at one of the others. A home
-    that cannot be resolved yields no roots, not an exception."""
+def config_roots(
+    env: dict | None = None, home: Path | None = None, *, holding: str = "projects"
+) -> list[Path]:
+    """Every Claude config root holding a ``holding`` directory (transcripts
+    live under ``projects``, plugin caches under ``plugins``):
+    ``$CLAUDE_CONFIG_DIR``, ``~/.claude`` and each ``~/.claude-*``.
+    Deduplicated by resolved path, because ``$CLAUDE_CONFIG_DIR`` usually points
+    at one of the others. A home that cannot be resolved yields no roots, not an
+    exception."""
     env = os.environ if env is None else env
     try:
         home = Path.home() if home is None else home
@@ -173,7 +177,7 @@ def config_roots(env: dict | None = None, home: Path | None = None) -> list[Path
     seen: set[str] = set()
     for root in candidates:
         try:
-            if not (root / "projects").is_dir():
+            if not (root / holding).is_dir():
                 continue
             key = str(root.resolve())
         except (OSError, RuntimeError):

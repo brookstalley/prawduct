@@ -106,7 +106,8 @@ def _instruction_files() -> list[Path]:
         for path in _shipped_files()
         if path.relative_to(PLUGIN).parts[0] not in CODE_ROOTS
     ]
-    out.append(REPO_ROOT / "CLAUDE.md")
+    # This repo's contract lives in AGENTS.md; CLAUDE.md is the one line importing it.
+    out.extend([REPO_ROOT / "AGENTS.md", REPO_ROOT / "CLAUDE.md"])
     return out
 
 
@@ -172,10 +173,15 @@ class TestTheSweepActuallyReads:
         }
         assert {"skills", "templates", "methodology", "docs", "agents"} <= roots
 
-    def test_claude_md_is_in_the_instruction_corpus_and_readable(self):
-        claude = REPO_ROOT / "CLAUDE.md"
-        assert claude in _instruction_files()
-        assert claude.read_text(encoding="utf-8").strip(), "CLAUDE.md read as empty"
+    def test_the_repo_contract_is_in_the_instruction_corpus_and_readable(self):
+        """Renegotiated for #942: the contract moved to AGENTS.md, and CLAUDE.md
+        is the one line importing it — so a corpus holding CLAUDE.md alone would
+        scan one line and pass vacuously."""
+        agents = REPO_ROOT / "AGENTS.md"
+        assert agents in _instruction_files()
+        assert len(agents.read_text(encoding="utf-8").splitlines()) > 20, (
+            "AGENTS.md read as (nearly) empty — the contract is not where the corpus looks"
+        )
 
     def test_a_token_that_is_present_is_found(self):
         """The positive control for `_hits` itself. `prawduct` appears in every

@@ -51,7 +51,7 @@ class TestHandoffProseNamesBothFiles:
     """
 
     def _corpus(self) -> list[Path]:
-        paths = [_REPO / "CLAUDE.md"]
+        paths = [_REPO / "AGENTS.md", _REPO / "CLAUDE.md"]
         for sub in ("methodology", "skills", "docs", "templates"):
             paths.extend(sorted((_PLUGIN / sub).rglob("*.md")))
         return [p for p in paths if p.is_file()]

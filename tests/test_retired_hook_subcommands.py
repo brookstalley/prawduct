@@ -30,9 +30,16 @@ import json
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
+
+_TESTS_DIR = str(Path(__file__).resolve().parent)
+if _TESTS_DIR not in sys.path:
+    sys.path.insert(0, _TESTS_DIR)
+
+from fixtures.hook_env import isolated_hook_run  # noqa: E402
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 _HOOK = _ROOT / "bin" / "prawduct-hook"
@@ -99,18 +106,25 @@ def _run(
     instead of on the command. A test run from inside a Claude Code session
     inherits a `$CLAUDE_PLUGIN_ROOT` aimed at the installed plugin, which is
     exactly that skewed pairing; CI inherits none. Set it, and both agree.
+
+    The plugin root is not the only ambient input. Run from an agent worktree,
+    the hook also prints a linked-worktree NOTE, so a test asserting that stderr
+    is EMPTY passes ``project_dir`` and runs isolated there
+    (``fixtures.hook_env``).
     """
-    env = dict(os.environ)
-    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root or _ROOT)
     if project_dir is not None:
-        env["CLAUDE_PROJECT_DIR"] = str(project_dir)
+        kwargs = isolated_hook_run(project_dir, plugin_root=plugin_root)
+    else:
+        env = dict(os.environ)
+        env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root or _ROOT)
+        kwargs = {"env": env}
     return subprocess.run(
         ["python3", str(_HOOK), command, *args],
         input=stdin,
         capture_output=True,
         text=True,
         timeout=30,
-        env=env,
+        **kwargs,
     )
 
 
@@ -129,11 +143,12 @@ class TestRetiredHookSubcommandsStayCallable:
         """Hook stdout is injected into the model's context on exit 0."""
         assert _run(command).stdout == ""
 
-    def test_prints_nothing_to_stderr(self, command: str) -> None:
+    def test_prints_nothing_to_stderr(self, command: str, tmp_path: Path) -> None:
         """No audience: the caller is a stale registration, not a person. A
         notice here would be the session-start noise this fix removed, one
-        severity quieter."""
-        assert _run(command).stderr == ""
+        severity quieter. Run isolated in ``tmp_path`` so the assertion is about
+        the command, not about the checkout running the suite."""
+        assert _run(command, project_dir=tmp_path).stderr == ""
 
     def test_never_prints_usage(self, command: str) -> None:
         """The exact field symptom — a usage dump from the unknown-command

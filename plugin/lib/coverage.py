@@ -533,6 +533,14 @@ def diagnose_base_advance_transfer(
     whichever branch or worktree it was taken on. What lineage would have bought
     is cost control, and the ``files_changed`` prune below buys that directly.
 
+    **A pruned candidate is skipped, not a failed check.** A store outlives
+    its objects: a dirty-tree review's snapshot and a rebased branch's trees
+    are garbage-collected while the facts naming them stay. A tree git no
+    longer holds cannot be shown byte-identical, so it denies like any other
+    mismatch, but the check over the trees git does hold still ran. Reporting
+    it as "could not run" would let one old snapshot, which could never have
+    granted, take over the explanation of the denial.
+
     Returns::
 
         {"status": "match", "prior_fact_id", "prior_reviews", "prior_base",
@@ -607,6 +615,13 @@ def diagnose_base_advance_transfer(
             prior_heads.append(prior_head)
     if not prior_bases or not prior_heads:
         return None
+    pruned = evidence.missing_objects(project_dir, prior_bases + prior_heads)
+    if pruned:
+        prior_bases = [tree for tree in prior_bases if tree not in pruned]
+        prior_heads = [tree for tree in prior_heads if tree not in pruned]
+    # `None` from `missing_objects` means git could not answer the batch; the
+    # per-candidate diffs below then meet any absent tree and degrade, which
+    # is the right reading when nothing could tell absence from failure.
 
     # Condition 2, one pathspec-limited diff per distinct endpoint: a candidate
     # endpoint survives only when it agrees with the required span's endpoint on
@@ -667,6 +682,9 @@ def diagnose_base_advance_transfer(
                 "status": TRANSFER_MATCH,
                 "prior_fact_id": reviews[-1].get("id") if reviews else None,
                 "prior_reviews": len(reviews),
+                # Every review the transferred coverage rests on, so a reader
+                # that must inspect them (the PR payload) need not recompose.
+                "prior_review_ids": [step.get("id") for step in reviews],
                 "prior_base": prior_base,
                 "prior_head": prior_head,
                 "files": paths,
@@ -1021,8 +1039,8 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     ``test_norm_probes`` on develop with nothing to catch it. The two reasons
     are reported separately because the remedies differ — one needs a review,
     the other needs a suite run. A
-    governance-protected ``.md`` (``skills/``, ``methodology/``,
-    ``templates/``, root ``CLAUDE.md`` — PR-5K8D) is judgeable, so it still
+    governance-protected ``.md`` (the set ``buildplan_refs.protected_path_violation``
+    owns — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
     for False (``no-base``, ``git-failed``, ``empty-diff``,
     ``not-doc-only: <files>``) so both the CLI gate and the stop-hook Gate 3
@@ -1148,8 +1166,8 @@ def check_change_log_entry(project_dir: Path) -> int:
 
     **Judgeability is not "is it ``.md``", and this docstring used to say it
     was.** Session metadata under ``.prawduct/`` is not ``.md`` and is *not*
-    judgeable; governance-protected prose (``skills/``, ``methodology/``,
-    ``templates/``, root ``CLAUDE.md``) *is* ``.md`` and *is* judgeable, because
+    judgeable; governance-protected prose (the set
+    ``buildplan_refs.protected_path_violation`` owns) *is* ``.md`` and *is* judgeable, because
     skill prose is behavioral logic. Cite the predicate rather than restating its
     rule here — a prose copy is the fourth classifier this function shipped once
     already.

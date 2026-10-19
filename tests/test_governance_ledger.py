@@ -126,7 +126,7 @@ class TestLedgerAppendEnvelope:
             repo, mode=FINAL_MODE, duration_seconds=180, commit_reviewed=head,
         )
         r = _run_hook(
-            repo, "ledger-append", "--event", "review.critic",
+            repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit",
             "--scope", "my-feature", "--chunk", "02", "--model", "opus",
         )
         assert r.returncode == 0, r.stderr
@@ -154,7 +154,7 @@ class TestLedgerAppendEnvelope:
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
         _write_findings(repo)  # no duration_seconds, no model
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         ev = _ledger_events(repo)[0]
         assert ev["duration_seconds"] is None
@@ -165,7 +165,7 @@ class TestLedgerAppendEnvelope:
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
         _write_findings(repo, model="opus")
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["actor"]["model"] == "opus"
 
@@ -174,9 +174,9 @@ class TestLedgerAppendEnvelope:
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
         _write_findings(repo)
-        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit").returncode == 0
         _write_findings(repo, mode=FINAL_MODE)
-        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit").returncode == 0
         events = _ledger_events(repo)
         assert len(events) == 2
         assert events[0]["review"]["mode"] == CHUNK_MODE
@@ -192,7 +192,7 @@ class TestLedgerAppendScopeFallback:
         _commit_file(repo, "app.py", "print(1)\n", "init")
         self._write_plan(repo, frontmatter_scope="plan-scope")
         _write_findings(repo)
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic",
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit",
                       "--scope", "explicit-scope")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "explicit-scope"
@@ -203,7 +203,7 @@ class TestLedgerAppendScopeFallback:
         _commit_file(repo, "app.py", "print(1)\n", "init")
         self._write_plan(repo, frontmatter_scope="plan-scope")
         _write_findings(repo)
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "plan-scope"
 
@@ -213,7 +213,7 @@ class TestLedgerAppendScopeFallback:
         _commit_file(repo, "app.py", "print(1)\n", "init")
         self._write_plan(repo, frontmatter_scope=None, name="build-plan-my-feature.md")
         _write_findings(repo)
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "my-feature"
 
@@ -222,7 +222,7 @@ class TestLedgerAppendScopeFallback:
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
         _write_findings(repo)
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] is None
 
@@ -242,7 +242,7 @@ class TestLedgerAppendScopeFallback:
             name="build-plan-other.md",
             header=True,
         )
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "plan-scope"
 
@@ -257,7 +257,7 @@ class TestLedgerAppendScopeFallback:
         self._write_plan(
             repo, frontmatter_scope="null", name="build-plan-my-feature.md"
         )
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "my-feature"
 
@@ -279,7 +279,7 @@ class TestLedgerAppendScopeFallback:
         (prawduct / "project-state.yaml").write_text(
             "active_build_plan: artifacts/build-plan-my-feature.md\n"
         )
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "my-feature"
 
@@ -313,7 +313,7 @@ class TestLedgerAppendRejects:
         repo = tmp_path / "repo"
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 1
         assert "no findings record" in r.stderr
         assert not (repo / LEDGER_REL).exists()
@@ -327,7 +327,7 @@ class TestLedgerAppendRejects:
         (prawduct / ".critic-findings.json").write_text(
             json.dumps({"mode": "chunk", "findings": [], "summary": "x"})  # bare token + no files_reviewed
         )
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 1
         assert "schema validation" in r.stderr
         assert not (repo / LEDGER_REL).exists()
@@ -350,6 +350,67 @@ class TestLedgerAppendRejects:
         r = _run_hook(repo, "ledger-append")
         assert r.returncode == 1
         assert "--event is required" in r.stderr
+
+
+# ---------------------------------------------------------------------------
+class TestLedgerAppendTrigger:
+    """``review.critic`` names the path that consolidated it. Three paths reach
+    one ``consolidate()`` and leave identical state, so without the field a dead
+    trigger is indistinguishable from a working one."""
+
+    def _repo(self, tmp_path):
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        return repo
+
+    def test_each_trigger_lands_on_the_envelope(self, tmp_path):
+        from lib import ledger
+
+        repo = self._repo(tmp_path)
+        for trigger in ledger.CONSOLIDATION_TRIGGERS:
+            _write_findings(repo)
+            r = _run_hook(repo, "ledger-append", "--event", "review.critic",
+                          "--trigger", trigger)
+            assert r.returncode == 0, r.stderr
+            assert f"trigger={trigger}" in r.stdout
+        assert [ev["trigger"] for ev in _ledger_events(repo)] == list(
+            ledger.CONSOLIDATION_TRIGGERS
+        )
+
+    def test_review_critic_without_a_trigger_is_refused(self, tmp_path):
+        repo = self._repo(tmp_path)
+        _write_findings(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        assert r.returncode == 1
+        assert "requires --trigger" in r.stderr and "none given" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+    def test_an_unknown_trigger_is_refused_not_recorded(self, tmp_path):
+        repo = self._repo(tmp_path)
+        _write_findings(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic",
+                      "--trigger", "hook")
+        assert r.returncode == 1
+        assert "got 'hook'" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+    def test_review_pr_rejects_a_trigger(self, tmp_path):
+        repo = self._repo(tmp_path)
+        _write_pr_evidence(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "review.pr",
+                      "--findings", PR_EVIDENCE_REL, "--trigger", "explicit")
+        assert r.returncode == 1
+        assert "only valid for review.critic" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+    def test_review_pr_events_carry_no_trigger_key(self, tmp_path):
+        repo = self._repo(tmp_path)
+        _write_pr_evidence(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "review.pr",
+                      "--findings", PR_EVIDENCE_REL)
+        assert r.returncode == 0, r.stderr
+        assert "trigger" not in _ledger_events(repo)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +494,7 @@ class TestLedgerAppendReviewPr:
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
         _write_findings(repo)
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic",
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit",
                       "--findings", ".prawduct/.critic-findings.json")
         assert r.returncode == 1
         assert "only valid for review.pr" in r.stderr
@@ -539,7 +600,7 @@ class TestReviewAnchorIdempotency:
         _commit_file(repo, "app.py", "x = 1\n", "c1")
         _write_findings(repo, fact_id="rev-abc123")
         assert _run_hook(
-            repo, "ledger-append", "--event", "review.critic"
+            repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit"
         ).returncode == 0
 
         prawduct = repo / ".prawduct"
@@ -567,9 +628,9 @@ class TestReviewAnchorIdempotency:
         _init_repo(repo)
         _commit_file(repo, "app.py", "x = 1\n", "c1")
         _write_findings(repo, fact_id="rev-first")
-        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit").returncode == 0
         _write_findings(repo)  # no fact_id at all
-        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit").returncode == 0
 
         prawduct = repo / ".prawduct"
         assert ledger.review_event_exists(prawduct, "rev-first") is True
@@ -625,7 +686,7 @@ class TestLedgerAppendRefusesLearningKinds:
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
         _write_findings(repo)
-        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit").returncode == 0
         assert len(_ledger_events(repo)) == 1
 
 
@@ -797,7 +858,7 @@ class TestAppendLearningEvent:
 
         repo = self._repo(tmp_path)
         _write_findings(repo)
-        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit").returncode == 0
         path = repo / LEDGER_REL
         with open(path, "a") as fh:
             fh.write(json.dumps({"event": "learning.written", "learning": "not-a-dict"}) + "\n")
@@ -870,7 +931,7 @@ class TestLearningEventProbe:
         repo.mkdir()
         self._seed(repo)
         _write_findings(repo)
-        assert _run_hook(repo, "ledger-append", "--event", "review.critic").returncode == 0
+        assert _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit").returncode == 0
         assert ledger.learning_event_exists(
             repo / ".prawduct", "learning.fired",
             file="a.md", unit_hash="h1", session=None, review_id="rev-1",
@@ -1010,7 +1071,7 @@ class TestDispatchClock:
 
         _run_hook(repo, "pr-review-dispatch", "--begin")
         _write_pr_evidence(repo, duration_seconds=240)
-        critic = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        critic = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert critic.returncode == 0, critic.stderr
         assert (repo / MARKER_REL).is_file(), "the critic append consumed the PR mark"
 
@@ -1241,7 +1302,7 @@ class TestPrClockSurvivesFixingItsFindings:
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
         marker.write_text(json.dumps({"dispatched_at": "2026-09-21T00:00:00Z", "head": head}))
 
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
         ev = _ledger_events(repo)[0]
         assert "dispatched_at" in ev
@@ -1274,7 +1335,7 @@ class TestCriticDispatchClock:
         )
 
     def _critic_append(self, repo: Path):
-        return _run_hook(repo, "ledger-append", "--event", "review.critic")
+        return _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
 
     def test_a_marked_critic_dispatch_produces_dispatched_at(self, tmp_path):
         """The TREATMENT half of the control pair."""

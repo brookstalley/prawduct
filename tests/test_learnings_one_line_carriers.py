@@ -33,7 +33,7 @@ CARRIERS = {
     "bin/prawduct-hook": "as ONE line — the rules gate",
     "skills/janitor/SKILL.md": "as one-line rules",
     "docs/principles.md": "as one-line rules",
-    "templates/project-state.yaml": "Every rule is ONE line of at most 250 characters",
+    "docs/project-state-keys.md": "Every rule is ONE line of at most 250 characters",
 }
 
 #: Retired wording. Each one is the instruction that produced the regrowth, so

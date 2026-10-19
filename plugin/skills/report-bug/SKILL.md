@@ -318,6 +318,13 @@ a count at session start and points here; it never quotes a report, so the count
 is the signal and reading them is the work. Triage each as below, and staging one
 is what takes it out of the count.
 
+**List the set the advisory counts with the query it counts from**:
+`prawduct-hook backlog cache-query unstaged --repo <backlog_service_repo> --json`,
+keeping the rows whose title starts `[prawduct]`. Not `backlog list --untriaged`:
+that lists issues carrying no prawduct label *and* no `prawduct:` body block, and
+`file-upstream` writes a provenance block into every report, so a waiting report
+can never appear there — it answers zero while the advisory says otherwise.
+
 Triage is done **on the issue itself** — it is already the durable record, so
 nothing is copied anywhere. For each:
 
