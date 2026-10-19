@@ -10,6 +10,10 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.7.2-dev
+
+**Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
 ## v3.7.1
 
 **Before building, the agent now aligns with you on goals — all its questions in one batch, up front — and the boundary review judges the work against them.** Also in this release: opt-in anonymous stats, the governance anchor moves to `AGENTS.md`, a new `clear-reason` Stop gate, and field fixes to `backlog file`, inline norm fields and test-evidence counting.

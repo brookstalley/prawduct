@@ -1,8 +1,10 @@
 # Release Plan — v3.7.1, Whole-Develop Promotion
 
-**Status:** IN PROGRESS. Phase 0 classified the set and Phase 1 prepared `develop` on 2026-10-19:
-27 entries tagged `release=v3.7.1`, 13 plans archived, versions bumped. Re-derive rather than
-reading this paragraph as a measurement: `prawduct-hook check-releasability --release v3.7.1`.
+**Status:** COMPLETE as measured 2026-10-19. Phases 0–3 ran. `main` was promoted at `f4b24e95`,
+and the tag and Release `v3.7.1` were published in one call. `check-released v3.7.1` verified 3 of
+3, both `verify-release` runs (dispatch and tag push) are green, and `develop` reopened on
+`3.7.2-dev`. Re-derive rather than reading this paragraph as a measurement:
+`git log --oneline origin/main -1`, `prawduct-hook check-released v3.7.1`.
 
 **Version:** v3.7.1, a **patch**, by owner decision (2026-10-19: "3.7.1, we're conservative
 here"). The agent recommended 3.8.0 on release-history precedent: the alignment pass changes how
