@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import encode
-from .transport import Transport
+from .transport import Transport, TransportError
 
 # One color + description per facet (deterministic; the durable contract is the
 # name, not the color — a human may recolor freely).
@@ -56,6 +56,11 @@ class ProvisionResult:
     created: list[str] = field(default_factory=list)
     existing: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    #: The requested names, in request order, spelled as GitHub holds them: a name
+    #: an existing label matches case-insensitively takes that label's spelling.
+    #: Callers apply THIS list, never their own, so an issue carries the label
+    #: that exists rather than a case variant GitHub may not match.
+    applied: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -68,14 +73,16 @@ class ReconcileResult:
     existing: list[str] = field(default_factory=list)
     foreign_untouched: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    applied: list[str] = field(default_factory=list)
 
 
 def facet_of(name: str) -> str | None:
-    """Return the facet prefix of a ``<facet>:value`` label, or ``None``."""
-    facet, sep, _ = name.partition(":")
-    if sep and facet in KNOWN_FACETS:
-        return facet
-    return None
+    """Return the facet of a ``<facet>:value`` label, or ``None``.
+
+    Matched as every facet read is (``encode.label_has_prefix``), so a hand-made
+    ``Source:Review`` is ours rather than foreign.
+    """
+    return encode.label_facet(name, KNOWN_FACETS)
 
 
 def label_spec(name: str) -> tuple[str, str]:
@@ -126,19 +133,54 @@ def _create_missing(
     place as labels are created). Collision-free (only ever *creates* labels it
     does not find) and never touches a non-namespaced name. Shared by
     :func:`ensure_labels` and :func:`reconcile` so the create-missing rule lives
-    once; ``result`` accumulates ``created``/``existing``/``warnings``."""
+    once; ``result`` accumulates ``created``/``existing``/``warnings``.
+
+    Membership is case-insensitive because GitHub's is: ``source:Review`` already
+    occupies ``source:review``, and creating it again is a 422. A label that
+    appears between the listing and the create (another writer) is the same 422
+    for a label that now exists, which is what the caller wanted, so a refused
+    create re-lists once and counts a match as existing rather than failing.
+    """
+    spelled = {name.casefold(): name for name in existing_names if name}
     for name in names:
-        if name in existing_names:
-            result.existing.append(name)
+        held = spelled.get(name.casefold())
+        if held is not None:
+            result.existing.append(held)
+            result.applied.append(held)
             continue
         if facet_of(name) is None:
             result.warnings.append(f"skipped non-namespaced label {name!r} (not provisioned)")
+            result.applied.append(name)
             continue
         color, description = label_spec(name)
-        transport.create_label(owner, repo, name=name, color=color, description=description)
-        result.created.append(name)
-        existing_names.add(name)
+        try:
+            transport.create_label(owner, repo, name=name, color=color, description=description)
+        except TransportError as exc:
+            held = _held_spelling(transport, owner, repo, name) if exc.code == "validation" else None
+            if held is None:
+                raise
+            result.existing.append(held)
+        else:
+            held = name
+            result.created.append(name)
+        result.applied.append(held)
+        existing_names.add(held)
+        spelled[held.casefold()] = held
 
+
+def _held_spelling(transport: Transport, owner: str, repo: str, name: str) -> str | None:
+    """The spelling under which ``name`` exists now (case-insensitively), or ``None``.
+
+    Asked of a fresh listing rather than read off the 422's error code, because
+    the listing is the fact the caller needs (the label is there), and the shape
+    of the 422 body that ``gh`` prints is not a contract this package controls.
+    """
+    wanted = name.casefold()
+    for label in transport.list_labels(owner, repo):
+        held = label.get("name") or ""
+        if held.casefold() == wanted:
+            return held
+    return None
 
 def reconcile(transport: Transport, owner: str, repo: str) -> ReconcileResult:
     """GV6 coexistence reconcile: re-establish the base taxonomy, report the rest.

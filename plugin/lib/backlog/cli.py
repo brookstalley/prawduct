@@ -99,6 +99,9 @@ _EXIT_CLASS: dict[str, int] = {
     "target-not-pinned": 2,
     "self-file": 2,
     "approval-mismatch": 2,
+    # The in-repo `file` op's own-target check, classified the same way and for
+    # the same reason.
+    "foreign-target": 2,
 }
 
 #: Per-op usage, keyed by the op name — **the usage table**. It is the referent
@@ -496,7 +499,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         )
         result = core.error("unavailable", "an unexpected error occurred")
 
-    return _emit(result, json_mode=json_mode)
+    return _emit(result, json_mode=json_mode, op=op)
 
 
 # --- op handlers -------------------------------------------------------------
@@ -516,6 +519,13 @@ def _run_file(rest: list[str], transport, project_dir):
     parsed = ids.parse_repo(repo_spec) if repo_spec else None
     if parsed is None:
         return core.error("validation", "file requires --repo owner/repo")
+    # Checked before anything else touches the request — attended or not, since
+    # the unattended path is the one with nobody watching what it writes.
+    refusal = upstream.check_own_target(
+        f"{parsed[0]}/{parsed[1]}", upstream.resolve_self_identity(project_dir)
+    )
+    if refusal is not None:
+        return core.error(refusal.code, refusal.message, retryable=False, details=refusal.details)
     if "body" not in flags:
         # Only title+body are required to file (API §3); an empty --body is fine,
         # but an omitted one is not (title-only capture is not the contract).
@@ -1783,8 +1793,13 @@ def _pacing_line(pacing: dict) -> str:
     return summary
 
 
-def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
-    """Print the result in the chosen mode and return the exit code."""
+def _emit(result: dict, *, json_mode: bool, usage: bool = False, op: str | None = None) -> int:
+    """Print the result in the chosen mode and return the exit code.
+
+    ``op`` lets a create say that it created. ``file`` prints the same item shape
+    ``get`` does, so without its own line a successful create followed by advisory
+    lint reads as a refusal, and the reader re-runs it into a duplicate issue.
+    """
     exit_code = _exit_code(result)
     if json_mode:
         # The envelope is the sole stdout content (ERR-2). Nothing else on stdout.
@@ -1793,16 +1808,22 @@ def _emit(result: dict, *, json_mode: bool, usage: bool = False) -> int:
 
     # Human mode: payload/summary to stdout, narration + warnings to stderr.
     if result.get("status") == "ok":
-        _print_human_ok(result.get("data"))
+        data = result.get("data")
+        if op == "file" and isinstance(data, dict) and data.get("id"):
+            print(f"filed {data['id']}: {data.get('url') or '(no url returned)'}")
+        _print_human_ok(data)
+        # Unbuffered stderr would otherwise overtake a piped stdout, putting every
+        # lint line above the outcome it qualifies.
+        sys.stdout.flush()
         for warning in result.get("warnings", []):
             print(f"warning: {warning}", file=sys.stderr)
         # Standard lint findings — emitted by `file` (body/label) and by `update`
         # (a body it wrote, and a stored title left unconformed). Advisory by construction: a finding
         # that BLOCKS never reaches here, because it returned a validation error
         # instead. So these never affect the exit code, and stay distinct from
-        # operational warnings.
+        # operational warnings. The prefix says so, for a reader of stderr alone.
         for finding in result.get("lint", []):
-            print(f"lint: {finding.get('message')}", file=sys.stderr)
+            print(f"lint (advisory, the write succeeded): {finding.get('message')}", file=sys.stderr)
     else:
         _print_human_error(result.get("error", {}))
         # A resumable error envelope (e.g. import) carries the audit warnings accrued

@@ -10,9 +10,20 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.1-dev.4
+## v3.7.1-dev.5
 
 **Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+
+**`backlog-file-path`**: **`backlog file` writes only to this repo's own tracker.** A `--repo`
+naming any other repo is refused (`foreign-target`) before anything is sent, attended or not, so an
+agent can no longer file an issue under your GitHub name into someone else's project. Reporting a
+bug in prawduct itself stays `file-upstream`, which shows you the exact bytes first. Three smaller
+fixes on the same path: a `--source`, `--area` or other facet value too long to become a GitHub
+label (50 characters) is refused up front, naming the flag, instead of failing as a bare 422, and
+`update` now refuses it before writing anything rather than after the title change lands; a label
+that already exists under different capitalization (`source:Review`) is reused instead of
+failing the write, and `reconcile-labels` no longer reports it as a foreign label; and a successful `file` now prints `filed <id>: <url>` first, with each lint
+line marked advisory, so it no longer reads as a refusal that tempts a duplicate re-run.
 
 **`upstream-intake-enumeration`**: **triaging upstream bug reports now says how to list them.**
 The receiving-side steps in `/prawduct:report-bug` name `cache-query unstaged` as the list behind

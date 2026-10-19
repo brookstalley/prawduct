@@ -166,7 +166,9 @@ def _apply_one(record, entry: dict) -> tuple[object, dict, list[str]]:
         if existing_kind is None:
             labels.append(f"kind:{kind}")
         elif existing_kind != kind:
-            labels = [label for label in labels if not label.startswith("kind:")]
+            labels = [
+                label for label in labels if not encode.label_has_prefix(label, "kind:")
+            ]
             labels.append(f"kind:{kind}")
             warnings.append(
                 f"{record.pfx}: kind relabeled {existing_kind!r} → {kind!r} (plan)"
