@@ -218,14 +218,6 @@ _FIELD_OR_ITEM_RE = re.compile(r"^\s*(?:[-*]\s|(?:\*{1,2}|_{1,2})?[A-Z][A-Za-z-]
 # desynchronize (`_STATUS_RE`'s prefix/closer split is exactly that failure,
 # one field over), and would leave the soft-wrap joiner still folding a `>`
 # into the middle of the prose the citation scans read.
-#
-# One strip point also keeps `_FIELD_MARKER_RE` byte-identical for
-# `record_lint._norm_field_re`, which imports it. That is NOT sufficient on its
-# own and the first cut of this comment wrongly said it was: record_lint walks
-# raw text rather than `_direction_lines`, so an identical regex answered
-# differently on identical input until it imported this prefix too. Sharing the
-# matcher shares syntax; sharing the matcher AND the reader that feeds it is
-# what shares the definition.
 _BLOCKQUOTE_PREFIX_RE = re.compile(r"^\s*(?:>\s?)+")
 
 # Norm-entry field markers (docs/norms.md § Anatomy). Case-sensitive to the
@@ -294,6 +286,30 @@ _STOPGAP_EXPIRES_RE = re.compile(r"\bexpires\s+(\d{4}-\d{2}-\d{2})\b")
 # ``Stopgap``, not a member of :data:`_NORM_FIELDS`: it qualifies an entry, it
 # does not make one.
 _REAFFIRMED_RE = re.compile(rf"^\s*{_EMPH}Re-affirmed:")
+
+# A field written INLINE, on the bullet's own line after the bold statement:
+# ``- **Statement.** Detail. *Why:* reason.`` (#1011). Every matcher above anchors
+# at a logical line's start, so :func:`_direction_lines` splits such a line at the
+# marker and each piece reads exactly as its line-start form does — one change in
+# the reader rather than a mid-line concession in every matcher.
+#
+# Bounded, because a mid-line ``Why:`` is far weaker evidence than a line-start
+# one. A split happens only inside a bullet opening with the bold statement the
+# anatomy requires (:data:`_BOLD_STATEMENT_RE`), and only where a sentence starts:
+# right after the statement, or after ``.``/``!``/``?``/``;``. So "Users asked
+# Why: nobody knew" stays prose, as does a bullet or paragraph with no bold
+# statement.
+#
+# ``Status`` never opens an inline field on its own: a roadmap bullet reading
+# "Targeted for Q3. Status: blocked." is exactly the non-norm #567 excluded, and
+# letting inline ``Status:`` split would mint it an entry. It splits only once an
+# earlier inline field has already made the bullet a norm.
+_BOLD_STATEMENT_RE = re.compile(r"^\s*[-*]\s+(\*\*|__)(?:(?!\1).)+\1")
+_INLINE_OPENING_FIELDS = ("Why", "Rulings", "Retroactivity", "Stopgap", "Re-affirmed")
+_INLINE_FIELD_RE = re.compile(
+    rf"\s+(?={_EMPH}({'|'.join(_INLINE_OPENING_FIELDS + ('Status',))}):)"
+)
+_SENTENCE_END = ".!?;"
 
 # A list item's opening bullet and its indentation — the unit :func:`_direction_entries`
 # groups on. Indentation is captured because a NESTED bullet belongs to the entry
@@ -427,8 +443,43 @@ def _label(item: BacklogItem) -> str:
     return (title[:40] or "(untitled)")
 
 
+def _split_inline_fields(line: str) -> list[str]:
+    """``line``, cut before each inline field marker (:data:`_INLINE_FIELD_RE`).
+
+    Returns ``[line]`` unchanged unless the line is a bold-statement bullet holding
+    a marker at a sentence start; otherwise the statement piece first, then one
+    piece per field, each beginning at its marker.
+    """
+    statement = _BOLD_STATEMENT_RE.match(line)
+    if statement is None:
+        return [line]
+    cuts: list[tuple[int, int]] = []
+    for found in _INLINE_FIELD_RE.finditer(line, statement.end()):
+        at = found.start()
+        if at != statement.end() and line[at - 1] not in _SENTENCE_END:
+            continue
+        if found.group(1) == "Status" and not cuts:
+            continue
+        cuts.append((at, found.end()))
+    if not cuts:
+        return [line]
+    pieces = [line[: cuts[0][0]]]
+    for i, (_, marker) in enumerate(cuts):
+        end = cuts[i + 1][0] if i + 1 < len(cuts) else len(line)
+        pieces.append(line[marker:end])
+    return pieces
+
+
 def _direction_lines(text: str) -> list[str]:
-    """Every LOGICAL line inside a ``## Direction`` section (heading lines excluded).
+    """Every LOGICAL line inside a ``## Direction`` section — :func:`_direction_scan`'s lines."""
+    return _direction_scan(text)[1]
+
+
+def _direction_scan(text: str) -> tuple[bool, list[str]]:
+    """``(any Direction heading seen, every LOGICAL line inside one)`` — headings excluded.
+
+    The flag is what lets a caller tell "no section" from "a section holding no
+    entry", which are different problems for the owner to fix.
 
     A section opens at a heading whose text is exactly ``Direction`` (any level)
     and closes at the next heading of equal-or-higher level. Heading lines are
@@ -451,6 +502,11 @@ def _direction_lines(text: str) -> list[str]:
     correct reading: an empty quoted line separates logical units just as an
     empty plain one does.
 
+    A field written inline after a bullet's bold statement is then split onto a
+    logical line of its own (:func:`_split_inline_fields`), so
+    ``- **S.** Detail. Why: x`` yields ``- **S.** Detail.`` and ``Why: x`` and
+    every anchored matcher reads it as the line-start form.
+
     **The strip runs before HEADING detection too, so `> ## Direction` opens a
     section and a quoted sibling heading closes one.** That is deliberate and
     wider than the field lines the change was aimed at: a heading inside a
@@ -461,6 +517,7 @@ def _direction_lines(text: str) -> list[str]:
     because a strip applied when opening but not when closing would swallow the
     rest of the document."""
     out: list[str] = []
+    seen = False
     in_section = False
     section_level = 0
     for raw in text.splitlines():
@@ -469,7 +526,7 @@ def _direction_lines(text: str) -> list[str]:
         if heading:
             level = len(heading.group(1))
             if heading.group(2).strip() == "Direction":
-                in_section, section_level = True, level
+                in_section, section_level, seen = True, level, True
             elif in_section and level <= section_level:
                 in_section = False
             continue  # never treat a heading line itself as entry content
@@ -479,7 +536,9 @@ def _direction_lines(text: str) -> list[str]:
             out[-1] = out[-1].rstrip() + " " + line.strip()
         else:
             out.append(line)
-    return out
+    # Split only once every soft wrap is joined: an inline marker may arrive on a
+    # continuation, and a piece split early would take the joined text as its own.
+    return seen, [piece for line in out for piece in _split_inline_fields(line)]
 
 
 def _direction_entries(text: str) -> list[list[str]]:
@@ -503,9 +562,14 @@ def _direction_entries(text: str) -> list[list[str]]:
     stopgap, but it is yielded so that the flatten-is-identity property holds
     and a line-oriented caller loses nothing.
     """
+    return _group_entries(_direction_lines(text))
+
+
+def _group_entries(lines: list[str]) -> list[list[str]]:
+    """Group logical Direction lines into entries — :func:`_direction_entries`'s body."""
     entries: list[list[str]] = []
     open_indent: int | None = None
-    for line in _direction_lines(text):
+    for line in lines:
         bullet = _BULLET_RE.match(line)
         if bullet is not None:
             indent = len(bullet.group(1))
@@ -589,6 +653,28 @@ def _expired_stopgaps(codebase: Codebase, *, today: date) -> dict[tuple[str, str
                 for cited in _extract_ids(line):
                     out[(path.name, cited)] = stopgap[0]
     return out
+
+
+def _direction_norm_count(text: str) -> "int | None":
+    """Number of norm entries in ``text``'s ``## Direction`` sections, or ``None``
+    when it has no such section.
+
+    A norm is an entry (:func:`_direction_entries`) opened by a bullet and holding
+    a field line. The home of the count :mod:`lib.record_lint` reports, so that
+    module and these probes read one definition through one reader — sharing the
+    field regex alone let them disagree twice (#568 blockquotes, #1011 inline
+    fields), each time because the other module walked raw text.
+    """
+    seen, lines = _direction_scan(text)
+    if not seen:
+        return None
+    return sum(
+        1
+        for entry in _group_entries(lines)
+        if entry
+        and _BULLET_RE.match(entry[0])
+        and any(_FIELD_MARKER_RE.match(line) for line in entry[1:])
+    )
 
 
 def _has_direction_entry(text: str) -> bool:
@@ -1299,8 +1385,19 @@ def probe_norm_registry_unratified(state: ProjectState, codebase: Codebase):
     if not any(p.name in STRATEGY_CLASS_ARTIFACTS for p in paths):
         return []
     arms: list[str] = []
-    if not any(_has_direction_entry(_read_text(p)) for p in paths):
-        arms.append("no `## Direction` section is ratified in any artifact")
+    texts = [_read_text(p) for p in paths]
+    if not any(_has_direction_entry(t) for t in texts):
+        # Two causes, two fixes: "no section" tells the owner ratification never
+        # happened, which was false for a product whose entries the reader could
+        # not see (#1011). Naming the second cause sends them to the entries.
+        # The evidence below stays one string so the advisory id is unchanged.
+        if any(_direction_scan(t)[0] for t in texts):
+            arms.append(
+                "`## Direction` sections exist, but no entry in them carries a field "
+                "the registry reads (`Why:`, `Status:`, `Rulings:` or `Retroactivity:`)"
+            )
+        else:
+            arms.append("no artifact has a `## Direction` section")
     if _norm_index_lacks_columns(codebase):
         arms.append("the preferences Enforcement table lacks the norm columns (Audit home / Why)")
     if not arms:
