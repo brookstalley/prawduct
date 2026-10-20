@@ -69,6 +69,14 @@ Nothing may require a post-merge commit (`/prawduct:pr` Step 1d).
   `gitattributes_probes` still requires it until wave 2 gates the probe.
 
 **Decisions made mid-build:** *(one line each, naming what settled it)*
+- Chunk 01: fragment values are read by `change_fragments`' own parser over the shared block walker
+  (`plan_index.frontmatter_span`), not `plan_index`'s value reader. That reader treats any `#` as
+  a comment, which would truncate `owner/repo#N`. Settled by `closes:` (owner) and the #790 quoted-`#` precedent.
+- Chunk 01: `closes:` accepts only fully qualified spellings: `owner/repo#N` exactly as the
+  normalizer renders it, or a markdown `PFX-XXXX` via the existing `ids.is_pfx`. A persisted value
+  must resolve without a default repo. Settled by "do it right" for a lock-in format.
+- Chunk 01: D5's `unknown-reopen-target` check needs the archive and the pending set, so it lands
+  with the readers in Chunk 02, not in the per-file validator. Placement only; the design settled it.
 
 **Level:** High. The design is grounded in the current tree (re-verified 2026-10-19), the July
 proposal is reconciled, and every schema decision is the owner's.
@@ -146,7 +154,7 @@ the same pending scopes as before.
 - **Deliverables:**
   - `pending_scopes` in `release_readiness.py`, used by every reader in the enumerated set
   - `check-change-log-entry` (in `coverage.py`) accepts and validates fragments
-  - `record_lint` lints the fragment directory
+  - `record_lint` lints the fragment directory, including D5's `unknown-reopen-target` (a `reopens:` naming no archived or pending scope)
   - `/prawduct:pr` Step 1c/1d, Create Step 5's `Closes` lines and the Merge Flow close step, rewritten for fragments
   - the Critic cross-check text for fragments
 - **Tests:** the existing `release_readiness` and coverage tests pass unchanged against a

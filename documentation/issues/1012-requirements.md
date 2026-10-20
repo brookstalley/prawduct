@@ -69,7 +69,7 @@ an edit to that one file.
 | `date` | yes | `YYYY-MM-DD` |
 | `title` | yes | non-empty one-line headline |
 | `release` | no | **absent until the cut**; when present, must be a version (`vX.Y.Z[.N][-suffix]`) — the `release=unreleased` guard carries over unchanged |
-| `closes` | no | list of backlog item IDs this change closes, each validated through the backlog's ID normalizer (`lib/backlog/ids.py`), so it works on the Issues and markdown backends alike. **The single source** for that relation: `/prawduct:pr` Create Step 5 generates the PR body's `Closes` lines from it, and the Merge Flow's close step closes those items from it. The item's `closed-by` is the back-reference that close writes, not an independent claim (owner, 2026-10-19). |
+| `closes` | no | list of backlog item IDs this change closes, each validated through the backlog's ID normalizer (`lib/backlog/ids.py`), so it works on the Issues and markdown backends alike. **The single source** for that relation: `/prawduct:pr` Create Step 5 generates the PR body's `Closes` lines from it, and the Merge Flow's close step closes those items from it, because GitHub fires those keywords only for merges into the repository's default branch and a gitflow merge would leave them open. The item's `closed-by` is the back-reference that close writes, not an independent claim (owner, 2026-10-19). |
 
 Unknown keys, a retired key (`chunks`, `status`), a wrong-typed value, or frontmatter that does
 not parse are refused by `validate_change_log_tags`' successor with a named reason. Refusal is

@@ -178,7 +178,7 @@ and makes a stray `release:` in the directory an error (`released-fragment-in-pe
 count of existing archive entries whose scope is `<original>` or `<original>-reopen-*`, plus one.
 The new fragment carries `reopens: <original-scope>` — one added optional frontmatter key
 (schema addendum to D2). Editing the archived entry is rejected: the archive is verbatim and
-append-only. This also resolves #783's "no tag convention" because the convention is now a field
+append-only. This also settles #783's "no tag convention" because the convention is now a field
 that validates (`reopens` must name a scope present in the archive or the pending set,
 `unknown-reopen-target`).
 
@@ -285,7 +285,8 @@ real work. The migration command itself is built in wave 1, because this repo is
   `.cut-in-progress` marker.
 - **`closes:` has two consumers** (owner, 2026-10-19): `/prawduct:pr` Create Step 5 generates the
   PR body's `Closes` lines from it, and the Merge Flow's "Close the backlog items this PR resolves"
-  step closes those items from it. Both ship in the chunk that adds the reader, per core.md ("name
+  step closes those items from it. GitHub fires those keywords only for merges into the
+  repository's default branch, so on a gitflow base the merge-time close is what closes them. Both ship in the chunk that adds the reader, per core.md ("name
   the consumer in the same change that adds the producer"). IDs are backlog item IDs, not GitHub
   issue numbers, so a markdown-backend repo uses the same field.
 - ~~Owner confirmation needed on the closed `type` set (D2) and the `reopens` key (D5).~~ Both
