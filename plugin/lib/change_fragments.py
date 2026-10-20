@@ -743,9 +743,9 @@ class LegacyConversion:
     #: ``(scope, the legacy type or "")`` for every converted entry that took the
     #: caller's default type, so the operator sees each guess the default made.
     defaulted: tuple[tuple[str, str], ...] = ()
-    #: Every scope after the first in an entry holding several changes
-    #: (:func:`_separate_changes`). The legacy reader saw only the first, so these
-    #: join the pending set here, and the operator is shown each one.
+    #: Each scope that joins the pending set here unseen: one after the first in an
+    #: entry holding several changes (:func:`_separate_changes`), which the legacy
+    #: reader never read, and no other pending entry already showed.
     split: tuple[str, ...] = ()
 
 
@@ -784,34 +784,31 @@ class _PendingEntry:
         return f"{self.body}\n\n{line}" if self.body else line
 
 
-def _separate_changes(entry_text: str) -> list[change_log_mod.TagSection] | None:
-    """The changes one legacy entry holds, when it holds several; ``None`` when unsure.
+def _separate_changes(sections: list[change_log_mod.TagSection]) -> bool:
+    """Whether an entry's pending tag sections are separate changes, one fragment each.
 
     Some logs record two or three changes under one header, each a tag line over
-    its own paragraph. The legacy reader merged those tag lines first-wins, so
-    every scope after the first was pending to nobody; one fragment per section
-    records each change as its author wrote it.
+    its own paragraph. The legacy reader saw only the first, so every scope after
+    it was pending to nobody; one fragment per section records each change as its
+    author wrote it.
 
     The same text shape also comes from a union merge of one entry edited on two
     branches, whose second tag line is a version of the first and owns no prose.
-    So an entry separates only when nothing but blank lines precedes its first tag
-    line, every section has prose of its own, and every section names its own
-    scope. Anything else still needs its author to say which tag line is meant.
+    So sections separate only when every one has prose of its own and names its
+    own scope. Anything else still needs its author to say which tag line is meant.
     """
-    lead, sections = change_log_mod.tag_sections(entry_text)
-    if lead or len(sections) < 2 or not all(s.body for s in sections):
-        return None
+    if not all(s.body for s in sections):
+        return False
     scopes = [s.tags.get("scope") for s in sections]
-    if not all(isinstance(sc, str) and sc for sc in scopes) or len(set(scopes)) != len(scopes):
-        return None
-    return sections
+    return all(isinstance(sc, str) and sc for sc in scopes) and len(set(scopes)) == len(scopes)
 
 
 def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -> LegacyConversion:
     """Convert every release-pending entry of a legacy change log into a fragment.
 
     An entry is release-pending when it has a tag line and no ``release=``, the
-    legacy gate's own definition. Shipped entries and untagged ones stay in the
+    legacy gate's own definition, read per tag line, so an entry holding several
+    changes is shipped only when every one of them is. Shipped entries and untagged ones stay in the
     log as they are, because archived history is never rewritten.
 
     What real logs carry is converted rather than refused, because nothing is
@@ -833,7 +830,8 @@ def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -
     ``release=`` that is not a version (a placeholder hides a scope from the
     release gate, and the author knows whether it shipped), two tag lines that do
     not separate into changes or conflicting tags (which value is meant is
-    unknown), a missing ``scope``, a
+    unknown), shipped and pending changes under one header, a pending tag line
+    below prose or not on a line of its own, a missing ``scope``, a
     header with no date, and any entry whose fragment would not validate or read
     back as written.
     """
@@ -845,13 +843,26 @@ def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -
     refusals: list[Problem] = []
     kept: list[str] = []
     groups: dict[str, list[_PendingEntry]] = {}
-    split: list[str] = []
+    seen: set[object] = set()  # the scopes the legacy reader showed as pending
+    unseen: list[str] = []
     for block in blocks:
         entry = block.entry
         where = f"entry {entry.title!r} (line {entry.line_number})"
-        release = entry.tags.get("release")
-        if release is not None:
-            if not (isinstance(release, str) and change_log_mod.RELEASE_VALUE_RE.match(release)):
+        # One reader for the changes an entry holds, so a section is shipped or
+        # pending by its own tag line, never by whichever line heads the entry.
+        lead, sections = change_log_mod.tag_sections(block.text)
+        if not sections:
+            if entry.tag_line_count and "release" not in entry.tags:
+                refusals.append(
+                    Problem("stranded-tag-line", f"{where} has a tag line that is not on a line of its own")
+                )
+            kept.append(block.text)  # untagged, or tagged only by a shipped inline line
+            continue
+        releases = [s.tags.get("release") for s in sections]
+        for release in releases:
+            if release is not None and not (
+                isinstance(release, str) and change_log_mod.RELEASE_VALUE_RE.match(release)
+            ):
                 refusals.append(
                     Problem(
                         "unreleased-placeholder",
@@ -859,36 +870,41 @@ def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -
                         "it shipped in, or delete the tag if it has not shipped",
                     )
                 )
+        if all(r is not None for r in releases):
+            kept.append(block.text)  # shipped history is never rewritten
+            continue
+        if any(r is not None for r in releases):
+            refusals.append(
+                Problem(
+                    "mixed-release",
+                    f"{where} holds shipped and pending changes under one header; "
+                    "move the pending one into an entry of its own",
+                )
+            )
             kept.append(block.text)
             continue
-        if entry.tag_line_count == 0:
-            # A tag line under the prose is one no reader ever saw. Shipped, it is
-            # history and stays; pending, leaving it would strand the change unseen.
-            _lead, stranded = change_log_mod.tag_sections(block.text)
-            if any("release" not in s.tags for s in stranded):
-                refusals.append(
-                    Problem(
-                        "stranded-tag-line",
-                        f"{where} has a tag line below its prose, which no reader sees; "
-                        "move it to just under the header",
-                    )
+        if lead:
+            # A tag line under the prose is one no reader ever saw; leaving it would
+            # strand a pending change unseen.
+            refusals.append(
+                Problem(
+                    "stranded-tag-line",
+                    f"{where} has a tag line below its prose, which no reader sees; "
+                    "move it to just under the header",
                 )
+            )
             kept.append(block.text)
             continue
 
         header = _LEGACY_HEADER_RE.fullmatch(entry.title)
-        if entry.tag_line_count > 1 or entry.unconsumed_tag_lines:
-            sections = _separate_changes(block.text)
-            if sections is None:
+        if len(sections) > 1:
+            if not _separate_changes(sections):
                 refusals.append(Problem("multi-tag-line", f"{where} has more than one tag line; merge them into one"))
                 kept.append(block.text)
                 continue
-            split.extend(s.tags["scope"] for s in sections[1:])  # type: ignore[misc]
-        else:
-            body = block.text.splitlines()[1:]
-            while body and (not body[0].strip() or change_log_mod.TAG_LINE_RE.search(body[0])):
-                body.pop(0)
-            sections = [change_log_mod.TagSection(entry.tags, tuple(entry.tag_conflicts), "\n".join(body).strip())]
+            unseen.extend(s.tags["scope"] for s in sections[1:])  # type: ignore[misc]
+        if sections[0].tags.get("scope"):
+            seen.add(sections[0].tags["scope"])  # type: ignore[arg-type]
         before = len(refusals)
         for section in sections:
             if section.conflicts:
@@ -970,5 +986,5 @@ def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -
     remaining = (preamble + "".join(kept)).rstrip("\n") + "\n"
     return LegacyConversion(
         fragments=tuple(converted), remaining=remaining, refusals=(), defaulted=tuple(defaulted),
-        split=tuple(split),
+        split=tuple(dict.fromkeys(sc for sc in unseen if sc not in seen)),
     )

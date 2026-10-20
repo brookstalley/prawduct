@@ -45,7 +45,8 @@ it. Plan: `.prawduct/artifacts/build-plan-change-log-fragments-wave-2.md`.
 - An entry holding several changes under one header, each a tag line over its own paragraph and
   scope, converts as one change per tag line; the legacy reader saw only the first, so the dry run
   names each scope it surfaces. A second tag line with no prose of its own or a repeated scope
-  still refuses (`multi-tag-line`), and a pending tag line below an entry's prose refuses
+  still refuses (`multi-tag-line`). Shipped or pending is read per tag line: an entry mixing
+  the two refuses (`mixed-release`), and so does a pending tag line below an entry's prose
   (`stranded-tag-line`).
 
 ## Consumer note

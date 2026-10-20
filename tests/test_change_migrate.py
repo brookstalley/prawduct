@@ -130,8 +130,13 @@ REFUSALS = [
     (_entry("2026-10-19: stray", "type=fix | scope=t", "Body.\n\n<!-- prawduct: scope=u -->"), "multi-tag-line"),
     # A union merge's shape: two versions of one entry's tag line, each over prose.
     (_entry("2026-10-19: same scope", "type=fix | scope=t", "Body.\n\n<!-- prawduct: type=feature | scope=t -->\n\nMore."), "multi-tag-line"),
-    # A tag line the old reader counts but that starts no section: which change it tags is unknown.
-    ("## 2026-10-19: inline\n\nSee <!-- prawduct: type=fix | scope=t --> here.\n\n<!-- prawduct: type=fix | scope=u -->\n\nB.\n\n<!-- prawduct: type=fix | scope=v -->\n\nC.\n\n", "multi-tag-line"),
+    # Prose quoting a tag line, then two changes: which the prose belongs to is unknown.
+    ("## 2026-10-19: inline\n\nSee <!-- prawduct: type=fix | scope=t --> here.\n\n<!-- prawduct: type=fix | scope=u -->\n\nB.\n\n<!-- prawduct: type=fix | scope=v -->\n\nC.\n\n", "stranded-tag-line"),
+    ("## 2026-10-19: inline only\n\nSee <!-- prawduct: type=fix | scope=t --> here.\n\n", "stranded-tag-line"),
+    # The shipped section would come back pending, or the pending one stay unseen.
+    (_entry("2026-10-19: mixed", "type=fix | scope=t", "A.\n\n<!-- prawduct: type=fix | scope=u | release=v1.0.0 -->\n\nB."), "mixed-release"),
+    (_entry("2026-10-19: mixed", "type=fix | scope=t | release=v1.0.0", "A.\n\n<!-- prawduct: type=fix | scope=u -->\n\nB."), "mixed-release"),
+    (_entry("2026-10-19: placeholder below", "type=fix | scope=t | release=v1.0.0", "A.\n\n<!-- prawduct: type=fix | scope=u | release=unreleased -->\n\nB."), "unreleased-placeholder"),
     ("## 2026-10-19: prose first\n\nLead.\n\n<!-- prawduct: type=fix | scope=t -->\n\nA.\n\n", "stranded-tag-line"),
     (_entry("2026-10-19: conflict", "type=fix | scope=a | scope=b"), "conflicting-tags"),
     (_entry("2026-10-19: no scope", "type=fix"), "missing-scope"),
@@ -160,6 +165,14 @@ class TestRefusals:
             "2026-10-18: first", "type=fix | scope=same | release=v3.7.1"
         )
         assert [s for s, _ in change_fragments.legacy_entries_as_fragments(log).fragments] == ["same"]
+
+    def test_an_entry_whose_changes_all_shipped_is_history_and_stays(self):
+        log = PREAMBLE + _entry(
+            "2026-10-19: both shipped", "type=fix | scope=t | release=v1.0.0",
+            "A.\n\n<!-- prawduct: type=fix | scope=u | release=v1.0.0 -->\n\nB.",
+        )
+        result = change_fragments.legacy_entries_as_fragments(log)
+        assert result.refusals == () and result.fragments == () and result.remaining == log
 
     def test_a_shipped_tag_line_below_the_prose_is_history_and_stays(self):
         log = PREAMBLE + "## 2026-10-19: prose first\n\nLead.\n\n<!-- prawduct: type=fix | scope=t | release=v1.0.0 -->\n\n"
@@ -243,6 +256,7 @@ class TestWhatRealLogsCarry:
         fragments = dict(result.fragments)
         b = change_fragments.check_fragment_text(fragments["b"], Path("b.md")).fragment
         assert b.type == "fix"
+        assert result.split == ()  # `b` was already pending, under its own entry
         assert b.narrative == "### 2026-10-19: chunk\n\nB why.\n\n### 2026-10-18: earlier\n\nB before."
 
     @pytest.mark.parametrize("tags, legacy", [("scope=u", ""), ("type=mixed | scope=u", "mixed")])
