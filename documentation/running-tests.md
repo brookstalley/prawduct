@@ -10,7 +10,9 @@ tests here under this machine's test-slot cap and says so.
 
 If `testament` isn't installed: `uv tool install
 git+ssh://git@github.com/brookstalley/testament@main` (or `git+https://…`), then
-`testament guide machine`. Until it is, run `pytest` as before.
+`testament guide machine`. No pool is needed: with no coordinator, `testament run` runs the
+tests on this machine. Until it is installed, run `pytest` as before, and record evidence the
+way "Recording evidence" below describes for a machine without testament.
 
     testament run --json -- tests/unit/test_foo.py -k bar   # any pytest selection
     testament run --json                                     # the project's default suite
@@ -33,9 +35,27 @@ Read the JSON on stdout:
 
 `testament status` shows the runners and what's queued.
 
-## Evidence still comes from the recorder
+## Recording evidence
 
-A pool run can't yet be recorded as prawduct test evidence: the recorder ingests JUnit
-(`test-evidence record --from-junit`), and `testament run` writes only JSON until
-brookstalley/testament#52. Until then, record the boundary run with
-`prawduct-hook test-evidence record`.
+`prawduct-hook test-evidence record` records the boundary run, and it runs on the pool. The
+first `test_commands` entry in `.prawduct/project-state.yaml` is
+`testament run --junit-xml {junit_xml}`, and the recorder ingests the JUnit report it writes.
+If no coordinator answers, testament runs the same tests on this machine and the recorder takes
+that run the same way. The other two entries run on this machine: the collector's node suite,
+and the tests the pool selects out because runners have no git history or backlog cache
+(`requires_history`, `requires_local_cache`). Together the three entries are the whole suite.
+
+A run that reaches no result leaves no report, and the recorder refuses to record it. So does a
+command that exits non-zero while its report shows no failing test, which is what a pool run
+reporting `population_mismatch` looks like.
+
+Recording needs `testament` and node installed: any command that cannot start fails the whole
+record. On a machine without testament, run the two suites yourself and ingest both reports in
+one call:
+
+    python3 -m pytest tests/ --junit-xml=/tmp/py.xml -q
+    node --test --test-reporter=junit --test-reporter-destination=/tmp/node.xml collector/test/*.test.mjs
+    prawduct-hook test-evidence record --from-junit /tmp/py.xml --from-junit /tmp/node.xml
+
+A plain `pytest tests/` run already includes the marked tests, so these two reports are the whole
+suite.
