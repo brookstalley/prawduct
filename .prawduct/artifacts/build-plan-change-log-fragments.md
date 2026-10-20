@@ -15,7 +15,7 @@ governed_by:
       - "governance documents archived, never deleted → inapplicable because the norm covers .prawduct/artifacts/; fragments live in .prawduct/changes/, and the cut moves their content into the archive rather than discarding it"
       - "newer-schema facts block loudly → conforms: `schema: 1` is required and a higher value is refused (design, prior-art section)"
       - "two stores, two lifetimes → conforms: fragments are committed shared answers"
-      - "backlog_service_repo selects the store → conforms: the merge-flow close reads `issues:` and routes through /prawduct:backlog"
+      - "backlog_service_repo selects the store → conforms: the merge-flow close reads `closes:` and routes through /prawduct:backlog"
   - artifact: architecture
     dispositions:
       - "local-first, stdlib-only governance runtime → conforms: Python stdlib only; changie and towncrier rejected (FRG8)"
@@ -54,11 +54,13 @@ validated file per scope. Wave 2, planned after this ships, rolls the format out
 **Constraints:** Python stdlib only (owner, in #1012). Archived history is never rewritten.
 Nothing may require a post-merge commit (`/prawduct:pr` Step 1d).
 
-**Inferred, awaiting the owner's confirmation:** the owner did not rule on these two when asked on
-2026-10-19. They are built as written unless struck.
-- *Inferred:* the `## Consumer note` section is required, holding either text or
-  `none: <reason>`. This replaces the design's release-time warning (FRG3, D3).
-- *Inferred:* `issues:` is kept, and the `/prawduct:pr` Merge Flow's close step reads it (FRG2).
+**Owner decisions, 2026-10-19:**
+- The `## Consumer note` section is required, holding text or `none: <reason>`. The cut's dry run
+  lists every `none:` with its reason, and the release-time digest-coverage advisory is retired for
+  fragments.
+- `closes:` is backend-neutral and holds backlog item IDs (via `lib/backlog/ids.py`). It is the
+  single source for which items a change closes: the PR body's `Closes` lines are generated from
+  it, and the Merge Flow closes those items from it.
 
 **Tradeoffs accepted:**
 - The rolling per-merge `-dev.N` version bumps stay. The cut makes most of their reason go away;
@@ -68,9 +70,8 @@ Nothing may require a post-merge commit (`/prawduct:pr` Step 1d).
 
 **Decisions made mid-build:** *(one line each, naming what settled it)*
 
-**Level:** High. The design is grounded in the current tree (re-verified 2026-10-19), and the prior
-July proposal is reconciled in the design. The two inferred items are the only open ones, and
-confirming or striking them is a one-line answer from the owner.
+**Level:** High. The design is grounded in the current tree (re-verified 2026-10-19), the July
+proposal is reconciled, and every schema decision is the owner's.
 
 ## Status
 
@@ -103,7 +104,7 @@ the same pending scopes as before.
   - Which scopes are pending? (`check-releasability`)
   - Which plan does a scope belong to? (`plan-backfill`)
   - What is the consumer note for each scope in this release? (the cut)
-  - Which issues does this change close? (the Merge Flow)
+  - Which backlog items does this change close? (PR Create Step 5, the Merge Flow)
   - Which scope does this one reopen? (`reopens`)
   - Was this written by a newer plugin? (`schema`)
   - Is the record well-formed? (Step 1c, `record_lint`)
@@ -115,7 +116,7 @@ the same pending scopes as before.
   - new `plugin/lib/change_fragments.py` (`parse_fragment`, `validate_fragment`, `load_pending`, `render_entry`, `render_consumer_section`)
   - new `plugin/templates/change-fragment.md`
   - The schema: `schema` (required, must be 1), `type` (closed set of seven), `scope` (equals the
-    filename stem), `date`, `title`, optional `issues` and `reopens`, and a required
+    filename stem), `date`, `title`, optional `closes` and `reopens`, and a required
     `## Consumer note` section holding text or `none: <reason>`.
   - `RELEASE_VALUE_RE` and `RETIRED_TAG_KEYS` are imported from `change_log.py`, not copied.
 - **Tests:** new `tests/test_change_fragments.py`. One refusal fixture per error code, each
@@ -137,15 +138,16 @@ the same pending scopes as before.
   `plugin/bin` on 2026-10-19 found modules the design's D7 omits (`lifecycle_repair`,
   `coverage_algebra`, `onboarding_probes`, `oversized_state_probes`). Each is switched or
   recorded here as not reading pending state. The PR Step 1c probe accepts a branch that adds one
-  valid fragment and surfaces validation errors as its refusal. The Merge Flow's close step reads
-  `issues:` from the branch's fragment.
+  valid fragment and surfaces validation errors as its refusal. PR Create Step 5 generates the
+  body's `Closes` lines from the fragment's `closes:`, and the Merge Flow closes those items from
+  it. `check-releasability`'s digest-coverage advisory stops applying to fragment-shaped scopes.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `1012-design.md` D6 (readers), D7; FRG6
 - **Deliverables:**
   - `pending_scopes` in `release_readiness.py`, used by every reader in the enumerated set
   - `check-change-log-entry` (in `coverage.py`) accepts and validates fragments
   - `record_lint` lints the fragment directory
-  - `/prawduct:pr` Step 1c/1d and the Merge Flow close step, rewritten for fragments
+  - `/prawduct:pr` Step 1c/1d, Create Step 5's `Closes` lines and the Merge Flow close step, rewritten for fragments
   - the Critic cross-check text for fragments
 - **Tests:** the existing `release_readiness` and coverage tests pass unchanged against a
   legacy-only repo. New fixtures cover fragments-only, both shapes, the same scope in both

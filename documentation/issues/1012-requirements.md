@@ -4,10 +4,10 @@
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/1012`
 
 **Amended 2026-10-19** (carried onto `develop` from the session branch). Owner decisions that day:
-`type` is a closed set, and a reopened scope is a new fragment carrying `reopens:` (see the design,
-D2 and D5). Two further amendments, below in FRG2 and FRG3, are **the agent's inference, awaiting
-owner confirmation**: they were proposed in the same exchange, and the owner has not yet ruled on
-them.
+`type` is a closed set; a reopened scope is a new fragment carrying `reopens:` (design D2, D5);
+the `## Consumer note` section is required (FRG3); and `issues:` becomes `closes:`, a
+backend-neutral list of backlog item IDs that is the single source for which items a change closes
+(FRG2). The owner confirmed the last two as refined: "Yes to all".
 
 Related: #834 (derive the entry from the PR body — same cost, different mechanism; see Decision 5),
 #857 (union-merge resurrection audit — fragments retire its change-log case), #783 / #303 (tag
@@ -69,7 +69,7 @@ an edit to that one file.
 | `date` | yes | `YYYY-MM-DD` |
 | `title` | yes | non-empty one-line headline |
 | `release` | no | **absent until the cut**; when present, must be a version (`vX.Y.Z[.N][-suffix]`) — the `release=unreleased` guard carries over unchanged |
-| `issues` | no | list of issue refs the change closes. *Inferred, awaiting confirmation:* its consumer is the `/prawduct:pr` Merge Flow's close-the-backlog-items step, which today the builder tracks by hand. |
+| `closes` | no | list of backlog item IDs this change closes, each validated through the backlog's ID normalizer (`lib/backlog/ids.py`), so it works on the Issues and markdown backends alike. **The single source** for that relation: `/prawduct:pr` Create Step 5 generates the PR body's `Closes` lines from it, and the Merge Flow's close step closes those items from it. The item's `closed-by` is the back-reference that close writes, not an independent claim (owner, 2026-10-19). |
 
 Unknown keys, a retired key (`chunks`, `status`), a wrong-typed value, or frontmatter that does
 not parse are refused by `validate_change_log_tags`' successor with a named reason. Refusal is
@@ -80,11 +80,14 @@ mechanical at PR Step 1c, not a reviewer finding.
 section: either the user-facing text for `plugin/CHANGELOG.md`, or a single line
 `none: <reason>` for work with nothing to tell consumers (release mechanics, test-only,
 repo-internal). A fragment with no `## Consumer note` section, or an empty one, is refused at PR
-Step 1c like any other schema error. *Inferred, awaiting confirmation.* Why required rather than
+Step 1c like any other schema error (owner, 2026-10-19). Why required rather than
 a release-time warning: the v3.7.1 cut found 16 of 26 scopes with no consumer note, while the
 release-time warning that exists today fired on every one of them. A warning at the cut asks the
 person with the least context; the PR asks the one with the most. `none: <reason>` keeps
-internal work from being padded with filler.
+internal work from being padded with filler, and the cut's dry run lists every `none:` scope
+with its reason so the release operator sees them together. The release-time digest-coverage
+advisory, which matches scope names against `plugin/CHANGELOG.md` prose, is retired for fragments:
+a required section is exact where the name match is fuzzy.
 
 **FRG4 — Release cut assembles; branches never touch shared files.** `prawduct-hook` gains a cut
 command (name decided in design) that, for the fragments with no `release`:

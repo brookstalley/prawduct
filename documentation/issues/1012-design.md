@@ -3,9 +3,9 @@
 `status: accepted · stage: design · area: release · added: 2026-10-19 · source: scheduled backlog
 session · issue: https://github.com/brookstalley/prawduct/issues/1012`
 
-**Amended 2026-10-19.** The owner confirmed D2's closed `type` set and D5's `reopens:` key. D3 and
-the `issues:` key (D2, Risks) are changed per the requirements' FRG3 and FRG2 amendments, which are
-the agent's inference awaiting owner confirmation. The build is split into two waves (end of this
+**Amended 2026-10-19.** Owner decisions: D2's closed `type` set; D5's `reopens:` key; D3's
+consumer note becomes required; and D2's `issues:` becomes `closes:`, backend-neutral and the single
+source for the closes relation (requirements FRG2, FRG3). The build is split into two waves (end of this
 doc): wave 1 moves prawduct itself onto fragments; wave 2 rolls the migration out to onboarded
 repos.
 
@@ -81,7 +81,7 @@ One new module owns the fragment format; no other module parses a fragment. Publ
 | `render_consumer_section(fragments) -> str` | the `plugin/CHANGELOG.md` per-scope text |
 | `legacy_entries_as_fragments(text)` | migration reader (D6) |
 
-`Fragment` is a frozen dataclass: `scope, type, date, title, release, issues, narrative, consumer_note`.
+`Fragment` is a frozen dataclass: `schema, scope, type, date, title, closes, reopens, narrative, consumer_note`.
 Frontmatter is read with the repo's existing frontmatter reader (the one `plan_index` uses) so
 there is no second YAML dialect; unknown keys are an error, not preserved (this **departs from the
 legacy parser's "preserve unknown keys"** deliberately — the point of the move is that the tag
@@ -100,7 +100,7 @@ type: feature          # closed set, below
 scope: change-log-fragments   # == filename stem; == build plan `scope:`
 date: 2026-10-19
 title: One fragment per change
-issues: [1012]         # optional, ints
+closes: [brookstalley/prawduct#1012]   # optional; backlog item IDs, normalized by lib/backlog/ids.py
 release: v3.8.0        # optional; absent = pending; must match RELEASE_VALUE_RE
 ---
 <narrative: names every chunk shipped>
@@ -129,8 +129,9 @@ exactly `## Consumer note`** splits narrative from note; a second such heading i
 (`duplicate-consumer-note`). A narrative that needs its own `##` headings must use `###`. The section is **required**. Its content is either consumer
 text or exactly one line `none: <reason>` with a non-empty reason; a missing or empty section is
 refused (`missing-consumer-note`, `empty-consumer-note`). The cut renders only fragments whose note
-is text. *Amended 2026-10-19 (inferred, awaiting owner confirmation):* this replaces a
-release-time warning. That warning already exists in today's `check-releasability` output and did
+is text, and its dry run lists every `none:` scope with its reason. *Amended 2026-10-19 (owner):*
+this replaces a release-time warning, and the scope-name digest-coverage advisory in
+`check-releasability` is retired for fragment-shaped scopes. That warning already exists in today's `check-releasability` output and did
 not prevent 16 of 26 v3.7.1 scopes from arriving without a note. `none: <reason>` answers the
 filler concern that motivated the warning.
 
@@ -282,9 +283,10 @@ real work. The migration command itself is built in wave 1, because this repo is
 - **Cut transaction on Windows** (`os.replace` across files is not atomic as a set). The staging
   copy plus idempotence key in D4 step 2 is the recovery story; confirm it is sufficient or add a
   `.cut-in-progress` marker.
-- **`issues:` has a consumer** (amended 2026-10-19, inferred): the `/prawduct:pr` Merge Flow's
-  "Close the backlog items this PR resolves" step reads it from the branch's fragment instead of
-  the builder tracking items by hand. The consumer ships in the same chunk as the reader, per
-  core.md ("name the consumer in the same change that adds the producer").
+- **`closes:` has two consumers** (owner, 2026-10-19): `/prawduct:pr` Create Step 5 generates the
+  PR body's `Closes` lines from it, and the Merge Flow's "Close the backlog items this PR resolves"
+  step closes those items from it. Both ship in the chunk that adds the reader, per core.md ("name
+  the consumer in the same change that adds the producer"). IDs are backlog item IDs, not GitHub
+  issue numbers, so a markdown-backend repo uses the same field.
 - ~~Owner confirmation needed on the closed `type` set (D2) and the `reopens` key (D5).~~ Both
   confirmed 2026-10-19.
