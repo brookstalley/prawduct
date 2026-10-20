@@ -590,7 +590,21 @@ class _PendingEntry:
     legacy_type: str
     date: str
     title: str
-    narrative: str
+    body: str
+    #: Tag keys a fragment has no field for; rendered as the ``Legacy tags:`` line.
+    extra: dict[str, object]
+
+    def narrative(self, kind: str) -> str:
+        """The body plus its ``Legacy tags:`` line, recording a ``type`` the
+        fragment's own ``kind`` does not carry, so a merge or a default loses it
+        nowhere."""
+        extra = dict(self.extra)
+        if self.legacy_type and LEGACY_TYPE_SYNONYMS.get(self.legacy_type, self.legacy_type) != kind:
+            extra["type"] = self.legacy_type
+        if not extra:
+            return self.body
+        line = _legacy_tags_line(extra)
+        return f"{self.body}\n\n{line}" if self.body else line
 
 
 def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -> LegacyConversion:
@@ -668,10 +682,7 @@ def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -
         body = block.text.splitlines()[1:]
         while body and (not body[0].strip() or change_log_mod.TAG_LINE_RE.search(body[0])):
             body.pop(0)
-        narrative = "\n".join(body).strip()
         extra = {k: v for k, v in entry.tags.items() if k not in _LEGACY_KEYS}
-        if extra:
-            narrative = f"{narrative}\n\n{_legacy_tags_line(extra)}" if narrative else _legacy_tags_line(extra)
         groups.setdefault(scope, []).append(
             _PendingEntry(
                 where=where,
@@ -679,7 +690,8 @@ def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -
                 legacy_type=kind if isinstance(kind, str) else "",
                 date=header.group(1),
                 title=header.group(2).strip(),
-                narrative=narrative,
+                body="\n".join(body).strip(),
+                extra=extra,
             )
         )
         kept.append("")  # its place in the log; dropped below when the scope converts
@@ -688,20 +700,29 @@ def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -
     defaulted: list[tuple[str, str]] = []
     for scope, entries in groups.items():
         newest = entries[0]
-        normalised = LEGACY_TYPE_SYNONYMS.get(newest.legacy_type, newest.legacy_type)
-        if normalised not in TYPES:
-            if default_type is None:
-                if not newest.legacy_type:
-                    refusals.append(Problem("missing-type", f"{newest.where} has no type="))
-                    continue
-                # Left to the validator below, which names the closed set.
-            else:
-                defaulted.append((scope, newest.legacy_type))
-                normalised = default_type
-        if len(entries) == 1:
-            narrative = newest.narrative
+        # The newest entry that names a type in the closed set decides it; the
+        # others keep theirs in their own `Legacy tags:` line.
+        typed = [
+            LEGACY_TYPE_SYNONYMS.get(e.legacy_type, e.legacy_type)
+            for e in entries
+            if LEGACY_TYPE_SYNONYMS.get(e.legacy_type, e.legacy_type) in TYPES
+        ]
+        if typed:
+            normalised = typed[0]
+        elif default_type is not None:
+            defaulted.append((scope, newest.legacy_type))
+            normalised = default_type
+        elif not newest.legacy_type:
+            refusals.append(Problem("missing-type", f"{newest.where} has no type="))
+            continue
         else:
-            narrative = "\n\n".join(f"### {e.date}: {e.title}\n\n{e.narrative}".rstrip() for e in entries)
+            normalised = newest.legacy_type  # the validator below names the closed set
+        if len(entries) == 1:
+            narrative = newest.narrative(normalised)
+        else:
+            narrative = "\n\n".join(
+                f"### {e.date}: {e.title}\n\n{e.narrative(normalised)}".rstrip() for e in entries
+            )
         rendered = render_fragment(
             kind=normalised, scope=scope, date=newest.date, title=newest.title,
             narrative=narrative, consumer_note=MIGRATED_NOTE,

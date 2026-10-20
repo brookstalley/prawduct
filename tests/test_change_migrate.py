@@ -196,7 +196,8 @@ class TestWhatRealLogsCarry:
         fragment = change_fragments.check_fragment_text(text, Path("same.md")).fragment
         assert (scope, fragment.date, fragment.title, fragment.type) == ("same", "2026-10-19", "newest", "fix")
         assert fragment.narrative == (
-            "### 2026-10-19: newest\n\nSecond pass.\n\n### 2026-10-17: first\n\nFirst pass."
+            "### 2026-10-19: newest\n\nSecond pass.\n\n"
+            "### 2026-10-17: first\n\nFirst pass.\n\nLegacy tags: type=feature"
         )
         assert "scope=same" not in result.remaining and "scope=other" in result.remaining
 
@@ -208,6 +209,15 @@ class TestWhatRealLogsCarry:
         (_scope, text), = result.fragments
         assert change_fragments.check_fragment_text(text, Path("u.md")).fragment.type == "chore"
         assert result.defaulted == (("u", legacy),)
+        narrative = change_fragments.check_fragment_text(text, Path("u.md")).fragment.narrative
+        assert narrative.endswith("Legacy tags: type=mixed") == bool(legacy)
+
+    def test_an_older_entrys_valid_type_wins_over_the_default(self):
+        log = PREAMBLE + _entry("2026-10-19: untyped", "scope=m") + _entry("2026-10-17: typed", "type=perf | scope=m")
+        result = change_fragments.legacy_entries_as_fragments(log, default_type="chore")
+        (_scope, text), = result.fragments
+        assert change_fragments.check_fragment_text(text, Path("m.md")).fragment.type == "perf"
+        assert result.defaulted == ()
 
     def test_a_typed_entry_never_takes_the_default(self):
         log = PREAMBLE + _entry("2026-10-19: typed", "type=bugfix | scope=t")
@@ -262,6 +272,18 @@ class TestCommand:
         run = _migrate(project, "--apply")
         assert run.returncode == 0 and "nothing to do" in run.stdout
         assert _snapshot(project) == after_first
+
+    def test_a_log_with_nothing_pending_still_adopts_fragments(self, tmp_path):
+        shipped = PREAMBLE + _entry("2026-10-18: shipped fix", "type=fix | scope=beta | release=v3.7.1", "Beta shipped.")
+        project = _project(tmp_path, shipped)
+        dry = _migrate(project)
+        assert dry.returncode == 0 and ".prawduct/changes/.gitkeep" in dry.stdout
+        assert not (project / ".prawduct" / "changes").exists()
+        assert _migrate(project, "--apply").returncode == 0
+        assert (project / ".prawduct" / "changes" / ".gitkeep").is_file()
+        assert (project / ".prawduct" / "change-log.md").read_text() == shipped
+        again = _migrate(project, "--apply")
+        assert again.returncode == 0 and "nothing to do" in again.stdout
 
     def test_no_log_is_nothing_to_do(self, tmp_path):
         project = _project(tmp_path, None)

@@ -97,7 +97,8 @@ def plan_migration(
     conversion = change_fragments.legacy_entries_as_fragments(text, default_type=default_type)
     if conversion.refusals:
         raise MigrationRefused(list(conversion.refusals))
-    if not conversion.fragments:
+    directory = project_dir / change_fragments.FRAGMENT_DIR_REL
+    if not conversion.fragments and directory.is_dir():
         return [], ()
 
     pinned = install_pin_too_old(project_dir)
@@ -112,7 +113,6 @@ def plan_migration(
                 )
             ]
         )
-    directory = project_dir / change_fragments.FRAGMENT_DIR_REL
     existing = [scope for scope, _ in conversion.fragments if (directory / f"{scope}.md").exists()]
     if existing:
         raise MigrationRefused(
@@ -139,9 +139,13 @@ def plan_migration(
     # The directory is how readers know the repo records fragments, and git drops
     # an empty one: without this, the first release that ships every fragment
     # leaves a fresh clone that looks like a repo still on the single-file log.
+    # A log with nothing pending still gets it: adopting the format is having the
+    # directory, so new work is recorded as fragments from the next branch on.
     keep = directory / ".gitkeep"
     if not keep.exists():
         writes.append((keep, ""))
+    if not conversion.fragments:
+        return writes, ()
     writes.append((log_path, conversion.remaining))
     return writes, conversion.defaulted
 
@@ -183,7 +187,24 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
     if not writes:
         print(f"migrate-change-log ({mode}): no release-pending entry in the legacy change log; nothing to do.")
         return 0
-    fragments = [path for path, _ in writes[:-1] if path.suffix == ".md"]
+    fragments = [path for path, _ in writes if path.suffix == ".md" and path.parent.name == "changes"]
+    if not fragments:
+        keep = writes[0][0]
+        print(
+            f"migrate-change-log ({mode}): no release-pending entry to convert; "
+            f"{keep.relative_to(project_dir)} makes this repo record new changes as fragments."
+        )
+        if apply:
+            keep.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                core.write_all_or_none(writes)
+            except OSError as exc:
+                print(f"refused: write-failed: {exc}. Every file was restored.", file=sys.stderr)
+                return 1
+            print("  wrote it; commit it.")
+        else:
+            print("  Re-run with --apply to write. Nothing was written.")
+        return 0
     print(f"migrate-change-log ({mode}): {len(fragments)} release-pending entry(ies) become fragments:")
     for path in fragments:
         print(f"  {path.relative_to(project_dir)}")
