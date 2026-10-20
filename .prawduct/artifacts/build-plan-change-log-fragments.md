@@ -192,11 +192,11 @@ proposal is reconciled, and every schema decision is the owner's.
 - [x] Chunk 01: Fragment format core — `change_fragments.py`, schema, template
 - [x] Chunk 02: Readers and the PR gate read fragments (dual-shape)
 - [x] Chunk 03: The cut — `cut-change-log`
-- [ ] Chunk 04: Prawduct migrates onto fragments; docs and runbooks
-Context: Chunks 01–03 committed after their reviews (Chunk 03 after a verify-resolutions round
-cleared two blocking findings; the trunk-base path moved to wave 2). The plan's governance
-checkpoint comes next: the owner looks at the two-branch merge and the dry-run cut before Chunk 04
-migrates this repo. Wave-2 carry-overs are in the Chunk 02 and 03 decisions above.
+- [x] Chunk 04: Prawduct migrates onto fragments; docs and runbooks
+Context: all four chunks are committed and reviewed. The owner approved the migration at the
+governance checkpoint on 2026-10-19. The cumulative review found 0 blocking. Its fixes landed after
+two verify-resolutions rounds, the second clean. Wave 2 is #1023, the dual-shape expiry is #1022,
+and the collateral-scope rule is #1024 (owner decision). The branch is ready for `/prawduct:pr`.
 
 ## Verification Strategy
 
