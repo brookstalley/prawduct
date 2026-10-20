@@ -731,3 +731,16 @@ def test_following_the_unignore_advice_restores_the_real_check(tmp_path):
     result = _run_probe(repo)
     assert result.returncode == 0, result.stderr
     assert "fragment-present: .prawduct/changes/x.md added" in result.stdout
+
+
+def test_a_committed_fragment_that_is_not_utf8_is_refused_not_a_traceback(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    path = repo / FRAGMENT_DIR / "x.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_fragment("x").encode() + b"\xff\xfe\n")
+    _git(repo, "add", str(path.relative_to(repo)))
+    _git(repo, "commit", "-q", "-m", "binary-ish fragment")
+    result = _run_probe(repo)
+    assert "Traceback" not in result.stderr
+    assert result.returncode in (0, 1) and ("fragment-" in result.stdout + result.stderr)

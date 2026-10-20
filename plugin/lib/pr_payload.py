@@ -411,6 +411,14 @@ def _fragment_section(
             changes.insert(0, own)
         paired_by = f"paired by scope: the record for `{scope}`, plus any other record this branch adds"
         if record.error is not None:
+            if own is None or own.source != "fragment":
+                # Nothing to show, and "no record" would be a wrong diagnosis:
+                # the branch may have cut its fragment, which only git could say.
+                return Section("change_log", degraded=(
+                    f"the branch's change records could not be read ({record.error}), and `{scope}` "
+                    f"has no pending fragment — read {change_fragments.FRAGMENT_DIR_REL}/ and the "
+                    "change-log archive directly"
+                ))
             paired_by += f" (the diff against {base} could not be read, so only the scope's fragment is shown: {record.error})"
     else:
         if record.error is not None:

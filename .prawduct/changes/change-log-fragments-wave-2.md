@@ -28,7 +28,7 @@ it. Plan: `.prawduct/artifacts/build-plan-change-log-fragments-wave-2.md`.
   `--default-type`, listed per entry. A log with nothing pending still adopts fragments.
 - It refuses (`plugin-pin-too-old`) when the committed install reference pins a release older
   than v3.7.2.
-- `/prawduct:migrate` runs it as a second commit; `/prawduct:doctor` offers it (check #22).
+- `/prawduct:doctor` offers it (check #22); `/prawduct:migrate` runs the same procedure as a second commit for a repo leaving file-sync.
 - PR Step 1c answers `fragment-present-untracked` from the on-disk fragments when git ignores
   the directory, and both its remedies name the un-ignore pattern.
 
@@ -42,4 +42,4 @@ it. Plan: `.prawduct/artifacts/build-plan-change-log-fragments-wave-2.md`.
 - Plugin prose that still described the legacy log as the only record now says "change record".
 
 ## Consumer note
-Products can now record each change as its own file in `.prawduct/changes/` instead of editing the shared `change-log.md`, so two branches no longer conflict over the change record. New products start that way. For an existing product, `/prawduct:doctor` offers the move and `/prawduct:migrate` makes it, as one revertible commit. Entries with no type need one `--default-type` you choose, and the dry run shows every guess first. On a trunk-based product that tracks versions, each PR cuts its own change record into the archive as it ships.
+Products can now record each change as its own file in `.prawduct/changes/` instead of editing the shared `change-log.md`, so two branches no longer conflict over the change record. New products start that way. For an existing product, `/prawduct:doctor` offers the move and makes it with your approval, as one revertible commit. Entries with no type need one `--default-type` you choose, and the dry run shows every guess first. On a trunk-based product that tracks versions, each PR cuts its own change record into the archive as it ships.

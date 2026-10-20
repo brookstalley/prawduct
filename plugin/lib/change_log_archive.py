@@ -88,6 +88,14 @@ class Block:
     def size(self) -> int:
         return len(self.text.encode("utf-8"))
 
+    @property
+    def key(self) -> str:
+        """The entry's identity across files. The writer ends a middle block with
+        a blank line and the last with none, so the same entry's ``text`` changes
+        with its position; this is what "the same entry" means wherever two
+        files are compared."""
+        return self.text.rstrip("\n")
+
 
 def split(content: str) -> tuple[str, list[Block]]:
     """``(preamble, blocks)`` — the file cut where its parser says entries start.
@@ -307,8 +315,8 @@ def _compose_bucket(existing: str, incoming: list[Block], bucket: str) -> str:
     run rather than kept forever.
     """
     _preamble, current = split(existing) if existing else ("", [])
-    present = {b.text.rstrip("\n") for b in current}
-    fresh = [b for b in incoming if b.text.rstrip("\n") not in present]
+    present = {b.key for b in current}
+    fresh = [b for b in incoming if b.key not in present]
     merged = fresh + current
     # Stable sort, newest first: incoming blocks were newer in the live log, so on
     # an equal date they precede what an earlier run already archived.

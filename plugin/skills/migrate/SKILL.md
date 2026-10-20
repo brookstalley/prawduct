@@ -100,7 +100,7 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    all non-framework files are preserved. Reversible via git revert."
    ```
 
-7. **Move the change record onto fragments**, a second commit. **The owner confirms the apply, and any `--default-type`.** Run `prawduct-hook migrate-change-log` (a dry run). It lists each release-pending entry that becomes `.prawduct/changes/<scope>.md`; shipped and untagged entries stay in the log. Exit 0 with `nothing to do` ends this step. A `refused:` exit 1 names an entry its author must decide about, by code. Relay each refusal and leave the repo on its legacy log, which every reader still accepts. Entries with no type in the closed set refuse until the owner picks one `--default-type TYPE` for all of them. Propose one, then re-run the dry run with it so they see every `type=… (was …)` line it guessed. `plugin-pin-too-old` means `.claude/settings.json` pins a prawduct release whose readers predate fragments; the pin moves first. Then `--apply` (with the same flag) and commit it on its own, `chore(prawduct): record changes as fragments`, so `git revert` undoes just this.
+7. **Move the change record onto fragments**, a second commit: follow `/prawduct:doctor` check #22's procedure, in `${CLAUDE_SKILL_DIR}/../../skills/doctor/SKILL.md` — the one home for how `migrate-change-log` is run, its refusals relayed and its `--default-type` chosen.
 
 8. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
    Stop hook + SessionStart digest, skills are `/prawduct:*`, and framework updates arrive via

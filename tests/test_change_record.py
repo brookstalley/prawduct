@@ -113,7 +113,7 @@ class TestTheTrunkWalk:
         record = change_fragments.branch_change_record(repo, "main")
         assert record.error is None
         assert [(c.scope, c.source) for c in record.changes] == [("x", "archive")]
-        assert record.closes == ("owner/repo#7",)
+        assert [c.closes for c in record.changes] == [("owner/repo#7",)]
 
         section = pr_payload._fragment_section(repo, "x", "main")
         assert section is not None and section.ok
@@ -169,3 +169,93 @@ class TestWhatIsNotTheBranchsRecord:
     def test_an_unreadable_base_is_an_error_not_an_empty_record(self, tmp_path):
         record = change_fragments.branch_change_record(_trunk(tmp_path), "no-such-base")
         assert record.error is not None and record.changes == ()
+
+
+AUGUST = "## 2026-08-20: august work\n\n<!-- prawduct: type=fix | scope=aug | release=v0.8.0 -->\n\nAug body.\n"
+
+
+class TestStepOneDAsPrescribed:
+    def test_a_cut_followed_by_a_size_archive_move_still_reads_as_the_cut(self, tmp_path):
+        # Step 1d runs the cut, then `archive-change-log --apply`, which edits the
+        # live log when its shipped history is over the threshold.
+        repo = _branch_with_fragment(tmp_path)
+        _cut_own_fragment(repo)
+        _write(repo, ".prawduct/change-log.md", "# Change Log\n")
+        _write(repo, f"{ARCHIVE}/2026-09.md", "# Archive\n\n" + SHIPPED)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "Step 1d: size archive")
+        probe = _hook(repo, "check-change-log-entry")
+        assert probe.returncode == 0, probe.stderr
+        assert probe.stdout.startswith("fragment-cut: x ")
+
+
+class TestMovedHistoryAcrossFiles:
+    def test_a_move_spanning_months_and_an_existing_bucket_is_not_a_record(self, tmp_path):
+        # The writer ends a middle block with a blank line and the last with none,
+        # so a moved entry's text changes with its position; identity must not.
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "main")
+        _write(repo, "app.py", "print(1)\n")
+        _write(repo, ".prawduct/changes/.gitkeep", "")
+        _write(repo, ".prawduct/change-log.md", "# Change Log\n\n" + SHIPPED + "\n" + AUGUST)
+        _write(repo, f"{ARCHIVE}/2026-08.md", "# Archive\n\n" + AUGUST.replace("aug", "aug0").replace("08-20", "08-01"))
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "base")
+        _git(repo, "checkout", "-qb", "feature/x")
+        _write(repo, "app.py", "print(2)\n")
+        _write(repo, ".prawduct/change-log.md", "# Change Log\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "code")
+        moved = _hook(repo, "archive-change-log", "--apply")
+        assert moved.returncode == 0, moved.stderr
+        # Re-create the move by hand if the threshold left everything live.
+        _write(repo, f"{ARCHIVE}/2026-09.md", "# Archive\n\n" + SHIPPED)
+        bucket = (repo / ARCHIVE / "2026-08.md").read_text()
+        if "scope=aug |" not in bucket:
+            _write(repo, f"{ARCHIVE}/2026-08.md", bucket.rstrip("\n") + "\n\n" + AUGUST)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "move")
+        assert change_fragments.branch_change_record(repo, "main").changes == ()
+        probe = _hook(repo, "check-change-log-entry")
+        assert probe.returncode == 1 and "fragment-cut" not in probe.stdout
+
+
+class TestAGitFailureIsNotAMissingRecord:
+    def test_step_1c_says_git_failed(self, tmp_path, monkeypatch, capsys):
+        from lib import coverage
+
+        repo = _trunk(tmp_path)
+        _write(repo, "app.py", "print(2)\n")
+        _git(repo, "commit", "-qam", "code only")
+        monkeypatch.setattr(
+            change_fragments, "branch_change_record",
+            lambda *_a, **_k: change_fragments.BranchRecord(error="git diff exited 128"),
+        )
+        verdict = coverage._fragment_entry_verdict(repo, "main", ["app.py"], ["app.py"])
+        err = capsys.readouterr().err
+        assert verdict == 1
+        assert err.startswith("git-failed: git diff exited 128") and "no-entry" not in err
+
+    def test_the_payload_degrades_rather_than_falling_back(self, tmp_path, monkeypatch):
+        repo = _trunk(tmp_path)
+        monkeypatch.setattr(
+            change_fragments, "branch_change_record",
+            lambda *_a, **_k: change_fragments.BranchRecord(error="git diff exited 128"),
+        )
+        section = pr_payload._fragment_section(repo, "x", "main")
+        assert section is not None and not section.ok
+        assert "could not be read" in section.degraded
+
+
+class TestAnUnreadableArchiveBucket:
+    def test_change_record_names_the_bucket_it_could_not_search(self, tmp_path):
+        repo = _trunk(tmp_path)
+        (repo / ARCHIVE).mkdir(parents=True)
+        (repo / ARCHIVE / "2026-08.md").write_bytes(b"# Archive\n\n\xff\xfe not utf-8\n")
+        _write(repo, f"{ARCHIVE}/2026-09.md", "# Archive\n\n" + SHIPPED)
+        found = _hook(repo, "change-record", "old")
+        assert found.returncode == 0 and "old: archive" in found.stdout  # the readable bucket is still searched
+        assert "NOTE: could not read 2026-08.md" in found.stderr
+        missing = _hook(repo, "change-record", "nope")
+        assert missing.returncode == 1 and "NOTE: could not read 2026-08.md" in missing.stderr

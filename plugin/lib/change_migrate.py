@@ -81,7 +81,8 @@ def plan_migration(
     project_dir: Path, *, default_type: str | None = None
 ) -> tuple[list[tuple[Path, str]], tuple[tuple[str, str], ...]]:
     """``(writes, defaulted)``: every ``(path, text)`` the migration would write,
-    empty when nothing is pending, and each scope that took ``default_type``.
+    and each scope that took ``default_type``. With nothing pending, the writes are
+    the fragment directory's ``.gitkeep`` when it is missing, else none.
 
     Raises :class:`MigrationRefused` when any entry needs its author's decision,
     when a fragment for a converted scope already exists, or when git would
@@ -187,9 +188,10 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
     if not writes:
         print(f"migrate-change-log ({mode}): no release-pending entry in the legacy change log; nothing to do.")
         return 0
-    fragments = [path for path, _ in writes if path.suffix == ".md" and path.parent.name == "changes"]
+    directory = project_dir / change_fragments.FRAGMENT_DIR_REL
+    fragments = [path for path, _ in writes if path.suffix == ".md" and path.parent == directory]
     if not fragments:
-        keep = writes[0][0]
+        keep = directory / ".gitkeep"
         print(
             f"migrate-change-log ({mode}): no release-pending entry to convert; "
             f"{keep.relative_to(project_dir)} makes this repo record new changes as fragments."

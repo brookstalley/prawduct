@@ -1,6 +1,8 @@
 ---
 paths:
   - ".prawduct/change-log.md"
+  - ".prawduct/changes/**"
+  - ".prawduct/change-log-archive/**"
   - "plugin/CHANGELOG.md"
   - "plugin/VERSION"
   - ".prawduct/artifacts/*release*"

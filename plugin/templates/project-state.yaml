@@ -275,4 +275,4 @@ review_round_budget: 6
 # CHANGE LOG
 # =============================================================================
 # Changes are recorded one fragment per change in .prawduct/changes/; shipped ones move to .prawduct/change-log-archive/.
-# See that file for format and instructions.
+# Fragment format: templates/change-fragment.md in the prawduct plugin.
