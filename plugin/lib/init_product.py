@@ -14,7 +14,8 @@ Creates:
                                                        default branch is not main/master)
   - ``.claude/rules/learnings/core.md``               (starter rules corpus)
   - ``.prawduct/backlog.md``                          (template)
-  - ``.prawduct/change-log.md``                       (template)
+  - ``.prawduct/changes/.gitkeep``                    (the change-fragment directory; no
+                                                       live ``change-log.md`` — see below)
   - ``.prawduct/artifacts/project-preferences.md``    (template)
   - ``.prawduct/artifacts/boundary-patterns.md``      (template)
   - ``.prawduct/.pr-reviews/``                        (dir)
@@ -57,7 +58,6 @@ from .migrate_plugin import (
 _STATE_TEMPLATES: list[tuple[str, str]] = [
     (".prawduct/project-state.yaml", "project-state.yaml"),
     (".prawduct/backlog.md", "backlog.md"),
-    (".prawduct/change-log.md", "change-log.md"),
     (".prawduct/artifacts/project-preferences.md", "project-preferences.md"),
     (".prawduct/artifacts/boundary-patterns.md", "boundary-patterns.md"),
 ]
@@ -217,6 +217,22 @@ def init_product(
             if apply:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 core.write_template(core.TEMPLATES_DIR / tmpl, dst, subs)
+
+    # The change record is one fragment file per change (`change_fragments`), so
+    # a new product gets the directory and no shared log. The `.gitkeep` is what
+    # makes it survive a clone: git drops an empty directory, and readers decide
+    # that a repo records fragments by the directory existing. A repo that
+    # already keeps the single-file log is left on it; `migrate-change-log`
+    # converts it, and scaffolding the directory here would split its record.
+    from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import surface small
+    from .change_log import CHANGE_LOG_REL_PATH  # noqa: PLC0415 — same reason
+
+    keep_rel = f"{change_fragments.FRAGMENT_DIR_REL}/.gitkeep"
+    if not (project_dir / CHANGE_LOG_REL_PATH).is_file() and not (project_dir / keep_rel).is_file():
+        created.append(keep_rel)
+        if apply:
+            (project_dir / keep_rel).parent.mkdir(parents=True, exist_ok=True)
+            (project_dir / keep_rel).write_text("", encoding="utf-8")
 
     # Learnings starter — a `.claude/rules/` file, so the harness loads it and no
     # prawduct code sits on the read path. `scaffold_core` owns the header

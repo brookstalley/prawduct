@@ -316,7 +316,7 @@ def _known_scopes(project_dir: Path, prawduct_dir: Path) -> "set[str] | None":
     from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
     from . import change_log_archive  # noqa: PLC0415 — lazy; mirrors the module's import posture
 
-    text = change_log_archive.load_all_text(prawduct_dir, missing_live_ok=True)
+    text = change_log_archive.load_all_text(prawduct_dir)
     if text is None:
         return None
     scopes = {

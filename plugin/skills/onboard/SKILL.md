@@ -16,7 +16,7 @@ Pick the shape by inspecting the target:
 
 ### A. New or existing repo with no `.prawduct/` yet → **scaffold it**
 
-`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, backlog.md, change-log.md, artifacts/), the starter rules corpus at `.claude/rules/learnings/core.md`, the thin static governance anchor in `AGENTS.md` with a `CLAUDE.md` that imports it (`@AGENTS.md`), and the committed install reference. It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
+`prawduct-hook init-product` creates the product-owned state for a plugin repo: `.prawduct/` (project-state.yaml with `distribution: plugin`, backlog.md, the `changes/` directory where each change is recorded as its own fragment, artifacts/), the starter rules corpus at `.claude/rules/learnings/core.md`, the thin static governance anchor in `AGENTS.md` with a `CLAUDE.md` that imports it (`@AGENTS.md`), and the committed install reference. It works identically for an empty repo and one with years of existing code (for existing code, discovery later reads it to infer conventions).
 
 1. Confirm the target directory with the user (it should be a git repo), and note whether it is **this session's own working directory** — that decides how onboarding ends (see Finish).
 2. **Settle the backlog backend** — GitHub Issues unless there's a reason not to (*Choosing the backlog backend*, below). It has to be settled *before* the scaffold, because that is the only time `--backlog-repo` is honored.

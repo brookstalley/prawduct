@@ -72,13 +72,28 @@ the migration converts many entries per repo and its refusals will meet real dat
 post-merge commit (`/prawduct:pr` Step 1d). `.gitattributes` is never written.
 
 **Decisions made mid-build:** *(one line each, naming what settled it)*
+- Chunk 01: `load_all_text` lost its opt-in `missing_live_ok`; an absent live log is empty for
+  every caller, and only an unreadable one is `None`. One owner, not a flag at each caller.
+  Settled by core.md (fix the class through one owner).
+- Chunk 01: the union probe keys its direction on the fragment directory existing, not on
+  pending legacy entries alone (D6's wording). A legacy repo with nothing pending today will
+  prepend tomorrow, so the add-advice stays on for it; the pending check gates only the removal.
+  Settled by what each direction protects.
+- Chunk 01: this repo's `.gitattributes` held only the union line, so it is deleted. Our own new
+  advisory fired here, and complying was the right answer (gates.md: a nudge firing on this repo
+  is signal).
+- Chunk 01: `init-product` leaves a repo that already has a legacy log on it (no fragment
+  directory), because scaffolding one would split its record; `migrate-change-log` is that
+  repo's path. `templates/change-log.md` stays for the dual-shape window; #1022 retires it.
+- Chunk 01 → Chunk 03: `oversized_state_probes` still advises moving an inline `change_log` key
+  into `.prawduct/change-log.md`; that is item 8 prose, swept in Chunk 03.
 
 **Level:** Medium-high. Every item was scoped in wave 1's decisions; the trunk owner is the one
 piece of new design.
 
 ## Status
 
-- [ ] Chunk 01: A fragments-only repo reads correctly (scope items 1, 3, 4, 5)
+- [x] Chunk 01: A fragments-only repo reads correctly (scope items 1, 3, 4, 5)
 - [ ] Chunk 02: Existing repos migrate; Step 1c works where `.prawduct/` is ignored (items 2, 6)
 - [ ] Chunk 03: Trunk PRs own their change record; methodology prose (items 7, 8)
 
