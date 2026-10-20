@@ -1382,6 +1382,34 @@ class TestChangeFragmentsInTheChangeLogSection:
         assert "paired by diff" in body
         assert "fragment .prawduct/changes/widget.md:" in body
 
+    def test_a_scoped_branch_also_carries_the_other_fragments_it_adds(self, tmp_path):
+        # Several plans may share a branch and the PR gate validates every fragment
+        # the branch adds, so the reviewer must read every one, not only the scope's.
+        repo = self._with_fragment(tmp_path, with_plan=True)
+        other = self.FRAGMENT.replace("scope: widget", "scope: gadget").replace("#41", "#42")
+        (repo / ".prawduct" / "changes" / "gadget.md").write_text(other)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "record the gadget")
+        body = _sections(repo)["change_log"]["body"]
+        assert "fragment .prawduct/changes/widget.md:" in body
+        assert "fragment .prawduct/changes/gadget.md:" in body
+        assert "closes: [brookstalley/prawduct#42]" in body
+
+    def test_an_unscoped_branch_whose_diff_cannot_be_read_degrades_rather_than_showing_the_legacy_log(self, tmp_path):
+        # The legacy log holds no pending work in a fragment repo, so falling back
+        # to it would show the reviewer the wrong record as if it were this branch's.
+        repo = self._with_fragment(tmp_path, with_plan=False)
+        section = pr_payload._fragment_section(repo, None, "no-such-base")
+        assert section is not None
+        assert not section.ok and "fragments are unknown" in section.degraded
+
+    def test_a_scoped_branch_whose_diff_cannot_be_read_still_carries_its_fragment_and_says_so(self, tmp_path):
+        repo = self._with_fragment(tmp_path, with_plan=True)
+        section = pr_payload._fragment_section(repo, "widget", "no-such-base")
+        assert section is not None and section.ok
+        assert "fragment .prawduct/changes/widget.md:" in section.body
+        assert "could not be read, so only the scope's fragment is shown" in section.body
+
     def test_without_fragments_the_legacy_entry_is_still_carried(self, tmp_path):
         body = _sections(_repo(tmp_path))["change_log"]["body"]
         assert "fragment " not in body

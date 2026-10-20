@@ -398,17 +398,29 @@ def _fragment_section(
     directory = project_dir / change_fragments.FRAGMENT_DIR_REL
     if not directory.is_dir():
         return None
+    # A branch may add several fragments (several plans can share a branch), and
+    # the PR gate validates every one, so the reviewer reads every one: the
+    # scope's own file plus whatever else the branch adds.
+    code, out = _git(
+        project_dir, "diff", "--name-only", "--diff-filter=A", f"{base}...HEAD",
+        "--", change_fragments.FRAGMENT_DIR_REL + "/",
+    )
+    added = [project_dir / line for line in out.splitlines() if line.endswith(".md")] if code == 0 else []
     if scope is not None:
         candidates = [directory / f"{scope}.md"]
-        paired_by = f"paired by scope: the fragment named for `{scope}`"
-    else:
-        code, out = _git(
-            project_dir, "diff", "--name-only", "--diff-filter=A", f"{base}...HEAD",
-            "--", change_fragments.FRAGMENT_DIR_REL + "/",
-        )
+        candidates += [path for path in added if path not in candidates]
+        paired_by = f"paired by scope: the fragment named for `{scope}`, plus any other fragment this branch adds"
         if code != 0:
-            return None
-        candidates = [project_dir / line for line in out.splitlines() if line.endswith(".md")]
+            paired_by += f" (the diff against {base} could not be read, so only the scope's fragment is shown)"
+    else:
+        if code != 0:
+            # In a repo that records fragments the legacy log holds no pending
+            # work, so falling back to it would show the reviewer the wrong record.
+            return Section("change_log", degraded=(
+                f"no scope resolved for this branch, and its diff against {base} could not "
+                f"be read, so its fragments are unknown — read {change_fragments.FRAGMENT_DIR_REL}/ directly"
+            ))
+        candidates = added
         paired_by = (
             "paired by diff: no build plan claims this branch, so the fragments "
             f"carried are the ones it adds against {base}"

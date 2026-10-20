@@ -82,8 +82,9 @@ One new module owns the fragment format; no other module parses a fragment. Publ
 | `legacy_entries_as_fragments(text)` | migration reader (D6) |
 
 `Fragment` is a frozen dataclass holding the raw frontmatter keys, with typed properties (`scope`, `type`, `date`, `title`, `closes`, `reopens`), the narrative and the consumer note. It keeps the raw keys because validation must see unknown and duplicate ones.
-Frontmatter is read with the repo's existing frontmatter reader (the one `plan_index` uses) so
-there is no second YAML dialect; unknown keys are an error, not preserved (this **departs from the
+The frontmatter block is found with the repo's shared block walker (`plan_index.frontmatter_span`),
+but values are read by `change_fragments`' own parser: `plan_index`'s value reader treats any `#`
+as a comment and would truncate `owner/repo#N`. Unknown keys are an error, not preserved (this **departs from the
 legacy parser's "preserve unknown keys"** deliberately — the point of the move is that the tag
 surface stops being open-ended; a new key is a schema change made in `change_fragments.py`).
 
@@ -221,7 +222,8 @@ entries", not deleted, until the window closes.
 ### D7 — Gate wiring
 
 - **PR Step 1c** (`coverage.check-change-log-entry`): in a repo with `.prawduct/changes/`, require
-  the branch to add exactly one new fragment (or edit one it already added); run
+  the branch to add at least one new fragment (several plans may share a branch, each with its own
+  scope; built that way rather than D7's original "exactly one"); run
   `validate_fragment`; surface its error codes as the probe's refusal. The legacy `no-entry` path
   stays for unmigrated repos. This makes FRG2's "refused mechanically" literal.
 - **`check-releasability`**: the pending set, the `unclassifiable-pending-entry` check (now
@@ -264,7 +266,7 @@ consumer rollout (`init_product` scaffolding, the onboard / migrate / doctor ski
 `gitattributes_probes`) is **wave 2**, planned when wave 1 has shipped and the format has run on
 real work. The migration command itself is built in wave 1, because this repo is its first user.
 
-1. **Format core** — `change_fragments.py` (`parse`/`validate`/`render_*`/`stamp_release`),
+1. **Format core** — `change_fragments.py` (`parse`/`validate`/`render_*`; the cut stamps `release` at render, via `render_entry(release=)`),
    template, unit tests including a red-verified case per error code (feed each validator a case
    it must refuse — core.md: a check never seen to fail proves nothing). Done when every code in
    D2/D3 has a failing fixture.
@@ -288,7 +290,9 @@ real work. The migration command itself is built in wave 1, because this repo is
   to an older plugin that reads only the legacy log would see an empty pending set after
   migration and report "nothing to cut". Mitigation: `migrate-change-log` refuses unless the
   installed plugin version is the one that introduced dual-shape readers, and `doctor` checks
-  the same. Needs a version constant at build time.
+  the same. Needs a version constant at build time. *Wave 1 (2026-10-19): moot here, since the
+  command ships in the plugin that introduced the dual-shape readers and only this repo runs it;
+  the `doctor` check moves to wave 2 with the rollout.*
 - **Cut transaction on Windows** (`os.replace` across files is not atomic as a set). The staging
   copy plus idempotence key in D4 step 2 is the recovery story; confirm it is sufficient or add a
   `.cut-in-progress` marker.

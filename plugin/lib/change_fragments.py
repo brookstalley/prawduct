@@ -18,7 +18,7 @@ A fragment is YAML-style frontmatter, a narrative, and a required consumer note:
     What changed and why, naming every chunk shipped. Subheadings use ``###``.
 
     ## Consumer note
-    What a user of the plugin needs to know, or exactly one line
+    What someone using the product needs to know, or exactly one line
     ``none: <reason>`` when there is nothing to tell them.
 
 Every file in the directory is release-pending: the release cut moves a shipped

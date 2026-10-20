@@ -27,6 +27,6 @@ Replace this text with what changed and why, naming every chunk this scope shipp
 for subheadings, because `##` starts a new entry once the fragment is archived.
 
 ## Consumer note
-What a user of the plugin needs to know about this change: this text becomes the scope's
-paragraph in the release notes. When there is nothing to tell them (release mechanics, test-only
-or repo-internal work), write exactly one line instead: `none: <reason>`.
+What someone using this product needs to know about this change. Where the repo publishes release
+notes, the release cut copies this text into them. When there is nothing to tell them (release
+mechanics, test-only or repo-internal work), write exactly one line instead: `none: <reason>`.
