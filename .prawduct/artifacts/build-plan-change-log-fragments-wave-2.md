@@ -106,7 +106,7 @@ piece of new design.
 
 - [x] Chunk 01: A fragments-only repo reads correctly (scope items 1, 3, 4, 5)
 - [x] Chunk 02: Existing repos migrate; Step 1c works where `.prawduct/` is ignored (items 2, 6)
-- [ ] Chunk 03: Trunk PRs own their change record; methodology prose (items 7, 8)
+- [x] Chunk 03: Trunk PRs own their change record; methodology prose (items 7, 8)
 Context: all three chunks are built. 01 and 02 are committed and chunk-reviewed (0 blocking); 03 is committed and owes the cumulative review, which is this plan's boundary. For the owner at that boundary: the inferences in Goals, and the D6 refusal-contract amendment (Chunk 02).
 
 ## Verification Strategy
