@@ -7843,6 +7843,24 @@ def cmd_cut_change_log(project_dir: Path, argv: list[str]) -> int:
     return change_cut.cut_cmd(project_dir, argv)
 
 
+def cmd_change_record(project_dir: Path, argv: list[str]) -> int:
+    """Name each scope's change record and the backlog items it closes.
+
+    The record is the scope's pending fragment, or its archive entry once a cut
+    moved it. Exit 0 all found, 1 one has none, 2 usage. Owner:
+    ``lib/change_fragments.py``.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import change_fragments  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(f"error: change-record could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+    return change_fragments.change_record_cmd(project_dir, argv)
+
+
 def cmd_migrate_change_log(project_dir: Path, argv: list[str]) -> int:
     """Move the legacy change log's release-pending entries into change fragments.
 
@@ -8588,7 +8606,8 @@ _USAGE = (
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
     "archive-change-log [--apply] [--json]|"
     "cut-change-log --release vX.Y.Z [--scope S]... [--apply]|"
-    "migrate-change-log [--apply]|"
+    "migrate-change-log [--default-type TYPE] [--apply]|"
+    "change-record <scope>... [--json]|"
     "repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -8938,6 +8957,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "learnings-obligation",
     "check-learnings-pairing",
     "bug-inbox",
+    "change-record",
     "check-branch-pushed",
     "check-change-log-entry",
     "check-cumulative-critic",
@@ -9614,6 +9634,8 @@ def _dispatch() -> int:
         return cmd_archive_change_log(project_dir, sys.argv[2:])
     elif command == "cut-change-log":
         return cmd_cut_change_log(project_dir, sys.argv[2:])
+    elif command == "change-record":
+        return cmd_change_record(project_dir, sys.argv[2:])
     elif command == "migrate-change-log":
         return cmd_migrate_change_log(project_dir, sys.argv[2:])
     elif command == "repo-disable":

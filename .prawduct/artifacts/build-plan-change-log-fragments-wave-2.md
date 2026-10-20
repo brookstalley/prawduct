@@ -92,6 +92,10 @@ post-merge commit (`/prawduct:pr` Step 1d). `.gitattributes` is never written.
 - Chunk 02: the migration converts what real logs carry instead of refusing it. A dry run over copies of the 22 onboarded repos' logs refused on 17 (missing types, retired `chunks=`/`status=` keys, dash headers, one repo with four pending entries in one scope). Extra keys become a `Legacy tags:` narrative line, shared scopes merge, dash headers parse, more synonyms map, and a missing or unmappable type takes an owner-chosen `--default-type`, listed per entry. With `--default-type chore` 20 of 22 convert; the other two hold genuine two-tag-line entries their authors must merge. Design D6 is amended. Settled by the goal (a tested migration path for onboarded repos) and hook-surface.md (tolerate the natural encoding variant). *Changes D6's refusal contract; flagged for the boundary review.*
 - Chunk 02: the install-pin check is `change_migrate.install_pin_too_old`, which the migration refuses on (`plugin-pin-too-old`) and doctor reaches through the same dry run. Only a ref that is a release older than v3.7.2 is judged; a branch or commit is not a pin it can read.
 - Chunk 02: Step 1c in a repo that ignores the fragment directory answers `fragment-present-untracked` from the valid fragments on disk, the twin of `entry-present-untracked`, and both its remedies name the un-ignore pattern.
+- Chunk 02 (review observations, fixed after commit): a log with nothing pending still adopts fragments (the migration writes `.gitkeep`), so doctor #22 can clear; and a merge or default keeps every entry's own type in its `Legacy tags:` line, the newest valid type deciding.
+- Chunk 03: the owner is two functions in `change_fragments`: `branch_change_record(base)` for readers with a branch diff (Step 1c, `pr_payload`), and `scope_change_record(scope)` for the merge-time close, which runs after the merge, when no branch diff is left. An archive entry counts as the branch's only when its text is in neither the base's archive nor the base's live log, so size-archive moves are history, not a record. Settled by D4's requirement that every reader go through one owner.
+- Chunk 03: `change-record` is a read-only subcommand (exit 0 found, 1 one missing, 2 usage), granted to the PR skill with `cut-change-log` for the trunk step.
+- Chunk 03, verified 2026-10-20: in a repo `init-product` created, one fragment went through `check-releasability`, `cut-change-log --scope … --apply`, `plan-backfill` (archives the plan as shipped in v1.0.0), `check-releasability` (releasable) and `change-record` (archive entry). The trunk walk is pinned in `tests/test_change_record.py`.
 - Chunk 01 → Chunk 03: `oversized_state_probes` still advises moving an inline `change_log` key
   into `.prawduct/change-log.md`; that is item 8 prose, swept in Chunk 03.
 
@@ -103,6 +107,7 @@ piece of new design.
 - [x] Chunk 01: A fragments-only repo reads correctly (scope items 1, 3, 4, 5)
 - [x] Chunk 02: Existing repos migrate; Step 1c works where `.prawduct/` is ignored (items 2, 6)
 - [ ] Chunk 03: Trunk PRs own their change record; methodology prose (items 7, 8)
+Context: all three chunks are built. 01 and 02 are committed and chunk-reviewed (0 blocking); 03 is committed and owes the cumulative review, which is this plan's boundary. For the owner at that boundary: the inferences in Goals, and the D6 refusal-contract amendment (Chunk 02).
 
 ## Verification Strategy
 

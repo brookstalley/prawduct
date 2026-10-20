@@ -83,7 +83,7 @@ At `final`/`cumulative` (`sustainability` under a coordinator roster), rate `fil
 three bars and **name the set you covered**, so the exclusion is visible rather than silent:
 
 - **It ships** — the inaccuracy reaches consumers as a false claim (release note, `CHANGELOG.md`, a
-  published doc). *A change-log entry asserting a guard that was never built → WARNING: a reader
+  published doc). *A change record asserting a guard that was never built → WARNING: a reader
   relies on a check that does not exist.*
 - **It misleads into action** — an operator or agent following the record would do the wrong thing.
   *A measurement table assigning a probe a question it cannot answer → WARNING: the next operator

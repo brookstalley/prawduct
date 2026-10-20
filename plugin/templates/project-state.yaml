@@ -274,5 +274,5 @@ review_round_budget: 6
 # =============================================================================
 # CHANGE LOG
 # =============================================================================
-# Change log is in .prawduct/change-log.md (separate file to reduce merge conflicts).
+# Changes are recorded one fragment per change in .prawduct/changes/; shipped ones move to .prawduct/change-log-archive/.
 # See that file for format and instructions.

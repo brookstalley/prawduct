@@ -398,47 +398,44 @@ def _fragment_section(
     directory = project_dir / change_fragments.FRAGMENT_DIR_REL
     if not directory.is_dir():
         return None
-    # A branch may add several fragments (several plans can share a branch), and
+    # A branch may add several records (several plans can share a branch), and
     # the PR gate validates every one, so the reviewer reads every one: the
-    # scope's own file plus whatever else the branch adds.
-    code, out = _git(
-        project_dir, "diff", "--name-only", "--diff-filter=A", f"{base}...HEAD",
-        "--", change_fragments.FRAGMENT_DIR_REL + "/",
-    )
-    added = [project_dir / line for line in out.splitlines() if line.endswith(".md")] if code == 0 else []
+    # scope's own fragment plus whatever else the branch adds. A trunk branch
+    # that cut its own fragment at Step 1d added an archive entry instead, and
+    # the record owner finds that too.
+    record = change_fragments.branch_change_record(project_dir, base)
+    changes = list(record.changes)
     if scope is not None:
-        candidates = [directory / f"{scope}.md"]
-        candidates += [path for path in added if path not in candidates]
-        paired_by = f"paired by scope: the fragment named for `{scope}`, plus any other fragment this branch adds"
-        if code != 0:
-            paired_by += f" (the diff against {base} could not be read, so only the scope's fragment is shown)"
+        own = change_fragments.scope_change_record(project_dir, scope)
+        if own is not None and own.source == "fragment" and all(c.path != own.path for c in changes):
+            changes.insert(0, own)
+        paired_by = f"paired by scope: the record for `{scope}`, plus any other record this branch adds"
+        if record.error is not None:
+            paired_by += f" (the diff against {base} could not be read, so only the scope's fragment is shown: {record.error})"
     else:
-        if code != 0:
+        if record.error is not None:
             # In a repo that records fragments the legacy log holds no pending
             # work, so falling back to it would show the reviewer the wrong record.
             return Section("change_log", degraded=(
-                f"no scope resolved for this branch, and its diff against {base} could not "
-                f"be read, so its fragments are unknown — read {change_fragments.FRAGMENT_DIR_REL}/ directly"
+                f"no scope resolved for this branch, and its records could not be read "
+                f"({record.error}), so its fragments are unknown — read {change_fragments.FRAGMENT_DIR_REL}/ directly"
             ))
-        candidates = added
         paired_by = (
-            "paired by diff: no build plan claims this branch, so the fragments "
+            "paired by diff: no build plan claims this branch, so the records "
             f"carried are the ones it adds against {base}"
         )
-    present = [path for path in candidates if path.is_file()]
-    if not present:
+    if not changes:
         return None
     lines = [paired_by]
-    for path in present:
-        item = change_fragments.read_fragment_file(path)
-        lines.append(f"fragment {change_fragments.FRAGMENT_DIR_REL}/{path.name}:")
-        if item.problems:
-            lines.append("  problems: " + "; ".join(str(p) for p in item.problems))
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            text = "(unreadable)"
-        lines.extend(f"    {ln}" for ln in text.splitlines())
+    for change in changes:
+        if change.source == "fragment":
+            item = change_fragments.check_fragment_text(change.text, project_dir / change.path)
+            lines.append(f"fragment {change.path}:")
+            if item.problems:
+                lines.append("  problems: " + "; ".join(str(p) for p in item.problems))
+        else:
+            lines.append(f"archive entry in {change.path} (this branch cut its fragment at Step 1d):")
+        lines.extend(f"    {ln}" for ln in change.text.splitlines())
     return Section("change_log", body="\n".join(lines))
 
 

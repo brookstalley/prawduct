@@ -138,7 +138,7 @@ call, and it is what keeps step 3's "repeat until" from being unbounded.
 one of three dispositions, and **FILE is the narrowest, never the default**:
 
 - **ACCEPT** — won't fix. Record the disposition and its reason as a *fact* (`prawduct-hook
-  disposition … --accept`, below) and render it into the change-log entry for the work or the PR body;
+  disposition … --accept`, below) and render it into the change record for the work or the PR body;
   no backlog item. This is the **default** for anything that gates nothing and that no
   one will realistically action. Principle 2 already licenses it: *implemented or explicitly
   descoped*. An accept is the explicit descope — visible, dated, and attached to the work it came
@@ -232,7 +232,7 @@ protects nothing you shouldn't want protected.
 prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]
 ```
 
-Paste the rendered table into the change-log entry or PR body. It reports each finding's state
+Paste the rendered table into the change record or PR body. It reports each finding's state
 (`fixed`, `waived`, `accepted`, `filed`, `fixed-unreviewed`) and how many findings are still
 **undispositioned**. `fixed-unreviewed` is not `fixed`: both say the defect is gone, only one says a reviewer looked.
 

@@ -47,7 +47,7 @@ downgrade.
 - **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** at `cumulative`; at `final` an observation that the suite is owed before the work lands — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
-- Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
+- Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change record.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
 - **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.

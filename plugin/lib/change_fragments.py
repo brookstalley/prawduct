@@ -480,6 +480,187 @@ def none_reasons(fragments: list[Fragment]) -> list[tuple[str, str]]:
     )
 
 
+@dataclass(frozen=True)
+class RecordedChange:
+    """One scope's change record, wherever it lives now.
+
+    ``source`` is ``"fragment"`` while the change is pending and ``"archive"``
+    once a cut has moved it; ``text`` is what a reviewer reads either way.
+    """
+
+    scope: str
+    closes: tuple[str, ...]
+    source: str
+    path: str
+    text: str
+
+
+@dataclass(frozen=True)
+class BranchRecord:
+    """What a branch recorded about its own change: fragments it added, and
+    archive entries it added by cutting its own fragments (a trunk PR, PR Step
+    1d). ``error`` names a git failure, and then ``changes`` is not the whole answer.
+    """
+
+    changes: tuple[RecordedChange, ...] = ()
+    error: str | None = None
+
+    @property
+    def scopes(self) -> tuple[str, ...]:
+        return tuple(change.scope for change in self.changes)
+
+    @property
+    def closes(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(item for change in self.changes for item in change.closes))
+
+
+def _git(project_dir: Path, *args: str) -> tuple[int, str]:
+    import subprocess  # noqa: PLC0415 — lazy; only the branch-record readers run git
+
+    try:
+        proc = subprocess.run(
+            ["git", *args], cwd=str(project_dir), capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 1, str(exc)
+    return proc.returncode, proc.stdout if proc.returncode == 0 else proc.stderr.strip()
+
+
+def _archived_change(block_text: str, path: str) -> RecordedChange | None:
+    entries = change_log_mod.parse_change_log(block_text)
+    scope = entries[0].tags.get("scope") if entries else None
+    if not isinstance(scope, str) or not scope:
+        return None
+    raw = entries[0].tags.get("closes")
+    closes = tuple(c.strip() for c in raw.split(",") if c.strip()) if isinstance(raw, str) else ()
+    return RecordedChange(scope=scope, closes=closes, source="archive", path=path, text=block_text)
+
+
+def branch_change_record(project_dir: Path, base: str) -> BranchRecord:
+    """The one answer to "what change record did this branch add?".
+
+    A fragment the branch added is found in its diff. A trunk PR cuts its own
+    fragment before review (PR Step 1d), so the fragment is in neither the diff
+    nor the merged tree; what the branch added instead is an archive entry, and
+    that is found here too. An archive entry is the branch's own only when its
+    text is in neither the base's archive nor the base's live log: the size
+    archive moves entries verbatim out of the live log, and those are history,
+    not this branch's record. Step 1c, the reviewer payload and the merge-time
+    close read the record through this, so none of them reads a path a cut
+    has since removed.
+    """
+    from . import change_log_archive  # noqa: PLC0415 — the archive's splitter owns entry boundaries
+
+    code, merge_base = _git(project_dir, "merge-base", base, "HEAD")
+    if code != 0:
+        return BranchRecord(error=f"git merge-base {base} HEAD failed: {merge_base}")
+    merge_base = merge_base.strip()
+    changes: list[RecordedChange] = []
+
+    code, out = _git(
+        project_dir, "diff", "--name-only", "--diff-filter=A", f"{merge_base}..HEAD", "--", FRAGMENT_DIR_REL + "/"
+    )
+    if code != 0:
+        return BranchRecord(error=f"git diff of {FRAGMENT_DIR_REL}/ failed: {out}")
+    for rel in (line.strip() for line in out.splitlines()):
+        if not rel.endswith(".md"):
+            continue
+        code, text = _git(project_dir, "show", f"HEAD:{rel}")
+        if code != 0:
+            return BranchRecord(error=f"git show HEAD:{rel} failed: {text}")
+        item = check_fragment_text(text, project_dir / rel)
+        scope = item.fragment.scope if item.fragment and item.fragment.scope else Path(rel).stem
+        closes = item.fragment.closes if item.fragment else ()
+        changes.append(RecordedChange(scope=scope, closes=closes, source="fragment", path=rel, text=text))
+
+    archive_rel = change_log_archive.ARCHIVE_DIR_REL
+    code, out = _git(project_dir, "diff", "--name-only", f"{merge_base}..HEAD", "--", archive_rel + "/")
+    if code != 0:
+        return BranchRecord(error=f"git diff of {archive_rel}/ failed: {out}")
+    buckets = [line.strip() for line in out.splitlines() if line.strip().endswith(".md")]
+    if buckets:
+        known: set[str] = set()
+        code, live = _git(project_dir, "show", f"{merge_base}:{change_log_mod.CHANGE_LOG_REL_PATH}")
+        if code == 0:
+            known.update(block.text for block in change_log_archive.split(live)[1])
+        for rel in buckets:
+            code, old = _git(project_dir, "show", f"{merge_base}:{rel}")
+            if code == 0:
+                known.update(block.text for block in change_log_archive.split(old)[1])
+        for rel in buckets:
+            code, new = _git(project_dir, "show", f"HEAD:{rel}")
+            if code != 0:
+                continue  # the branch deleted the bucket; it added nothing there
+            for block in change_log_archive.split(new)[1]:
+                if block.text in known:
+                    continue
+                change = _archived_change(block.text, rel)
+                if change is not None:
+                    changes.append(change)
+    return BranchRecord(changes=tuple(changes))
+
+
+def scope_change_record(project_dir: Path, scope: str) -> RecordedChange | None:
+    """A scope's change record on the current tree: its pending fragment, or,
+    once cut, its newest archive entry. For readers that run after the merge,
+    when no branch diff is left to ask (the Merge Flow's close)."""
+    from . import change_log_archive  # noqa: PLC0415 — the archive's splitter owns entry boundaries
+
+    path = project_dir / FRAGMENT_DIR_REL / f"{scope}.md"
+    if path.is_file():
+        item = read_fragment_file(path)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            text = ""
+        closes = item.fragment.closes if item.fragment else ()
+        return RecordedChange(
+            scope=scope, closes=closes, source="fragment", path=f"{FRAGMENT_DIR_REL}/{scope}.md", text=text
+        )
+    found: RecordedChange | None = None
+    newest = ""
+    directory = project_dir / ".prawduct" / change_log_archive.ARCHIVE_DIR_NAME
+    for bucket in sorted(directory.glob("*.md")) if directory.is_dir() else []:
+        try:
+            content = bucket.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for block in change_log_archive.split(content)[1]:
+            change = _archived_change(block.text, f"{change_log_archive.ARCHIVE_DIR_REL}/{bucket.name}")
+            if change is not None and change.scope == scope and (block.date or "") >= newest:
+                found, newest = change, block.date or ""
+    return found
+
+
+def change_record_cmd(project_dir: Path, argv: list[str]) -> int:
+    """``change-record <scope>... [--json]``: each scope's record and what it closes.
+
+    Exit 0 when every scope has a record, 1 when one has none (it is named), 2
+    on a usage error. Reads the current tree only, so it answers after a merge.
+    """
+    import json  # noqa: PLC0415 — lazy; only this command prints JSON
+    import sys  # noqa: PLC0415 — lazy, for the same reason
+
+    as_json = "--json" in argv
+    scopes = [arg for arg in argv if arg != "--json"]
+    if not scopes or any(arg.startswith("-") for arg in scopes):
+        print("usage: change-record <scope>... [--json]", file=sys.stderr)
+        return 2
+    records = {scope: scope_change_record(project_dir, scope) for scope in scopes}
+    if as_json:
+        print(json.dumps({
+            scope: None if r is None else {"source": r.source, "path": r.path, "closes": list(r.closes)}
+            for scope, r in records.items()
+        }))
+    else:
+        for scope, r in records.items():
+            if r is None:
+                print(f"{scope}: no record — no fragment and no archive entry with this scope")
+            else:
+                print(f"{scope}: {r.source} {r.path}; closes: {', '.join(r.closes) or 'nothing'}")
+    return 0 if all(r is not None for r in records.values()) else 1
+
+
 def _frontmatter_value(value: str) -> str:
     """``value`` spelled so :func:`parse_fragment` reads it back unchanged.
 

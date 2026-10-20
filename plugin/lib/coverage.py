@@ -1193,6 +1193,25 @@ def _fragment_check_without_history(project_dir: Path) -> int:
     return 0
 
 
+def _cut_record_verdict(project_dir: Path, base: str, record=None) -> int | None:
+    """Exit 0 ``fragment-cut`` when the branch's record is an archive entry it
+    added by cutting its own fragment (a trunk PR, Step 1d), else ``None``.
+
+    The cut removes the fragment before the review, so the diff no longer holds
+    it; :func:`change_fragments.branch_change_record` is what still finds it.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    if record is None:
+        record = change_fragments.branch_change_record(project_dir, base)
+    archived = [change for change in record.changes if change.source == "archive"]
+    if record.error is not None or not archived:
+        return None
+    scopes = ", ".join(sorted({change.scope for change in archived}))
+    print(f"fragment-cut: {scopes} cut into the change-log archive in {base}...HEAD.")
+    return 0
+
+
 def _fragment_entry_verdict(
     project_dir: Path, base: str, files: list[str], judgeable: list[str]
 ) -> int | None:
@@ -1224,6 +1243,9 @@ def _fragment_entry_verdict(
             # not clear the gate however often it was followed.
             if gitstate.git_path_is_ignored(project_dir, f"{prefix}0000.md"):
                 return _fragment_check_without_history(project_dir)
+            cut = _cut_record_verdict(project_dir, base)
+            if cut is not None:
+                return cut
             sample = ", ".join(judgeable[:3])
             print(
                 f"no-entry: branch changes code ({sample}) but adds no change record — "
@@ -1258,22 +1280,15 @@ def _fragment_entry_verdict(
         )
         return 1
 
-    proc = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=A", f"{base}...HEAD", "--", prefix],
-        cwd=str(project_dir),
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if proc.returncode != 0:
-        print(
-            f"git-failed: git diff of {prefix} failed: {proc.stderr.strip()}."
-            " Check the change record by hand.",
-            file=sys.stderr,
-        )
+    record = change_fragments.branch_change_record(project_dir, base)
+    if record.error is not None:
+        print(f"git-failed: {record.error}. Check the change record by hand.", file=sys.stderr)
         return 1
-    added = [line.strip() for line in proc.stdout.splitlines() if line.strip().endswith(".md")]
+    added = [change.path for change in record.changes if change.source == "fragment"]
     if not added:
+        cut = _cut_record_verdict(project_dir, base, record)
+        if cut is not None:
+            return cut
         print(
             f"fragment-edited-not-added: this branch edits {', '.join(changed)} but adds "
             "no fragment of its own; editing another scope's record does not vouch for "
