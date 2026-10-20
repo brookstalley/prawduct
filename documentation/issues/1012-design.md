@@ -226,7 +226,7 @@ entries", not deleted, until the window closes.
 ### D8 — #834 interaction
 
 No change to the requirements' Decision 5. Concretely: #834's derivation target becomes "write
-the fragment's `title`, `scope`, `issues` and narrative skeleton from the PR body and the active
+the fragment's `title`, `scope`, `closes` and narrative skeleton from the PR body and the active
 build plan's `scope:`" at Create Step 5; its design should be rebased once this lands. Build
 order is #1012 first because the fragment gives #834 a single new-file target and removes its
 merge-with-existing-section problem.
