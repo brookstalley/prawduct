@@ -144,8 +144,9 @@ Algorithm, in an order chosen so a failure leaves a re-runnable state:
    `release` already set aborts with the full error list. Compute the plan and print it.
 2. **Render archive blocks** with `render_entry`, newest `date` first (ties by scope), each tagged
    `release=vX.Y.Z`. Append to `.prawduct/change-log-archive/YYYY-MM.md` bucketed by the entry
-   `date`'s month (the existing `_compose_bucket`). Idempotence key: a block with the same
-   `(date, scope)` already in the target bucket is skipped, not duplicated — this is what makes a
+   `date`'s month (the existing `_compose_bucket`). Idempotence: a block whose exact text is
+   already in the target bucket is skipped, not duplicated (the existing `_compose_bucket` rule; the
+   render is deterministic, so a re-run produces the same text) — this is what makes a
    re-run after a partial failure safe.
 3. **Render `plugin/CHANGELOG.md`**: insert the per-scope consumer notes into the open
    `## vX.Y.Z-dev` section *under* its existing headline line, then leave the rename to
@@ -160,12 +161,16 @@ all renders succeed; if any render fails nothing is written. The `invariant_viol
 fingerprint check from `change_log_archive` is applied to each touched archive bucket as it is
 today.
 
-**Trunk bases use the same cut for a set of one.** On a trunk base, where the closing PR
-ships its own work, Step 1d runs `cut-change-log` over that PR's fragment rather than stamping
-`release` onto it. There is one code path, so `release` is never observed on a file in the
+**Trunk bases are wave 2** (amended 2026-10-19, after Chunk 03's review). Cutting a trunk PR's
+fragment at Step 1d, before the review and the merge, deletes the record that the PR reviewer's
+payload, the Merge Flow's close step and a re-run of the Step 1c probe all read. The branch adds
+the fragment and then removes it, so it is in neither the diff nor the merged tree. The trunk path
+therefore needs one owner for "this PR's change record" that finds either a fragment the branch
+added or an archive entry it added, and every one of those readers goes through it. No trunk repo
+records fragments in wave 1, so that owner is built with the rollout. `cut-change-log --scope` exists
+now for a release operator who cuts named scopes. `release` never appears on a file in the
 directory: `load_pending` treats *every* file as pending, and a stray `release:` there is an error
-(`released-fragment`). No `stamp_release` function exists; the stamp lands only in the archive
-block `render_entry(release=)` writes.
+(`released-fragment`).
 
 ### D5 — Reopens (answers #783 interaction)
 
@@ -257,7 +262,7 @@ real work. The migration command itself is built in wave 1, because this repo is
 2. **Readers** — `pending_scopes`, switch `release_readiness`, `record_lint`, `pr_payload`,
    `plan_backfill`, Critic cross-check; Step 1c probe. Done when the existing
    `release_readiness` test corpus passes unchanged against both shapes.
-3. **Cut command** — `cut-change-log`, transactional, idempotent; trunk Step 1d calls it. Done
+3. **Cut command** — `cut-change-log`, transactional, idempotent; the trunk path is wave 2 (D4). Done
    when a two-branch merge test (real `git merge`, no union driver) is clean and a cut over a
    fixture produces byte-identical archive output to the legacy renderer.
 4. **Migration + scaffolding** — `migrate-change-log`, `init_product`, doctor/migrate/onboard

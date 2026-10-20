@@ -7824,6 +7824,25 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     return 1 if incomplete else 0
 
 
+def cmd_cut_change_log(project_dir: Path, argv: list[str]) -> int:
+    """Ship pending change fragments: archive entries, consumer notes, removal.
+
+    Previews unless ``--apply``. What ships is the release plan's ``ships`` rows,
+    or exactly the ``--scope`` arguments (a trunk-base PR shipping its own work).
+    Exit 0 when it ran or had nothing to cut, 1 refused with nothing written,
+    2 on a usage error. Rules and their reasons: ``lib/change_cut.py``.
+    """
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import change_cut  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(f"error: cut-change-log could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+    return change_cut.cut_cmd(project_dir, argv)
+
+
 def cmd_archive_change_log(project_dir: Path, argv: list[str]) -> int:
     """Move change-log history out of the live log into ``change-log-archive/``.
 
@@ -8548,6 +8567,7 @@ _USAGE = (
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
     "archive-change-log [--apply] [--json]|"
+    "cut-change-log --release vX.Y.Z [--scope S]... [--apply]|"
     "repo-disable [--local] [--apply] [--json]}"
 )
 
@@ -8948,6 +8968,7 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
 # whole-command nor per-op.
 _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
     "archive-change-log",
+    "cut-change-log",
     "coverage-scaffold",
     "lifecycle-repair",
     "norm-index-scaffold",
@@ -9569,6 +9590,8 @@ def _dispatch() -> int:
         return cmd_plan_backfill(project_dir, sys.argv[2:])
     elif command == "archive-change-log":
         return cmd_archive_change_log(project_dir, sys.argv[2:])
+    elif command == "cut-change-log":
+        return cmd_cut_change_log(project_dir, sys.argv[2:])
     elif command == "repo-disable":
         return cmd_repo_disable(project_dir, sys.argv[2:])
     else:

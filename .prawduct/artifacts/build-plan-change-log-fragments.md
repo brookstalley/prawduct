@@ -111,8 +111,8 @@ Nothing may require a post-merge commit (`/prawduct:pr` Step 1d).
   reopen-target check. Legacy callers keep "a missing live log is unreadable". Wave 2 must decide
   it for every history reader (`plan_backfill`, `release_readiness._history_entries`) before a
   repo can drop its live log. *Not settled by the goals; flagged for the boundary review.*
-- Chunk 02: PR Step 1d's trunk-base instruction for a fragment waits for Chunk 03's cut command,
-  which it will call. Until then no trunk repo is on fragments (wave 2).
+- Chunk 02: PR Step 1d gives no trunk-base instruction for a fragment; see the Chunk 03 decision on
+  the trunk path, which moved to wave 2.
 - Chunk 02 (review fixes): the release check's pending union moved into one owner,
   `release_readiness.pending_scopes`, which the gate and Chunk 03's cut both call (design D6;
   review R-2). The Step 1c probe judges fragments as committed, not as on disk, and in a repo with
@@ -120,6 +120,32 @@ Nothing may require a post-merge commit (`/prawduct:pr` Step 1d).
 - Chunk 02: a branch may add several fragments, because several plans may share a branch and each
   scope has its own file. This departs from D7's "exactly one", which predates that case. Settled by
   `planning.md` ("several plans may declare one branch, and that is ordinary").
+- Chunk 03: the cut lives in its own module, `change_cut.py`. `change_fragments` owns the format;
+  the cut orchestrates the release plan, the archive and the digest. It reuses the one reader of
+  each rather than copying them: `release_readiness.pending_scopes`, `_find_release_plan`,
+  `parse_classification` and `_open_digest_section`, and the archive's `split` and `_compose_bucket`.
+  Settled by D1's single-owner rule and core.md (fix the class through one owner).
+- Chunk 03: what ships is the release plan's `ships` rows, or exactly the `--scope` arguments a
+  release operator names. A fragment the table does not classify refuses the
+  cut instead of being skipped. With no pending fragment there is nothing to cut and no plan is
+  required. Settled by D4 and the release gate's partition rule.
+- Chunk 03: a repo with no consumer digest gets no notes write and no refusal; the note stays in
+  its archive entry. Settled by `release_readiness`'s existing "a repo that publishes no digest has
+  no digest to be missing".
+- Chunk 03, verified on a copy of this repo (2026-10-19): one shipping and one withheld fragment
+  went through a dry run and an apply. The July archive bucket went from 102 to 103 entries, lost
+  none, and had no tag problems; the note landed under the open section's headline.
+- Chunk 03 (review R-1): the trunk-base path moves to wave 2. Cutting a trunk PR's fragment at Step
+  1d deletes the record that the PR reviewer, the merge-time close and a re-run of Step 1c all read
+  later. It needs one owner for "this PR's change record" (a fragment the branch added, or an
+  archive entry it added) that every one of those readers goes through. No trunk repo records
+  fragments in wave 1, so that owner is built with the rollout, and Step 1d gives no trunk
+  instruction until then. Settled by the plan's own scope (wave 1 is prawduct itself, on gitflow).
+  Design D4 records the requirement.
+- Chunk 03 (review observations): the cut refuses when git would ignore the archive, reusing
+  `change_log_archive.archive_would_be_ignored`, and a failure while removing fragments says the
+  history is already written. That check keys on the live log being tracked, so a fragments-only
+  repo (wave 2) needs it re-keyed on the fragment directory.
 
 **Level:** High. The design is grounded in the current tree (re-verified 2026-10-19), the July
 proposal is reconciled, and every schema decision is the owner's.
@@ -216,11 +242,11 @@ the same pending scopes as before.
 
 - **Description:** `prawduct-hook cut-change-log --release vX.Y.Z [--apply]` (D4). It validates
   everything first and writes nothing on any error. It renders archive blocks tagged
-  `release=vX.Y.Z` into the month buckets (skipping on the `(date, scope)` key, so a re-run is
-  safe), inserts consumer-note text under the open `-dev` section's headline, and removes the cut
+  `release=vX.Y.Z` into the month buckets (the archive composer skips a block whose text it already holds,
+  so a re-run is safe), inserts consumer-note text under the open `-dev` section's headline, and removes the cut
   fragments, all as one staged transaction. It never writes a headline, and it refuses when the
-  open section has none. Fragments a release plan classifies `withheld` stay pending. A trunk-base
-  PR runs the same cut for a set of one.
+  open section has none. Fragments a release plan classifies `withheld` stay pending. The
+  trunk-base path (a PR cutting its own fragment) is wave 2: see the Chunk 03 decision below.
 - **Depends on:** Chunk 02
 - **Artifacts consumed:** `1012-design.md` D4; FRG4, FRG5
 - **Deliverables:**
