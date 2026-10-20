@@ -14,4 +14,4 @@ reviewer on #1026. The payload now renders the record owner's parsed `closes` li
 (`RecordedChange.closes`) as a claim line, for fragments and archive entries alike.
 
 ## Consumer note
-In products that record changes as fragments, the PR reviewer now checks that every item a fragment's `closes:` list names is really closed, as it already did for change-log entries.
+In products that record changes as fragments, the PR reviewer now checks that every item a fragment's `closes:` list names is really closed.
