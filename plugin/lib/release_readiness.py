@@ -31,9 +31,11 @@ from __future__ import annotations
 
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import buildplan_refs
+from . import change_fragments
 from . import change_log as change_log_mod
 from . import gates
 from . import plan_index
@@ -475,8 +477,8 @@ def _open_digest_section(lines: list[str]) -> tuple[str, list[str]] | None:
     """The topmost ``## `` section as ``(heading, body)``; ``None`` if there is none.
 
     **The open section is identified by position, not by version.** The digest
-    states its own convention — rolling notes accumulate under the top heading
-    and it is renamed to the release number at the cut — so "topmost" is what
+    states its own convention — the cut writes each fragment's consumer note
+    under the top heading and renames it to the release number — so "topmost" is what
     "the section this release is being written into" means, and it stays true
     across the rename that a version match would have to be taught about.
 
@@ -761,6 +763,7 @@ def _scan_accounting(
     pending_entries: list,
     scopes: list[str],
     unclassifiable: list,
+    fragments: int = 0,
 ) -> str:
     """The gate's denominator, as one phrase.
 
@@ -770,12 +773,87 @@ def _scan_accounting(
     Entries scanned, entries release-pending, the scopes they enumerate, and the
     ones that enumerate none — the last is the reconciliation's whole yield.
     """
+    # Fragments are named only when there are some, so a repo still on the
+    # single-file log reads exactly the line it always has.
+    fragment_part = f", {fragments} change fragment(s)" if fragments else ""
     return (
-        f"{len(entries)} change-log entries, {_tagged_count(entries)} tagged, "
-        f"{len(pending_entries)} release-pending across {len(scopes)} scope(s), "
+        f"{len(entries)} change-log entries, {_tagged_count(entries)} tagged"
+        f"{fragment_part}, "
+        f"{len(pending_entries) + fragments} release-pending across {len(scopes)} scope(s), "
         f"{len(unclassifiable)} unclassifiable"
     )
 
+
+@dataclass(frozen=True)
+class PendingSet:
+    """What is release-pending, from both shapes of the change record.
+
+    ``entries`` is every parsed legacy entry (the tag checks and the history
+    reads need all of them); ``read_error`` is set when the single-file log
+    exists in neither readable nor fragments-only form. ``refusals`` names
+    whatever makes the union untrustworthy, so a caller refuses on it before
+    reading ``scopes``.
+    """
+
+    entries: list
+    pending_entries: list
+    legacy_scopes: list[str]
+    fragment_scopes: list[str]
+    refusals: list[str]
+    read_error: str | None = None
+
+    @property
+    def scopes(self) -> list[str]:
+        """Legacy scopes first, then fragment scopes, each once."""
+        return self.legacy_scopes + [s for s in self.fragment_scopes if s not in self.legacy_scopes]
+
+
+def pending_scopes(project_dir: Path) -> PendingSet:
+    """The release-pending set: legacy log entries with no ``release=``, plus fragments.
+
+    The one owner of that union (design D6 of #1012). Every file in the fragment
+    directory is pending, because the cut removes shipped ones. Two things are
+    refused rather than resolved: a fragment that fails validation, which could
+    be missing its scope or carrying the wrong one, and a scope pending in both
+    shapes, which is a half-done migration whose two records can disagree about
+    what is shipping. A repo with a fragment directory and no single-file log is
+    a fragments-only repo, not a missing input.
+    """
+    path = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
+    read_error: str | None = None
+    try:
+        content = path.read_text(encoding="utf-8")
+    except _UNREADABLE as exc:
+        content = ""
+        if not (
+            isinstance(exc, FileNotFoundError)
+            and (project_dir / change_fragments.FRAGMENT_DIR_REL).is_dir()
+        ):
+            read_error = f"cannot read {change_log_mod.CHANGE_LOG_REL_PATH}: {exc}"
+    entries = change_log_mod.parse_change_log(content)
+    legacy_scopes = release_pending_scopes(entries)
+    files = change_fragments.load_pending(project_dir)
+    refusals = [
+        f"bad-change-fragment: {item.path.name}: {problem}"
+        for item in files
+        for problem in item.problems
+    ]
+    fragment_scopes = [item.fragment.scope for item in files if item.ok and item.fragment.scope]
+    for scope in fragment_scopes:
+        if scope in legacy_scopes:
+            refusals.append(
+                f"scope-in-both-shapes: {scope!r} is pending in "
+                f"{change_log_mod.CHANGE_LOG_REL_PATH} and in "
+                f"{change_fragments.FRAGMENT_DIR_REL}/{scope}.md; keep one record"
+            )
+    return PendingSet(
+        entries=entries,
+        pending_entries=release_pending_entries(entries),
+        legacy_scopes=legacy_scopes,
+        fragment_scopes=fragment_scopes,
+        refusals=refusals,
+        read_error=read_error,
+    )
 
 def check_releasability(project_dir: Path, release: str | None = None) -> int:
     """Phase 0 gate. Exit 0 when every release-pending scope is classified.
@@ -784,14 +862,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     state (missing change log, missing release plan) fails closed — the whole
     point is that an unclassified scope must never read as "fine".
     """
-    change_log = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
-    try:
-        change_log_content = change_log.read_text(encoding="utf-8")
-    except _UNREADABLE as exc:
-        print(f"no-change-log: cannot read {change_log_mod.CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
+    pending_set = pending_scopes(project_dir)
+    if pending_set.read_error is not None:
+        print(f"no-change-log: {pending_set.read_error}", file=sys.stderr)
         return 1
-
-    entries = change_log_mod.parse_change_log(change_log_content)
+    entries = pending_set.entries
 
     # The tag checks run BEFORE the pending set is computed, because a malformed
     # tag is precisely what makes that set wrong. `release_pending_scopes` skips
@@ -835,10 +910,20 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # Exit 1, the value every other refusal here uses. Not 3: the change log
     # READ fine, so this is not the unreadable-subject case — it is the work
     # that is unclassifiable.
-    pending_entries = release_pending_entries(entries)
-    pending = release_pending_scopes(entries)
+    pending_entries = pending_set.pending_entries
+    legacy_pending = pending_set.legacy_scopes
+    # A fragment that fails validation, or a scope in both shapes, is refused
+    # here, before any verdict, for the reason a malformed tag is: it is exactly
+    # what would make the pending set wrong.
+    if pending_set.refusals:
+        for refusal in pending_set.refusals:
+            print(refusal, file=sys.stderr)
+        return 1
+    pending = pending_set.scopes
     unclassifiable = unclassifiable_pending_entries(entries)
-    accounting = _scan_accounting(entries, pending_entries, pending, unclassifiable)
+    accounting = _scan_accounting(
+        entries, pending_entries, pending, unclassifiable, len(pending_set.fragment_scopes)
+    )
     if unclassifiable:
         noun = "entry" if len(unclassifiable) == 1 else "entries"
         print(
@@ -890,8 +975,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # so a repo whose release plan does not exist yet — the state this one is in
     # while the notes are still being written — still gets the advice while it
     # is still actionable.
+    # Only legacy-shaped scopes are asked about: a fragment carries a required
+    # consumer note, and the cut writes the digest from it, so matching its
+    # scope name against digest prose would be a fuzzy check of an exact one.
     digest_warnings, digest_note, digest_emissions = _digest_advisories(
-        project_dir, pending
+        project_dir, legacy_pending
     )
     for warning in digest_warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
@@ -1016,8 +1104,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
                 f"already tagged release={version})"
             )
             continue
-        # The re-run exemption is `ships`-only: Phase 1 stamps `release=` on the
-        # shipping set, so those scopes correctly leave `pending`.
+        # The re-run exemption is `ships`-only: Phase 1 tags the shipping set
+        # `release=` (the cut, as it archives fragments; by hand, in a legacy
+        # log), so those scopes correctly leave `pending`.
         if scope not in pending and not (disposition == SHIPS and shipped_now):
             orphans.append(scope)
         # Unverifiable liveness is NOT a closed blocker. Claiming "not open" from

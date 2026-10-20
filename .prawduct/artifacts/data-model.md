@@ -328,6 +328,22 @@ Committed narrative log, kept separate from `project-state.yaml` for merge-frien
 only a compact `change_log_history`). **Bounded:** once it passes the oversized threshold,
 `archive-change-log` moves shipped history verbatim into `.prawduct/change-log-archive/YYYY-MM.md`
 (committed, same tier; one home per entry). Release-pending entries always stay in the live file.
+In a repo that has moved onto change fragments (below), the live file holds shipped history only.
+
+#### Change Fragments — `.prawduct/changes/<scope>.md`
+
+Committed, one file per release-pending scope, so two branches never edit the same file and the
+record merges without a union driver. The format's single owner is `lib/change_fragments.py`:
+frontmatter `schema` (required, `1`; a higher value is refused, never misread), `type` (a closed
+set of seven), `scope` (equals the filename stem and the build plan's `scope:`), `date`, `title`,
+optional `closes` (backlog item IDs, the one home for which items the change closes) and
+`reopens`; then a narrative and a required `## Consumer note` holding text or `none: <reason>`.
+**Every file in the directory is release-pending**; a fragment never carries `release`.
+`cut-change-log` moves shipped fragments into the change-log archive in its existing grammar
+(tagged `release=vX.Y.Z`), writes their consumer notes into `plugin/CHANGELOG.md`, and removes
+them; `withheld` scopes stay. Readers accept both shapes during the dual-shape window, and a scope
+pending in both is refused (`scope-in-both-shapes`). `migrate-change-log` converts a legacy log's
+release-pending entries into fragments.
 
 ### Tier 3 — Ephemeral / derived (per-session or regenerable)
 

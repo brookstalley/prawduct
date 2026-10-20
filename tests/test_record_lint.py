@@ -998,6 +998,8 @@ class TestUncheckedReporting:
                 "learnings-rule-too-long": 0,
                 "learnings-rule-body": 0,
                 "learnings-area-dead": 0,
+                # Record-scoped: no fragment changed, so it honestly found nothing.
+                "change-fragment": 0,
             },
         }
 
@@ -2172,3 +2174,84 @@ class TestBudgetDeclarationParsing:
         )
         assert budgets == {}
         assert malformed == ["core.md"]
+
+
+# ---------------------------------------------------------------------------
+# change-fragment: the one-file-per-scope change record (#1012)
+# ---------------------------------------------------------------------------
+
+
+def _fragment_text(scope: str, **front: str) -> str:
+    keys = {"schema": "1", "type": "fix", "scope": scope, "date": "2026-10-19", "title": f"{scope} work"}
+    keys.update(front)
+    body = "\n".join(f"{k}: {v}" for k, v in keys.items())
+    return f"---\n{body}\n---\nWhat changed.\n\n## Consumer note\nnone: fixture\n"
+
+
+def _write_fragment(repo: Path, scope: str, **front: str) -> str:
+    rel = f".prawduct/changes/{scope}.md"
+    (repo / ".prawduct" / "changes").mkdir(parents=True, exist_ok=True)
+    (repo / rel).write_text(_fragment_text(scope, **front))
+    return rel
+
+
+class TestChangeFragments:
+    def test_a_valid_changed_fragment_is_silent(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        rel = _write_fragment(repo, "alpha")
+        result = _lint(repo, [rel], base, _commit(repo))
+        assert _checks(result, "change-fragment") == []
+        assert result["counts"]["change-fragment"] == 0
+
+    def test_a_schema_problem_is_a_finding_naming_its_code(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        rel = _write_fragment(repo, "alpha", type="bugfix")
+        found = _checks(_lint(repo, [rel], base, _commit(repo)), "change-fragment")
+        assert len(found) == 1
+        assert found[0]["path"] == rel
+        assert found[0]["detail"].startswith("bad-type:")
+
+    def test_a_reopen_of_an_unknown_scope_is_a_finding(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        base = _tree(repo)
+        rel = _write_fragment(repo, "alpha-reopen-1", reopens="alpha")
+        found = _checks(_lint(repo, [rel], base, _commit(repo)), "change-fragment")
+        assert [f["detail"].split(":")[0] for f in found] == ["unknown-reopen-target"]
+
+    def test_a_reopen_of_an_archived_scope_is_silent(self, tmp_path):
+        # The control for the case above: the same fragment, with the scope it
+        # reopens declared in the change log, must raise nothing.
+        repo = _make_repo(tmp_path)
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-10-01: alpha\n\n"
+            "<!-- prawduct: type=fix | scope=alpha | release=v1.0.0 -->\n\nBody.\n"
+        )
+        base = _commit(repo)
+        rel = _write_fragment(repo, "alpha-reopen-1", reopens="alpha")
+        assert _checks(_lint(repo, [rel], base, _commit(repo)), "change-fragment") == []
+
+    def test_a_fragment_the_change_deleted_is_not_read(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        rel = _write_fragment(repo, "alpha", type="bugfix")
+        base = _commit(repo)
+        (repo / rel).unlink()
+        result = _lint(repo, [rel], base, _commit(repo))
+        assert _checks(result, "change-fragment") == []
+
+    def test_a_pending_fragment_declares_its_scope(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        assert not record_lint._scope_declared_in_change_log(repo / ".prawduct", "alpha")
+        _write_fragment(repo, "alpha")
+        assert record_lint._scope_declared_in_change_log(repo / ".prawduct", "alpha")
+
+    def test_an_unreadable_log_leaves_the_reopen_unchecked_not_passed(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        (repo / ".prawduct" / "change-log.md").write_bytes(b"\xff\xfe not utf-8")
+        base = _commit(repo)
+        rel = _write_fragment(repo, "alpha-reopen-1", reopens="alpha")
+        result = _lint(repo, [rel], base, _commit(repo))
+        assert _checks(result, "change-fragment") == []
+        assert any("unknown-reopen-target unchecked" in u for u in result["unchecked"])
+        assert result["counts"]["change-fragment"] is None

@@ -195,7 +195,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # observation carries `about` or is dropped — the verify reviewer reads nothing else, so without
     # it every observation vanishes. Priced against the SUM: +21 per inner review against the verify
     # round each off-topic observation bought (median ~2 min, about a third of the empty rounds).
-    "single-pass-inner": 5809,
+    # -12 on 2026-10-19 (change-log-fragments): goals-1-3.md drops a reason cross-checks.md owns, paying
+    # for the `change-fragment` check's name on the record-lint line.
+    "single-pass-inner": 5797,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -228,7 +230,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
     # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
     # almost entirely to goals the plan misread, the level no other check here reads.
-    "single-pass-full": 11525,
+    # +24 on 2026-10-19 (change-log-fragments), DECLARED: one `cross-checks.md` severity row for the new
+    # `change-fragment` record-lint check, which every check must carry on every reviewer surface. Priced
+    # against the SUM: +24 per review against the fragment schema and reopen-target defects reviewers would
+    # otherwise have to find by reading the record, each a WARNING-sized round. Net +12 on this route's
+    # sibling inner path, which the `goals-1-3.md` cut below paid down. Row shortened in place first.
+    "single-pass-full": 11549,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -296,7 +303,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
     # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
     # almost entirely to goals the plan misread, the level no other check here reads.
-    "dispatched-reviewer": 10956,
+    # +24 on 2026-10-19 (change-log-fragments), DECLARED: one `cross-checks.md` severity row for the new
+    # `change-fragment` record-lint check, which every check must carry on every reviewer surface. Priced
+    # against the SUM: +24 per review against the fragment schema and reopen-target defects reviewers would
+    # otherwise have to find by reading the record, each a WARNING-sized round. Net +12 on this route's
+    # sibling inner path, which the `goals-1-3.md` cut below paid down. Row shortened in place first.
+    "dispatched-reviewer": 10980,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -305,14 +317,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # decisions for the owner, in one bullet compressed in place (+14 of it from the boundary
     # review's own findings: which plan, no-brief products, one BLOCKING filed under Goal 2). Priced against the SUM: +104 per full review against the audit's rework, which sorted
     # almost entirely to goals the plan misread, the level no other check here reads.
-    "coordinator-fork": 12119,
+    # +24 on 2026-10-19 (change-log-fragments), DECLARED: one `cross-checks.md` severity row for the new
+    # `change-fragment` record-lint check, which every check must carry on every reviewer surface. Priced
+    # against the SUM: +24 per review against the fragment schema and reopen-target defects reviewers would
+    # otherwise have to find by reading the record, each a WARNING-sized round. Net +12 on this route's
+    # sibling inner path, which the `goals-1-3.md` cut below paid down. Row shortened in place first.
+    "coordinator-fork": 12143,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5810,
-    "single-pass-full": 11526,
-    "dispatched-reviewer": 10957,
-    "coordinator-fork": 12120,
+    "single-pass-inner": 5798,
+    "single-pass-full": 11550,
+    "dispatched-reviewer": 10981,
+    "coordinator-fork": 12144,
 }
 
 

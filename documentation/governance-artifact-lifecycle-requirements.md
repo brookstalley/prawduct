@@ -1,6 +1,6 @@
 # Governance Artifact Lifecycle — Requirements
 
-`status: draft v0.4 — 2026-08-08 · source: owner-initiated simplification review (this session) · stage: requirements · tracked: brookstalley/prawduct#629 · related: #558 · supersedes: .prawduct/artifacts/change-log-ledger-design.md (GO'd 2026-07-31, never scheduled — see "Out of scope")`
+`status: draft v0.4 — 2026-08-08 · source: owner-initiated simplification review (this session) · stage: requirements · tracked: brookstalley/prawduct#629 · related: #558 · supersedes: .prawduct/artifacts/archive/change-log-ledger-design.md (GO'd 2026-07-31, never scheduled — see "Out of scope")`
 
 > **Tracking.** Filed as **#629** (`governance: shipped build plans and derived views have no
 > end-of-life`, `stage: research`). **#558** (`views: views_enabled is a vestigial flag gating two
@@ -36,7 +36,7 @@ Evidence below was measured this session against the framework tree at `ede8801`
 21 local checkouts under `~/source` carrying `.prawduct/project-state.yaml`. **Re-derive rather than
 cite** — every count here is a measurement of a growing corpus, and this repo has three recorded
 instances of an unreproducible number propagating through governance records
-(`change-log-ledger-design.md` §11.2).
+(`archive/change-log-ledger-design.md` §11.2).
 
 ## Problem
 
@@ -170,16 +170,25 @@ MUST unless marked SHOULD.
 - **DV6** The consumer-facing changelog remains `plugin/CHANGELOG.md` — hand-written, one headline per
   release, the source of GitHub Release notes and the version-delta banner. *Descriptive of today;
   recorded so it is not re-derived or re-automated.*
+  *Amended 2026-10-19 (#1012):* the headline is still written by hand. Each scope's note is
+  written by hand too, in its fragment's `## Consumer note`, and `cut-change-log` copies it under
+  the headline once, at the release. The file is written once and never regenerated, so it is
+  still not a derived view.
 
 ### CL — Change log
 
 - **CL1** `.prawduct/change-log.md` is prose. Its only machine-read fields are `scope=` and `release=`.
+  *Amended 2026-10-19 (#1012): in a repo that has migrated to change fragments, pending work is a
+  validated `.prawduct/changes/<scope>.md` file instead, and the log and its archive hold shipped
+  history only. Requirements: `documentation/issues/1012-requirements.md`.*
 - **CL2** `chunks=` and `status=` are removed from the tag schema and from every document that teaches
   it. Existing tags in committed change logs are **left in place and read by nothing** — rewriting 21
   repos' history is churn with no consumer.
 - **CL3** `check-releasability` continues to derive release-pending scopes from `scope=` plus the
   absence of `release=`. *Unchanged; recorded because it is the only surviving gate over change-log
-  tag values and the sole reason any tag survives.*
+  tag values and the sole reason any tag survives.* *Amended 2026-10-19 (#1012): the pending set is
+  now the union of those legacy entries and every fragment in `.prawduct/changes/`
+  (`release_readiness.pending_scopes`); a fragment never carries `release`.*
 - **CL4** `check-change-log-entry` continues to gate on a branch adding an entry heading. It reads
   tags for one purpose only: it refuses a CL2-retired key on a tag line the branch adds or edits,
   so the key stops being copied forward. No tag value changes whether an entry counts. *How* it
@@ -187,13 +196,17 @@ MUST unless marked SHOULD.
   (`lib/coverage.py`) — do not restate the mechanism here. *Amended 2026-10-02 (owner ruling,
   #939): this clause said the probe never reads tags. The retired key kept costing PR review
   rounds, and Step 1c is where the entry is written, after the last Critic review, so the probe is
-  the one point that can refuse it.*
+  the one point that can refuse it.* *Amended 2026-10-19 (#1012): in a repo with a fragment
+  directory the probe requires the branch to add a valid fragment instead, and surfaces its
+  validation codes.*
 - **CL5** (SHOULD) At release, the only edit to an entry's *content* is adding `release=vX.Y.Z` to the
   entries that shipped. The three-tag sweep and its selection rule are removed. *Amended 2026-09-16
   (owner direction, `build-plan-change-log-archive.md`): "only edit" once read as "nothing else
   happens to the log at release", and with nothing else the log only grew — 1.5 MB in this repo, the
   same curve in every product. Moving entries verbatim (CL8) is not a content edit, so the original
-  intent — no tag sweep, no regenerated views — is untouched.*
+  intent — no tag sweep, no regenerated views — is untouched.* *Amended 2026-10-19 (#1012): in a
+  migrated repo nothing is edited at release; `cut-change-log` writes each shipping fragment as a new
+  archive entry tagged `release=vX.Y.Z` and removes the fragment.*
 - **CL6** Change-log tag validation is **one** validator over the two surviving keys — value format,
   duplicate key, duplicate tag line — invoked by `check-releasability`, the gate that depends on them.
   *This is a consolidation that must not become a deletion.* Six checks exist today
@@ -379,12 +392,12 @@ archived precedence (BP5, BP8).
 
 **Deliberately not preserved.** `validate_status_values` and `validate_chunk_roster` guard fields that
 cease to exist. `validate_tag_line_multiplicity` guards a case with zero instances in the corpus
-(`change-log-ledger-design.md` §11.5); its coverage folds into CL6's single validator rather than
+(`archive/change-log-ledger-design.md` §11.5); its coverage folds into CL6's single validator rather than
 surviving as its own check.
 
 ## Out of scope
 
-- **The change-log ledger design** (`.prawduct/artifacts/change-log-ledger-design.md` — typed facts in
+- **The change-log ledger design** (`.prawduct/artifacts/archive/change-log-ledger-design.md` — typed facts in
   `.prawduct/changes/` plus release records). **Explicitly superseded, and this is recorded so nobody
   schedules it later from reading only its §11.7 GO.** Its engineering is sound and its diagnosis is
   right, but it answers *"how do we store these views' inputs properly"* when the prior question is

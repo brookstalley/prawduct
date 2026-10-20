@@ -381,9 +381,73 @@ def _added_lines(project_dir: Path, base: str, path: Path) -> set[str] | None:
     }
 
 
+def _fragment_section(
+    project_dir: Path, scope: str | None, base: str
+) -> Section | None:
+    """The change-log section from the branch's change fragment(s), or ``None``.
+
+    A fragment (`lib/change_fragments.py`) is the one-file-per-scope record, so
+    it is found by name when the scope is known and by what the branch ADDS when
+    it is not. The whole file is carried, frontmatter included, so the reviewer
+    reads `closes:` and the consumer note beside the narrative, and the backlog
+    scan sees every id it cites. ``None`` hands the section to the single-file
+    log, which is what a repo without fragments has.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy, like `_lib`
+
+    directory = project_dir / change_fragments.FRAGMENT_DIR_REL
+    if not directory.is_dir():
+        return None
+    # A branch may add several fragments (several plans can share a branch), and
+    # the PR gate validates every one, so the reviewer reads every one: the
+    # scope's own file plus whatever else the branch adds.
+    code, out = _git(
+        project_dir, "diff", "--name-only", "--diff-filter=A", f"{base}...HEAD",
+        "--", change_fragments.FRAGMENT_DIR_REL + "/",
+    )
+    added = [project_dir / line for line in out.splitlines() if line.endswith(".md")] if code == 0 else []
+    if scope is not None:
+        candidates = [directory / f"{scope}.md"]
+        candidates += [path for path in added if path not in candidates]
+        paired_by = f"paired by scope: the fragment named for `{scope}`, plus any other fragment this branch adds"
+        if code != 0:
+            paired_by += f" (the diff against {base} could not be read, so only the scope's fragment is shown)"
+    else:
+        if code != 0:
+            # In a repo that records fragments the legacy log holds no pending
+            # work, so falling back to it would show the reviewer the wrong record.
+            return Section("change_log", degraded=(
+                f"no scope resolved for this branch, and its diff against {base} could not "
+                f"be read, so its fragments are unknown — read {change_fragments.FRAGMENT_DIR_REL}/ directly"
+            ))
+        candidates = added
+        paired_by = (
+            "paired by diff: no build plan claims this branch, so the fragments "
+            f"carried are the ones it adds against {base}"
+        )
+    present = [path for path in candidates if path.is_file()]
+    if not present:
+        return None
+    lines = [paired_by]
+    for path in present:
+        item = change_fragments.read_fragment_file(path)
+        lines.append(f"fragment {change_fragments.FRAGMENT_DIR_REL}/{path.name}:")
+        if item.problems:
+            lines.append("  problems: " + "; ".join(str(p) for p in item.problems))
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            text = "(unreadable)"
+        lines.extend(f"    {ln}" for ln in text.splitlines())
+    return Section("change_log", body="\n".join(lines))
+
+
 def _section_change_log(
     project_dir: Path, prawduct_dir: Path, scope: str | None, base: str
 ) -> Section:
+    fragment_section = _fragment_section(project_dir, scope, base)
+    if fragment_section is not None:
+        return fragment_section
     lib = _lib()
     path = prawduct_dir / "change-log.md"
     if not path.is_file():

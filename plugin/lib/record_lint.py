@@ -78,6 +78,7 @@ CHECKS = (
     "learnings-rule-too-long",
     "learnings-rule-body",
     "learnings-area-dead",
+    "change-fragment",
 )
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
@@ -305,6 +306,78 @@ def _finding(check: str, path: str, line: "int | None", detail: str) -> dict:
     return {"check": check, "path": path, "line": line, "detail": detail}
 
 
+def _known_scopes(project_dir: Path, prawduct_dir: Path) -> "set[str] | None":
+    """Every scope the change record has ever declared: archived, live and pending.
+
+    ``None`` when the change log cannot be read, because "not found" in an
+    unread history is not an answer.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy; mirrors the module's import posture
+    from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
+    from . import change_log_archive  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    text = change_log_archive.load_all_text(prawduct_dir, missing_live_ok=True)
+    if text is None:
+        return None
+    scopes = {
+        e.tags["scope"]
+        for e in change_log.parse_change_log(text)
+        if isinstance(e.tags.get("scope"), str)
+    }
+    scopes.update(
+        item.fragment.scope
+        for item in change_fragments.load_pending(project_dir)
+        if item.fragment is not None and item.fragment.scope
+    )
+    return scopes
+
+
+def _check_fragments(
+    project_dir: Path, prawduct_dir: Path, records: list[str]
+) -> "tuple[list[dict], list[str], set[str]]":
+    """Schema problems in the fragments this change touches, plus D5's reopen target.
+
+    The schema half repeats what PR Step 1c refuses, here so a reviewer meets it
+    beside the rest of the record. The reopen half is checked only here, because
+    it needs the whole history: ``reopens:`` must name a scope the archive, the
+    live log or a pending fragment declares. A fragment the change deleted is
+    skipped, since the release cut removes shipped ones.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    prefix = change_fragments.FRAGMENT_DIR_REL + "/"
+    changed = [rel for rel in records if rel.startswith(prefix)]
+    findings: list[dict] = []
+    if not changed:
+        return findings, [], set()
+    known: "set[str] | None | bool" = False  # read once, on the first reopen
+    gaps: list[str] = []
+    for rel in changed:
+        path = project_dir / rel
+        if not path.is_file():
+            continue
+        item = change_fragments.read_fragment_file(path)
+        findings.extend(_finding("change-fragment", rel, None, str(p)) for p in item.problems)
+        reopens = item.fragment.reopens if item.fragment is not None else None
+        if not reopens:
+            continue
+        if known is False:
+            known = _known_scopes(project_dir, prawduct_dir)
+        if known is None:
+            gaps.append(f"unknown-reopen-target unchecked on {rel} — the change log is unreadable")
+        elif reopens not in known:
+            findings.append(
+                _finding(
+                    "change-fragment",
+                    rel,
+                    None,
+                    f"unknown-reopen-target: `reopens: {reopens}` names no scope the change "
+                    "record has ever declared",
+                )
+            )
+    return findings, gaps, ({"change-fragment"} if gaps else set())
+
+
 def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]:
     """Suite-total test claims on added lines — the subtraction's tripwire.
 
@@ -383,6 +456,11 @@ def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bo
     """
     if not scope or not scope.strip():
         return False
+    from . import change_fragments  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    # A pending fragment declares its scope by existing, named for it.
+    if (prawduct_dir.parent / change_fragments.FRAGMENT_DIR_REL / f"{scope.strip()}.md").is_file():
+        return True
     from . import change_log_archive  # noqa: PLC0415 — lazy; mirrors the module's import posture
 
     # Archived entries count: a scope declared by an entry that has since moved to
@@ -1474,6 +1552,13 @@ def lint_records(
             no_answer.add("governed-by-gap")
             continue
         findings.extend(_check_governed_by(project_dir, prawduct_dir, rel, text))
+
+    fragment_findings, fragment_gaps, fragment_no_answer = _check_fragments(
+        project_dir, prawduct_dir, records
+    )
+    findings.extend(fragment_findings)
+    unchecked.extend(fragment_gaps)
+    no_answer.update(fragment_no_answer)
 
     # Not record-scoped: the rules corpus grows on a commit that changed nothing
     # else, and these read file sizes and glob reachability rather than added

@@ -361,7 +361,7 @@ def apply(prawduct_dir: Path, selection: Selection) -> list[Path]:
     return [path for path, _ in writes]
 
 
-def load_all_text(prawduct_dir: Path) -> str | None:
+def load_all_text(prawduct_dir: Path, *, missing_live_ok: bool = False) -> str | None:
     """The live log followed by every archive file — the whole history, one text.
 
     For readers that interpret history (which scopes shipped, which scopes were
@@ -370,9 +370,18 @@ def load_all_text(prawduct_dir: Path) -> str | None:
     since the live log alone is what those readers saw before archiving existed.
     Concatenation is safe because no reader depends on document position across
     files — plan-backfill and record-lint decide by tag and by header date.
+
+    ``missing_live_ok`` is for readers that also accept change fragments, where
+    a repo can record its pending work with no live log at all: an ABSENT live
+    log then means an empty one, and the archive is still read. An unreadable
+    one is still ``None``.
     """
     try:
         parts = [(prawduct_dir / LIVE_NAME).read_text(encoding="utf-8")]
+    except FileNotFoundError:
+        if not missing_live_ok:
+            return None
+        parts = []
     except (OSError, UnicodeDecodeError):
         return None
     for path in _archive_files(prawduct_dir / ARCHIVE_DIR_NAME):

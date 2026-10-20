@@ -1152,6 +1152,91 @@ def _entry_check_without_history(project_dir: Path) -> int:
     return 0
 
 
+def _fragment_entry_verdict(
+    project_dir: Path, base: str, files: list[str], judgeable: list[str]
+) -> int | None:
+    """Step 1c's answer when the branch touches the fragment directory, else ``None``.
+
+    A fragment is the one-file-per-scope change record (`lib/change_fragments.py`
+    owns the format). A branch passes by ADDING one that validates; editing a
+    fragment it did not add vouches for nothing, for the reason editing a legacy
+    entry does not. Every changed fragment is validated, not only the added
+    ones, so an edit that breaks another scope's record is refused here rather
+    than at the release gate. ``None`` hands the branch to the legacy checks, so
+    a repo still on the single-file log sees no change.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    prefix = change_fragments.FRAGMENT_DIR_REL + "/"
+    changed = [f for f in files if f.startswith(prefix) and f.endswith(".md")]
+    if not changed:
+        # A repo that records changes as fragments gets the fragment remedy. A
+        # branch that adds a legacy entry instead still goes to the legacy
+        # checks, which is the dual-shape window: either record is accepted.
+        if (project_dir / change_fragments.FRAGMENT_DIR_REL).is_dir() and (
+            CHANGE_LOG_REL_PATH not in files
+        ):
+            sample = ", ".join(judgeable[:3])
+            print(
+                f"no-entry: branch changes code ({sample}) but adds no change record — "
+                f"add `{prefix}<scope>.md` for this work (template: "
+                "`templates/change-fragment.md`) before opening the PR.",
+                file=sys.stderr,
+            )
+            return 1
+        return None
+
+    # Judged as committed, because that is what merges: a fix sitting only in
+    # the working tree must not pass for a broken committed fragment. A path the
+    # branch deleted has no HEAD version and is skipped.
+    problems = []
+    for rel in changed:
+        shown = subprocess.run(
+            ["git", "show", f"HEAD:{rel}"],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if shown.returncode != 0:
+            continue
+        item = change_fragments.check_fragment_text(shown.stdout, project_dir / rel)
+        problems.extend(f"{item.path.name}: {problem}" for problem in item.problems)
+    if problems:
+        print(
+            "fragment-invalid: fix each problem, commit, and re-run:\n  "
+            + "\n  ".join(problems),
+            file=sys.stderr,
+        )
+        return 1
+
+    proc = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=A", f"{base}...HEAD", "--", prefix],
+        cwd=str(project_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if proc.returncode != 0:
+        print(
+            f"git-failed: git diff of {prefix} failed: {proc.stderr.strip()}."
+            " Check the change record by hand.",
+            file=sys.stderr,
+        )
+        return 1
+    added = [line.strip() for line in proc.stdout.splitlines() if line.strip().endswith(".md")]
+    if not added:
+        print(
+            f"fragment-edited-not-added: this branch edits {', '.join(changed)} but adds "
+            "no fragment of its own; editing another scope's record does not vouch for "
+            f"this branch's work. Add `{prefix}<scope>.md` for it.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"fragment-present: {', '.join(added)} added in {base}...HEAD and valid.")
+    return 0
+
+
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
@@ -1181,6 +1266,10 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the log is UNTRACKED and the copy on disk holds at least one entry
         (``entry-present-untracked`` — the weaker check of
         :func:`_entry_check_without_history`, which says so).
+
+    When the branch touches ``.prawduct/changes/``, the fragment checks of
+    :func:`_fragment_entry_verdict` answer instead: exit 0 ``fragment-present``,
+    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``.
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
     ``entry-edited-not-added``, ``retired-key``, ``no-base``, ``git-failed``). Un-evaluable
@@ -1236,6 +1325,10 @@ def check_change_log_entry(project_dir: Path) -> int:
             "(docs and session metadata only) — no entry required."
         )
         return 0
+
+    fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
+    if fragment_verdict is not None:
+        return fragment_verdict
 
     if CHANGE_LOG_REL_PATH not in files:
         # A path git does not TRACK can never appear in a diff, so this silence

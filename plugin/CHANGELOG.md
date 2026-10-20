@@ -10,9 +10,9 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
-## v3.7.2-dev
+## v3.7.2-dev.1
 
-**Rolling notes for the next release — nothing has shipped under this number yet.** Entries accumulate here as work lands on `develop`; the cut renames this heading to its release number.
+**Rolling notes for the next release — nothing has shipped under this number yet.** Each change's consumer note lives in its fragment under `.prawduct/changes/` until the release, when the cut writes it here and renames this heading to its release number.
 
 ## v3.7.1
 

@@ -140,6 +140,8 @@ def test_the_collections_match_the_dispatch_chain():
 # is not the same as a parser doing it.
 _REFUSAL_VERIFIED = {
     "verify-records": "exits 2 on an unknown token",
+    "cut-change-log": "exits 2 on an unknown token",
+    "migrate-change-log": "exits 2 on an unknown token",
     "classify-diff-risk": "exits 1 on an unknown token",
     "clear": "exits 2 on an unknown token",
     "evidence": "exits 1 on an unknown token",
@@ -584,7 +586,8 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "backlog", "coverage-status", "coverage-scaffold", "migrate-plugin",
         "init-product", "update-gitignore", "audit-learnings", "norm-index-scaffold",
         "learnings-files",
-        "learnings-obligation", "lifecycle-repair", "plan-backfill", "archive-change-log",
+        "learnings-obligation", "lifecycle-repair", "plan-backfill", "archive-change-log", "cut-change-log",
+        "migrate-change-log",
         "repo-disable",
         "reanchor",
         "worktrees",

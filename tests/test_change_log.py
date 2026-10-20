@@ -520,9 +520,9 @@ class TestAgainstTheRealChangeLog:
         a degenerate set — which is exactly the shape the v3.2.8 placeholder
         incident produced.
 
-        **But an empty PENDING side is legitimate, and only sometimes.** Phase 1
-        step 3 of the release runbook stamps `release=` on every shipping entry,
-        so between that step and the next cycle's first change there is nothing
+        **But an empty PENDING side is legitimate, and only sometimes.** The
+        release cut archives every shipping fragment tagged `release=`, so
+        between that step and the next cycle's first change there is nothing
         left to cut — the runbook working as designed, not a broken reader. An
         earlier version asserted the pending side non-empty unconditionally and
         went red mid-release, under pressure to relax it.
@@ -557,7 +557,11 @@ class TestAgainstTheRealChangeLog:
 
         assert released, "no released entries — release= is not being read"
 
-        if pending:
+        # Pending work lives in fragments here; the live log holds shipped history.
+        from lib import release_readiness  # noqa: PLC0415
+
+        fragments = release_readiness.pending_scopes(Path(__file__).resolve().parents[1]).fragment_scopes
+        if pending or fragments:
             return
 
         version = (

@@ -83,8 +83,8 @@ class TestBundledData:
         string — a prerelease included.
 
         Not the release it is a prerelease of. `develop` runs on `X.Y.Z-dev.N` and
-        accumulates that cycle's notes under `## vX.Y.Z-dev.N`, which the cut renames
-        to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
+        opens `## vX.Y.Z-dev.N` with a headline; the cut writes that cycle's fragment
+        notes under it and renames it to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
         a release that has not happened, and would pass on a file carrying no notes
         for the build actually running.
         """
