@@ -16,12 +16,16 @@ governed_by:
       - "newer-schema facts block loudly → conforms: unchanged from wave 1 (`schema: 1` required, higher refused)"
       - "two stores, two lifetimes → conforms: fragments are committed shared answers; the Step 1c untracked path reads the on-disk copy only where git cannot answer, and says so"
       - "backlog_service_repo selects the store → conforms: the merge-time close reads `closes:` through the change-record owner and routes through /prawduct:backlog"
+      - "derived views never authoritative → conforms: the cut still writes the digest only at plugin/CHANGELOG.md, and no gate reads it"
+      - "backlog issues conform to the title standard on every write path → inapplicable because fragments create no backlog issue; the close only changes status through /prawduct:backlog"
   - artifact: architecture
     dispositions:
       - "local-first, stdlib-only governance runtime → conforms: Python stdlib only"
       - "authority fails closed, advice fails soft → conforms: the change-record owner refuses when git cannot answer; the union-attribute probe stays advisory in both directions"
       - "the plugin writes nothing into a governed repo except its own `.prawduct/` state and the files it must reconcile → conforms, and this is the re-decision wave 1 owed: init_product and the migration write only under `.prawduct/`; the cut writes a digest only at `plugin/CHANGELOG.md`, which only prawduct's own repo publishes, so no consumer repo's digest is ever written (a product-declared digest is #733's); `.gitattributes` stays advice, never written"
       - "written in Python, never specific to Python → conforms: no reader dispatches by language"
+      - "reviewer never mutates the session it reviews → inapplicable because no review path writes fragments or the archive"
+      - "guides and reviews, never implements → conforms: this governs the product's own change record and writes no product code"
       - "goals and verification bind, prescribed method is advice → conforms"
       - "every fact has one home → conforms: `change_fragments.branch_change_record` becomes the one home for 'this PR's change record', which Step 1c, pr_payload and the merge-time close all read"
   - artifact: api-contract
