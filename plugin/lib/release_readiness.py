@@ -477,8 +477,8 @@ def _open_digest_section(lines: list[str]) -> tuple[str, list[str]] | None:
     """The topmost ``## `` section as ``(heading, body)``; ``None`` if there is none.
 
     **The open section is identified by position, not by version.** The digest
-    states its own convention — rolling notes accumulate under the top heading
-    and it is renamed to the release number at the cut — so "topmost" is what
+    states its own convention — the cut writes each fragment's consumer note
+    under the top heading and renames it to the release number — so "topmost" is what
     "the section this release is being written into" means, and it stays true
     across the rename that a version match would have to be taught about.
 

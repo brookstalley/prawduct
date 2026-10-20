@@ -850,7 +850,8 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > section with a non-empty headline, so the three version files and the public digest
     > move together or the suite fails on the next push. "The change record" reads as the
     > fragment alone, which is why this step names both files.
-    > Seed it with one line — the rolling notes accumulate under it as work lands.
+    > Seed it with one headline line and nothing else — consumer notes live in each change
+    > fragment, and `cut-change-log` writes them under this headline at the release.
 
     > *Why develop never reads as the released version: the verdict cache keys on the
     > plugin version (`verdict_cache._key`), so a prerelease codebase reporting the
