@@ -195,7 +195,7 @@ Every consolidated review appends a fact to a store shared by all worktrees of t
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Work outside that tree (the plan, the change-log, `.prawduct/`) is safe. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Any tracked edit, the plan included, needs an attestation (`review-cycle.md`). If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
 **Warnings and notes gate nothing.** Every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 

@@ -116,6 +116,9 @@ REFUSALS = [
     ("bad-date", fragment_text(with_("date", "2026-13-01")), "backlog-file-path.md"),
     ("bad-date", fragment_text(with_("date", "20261017")), "backlog-file-path.md"),
     ("bad-value", fragment_text(with_("type", "[fix, chore]")), "backlog-file-path.md"),
+    # A list would otherwise skip both schema checks, so a newer plugin's
+    # `schema: [2]` read as valid: the one case the key exists to refuse.
+    ("bad-value", fragment_text(with_("schema", "[2]")), "backlog-file-path.md"),
     ("bad-closes", fragment_text(with_("closes", "brookstalley/prawduct#1004")), "backlog-file-path.md"),
     ("bad-closes", fragment_text(with_("closes", "[1004]")), "backlog-file-path.md"),
     ("bad-closes", fragment_text(with_("closes", "[prawduct#1004]")), "backlog-file-path.md"),

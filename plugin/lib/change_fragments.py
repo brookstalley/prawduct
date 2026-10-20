@@ -346,7 +346,7 @@ def validate_fragment(fragment: Fragment) -> list[Problem]:
         except ValueError:
             problems.append(Problem("bad-date", f"{when!r} is not a YYYY-MM-DD date"))
 
-    for key in ("type", "scope", "date", "title", "reopens"):
+    for key in ("schema", "type", "scope", "date", "title", "reopens"):
         if isinstance(keys.get(key), tuple):
             problems.append(Problem("bad-value", f"`{key}` takes one value, not a list"))
 

@@ -68,7 +68,7 @@ an edit to that one file.
 | `scope` | yes | matches the filename stem and the governing build plan's `scope:` |
 | `date` | yes | `YYYY-MM-DD` |
 | `title` | yes | non-empty one-line headline |
-| `release` | no | **absent until the cut**; when present, must be a version (`vX.Y.Z[.N][-suffix]`) — the `release=unreleased` guard carries over unchanged |
+| `release` | — | **never written on a fragment** (design D4): the cut stamps the version into the archive block it renders and removes the file, so a `release` key in the directory is refused (`released-fragment`). The `release=unreleased` guard carries over to the rendered stamp unchanged. |
 | `closes` | no | list of backlog item IDs this change closes, each validated through the backlog's ID normalizer (`lib/backlog/ids.py`), so it works on the Issues and markdown backends alike. **The single source** for that relation: `/prawduct:pr` Create Step 5 generates the PR body's `Closes` lines from it, and the Merge Flow's close step closes those items from it, because GitHub fires those keywords only for merges into the repository's default branch and a gitflow merge would leave them open. The item's `closed-by` is the back-reference that close writes, not an independent claim (owner, 2026-10-19). |
 
 Unknown keys, a retired key (`chunks`, `status`), a wrong-typed value, or frontmatter that does
@@ -90,14 +90,14 @@ advisory, which matches scope names against `plugin/CHANGELOG.md` prose, is reti
 a required section is exact where the name match is fuzzy.
 
 **FRG4 — Release cut assembles; branches never touch shared files.** `prawduct-hook` gains a cut
-command (name decided in design) that, for the fragments with no `release`:
-1. stamps `release: vX.Y.Z` into each,
-2. appends their narratives, newest first, into the archive month files (verbatim, as
-   `change_log_archive.py` does today),
-3. renders `plugin/CHANGELOG.md`'s `## vX.Y.Z` section from the Consumer notes, and
-4. moves stamped fragments out of `.prawduct/changes/` (the directory then holds exactly the
+command (name decided in design) that, for the shipping fragments:
+1. renders each into the archive month files as an entry tagged `release=vX.Y.Z`, newest
+   first (verbatim, as `change_log_archive.py` does today; the stamp lands in the rendered
+   block, never on the fragment, per design D4),
+2. renders `plugin/CHANGELOG.md`'s `## vX.Y.Z` section from the Consumer notes, and
+3. removes the cut fragments from `.prawduct/changes/` (the directory then holds exactly the
    release-pending set — the same set `check-releasability` enumerates today).
-Step 2 of this is the only writer of the archive and of `plugin/CHANGELOG.md`; no feature branch
+The cut is the only writer of the archive and of `plugin/CHANGELOG.md`; no feature branch
 edits either. The rolling `-dev.N` heading and its renumbering conflicts disappear.
 
 **FRG5 — Merge safety without `merge=union`.** Two branches that each add a fragment merge with
@@ -157,7 +157,7 @@ digest (shares the Consumer-note surface, but is a separate feature).
 - [ ] This document and the design that follows settle schema (FRG2), layout (FRG1) and the
       open question (Decision 1).
 - [ ] Two-branch merge test: clean, no `merge=union` involved (FRG5).
-- [ ] Cut command produces archive + `plugin/CHANGELOG.md` section and stamps `release` (FRG4).
+- [ ] Cut command produces the archive entries (tagged `release=`) and the `plugin/CHANGELOG.md` section (FRG4).
 - [ ] Malformed or missing `type`/`scope`/`title` is refused by a mechanical check (FRG2).
 - [ ] `release_readiness` and Critic cross-checks read fragments (FRG6).
 - [ ] Tested migration for onboarded repos (FRG7).

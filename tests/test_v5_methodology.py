@@ -479,7 +479,10 @@ LAST_MEASURED_TOKENS = {
     # Both were review WARNINGs on new text, with no duplication left to pay from. DECLARED.
     # +17 more, same review (R-3): the alignment pass says its written form scales with the
     # response, a chunk-01 deliverable the shipped text had dropped. DECLARED.
-    "methodology/building.md": 5327,
+    # -1 on 2026-10-19 (change-log-fragments): the sentence calling plan and change-log
+    # edits "safe" during a review was false once consolidation refused any tracked
+    # change; it now points at `review-cycle.md`, which owns the attestation rule.
+    "methodology/building.md": 5326,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the

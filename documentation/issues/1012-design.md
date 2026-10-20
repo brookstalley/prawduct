@@ -75,13 +75,13 @@ One new module owns the fragment format; no other module parses a fragment. Publ
 |---|---|
 | `FRAGMENT_DIR_REL = ".prawduct/changes"` | the layout constant (cf. `CHANGE_LOG_REL_PATH`) |
 | `parse_fragment(text, *, filename) -> Fragment` | frontmatter + body split; raises `FragmentError(code, detail)` |
-| `validate_fragment(fragment) -> list[str]` | schema errors, one per violation |
-| `load_pending(root) -> list[Fragment]` | every file in the dir (all are pending after a cut, see D4) |
-| `render_entry(fragment) -> str` | the legacy `## date: title` + tag line + body block, for the archive |
-| `render_consumer_section(fragments) -> str` | the `plugin/CHANGELOG.md` per-scope text |
+| `validate_fragment(fragment) -> list[Problem]` | schema problems as `Problem(code, detail)`, one per violation, so Step 1c surfaces the code |
+| `read_fragment_file(path) -> FragmentFile` · `load_pending(root) -> list[FragmentFile]` | every `*.md` in the dir with its problems; never raises for a bad fragment, because readers need the invalid files too (all files are pending, see D4) |
+| `render_entry(fragment, *, release=None) -> str` | the legacy `## date: title` + tag line + body block, for the archive; the cut passes `release` so the stamp lands at render, never on the file |
+| `render_consumer_section(fragments) -> str` · `none_reasons(fragments)` | the `plugin/CHANGELOG.md` per-scope text, and the `none:` scopes with reasons for the cut's dry run |
 | `legacy_entries_as_fragments(text)` | migration reader (D6) |
 
-`Fragment` is a frozen dataclass: `schema, scope, type, date, title, closes, reopens, narrative, consumer_note`.
+`Fragment` is a frozen dataclass holding the raw frontmatter keys, with typed properties (`scope`, `type`, `date`, `title`, `closes`, `reopens`), the narrative and the consumer note. It keeps the raw keys because validation must see unknown and duplicate ones.
 Frontmatter is read with the repo's existing frontmatter reader (the one `plan_index` uses) so
 there is no second YAML dialect; unknown keys are an error, not preserved (this **departs from the
 legacy parser's "preserve unknown keys"** deliberately — the point of the move is that the tag
@@ -101,7 +101,6 @@ scope: change-log-fragments   # == filename stem; == build plan `scope:`
 date: 2026-10-19
 title: One fragment per change
 closes: [brookstalley/prawduct#1012]   # optional; backlog item IDs, normalized by lib/backlog/ids.py
-release: v3.8.0        # optional; absent = pending; must match RELEASE_VALUE_RE
 ---
 <narrative: names every chunk shipped>
 
@@ -114,7 +113,7 @@ release: v3.8.0        # optional; absent = pending; must match RELEASE_VALUE_RE
 `bugfix → fix`, `improvement → feature`. Reasoning: five distinct spellings of two concepts across
 ~400 entries is exactly the drift a closed set exists to stop, and no reader keys on `type` today
 (grep of `plugin/lib` finds none), so narrowing costs nothing. A fragment using a non-member is
-refused with `bad-type:<value>` naming the set. Legacy archived entries keep their original
+refused with `bad-type`, whose detail names the value and the set. Legacy archived entries keep their original
 spelling — history is not rewritten.
 
 Other rules: `scope` must equal the filename stem (`scope-mismatch`); filename stems are
@@ -161,16 +160,12 @@ all renders succeed; if any render fails nothing is written. The `invariant_viol
 fingerprint check from `change_log_archive` is applied to each touched archive bucket as it is
 today.
 
-**Stamping on trunk** (open question: shared stamping function). On a trunk base Step 1d stamps
-`release` into the closing PR's own fragment. Both paths call
-`change_fragments.stamp_release(fragment_path, version)`, which validates against
-`RELEASE_VALUE_RE` and rewrites only the frontmatter line. On trunk the fragment then lives with
-`release` set and is **removed at the next cut or by the same PR's merge-time archive**: to keep
-"directory = pending set" true, the trunk path calls the same `cut` machinery for a one-fragment
-set instead of stamping in place. This **departs from FRG4's "cut stamps then moves"** only in
-that trunk uses the cut for a set of one; there is a single code path and `release` is therefore
-never observed on a file in the directory, which lets `load_pending` treat *every* file as pending
-and makes a stray `release:` in the directory an error (`released-fragment-in-pending-dir`).
+**Trunk bases use the same cut for a set of one.** On a trunk base, where the closing PR
+ships its own work, Step 1d runs `cut-change-log` over that PR's fragment rather than stamping
+`release` onto it. There is one code path, so `release` is never observed on a file in the
+directory: `load_pending` treats *every* file as pending, and a stray `release:` there is an error
+(`released-fragment`). No `stamp_release` function exists; the stamp lands only in the archive
+block `render_entry(release=)` writes.
 
 ### D5 — Reopens (answers #783 interaction)
 
