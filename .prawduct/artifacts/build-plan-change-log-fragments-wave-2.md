@@ -108,8 +108,8 @@ piece of new design.
 - [x] Chunk 01: A fragments-only repo reads correctly (scope items 1, 3, 4, 5)
 - [x] Chunk 02: Existing repos migrate; Step 1c works where `.prawduct/` is ignored (items 2, 6)
 - [x] Chunk 03: Trunk PRs own their change record; methodology prose (items 7, 8)
-- [ ] Chunk 04: Entries holding several changes convert (owner request, 2026-10-20)
-Context: 01–03 are built, reviewed and cumulatively reviewed (clean at 1a7ea197). Chunk 04 was added after the boundary at the owner's request, so the last two onboarded logs need no hand edit; it owes its own review, then the cumulative is re-derived.
+- [x] Chunk 04: Entries holding several changes convert (owner request, 2026-10-20)
+Context: 01–03 are built, reviewed and cumulatively reviewed (clean at 1a7ea197). Chunk 04 was added after the boundary at the owner's request, so the last two onboarded logs need no hand edit; reviewed cumulatively (0 blocking) and its fixes verified at 97211b02.
 
 ## Verification Strategy
 
