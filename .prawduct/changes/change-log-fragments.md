@@ -46,6 +46,8 @@ Plan: `.prawduct/artifacts/build-plan-change-log-fragments.md`; design:
 - The release runbooks, `documentation/release-process.md`, the PR skill, the change-log template
   and the data-model and API-contract artifacts describe fragments. The July ledger proposal is
   archived as superseded.
+- `plugin/methodology/building.md` no longer calls edits to the plan, the change-log or
+  `.prawduct/` safe while the Critic runs: any tracked edit needs an attestation (`review-cycle.md`).
 
 ## Consumer note
 Prawduct records its own changes as one file per scope in `.prawduct/changes/` and ships them with a
