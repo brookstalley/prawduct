@@ -72,8 +72,9 @@ prawduct/
 ├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/                         # Framework's own prawduct state — it governs itself
 │   ├── project-state.yaml             # Source of truth for framework iteration
-│   ├── change-log.md                  # what shipped, per scope, with its release= tag
-│   ├── change-log-archive/            # older entries, moved verbatim by month (archive-change-log)
+│   ├── changes/                       # one fragment per release-pending scope (<scope>.md); the cut removes shipped ones
+│   ├── change-log.md                  # shipped history from before fragments, with release= tags
+│   ├── change-log-archive/            # shipped entries by month: moved verbatim (archive-change-log) or cut from fragments (cut-change-log)
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
 │   ├── runbooks/                      # operational procedures (release cut, pruned promotion)

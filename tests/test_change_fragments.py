@@ -8,6 +8,7 @@ change alone caused the refusal.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -79,6 +80,24 @@ class TestValid:
         assert fragment.none_reason == "test-only change"
         assert fragment.consumer_text is None
 
+    @pytest.mark.parametrize("scope", ["release-v3.7.1", "dev-track-bump-3.7.1-dev.2"])
+    def test_a_version_named_scope_is_a_valid_slug(self, scope):
+        assert codes(fragment_text(with_("scope", scope)), filename=f"{scope}.md") == []
+
+    def test_every_scope_this_repo_has_recorded_is_a_valid_slug(self):
+        # The migration carries legacy scopes into filenames unchanged, so the slug
+        # rule must accept the vocabulary real records use, read from the real log.
+        prawduct = Path(__file__).resolve().parent.parent / ".prawduct"
+        files = [prawduct / "change-log.md", *sorted((prawduct / "change-log-archive").glob("*.md"))]
+        scopes = {
+            entry.tags["scope"]
+            for path in files
+            for entry in change_log.parse_change_log(path.read_text(encoding="utf-8"))
+            if isinstance(entry.tags.get("scope"), str)
+        }
+        assert any("." in scope for scope in scopes), "the corpus no longer holds a dotted scope"
+        assert sorted(s for s in scopes if codes(fragment_text(with_("scope", s)), filename=f"{s}.md")) == []
+
     def test_the_template_is_a_valid_fragment_once_named_for_its_scope(self):
         template = _REPO_ROOT / "templates" / "change-fragment.md"
         fragment = cf.parse_fragment(template.read_text(), filename="pantry-v1.md")
@@ -112,6 +131,9 @@ REFUSALS = [
     ("bad-type", fragment_text(with_("type", "bugfix")), "backlog-file-path.md"),
     ("bad-type", fragment_text(with_("type", "feat")), "backlog-file-path.md"),
     ("bad-scope-slug", fragment_text(with_("scope", "Backlog_File")), "Backlog_File.md"),
+    ("bad-scope-slug", fragment_text(with_("scope", "release-v3..7")), "release-v3..7.md"),
+    ("bad-scope-slug", fragment_text(with_("scope", ".release")), ".release.md"),
+    ("bad-scope-slug", fragment_text(with_("scope", "release.")), "release..md"),
     ("scope-mismatch", fragment_text(), "some-other-scope.md"),
     ("bad-date", fragment_text(with_("date", "2026-13-01")), "backlog-file-path.md"),
     ("bad-date", fragment_text(with_("date", "20261017")), "backlog-file-path.md"),
@@ -152,7 +174,18 @@ def test_every_refusal_code_has_a_fixture():
     import re
 
     emitted = set(re.findall(r'(?:Problem|FragmentError)\(\s*"([a-z-]+)"', source))
-    covered = {code for code, _, _ in REFUSALS} | {"unreadable"}
+    # The migration's codes live in this module too, and are pinned by the
+    # migration tests' own refusal table.
+    spec = importlib.util.spec_from_file_location(
+        "_migrate_refusals", Path(__file__).with_name("test_change_migrate.py")
+    )
+    migrate_tests = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migrate_tests)
+    covered = (
+        {code for code, _, _ in REFUSALS}
+        | {code for _, code in migrate_tests.REFUSALS}
+        | {"unreadable"}
+    )
     # The scan must have found the codes it polices, or an empty set passes.
     assert {"no-frontmatter", "missing-consumer-note", "schema-ahead", "bad-closes"} <= emitted
     assert emitted - covered == set()

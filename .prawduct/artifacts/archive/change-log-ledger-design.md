@@ -9,7 +9,13 @@ governed_by:
   - .prawduct/artifacts/project-preferences.md          # derived-view conventions, merge strategy
   - .prawduct/artifacts/nonfunctional-requirements.md   # state-file growth posture
 requirements_confidence: High   # raised from Medium 2026-07-31 by the §11 spike
+lifecycle: superseded
+archived: 2026-10-19
+superseded_by: "#1012 change-log fragments (documentation/issues/1012-design.md)"
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Change-log restructure: facts in a ledger, prose in the change log
 

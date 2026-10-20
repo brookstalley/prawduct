@@ -150,6 +150,15 @@ REFUSALS = [
     # gate reads it by), so only a section with no lines at all has none.
     ("no-headline", {"alpha": _fragment("alpha")}, "| alpha | ships | |\n", "# Changelog\n\n## v3.8.0-dev\n\n## v3.7.1\n\nOld.\n", ()),
     ("bad-version", {"alpha": _fragment("alpha")}, "| alpha | ships | |\n", _digest(), ("--release", "unreleased")),
+    # The previous release's section still on top: by position it is "open", and
+    # writing there would add these notes to notes already published.
+    (
+        "wrong-section",
+        {"alpha": _fragment("alpha")},
+        "| alpha | ships | |\n",
+        f"# Changelog\n\n## v3.7.1\n\n{HEADLINE}\n\n**`older`**: an older note.\n",
+        (),
+    ),
     (
         "invalid-pending-set",
         {"alpha": _fragment("alpha").replace("schema: 1", "schema: 1\nrelease: v3.7.0")},

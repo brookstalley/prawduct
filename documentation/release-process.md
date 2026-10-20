@@ -148,7 +148,7 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 When `develop` is ready to release as `vX.Y.Z`:
 
 **The numbering below is the checklist's order, not the running order.** Every prep item in it —
-the version bump across the three files, the `release=` tags, the `active_build_plan` clear and
+the version bump across the three files, the change-record cut, the `active_build_plan` clear and
 the plan sweep, the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
 the promotion, not edited onto `main` after it; the reason is in the ordering note that closes
 "Step 1 mechanics" below. `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 is the
@@ -165,43 +165,49 @@ same set in executable running order, and is the document to work from when actu
 1. **Merge `develop` → `main`.**
 2. **Bump the version** in `plugin/.claude-plugin/plugin.json` `version` **and** `plugin/VERSION` **and** `pyproject.toml`
    (they mirror each other). This is the release trigger — without it, nothing ships.
-3. **Tag the shipped entries `release=vX.Y.Z`.** This is the *only* edit the release makes
-   to an entry's content (step 4 may then move tagged entries, verbatim, into the archive). An entry arrives at release-prep with a `scope=` tag and **no
-   `release=`**, and that absence IS the release-pending state — `check-releasability`
-   enumerates what is pending by looking for it. Adding the tag is what ships the entry:
+3. **Cut the change record.** Pending work is recorded as one fragment per scope in
+   `.prawduct/changes/<scope>.md`, and every file there is release-pending. The cut ships the ones
+   step 0's table classifies `ships`:
    ```
-   <!-- prawduct: scope=<plan-scope> | release=vX.Y.Z -->
+   prawduct-hook cut-change-log --release vX.Y.Z           # dry run: names what ships, what stays
+   prawduct-hook cut-change-log --release vX.Y.Z --apply
    ```
-   Write a real version. Any other value — a placeholder naming the absence, most of all —
-   removes the entry's whole scope from the pending set while reading as deliberate;
-   `release=unreleased` on six entries hid an entire branch from v3.2.8.
+   For each shipping fragment it writes an entry tagged `release=vX.Y.Z` into
+   `.prawduct/change-log-archive/YYYY-MM.md`, adds the fragment's consumer note under the open
+   `plugin/CHANGELOG.md` section's headline, and removes the fragment. A `withheld` fragment stays
+   in the directory and is still pending at the next release. The cut writes nothing on any
+   refusal, and a re-run adds nothing twice. It never writes the headline, so write that first
+   (step 5): a section with no headline is refused as `no-headline`. The dry run also lists every
+   fragment whose note is `none: <reason>`, so read those reasons before applying.
 
-   > ⚠️ **Which entries shipped is the hard part, and it is not answered here.** "Everything
-   > above the prior `release=` boundary" is a search hint, not the set: an entry can merge
-   > *below* the boundary and still be unreleased, a release bundle spans several scopes, and
-   > under a **pruned** release the naive sweep tags withheld work as shipped. Do not re-derive
-   > the set from this document. The sound per-candidate test and the scope enumeration command
-   > live at Phase 1 step 2 of `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`. Work
-   > from there (REL-7D4X).
+   Which scopes ship is the release plan's decision, not the cut's: a pending fragment the table
+   does not classify refuses the cut (`unclassified-fragment`), so nothing is skipped silently.
+   The full refusal list, with each remedy, is in Phase 1 of
+   `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`.
 
-   Nothing is regenerated from this tag. Build-plan `## Status` checkboxes are hand-authored
-   and were ticked by the sessions that finished each chunk; a plan still showing `[ ]` at
-   release means that chunk was never closed out, which is a question for its author, not
+   > **A repo not yet migrated to fragments** still records pending work as change-log entries
+   > tagged `scope=` with no `release=`, and ships them by adding ` | release=vX.Y.Z` to each
+   > shipping entry's tag line. `prawduct-hook migrate-change-log` moves those entries into
+   > fragments. This repo has migrated.
+
+   Nothing is regenerated from the release record. Build-plan `## Status` checkboxes are
+   hand-authored and were ticked by the sessions that finished each chunk; a plan still showing
+   `[ ]` at release means that chunk was never closed out, which is a question for its author, not
    something this step fixes.
 
 4. **Archive the plans this release shipped.** On gitflow the closing PR deliberately
    RETAINS the plan and its `active_build_plan` pointer — the work is not released yet — so
    the release is where that retention ends, and without this step the live artifacts
    directory re-accumulates exactly the pile the archive exists to prevent. Step 3 has just
-   made the mechanical answer available, so run the sweep rather than picking by hand:
+   written the record the sweep reads, so run the sweep rather than picking by hand:
    ```
    prawduct-hook plan-backfill            # preview: names each plan and the release
    prawduct-hook plan-backfill --apply    # one confirmation covers the whole set
    ```
-   It archives every live plan whose `scope=` now carries a `release=` tag, stamping each
-   with `lifecycle: completed` and `released_in:`. It is a **no-op for anything still
-   pending**, so running it on a pruned release cannot archive withheld work: an untagged
-   entry is exactly what step 3 left untagged. **Clear `active_build_plan` BEFORE the
+   It archives every live plan whose scope has an entry tagged `release=` in the change log or
+   its archive, stamping each with `lifecycle: completed` and `released_in:`. It is a **no-op
+   for anything still pending**, so running it on a pruned release cannot archive withheld work:
+   a withheld scope is still a fragment, and step 3 wrote no archived entry for it. **Clear `active_build_plan` BEFORE the
    sweep**, not after: the sweep refuses to archive the plan the pointer names — archiving
    it would leave the pointer at a moved file, which every gate reads as "no active build
    plan" and goes quiet rather than failing — so a pointer left set is a plan left live,
@@ -221,23 +227,26 @@ same set in executable running order, and is the document to work from when actu
    or archive it `--state superseded --superseded-by "…"` if the work stopped. A write-time failure prints to
    stderr rather than into that list, so check both. The preview exits 0 either way, having
    attempted nothing.
-   A plan whose work was **descoped** rather than shipped has no `release=` tag and is not
-   swept; give it its end of life by hand, naming what replaced it:
+   A plan whose work was **descoped** rather than shipped has no entry tagged `release=` and is
+   not swept; give it its end of life by hand, naming what replaced it:
    `prawduct-hook archive-plan <path> --state superseded --superseded-by "<what/why>"`.
 
-   **Then bound the live change log** — tagging just turned pending entries into shipped
-   history, so this is the moment the most of it can move:
+   **Then bound the live change log.** The cut writes shipped history straight into the archive,
+   so the live `.prawduct/change-log.md` only holds older shipped entries from before the
+   migration; this keeps it under its size threshold:
    ```
    prawduct-hook archive-change-log --apply
    ```
    A no-op while `.prawduct/change-log.md` is within its size threshold; past it, shipped
-   entries move verbatim into `.prawduct/change-log-archive/YYYY-MM.md` and release-pending
-   ones stay. Its order relative to `plan-backfill` does not matter: that sweep reads the live
+   entries move verbatim into `.prawduct/change-log-archive/YYYY-MM.md`, and any release-pending
+   legacy entry stays. Its order relative to `plan-backfill` does not matter: that sweep reads the live
    log and the archive together.
 
 5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
    `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
-   **minor or major bump only**. Both are written at **Phase 1 step 10** of
+   **minor or major bump only**. In the CHANGELOG, the cut (step 3) writes each shipping scope's
+   note from its fragment; you write the headline, the section's first line, which the
+   version-delta banner shows every repo crossing this version. Both files are written at **Phase 1** of
    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this checklist names them rather
    than restating them, because the README went eight releases stale precisely while no release
    document named it at all.
@@ -281,7 +290,8 @@ same set in executable running order, and is the document to work from when actu
 10. **Reopen `develop` at the next `-dev` version.** Bump the same three files from step 2 to the
     next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), open a
     `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md` with a non-empty first line, and
-    add a `.prawduct/change-log.md` entry — all in one commit on `develop`.
+    add a change fragment for the release itself (`.prawduct/changes/release-vX.Y.Z.md`) — all in
+    one commit on `develop`.
 
     > **Why `develop` must never report the released number:** the verdict cache keys on the
     > plugin version, so a prerelease codebase reporting the released number replays `covered`
@@ -300,33 +310,36 @@ same set in executable running order, and is the document to work from when actu
     Full procedure, including what to do when the guessed number is wrong at the next cut:
     `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 3.
 
-### Two states, carried by the presence or absence of `release=`
+### Two states: a pending fragment, then an archived entry
 
-- **Release-pending** — tagged `scope=`, **no `release=`**. The entry merged to `develop`
-  inside its feature PR, and the entry's presence on the integration branch IS the proof of
-  merge: no stamp is needed and none is applied (the old post-merge `stamp-merged` chore
-  commit forced consumers with protected integration branches into a second,
-  bookkeeping-only PR, so it was retired). `check-releasability` enumerates the entry's
-  `scope=` as pending and advises when that scope resolves to no plan file — work shipping
-  with nothing describing it. **The PLAN is retained until the release**; what happens to the
-  `active_build_plan` pointer depends on how the plan resolves, and `/prawduct:pr`’s Merge Flow
-  *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` has its pointer cleared at the merge
-  (its branch is gone, so it resolves for nobody and reads live-but-inactive), while a
-  pointer-resolved plan keeps it, because clearing that one is what makes governance blind.
-  The gate reads the plan by scope either way, which is why it does not depend on the
-  pointer. On a trunk repo the closing PR itself carries the `release=`-tagged entry and the
-  plan retirement (create-flow Step 1d).
-- **Shipped** — `release=vX.Y.Z` present. Step 3 adds it, and adding it is the whole
-  transition.
+- **Release-pending** — a fragment, `.prawduct/changes/<scope>.md`. It merged to `develop`
+  inside its feature PR, and its presence on the integration branch IS the proof of merge: no
+  stamp is needed and none is applied (the old post-merge `stamp-merged` chore commit forced
+  consumers with protected integration branches into a second, bookkeeping-only PR, so it was
+  retired). `check-releasability` enumerates every fragment's scope as pending and advises when
+  that scope resolves to no plan file — work shipping with nothing describing it. **The PLAN is
+  retained until the release**; what happens to the `active_build_plan` pointer depends on how
+  the plan resolves, and `/prawduct:pr`’s
+  Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` has its pointer cleared at the merge (its
+  branch is gone, so it resolves for nobody and reads live-but-inactive), while a
+  pointer-resolved plan keeps it, because clearing that one is what makes governance blind. The
+  gate reads the plan by scope either way, which is why it does not depend on the pointer.
+- **Shipped** — an entry in `.prawduct/change-log-archive/` tagged `release=vX.Y.Z`. Step 3's
+  cut writes it and removes the fragment in the same run, and that is the whole transition.
 
-**A tagged entry carrying neither key is not a third state — it is a refusal.** `scope=` is what
-makes release-pending work classifiable, so an entry whose `prawduct:` tag line sets neither
-`scope=` nor `release=` enumerates as no scope, reaches no row of the release plan's classification
-table, and can be neither shipped nor withheld. (An entry with **no tag line at all** is untagged
-history, not a malformed entry, and the gate has never claimed authority over it.) `check-releasability` refuses it — exit 1 with an `unclassifiable-pending-entry:` line
-naming each offending entry and its change-log line number — rather than certify a release over
-work it never enumerated. The remedy is one `scope=` per entry, matching the `scope:` of the build
-plan the work belongs to.
+**A fragment the gate cannot read is not a third state — it is a refusal.** A fragment that fails
+validation (`bad-change-fragment:`) may be missing its scope or carrying the wrong one, so it can be
+neither shipped nor withheld, and `check-releasability` refuses rather than certify a release over
+it. So does a scope pending both as a fragment and as a legacy entry (`scope-in-both-shapes:`), a
+half-done migration whose two records can disagree about what ships.
+
+**In a repo not yet migrated**, a release-pending entry is a change-log entry tagged `scope=` with
+no `release=`, and adding `release=vX.Y.Z` to its tag line ships it. There an entry whose
+`prawduct:` tag line sets neither `scope=` nor `release=` enumerates as no scope and is refused as
+`unclassifiable-pending-entry:`, naming each entry and its line number. (An entry with **no tag
+line at all** is untagged history, not a malformed entry, and the gate has never claimed authority
+over it.) On a trunk repo in that shape the closing PR itself carries the `release=`-tagged entry
+and the plan retirement (create-flow Step 1d); a trunk repo on fragments has no such path yet.
 
 **A legacy `status=` tag is inert.** Older logs carry `status=merged` and `status=shipped`
 from the retired derived-views mechanism. Nothing reads them, no value of them means
@@ -337,34 +350,31 @@ On a repo whose integration branch is **protected** (commits land only by PR), r
 itself rides in a PR — that one release PR is the only bookkeeping vehicle the flow ever
 needs; no per-feature housekeeping commit exists anywhere in the lifecycle.
 
-### The `release=` tag names a version, or it is absent
+### A pending record never carries `release=`
 
-There is no placeholder. The unreleased set is every entry tagged `scope=` with **no**
-`release=`, so *any* value marks the entry already-released — a placeholder that names the
-absence (`release=unreleased`) reads as deliberate while removing that entry's whole scope
-from the release-pending set. `check-releasability` then answers "no release-pending scopes
-— nothing to classify" and the work never ships, which is REL-2N8K's failure with a more
-convincing disguise (six entries hid a whole branch from v3.2.8 that way). A `release=`
-that is not `vMAJOR.MINOR.PATCH` or a four-part `vMAJOR.MINOR.PATCH.N` (either optionally
-`-suffix`) is therefore a **validation error** that fails closed — an unevaluable release
-state must never read as "fine". Release-pending is the tag's absence; step 3 adds it, and
-that is the only edit.
+There is no placeholder for "not released yet", because a placeholder is what hid a whole branch
+from v3.2.8. Release-pending used to be the absence of a `release=` tag, so *any* value marked an
+entry already-released: `release=unreleased` on six entries read as deliberate while removing
+their whole scope from the pending set, and `check-releasability` answered "no release-pending
+scopes — nothing to classify" while the work never shipped (REL-2N8K's failure, better disguised).
 
-**Where the refusal now happens.** `check-releasability` itself refuses it — exit 1 with a
-`bad-change-log-tag:` line naming the entry and its line number. It used to be checked only by
-the derived-views regenerator, which a release did not run — which is why the v3.2.8 placeholder
-reached a release at all: the guard existed and nothing on the release path called it. Rehoming
-it onto the gate that acts on the field is the durable fix, and it is the reason this validator
-survived the retirement of the five around it. The gate also
-reports **advisories** that do not change its exit code — work shipping with nothing describing
-it, and work shipping with nothing written *for consumers* about it. They are enumerated where a
-release operator meets them, in Phase 0 of
-`.prawduct/runbooks/cut-and-publish-a-plugin-release.md`; a count here goes stale every time one
-is added, and this sentence already had.
+Fragments remove that shape. Pending means "a file in `.prawduct/changes/`", and a fragment
+carrying a `release` key is refused (`released-fragment`), so nothing can mark pending work as
+shipped except the cut, which writes `release=vX.Y.Z` only into the archive entry it creates.
 
-Entries with multiple non-conflicting tag lines are unioned with a stderr WARNING
-(VWS-4D8J) — fix the format, but the reading is correct. Run `check-releasability` before
-tagging and read its exit code; a `bad-change-log-tag:` refusal is the release blocker.
+In a repo still on the legacy log the tag remains the state, and a `release=` that is not
+`vMAJOR.MINOR.PATCH` or a four-part `vMAJOR.MINOR.PATCH.N` (either optionally `-suffix`) is a
+validation error that fails closed: `check-releasability` exits 1 with a `bad-change-log-tag:` line
+naming the entry and its line number. That check used to live only in the derived-views
+regenerator, which a release did not run, which is why the v3.2.8 placeholder reached a release at
+all; it moved onto the gate that acts on the field. Entries with multiple non-conflicting tag lines
+are unioned with a stderr WARNING (VWS-4D8J).
+
+The gate also reports **advisories** that do not change its exit code, such as work shipping with
+nothing describing it. They are enumerated where a release operator meets them, in Phase 0 of
+`.prawduct/runbooks/cut-and-publish-a-plugin-release.md`; a count here goes stale every time one is
+added. Run `check-releasability` before the cut and read its exit code: a refusal is the release
+blocker.
 
 ## Step 1 mechanics — promoting when `develop` and `main` have diverged
 
@@ -431,7 +441,7 @@ each shipped Python file's imports against its `develop` counterpart.
 The executable procedure is `.prawduct/runbooks/promote-a-pruned-release.md`; the worked example is
 `.prawduct/artifacts/release-plan-v3.1.2-pruned.md`.
 
-Note on **step 2 ordering**: the version bump + change-log/CHANGELOG updates +
+Note on **step 2 ordering**: the version bump + the change-record cut and CHANGELOG updates +
 `active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
 above, not as edits on `main` after the merge. That puts the release bookkeeping inside the promoted
 tree under **either** shape — the whole-develop tree-set inherits it, and the pruned candidate picks

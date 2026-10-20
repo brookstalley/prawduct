@@ -1104,8 +1104,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
                 f"already tagged release={version})"
             )
             continue
-        # The re-run exemption is `ships`-only: Phase 1 stamps `release=` on the
-        # shipping set, so those scopes correctly leave `pending`.
+        # The re-run exemption is `ships`-only: Phase 1 tags the shipping set
+        # `release=` (the cut, as it archives fragments; by hand, in a legacy
+        # log), so those scopes correctly leave `pending`.
         if scope not in pending and not (disposition == SHIPS and shipped_now):
             orphans.append(scope)
         # Unverifiable liveness is NOT a closed blocker. Claiming "not open" from

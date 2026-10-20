@@ -59,8 +59,13 @@ OPTIONAL_KEYS = ("closes", "reopens")
 CONSUMER_NOTE_HEADING = "## Consumer note"
 
 # A scope is also a filename stem, so it must be a safe path component on every
-# platform: lowercase, digits and hyphens, starting with a letter or digit.
-_SCOPE_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
+# platform: lowercase letters, digits and hyphens, starting with a letter or
+# digit. Dots are allowed between them because version-named scopes
+# (`release-v3.7.1`, `dev-track-bump-3.7.1-dev.2`) recur in every release's
+# record; a dot is never leading, trailing or doubled, so the stem never ends in a
+# dot (Windows drops one) and `Path.stem` of `<scope>.md` is the scope. A dot
+# must be followed by a letter or digit; hyphens keep the rule they had.
+_SCOPE_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]|\.(?=[a-z0-9]))*")
 _KEY_LINE_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*):(.*)")
 _NONE_RE = re.compile(r"none:(.*)", re.IGNORECASE)
 # `date.fromisoformat` accepts compact and week forms from Python 3.11 on, so the
@@ -327,7 +332,7 @@ def validate_fragment(fragment: Fragment) -> list[Problem]:
     if scope:
         if not _SCOPE_RE.fullmatch(scope):
             problems.append(
-                Problem("bad-scope-slug", f"{scope!r} must be lowercase letters, digits and hyphens")
+                Problem("bad-scope-slug", f"{scope!r} must be lowercase letters, digits, hyphens and single interior dots")
             )
         if scope != fragment.filename_stem:
             problems.append(
@@ -473,3 +478,185 @@ def none_reasons(fragments: list[Fragment]) -> list[tuple[str, str]]:
     return sorted(
         (f.scope or "", f.none_reason) for f in fragments if f.none_reason is not None
     )
+
+
+def _frontmatter_value(value: str) -> str:
+    """``value`` spelled so :func:`parse_fragment` reads it back unchanged.
+
+    Quoted only when it must be: a value that would read as a list, a comment,
+    or lose surrounding quotes or whitespace.
+    """
+    needs_quotes = (
+        value != value.strip()
+        or (value.startswith("[") and value.endswith("]"))
+        or value[:1] in ("'", '"', "#")
+        or " #" in value
+        or "\t#" in value
+    )
+    if not needs_quotes:
+        return value
+    quote = "'" if '"' in value else '"'
+    return f"{quote}{value}{quote}"
+
+
+def render_fragment(
+    *,
+    kind: str,
+    scope: str,
+    date: str,
+    title: str,
+    narrative: str,
+    consumer_note: str,
+    closes: tuple[str, ...] = (),
+    reopens: str | None = None,
+) -> str:
+    """The text of a fragment file holding these values. Nothing is validated here."""
+    lines = ["---", f"schema: {SCHEMA_VERSION}", f"type: {kind}", f"scope: {scope}", f"date: {date}"]
+    lines.append(f"title: {_frontmatter_value(title)}")
+    if closes:
+        lines.append(f"closes: [{', '.join(closes)}]")
+    if reopens:
+        lines.append(f"reopens: {reopens}")
+    lines.append("---")
+    return "\n".join(lines) + f"\n{narrative.strip()}\n\n{CONSUMER_NOTE_HEADING}\n{consumer_note.strip()}\n"
+
+
+#: Legacy ``type=`` spellings of a member of :data:`TYPES`. Normalised once, when
+#: an entry becomes a fragment, so the closed set never has to accept them.
+LEGACY_TYPE_SYNONYMS = {"feat": "feature", "bugfix": "fix", "improvement": "feature"}
+
+#: The consumer note a migrated entry gets. The legacy log had no consumer note,
+#: so whether consumers need one is still the author's call; ``none:`` keeps the
+#: fragment valid, and the cut's dry run lists the reason for the release operator.
+MIGRATED_NOTE = (
+    "none: migrated from the legacy change log, which held no consumer note; "
+    "replace this line with the note if consumers need one"
+)
+
+_LEGACY_HEADER_RE = re.compile(r"(\d{4}-\d{2}-\d{2}):\s*(.+)")
+_LEGACY_KEYS = ("type", "scope")
+
+
+@dataclass(frozen=True)
+class LegacyConversion:
+    """What converting a legacy log's release-pending entries would produce.
+
+    ``fragments`` pairs each scope with its fragment's text, and ``remaining`` is
+    the log without those entries. When ``refusals`` is non-empty the caller
+    writes nothing: ``fragments`` is then empty and ``remaining`` is the log as given.
+    """
+
+    fragments: tuple[tuple[str, str], ...]
+    remaining: str
+    refusals: tuple[Problem, ...]
+
+
+def legacy_entries_as_fragments(text: str) -> LegacyConversion:
+    """Convert every release-pending entry of a legacy change log into a fragment.
+
+    An entry is release-pending when it has a tag line and no ``release=``, the
+    legacy gate's own definition. Shipped entries and untagged ones stay in the
+    log as they are, because archived history is never rewritten.
+
+    Each refusal names an entry the author has to decide about, so nothing is
+    guessed: a ``release=`` that is not a version (a placeholder hides a scope
+    from the release gate, and the author knows whether it shipped), two tag
+    lines or conflicting tags (which value is meant is unknown), a missing
+    ``scope`` or ``type``, a key a fragment cannot hold, a type outside the closed
+    set after normalising synonyms, two entries sharing a scope, and any entry
+    whose fragment would not validate or read back as written.
+    """
+    from . import change_log_archive  # noqa: PLC0415 — the archive's splitter owns entry boundaries
+
+    preamble, blocks = change_log_archive.split(text)
+    refusals: list[Problem] = []
+    converted: list[tuple[str, str]] = []
+    kept: list[str] = []
+    seen: dict[str, str] = {}
+    for block in blocks:
+        entry = block.entry
+        where = f"entry {entry.title!r} (line {entry.line_number})"
+        release = entry.tags.get("release")
+        if release is not None:
+            if not (isinstance(release, str) and change_log_mod.RELEASE_VALUE_RE.match(release)):
+                refusals.append(
+                    Problem(
+                        "unreleased-placeholder",
+                        f"{where} has release={release!r}, which is not a version: set the version "
+                        "it shipped in, or delete the tag if it has not shipped",
+                    )
+                )
+            kept.append(block.text)
+            continue
+        if entry.tag_line_count == 0:
+            kept.append(block.text)
+            continue
+
+        before = len(refusals)
+        if entry.tag_line_count > 1 or entry.unconsumed_tag_lines:
+            refusals.append(Problem("multi-tag-line", f"{where} has more than one tag line; merge them into one"))
+        if entry.tag_conflicts:
+            refusals.append(
+                Problem("conflicting-tags", f"{where} sets a key twice: {'; '.join(entry.tag_conflicts)}")
+            )
+        extra = sorted(set(entry.tags) - set(_LEGACY_KEYS))
+        if extra:
+            refusals.append(
+                Problem(
+                    "unconvertible-key",
+                    f"{where} carries {', '.join(extra)}, which a fragment cannot hold; drop "
+                    f"{'it' if len(extra) == 1 else 'them'} from the tag line first",
+                )
+            )
+        scope = entry.tags.get("scope")
+        kind = entry.tags.get("type")
+        if not isinstance(scope, str) or not scope:
+            refusals.append(Problem("missing-scope", f"{where} has a tag line with no scope="))
+        if not isinstance(kind, str) or not kind:
+            refusals.append(Problem("missing-type", f"{where} has no type="))
+        header = _LEGACY_HEADER_RE.fullmatch(entry.title)
+        if header is None:
+            refusals.append(Problem("bad-header", f"{where} is not `## YYYY-MM-DD: title`"))
+        if len(refusals) > before:
+            kept.append(block.text)
+            continue
+        assert isinstance(scope, str) and isinstance(kind, str) and header is not None
+
+        normalised = LEGACY_TYPE_SYNONYMS.get(kind, kind)
+        if scope in seen:
+            refusals.append(
+                Problem("duplicate-scope", f"{where} shares scope={scope} with {seen[scope]}; merge the two entries")
+            )
+            kept.append(block.text)
+            continue
+        seen[scope] = where
+
+        body = block.text.splitlines()[1:]
+        while body and (not body[0].strip() or change_log_mod.TAG_LINE_RE.search(body[0])):
+            body.pop(0)
+        narrative = "\n".join(body).strip()
+        title = header.group(2).strip()
+        rendered = render_fragment(
+            kind=normalised, scope=scope, date=header.group(1), title=title,
+            narrative=narrative, consumer_note=MIGRATED_NOTE,
+        )
+        checked = check_fragment_text(rendered, Path(f"{scope}.md"))
+        if checked.problems:
+            refusals.extend(Problem(p.code, f"{where}: {p.detail}") for p in checked.problems)
+            kept.append(block.text)
+            continue
+        assert checked.fragment is not None
+        if checked.fragment.title != title or checked.fragment.narrative != narrative:
+            refusals.append(
+                Problem("unrepresentable", f"{where} would not read back from a fragment as written")
+            )
+            kept.append(block.text)
+            continue
+        converted.append((scope, rendered))
+
+    if refusals:
+        return LegacyConversion(fragments=(), remaining=text, refusals=tuple(refusals))
+    if not converted:
+        return LegacyConversion(fragments=(), remaining=text, refusals=())
+    remaining = (preamble + "".join(kept)).rstrip("\n") + "\n"
+    return LegacyConversion(fragments=tuple(converted), remaining=remaining, refusals=())

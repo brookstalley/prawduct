@@ -43,7 +43,7 @@ chunking.
 
 ## Prior art: `change-log-ledger-design.md` (2026-07-31)
 
-The earlier sessions did not cite `.prawduct/artifacts/change-log-ledger-design.md`, a spiked but
+The earlier sessions did not cite `.prawduct/artifacts/archive/change-log-ledger-design.md`, a spiked but
 unbuilt proposal for the same problem; it was found while planning (2026-10-19). It agrees on the
 core: one file per change under `.prawduct/changes/`, typed frontmatter, a narrative body, and a gate
 that asserts the branch added a file. It differs in two places, and this design keeps its own
@@ -117,8 +117,11 @@ refused with `bad-type`, whose detail names the value and the set. Legacy archiv
 spelling — history is not rewritten.
 
 Other rules: `scope` must equal the filename stem (`scope-mismatch`); filename stems are
-lowercase `[a-z0-9][a-z0-9-]*` so they are also safe as a path component on every platform
-(`bad-scope-slug`); `date` must parse; `title` must be non-empty and single-line; the narrative
+lowercase letters, digits and hyphens, starting with a letter or digit, with single interior dots
+(`[a-z0-9](?:[a-z0-9-]|\.(?=[a-z0-9]))*`), so they are also safe as a path component on every
+platform (`bad-scope-slug`). *Amended 2026-10-19:* dots were added when migrating this repo, whose
+release and dev-track scopes are version-named (`release-v3.7.1`); a dot is never leading,
+trailing or doubled; `date` must parse; `title` must be non-empty and single-line; the narrative
 must be non-empty. `chunks` / `status` are refused with the existing retired-key message.
 
 ### D3 — Consumer note is a section of the same file (answers the issue's open question)
@@ -197,11 +200,17 @@ build time rather than a date here, because the gate is "no migrated-by-hand str
 **Migration** (`prawduct-hook migrate-change-log`, called by `/prawduct:migrate` and offered by
 `/prawduct:doctor`): for each legacy entry with a tag line and no `release=`, write
 `.prawduct/changes/<scope>.md` (type normalised per D2, `title`/`date` from the `## ` header,
-narrative = body, no consumer note) and remove the entry from `change-log.md`; shipped entries
+narrative = body, and a `none:` consumer note saying the entry was migrated, since the note is
+required and the legacy log had none; the cut's dry run lists it) and remove the entry from
+`change-log.md`; shipped entries
 and untagged entries are left alone. Refusals, each a named code and no write: an entry with
 `release=<non-version>` (`unreleased-placeholder` — the v3.2.8 incident class; the author
 decides), two entries sharing a scope (`duplicate-scope`), an entry with two tag lines
-(`multi-tag-line`), a `scope` that fails the slug rule. One commit, `git revert`-able, idempotent
+(`multi-tag-line`), a `scope` that fails the slug rule. Built with more, each one an entry whose
+author must decide: `conflicting-tags`, `unconvertible-key` (e.g. a retired `chunks=`),
+`missing-scope`, `missing-type`, `bad-header`, any fragment validation code, and
+`unrepresentable` (a title that would not read back from frontmatter as written); plus
+`fragment-exists` and `fragments-ignored` from the command itself. Every refusal writes nothing. One commit, `git revert`-able, idempotent
 (second run finds nothing to convert). New products: `init_product` scaffolds the directory with a
 `.gitkeep` and a template fragment under `plugin/templates/change-fragment.md`, and no
 `change-log.md`. Once a repo has no pending legacy entries, `gitattributes_probes` stops requiring

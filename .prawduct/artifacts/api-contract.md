@@ -282,6 +282,24 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   or when a write fails (every file is restored); 2 on a usage error. `--json` keys:
   `applied`, `threshold_bytes`, `live_bytes_before`, `live_bytes_after`, `product_versions`, `kept`,
   `moved`, `pinned_bytes`, `buckets{YYYY-MM: count}`, `written[]`.
+  `cut-change-log --release vX.Y.Z [--scope S]... [--apply]` (mutating with `--apply`) ships
+  pending change fragments: the release plan's `ships` rows, or exactly the named scopes. It
+  renders each into the archive's month bucket tagged `release=`, writes its consumer note under
+  the open `plugin/CHANGELOG.md` section's headline (never the headline itself), and removes it;
+  a `withheld` fragment stays. The dry run lists every `none:` consumer note with its reason.
+  Exit 0 when it ran or had nothing to cut; **1 `refused: <code>:`** with nothing written
+  (`bad-version`, `no-change-log`, `invalid-pending-set`, `archive-ignored`, `unknown-scope`,
+  `no-release-plan`, `bad-release-plan`, `unclassified-fragment`, `no-headline`, `wrong-section`
+  (the top section is not this release's), `write-failed`),
+  or `removal-failed` after the archive and notes are written, which a re-run completes without
+  duplicating; 2 on a usage error. No `--json`.
+  `migrate-change-log [--apply]` (mutating with `--apply`) converts the legacy log's
+  release-pending entries into fragments and removes them from the log; shipped and untagged
+  entries stay. Exit 0 when it ran or had nothing to convert; **1 `refused: <code>:`** with
+  nothing written, one line per entry its author must decide about (the codes are
+  `change_fragments.legacy_entries_as_fragments`' and any fragment validation code), or
+  `fragment-exists`, `fragments-ignored`, `unreadable`, `write-failed`; 2 on a usage error.
+  No `--json`.
 - **Derived-view convergence** — `lifecycle-repair [--apply] [--json]` (mutating with `--apply`):
   removes the retired `views_enabled` key and `scope_rollups` block, labels a derived
   `release-notes.md` as history, and deletes `## Status` notes instructing readers not to hand-edit
@@ -352,7 +370,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
   `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
-  `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
+  `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`, `migrate-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
   which is why the default is the mutating one — but a reader who assumed the blanket
@@ -412,7 +430,8 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`reanchor`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`) default to a
+`reanchor`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`,
+`migrate-change-log`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which

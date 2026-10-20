@@ -146,6 +146,43 @@ Nothing may require a post-merge commit (`/prawduct:pr` Step 1d).
   `change_log_archive.archive_would_be_ignored`, and a failure while removing fragments says the
   history is already written. That check keys on the live log being tracked, so a fragments-only
   repo (wave 2) needs it re-keyed on the fragment directory.
+- Chunk 04: a migrated entry gets a `none:` consumer note saying it was migrated, because the note
+  is required (owner) and the legacy log had none; the cut's dry run lists it for the release
+  operator. D6's "no consumer note" predates that decision. This repo's two migrated fragments
+  were then given their real reasons by hand. Settled by the owner's required-note decision.
+- Chunk 04: the slug rule now allows single interior dots. Migrating this repo refused
+  `release-v3.7.1`, and 41 recorded scopes are version-named (`release-v*`, `dev-track-bump-*`).
+  A dot is never leading, trailing or doubled, so the stem stays a safe filename. Hyphens keep
+  their old rule. A test reads this repo's whole recorded scope vocabulary. Settled by "match the
+  product's other choices" (its existing scope names); design D2 is amended.
+- Chunk 04: the migration refuses more than D6 lists (`conflicting-tags`, `unconvertible-key`,
+  `missing-scope`, `missing-type`, `bad-header`, `unrepresentable`, `fragment-exists`,
+  `fragments-ignored`, and any fragment validation code). Each is an entry its author must decide
+  about, or a write that would lose the record. Settled by D6's "refusals, each a named code and
+  no write".
+- Chunk 04: D6's risk mitigation (the migration refuses unless the installed plugin has
+  dual-shape readers) is moot in wave 1: the command ships in the plugin that introduced those
+  readers, and only this repo runs it. The `doctor` version check moves to wave 2 with the
+  rollout. *Not settled by the goals; flagged for the boundary review.*
+- Chunk 04: the claim-search acceptance criterion is read as "this repo's own process docs state
+  the legacy rules only as history or as the unmigrated-repo path". Plugin methodology that
+  describes the legacy log still describes every consumer repo correctly in wave 1, so rewording
+  it is wave 2's (onboard, migrate and doctor skill text). *Interpretation, flagged for the
+  boundary review.*
+- Chunk 04: the dual-shape expiry (D6) is filed as brookstalley/prawduct#1022, as D6 requires.
+- Chunk 04 (a Chunk 03 defect, found while rewriting the runbook): the cut found the digest's
+  open section by position alone, a reader's rule reused by a writer, so with the last release's
+  section still on top it would have added notes to published ones. It now refuses
+  `wrong-section` unless the top heading names the version being cut. Pinned and red-verified.
+- Chunk 04: the migration writes `.prawduct/changes/.gitkeep`. Readers know a repo records
+  fragments by the directory existing, and git drops an empty one, so the first release that
+  shipped every fragment would have left fresh clones on the legacy remedy. Settled by D6's
+  scaffold (a `.gitkeep`), applied to the migration as well.
+- Chunk 04, carried from the legacy flow, not introduced here: on a pruned release, a collateral
+  scope (work inseparable from withheld work) classified `ships` is archived as shipped while its
+  code stays on `develop`. The archive is append-only, so there is no undo after the commit. The
+  pruned runbook's step 3 now checks for it, but the fix is a Phase 0 rule (collateral is
+  classified `withheld`). *For the owner, at the boundary review.*
 
 **Level:** High. The design is grounded in the current tree (re-verified 2026-10-19), the July
 proposal is reconciled, and every schema decision is the owner's.

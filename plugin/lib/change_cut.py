@@ -99,12 +99,19 @@ def _selected_scopes(
     return cut, kept
 
 
+def _names_release(heading: str, version: str) -> bool:
+    """Whether a ``## `` heading is this release's section, open or already renamed."""
+    words = heading[2:].split()
+    return bool(words) and (words[0] == version or words[0].startswith(f"{version}-dev"))
+
+
 def _digest_write(
-    project_dir: Path, fragments: list[change_fragments.Fragment]
+    project_dir: Path, fragments: list[change_fragments.Fragment], version: str
 ) -> tuple[tuple[Path, str] | None, list[str], str | None]:
     """``(write or None, scopes noted, the digest's open heading)``.
 
-    Notes go under the open section's headline, which the cut never writes:
+    Notes go under the open section's headline, which the cut never writes, and
+    only when that section is this release's:
     the headline is the release's one-sentence judgement, and the banner shows
     it to every repo that crosses this version. A section with no headline is
     refused rather than given one. A repo that publishes no digest gets no
@@ -119,6 +126,16 @@ def _digest_write(
     if section is None:
         raise CutRefused("no-headline", f"{release_readiness._DIGEST_REL_PATH} has no `## ` section to write into")
     heading, body = section
+    # The release gate finds the open section by position, which is right for a
+    # reader. A writer must also know the section is this release's: when the
+    # last release's section is still on top, position alone would add these
+    # notes to notes that are already published.
+    if not _names_release(heading, version):
+        raise CutRefused(
+            "wrong-section",
+            f"the top section of {release_readiness._DIGEST_REL_PATH} is {heading!r}, not {version}'s; "
+            f"open `## {version}-dev` with its headline before cutting",
+        )
     start = next(i for i, line in enumerate(lines) if line.strip() == heading)
     headline_offset = next((i for i, line in enumerate(body) if line.strip()), None)
     if headline_offset is None:
@@ -183,7 +200,7 @@ def plan_cut(project_dir: Path, release: str, scopes: list[str] | None = None) -
         result.writes.append((path, change_log_archive._compose_bucket(existing, blocks, bucket)))
         result.buckets.append(bucket)
 
-    digest_write, noted, heading = _digest_write(project_dir, fragments)
+    digest_write, noted, heading = _digest_write(project_dir, fragments, version)
     if digest_write is not None:
         result.writes.append(digest_write)
     result.notes_added = noted

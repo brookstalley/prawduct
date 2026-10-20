@@ -1,53 +1,13 @@
 # Change Log — Prawduct Framework
 
-<!-- Append new entries at the top. Each entry is a ## section.
+<!-- Shipped history only: add nothing here. A branch records its change as a new
+     fragment, .prawduct/changes/<scope>.md (plugin/templates/change-fragment.md),
+     and `prawduct-hook cut-change-log` moves shipped fragments into
+     .prawduct/change-log-archive/ at each release. The entries below shipped
+     before that and stay as written.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->
-
-## 2026-10-19: boundary test evidence is recorded from the Testament pool
-
-<!-- prawduct: type=chore | scope=testament-evidence -->
-
-- #1020, closing #1016's last acceptance item. brookstalley/testament#52 gave `testament run` a
-  JUnit report, so the first `test_commands` entry is now `testament run --junit-xml {junit_xml}`
-  and `prawduct-hook test-evidence record` ingests the pool's run. The pytest half took about a
-  minute on the pool, against about 7.5 minutes locally (measured 2026-10-19).
-- The pool selects out tests it cannot run, so on its own it would have recorded a subset as the
-  suite. A third entry runs exactly those here: `requires_history` (one test), and a new sibling
-  marker, `requires_local_cache`, on `TestSilentAgainstThisRepo`, whose full assertion needs this
-  clone's backlog cache and which skipped on every runner. Counts reconcile with the local run:
-  9,145 passed and 17 skipped either way. `.testament.toml` deselects both markers.
-- Checked live, not inferred:
-  - Pool unavailable: a runner restart mid-run made testament fall back to this machine, and the
-    recorder took that run.
-  - No result: testament exits 2 and deletes the report, and the recorder refuses with exit 2 and
-    writes no evidence.
-  - Partial report: the recorder's existing per-command rule covers it. A non-zero exit with no
-    failing test in the report is refused, and testament's `population_mismatch` is exactly that.
-- `documentation/running-tests.md`'s "Evidence still comes from the recorder" section, stale since
-  testament#52, is rewritten as "Recording evidence".
-- Recording now needs `testament` installed (any command that cannot start fails the record).
-  `running-tests.md` and the README say so, and name the by-hand route for a machine without it:
-  run pytest and the node suite, then pass both reports to one `record --from-junit` call.
-
-## 2026-10-19: v3.7.1 is cut, and develop reopens on 3.7.2-dev
-
-<!-- prawduct: type=chore | scope=release-v3.7.1 -->
-
-**27 scopes and 27 change-log entries. `K = 0`, so this took the whole-develop promotion path with
-nothing withheld.** Tag `v3.7.1` was published with the CHANGELOG section as its Release notes.
-`check-released v3.7.1` reports 3 of 3 verified, and the hand-dispatched `verify-release` run and
-the tag-push run are both green. To re-derive the scope set, grep for `release=v3.7.1` in
-`change-log.md` and `change-log-archive/`.
-
-**A patch, by owner decision over the agent's 3.8.0 recommendation.** The alignment pass and the
-default-on `clear-reason` gate matched the minor-tier precedent. The owner chose the ratified
-conservative-versioning norm instead. `.prawduct/artifacts/release-plan-v3.7.1.md` records both
-sides. Two field-bug PRs merged ahead of the cut (#1018 for #1011, and #1019 for #217, #1004,
-#1005 and #1006). The cut wrote consumer notes for ten scopes the open CHANGELOG section did not
-name, archived 13 shipped plans, and moved 18 shipped entries into `change-log-archive/2026-10.md`.
-Step 11a's suite run on the prep tree was green the first time.
 
 ## 2026-10-17: backlog file writes only to its own repo, and says when it filed
 
