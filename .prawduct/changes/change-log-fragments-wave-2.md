@@ -41,5 +41,12 @@ it. Plan: `.prawduct/artifacts/build-plan-change-log-fragments-wave-2.md`.
   them pending.
 - Plugin prose that still described the legacy log as the only record now says "change record".
 
+### Chunk 04: entries holding several changes convert
+- An entry holding several changes under one header, each a tag line over its own paragraph and
+  scope, converts as one change per tag line; the legacy reader saw only the first, so the dry run
+  names each scope it surfaces. A second tag line with no prose of its own or a repeated scope
+  still refuses (`multi-tag-line`), and a pending tag line below an entry's prose refuses
+  (`stranded-tag-line`).
+
 ## Consumer note
-Products can now record each change as its own file in `.prawduct/changes/` instead of editing the shared `change-log.md`, so two branches no longer conflict over the change record. New products start that way. For an existing product, `/prawduct:doctor` offers the move and makes it with your approval, as one revertible commit. Entries with no type need one `--default-type` you choose, and the dry run shows every guess first. On a trunk-based product that tracks versions, each PR cuts its own change record into the archive as it ships.
+Products can now record each change as its own file in `.prawduct/changes/` instead of editing the shared `change-log.md`, so two branches no longer conflict over the change record. New products start that way. For an existing product, `/prawduct:doctor` offers the move and makes it with your approval, as one revertible commit. Entries with no type need one `--default-type` you choose, and the dry run shows every guess first. An entry that recorded several changes under one header becomes one change each, and the dry run names any that the old log never showed as pending. On a trunk-based product that tracks versions, each PR cuts its own change record into the archive as it ships.

@@ -268,6 +268,38 @@ def _is_standalone_tag_line(line: str) -> bool:
     return bool(tags)
 
 
+@dataclass(frozen=True)
+class TagSection:
+    """One tag line of an entry and the prose under it, up to the next tag line."""
+
+    tags: dict[str, object]
+    #: Keys this one line set more than once (:func:`parse_tag_line_with_conflicts`).
+    conflicts: tuple[str, ...]
+    body: str
+
+
+def tag_sections(entry_text: str) -> tuple[str, list[TagSection]]:
+    """``(lead, sections)``: an entry cut at each of its standalone tag lines.
+
+    ``entry_text`` is one entry, header line first. ``lead`` is the text between
+    the header and the first tag line, and each section holds one tag line's own
+    pairs — not merged with its neighbours', unlike :func:`parse_change_log` — and
+    the stripped prose under it. An entry holding several changes, each written
+    as a tag line over its own paragraph, reads here as one section per change;
+    a duplicated tag line reads as a section with an empty body.
+    """
+    lines = entry_text.splitlines()[1:]
+    starts = [i for i, line in enumerate(lines) if _is_standalone_tag_line(line)]
+    if not starts:
+        return "\n".join(lines).strip(), []
+    sections = []
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        tags, conflicts = parse_tag_line_with_conflicts(TAG_LINE_RE.search(lines[start]).group(1))
+        sections.append(TagSection(tags, tuple(conflicts), "\n".join(lines[start + 1 : end]).strip()))
+    return "\n".join(lines[: starts[0]]).strip(), sections
+
+
 #: Keys a tag line being written must not carry. The parser keeps accepting them, because
 #: every onboarded repo's history is full of them; what it cannot do is tell an
 #: author they are dead, and a key that parses clean looks live. Copied forward

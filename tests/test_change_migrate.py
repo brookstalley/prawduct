@@ -128,6 +128,11 @@ REFUSALS = [
         "multi-tag-line",
     ),
     (_entry("2026-10-19: stray", "type=fix | scope=t", "Body.\n\n<!-- prawduct: scope=u -->"), "multi-tag-line"),
+    # A union merge's shape: two versions of one entry's tag line, each over prose.
+    (_entry("2026-10-19: same scope", "type=fix | scope=t", "Body.\n\n<!-- prawduct: type=feature | scope=t -->\n\nMore."), "multi-tag-line"),
+    # A tag line the old reader counts but that starts no section: which change it tags is unknown.
+    ("## 2026-10-19: inline\n\nSee <!-- prawduct: type=fix | scope=t --> here.\n\n<!-- prawduct: type=fix | scope=u -->\n\nB.\n\n<!-- prawduct: type=fix | scope=v -->\n\nC.\n\n", "multi-tag-line"),
+    ("## 2026-10-19: prose first\n\nLead.\n\n<!-- prawduct: type=fix | scope=t -->\n\nA.\n\n", "stranded-tag-line"),
     (_entry("2026-10-19: conflict", "type=fix | scope=a | scope=b"), "conflicting-tags"),
     (_entry("2026-10-19: no scope", "type=fix"), "missing-scope"),
     (_entry("2026-10-19: no type", "scope=nt"), "missing-type"),
@@ -155,6 +160,11 @@ class TestRefusals:
             "2026-10-18: first", "type=fix | scope=same | release=v3.7.1"
         )
         assert [s for s, _ in change_fragments.legacy_entries_as_fragments(log).fragments] == ["same"]
+
+    def test_a_shipped_tag_line_below_the_prose_is_history_and_stays(self):
+        log = PREAMBLE + "## 2026-10-19: prose first\n\nLead.\n\n<!-- prawduct: type=fix | scope=t | release=v1.0.0 -->\n\n"
+        result = change_fragments.legacy_entries_as_fragments(log)
+        assert result.refusals == () and result.fragments == () and result.remaining == log
 
 
 class TestWhatRealLogsCarry:
@@ -200,6 +210,40 @@ class TestWhatRealLogsCarry:
             "### 2026-10-17: first\n\nFirst pass.\n\nLegacy tags: type=feature"
         )
         assert "scope=same" not in result.remaining and "scope=other" in result.remaining
+
+    def test_an_entry_holding_several_changes_becomes_one_fragment_each(self):
+        # cordyceps' shape: one header, each change a tag line over its own paragraph.
+        log = PREAMBLE + _entry(
+            "2026-10-19: two fixes", "type=bugfix | scope=first | status=merged",
+            "First why.\n\n<!-- prawduct: type=docs | scope=second -->\n\nSecond why.",
+        )
+        result = change_fragments.legacy_entries_as_fragments(log)
+        assert result.refusals == ()
+        fragments = {
+            scope: change_fragments.check_fragment_text(text, Path(f"{scope}.md")).fragment
+            for scope, text in result.fragments
+        }
+        assert {s: (f.type, f.title, f.narrative) for s, f in fragments.items()} == {
+            "first": ("fix", "two fixes", "First why.\n\nLegacy tags: status=merged"),
+            "second": ("docs", "two fixes", "Second why."),
+        }
+        assert result.split == ("second",)
+        assert result.remaining == PREAMBLE.rstrip("\n") + "\n"
+
+    def test_a_separated_change_merges_with_its_scope_elsewhere_and_takes_the_default(self):
+        # faidh's shape: no types, and a separated scope another entry also holds.
+        log = (
+            PREAMBLE
+            + _entry("2026-10-19: chunk", "chunks=26 | scope=a", "A why.\n\n<!-- prawduct: scope=b -->\n\nB why.")
+            + _entry("2026-10-18: earlier", "type=fix | scope=b", "B before.")
+        )
+        assert [p.code for p in change_fragments.legacy_entries_as_fragments(log).refusals] == ["missing-type"]
+        result = change_fragments.legacy_entries_as_fragments(log, default_type="chore")
+        assert result.refusals == () and result.defaulted == (("a", ""),)
+        fragments = dict(result.fragments)
+        b = change_fragments.check_fragment_text(fragments["b"], Path("b.md")).fragment
+        assert b.type == "fix"
+        assert b.narrative == "### 2026-10-19: chunk\n\nB why.\n\n### 2026-10-18: earlier\n\nB before."
 
     @pytest.mark.parametrize("tags, legacy", [("scope=u", ""), ("type=mixed | scope=u", "mixed")])
     def test_a_default_type_is_one_named_decision(self, tags, legacy):
@@ -265,6 +309,20 @@ class TestCommand:
         assert after.legacy_scopes == []
         assert all(f.ok for f in change_fragments.load_pending(project))
 
+    def test_separated_changes_are_named_and_join_the_pending_set(self, tmp_path):
+        several = _entry(
+            "2026-10-15: two", "type=fix | scope=delta", "D.\n\n<!-- prawduct: type=fix | scope=epsilon -->\n\nE."
+        )
+        project = _project(tmp_path, MIXED + several)
+        before = release_readiness.pending_scopes(project)
+        assert sorted(before.legacy_scopes) == ["alpha", "delta", "gamma"]
+        dry = _migrate(project)
+        assert dry.returncode == 0, dry.stderr
+        assert "epsilon: recorded under another change's header" in dry.stdout and "delta: recorded" not in dry.stdout
+        assert _migrate(project, "--apply").returncode == 0
+        after = release_readiness.pending_scopes(project)
+        assert sorted(after.fragment_scopes) == ["alpha", "delta", "epsilon", "gamma"]
+
     def test_a_second_run_is_a_no_op(self, tmp_path):
         project = _project(tmp_path, MIXED)
         assert _migrate(project, "--apply").returncode == 0
@@ -326,7 +384,7 @@ class TestCommand:
 
     def test_plan_migration_writes_the_log_last(self, tmp_path):
         project = _project(tmp_path, MIXED)
-        writes, _defaulted = change_migrate.plan_migration(project)
+        writes, _defaulted, _split = change_migrate.plan_migration(project)
         assert writes[-1][0] == project / ".prawduct" / "change-log.md"
         assert [p.name for p, _ in writes[:-1]] == ["alpha.md", "gamma.md", ".gitkeep"]
 

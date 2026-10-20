@@ -79,9 +79,10 @@ def install_pin_too_old(project_dir: Path) -> str | None:
 
 def plan_migration(
     project_dir: Path, *, default_type: str | None = None
-) -> tuple[list[tuple[Path, str]], tuple[tuple[str, str], ...]]:
-    """``(writes, defaulted)``: every ``(path, text)`` the migration would write,
-    and each scope that took ``default_type``. With nothing pending, the writes are
+) -> tuple[list[tuple[Path, str]], tuple[tuple[str, str], ...], tuple[str, ...]]:
+    """``(writes, defaulted, split)``: every ``(path, text)`` the migration would
+    write, each scope that took ``default_type``, and each scope that was pending
+    unseen under another change's header. With nothing pending, the writes are
     the fragment directory's ``.gitkeep`` when it is missing, else none.
 
     Raises :class:`MigrationRefused` when any entry needs its author's decision,
@@ -90,7 +91,7 @@ def plan_migration(
     """
     log_path = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
     if not log_path.is_file():
-        return [], ()
+        return [], (), ()
     try:
         text = log_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
@@ -100,7 +101,7 @@ def plan_migration(
         raise MigrationRefused(list(conversion.refusals))
     directory = project_dir / change_fragments.FRAGMENT_DIR_REL
     if not conversion.fragments and directory.is_dir():
-        return [], ()
+        return [], (), ()
 
     pinned = install_pin_too_old(project_dir)
     if pinned is not None:
@@ -146,9 +147,9 @@ def plan_migration(
     if not keep.exists():
         writes.append((keep, ""))
     if not conversion.fragments:
-        return writes, ()
+        return writes, (), ()
     writes.append((log_path, conversion.remaining))
-    return writes, conversion.defaulted
+    return writes, conversion.defaulted, conversion.split
 
 
 def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
@@ -170,7 +171,7 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
     try:
-        writes, defaulted = plan_migration(project_dir, default_type=default_type)
+        writes, defaulted, split = plan_migration(project_dir, default_type=default_type)
     except MigrationRefused as exc:
         for problem in exc.problems:
             print(f"refused: {problem}", file=sys.stderr)
@@ -212,6 +213,11 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
         print(f"  {path.relative_to(project_dir)}")
     for scope, legacy in defaulted:
         print(f"  {scope}: type={default_type} (was {f'type={legacy}' if legacy else 'untyped'})")
+    for scope in split:
+        print(
+            f"  {scope}: recorded under another change's header, so the legacy log never "
+            "showed it as pending; it is pending now"
+        )
     print(
         "  Each gets a `none:` consumer note saying it was migrated; write the real note where "
         "consumers need one. The cut's dry run lists every `none:`."
