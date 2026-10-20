@@ -750,7 +750,10 @@ LAST_MEASURED_TOKENS = {
     # that mode an observation without `about` is dropped by consolidation, so the rule has to be stated
     # here or every observation the reviewer writes vanishes. Priced against the verify round each
     # off-topic observation used to buy (median ~2 min).
-    "skills/critic/goals-1-3.md": 2670,
+    # -12 on 2026-10-19 (change-log-fragments): the record-lint line names the new
+    # `change-fragment` check, paid by cutting a reason `cross-checks.md` owns ("that is
+    # how a record defect buys a review round"); the ceiling lowered with it.
+    "skills/critic/goals-1-3.md": 2658,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1085,7 +1088,11 @@ LAST_MEASURED_TOKENS = {
     # New on 2026-09-28 (opus-55-w3b). cross-checks.md holds the reviewer-facing half of the review
     # cycle (C-8), and coordinator.md holds the coordinator's dispatch steps (C-20). Each is loaded on
     # a reviewer route, so each carries a ceiling.
-    "skills/critic/cross-checks.md": 3380,
+    # +24 on 2026-10-19 (change-log-fragments), DECLARED: one severity row for the new
+    # `change-fragment` record-lint check. Every check must carry a severity on every reviewer
+    # surface (test_record_lint), and this table is the only place the row can live; the row
+    # was shortened in place first and there is no duplication left to pay from.
+    "skills/critic/cross-checks.md": 3404,
     "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -5397,7 +5404,7 @@ class TestCriticGoals13:
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
-        assert tokens < 2671, f"goals-1-3.md is ~{tokens} tokens, should be <2671"
+        assert tokens < 2659, f"goals-1-3.md is ~{tokens} tokens, should be <2659"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -6002,7 +6009,7 @@ class TestReviewCycle:
         # on a coordinator roster, so growth here is paid per reviewer. The next
         # addition trims or relocates; it does not bump.
         tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
-        assert tokens < 3381, f"cross-checks.md is ~{tokens} tokens, should be <3381"
+        assert tokens < 3405, f"cross-checks.md is ~{tokens} tokens, should be <3405"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).

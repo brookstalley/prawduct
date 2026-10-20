@@ -393,17 +393,26 @@ def validate_fragment(fragment: Fragment) -> list[Problem]:
     return problems
 
 
+def check_fragment_text(text: str, path: Path) -> FragmentFile:
+    """Parse and validate fragment ``text`` that belongs at ``path``.
+
+    For callers that read the text from somewhere other than the working tree,
+    such as a commit; :func:`read_fragment_file` is the disk form.
+    """
+    try:
+        fragment = parse_fragment(text, filename=path.name)
+    except FragmentError as exc:
+        return FragmentFile(path, None, (exc.problem,))
+    return FragmentFile(path, fragment, tuple(validate_fragment(fragment)))
+
+
 def read_fragment_file(path: Path) -> FragmentFile:
     """Read and validate one fragment file; never raises for a bad fragment."""
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         return FragmentFile(path, None, (Problem("unreadable", str(exc)),))
-    try:
-        fragment = parse_fragment(text, filename=path.name)
-    except FragmentError as exc:
-        return FragmentFile(path, None, (exc.problem,))
-    return FragmentFile(path, fragment, tuple(validate_fragment(fragment)))
+    return check_fragment_text(text, path)
 
 
 def load_pending(root: Path) -> list[FragmentFile]:
