@@ -443,6 +443,12 @@ def _fragment_section(
                 lines.append("  problems: " + "; ".join(str(p) for p in item.problems))
         else:
             lines.append(f"archive entry in {change.path} (this branch cut its fragment at Step 1d):")
+        if change.closes:
+            # The record owner's parsed answer, written as a claim the id scan
+            # reads. Neither raw spelling reaches it: a fragment's `closes: [a/b#N]`
+            # puts a bracket between keyword and id, and an archive tag spells it
+            # `closes=a,b`, so the branch's own closure claim read as a mention.
+            lines.append(f"  closes: {', '.join(change.closes)}")
         lines.extend(f"    {ln}" for ln in change.text.splitlines())
     return Section("change_log", body="\n".join(lines))
 
