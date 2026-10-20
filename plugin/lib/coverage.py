@@ -1152,6 +1152,47 @@ def _entry_check_without_history(project_dir: Path) -> int:
     return 0
 
 
+def _fragment_check_without_history(project_dir: Path) -> int:
+    """The weaker fragment check available when git ignores the fragment directory.
+
+    The fragment-side twin of :func:`_entry_check_without_history`, weakened for
+    the same reason: with no committed history, "this branch ADDED a fragment"
+    cannot be asked, so this reads the fragments on disk and says which check
+    the caller got. It still fails on the states visible from disk: no fragment
+    at all, or one that does not validate.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    prefix = change_fragments.FRAGMENT_DIR_REL + "/"
+    unignore = (
+        "To restore the real check, track the directory: `.prawduct/*` plus "
+        f"`!{prefix}` — a bare `.prawduct/` cannot be negated."
+    )
+    items = change_fragments.load_pending(project_dir)
+    problems = [f"{item.path.name}: {problem}" for item in items for problem in item.problems]
+    if problems:
+        print(
+            "fragment-invalid: fix each problem and re-run:\n  " + "\n  ".join(problems),
+            file=sys.stderr,
+        )
+        return 1
+    if not items:
+        print(
+            f"no-entry: git ignores {prefix}, and the directory on disk holds no fragment. "
+            f"Add `{prefix}<scope>.md` for this work (template: `templates/change-fragment.md`) "
+            f"before opening the PR. {unignore}",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"fragment-present-untracked: git ignores {prefix}, so whether this branch added "
+        f"a fragment cannot be checked; {len(items)} valid fragment(s) on disk "
+        f"({', '.join(item.path.name for item in items[:3])}). Confirm by hand that this "
+        f"branch's work has one. {unignore}"
+    )
+    return 0
+
+
 def _fragment_entry_verdict(
     project_dir: Path, base: str, files: list[str], judgeable: list[str]
 ) -> int | None:
@@ -1176,6 +1217,13 @@ def _fragment_entry_verdict(
         if (project_dir / change_fragments.FRAGMENT_DIR_REL).is_dir() and (
             CHANGE_LOG_REL_PATH not in files
         ):
+            from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+            # A fragment git would ignore can never be in the diff, so its
+            # absence here proves nothing, and a remedy saying "add one" could
+            # not clear the gate however often it was followed.
+            if gitstate.git_path_is_ignored(project_dir, f"{prefix}0000.md"):
+                return _fragment_check_without_history(project_dir)
             sample = ", ".join(judgeable[:3])
             print(
                 f"no-entry: branch changes code ({sample}) but adds no change record — "

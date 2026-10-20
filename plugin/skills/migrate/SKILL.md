@@ -3,7 +3,7 @@ description: Migrate this repo from committed file-sync framework files onto the
 argument-hint: ""
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook migrate-plugin*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Read, Glob
+allowed-tools: Bash(prawduct-hook migrate-plugin*), Bash(prawduct-hook migrate-change-log*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Read, Glob
 ---
 
 You are performing the **file-sync → plugin cutover** for the current repo. This is the
@@ -78,8 +78,8 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    | Output | Status | What to do |
    |---|---|---|
    | starts `active:` (exit 0) | `active` | Continue. |
-   | starts `inactive:` (exit 1) | `inactive` | Relay the command's own output (it names the exact `claude plugin install` line) and **recommend installing before applying**. Proceed only if the operator says to, and then never report the repo as governed (step 7). |
-   | starts `NOTE:` (exit 3, or exit 0 when the check could not load) | `unknown` | Say activation **was not established**, never that it passed; carry that into the confirmation and step 7. |
+   | starts `inactive:` (exit 1) | `inactive` | Relay the command's own output (it names the exact `claude plugin install` line) and **recommend installing before applying**. Proceed only if the operator says to, and then never report the repo as governed (step 8). |
+   | starts `NOTE:` (exit 3, or exit 0 when the check could not load) | `unknown` | Say activation **was not established**, never that it passed; carry that into the confirmation and step 8. |
 
 4. **Confirm intent** with the user before mutating anything. **Name `state_keys_removed` in
    the confirmation** when it is non-empty — it is the one part of the blast radius that lands
@@ -100,7 +100,9 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    all non-framework files are preserved. Reversible via git revert."
    ```
 
-7. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
+7. **Move the change record onto fragments**, a second commit. **The owner confirms the apply, and any `--default-type`.** Run `prawduct-hook migrate-change-log` (a dry run). It lists each release-pending entry that becomes `.prawduct/changes/<scope>.md`; shipped and untagged entries stay in the log. Exit 0 with `nothing to do` ends this step. A `refused:` exit 1 names an entry its author must decide about, by code. Relay each refusal and leave the repo on its legacy log, which every reader still accepts. Entries with no type in the closed set refuse until the owner picks one `--default-type TYPE` for all of them. Propose one, then re-run the dry run with it so they see every `type=… (was …)` line it guessed. `plugin-pin-too-old` means `.claude/settings.json` pins a prawduct release whose readers predate fragments; the pin moves first. Then `--apply` (with the same flag) and commit it on its own, `chore(prawduct): record changes as fragments`, so `git revert` undoes just this.
+
+8. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
    Stop hook + SessionStart digest, skills are `/prawduct:*`, and framework updates arrive via
    the marketplace with zero repo diff. **Only on an `active` result from step 3** — after
    `inactive` say the files migrated but the repo is ungoverned until they run the install line;

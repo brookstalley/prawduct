@@ -523,7 +523,23 @@ def render_fragment(
 
 #: Legacy ``type=`` spellings of a member of :data:`TYPES`. Normalised once, when
 #: an entry becomes a fragment, so the closed set never has to accept them.
-LEGACY_TYPE_SYNONYMS = {"feat": "feature", "bugfix": "fix", "improvement": "feature"}
+LEGACY_TYPE_SYNONYMS = {
+    "feat": "feature",
+    "improvement": "feature",
+    "bugfix": "fix",
+    "bug": "fix",
+    "documentation": "docs",
+    "optimization": "perf",
+    "performance": "perf",
+    "debt-paydown": "refactor",
+    "tooling": "chore",
+    "test": "chore",
+    "tests": "chore",
+    "ci": "chore",
+    "infra": "chore",
+    "maintenance": "chore",
+    "cleanup": "chore",
+}
 
 #: The consumer note a migrated entry gets. The legacy log had no consumer note,
 #: so whether consumers need one is still the author's call; ``none:`` keeps the
@@ -533,7 +549,9 @@ MIGRATED_NOTE = (
     "replace this line with the note if consumers need one"
 )
 
-_LEGACY_HEADER_RE = re.compile(r"(\d{4}-\d{2}-\d{2}):\s*(.+)")
+#: ``## date: title``, and the dash spellings real logs also use (``## date — title``).
+#: A dash needs space on both sides, so a hyphenated title is never split.
+_LEGACY_HEADER_RE = re.compile(r"(\d{4}-\d{2}-\d{2})(?::\s*|\s+[—–-]\s+)(.+)")
 _LEGACY_KEYS = ("type", "scope")
 
 
@@ -549,30 +567,66 @@ class LegacyConversion:
     fragments: tuple[tuple[str, str], ...]
     remaining: str
     refusals: tuple[Problem, ...]
+    #: ``(scope, the legacy type or "")`` for every converted entry that took the
+    #: caller's default type, so the operator sees each guess the default made.
+    defaulted: tuple[tuple[str, str], ...] = ()
 
 
-def legacy_entries_as_fragments(text: str) -> LegacyConversion:
+def _legacy_tags_line(extra: dict[str, object]) -> str:
+    """The keys a fragment has no field for, kept as a line of its narrative."""
+    parts = []
+    for key in sorted(extra):
+        value = extra[key]
+        parts.append(f"{key}={', '.join(map(str, value)) if isinstance(value, list) else value}")
+    return "Legacy tags: " + "; ".join(parts)
+
+
+@dataclass(frozen=True)
+class _PendingEntry:
+    """One release-pending legacy entry, read and ready to render."""
+
+    where: str
+    scope: str
+    legacy_type: str
+    date: str
+    title: str
+    narrative: str
+
+
+def legacy_entries_as_fragments(text: str, *, default_type: str | None = None) -> LegacyConversion:
     """Convert every release-pending entry of a legacy change log into a fragment.
 
     An entry is release-pending when it has a tag line and no ``release=``, the
     legacy gate's own definition. Shipped entries and untagged ones stay in the
     log as they are, because archived history is never rewritten.
 
-    Each refusal names an entry the author has to decide about, so nothing is
-    guessed: a ``release=`` that is not a version (a placeholder hides a scope
-    from the release gate, and the author knows whether it shipped), two tag
-    lines or conflicting tags (which value is meant is unknown), a missing
-    ``scope`` or ``type``, a key a fragment cannot hold, a type outside the closed
-    set after normalising synonyms, two entries sharing a scope, and any entry
-    whose fragment would not validate or read back as written.
+    What real logs carry is converted rather than refused, because nothing is
+    lost: a tag key a fragment has no field for (the retired ``chunks=`` and
+    ``status=``, and the occasional ``issues=``) becomes a ``Legacy tags:`` line of
+    the narrative; a header written ``## date — title`` reads like ``## date: title``;
+    and several pending entries sharing a scope become that scope's one fragment,
+    each under its own ``###`` heading, newest first, the way the log ordered them.
+
+    A ``type`` is the one value that cannot be read off the entry when it is
+    missing or names no member of the closed set after normalising synonyms.
+    Those are refused unless the caller passes ``default_type``, one decision for
+    every such entry, and each entry that took it is listed in ``defaulted``.
+
+    What is still refused, each an entry its author must decide about: a
+    ``release=`` that is not a version (a placeholder hides a scope from the
+    release gate, and the author knows whether it shipped), two tag lines or
+    conflicting tags (which value is meant is unknown), a missing ``scope``, a
+    header with no date, and any entry whose fragment would not validate or read
+    back as written.
     """
     from . import change_log_archive  # noqa: PLC0415 — the archive's splitter owns entry boundaries
 
+    if default_type is not None and default_type not in TYPES:
+        raise ValueError(f"default_type must be one of {', '.join(TYPES)}, got {default_type!r}")
     preamble, blocks = change_log_archive.split(text)
     refusals: list[Problem] = []
-    converted: list[tuple[str, str]] = []
     kept: list[str] = []
-    seen: dict[str, str] = {}
+    groups: dict[str, list[_PendingEntry]] = {}
     for block in blocks:
         entry = block.entry
         where = f"entry {entry.title!r} (line {entry.line_number})"
@@ -599,58 +653,68 @@ def legacy_entries_as_fragments(text: str) -> LegacyConversion:
             refusals.append(
                 Problem("conflicting-tags", f"{where} sets a key twice: {'; '.join(entry.tag_conflicts)}")
             )
-        extra = sorted(set(entry.tags) - set(_LEGACY_KEYS))
-        if extra:
-            refusals.append(
-                Problem(
-                    "unconvertible-key",
-                    f"{where} carries {', '.join(extra)}, which a fragment cannot hold; drop "
-                    f"{'it' if len(extra) == 1 else 'them'} from the tag line first",
-                )
-            )
         scope = entry.tags.get("scope")
         kind = entry.tags.get("type")
         if not isinstance(scope, str) or not scope:
             refusals.append(Problem("missing-scope", f"{where} has a tag line with no scope="))
-        if not isinstance(kind, str) or not kind:
-            refusals.append(Problem("missing-type", f"{where} has no type="))
         header = _LEGACY_HEADER_RE.fullmatch(entry.title)
         if header is None:
             refusals.append(Problem("bad-header", f"{where} is not `## YYYY-MM-DD: title`"))
         if len(refusals) > before:
             kept.append(block.text)
             continue
-        assert isinstance(scope, str) and isinstance(kind, str) and header is not None
-
-        normalised = LEGACY_TYPE_SYNONYMS.get(kind, kind)
-        if scope in seen:
-            refusals.append(
-                Problem("duplicate-scope", f"{where} shares scope={scope} with {seen[scope]}; merge the two entries")
-            )
-            kept.append(block.text)
-            continue
-        seen[scope] = where
+        assert isinstance(scope, str) and header is not None
 
         body = block.text.splitlines()[1:]
         while body and (not body[0].strip() or change_log_mod.TAG_LINE_RE.search(body[0])):
             body.pop(0)
         narrative = "\n".join(body).strip()
-        title = header.group(2).strip()
+        extra = {k: v for k, v in entry.tags.items() if k not in _LEGACY_KEYS}
+        if extra:
+            narrative = f"{narrative}\n\n{_legacy_tags_line(extra)}" if narrative else _legacy_tags_line(extra)
+        groups.setdefault(scope, []).append(
+            _PendingEntry(
+                where=where,
+                scope=scope,
+                legacy_type=kind if isinstance(kind, str) else "",
+                date=header.group(1),
+                title=header.group(2).strip(),
+                narrative=narrative,
+            )
+        )
+        kept.append("")  # its place in the log; dropped below when the scope converts
+
+    converted: list[tuple[str, str]] = []
+    defaulted: list[tuple[str, str]] = []
+    for scope, entries in groups.items():
+        newest = entries[0]
+        normalised = LEGACY_TYPE_SYNONYMS.get(newest.legacy_type, newest.legacy_type)
+        if normalised not in TYPES:
+            if default_type is None:
+                if not newest.legacy_type:
+                    refusals.append(Problem("missing-type", f"{newest.where} has no type="))
+                    continue
+                # Left to the validator below, which names the closed set.
+            else:
+                defaulted.append((scope, newest.legacy_type))
+                normalised = default_type
+        if len(entries) == 1:
+            narrative = newest.narrative
+        else:
+            narrative = "\n\n".join(f"### {e.date}: {e.title}\n\n{e.narrative}".rstrip() for e in entries)
         rendered = render_fragment(
-            kind=normalised, scope=scope, date=header.group(1), title=title,
+            kind=normalised, scope=scope, date=newest.date, title=newest.title,
             narrative=narrative, consumer_note=MIGRATED_NOTE,
         )
         checked = check_fragment_text(rendered, Path(f"{scope}.md"))
         if checked.problems:
-            refusals.extend(Problem(p.code, f"{where}: {p.detail}") for p in checked.problems)
-            kept.append(block.text)
+            refusals.extend(Problem(p.code, f"{newest.where}: {p.detail}") for p in checked.problems)
             continue
         assert checked.fragment is not None
-        if checked.fragment.title != title or checked.fragment.narrative != narrative:
+        if checked.fragment.title != newest.title or checked.fragment.narrative != narrative.strip():
             refusals.append(
-                Problem("unrepresentable", f"{where} would not read back from a fragment as written")
+                Problem("unrepresentable", f"{newest.where} would not read back from a fragment as written")
             )
-            kept.append(block.text)
             continue
         converted.append((scope, rendered))
 
@@ -659,4 +723,6 @@ def legacy_entries_as_fragments(text: str) -> LegacyConversion:
     if not converted:
         return LegacyConversion(fragments=(), remaining=text, refusals=())
     remaining = (preamble + "".join(kept)).rstrip("\n") + "\n"
-    return LegacyConversion(fragments=tuple(converted), remaining=remaining, refusals=())
+    return LegacyConversion(
+        fragments=tuple(converted), remaining=remaining, refusals=(), defaulted=tuple(defaulted)
+    )

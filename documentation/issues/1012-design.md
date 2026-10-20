@@ -211,7 +211,7 @@ decides), two entries sharing a scope (`duplicate-scope`), an entry with two tag
 author must decide: `conflicting-tags`, `unconvertible-key` (e.g. a retired `chunks=`),
 `missing-scope`, `missing-type`, `bad-header`, any fragment validation code, and
 `unrepresentable` (a title that would not read back from frontmatter as written); plus
-`fragment-exists` and `fragments-ignored` from the command itself. Every refusal writes nothing. One commit, `git revert`-able, idempotent
+`fragment-exists` and `fragments-ignored` from the command itself. Every refusal writes nothing. *Amended 2026-10-20 (wave 2, #1023), after a dry run over 22 onboarded repos' logs refused on 17:* a key a fragment cannot hold moves into the narrative as a `Legacy tags:` line instead of refusing (`unconvertible-key` retired); pending entries sharing a scope merge into that scope's one fragment, each under a `###` heading (`duplicate-scope` retired); `## date — title` headers read like `## date: title`; more legacy type synonyms normalise; and an entry with no type in the closed set refuses unless the owner passes `--default-type`, which the dry run reports per entry. `plugin-pin-too-old` joins the refusals: the committed install reference pins a release older than v3.7.2, whose readers predate fragments. One commit, `git revert`-able, idempotent
 (second run finds nothing to convert). New products: `init_product` scaffolds the directory with a
 `.gitkeep` and a template fragment under `plugin/templates/change-fragment.md`, and no
 `change-log.md`. Once a repo has no pending legacy entries, `gitattributes_probes` stops requiring

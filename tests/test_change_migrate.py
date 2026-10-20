@@ -97,7 +97,11 @@ class TestConversion:
         gamma = change_fragments.check_fragment_text(texts["gamma"], Path("gamma.md"))
         assert gamma.ok and gamma.fragment.type == "fix"
 
-    @pytest.mark.parametrize("legacy, normalised", [("feat", "feature"), ("bugfix", "fix"), ("improvement", "feature")])
+    @pytest.mark.parametrize(
+        "legacy, normalised",
+        [("feat", "feature"), ("bugfix", "fix"), ("improvement", "feature"), ("tooling", "chore"),
+         ("optimization", "perf"), ("debt-paydown", "refactor"), ("documentation", "docs")],
+    )
     def test_type_synonyms_are_normalised(self, legacy, normalised):
         log = PREAMBLE + _entry("2026-10-19: t", f"type={legacy} | scope=s")
         (_scope, text), = change_fragments.legacy_entries_as_fragments(log).fragments
@@ -125,14 +129,12 @@ REFUSALS = [
     ),
     (_entry("2026-10-19: stray", "type=fix | scope=t", "Body.\n\n<!-- prawduct: scope=u -->"), "multi-tag-line"),
     (_entry("2026-10-19: conflict", "type=fix | scope=a | scope=b"), "conflicting-tags"),
-    (_entry("2026-10-19: retired", "type=fix | scope=r | chunks=01"), "unconvertible-key"),
     (_entry("2026-10-19: no scope", "type=fix"), "missing-scope"),
     (_entry("2026-10-19: no type", "scope=nt"), "missing-type"),
     (_entry("no date here", "type=fix | scope=nd"), "bad-header"),
     (_entry("2026-10-19: odd type", "type=methodology | scope=ot"), "bad-type"),
     (_entry("2026-10-19: bad slug", "type=fix | scope=Bad_Slug"), "bad-scope-slug"),
     (_entry("2026-10-19: empty", "type=fix | scope=em", ""), "empty-narrative"),
-    (_entry("2026-10-19: one", "type=fix | scope=dup") + _entry("2026-10-18: two", "type=fix | scope=dup"), "duplicate-scope"),
     # Both quote characters and a spaced `#`: no quoting reads it back whole.
     (_entry("2026-10-19: it's \"x\" #1", "type=fix | scope=ur"), "unrepresentable"),
 ]
@@ -148,11 +150,6 @@ class TestRefusals:
         assert code in [p.code for p in result.refusals], result.refusals
         assert result.fragments == () and result.remaining == log
 
-    def test_two_pending_entries_sharing_a_scope_are_refused(self):
-        log = PREAMBLE + _entry("2026-10-19: one", "type=fix | scope=same") + _entry("2026-10-18: two", "type=fix | scope=same")
-        result = change_fragments.legacy_entries_as_fragments(log)
-        assert [p.code for p in result.refusals] == ["duplicate-scope"]
-
     def test_a_shipped_entry_sharing_a_pending_scope_is_not_a_duplicate(self):
         log = PREAMBLE + _entry("2026-10-19: reopen", "type=fix | scope=same") + _entry(
             "2026-10-18: first", "type=fix | scope=same | release=v3.7.1"
@@ -160,7 +157,84 @@ class TestRefusals:
         assert [s for s, _ in change_fragments.legacy_entries_as_fragments(log).fragments] == ["same"]
 
 
+class TestWhatRealLogsCarry:
+    """Shapes the onboarded repos' logs hold (dry run over 22 of them, 2026-10-20).
+
+    Renegotiated from refusals: each loses nothing when converted, and refusing
+    them left 17 of those repos with no usable migration.
+    """
+
+    def test_keys_a_fragment_cannot_hold_move_into_the_narrative(self):
+        log = PREAMBLE + _entry("2026-10-19: retired", "type=fix | scope=r | status=shipped | chunks=01, 02 | issues=#5", "Body.")
+        result = change_fragments.legacy_entries_as_fragments(log)
+        assert result.refusals == ()
+        (_scope, text), = result.fragments
+        fragment = change_fragments.check_fragment_text(text, Path("r.md")).fragment
+        assert fragment.narrative == "Body.\n\nLegacy tags: chunks=01, 02; issues=#5; status=shipped"
+
+    @pytest.mark.parametrize("separator", [" — ", " – ", " - "])
+    def test_a_dash_header_reads_like_a_colon_one(self, separator):
+        log = PREAMBLE + _entry(f"2026-10-19{separator}Wave 1: done", "type=fix | scope=d")
+        (_scope, text), = change_fragments.legacy_entries_as_fragments(log).fragments
+        fragment = change_fragments.check_fragment_text(text, Path("d.md")).fragment
+        assert (fragment.date, fragment.title) == ("2026-10-19", "Wave 1: done")
+
+    def test_a_hyphenated_title_is_not_split_at_its_hyphen(self):
+        log = PREAMBLE + _entry("2026-10-19-follow-up work", "type=fix | scope=h")
+        assert [p.code for p in change_fragments.legacy_entries_as_fragments(log).refusals] == ["bad-header"]
+
+    def test_pending_entries_sharing_a_scope_become_its_one_fragment(self):
+        log = (
+            PREAMBLE
+            + _entry("2026-10-19: newest", "type=fix | scope=same", "Second pass.")
+            + _entry("2026-10-18: shipped elsewhere", "type=fix | scope=other | release=v1.0.0", "Old.")
+            + _entry("2026-10-17: first", "type=feature | scope=same", "First pass.")
+        )
+        result = change_fragments.legacy_entries_as_fragments(log)
+        assert result.refusals == ()
+        (scope, text), = result.fragments
+        fragment = change_fragments.check_fragment_text(text, Path("same.md")).fragment
+        assert (scope, fragment.date, fragment.title, fragment.type) == ("same", "2026-10-19", "newest", "fix")
+        assert fragment.narrative == (
+            "### 2026-10-19: newest\n\nSecond pass.\n\n### 2026-10-17: first\n\nFirst pass."
+        )
+        assert "scope=same" not in result.remaining and "scope=other" in result.remaining
+
+    @pytest.mark.parametrize("tags, legacy", [("scope=u", ""), ("type=mixed | scope=u", "mixed")])
+    def test_a_default_type_is_one_named_decision(self, tags, legacy):
+        log = PREAMBLE + _entry("2026-10-19: untyped", tags)
+        assert change_fragments.legacy_entries_as_fragments(log).refusals
+        result = change_fragments.legacy_entries_as_fragments(log, default_type="chore")
+        (_scope, text), = result.fragments
+        assert change_fragments.check_fragment_text(text, Path("u.md")).fragment.type == "chore"
+        assert result.defaulted == (("u", legacy),)
+
+    def test_a_typed_entry_never_takes_the_default(self):
+        log = PREAMBLE + _entry("2026-10-19: typed", "type=bugfix | scope=t")
+        result = change_fragments.legacy_entries_as_fragments(log, default_type="chore")
+        (_scope, text), = result.fragments
+        assert change_fragments.check_fragment_text(text, Path("t.md")).fragment.type == "fix"
+        assert result.defaulted == ()
+
+
 class TestCommand:
+    def test_untyped_entries_name_the_flag_and_the_flag_lists_each_guess(self, tmp_path):
+        project = _project(tmp_path, MIXED + _entry("2026-10-15: untyped", "scope=u"))
+        before = _snapshot(project)
+        refused = _migrate(project, "--apply")
+        assert refused.returncode == 1 and "--default-type TYPE" in refused.stderr
+        assert _snapshot(project) == before
+        dry = _migrate(project, "--default-type", "chore")
+        assert dry.returncode == 0, dry.stderr
+        assert "u: type=chore (was untyped)" in dry.stdout
+        assert _snapshot(project) == before
+        assert _migrate(project, "--default-type", "chore", "--apply").returncode == 0
+        assert (project / ".prawduct" / "changes" / "u.md").is_file()
+
+    @pytest.mark.parametrize("args", [["--default-type"], ["--default-type", "tooling"]])
+    def test_a_default_type_outside_the_closed_set_is_a_usage_error(self, tmp_path, args):
+        assert _migrate(_project(tmp_path, MIXED), *args).returncode == 2
+
     def test_dry_run_writes_nothing(self, tmp_path):
         project = _project(tmp_path, MIXED)
         before = _snapshot(project)
@@ -230,7 +304,7 @@ class TestCommand:
 
     def test_plan_migration_writes_the_log_last(self, tmp_path):
         project = _project(tmp_path, MIXED)
-        writes = change_migrate.plan_migration(project)
+        writes, _defaulted = change_migrate.plan_migration(project)
         assert writes[-1][0] == project / ".prawduct" / "change-log.md"
         assert [p.name for p, _ in writes[:-1]] == ["alpha.md", "gamma.md", ".gitkeep"]
 
@@ -246,3 +320,36 @@ class TestCommand:
         subprocess.run([*git, "add", "-A"], check=True)
         tracked = subprocess.run([*git, "ls-files"], check=True, capture_output=True, text=True).stdout
         assert ".prawduct/changes/.gitkeep" in tracked.splitlines()
+
+
+class TestInstallPin:
+    """A clone pinned to a pre-fragment release must not be stranded by the migration."""
+
+    def _pinned(self, tmp_path: Path, ref: str | None) -> Path:
+        import json
+
+        project = _project(tmp_path, MIXED)
+        if ref is not None:
+            settings = project / ".claude" / "settings.json"
+            settings.parent.mkdir()
+            settings.write_text(json.dumps({
+                "extraKnownMarketplaces": {"prawduct": {"source": {"source": "github", "repo": "brookstalley/prawduct", "ref": ref}}}
+            }))
+        return project
+
+    def test_the_first_release_with_fragment_readers_is_pinned(self):
+        # A historical fact, pinned absolutely: v3.7.2 is the first release whose
+        # readers accept fragments (wave 1 of #1012).
+        assert change_migrate.FRAGMENT_READERS_RELEASE == (3, 7, 2)
+
+    @pytest.mark.parametrize("ref", ["v3.7.1", "3.6.0", "v2.9.10"])
+    def test_an_older_pinned_release_is_refused(self, tmp_path, ref):
+        project = self._pinned(tmp_path, ref)
+        before = _snapshot(project)
+        run = _migrate(project, "--apply")
+        assert run.returncode == 1 and "plugin-pin-too-old" in run.stderr and ref in run.stderr
+        assert _snapshot(project) == before
+
+    @pytest.mark.parametrize("ref", ["main", "develop", "v3.7.2", "v3.10.0", "4.0.0", "0123abcd", None])
+    def test_a_branch_a_newer_release_or_no_reference_passes(self, tmp_path, ref):
+        assert _migrate(self._pinned(tmp_path, ref), "--apply").returncode == 0

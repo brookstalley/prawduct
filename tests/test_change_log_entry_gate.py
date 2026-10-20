@@ -682,3 +682,52 @@ def test_a_legacy_entry_still_passes_in_a_repo_with_fragments(tmp_path):
     result = _run_probe(repo)
     assert result.returncode == 0, result.stderr
     assert "entry-present" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# The fragment directory is IGNORED (repo gitignores `.prawduct/` wholesale)
+#
+# The fragment twin of the untracked-log family above: a fragment git ignores
+# never reaches a diff, so `no-entry` with "add a fragment" would be advice no
+# amount of following could clear.
+# ---------------------------------------------------------------------------
+
+
+def _ignored_fragments_repo(tmp_path: Path, fragments: dict[str, str]) -> Path:
+    repo = _make_untracked_log_repo(tmp_path, None)
+    (repo / FRAGMENT_DIR).mkdir(parents=True)
+    (repo / FRAGMENT_DIR / ".gitkeep").write_text("")
+    for name, text in fragments.items():
+        (repo / FRAGMENT_DIR / name).write_text(text)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    return repo
+
+
+def test_ignored_fragments_pass_on_the_weaker_check_and_say_so(tmp_path):
+    result = _run_probe(_ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")}))
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("fragment-present-untracked:")
+    assert "Confirm by hand" in result.stdout and "!.prawduct/changes/" in result.stdout
+
+
+def test_ignored_fragment_directory_with_no_fragment_still_fails(tmp_path):
+    result = _run_probe(_ignored_fragments_repo(tmp_path, {}))
+    assert result.returncode == 1
+    assert "no-entry: git ignores .prawduct/changes/" in result.stderr
+    assert "!.prawduct/changes/" in result.stderr
+
+
+def test_an_ignored_invalid_fragment_is_refused_by_code(tmp_path):
+    result = _run_probe(_ignored_fragments_repo(tmp_path, {"x.md": _fragment("x", type="methodology")}))
+    assert result.returncode == 1
+    assert "fragment-invalid" in result.stderr and "x.md: bad-type" in result.stderr
+
+
+def test_following_the_unignore_advice_restores_the_real_check(tmp_path):
+    repo = _ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")})
+    _commit_file(repo, ".gitignore", ".prawduct/*\n!.prawduct/changes/\n", "track fragments")
+    _git(repo, "add", FRAGMENT_DIR)
+    _git(repo, "commit", "-q", "-m", "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "fragment-present: .prawduct/changes/x.md added" in result.stdout
