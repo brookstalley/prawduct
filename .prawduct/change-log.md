@@ -27,6 +27,9 @@
     failing test in the report is refused, and testament's `population_mismatch` is exactly that.
 - `documentation/running-tests.md`'s "Evidence still comes from the recorder" section, stale since
   testament#52, is rewritten as "Recording evidence".
+- Recording now needs `testament` installed (any command that cannot start fails the record).
+  `running-tests.md` and the README say so, and name the by-hand route for a machine without it:
+  run pytest and the node suite, then pass both reports to one `record --from-junit` call.
 
 ## 2026-10-19: v3.7.1 is cut, and develop reopens on 3.7.2-dev
 

@@ -183,7 +183,9 @@ A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference
 
 Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance. The stats
 collector (`collector/`) has its own suite on node's built-in runner, with no dependencies.
-`prawduct-hook test-evidence record` runs both, so recording evidence needs node:
+`prawduct-hook test-evidence record` runs both, so recording evidence needs node, and
+`testament` too: the pytest suite records from the Testament pool, or from this machine when no
+pool answers (`documentation/running-tests.md`). To run the suites by hand:
 
 ```bash
 cd prawduct
