@@ -180,7 +180,7 @@ that validates (`reopens` must name a scope present in the archive or the pendin
 ### D6 — Dual-shape window and migration
 
 **Readers.** `release_readiness.release_pending_entries` becomes
-`pending_scopes(root) -> list[PendingScope]` returning the union of (a) legacy-log entries with a
+`pending_scopes(project_dir) -> PendingSet` (the parsed entries, both scope lists and their union, refusals, and a read error) returning the union of (a) legacy-log entries with a
 `scope=` and no `release=` and (b) fragments. A scope appearing in both is a hard error
 (`scope-in-both-shapes`) — it is the migration's bug signature. Callers named in FRG6 switch to
 `pending_scopes`; none reads either file directly any more, which is the single-owner fix for a

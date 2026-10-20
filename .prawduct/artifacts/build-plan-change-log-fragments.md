@@ -127,13 +127,13 @@ proposal is reconciled, and every schema decision is the owner's.
 ## Status
 
 - [x] Chunk 01: Fragment format core — `change_fragments.py`, schema, template
-- [ ] Chunk 02: Readers and the PR gate read fragments (dual-shape)
+- [x] Chunk 02: Readers and the PR gate read fragments (dual-shape)
 - [ ] Chunk 03: The cut — `cut-change-log`
 - [ ] Chunk 04: Prawduct migrates onto fragments; docs and runbooks
-Context: Chunk 01 committed (0e374cab) after its chunk review: 0 blocking, 6 observations. Observation
-fixes (the `schema: [2]` list bug; design and plan records; a stale `building.md` sentence about
-editing during a review) were committed separately after it, and Chunk 02's review covers them.
-Next: Chunk 02.
+Context: Chunks 01 and 02 committed after their chunk reviews (Chunk 02 at af2d1822, after a
+verify-resolutions round cleared two blocking findings). Next: Chunk 03, the cut, which calls
+`release_readiness.pending_scopes`. Wave-2 carry-over: Step 1c's fragment remedy must check that
+`.prawduct/changes/` is tracked before advising it (accepted for wave 1, review O-1).
 
 ## Verification Strategy
 
@@ -197,7 +197,7 @@ the same pending scopes as before.
 - **Depends on:** Chunk 01
 - **Artifacts consumed:** `1012-design.md` D6 (readers), D7; FRG6
 - **Deliverables:**
-  - `pending_scopes` in `release_readiness.py`, used by every reader in the enumerated set
+  - `pending_scopes` in `release_readiness.py`, used by every reader of the release-pending set (`check-releasability` now, the cut in Chunk 03); `pr_payload` and `record_lint` read fragments directly because they ask about one branch's record, not the pending set
   - `check-change-log-entry` (in `coverage.py`) accepts and validates fragments
   - `record_lint` lints the fragment directory, including D5's `unknown-reopen-target` (a `reopens:` naming no archived or pending scope)
   - `/prawduct:pr` Step 1c/1d, Create Step 5's `Closes` lines and the Merge Flow close step, rewritten for fragments
