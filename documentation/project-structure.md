@@ -101,8 +101,9 @@ my-product/
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
-│   ├── change-log.md                  # change log (recent + release-pending entries)
-│   ├── change-log-archive/            # older entries by month, created once the log outgrows its threshold
+│   ├── changes/                       # the change record: one fragment per change, all release-pending
+│   ├── change-log-archive/            # shipped history by month, written by the release cut
+│   ├── change-log.md                  # repos onboarded before fragments: the legacy log, until `migrate-change-log`
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
 │   │   ├── project-preferences.md     # developer preferences (language, testing, style)

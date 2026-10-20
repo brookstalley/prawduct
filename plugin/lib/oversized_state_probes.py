@@ -146,8 +146,8 @@ _MEASURED: tuple[_Measured, ...] = (
             _Advice(
                 present=_key("change_log", "changelog"),
                 text=(
-                    "an inline change log belongs in `.prawduct/change-log.md`, which has "
-                    "its own readers and its own merge behaviour"
+                    "an inline change log belongs in the change record — `.prawduct/changes/` "
+                    "fragments and the change-log archive — which has its own readers"
                 ),
             ),
         ),

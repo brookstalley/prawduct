@@ -230,7 +230,7 @@ my-product/
 ├── .prawduct/
 │   ├── project-state.yaml       # product definition, work tracking, build plan
 │   ├── backlog.md               # deferred work items (out-of-scope captures)
-│   ├── change-log.md            # change log
+│   ├── changes/                 # the change record: one fragment per change, shipped into change-log-archive/ at release
 │   ├── artifacts/               # specifications generated during planning
 │   │   ├── project-preferences.md  # developer preferences (language, testing, style)
 │   │   └── boundary-patterns.md    # contract surfaces between components

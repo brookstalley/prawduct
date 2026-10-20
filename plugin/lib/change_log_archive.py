@@ -88,6 +88,14 @@ class Block:
     def size(self) -> int:
         return len(self.text.encode("utf-8"))
 
+    @property
+    def key(self) -> str:
+        """The entry's identity across files. The writer ends a middle block with
+        a blank line and the last with none, so the same entry's ``text`` changes
+        with its position; this is what "the same entry" means wherever two
+        files are compared."""
+        return self.text.rstrip("\n")
+
 
 def split(content: str) -> tuple[str, list[Block]]:
     """``(preamble, blocks)`` — the file cut where its parser says entries start.
@@ -307,8 +315,8 @@ def _compose_bucket(existing: str, incoming: list[Block], bucket: str) -> str:
     run rather than kept forever.
     """
     _preamble, current = split(existing) if existing else ("", [])
-    present = {b.text.rstrip("\n") for b in current}
-    fresh = [b for b in incoming if b.text.rstrip("\n") not in present]
+    present = {b.key for b in current}
+    fresh = [b for b in incoming if b.key not in present]
     merged = fresh + current
     # Stable sort, newest first: incoming blocks were newer in the live log, so on
     # an equal date they precede what an earlier run already archived.
@@ -323,17 +331,22 @@ def _with_pointer(preamble: str) -> str:
 
 
 def archive_would_be_ignored(project_root: Path) -> bool:
-    """True when git tracks the live log but would ignore the archive.
+    """True when git tracks the change record but would ignore the archive.
 
-    A repo that commits only ``.prawduct/change-log.md`` out of an ignored
-    ``.prawduct/`` would commit the entries' REMOVAL and silently drop the archive
-    they moved to — history leaving git with no error. Asked before writing, so
-    the run can refuse instead. Where the live log is not tracked either, nothing
-    is committed on either side and there is nothing to lose.
+    The record is the live log or the fragment directory, whichever this repo
+    commits. A repo that commits only that out of an ignored ``.prawduct/`` would
+    commit the entries' or fragments' REMOVAL and silently drop the archive they
+    moved to — history leaving git with no error. Asked before writing, so the
+    run can refuse instead. Where neither is tracked, nothing is committed on
+    either side and there is nothing to lose.
     """
+    from . import change_fragments  # noqa: PLC0415 — lazy; change_fragments imports this module
     from . import gitstate  # noqa: PLC0415 — lazy; git is only asked on the write path
 
-    if gitstate.git_path_is_tracked(project_root, change_log.CHANGE_LOG_REL_PATH) is not True:
+    if not any(
+        gitstate.git_path_is_tracked(project_root, rel) is True
+        for rel in (change_log.CHANGE_LOG_REL_PATH, change_fragments.FRAGMENT_DIR_REL)
+    ):
         return False
     return gitstate.git_path_is_ignored(project_root, f"{ARCHIVE_DIR_REL}/0000-00.md")
 
@@ -361,26 +374,22 @@ def apply(prawduct_dir: Path, selection: Selection) -> list[Path]:
     return [path for path, _ in writes]
 
 
-def load_all_text(prawduct_dir: Path, *, missing_live_ok: bool = False) -> str | None:
+def load_all_text(prawduct_dir: Path) -> str | None:
     """The live log followed by every archive file — the whole history, one text.
 
     For readers that interpret history (which scopes shipped, which scopes were
-    ever declared). ``None`` when the live log itself cannot be read, which callers
-    already treat as their unreadable case; an unreadable archive file is skipped,
-    since the live log alone is what those readers saw before archiving existed.
-    Concatenation is safe because no reader depends on document position across
-    files — plan-backfill and record-lint decide by tag and by header date.
-
-    ``missing_live_ok`` is for readers that also accept change fragments, where
-    a repo can record its pending work with no live log at all: an ABSENT live
-    log then means an empty one, and the archive is still read. An unreadable
-    one is still ``None``.
+    ever declared). An ABSENT live log is an empty one: a repo that records its
+    pending work as change fragments needs no live log at all, and its shipped
+    history is still in the archive, which is read either way. ``None`` only when
+    the live log exists and cannot be read, which callers treat as their
+    unreadable case; an unreadable archive file is skipped, since the live log
+    alone is what those readers saw before archiving existed. Concatenation is
+    safe because no reader depends on document position across files —
+    plan-backfill and record-lint decide by tag and by header date.
     """
     try:
         parts = [(prawduct_dir / LIVE_NAME).read_text(encoding="utf-8")]
     except FileNotFoundError:
-        if not missing_live_ok:
-            return None
         parts = []
     except (OSError, UnicodeDecodeError):
         return None

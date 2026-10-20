@@ -292,3 +292,55 @@ def test_a_failed_removal_says_the_history_is_written(tmp_path, monkeypatch, cap
     assert "refused: removal-failed:" in err
     assert "archive and notes are written" in err
     assert (project / ".prawduct" / "change-log-archive" / "2026-10.md").exists()
+
+
+def _git_commit_all(project: Path) -> None:
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "base"]):
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=str(project), capture_output=True, check=True, timeout=15,
+        )
+
+
+class TestAFragmentsOnlyRepo:
+    """A repo that records changes as fragments and has no live log at all,
+    which is what `init-product` scaffolds."""
+
+    def _project(self, tmp_path: Path) -> Path:
+        project = _project(tmp_path, fragments={"alpha": _fragment("alpha")}, table="| alpha | ships | |\n")
+        (project / ".prawduct" / "change-log.md").unlink()
+        return project
+
+    def test_a_cut_refuses_when_only_the_fragments_are_tracked_and_the_archive_is_ignored(self, tmp_path):
+        project = self._project(tmp_path)
+        _write(project / ".gitignore", ".prawduct/*\n!.prawduct/changes/\n")
+        _git_commit_all(project)
+        before = _snapshot(project)
+        result = _cut(project, "--release", "v3.8.0", "--apply")
+        assert result.returncode == 1
+        assert "refused: archive-ignored:" in result.stderr
+        assert _snapshot(project) == before
+
+    def test_the_same_repo_cuts_once_the_archive_is_tracked(self, tmp_path):
+        project = self._project(tmp_path)
+        _write(project / ".gitignore", ".prawduct/*\n!.prawduct/changes/\n!.prawduct/change-log-archive/\n")
+        _git_commit_all(project)
+        assert _cut(project, "--release", "v3.8.0", "--apply").returncode == 0
+
+    def test_history_readers_see_what_the_cut_shipped(self, tmp_path):
+        from lib import plan_backfill, record_lint, release_readiness
+
+        project = self._project(tmp_path)
+        _write(
+            project / ".prawduct" / "artifacts" / "build-plan-alpha.md",
+            "---\nartifact: build-plan\nscope: alpha\n---\n\n## Status\n\n- [x] Chunk 01: done\n",
+        )
+        assert _cut(project, "--release", "v3.8.0", "--apply").returncode == 0
+        assert not (project / ".prawduct" / "change-log.md").exists()
+
+        history = release_readiness._history_entries(project, [])
+        assert release_readiness.scopes_tagged_for(history, "v3.8.0") == {"alpha"}
+        shipped = plan_backfill.survey(project / ".prawduct")["shipped"]
+        assert [(i["scope"], i["release"]) for i in shipped] == [("alpha", "v3.8.0")]
+        assert record_lint._scope_declared_in_change_log(project / ".prawduct", "alpha") is True
+        assert record_lint._scope_declared_in_change_log(project / ".prawduct", "nope") is False

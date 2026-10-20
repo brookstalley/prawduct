@@ -56,7 +56,7 @@ EXPECTED_FILES = [
     ".prawduct/project-state.yaml",
     ".claude/rules/learnings/core.md",
     ".prawduct/backlog.md",
-    ".prawduct/change-log.md",
+    ".prawduct/changes/.gitkeep",
     ".prawduct/artifacts/project-preferences.md",
     ".prawduct/artifacts/boundary-patterns.md",
     "CLAUDE.md",
@@ -154,6 +154,28 @@ def test_apply_creates_expected_file(scaffolded: Path, rel: str):
 
 def test_apply_creates_pr_reviews_dir(scaffolded: Path):
     assert (scaffolded / ".prawduct" / ".pr-reviews").is_dir()
+
+
+def test_a_new_product_records_changes_as_fragments_with_no_live_log(scaffolded: Path):
+    from lib import release_readiness
+
+    assert not (scaffolded / ".prawduct" / "change-log.md").exists()
+    # The readers' own answer, not just the file: a fragments-only repo with
+    # nothing pending reads as an empty pending set, not a missing input.
+    pending = release_readiness.pending_scopes(scaffolded)
+    assert pending.read_error is None
+    assert pending.fragment_scopes == [] and pending.refusals == []
+
+
+def test_a_repo_already_on_the_single_file_log_is_left_on_it(tmp_path: Path):
+    target = tmp_path / "legacy"
+    log = target / ".prawduct" / "change-log.md"
+    log.parent.mkdir(parents=True)
+    log.write_text("# Change Log\n", encoding="utf-8")
+    result = run_init(target, "Legacy", "--apply")
+    assert ".prawduct/changes/.gitkeep" not in result["created"]
+    assert not (target / ".prawduct" / "changes").exists()
+    assert log.read_text(encoding="utf-8") == "# Change Log\n"
 
 
 @pytest.mark.parametrize("bad", FORBIDDEN)

@@ -318,7 +318,20 @@ class TestWholeHistoryReaders:
         assert record_lint._scope_declared_in_change_log(prawduct, "nope") is False
 
     def test_load_all_text_is_none_when_the_live_log_is_unreadable(self, tmp_path: Path) -> None:
+        (tmp_path / "change-log.md").write_bytes(b"\xff\xfe not utf-8")
         assert cla.load_all_text(tmp_path) is None
+
+    def test_an_absent_live_log_is_empty_and_the_archive_is_still_read(self, tmp_path: Path) -> None:
+        # Renegotiated: a fragments-only repo has no live log, and its shipped
+        # history lives in the archive. Absence used to read as "unreadable",
+        # which made every history reader blind in exactly those repos.
+        prawduct = _repo(tmp_path, VERSIONED)
+        _run(prawduct)
+        archived = "".join(_archive(prawduct).values())
+        (prawduct / "change-log.md").unlink()
+        text = cla.load_all_text(prawduct)
+        assert text is not None and "released july" in text and "released july" in archived
+        assert cla.load_all_text(tmp_path / "empty") == ""
 
 
 def _cli(prawduct: Path, *args: str) -> subprocess.CompletedProcess:
