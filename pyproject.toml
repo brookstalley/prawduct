@@ -83,10 +83,14 @@ select = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # `requires_history`: the test reads this repo's git history by content, so it runs only where
-# history exists. `.testament.toml` selects these out, so `testament run` (pool or local fallback)
-# never runs them; a plain `pytest` run, the evidence recorder's run and CI (`fetch-depth: 0`) do.
+# history exists. `requires_local_cache`: the test's full assertion needs this clone's backlog
+# cache under `<git-common-dir>/prawduct/`, which no fresh checkout has, so elsewhere it skips.
+# `.testament.toml` selects both out, so `testament run` (pool or local fallback) never runs them;
+# the evidence recorder's third `test_commands` entry runs exactly these here, and a plain
+# `pytest` run and CI (`fetch-depth: 0`) run them too.
 markers = [
     "requires_history: reads this repo's full git history; not runnable on a history-less checkout",
+    "requires_local_cache: full assertion needs this clone's backlog cache; skips on a fresh checkout",
 ]
 # Worker count is pinned rather than `auto` (owner request 2026-08-19): `auto`
 # takes every core, and a full-suite run then owns the developer's machine for

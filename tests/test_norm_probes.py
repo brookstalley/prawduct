@@ -1226,6 +1226,7 @@ class TestSilentAgainstThisRepo:
        assertion runs.
     """
 
+    @pytest.mark.requires_local_cache
     def test_no_norm_lifecycle_advisory_fires_here_today(self):
         # Steady state after ratifying prawduct's own registry (norm-lifecycle
         # Layer 2): `norm_registry_ratified` is recorded and the seven strategy
