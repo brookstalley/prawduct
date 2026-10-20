@@ -1369,6 +1369,33 @@ class TestChangeFragmentsInTheChangeLogSection:
         _git(repo, "commit", "-qm", "record the widget")
         return repo
 
+    @pytest.mark.parametrize("with_plan", [True, False])
+    def test_a_fragments_closes_list_reaches_the_scan_as_a_claim(self, tmp_path, with_plan):
+        # `closes: [a/b#N]` is a flow list: the bracket sits between the keyword and
+        # the id, so a scan of the raw text read the fragment's own closure claim as
+        # a mention, and R-2 was skipped on every fragment repo.
+        body = _sections(self._with_fragment(tmp_path, with_plan=with_plan))["change_log"]["body"]
+        cited = pr_payload.cited_backlog_citations("", body)
+        assert ("brookstalley/prawduct#41", True) in [(c.id, c.claims_closure) for c in cited]
+
+    def test_a_cut_archive_entrys_closes_reaches_the_scan_as_a_claim(self, tmp_path, monkeypatch):
+        # A trunk branch that cut its fragment carries an archive entry, whose tag
+        # spells the list `closes=a/b#7,BKL-6J2X`, which no claim keyword reaches either.
+        from lib import change_fragments
+        repo = self._with_fragment(tmp_path, with_plan=False)
+        entry = "## 2026-10-19: Widget arrives\n\n<!-- prawduct: type=feature | scope=widget | release=v1.0.0 | closes=a/b#7,BKL-6J2X -->\n\nWhy.\n"
+        recorded = change_fragments.RecordedChange(
+            scope="widget", closes=("a/b#7", "BKL-6J2X"), source="archive",
+            path=".prawduct/change-log-archive/2026-10.md", text=entry,
+        )
+        monkeypatch.setattr(
+            change_fragments, "branch_change_record",
+            lambda *_a, **_k: change_fragments.BranchRecord(changes=(recorded,)),
+        )
+        section = pr_payload._fragment_section(repo, None, "HEAD")
+        cited = pr_payload.cited_backlog_citations("", section.body)
+        assert {(c.id, c.claims_closure) for c in cited} >= {("a/b#7", True), ("BKL-6J2X", True)}
+
     def test_a_scoped_branch_carries_its_fragment_whole(self, tmp_path):
         body = _sections(self._with_fragment(tmp_path, with_plan=True))["change_log"]["body"]
         assert "paired by scope" in body
