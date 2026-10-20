@@ -7828,7 +7828,7 @@ def cmd_cut_change_log(project_dir: Path, argv: list[str]) -> int:
     """Ship pending change fragments: archive entries, consumer notes, removal.
 
     Previews unless ``--apply``. What ships is the release plan's ``ships`` rows,
-    or exactly the ``--scope`` arguments (a trunk-base PR shipping its own work).
+    or exactly the ``--scope`` arguments.
     Exit 0 when it ran or had nothing to cut, 1 refused with nothing written,
     2 on a usage error. Rules and their reasons: ``lib/change_cut.py``.
     """

@@ -154,12 +154,12 @@ proposal is reconciled, and every schema decision is the owner's.
 
 - [x] Chunk 01: Fragment format core — `change_fragments.py`, schema, template
 - [x] Chunk 02: Readers and the PR gate read fragments (dual-shape)
-- [ ] Chunk 03: The cut — `cut-change-log`
+- [x] Chunk 03: The cut — `cut-change-log`
 - [ ] Chunk 04: Prawduct migrates onto fragments; docs and runbooks
-Context: Chunks 01 and 02 committed after their chunk reviews (Chunk 02 at af2d1822, after a
-verify-resolutions round cleared two blocking findings). Next: Chunk 03, the cut, which calls
-`release_readiness.pending_scopes`. Wave-2 carry-over: Step 1c's fragment remedy must check that
-`.prawduct/changes/` is tracked before advising it (accepted for wave 1, review O-1).
+Context: Chunks 01–03 committed after their reviews (Chunk 03 after a verify-resolutions round
+cleared two blocking findings; the trunk-base path moved to wave 2). The plan's governance
+checkpoint comes next: the owner looks at the two-branch merge and the dry-run cut before Chunk 04
+migrates this repo. Wave-2 carry-overs are in the Chunk 02 and 03 decisions above.
 
 ## Verification Strategy
 
