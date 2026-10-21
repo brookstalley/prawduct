@@ -67,14 +67,16 @@ is the job; a flip nobody decided is drift that went unannounced. Three tiers:
 - **Heads-up**: signals building on one axis, or one moderate signal. One line in your ordinary
   voice: *"This moves us toward multi-user. The brief still says one owner."* When the owner made
   the change out loud and only the record lags, this is the tier: *"The record is behind you;
-  update it?"*
+  update it?"* Check the brief's audience, personas and scope, not only the line in front of you.
 - **Fork**: drift nobody chose (your own act contradicts the brief, signals add up past the bar,
   or a lot rests on the axis): *"This is really changing: one owner → three people's repos. Worth
   redefining the goals before the next plan."*
 
 Irreversibility raises the tier on its own, and an act that publishes (a public repo, a release,
-a client that cannot be recalled) is a hard stop whatever its tier. Touching someone else's
-ownership, such as code carved from a repo another person owns, is the strongest signal. Signals,
+a client that cannot be recalled) is a hard stop at that act, whatever its tier; a design that
+anticipates it gets the tier its signals earn. Touching someone else's ownership (their repo,
+code or data, not only their machine) is the strongest signal. Raise a fork before the act that
+causes it, not after. Signals,
 strongest first: an act that contradicts the record's own text (a public repo, a tunnel or public
 URL, an invite or token for another person, a new commit author, a listing, set against
 "single-user", "LAN-only", "private" or a `never` item); an armed revisit trigger the plan
@@ -123,7 +125,7 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 
 **Ground the goals under an investment.** At any decision that commits investment — a plan, a design artifact, an architectural choice later work builds on, spending, an outward commitment (an invite, a publish, a public endpoint) — name the product goals it rests on: who it is for, what job it does, what success means, who else touches it, whose machines it runs on. Look at audience first — who may use, listen or contribute — the costliest ungrounded goal in every product checked. A goal is *grounded* when the owner stated it without a hedge and it still holds given what has happened since. An ungrounded goal costs what rests on it times how hard that is to undo once built. With a lot resting on it, stop and say so in a sentence, opening with what the product is for and how this work serves it: *"This is a big fork, worth defining now: auth, network exposure and where secrets live all turn on it."* The owner answers or chooses best judgment. With little resting on it, record the default taken and what would reopen it, and keep going. Batch them costliest first. **What a hedge is about decides whether it counts, never its wording:** a hedge about the product (customers, needs, goals, parties, whose machine) is a goal question; one about the solution (vendor, stack, library) gets a recorded default, unless it stands in for a goal ("a customer requires Azure").
 
-**A hedged answer stays open.** When the owner hedges about the product (*"might be used by others… scope that out for now"*), record the hedge, not a resolution: an open question marked *Hedged:* in the brief, beside said and inferred, with a revisit trigger worded as the event that would settle it (*"when a second person needs access"*), so a later plan can be read against it, and the cheap hedges taken now (an owner field on every record from day one). Never `null`, never a `never` item: a hedge filed as a ruling is how an audience changes with nobody deciding it. A plan resting on a hedged goal is treated like one resting on an inference (the paragraph above judges which hedges count).
+**A hedged answer stays open.** When the owner hedges about the product (*"might be used by others… scope that out for now"*), first judge what rests on it: when auth, exposure or secrets turn on it, it is the fork to raise now, audience first, not a note to file. Either way, record the hedge, not a resolution: an open question marked *Hedged:* in the brief, beside said and inferred, with a revisit trigger worded as the event that would settle it (*"when a second person needs access"*), so a later plan can be read against it, and the cheap hedges taken now (an owner field on every record from day one). Never `null`, never a `never` item: a hedge filed as a ruling is how an audience changes with nobody deciding it. A plan resting on a hedged goal is treated like one resting on an inference (the paragraph above judges which hedges count).
 
 ## How to Discover
 

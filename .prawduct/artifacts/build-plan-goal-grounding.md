@@ -66,6 +66,13 @@ hand, like the existing `corrections` count, not a verdict.
   achieve"), found by a broader search before trusting the count; both shapes are now pinned.
   Baseline on 2026-10-21: 5 governed, 1 ungoverned (`tools/measure-alignment-yield.py --until
   2026-10-22`).
+- Chunk 04: the digest gained a drift clause after all (run 1's t5 never opened discovery.md),
+  paid in place by folding the waiver pointer into its sentence; the Constraints line's "no net
+  words" holds. Settled by the owner's token-budget rule.
+- Chunk 04: stopped iterating after three replay rounds with t1 and t5 short, rather than a
+  fourth wording fix: both turn on whether a fork overrides the owner's explicit deferral, an
+  owner question (#1030). NOT settled by the goals; the unmet "all five" criterion is the
+  owner's to accept.
 
 **Level:** High. The design is settled and calibrated on four products. The uncertainty is
 whether prose alone changes behaviour, and chunk 04 measures that directly.
@@ -78,7 +85,9 @@ whether prose alone changes behaviour, and chunk 04 measures that directly.
 - [ ] Chunk 04: Replay testament and Arrt against the new guidance
 Context: Plan written 2026-10-21 after the owner settled scope. Chunk 01 committed (e8acb2b3)
 and reviewed; its acceptance criterion was reworded when the check moved to discovery.md (see
-Decisions made mid-build), awaiting the owner's one-line confirmation. Next: Chunk 02. After merge and a
+Decisions made mid-build), awaiting the owner's one-line confirmation. Chunks 02 and 03 committed and reviewed. Chunk 04's
+replay ran three rounds: t2–t4 pass, t1 and t5 are disclosed gaps (Replay section), filed as
+#1030; the unmet "all five" criterion is the owner's to accept or reopen. After merge and a
 prawduct-live advance, the backfill runs as one session per governed product (testament,
 discodon, hallucinote, Arrt); it is outside this plan's acceptance.
 
@@ -187,7 +196,75 @@ is verified red first against a fixture transcript that contains a goal question
 
 ## Replay
 
-*(filled by chunk 04)*
+Fixtures were rebuilt 2026-10-21 from the owner's local transcripts and each repo's record as it
+stood at the moment (git history), stopping at the decision point with no cue words. Each case
+went to a fresh agent briefed with this branch's digest emitted from disk, the plugin guides on
+demand, and no sight of the design, this plan or the expected response. Fixtures and outputs
+are session-local and kept outside git; what they showed is below.
+
+Fixtures quote the owner's private transcripts and other people's repos, so they stay out of
+git. To rebuild one: take the source transcript and record commit named per case below, render
+the record as it stood (`git show <sha>:<path>`), the 5–15 turns before the decision point
+verbatim, and stop at the decision with no cue words (drift, grounded, fork, hedge) and nothing
+after it. Brief the trial agent with the digest emitted from disk
+(`CLAUDE_PLUGIN_ROOT=<repo>/plugin python3 plugin/hooks/digest.py` in a directory holding a
+`.prawduct/`), the guides on demand, and no design doc, plan or expected answer. Sources: t1/t3
+testament discovery (2026-10-16 session, owner turn with "might be used by others"); t2 the
+2026-10-17 testament session, "can you get it a join token?"; t4 Arrt's 2026-10-08 feeds-and-players
+design session; t5 hallucinote's 2026-08-11 release session, "don't sweat private/public".
+
+Fidelity, from the fixture builder: t2's transcript never says whose machine the token is for,
+only that the code is a collaborator's repo and the agent had just granted that collaborator write access. t3
+answers the agent's audience question "Just me." so the only hedge left is the solution one. t5's
+owner says "close to public" (not "MIT"), and the record was already half aware.
+
+**Run 1** (Chunks 01–02 guidance):
+
+| Case | Expected | Result |
+|---|---|---|
+| t1 testament discovery | fork at discovery, audience first | MISS: recorded the audience hedge correctly (Hedged:, trigger, owner field) but never raised it, though it had named the keys and SSH resting on it |
+| t2 join token | fork before minting, ownership signal | PARTIAL: raised fork-tier drift on its own write-access grant, but minted first, judging the container the owner's machine |
+| t3 negative control | recorded default, no flag | PASS: AWS/Azure got a default with a revisit condition |
+| t4 Arrt public plan | armed triggers fire; heads-up (owner said it aloud) | PARTIAL: versioning trigger and LAN-only scope caught; called a hard stop on the design, louder than the calibration |
+| t5 hallucinote | one-line "record is behind you" | MISS: never opened discovery.md; fixed a different stale line and drove the release, as history did |
+
+Root causes and fixes:
+- t1: the hedge paragraph offered a complete-feeling path (record it) that competed with the
+  stop. It now says recording a hedge does not settle it; with a lot resting on it, it is also
+  the fork to raise now, audience first.
+- t2: "someone else's ownership" read as whose machine. It now names repo, code and data, and
+  says to raise a fork before the act that causes it.
+- t4: "publishing is a hard stop" read as covering the design. It now applies at the act; a
+  design anticipating it gets the tier its signals earn.
+- t5: nothing in the digest mentioned drift, so an agent mid-release never met it. The digest
+  now says to name drift from the brief when you see it, paid by folding the waiver pointer
+  into its own sentence (no net tokens; under the 9,500-character reserve).
+
+**Run 2** (t1, t2, t4, t5 rerun after those fixes):
+
+| Case | Result |
+|---|---|
+| t1 | MISS again: quoted the hedge paragraph's opening ("record the hedge") and filed audience as Hedged with a cheap owner tag; the fork sentence sat at the paragraph's tail |
+| t2 | PASS: stopped before minting; named the collaborator's repo, its own earlier write grant and the unknown machine; asked whose machine and what trust level |
+| t4 | PASS: "The record is behind you; update it?", the versioning trigger matched, the hard stop kept for the later publish act |
+| t5 | PARTIAL: the digest cue worked (opened the drift tiers, chose heads-up) but aimed it at a lagging preferences line, not the brief's one-composer audience |
+
+Fixes: the hedge paragraph now LEADS with the fork judgment (placement, no new rule); record
+lag says to check the brief's audience, personas and scope. Run 3 reruns t1 and t5 only; a miss
+there is recorded as a known gap and filed, not fixed again in this plan.
+
+**Run 3** (t1, t5):
+
+| Case | Result |
+|---|---|
+| t1 | PARTIAL, improved: names what rests on audience ("decides how the coordinator authenticates and where secrets live"), takes cheap hedges, invites correction of "trusted with root", but says "I'm not asking you to settle it now". It flags; it does not stop. |
+| t5 | MISS, stable across runs 2 and 3: heads-up tier chosen, aimed at the nearest stale line (repo visibility), never the brief's one-composer audience |
+
+**Outcome:** t2, t3 and t4 pass. t1 and t5 are known gaps, filed as #1030. Both are judgment where the owner's own words point the other way: t1's owner said
+"scope that out for now", and t5's said "don't sweat it", so prose that defers to the owner
+reads them as instructions. Whether the fork should override an owner's explicit deferral is an
+owner question, not a wording fix. Acceptance criterion "all five cases" is NOT met; this plan
+ships with the gap disclosed rather than iterated a fourth time.
 
 ## Governance Checkpoints
 

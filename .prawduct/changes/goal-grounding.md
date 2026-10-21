@@ -21,6 +21,11 @@ title: the alignment pass judges whether the goals under the work are grounded
   chose). Irreversibility raises the tier, publishing is a hard stop, and touching someone
   else's ownership is the strongest signal. Before presenting a plan, the agent reads it against
   the brief's revisit triggers and scope words.
+- The session digest tells the agent to name drift from the brief when it sees it, pointing to
+  the tiers. A replay of four governed products' real moments (chunk 04) drove it, and drove
+  wording fixes: a recorded hedge with a lot resting on it is still raised; publishing is a hard
+  stop at the act; ownership covers repo, code and data, and a fork comes before the act. Two
+  cases where the owner explicitly deferred stay short and are filed as a follow-up.
 - `tools/measure-alignment-yield.py` reports `goal_questions`: owner turns asking what the
   product or the work is trying to achieve, the control's yield (it should fall). A lead, read
   by hand. Baseline: `tools/measure-alignment-yield.py --until 2026-10-22`.

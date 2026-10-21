@@ -252,6 +252,7 @@ def test_json_totals_carry_every_count_even_when_zero(tmp_path, capsys):
     for side in ("governed", "ungoverned"):
         assert set(out["total"][side]) == set(tool.KEYS)
     assert out["projects"][0]["corrections"] == 0
+    assert out["projects"][0]["goal_questions"] == 0
     assert "health" in out
 
 
