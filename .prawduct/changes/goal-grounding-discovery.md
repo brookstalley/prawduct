@@ -15,3 +15,6 @@ more governed products, and proposes four changes for owner confirmation:
 - the agent asking the goal questions itself.
 
 Design only. No behaviour changes.
+
+## Consumer note
+none: design-only discovery artifact; no shipped behaviour changes
