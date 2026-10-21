@@ -74,7 +74,7 @@ whether prose alone changes behaviour, and chunk 04 measures that directly.
 
 - [x] Chunk 01: The grounding check and the hedged answer
 - [x] Chunk 02: Drift, by tier, read at plan approval
-- [ ] Chunk 03: The control's yield — owner-raised goal questions
+- [x] Chunk 03: The control's yield — owner-raised goal questions
 - [ ] Chunk 04: Replay testament and Arrt against the new guidance
 Context: Plan written 2026-10-21 after the owner settled scope. Chunk 01 committed (e8acb2b3)
 and reviewed; its acceptance criterion was reworded when the check moved to discovery.md (see
@@ -151,7 +151,7 @@ is verified red first against a fixture transcript that contains a goal question
   existing alignment yield measure rather than writing a second tool.
 - **Depends on:** none
 - **Deliverables:**
-  - `tools/measure-alignment-yield.py`: an `owner_goal_questions` lead count (owner turns asking
+  - `tools/measure-alignment-yield.py`: a `goal_questions` lead count (owner turns asking
     what the product or work is for), documented as a lead read by hand, in the human and JSON
     output.
   - A test that fails without the counter (red first) and passes with it.
