@@ -49,7 +49,7 @@ Before non-trivial work, judge how clear and grounded the goals are (request, br
 
 ### Deciding Mid-Build
 
-Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, or work out of proportion to the benefit. Prefer the durable choice to the merely reversible one. Record each decision in a line in the plan's Goals, naming what settled it; one the goals did not settle is an alignment-pass miss — mark it so for the boundary review.
+Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, work out of proportion to the benefit, or drift at fork tier (`methodology/discovery.md`). Prefer the durable choice to the merely reversible one. Record each in a line in the plan's Goals, as `methodology/planning.md` "Goals" says, marking one the goals did not settle as an alignment-pass miss.
 
 ### A Requirement Surfaced Mid-Build
 

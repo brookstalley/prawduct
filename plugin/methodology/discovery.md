@@ -60,6 +60,28 @@ classification licensed and surface the ones the new reality invalidates. The au
 **backlog requirements**, not a mental note. Update `classification` in `project-state.yaml` so the
 flip is durable (`/prawduct:methodology norms`, Ambient norms).
 
+**Drift is announced, by tier.** Goals drift as work goes on. That is normal, and calling it out
+is the job; a flip nobody decided is drift that went unannounced. Three tiers:
+- **Record**: one weak signal, little resting on it. Nothing in the turn; note it in the brief's
+  open questions so later signals add up.
+- **Heads-up**: signals building on one axis, or one moderate signal. One line in your ordinary
+  voice: *"This moves us toward multi-user. The brief still says one owner."* When the owner made
+  the change out loud and only the record lags, this is the tier: *"The record is behind you;
+  update it?"*
+- **Fork**: drift nobody chose (your own act contradicts the brief, signals add up past the bar,
+  or a lot rests on the axis): *"This is really changing: one owner → three people's repos. Worth
+  redefining the goals before the next plan."*
+
+Irreversibility raises the tier on its own, and an act that publishes (a public repo, a release,
+a client that cannot be recalled) is a hard stop whatever its tier. Touching someone else's
+ownership, such as code carved from a repo another person owns, is the strongest signal. Signals,
+strongest first: an act that contradicts the record's own text (a public repo, a tunnel or public
+URL, an invite or token for another person, a new commit author, a listing, set against
+"single-user", "LAN-only", "private" or a `never` item); an armed revisit trigger the plan
+matches; a product hedge in conversation. Read the first two at plan approval. A fork's output is
+a question, "do we update the goals?", and the answer updates the brief and `classification`,
+as a flip does above. Keep forks rare: each costs the owner an interruption.
+
 **A norm surfaced.** When discovery produces a statement meant to bind future work ("all money is
 integer cents", "every asset is vector"), capture it as a norm at birth — **statement + why +
 retroactivity** — in the governing artifact's `## Direction` section or a `project-preferences.md`

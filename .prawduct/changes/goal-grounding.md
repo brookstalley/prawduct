@@ -16,9 +16,15 @@ title: the alignment pass judges whether the goals under the work are grounded
 - A hedged owner answer stays open in the brief as `Hedged:`, with a revisit trigger and the
   cheap hedges taken now. It is never recorded as `null` or a `never` item. The boundary review
   rates a goal still hedged like one still inferred (WARNING).
+- Drift is announced by tier (`methodology/discovery.md`): record (noted, silent), heads-up (one
+  line; also when only the record lags a change the owner made out loud) and fork (drift nobody
+  chose). Irreversibility raises the tier, publishing is a hard stop, and touching someone
+  else's ownership is the strongest signal. Before presenting a plan, the agent reads it against
+  the brief's revisit triggers and scope words.
 
 ## Consumer note
 Plans now say in their Goals response line whether any goal they rest on is ungrounded, and a
 product goal you answer with a hedge ("maybe others later") is kept as an open question with a
 revisit trigger instead of being settled for you. Expect an occasional one-sentence stop before a
-plan when much rests on an audience or ownership question nobody has answered.
+plan when much rests on an audience or ownership question nobody has answered, and a one-line
+note when work moves the product away from what its brief says (more users, public exposure).

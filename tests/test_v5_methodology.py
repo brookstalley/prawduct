@@ -487,7 +487,10 @@ LAST_MEASURED_TOKENS = {
     # Paid by compressing the "moment for questions" sentence, whose batch-ask half
     # discovery.md already states. Ceiling lowered with it. +1 more: the four-response
     # intro says "clear and grounded", matching the digest (chunk 01 review observation).
-    "methodology/building.md": 5324,
+    # -4 more (goal-grounding chunk 02): Deciding Mid-Build names fork-tier drift as a reason to
+    # stop, paid by pointing the decision-record sentence at planning.md "Goals", which states
+    # the same rule. Ceiling lowered with it.
+    "methodology/building.md": 5320,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1170,7 +1173,10 @@ LAST_MEASURED_TOKENS = {
     # goal-grounding design; its one home, since grounded and hedged sit beside inferred.
     # building.md and planning.md point here; feature-level discovery says "clear and grounded".
     # A READING.
-    "methodology/discovery.md": 4838,
+    # +380 on 2026-10-21 (goal-grounding chunk 02, #1029): drift announced by tier (record,
+    # heads-up, fork), the three adjusting rules and the signals read at plan approval, beside
+    # the characteristic flip it generalises. New obligations from the settled design. A READING.
+    "methodology/discovery.md": 5218,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1299,7 +1305,9 @@ LAST_MEASURED_TOKENS = {
     # +31 on 2026-10-21 (goal-grounding, #1029): the Goals response line names any ungrounded
     # goal the plan rests on, and a hedged answer is marked like an inference. Both point to
     # discovery.md. A READING, no ceiling.
-    "methodology/planning.md": 5818,
+    # +55 on 2026-10-21 (goal-grounding chunk 02): before presenting a plan, read it against the
+    # brief's revisit triggers and scope words, pointing to discovery.md's drift tiers. A READING.
+    "methodology/planning.md": 5873,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3405,7 +3413,7 @@ class TestBuildingMethodology:
         # the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5325, f"building.md is ~{tokens} tokens, should be <5325"
+        assert tokens < 5322, f"building.md is ~{tokens} tokens, should be <5322"
 
 
 # =============================================================================
