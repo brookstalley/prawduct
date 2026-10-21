@@ -149,7 +149,8 @@ design_decisions:
 # OPEN QUESTIONS
 # =============================================================================
 # Unresolved decisions. Normal during discovery, shrinks toward zero
-# before artifact generation.
+# before artifact generation. Hedged product answers stay open in the
+# brief's Open Questions instead.
 # Each:
 #   question: string
 #   blocking: string (what can't proceed)

@@ -275,7 +275,8 @@ def test_an_owner_asking_what_the_work_is_for_counts_as_a_goal_question(tmp_path
         _owner("how does this implementation meet our product goals?"),
         _owner("is it clear what this build plan is trying to achieve, at the product level?"),
         _owner("can you sharpen what we’re trying to achieve before you plan?"),
+        _owner("what\u2019s the point here, really?"),
         _owner("should this use AWS or Azure?"),
         _owner("what's the point of telling me a reason that was not used?"),
     ])
-    assert _total(tool.measure([path], None, None, 60, ()))["goal_questions"] == 4
+    assert _total(tool.measure([path], None, None, 60, ()))["goal_questions"] == 5

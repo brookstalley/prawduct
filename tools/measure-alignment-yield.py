@@ -65,7 +65,7 @@ GOAL_QUESTION = re.compile(
     r"(what (are )?(we|we're|we’re|this|it)\b[^.?!\n]{0,40}?(trying to|here to) (achieve|do|accomplish|build)"
     r"|how does (this|that|it)( \w+)? (meet|serve|fit|support|advance) (our |the )?(product )?goals?"
     r"|who is (this|it) (really )?for\b"
-    r"|what(?:'s| is) the (real )?(goal|point|purpose) (here|of (this|the product)))",
+    r"|what(?:'s|\u2019s| is) the (real )?(goal|point|purpose) (here|of (this|the product)))",
     re.IGNORECASE,
 )
 NOT_TYPED = ("<local-command", "<command-name>", "<task-notification", "Caveat:",

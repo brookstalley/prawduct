@@ -1181,8 +1181,10 @@ LAST_MEASURED_TOKENS = {
     # the design (t4); ownership covers repo, code and data, and a fork comes before the act
     # (t2 minted, then raised it). +28 after run 2: the hedge paragraph now LEADS with the fork
     # judgment (t1 quoted the lead and missed the tail), and record lag checks the brief's
-    # audience, personas and scope (t5 caught a lagging line, not the lagging audience). A READING.
-    "methodology/discovery.md": 5307,
+    # audience, personas and scope (t5 caught a lagging line, not the lagging audience). +2 in the
+    # second cumulative (R-2): hedges and weak drift signals go to the brief's Open Questions, a
+    # template section that now exists. A READING.
+    "methodology/discovery.md": 5309,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
