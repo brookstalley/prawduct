@@ -337,30 +337,48 @@ class TestHarnessInvokedHooksNeverRefuse:
         """Positive assertion for "neither is silent", on the one hook that speaks.
 
         Both SessionStart shapes (`startup|clear` and `resume|compact|fork`)
-        run `clear`, so both must carry it. The note must not prescribe the
-        agent-side remedy — a hook cannot be re-run with an env var unset — and
-        must name what the reader CAN do.
+        run `clear --session-start`, so both must carry it. On STDOUT: that is
+        how a SessionStart hook's output reaches the agent's context, while
+        stderr at exit 0 is only logged — moving the note from Stop to a
+        SessionStart stderr line would have moved it where nobody reads. The
+        note must not prescribe the agent-side remedy — a hook cannot be re-run
+        with an env var unset — and must name what the reader CAN do.
         """
         repo = _make_framework_checkout(tmp_path / "fw")
         foreign = _install_binary_at(tmp_path / "installed")
         for args in (("--session-start",), ("--session-start", "--brief-only")):
             result = _run(repo, "clear", *args, binary=foreign)
-            assert result.stderr.count(_SKEW_MARKER) == 1, (
-                f"`clear {' '.join(args)}` must report the skew exactly once; "
-                f"stderr was: {result.stderr!r}"
+            assert result.stdout.count(_SKEW_MARKER) == 1, (
+                f"`clear {' '.join(args)}` must report the skew exactly once, on "
+                f"stdout; stdout was: {result.stdout!r}"
             )
-            assert "$CLAUDE_PLUGIN_ROOT unset" not in result.stderr, (
+            assert _SKEW_MARKER not in result.stderr, (
+                "stderr at exit 0 is logged, not read — the note belongs on stdout"
+            )
+            note = next(l for l in result.stdout.splitlines() if _SKEW_MARKER in l)
+            assert "$CLAUDE_PLUGIN_ROOT unset" not in note, (
                 "a hook cannot be re-run with an env var unset — that remedy is "
                 "the agent's, and printing it here is unactionable"
             )
-            assert f"--plugin-dir {(repo / 'plugin').resolve()}" in result.stderr, (
+            assert f"--plugin-dir {(repo / 'plugin').resolve()}" in note, (
                 "the hook note must name the remedy that IS available: loading "
                 "this checkout's plugin for the session"
             )
-            assert "critic-begin" in result.stderr, (
+            assert "critic-begin" in note, (
                 "and say the agent-invoked writes are guarded, which is why the "
                 "skew is safe to note once rather than on every turn"
             )
+
+    def test_agent_invoked_clear_gets_the_agent_note(self, tmp_path):
+        """The carve-out keys on `--session-start`, not on the verb: an agent
+        running `clear` itself CAN re-invoke the repo-local binary, so it gets
+        the ordinary note with that remedy, not the hook wording."""
+        repo = _make_framework_checkout(tmp_path / "fw")
+        foreign = _install_binary_at(tmp_path / "installed")
+        result = _run(repo, "clear", binary=foreign)
+        assert "BLOCKED: refusing `clear`" not in result.stderr
+        assert _SKEW_MARKER not in result.stdout
+        assert "$CLAUDE_PLUGIN_ROOT unset" in result.stderr
 
     def test_stop_and_subagent_stop_are_silent_on_skew(self, tmp_path):
         """The storm itself: every Stop repeated the SessionStart note.
@@ -515,12 +533,13 @@ class TestCommandSetsAgreeWithTheirSourceOfTruth:
     checkout. Derived from the file rather than restated.
     """
 
-    def _hook_commands(self) -> set[str]:
+    def _hook_invocations(self) -> dict[str, list[list[str]]]:
+        """Per hooks.json event, each prawduct-hook call as [verb, *args]."""
         import json as _json
 
         data = _json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-        found = set()
-        for entries in data.get("hooks", {}).values():
+        found: dict[str, list[list[str]]] = {}
+        for event, entries in data.get("hooks", {}).items():
             for entry in entries:
                 for hook in entry.get("hooks", []):
                     cmd = hook.get("command", "")
@@ -530,9 +549,16 @@ class TestCommandSetsAgreeWithTheirSourceOfTruth:
                     parts = cmd.split()
                     for idx, tok in enumerate(parts):
                         if "prawduct-hook" in tok and idx + 1 < len(parts):
-                            found.add(parts[idx + 1].strip('"'))
+                            found.setdefault(event, []).append(
+                                [t.strip('"') for t in parts[idx + 1:]]
+                            )
                             break
         return found
+
+    def _hook_commands(self) -> set[str]:
+        return {
+            call[0] for calls in self._hook_invocations().values() for call in calls
+        }
 
     def test_every_hooks_json_entry_point_is_exempt_from_refusal(self):
         import re as _re
@@ -554,25 +580,24 @@ class TestCommandSetsAgreeWithTheirSourceOfTruth:
         )
 
     def test_the_skew_reporting_hook_is_a_session_start_entry_point(self):
-        """The one harness hook allowed to report skew must be what SessionStart
-        runs — and nothing else hooks.json runs. Renaming the SessionStart verb
-        would otherwise silence the report everywhere, the defect one severity
-        down; pointing it at `stop` would bring the storm back."""
-        import json as _json
-
+        """The one harness call allowed to report skew must be what EVERY
+        SessionStart entry runs — and nothing the other events run. Renaming
+        the verb or dropping the flag would silence the report everywhere, the
+        defect one severity down; pointing it at `stop` would bring the storm
+        back."""
         hook = _hook_module()
-        reporter = hook._SKEW_REPORTING_HOOK
-        assert reporter in hook._HARNESS_INVOKED_COMMANDS
-        data = _json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-        by_event: dict[str, set[str]] = {}
-        for event, entries in data.get("hooks", {}).items():
-            for entry in entries:
-                for h in entry.get("hooks", []):
-                    parts = h.get("command", "").split()
-                    for idx, tok in enumerate(parts):
-                        if tok.strip('"').endswith("bin/prawduct-hook") and idx + 1 < len(parts):
-                            by_event.setdefault(event, set()).add(parts[idx + 1])
-        assert by_event.get("SessionStart"), "parsed no SessionStart verb — blind"
-        assert by_event["SessionStart"] == {reporter}
-        others = set().union(*(v for k, v in by_event.items() if k != "SessionStart"))
-        assert others and reporter not in others
+        verb, flag = hook._SKEW_REPORTING_HOOK
+        assert verb in hook._HARNESS_INVOKED_COMMANDS
+        by_event = self._hook_invocations()
+        session_start = by_event.get("SessionStart")
+        assert session_start, "parsed no SessionStart call — the test is blind"
+        for call in session_start:
+            assert call[0] == verb and flag in call, (
+                f"SessionStart runs {call}, which would not report the skew"
+            )
+        others = [c for e, calls in by_event.items() if e != "SessionStart" for c in calls]
+        assert others, "parsed no other event's call — the test is blind"
+        for call in others:
+            assert not (call[0] == verb and flag in call), (
+                f"{call} would repeat the SessionStart skew note every turn"
+            )

@@ -10097,15 +10097,19 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
     "stop",
 })
 
-# The ONE harness entry point that reports the skew: SessionStart's `clear`.
-# The skew is a property of the session (which plugin the harness loaded), not
-# of a turn, so it is said once, where a human starting the session reads it.
-# Stop and SubagentStop stay quiet: they used to repeat the agent-side note,
-# whose remedy (re-run with $CLAUDE_PLUGIN_ROOT unset) no hook can apply, on
-# every turn — a channel produced and never consumed, seen as a stop-hook storm.
-# `tests/test_binary_skew_guard.py` pins this to what hooks.json's SessionStart
-# runs, and to nothing the other events run.
-_SKEW_REPORTING_HOOK = "clear"
+# The ONE harness entry point that reports the skew: SessionStart's
+# `clear --session-start`. The skew is a property of the session (which plugin
+# the harness loaded), not of a turn, so it is said once, on STDOUT — the
+# channel a SessionStart hook's output reaches the agent's context through
+# (`cmd_clear`'s briefing rides it too); stderr at exit 0 is only logged. Keyed
+# on the flag, not the verb: an agent may run `clear` itself, and that caller
+# can act on the ordinary agent-side note. Stop and SubagentStop stay quiet:
+# they used to repeat the agent-side note, whose remedy (re-run with
+# $CLAUDE_PLUGIN_ROOT unset) no hook can apply, on every turn — a channel
+# produced and never consumed, seen as a stop-hook storm.
+# `tests/test_binary_skew_guard.py` pins this to what every hooks.json
+# SessionStart entry runs, and to nothing the other events run.
+_SKEW_REPORTING_HOOK = ("clear", "--session-start")
 
 # Agent-invoked, state-mutating governance writes. A wrong-version write here
 # does not merely misreport — it corrupts or silently omits a persisted fact
@@ -10701,8 +10705,9 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
     Emits on stderr for every agent-invoked command — the failure this closes
     was defined by its silence, so a quiet pass would reproduce it one severity
     down. Harness-invoked hooks are the exception: the skew is a property of the
-    session, so SessionStart (`_SKEW_REPORTING_HOOK`) says it once in hook terms
-    and Stop/SubagentStop stay silent rather than repeat it every turn.
+    session, so SessionStart (`_SKEW_REPORTING_HOOK`) says it once, in hook terms
+    and on stdout, and Stop/SubagentStop stay silent rather than repeat it every
+    turn.
     """
     skew = _binary_skew(project_dir)
     kind = "binary"
@@ -10719,22 +10724,25 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
         else f"running this repo's script but importing lib/ from {running} "
              "($CLAUDE_PLUGIN_ROOT)"
     )
-    if command in _HARNESS_INVOKED_COMMANDS:
-        # Never refuse (see the set's comment); report once per session, at
-        # SessionStart, with the remedies a session actually has.
-        if command == _SKEW_REPORTING_HOOK:
-            print(
-                f"NOTE: {SKEW_MARKER}: this session's hooks are {what}, not the "
-                f"plugin this repo carries ({repo_plugin}). Hooks always run the "
-                "installed plugin, so this is expected while you work on the "
-                "framework. Agent-invoked governance writes (`critic-begin`, "
-                "`critic-consolidate`, `disposition`, …) are guarded: on a foreign "
-                f"binary they refuse and name `python3 {local}`. To load this "
-                "checkout's plugin for a session, start it with "
-                f"`claude --plugin-dir {repo_plugin}`. Said once per session start; "
-                "Stop and SubagentStop do not repeat it.",
-                file=sys.stderr,
-            )
+    reporter, flag = _SKEW_REPORTING_HOOK
+    if command == reporter and flag in (argv or []):
+        # SessionStart: report once per session, with the remedies a session
+        # actually has, on the channel that reaches the agent.
+        print(
+            f"NOTE: {SKEW_MARKER}: this session's hooks are {what}, not the "
+            f"plugin this repo carries ({repo_plugin}). Hooks always run the "
+            "installed plugin, so this is expected while you work on the "
+            "framework. Agent-invoked governance writes (`critic-begin`, "
+            "`critic-consolidate`, `disposition`, …) are guarded: on a foreign "
+            f"binary they refuse and name `python3 {local}`. To load this "
+            "checkout's plugin for a session, start it with "
+            f"`claude --plugin-dir {repo_plugin}`. Said once per session start; "
+            "Stop and SubagentStop do not repeat it."
+        )
+        return 0
+    if command in _HARNESS_INVOKED_COMMANDS - {reporter}:
+        # Never refuse (see the set's comment), and never repeat what
+        # SessionStart already said: these fire every turn.
         return 0
     detail = (
         f"{SKEW_MARKER}: {what}, but this repo carries {repo_plugin}. "
@@ -10742,7 +10750,7 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
         "(Versions are NOT the test — a checkout is routinely ahead of its own "
         "manifest, so identical versions prove nothing about the code.)"
     )
-    if _is_data_plane_write(command, argv or []):
+    if _is_data_plane_write(command, argv or []) and command not in _HARNESS_INVOKED_COMMANDS:
         print(
             f"BLOCKED: refusing `{command}` — {detail} A governance write on a "
             "foreign binary is how a review silently persists nothing.",
