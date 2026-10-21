@@ -29,8 +29,8 @@ Per project and in total, over owner requests in the window:
 - ``goal_questions``: owner turns asking what the product or the work is trying to achieve
   ("what are we really trying to achieve", "how does this meet our goals", "who is this
   for"). The goal-grounding change (`goal-grounding-discovery.md`) exists so the agent asks
-  these first, so this should fall after it ships: compare a window before 2026-10-22 with
-  one after, like with like. A LEAD, read by hand like ``corrections``.
+  these first, so this should fall once governed products run it: compare a window ending
+  when prawduct-live first carried the change with one starting after, like with like. A LEAD, read by hand like ``corrections``.
 
 "Governed" means the session received the prawduct session digest, or its working
 directory carries `.prawduct/` today. The digest is the evidence that survives a

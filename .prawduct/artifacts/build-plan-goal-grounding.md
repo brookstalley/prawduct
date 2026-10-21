@@ -87,9 +87,9 @@ Context: Plan written 2026-10-21 after the owner settled scope. Chunk 01 committ
 and reviewed; its acceptance criterion was reworded when the check moved to discovery.md (see
 Decisions made mid-build), awaiting the owner's one-line confirmation. Chunks 02 and 03 committed and reviewed. Chunk 04's
 replay ran three rounds: t2–t4 pass, t1 and t5 are disclosed gaps (Replay section), filed as
-#1030; the unmet "all five" criterion is the owner's to accept or reopen. After merge and a
-prawduct-live advance, the backfill runs as one session per governed product (testament,
-discodon, hallucinote, Arrt); it is outside this plan's acceptance.
+#1030; the unmet "all five" criterion is the owner's to accept or reopen. The backfill is filed as #1031. After merge and a
+prawduct-live advance, the backfill (#1031) runs as one session per governed product
+(testament, discodon, hallucinote, Arrt); it is outside this plan's acceptance.
 
 ## Verification Strategy
 

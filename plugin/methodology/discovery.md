@@ -75,9 +75,8 @@ is the job; a flip nobody decided is drift that went unannounced. Three tiers:
 Irreversibility raises the tier on its own, and an act that publishes (a public repo, a release,
 a client that cannot be recalled) is a hard stop at that act, whatever its tier; a design that
 anticipates it gets the tier its signals earn. Touching someone else's ownership (their repo,
-code or data, not only their machine) is the strongest signal. Raise a fork before the act that
-causes it, not after. Signals,
-strongest first: an act that contradicts the record's own text (a public repo, a tunnel or public
+code or data, not only their machine) outranks every signal below. Raise a fork before the act
+that causes it, not after. Signals, strongest first: an act that contradicts the record's own text (a public repo, a tunnel or public
 URL, an invite or token for another person, a new commit author, a listing, set against
 "single-user", "LAN-only", "private" or a `never` item); an armed revisit trigger the plan
 matches; a product hedge in conversation. Read the first two at plan approval. A fork's output is
