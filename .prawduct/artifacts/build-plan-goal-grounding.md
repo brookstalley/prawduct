@@ -61,6 +61,11 @@ hand, like the existing `corrections` count, not a verdict.
   the plan's own deliverable list, corrected here and in chunk 01's deliverables and criterion.
 - Chunk 02: drift tiers sit beside discovery.md's "A structural characteristic flipped", same
   reason; reflection.md describes no record updates, so that deliverable is dropped.
+- Chunk 03: the first pattern missed two real goal questions in the owner's own transcripts
+  ("is it clear what this build plan is trying to achieve", "sharpen what we're trying to
+  achieve"), found by a broader search before trusting the count; both shapes are now pinned.
+  Baseline on 2026-10-21: 5 governed, 1 ungoverned (`tools/measure-alignment-yield.py --until
+  2026-10-22`).
 
 **Level:** High. The design is settled and calibrated on four products. The uncertainty is
 whether prose alone changes behaviour, and chunk 04 measures that directly.

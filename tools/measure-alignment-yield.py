@@ -26,6 +26,11 @@ Per project and in total, over owner requests in the window:
 - ``corrections``: owner turns right after a building turn that read like a
   correction ("wrong", "not what I", "revert"…). A LEAD, not a verdict: the
   2026-10-08 audit read each one by hand, and so should anyone citing the count.
+- ``goal_questions``: owner turns asking what the product or the work is trying to achieve
+  ("what are we really trying to achieve", "how does this meet our goals", "who is this
+  for"). The goal-grounding change (`goal-grounding-discovery.md`) exists so the agent asks
+  these first, so this should fall after it ships: compare a window before 2026-10-22 with
+  one after, like with like. A LEAD, read by hand like ``corrections``.
 
 "Governed" means the session received the prawduct session digest, or its working
 directory carries `.prawduct/` today. The digest is the evidence that survives a
@@ -56,6 +61,13 @@ CORRECTION = re.compile(
     r"should have asked|didn't ask|did not ask|not right)\b",
     re.IGNORECASE,
 )
+GOAL_QUESTION = re.compile(
+    r"(what (are )?(we|we're|we’re|this|it)\b[^.?!\n]{0,40}?(trying to|here to) (achieve|do|accomplish|build)"
+    r"|how does (this|that|it)( \w+)? (meet|serve|fit|support|advance) (our |the )?(product )?goals?"
+    r"|who is (this|it) (really )?for\b"
+    r"|what(?:'s| is) the (real )?(goal|point|purpose) (here|of (this|the product)))",
+    re.IGNORECASE,
+)
 NOT_TYPED = ("<local-command", "<command-name>", "<task-notification", "Caveat:",
              "[Request interrupted", "<system-reminder>")
 DEFAULT_GLOB = "~/.claude*/projects/*/*.jsonl"
@@ -66,7 +78,8 @@ SLASH_ECHO = ("<command-name>", "<command-message>")
 DIGEST_MARKER = "This repo is governed by"
 #: Sessions run from a temp directory are scripted trials and probes, not an owner at work.
 SCRATCH_PREFIXES = ("/private/tmp/", "/tmp/", "/private/var/folders/", "/var/folders/")
-KEYS = ("requests", "substantive", "asked_first", "mid_build_asks", "corrections")
+KEYS = ("requests", "substantive", "asked_first", "mid_build_asks", "corrections",
+        "goal_questions")
 
 
 def _text(content) -> str:
@@ -176,6 +189,8 @@ def measure(paths, since: str | None, until: str | None, min_chars: int,
                 row["asked_first"] += t["asked_first"]
             if i and session[i - 1]["built"] and CORRECTION.search(t["req"]):
                 row["corrections"] += 1
+            if GOAL_QUESTION.search(t["req"]):
+                row["goal_questions"] += 1
     return by
 
 
@@ -209,16 +224,18 @@ def main(argv=None) -> int:
         return 0
 
     print(f"{len(paths)} transcripts, window {args.since or '…'} to {args.until or '…'}")
-    print(f"{'project':48} gov  requests substantive asked_first mid_build_asks corrections*")
+    print(f"{'project':48} gov  requests substantive asked_first mid_build_asks corrections* "
+          f"goal_questions*")
     for (p, g), row in sorted(by.items()):
         print(f"{p[-48:]:48} {'yes' if g else 'no ':4} {row['requests']:8} {row['substantive']:11} "
-              f"{row['asked_first']:11} {row['mid_build_asks']:14} {row['corrections']:12}")
+              f"{row['asked_first']:11} {row['mid_build_asks']:14} {row['corrections']:12} "
+              f"{row['goal_questions']:15}")
     for g in (True, False):
         row = total[g]
         print(f"{'TOTAL ' + ('governed' if g else 'ungoverned'):48} {'':4} {row['requests']:8} "
               f"{row['substantive']:11} {row['asked_first']:11} {row['mid_build_asks']:14} "
-              f"{row['corrections']:12}")
-    print("* corrections are leads: read each before citing the count.")
+              f"{row['corrections']:12} {row['goal_questions']:15}")
+    print("* corrections and goal_questions are leads: read each before citing the count.")
     if health:
         print("health: " + ", ".join(f"{k} {v}" for k, v in sorted(health.items()))
               + " — a jump between runs is a transcript format change before it is a result.")

@@ -21,6 +21,9 @@ title: the alignment pass judges whether the goals under the work are grounded
   chose). Irreversibility raises the tier, publishing is a hard stop, and touching someone
   else's ownership is the strongest signal. Before presenting a plan, the agent reads it against
   the brief's revisit triggers and scope words.
+- `tools/measure-alignment-yield.py` reports `goal_questions`: owner turns asking what the
+  product or the work is trying to achieve, the control's yield (it should fall). A lead, read
+  by hand. Baseline: `tools/measure-alignment-yield.py --until 2026-10-22`.
 
 ## Consumer note
 Plans now say in their Goals response line whether any goal they rest on is ungrounded, and a

@@ -81,7 +81,7 @@ Every build plan opens with **Goals** — the alignment pass's written form (`me
 
 **Say what the owner said and what you inferred.** Mark each inference in plain words — *"Inferred: one household; no auth beyond a shared device"* — so the owner, and the boundary review, can find it. An inference is a decision made on the owner's behalf: never record one as their ruling. Mark a hedged owner answer *Hedged:* the same way (`methodology/discovery.md`).
 
-**Before presenting a plan, read it against the record**: the brief's open revisit triggers, and its scope words (single-user, LAN-only, private, `never` items) against what the plan does. A match is drift, announced by its tier (`methodology/discovery.md` "Drift is announced, by tier").
+**Before presenting a plan, read it against the record**: the brief's open revisit triggers and scope words against what the plan does. A match is drift, announced by its tier (`methodology/discovery.md` "Drift is announced, by tier").
 
 **Chunks usually work best** as vertical slices (working, testable functionality across layers), in dependency order, each verifiable without later chunks and small enough for one Critic pass — the last is the firm limit. A thin first slice through the whole architecture proves the layers connect before you widen it.
 

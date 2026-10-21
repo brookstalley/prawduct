@@ -1307,7 +1307,9 @@ LAST_MEASURED_TOKENS = {
     # discovery.md. A READING, no ceiling.
     # +55 on 2026-10-21 (goal-grounding chunk 02): before presenting a plan, read it against the
     # brief's revisit triggers and scope words, pointing to discovery.md's drift tiers. A READING.
-    "methodology/planning.md": 5873,
+    # -8 (chunk 02 review observation): the scope-word list discovery.md owns is no longer
+    # restated here. A READING.
+    "methodology/planning.md": 5865,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
