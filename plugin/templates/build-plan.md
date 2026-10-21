@@ -53,7 +53,7 @@ last_validated: 2026-07-03
 
 <!-- The alignment pass's written form (methodology/planning.md "Goals"): a cold session
      reads this before any chunk, mid-build decisions are made against it, and the
-     boundary review judges the work by it. Mark each inference in plain words. -->
+     boundary review judges the work by it. Mark each inference and hedge in plain words. -->
 
 **Response taken:** Ask, in one batch — the owner answered 2026-07-02.
 

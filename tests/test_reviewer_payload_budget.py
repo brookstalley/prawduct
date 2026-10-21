@@ -235,7 +235,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # against the SUM: +24 per review against the fragment schema and reopen-target defects reviewers would
     # otherwise have to find by reading the record, each a WARNING-sized round. Net +12 on this route's
     # sibling inner path, which the `goals-1-3.md` cut below paid down. Row shortened in place first.
-    "single-pass-full": 11549,
+    # -1 on 2026-10-21 (goal-grounding, #1029): Goal 5 rates a hedged goal like an inferred one,
+    # paid by dropping Goal 2's definition from its own parenthesis. Ceiling lowered with it.
+    "single-pass-full": 11548,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -308,7 +310,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # against the SUM: +24 per review against the fragment schema and reopen-target defects reviewers would
     # otherwise have to find by reading the record, each a WARNING-sized round. Net +12 on this route's
     # sibling inner path, which the `goals-1-3.md` cut below paid down. Row shortened in place first.
-    "dispatched-reviewer": 10980,
+    # -1 on 2026-10-21 (goal-grounding, #1029): Goal 5 rates a hedged goal like an inferred one,
+    # paid by dropping Goal 2's definition from its own parenthesis. Ceiling lowered with it.
+    "dispatched-reviewer": 10979,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -322,14 +326,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # against the SUM: +24 per review against the fragment schema and reopen-target defects reviewers would
     # otherwise have to find by reading the record, each a WARNING-sized round. Net +12 on this route's
     # sibling inner path, which the `goals-1-3.md` cut below paid down. Row shortened in place first.
-    "coordinator-fork": 12143,
+    # -1 on 2026-10-21 (goal-grounding, #1029): Goal 5 rates a hedged goal like an inferred one,
+    # paid by dropping Goal 2's definition from its own parenthesis. Ceiling lowered with it.
+    "coordinator-fork": 12142,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5798,
-    "single-pass-full": 11550,
-    "dispatched-reviewer": 10981,
-    "coordinator-fork": 12144,
+    "single-pass-full": 11549,
+    "dispatched-reviewer": 10980,
+    "coordinator-fork": 12143,
 }
 
 

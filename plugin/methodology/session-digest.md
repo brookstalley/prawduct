@@ -6,9 +6,9 @@ judgment, not mechanically.
 Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled by
 size and by type — the table is in `/prawduct:methodology building`.
 
-**Align on goals before building.** Judge how clear they are against the work ahead, then proceed,
-proceed citing a backlog item or spec, ask everything in one batch before a plan exists, or hold up
-— and say which. Mid-build, decide what the goals settle — do it right, match the product's
+**Align on goals before building.** Judge how clear and grounded they are against the work
+ahead, then proceed, proceed citing a backlog item or spec, ask in one batch before a plan
+exists, or hold up, and say which. Mid-build, decide what the goals settle — do it right, match the product's
 choices and backlog, prefer the durable choice — stopping only for high stakes. Scale
 **rigor** to **stakes × knowledge-confidence × volatility** — fast-moving data is verified, not
 recalled (`methodology/discovery.md` "Calibrate Rigor").

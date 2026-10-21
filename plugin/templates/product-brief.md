@@ -13,6 +13,8 @@
      once they confirm it:
        Inferred: no accounts; one shared device.   (before)
        No accounts; one shared device.              (after the owner confirms)
+     A hedged answer stays open, with what would settle it:
+       Hedged: one household for now — revisit when a second person needs access.
 -->
 ---
 artifact: product-brief
