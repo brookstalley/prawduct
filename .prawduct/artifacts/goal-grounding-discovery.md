@@ -218,3 +218,17 @@ cheap to absorb once named. The two compose.
    approval (cheaper, but it lags). The testament invite happened mid-session, between plans.
 3. **Backfill:** run the drift check on the products already governed (testament, discodon,
    hallucinote, Arrt), whose records are all stale on parties or exposure.
+
+## Settled 2026-10-20
+
+The owner's answers to the open questions:
+
+1. **The building agent runs the check, not a separate reviewer.** "It should be sure its remit is
+   clear, and if not, object and ask for clarification." The agent owns the objection.
+2. **Signal 1 runs at plan approval only, for now.** The owner also gave a direction that covers
+   the whole design: **"the whole system [should] become more ambient versus explicitly described
+   checks."**
+   - The grounding check is part of how the agent writes a plan's `## Goals` and its response
+     line. It is not a new named step, checklist or gate.
+   - Drift and hedge judgments show up in the agent's ordinary voice. They are not a ceremony.
+3. **Backfill: yes.** Run the drift check on the governed products.
