@@ -232,3 +232,34 @@ The owner's answers to the open questions:
      line. It is not a new named step, checklist or gate.
    - Drift and hedge judgments show up in the agent's ordinary voice. They are not a ceremony.
 3. **Backfill: yes.** Run the drift check on the governed products.
+
+## Calibration from the first drift check (2026-10-20)
+
+The drift check ran read-only on testament, discodon, hallucinote and Arrt, using the tiers in C.
+All four products produced a Fork-tier headline:
+
+| Product | Headline drift |
+|---|---|
+| testament | one owner → three parties, two outside users with write access |
+| discodon | a Discord persona sim → a DJ radio station with listeners and native apps planned |
+| hallucinote | one composer → a public MIT release for beginners to experts |
+| Arrt | one household → anonymous public channels |
+
+Fired-but-unmarked triggers turned up in every product. What the run changed in the design:
+
+1. **Record lag is different from drift nobody chose.** When the owner made the change out loud
+   (hallucinote going public, Arrt's public channels), Fork was too loud. The goals were already
+   decided and only the record was behind. That warrants a one-line heads-up: "the record is
+   behind you; update it?" The Fork tier is for drift nobody chose: the agent's own acts,
+   remarks that accumulate, and premises left behind by work that kept going.
+2. **Irreversibility raises the tier on its own.** Publishing, a public repo, and a native client
+   that cannot be recalled all freeze something. Testament's "eventually public" felt too quiet as
+   a heads-up, because so much would rest on it and it cannot be undone. An act that publishes is
+   a hard stop whatever its tier.
+3. **An act touching someone else's ownership is the strongest signal.** For example, code carved
+   from a repo another person owns, then pushed publicly.
+4. **Audience was the costliest ungrounded hedge in every product**: "who may listen", "eventually
+   public", "public channels later", "single persona, intermediate". A grounding check should look
+   at the audience axis first.
+5. **Signal 2 (armed revisit triggers) caught something in all four products.** It is the cheapest
+   win: at plan approval, read the open revisit triggers against the plan.
