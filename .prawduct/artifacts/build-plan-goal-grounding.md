@@ -68,7 +68,7 @@ whether prose alone changes behaviour, and chunk 04 measures that directly.
 ## Status
 
 - [x] Chunk 01: The grounding check and the hedged answer
-- [ ] Chunk 02: Drift, by tier, read at plan approval
+- [x] Chunk 02: Drift, by tier, read at plan approval
 - [ ] Chunk 03: The control's yield — owner-raised goal questions
 - [ ] Chunk 04: Replay testament and Arrt against the new guidance
 Context: Plan written 2026-10-21 after the owner settled scope. Chunk 01 committed (e8acb2b3)
