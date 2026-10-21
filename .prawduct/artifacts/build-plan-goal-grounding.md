@@ -23,7 +23,7 @@ governed_by:
       - "prawduct guides and reviews; it never implements → conforms: the check asks the owner; it decides nothing about product code"
       - "goals and verification bind; prescribed method is advice → conforms, and is this plan's thesis: grounding is about the goals under the work, not a method"
       - "every fact has one home → conforms: the grounding check, the hedged provenance and the drift tiers live once, in discovery.md beside intentional inference and characteristic flips; building.md, planning.md, the digest, the brief template and review-protocol point there"
-partition: serial for 01-03 — 01 and 02 share one section of building.md and the vocabulary (grounded, hedged) that 03's counter and the review read; 04 delegated, one fresh read-only agent per replay case, because the cases are independent and each reads a different transcript
+partition: serial for 01-03 — 01 and 02 share discovery.md's provenance passage and the vocabulary (grounded, hedged) that 03's counter and the review read; 04 delegated, one fresh read-only agent per replay case, because the cases are independent and each reads a different transcript
 last_validated: 2026-10-21
 ---
 
@@ -67,11 +67,13 @@ whether prose alone changes behaviour, and chunk 04 measures that directly.
 
 ## Status
 
-- [ ] Chunk 01: The grounding check and the hedged answer
+- [x] Chunk 01: The grounding check and the hedged answer
 - [ ] Chunk 02: Drift, by tier, read at plan approval
 - [ ] Chunk 03: The control's yield — owner-raised goal questions
 - [ ] Chunk 04: Replay testament and Arrt against the new guidance
-Context: Plan written 2026-10-21 after the owner settled scope. Next: Chunk 01. After merge and a
+Context: Plan written 2026-10-21 after the owner settled scope. Chunk 01 committed (e8acb2b3)
+and reviewed; its acceptance criterion was reworded when the check moved to discovery.md (see
+Decisions made mid-build), awaiting the owner's one-line confirmation. Next: Chunk 02. After merge and a
 prawduct-live advance, the backfill runs as one session per governed product (testament,
 discodon, hallucinote, Arrt); it is outside this plan's acceptance.
 
@@ -104,7 +106,7 @@ is verified red first against a fixture transcript that contains a goal question
   - `methodology/building.md` "Before You Build": a one-line pointer, inside the existing four
     responses rather than a fifth.
   - `methodology/planning.md` Goals: the response line names any ungrounded goal the plan rests
-    on; `Hedged:` marked like `Inferred:`. Points to building.md, does not restate it.
+    on; `Hedged:` marked like `Inferred:`. Points to discovery.md, does not restate it.
   - `templates/product-brief.md`: one hedged-line example beside the inferred one.
   - `skills/critic/review-protocol.md` goals check: a goal still hedged rates like one still
     inferred.
@@ -130,7 +132,7 @@ is verified red first against a fixture transcript that contains a goal question
   - `methodology/discovery.md`: the tiers and rules, beside "A structural characteristic
     flipped"; `methodology/building.md` "Deciding Mid-Build" points there.
   - `methodology/planning.md`: at plan approval, read the brief's open revisit triggers and the
-    record's scope words against the plan. One sentence pointing to building.md.
+    record's scope words against the plan. One sentence pointing to discovery.md.
 - **Acceptance criteria:** the three rules and both signals are stated once; every pointer
   resolves; the suite passes.
 - **Done when:**
