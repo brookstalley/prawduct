@@ -96,7 +96,10 @@ exactly as discovery.md asks. It worked because:
 Without the third condition, the same mechanism failed in October. Drift detection cannot depend
 on recall mid-build.
 
-## Proposed design (for owner confirmation)
+## Proposed design
+
+A–D below incorporate the owner's answers ("Settled 2026-10-20") and the first drift check
+("Calibration"); those sections keep the reasoning.
 
 ### A. Grounding check at investment decisions
 
@@ -132,6 +135,13 @@ recorded default, unless one stands in for a goal ("a customer requires Azure").
 judgment, never word-matching: a lexical trigger fires on AWS-versus-Azure and teaches the owner
 to ignore it.
 
+**Audience first.** The audience axis (who may use, listen or contribute) was the costliest
+ungrounded hedge in all four products checked, so the check looks there first.
+
+**Who runs it, and how.** The building agent, as part of writing a plan's `## Goals` and its
+response line: it makes sure its remit is clear and objects when it is not. It is not a new named
+step, checklist or gate.
+
 ### B. A hedged answer stays open
 
 When the owner hedges about the product, the record keeps the hedge:
@@ -150,7 +160,14 @@ one resting on an inferred goal.
 |---|---|---|
 | Record | one weak signal, little resting on it | nothing in the turn; noted so later signals add up |
 | Heads-up | signals building on one product axis, or one moderate signal | one line: "This moves us toward multi-user. The brief still says one owner." |
-| Fork | an act contradicts the brief, signals add up past the bar, or a lot rests on the axis | "This is really changing: one owner → three people's repos. Worth redefining the goals before the next plan." |
+| Fork | drift nobody chose: an act contradicts the brief, signals add up past the bar, or a lot rests on the axis | "This is really changing: one owner → three people's repos. Worth redefining the goals before the next plan." |
+
+Three rules adjust the table:
+- **Record lag is a heads-up, not a fork.** When the owner made the change out loud and only the
+  record is behind, the line is "the record is behind you; update it?"
+- **Irreversibility raises the tier on its own**, and an act that publishes (a public repo, a
+  release, a client that cannot be recalled) is a hard stop whatever its tier.
+- **An act touching someone else's ownership** is the strongest signal.
 
 Signals, strongest first:
 
@@ -159,7 +176,8 @@ Signals, strongest first:
    against "single-user", "LAN-only", "private" or a `never` item. Every product sampled would
    have tripped this. It is concrete enough to check mechanically.
 2. **Armed revisit triggers matched against new plan and design text**, at plan approval. Arrt's
-   triggers literally described the October event.
+   triggers literally described the October event, and the first drift check found fired triggers
+   in all four products, which makes this the cheapest win.
 3. **Hedges about the product in conversation**, judged under A's filter.
 
 Drift is not a defect. The fork tier's output is a question ("do we update the goals?"), and
@@ -206,7 +224,7 @@ cheap to absorb once named. The two compose.
   owner-raised product-level questions and owner corrections per product, measured before and
   after the change.
 
-## Open questions for the owner
+## Open questions for the owner (answered 2026-10-20; see below)
 
 1. **Who runs the grounding check at a plan: the building agent, or an independent reviewer?**
    - For an independent reviewer: every case above is the building agent caught up in momentum,
