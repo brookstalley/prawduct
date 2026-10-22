@@ -26,7 +26,7 @@ import os
 from pathlib import Path
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .core import read_str_yaml_key
+from .core import log, read_str_yaml_key
 
 FEATURE = "governance"
 PROBE_TYPE = "oversized-evidence-store"
@@ -66,9 +66,11 @@ def evidence_store_threshold(prawduct_dir: Path) -> int:
 def probe_oversized_evidence_store(state: ProjectState, codebase: Codebase):
     """One advisory when the clone-shared evidence store is over the threshold.
 
-    Silent outside git, and when the store is absent or cannot be stat'ed: the
-    fact reported is a size, and a store nothing can measure is not one anyone
-    is being asked about. It never blocks.
+    Silent outside git and when the store is absent: there is no store to be
+    oversized. A store that exists but cannot be stat'ed is different — the probe
+    could not look, so it prints a NOTE and returns ``None``, which holds an open
+    advisory open rather than resolving it over a size nobody measured (#917).
+    It never blocks.
     """
     from . import evidence  # noqa: PLC0415 — lazy; keeps probe registration light
 
@@ -78,8 +80,14 @@ def probe_oversized_evidence_store(state: ProjectState, codebase: Codebase):
         return []
     try:
         size = os.stat(path).st_size
-    except OSError:
+    except FileNotFoundError:
         return []
+    except OSError as exc:
+        log(
+            f"NOTE: the evidence store could not be measured ({exc}) — this session did "
+            "not check whether it is over the size threshold."
+        )
+        return None  # could not look — not "nothing to report" (#917)
     threshold = evidence_store_threshold(root / ".prawduct")
     if size <= threshold:
         return []

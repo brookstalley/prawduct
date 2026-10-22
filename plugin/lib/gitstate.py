@@ -910,17 +910,6 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
 # module in the import DAG.
 
 
-def git_has_code_changes(project_dir: Path, status_output: str | None = None) -> bool:
-    """Check if non-metadata files were modified since session baseline.
-
-    Mirrors git_has_session_changes() baseline-diff logic but returns a bool.
-    Skips files that match the session baseline (pre-existing dirt) and
-    framework metadata (.prawduct/, .claude/settings.json, etc.).
-    ``status_output`` (STH-6Q9D): optional pre-captured porcelain snapshot.
-    """
-    return bool(git_has_session_changes(project_dir, status_output))
-
-
 def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
     """True if ``f`` is Prawduct framework infrastructure shipped into a product
     repo (``tools/product-hook`` or ``tools/lib/*``), not the product's own code.

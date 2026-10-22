@@ -166,7 +166,7 @@ def probe_change_log_union_merge(state: ProjectState, codebase: Codebase):
     ]
 
 
-def _retire_union_candidates(codebase: Codebase) -> list:
+def _retire_union_candidates(codebase: Codebase) -> list | None:
     """Advise removing ``merge=union`` from a log no branch prepends to any more.
 
     In a fragments repo the live log holds shipped history that only the size
@@ -184,6 +184,7 @@ def _retire_union_candidates(codebase: Codebase) -> list:
             "which merge driver applies to it — this session did not check whether "
             "a leftover merge=union could bring archived entries back."
         )
+        return None  # could not look — not "nothing to report" (#917, R-2)
     if attr != "union":
         return []
     from . import change_log  # noqa: PLC0415 — lazy; only a fragments repo with union set gets here
@@ -191,8 +192,12 @@ def _retire_union_candidates(codebase: Codebase) -> list:
 
     try:
         text = (codebase.root / CHANGE_LOG_REL_PATH).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return []
+    except (OSError, UnicodeDecodeError) as exc:
+        log(
+            f"NOTE: {CHANGE_LOG_REL_PATH} could not be read ({exc}) — this session did "
+            "not check whether its leftover merge=union is safe to remove."
+        )
+        return None  # could not look (R-2)
     if release_readiness.release_pending_scopes(change_log.parse_change_log(text)):
         return []
     return [
@@ -224,5 +229,9 @@ def _retire_union_candidates(codebase: Codebase) -> list:
 def register() -> None:
     """Register the change-log merge-attribute probe. Idempotent (register_probe overwrites)."""
     register_probe(
-        FEATURE, "change-log-union-merge", PROBE_VERSION, probe_change_log_union_merge
+        FEATURE,
+        "change-log-union-merge",
+        PROBE_VERSION,
+        probe_change_log_union_merge,
+        emits=("change-log-union-merge-retire",),
     )

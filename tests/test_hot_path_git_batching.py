@@ -190,7 +190,6 @@ class TestStatusCaptureOnce:
         porcelain = " M src/app.py\n"
         assert gitstate.git_has_session_changes(project, porcelain) != ""
         assert gates.session_changes_all_non_judgeable(project, porcelain) is False
-        assert gitstate.git_has_code_changes(project, porcelain) is True
         assert gitstate._get_session_changed_files(project, porcelain) == ["src/app.py"]
 
     def test_no_baseline_fallback_also_honors_passed_output(self, tmp_path, monkeypatch):

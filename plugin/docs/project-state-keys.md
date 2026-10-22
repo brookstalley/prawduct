@@ -288,6 +288,16 @@ reading.
 Set to `null` to disable it entirely; raise it if this repo genuinely reviews more. A budget that
 gets `--force`d past every time is a budget set wrong.
 
+## oversized_file_threshold_kb, evidence_store_threshold_mb (opt-in overrides)
+
+Size thresholds for two advisories, as positive integers. `oversized_file_threshold_kb` (default
+40, where KB is 1000 bytes) is the size above which a governance file earns the oversized-file
+nudge. `evidence_store_threshold_mb` (default 50) is the size above which the clone-shared
+evidence store earns the oversized-evidence-store advisory; at 50 MB one read of the store takes
+about half a second. Both fail soft: an absent key, or a value that is not a positive integer,
+uses the default, so a typo cannot silence a nudge or make it fire everywhere. Raise one when the
+advisory names it and the size is expected for this repo.
+
 ## api_versioning_decided (advisory resolution fact)
 
 The committed "answer store" fact the `api-versioning` sync probe consults. When the product

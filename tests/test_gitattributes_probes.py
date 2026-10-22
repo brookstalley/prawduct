@@ -30,7 +30,9 @@ from lib.advisory_store import (
     ProjectState,
     clear_registry,
     make_codebase,
+    read_store,
     run_all_probes,
+    run_sync_advisories,
 )
 from lib.change_log import CHANGE_LOG_REL_PATH
 
@@ -339,12 +341,35 @@ class TestRetireUnion:
         _git(repo, "commit", "-q", "-m", "no log")
         assert _probe(repo) == []
 
-    def test_says_why_when_the_attribute_cannot_be_read(self, tmp_path, monkeypatch, capsys):
+    def test_says_why_and_could_not_look_when_the_attribute_cannot_be_read(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # R-2: `None`, not `[]` — git could not be asked, which is not "no advice".
         repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
         monkeypatch.setattr(gitstate, "git_merge_attribute", lambda *_a, **_k: None)
-        assert _probe(repo) == []
+        assert _probe(repo) is None
         err = capsys.readouterr().err
         assert "NOTE:" in err and "did not check" in err
+
+    def test_says_why_and_could_not_look_when_the_log_cannot_be_read(self, tmp_path, capsys):
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        (repo / CHANGE_LOG_REL_PATH).write_bytes(b"# Change Log\n\n\xff\xfe\n")
+        assert _probe(repo) is None
+        err = capsys.readouterr().err
+        assert "NOTE:" in err and "could not be read" in err
+
+    def test_an_open_retire_advisory_is_held_when_git_cannot_be_asked(self, tmp_path, monkeypatch):
+        """R-2 end to end: the retire type is not the registry key, so only the
+        registration's ``emits`` keeps its open advisory from resolving."""
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        gap.register()
+        run_sync_advisories(repo, now="2026-09-01T00:00:00Z", sync_version="v1")
+        before = read_store(repo)["advisories"]
+        assert [(a["type"], a["state"]) for a in before] == [("change-log-union-merge-retire", "active")]
+        monkeypatch.setattr(gitstate, "git_merge_attribute", lambda *_a, **_k: None)
+        result = run_sync_advisories(repo, now="2026-09-02T00:00:00Z", sync_version="v1")
+        assert result["newly_resolved"] == []
+        assert read_store(repo)["advisories"] == before
 
 
 # ---------------------------------------------------------------------------

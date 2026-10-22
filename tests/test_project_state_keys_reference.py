@@ -76,3 +76,20 @@ def test_the_skill_states_the_root_of_bare_guide_paths():
     assert "${CLAUDE_SKILL_DIR}/../.." in line
     for prefix in ("methodology/", "templates/", "docs/"):
         assert prefix in line
+
+
+def test_every_key_an_advisory_tells_owners_to_set_is_documented():
+    """A key an advisory's text tells the owner to set in project-state.yaml is a
+    consumer surface: undocumented, it is internal by the api-contract's rule, so
+    a rename owes it no deprecation and the owner's override is silently dropped
+    (Critic R-12 on the backlog-burndown branch)."""
+    named = set()
+    for path in sorted((ROOT / "lib").rglob("*.py")):
+        named |= set(re.findall(
+            r"`([a-z]+(?:_[a-z]+)+)`\s+in\s+`?project-state\.yaml",
+            path.read_text(encoding="utf-8"),
+        ))
+    # Non-empty: a regex that matched nothing would make the check vacuous.
+    assert {"oversized_file_threshold_kb", "evidence_store_threshold_mb"} <= named, named
+    missing = sorted(named - set(_documented_keys()))
+    assert not missing, f"advisories tell owners to set undocumented keys: {missing}"

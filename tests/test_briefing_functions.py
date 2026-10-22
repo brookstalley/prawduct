@@ -832,22 +832,16 @@ class TestGenerateSessionHandoff:
 # _check_previous_session_gates  (governance warnings — delegates to siblings)
 # --------------------------------------------------------------------------- #
 class TestCheckPreviousSessionGates:
-    def _patch(self, monkeypatch, *, changes=True, doc_only=False, code=True,
-               waivers=None, build_plan=True, judgeable=None):
-        # Stubs accept the optional status_output param (STH-6Q9D) the real
-        # signatures gained — the gate now captures porcelain once and threads it.
-        monkeypatch.setattr(briefing.gitstate, "git_has_session_changes", lambda d, s=None: changes)
-        # The reflection half reads the session's WORK span (the same helper
-        # cmd_stop's Gate 1 reads); by default it agrees with the porcelain
-        # stubs, and a test that wants the two to disagree says so.
-        if judgeable is None:
-            judgeable = bool(changes) and not doc_only
+    def _patch(self, monkeypatch, *, judgeable=True, changed=None,
+               waivers=None, build_plan=True):
+        # Both halves read the session's WORK span (the helper cmd_stop's gates
+        # read), so the span is the one input: `judgeable` and the changed paths.
+        if changed is None:
+            changed = ["x.py"] if judgeable else []
         monkeypatch.setattr(
             briefing.gates, "session_work_span",
-            lambda d, s=None: {"changed": ["x.py"] if judgeable else [], "judgeable": judgeable, "source": "base-tree"},
+            lambda d, s=None: {"changed": changed, "judgeable": judgeable, "source": "base-tree"},
         )
-        monkeypatch.setattr(briefing.gates, "session_changes_all_non_judgeable", lambda d, s=None: doc_only)
-        monkeypatch.setattr(briefing.gitstate, "git_has_code_changes", lambda d, s=None: code)
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: waivers or {})
         # Accepts the plan-path argument the briefing now passes (it resolves the
         # BRANCH's plan, the same one the Stop gate reads, so the advisory cannot
@@ -863,7 +857,7 @@ class TestCheckPreviousSessionGates:
         )
 
     def test_no_changes_short_circuits(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, changes=False)
+        self._patch(monkeypatch, judgeable=False)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
     def test_missing_reflection_warns(self, tmp_path, monkeypatch):
@@ -873,7 +867,7 @@ class TestCheckPreviousSessionGates:
 
     def test_doc_only_skips_reflection(self, tmp_path, monkeypatch):
         _prawduct(tmp_path)
-        self._patch(monkeypatch, doc_only=True, build_plan=False)
+        self._patch(monkeypatch, judgeable=False, changed=["README.md"], build_plan=False)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
     def test_reflection_waiver_skips(self, tmp_path, monkeypatch):
@@ -900,19 +894,19 @@ class TestCheckPreviousSessionGates:
         """A session that committed its code has clean porcelain and a non-empty
         work span; the Stop gate blocks on the span, so the advisory must too."""
         _prawduct(tmp_path)
-        self._patch(monkeypatch, changes=False, judgeable=True, build_plan=False)
+        self._patch(monkeypatch, judgeable=True, build_plan=False)
         assert "reflection not captured" in briefing._check_previous_session_gates(tmp_path)
 
     def test_build_plan_with_code_and_no_findings_warns_critic(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
         (pr / ".session-reflected").write_text(SHAPED_REFLECTION)  # silence reflection gate
-        self._patch(monkeypatch, build_plan=True, code=True)
+        self._patch(monkeypatch, build_plan=True)
         assert "Critic review not recorded" in briefing._check_previous_session_gates(tmp_path)
 
     def test_critic_waiver_skips_critic_gate(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
         (pr / ".session-reflected").write_text(SHAPED_REFLECTION)
-        self._patch(monkeypatch, build_plan=True, code=True, waivers={"critic": "n/a"})
+        self._patch(monkeypatch, build_plan=True, waivers={"critic": "n/a"})
         assert briefing._check_previous_session_gates(tmp_path) == []
 
 

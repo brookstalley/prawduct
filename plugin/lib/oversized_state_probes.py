@@ -326,10 +326,18 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
 #: types: ``run_all_probes`` runs each registered record once, so registering the
 #: same function per measured file would run it N times and emit N copies of every
 #: candidate. Each candidate still carries its own ``type``, which is what keeps
-#: the three advisories separately dismissable.
+#: the three advisories separately dismissable — and is why the registration
+#: declares them in ``emits``: a run where the probe could not look holds all
+#: three open, not just the registry key no candidate carries (R-2).
 PROBE_TYPE = "oversized-governance-file"
 
 
 def register() -> None:
     """Register the oversized-governance-file probe. Idempotent."""
-    register_probe(FEATURE, PROBE_TYPE, PROBE_VERSION, probe_oversized_governance_file)
+    register_probe(
+        FEATURE,
+        PROBE_TYPE,
+        PROBE_VERSION,
+        probe_oversized_governance_file,
+        emits=tuple(measured.type for measured in _MEASURED),
+    )

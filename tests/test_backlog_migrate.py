@@ -39,7 +39,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 
 import pytest  # noqa: E402
 
-from lib.backlog import cli, core, encode, ids, issuefmt, legacy, migrate  # noqa: E402
+from lib.backlog import cli, core, encode, ids, issuefmt, legacy, migrate, restructure  # noqa: E402
 from lib.backlog.transport import TransportError  # noqa: E402
 from fakes.fake_github import FakeGitHub  # noqa: E402
 from fixtures.backlog_fixtures import DISCODON_MINI, multi_prefix_backlog  # noqa: E402
@@ -1099,56 +1099,130 @@ class TestAliasSelfHeal:
         assert unfiltered == []
 
 
+# A discodon-shaped bullet: provenance, title, inline `[areas:]` marker and body
+# prose on one line. Before the 2026-08-06 boundary rule the whole line was the
+# title; that run-on string is what #613 repairs.
+_RUN_ON_BACKLOG = """# Backlog
+
+## Open
+
+- **[DIS-0010]** (orig #980, pr-reviewer 2026-05-10) Move token generation into the build script [areas: ci, deploy] The ranch deploy ran it by hand.
+  `effort: S · impact: M · area: ci · source: builder · added: 2026-05-02 · status: open · stage: ready`
+
+  More body.
+"""
+
+
 class TestRetitleOnSkip:
     """#613: a re-run repairs the TITLE of an issue it matches by `id:PFX`, open or
-    closed, without touching body, labels or state — and never a PFX-less item,
-    whose `import-key` digest is title-dependent."""
+    closed, when that title is still one an earlier parse wrote — without touching
+    body, labels or state. Any other title is an edit (a restructure title, a
+    GitHub-side retitle) and is left alone (R-3); a PFX-less item, whose
+    `import-key` digest is title-dependent, is never retitled."""
 
     @staticmethod
-    def _pollute(fake, pfx, title="polluted: run-on title that swallowed the body"):
-        issue = _alias_issues(fake, pfx)[0]
-        fake.update_issue(OWNER, REPO, issue["number"], fields={"title": title})
-        return issue["number"], title
+    def _record():
+        return migrate.collect_records(_RUN_ON_BACKLOG)[0][0]
 
-    def test_rerun_retitles_and_leaves_body_labels_state_alone(self, fake):
-        _import(fake, DISCODON_MINI)
-        open_num, _ = self._pollute(fake, "DIS-0002")
-        before = {i["number"]: dict(i) for i in fake.list_issues(OWNER, REPO, state="all")}
-        want = {r.pfx: r.title for r in migrate.collect_records(DISCODON_MINI)[0]}
+    @staticmethod
+    def _set_title(fake, pfx, title):
+        number = _alias_issues(fake, pfx)[0]["number"]
+        fake.update_issue(OWNER, REPO, number, fields={"title": title})
+        return number
 
-        result = _import(fake, DISCODON_MINI)
+    def test_the_run_on_line_is_a_superseded_title(self):
+        record = self._record()
+        assert record.title == "ci: Move token generation into the build script"
+        assert record.superseded_titles == (
+            "(orig #980, pr-reviewer 2026-05-10) Move token generation into the build "
+            "script [areas: ci, deploy] The ranch deploy ran it by hand.",
+            "ci: (orig #980, pr-reviewer 2026-05-10) Move token generation into the "
+            "build script [areas: ci, deploy] The ranch deploy ran it by hand.",
+        )
+
+    @pytest.mark.parametrize("which", [0, 1], ids=["bare", "area-normalized"])
+    def test_rerun_retitles_and_leaves_body_labels_state_alone(self, fake, which):
+        _import(fake, _RUN_ON_BACKLOG)
+        record = self._record()
+        number = self._set_title(fake, "DIS-0010", record.superseded_titles[which])
+        before = dict(fake.get_issue(OWNER, REPO, number))
+
+        result = _import(fake, _RUN_ON_BACKLOG)
 
         assert result["status"] == "ok", result
-        assert fake.get_issue(OWNER, REPO, open_num)["title"] == want["DIS-0002"]
-        for n, old in before.items():
-            now = fake.get_issue(OWNER, REPO, n)
-            assert now["body"] == old["body"]
-            assert now["labels"] == old["labels"]
-            assert now["state"] == old["state"]
+        now = fake.get_issue(OWNER, REPO, number)
+        assert now["title"] == record.title
+        assert now["body"] == before["body"]
+        assert now["labels"] == before["labels"]
+        assert now["state"] == before["state"]
 
     def test_closed_matched_issue_is_retitled(self, fake):
-        _import(fake, DISCODON_MINI)
-        number, _ = self._pollute(fake, "DIS-0003")
+        _import(fake, _RUN_ON_BACKLOG)
+        record = self._record()
+        number = self._set_title(fake, "DIS-0010", record.superseded_titles[0])
         fake.update_issue(OWNER, REPO, number, fields={"state": "closed", "state_reason": "completed"})
-        want = {r.pfx: r.title for r in migrate.collect_records(DISCODON_MINI)[0]}
 
         # Reconcile may reopen it (markdown says open); the title is what is asserted.
-        result = _import(fake, DISCODON_MINI)
+        result = _import(fake, _RUN_ON_BACKLOG)
 
         assert result["status"] == "ok", result
-        assert fake.get_issue(OWNER, REPO, number)["title"] == want["DIS-0003"]
+        assert fake.get_issue(OWNER, REPO, number)["title"] == record.title
+
+    def test_title_edited_on_github_is_left_alone(self, fake):
+        """A retitle made on GitHub since cutover survives a re-run (the
+        `--archive-scope all` backfill shape) — it is not a superseded parse."""
+        _import(fake, _RUN_ON_BACKLOG)
+        number = self._set_title(fake, "DIS-0010", "ci: owner wording from GitHub")
+
+        result = _import(fake, _RUN_ON_BACKLOG)
+
+        assert result["status"] == "ok", result
+        assert fake.get_issue(OWNER, REPO, number)["title"] == "ci: owner wording from GitHub"
+
+    def test_restructured_title_survives_a_rerun_without_the_plan(self, fake):
+        """The owner-approved restructure title is applied at create; a later
+        re-run that omits `--restructure` must not revert it to the raw parse."""
+        plan, err = restructure.parse_plan(json.dumps(
+            {"v": 1, "items": {"DIS-0010": {"title": "Generate tokens in the build"}}}
+        ))
+        assert err is None, err
+        assert _import(fake, _RUN_ON_BACKLOG, plan=plan)["status"] == "ok"
+        number = _alias_issues(fake, "DIS-0010")[0]["number"]
+        assert fake.get_issue(OWNER, REPO, number)["title"] == "ci: Generate tokens in the build"
+
+        result = _import(fake, _RUN_ON_BACKLOG)
+
+        assert result["status"] == "ok", result
+        assert fake.get_issue(OWNER, REPO, number)["title"] == "ci: Generate tokens in the build"
+
+    def test_a_plan_rerun_repairs_a_run_on_title_to_the_plan_title(self, fake):
+        """`restructure.apply` rebuilds each record; the superseded titles must
+        survive that rebuild or a plan-carrying repair run repairs nothing."""
+        _import(fake, _RUN_ON_BACKLOG)
+        number = self._set_title(fake, "DIS-0010", self._record().superseded_titles[0])
+        plan, err = restructure.parse_plan(json.dumps(
+            {"v": 1, "items": {"DIS-0010": {"title": "Generate tokens in the build"}}}
+        ))
+        assert err is None, err
+
+        result = _import(fake, _RUN_ON_BACKLOG, plan=plan)
+
+        assert result["status"] == "ok", result
+        assert fake.get_issue(OWNER, REPO, number)["title"] == "ci: Generate tokens in the build"
 
     def test_clean_rerun_issues_no_title_patch(self, fake):
-        _import(fake, DISCODON_MINI)
+        _import(fake, _RUN_ON_BACKLOG)
         fake.calls.clear()
-        assert _import(fake, DISCODON_MINI)["status"] == "ok"
+        assert _import(fake, _RUN_ON_BACKLOG)["status"] == "ok"
         assert [c for c in fake.calls if c[0] == "update_issue"
                 and "title" in (c[-1] if isinstance(c[-1], dict) else {})] == []
 
     def test_pfxless_item_is_not_retitled(self, fake):
+        # The live title is offered as superseded, so only the PFX guard keeps it.
         record = migrate.ImportRecord(
             pfx=None, title="backlog: an id-less item that keeps its title",
             body="b", status="open", labels=[], block={"v": "1"},
+            superseded_titles=("hand edited title",),
         )
         fake.seed_labels(OWNER, REPO, [record.key_label()])
         migrate.import_items(fake, owner=OWNER, repo=REPO, records=[record])

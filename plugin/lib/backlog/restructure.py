@@ -205,6 +205,7 @@ def _apply_one(record, entry: dict) -> tuple[object, dict, list[str]]:
         status=record.status,
         labels=labels,
         block=block,
+        superseded_titles=record.superseded_titles,
     )
     findings = issuefmt.lint(title, body, labels)
     report = {

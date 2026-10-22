@@ -568,6 +568,70 @@ class TestRunSyncAdvisories:
         states = {a["type"]: a["state"] for a in after["advisories"]}
         assert states == {"synthetic-condition": "active", "other-condition": "resolved"}
 
+    @staticmethod
+    def _two_type_sync(tmp_path: Path, second_answer, *, emits=("type-b",)):
+        """Sync a probe registered as ``type-a`` that emits ``type-a`` and
+        ``type-b``, then re-sync with ``second_answer`` in its place; return each
+        stored advisory's ``(type, state)`` (a resolved entry is compacted to no type)."""
+        (tmp_path / ".prawduct").mkdir(exist_ok=True)
+
+        def _both(state, codebase):
+            return [_candidate(ctype="type-a"), _candidate(ctype="type-b")]
+
+        register_probe("synthetic", "type-a", 1, _both, emits=emits)
+        run_sync_advisories(tmp_path, now="2026-05-29T00:00:00Z", sync_version="v1.6.0")
+        register_probe("synthetic", "type-a", 1, second_answer, emits=emits)
+        run_sync_advisories(tmp_path, now="2026-06-01T00:00:00Z", sync_version="v1.6.0")
+        return [(a.get("type"), a["state"]) for a in read_store(tmp_path)["advisories"]]
+
+    @pytest.mark.parametrize("failure", ["returns-none", "raises"])
+    def test_cannot_look_holds_every_type_the_probe_emits(self, tmp_path: Path, failure):
+        """R-2: the hold covers every type the registration declares, not only
+        the registry key — a multi-type probe that raises resolved its other
+        types' open advisories before."""
+
+        def _cannot_look(state, codebase):
+            if failure == "raises":
+                raise RuntimeError("timed out")
+            return None
+
+        assert self._two_type_sync(tmp_path, _cannot_look) == [("type-a", "active"), ("type-b", "active")]
+
+    def test_multi_type_probe_that_answers_still_resolves(self, tmp_path: Path):
+        """Control: a declared multi-type probe that looked and found nothing
+        resolves all of its types."""
+        assert [s for _, s in self._two_type_sync(tmp_path, lambda s, c: [])] == ["resolved", "resolved"]
+
+    def test_could_not_look_reports_its_candidates_and_holds_the_rest(self, tmp_path: Path):
+        """R-2: a probe whose only candidate says it could not look (the norm
+        probes' cache-unreadable nag) reports that candidate AND holds its other
+        open advisories, rather than reading as "looked, this is all"."""
+        (tmp_path / ".prawduct").mkdir()
+        register_probe("synthetic", "type-a", 1, lambda s, c: [_candidate(ctype="type-a")], emits=("outage",))
+        run_sync_advisories(tmp_path, now="2026-05-29T00:00:00Z", sync_version="v1.6.0")
+        register_probe(
+            "synthetic",
+            "type-a",
+            1,
+            lambda s, c: _adv.CouldNotLook([_candidate(ctype="outage")]),
+            emits=("outage",),
+        )
+        result = run_sync_advisories(tmp_path, now="2026-06-01T00:00:00Z", sync_version="v1.6.0")
+        assert result["newly_resolved"] == []
+        states = {a["type"]: a["state"] for a in read_store(tmp_path)["advisories"]}
+        assert states == {"type-a": "active", "outage": "active"}
+
+    def test_an_undeclared_emitted_type_is_named(self, capsys):
+        """The declaration is what the hold reads, so a probe emitting a type it
+        did not declare gets a NOTE naming it; the candidate is still reported."""
+        register_probe("synthetic", "type-a", 1, lambda s, c: [_candidate(ctype="type-b")])
+        candidates, _ = _adv.run_probes(ProjectState({}), make_codebase(Path(".")))
+        assert [c.type for c in candidates] == ["type-b"]
+        assert "emitted type 'type-b'" in capsys.readouterr().err
+        register_probe("synthetic", "type-a", 1, lambda s, c: [_candidate(ctype="type-b")], emits=("type-b",))
+        _adv.run_probes(ProjectState({}), make_codebase(Path(".")))
+        assert "emitted type" not in capsys.readouterr().err
+
     def test_sync_compacts_resolved_entry(self, tmp_path: Path):
         """The sync-persist retention pass shrinks an auto-resolved advisory to
         compact form on disk (Chunk 04 / spec §3.4)."""

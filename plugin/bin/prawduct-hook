@@ -3358,9 +3358,18 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # while reviewers are still in flight (defer_active) — the deferral is what
     # separates an in-flight review from an abandoned one, so the self-heal only
     # runs once the background reviewers have landed.
+    # ONE "does the Critic gate apply?" predicate, read off the session work
+    # span, shared by the backstop (2a) and the composition gate (2) below. The
+    # backstop exists to heal what the composition gate would otherwise block
+    # with "no review evidence", so it must fire wherever that gate fires — a
+    # session that committed its work included.
+    critic_applies = (
+        critic_has_work and has_build_plan and not critic_doc_only
+        and not designer_handoff_skip
+    )
     abandoned_critic = False
     marker_present = False
-    if has_changes and has_build_plan and not doc_only and not designer_handoff_skip:
+    if critic_applies:
         try:
             marker_present = _critic_marker().marker_present(prawduct_dir)
         except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
@@ -3538,12 +3547,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Skip the coverage gate when the abandoned-marker blocker already fired:
     # both describe one underlying cause (the review never landed), and the
     # abandoned message is the accurate, actionable one — don't double-block.
-    # The guard reads the session's work span (`critic_has_work` /
-    # `critic_doc_only`, from `gates.session_work_span`), so committed work fires it.
-    if (
-        critic_has_work and has_build_plan and not critic_doc_only
-        and not designer_handoff_skip and not abandoned_critic
-    ):
+    # The guard is `critic_applies` (the session work span, committed work
+    # included), the same predicate Gate 2a fired on.
+    if critic_applies and not abandoned_critic:
         critic_would_block = True
         try:
             critic_verdict = _gates().session_review_verdict(
@@ -3685,7 +3691,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Design, Learnings Cross-Check, Backlog Reconciliation) hasn't run.
     # Advisory NOT blocking — chunk-mode reviews are valid mid-cycle, and the
     # builder may legitimately defer the final review (e.g., next session).
-    if has_changes and not doc_only and not critic_would_block:
+    # Reads the session work span, like the rest of the Critic gate family.
+    if critic_has_work and not critic_doc_only and not critic_would_block:
         mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(project_dir)
         if not mode_satisfied:
             print("", file=sys.stderr)

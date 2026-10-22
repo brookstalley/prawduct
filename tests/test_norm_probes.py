@@ -33,12 +33,14 @@ import pytest
 
 from lib.advisory_store import (
     Codebase,
+    CouldNotLook,
     ProjectState,
     clear_registry,
     compute_id,
     load_project_state,
     make_codebase,
     run_all_probes,
+    run_probes,
 )
 from lib import core, norm_probes as np
 from lib.backlog import core as backlog_core, encode, sync as backlog_sync
@@ -724,6 +726,8 @@ class TestStopgapClearsAndExpires:
         assert types == ["backlog-cache-unreadable", "stalled-transition"], types
         stall = next(c for c in out if c.type == "stalled-transition")
         assert "stopgap expired" in stall.trigger_summary
+        # R-2: the stall arm could not look, and the finding does not hide that.
+        assert isinstance(out, CouldNotLook)
 
     def test_advisory_id_is_stable_across_both_arms(self, tmp_path):
         # Arm-independent evidence, the `norm-registry-unratified` shape: the id
@@ -1645,6 +1649,8 @@ class TestPostCutoverResolvesThroughTheCache:
         assert len(out) == 1
         assert out[0].type == "backlog-cache-unreadable"
         assert "sync" in out[0].recommended_action
+        # R-2: and marked could-not-look, so the probe's own open advisories hold.
+        assert isinstance(out, CouldNotLook)
 
     @pytest.mark.parametrize(
         "why_lines",
@@ -1672,6 +1678,29 @@ class TestPostCutoverResolvesThroughTheCache:
         out = np.probe_dead_why(self._state(), _cb(tmp_path))
 
         assert [c.type for c in out] == ["backlog-cache-unreadable"]
+        assert isinstance(out, CouldNotLook)
+
+    def test_an_outage_holds_both_probes_open_advisories(self, tmp_path):
+        """R-2: the cache nag says the checks could not look, so a sync must hold
+        dead-why's and stalled-transition's open advisories rather than resolve
+        them. The hold is what ``run_probes`` reports as unanswered; a probe that
+        did not read the cache (revisit-due) is the control."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n  Why: settled by {self.SCOPE}#7.\n"
+                f"  Status: in-transition — tracked in {self.SCOPE}#7\n"
+            ),
+        )
+        np.register()
+
+        candidates, unanswered = run_probes(self._state(), make_codebase(tmp_path))
+
+        assert {(np.FEATURE, "dead-why"), (np.FEATURE, "stalled-transition")} <= unanswered
+        assert (np.FEATURE, "revisit-due") not in unanswered
+        assert "backlog-cache-unreadable" in {c.type for c in candidates}
 
     def test_both_probes_report_one_outage_not_two(self, tmp_path):
         """One cause, one nag. `compute_id` hashes (feature, type, version,

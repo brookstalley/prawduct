@@ -134,3 +134,36 @@ class TestTheDeclarationCoversWhatTheSuiteReads:
             "recorded cost decision — flip it there, with its reason, rather "
             "than here"
         )
+
+
+class TestTheTemplateHintReadsAsWritten:
+    """The template's commented hint is the declaration a new product copies, so
+    uncommenting it must give exactly the prefix it shows. A flow-style hint
+    (`[documentation/]`) is the one shape the reader refuses, and a refused
+    declaration couples every path (#780): each doc edit would then stale the
+    product's evidence with nothing saying why.
+    """
+
+    def _uncommented_hint(self) -> str:
+        lines = (REPO / "plugin" / "templates" / "project-state.yaml").read_text(
+            encoding="utf-8"
+        ).splitlines()
+        start = lines.index("# suite_coupled_prefixes:")
+        block = [lines[start][2:]]
+        for line in lines[start + 1:]:
+            if not line.startswith("#   - "):
+                break
+            block.append(line[2:])
+        return "\n".join(block) + "\n"
+
+    def test_uncommenting_the_hint_declares_only_its_prefix(self, tmp_path: Path):
+        hint = self._uncommented_hint()
+        (tmp_path / "project-state.yaml").write_text(hint, encoding="utf-8")
+        assert core.suite_coupled_prefixes(tmp_path) == ("documentation/",), hint
+
+    def test_a_flow_style_hint_would_couple_everything(self, tmp_path: Path):
+        """Control: the shape this test exists to keep out reads as couple-all."""
+        (tmp_path / "project-state.yaml").write_text(
+            "suite_coupled_prefixes: [documentation/]\n", encoding="utf-8"
+        )
+        assert core.suite_coupled_prefixes(tmp_path) == ("",)

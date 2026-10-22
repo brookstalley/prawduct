@@ -1365,7 +1365,7 @@ def _related(transport: Transport, nid, target_canonical: str, *, add: bool) -> 
 # skip-authority, but a human can delete a per-issue label. The block
 # ``id_aliases`` field is the durable record of the same alias, so it is the
 # recovery source: this scan pairs every block-recorded PFX with the issue that
-# carries it, letting the importer skip-not-duplicate (``migrate._find_by_key``)
+# carries it, letting the importer skip-not-duplicate (``migrate._find_issues_by_key``)
 # and ``reconcile-labels`` restore a deleted label — both keyed off one scan.
 
 

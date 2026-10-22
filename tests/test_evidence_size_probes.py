@@ -2,8 +2,8 @@
 
 The clone-shared ``evidence.jsonl`` is append-only and parsed whole on every gate
 call. The probe reads one ``stat`` against a byte threshold, keeps a size-free
-evidence so a dismissal survives appends, and stays silent wherever it cannot
-measure. ``evidence status`` gains the per-kind byte split that says where the
+evidence so a dismissal survives appends, stays silent where there is no store,
+and answers "could not look" (``None``) where a store will not stat. ``evidence status`` gains the per-kind byte split that says where the
 growth is.
 """
 
@@ -92,7 +92,11 @@ class TestSilentWhereItCannotMeasure:
         plain.mkdir()
         assert _probe(plain) == []
 
-    def test_unstatable_store(self, tmp_path, monkeypatch):
+    def test_an_unstatable_store_could_not_look(self, tmp_path, monkeypatch, capsys):
+        """R-13: a store that exists but will not stat is not an absent store.
+        ``[]`` would resolve an open advisory over a size nobody measured; the
+        #917 contract is ``None`` and a NOTE (the missing-store test above is
+        the control that still answers ``[]``)."""
         repo = _repo(tmp_path, "1")
         _store(repo, 2_000_000)
         real_stat = os.stat
@@ -103,7 +107,9 @@ class TestSilentWhereItCannotMeasure:
             return real_stat(path, *args, **kwargs)
 
         monkeypatch.setattr(esp.os, "stat", _stat)
-        assert _probe(repo) == []
+        assert _probe(repo) is None
+        err = capsys.readouterr().err
+        assert "NOTE:" in err and "could not be measured" in err
 
     def test_never_parses_the_store(self, tmp_path, monkeypatch):
         repo = _repo(tmp_path, "1")

@@ -241,7 +241,7 @@ class TestPrInterleaving:
         assert resolved.number == number
 
     def test_import_skip_authority_ignores_a_labeled_pr(self, fake):
-        # _find_by_key with a PR carrying the key label: the import must not
+        # _find_issues_by_key with a PR carrying the key label: the import must not
         # "skip" the record (believing it exists) — it creates the real issue.
         fake.seed_pull_requests(OWNER, REPO, 1, labels=["id:DIS-0001"])
         source = (

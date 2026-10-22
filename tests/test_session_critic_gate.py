@@ -963,3 +963,52 @@ class TestSupersededAdviceReachesTheStopHook:
         )
         for line in self._shared_lines(superseded=superseded):
             assert f"  {line}\n" in err, line
+
+
+class TestModeAdvisoryReadsTheWorkSpan:
+    """Gate 2.5 (the end-of-cycle mode advisory) is one of the Critic gate
+    family and reads the session work span Gates 2a and 2 read (R-5): a
+    session that committed its work still gets the advisory once its review
+    composes, where the porcelain-keyed guard went silent."""
+
+    _SENTINEL = "MODE-ADVISORY-SENTINEL"
+
+    def _committed_session(self, tmp_path: Path, rel: str) -> Path:
+        repo = _session_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [x] Chunk 01: a\n- [x] Chunk 02: b\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _commit(repo, rel, "x = 2\n", "c2")
+        assert _git(repo, "status", "--porcelain", "--", rel) == ""
+        return repo
+
+    def _run_stop(self, repo: Path, monkeypatch, capsys) -> str:
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda project_dir, **_kw: {"status": "covered"},
+        )
+        monkeypatch.setattr(
+            gates, "_critic_session_satisfies_gate",
+            lambda project_dir: (False, self._SENTINEL),
+        )
+        _hook.cmd_stop(repo, {})
+        return capsys.readouterr().err
+
+    def test_committed_code_session_gets_the_advisory(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._run_stop(
+            self._committed_session(tmp_path, "code.py"), monkeypatch, capsys
+        )
+        assert f"NOTE: {self._SENTINEL}" in err
+
+    def test_committed_doc_only_session_does_not(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._run_stop(
+            self._committed_session(tmp_path, "notes.md"), monkeypatch, capsys
+        )
+        assert self._SENTINEL not in err

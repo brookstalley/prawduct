@@ -261,12 +261,28 @@ class Codebase:
                 yield path
 
 
+class CouldNotLook(tuple):
+    """A probe's candidates, marked as the answer of a probe that could not look.
+
+    ``None`` already means "could not look"; this is the same answer for a probe
+    that reports a candidate ABOUT not being able to look (the norm probes'
+    shared ``backlog-cache-unreadable`` nag). Returned as a plain list, that
+    candidate would read as "looked, and this is all there is", and the probe's
+    other open advisories would resolve over a check that never ran (R-2). It is
+    a tuple of the candidates, so a caller that only reads them reads them as
+    before; :func:`run_probes` reads the mark from the type.
+    """
+
+    __slots__ = ()
+
+
 #: A probe returns its candidates — ``[]`` meaning "looked, nothing to report" —
-#: or ``None`` meaning "could not look" (git failed, a file would not read). The
-#: two must stay distinct: :func:`reconcile` resolves an active advisory whose
-#: probe reported nothing, and a probe that could not answer has reported
-#: nothing about the condition at all (#917).
-ProbeFn = Callable[[ProjectState, Codebase], "Iterable[AdvisoryCandidate] | None"]
+#: or ``None`` (or :class:`CouldNotLook`, to report candidates as well) meaning
+#: "could not look" (git failed, a file would not read). The two must stay
+#: distinct: :func:`reconcile` resolves an active advisory whose probe reported
+#: nothing, and a probe that could not answer has reported nothing about the
+#: condition at all (#917).
+ProbeFn = Callable[[ProjectState, Codebase], "Iterable[AdvisoryCandidate] | CouldNotLook | None"]
 
 
 # =============================================================================
@@ -279,8 +295,22 @@ ProbeFn = Callable[[ProjectState, Codebase], "Iterable[AdvisoryCandidate] | None
 _REGISTRY: dict[str, dict] = {}
 
 
-def register_probe(feature: str, probe_type: str, probe_version: int, fn: ProbeFn) -> None:
+def register_probe(
+    feature: str,
+    probe_type: str,
+    probe_version: int,
+    fn: ProbeFn,
+    *,
+    emits: Iterable[str] = (),
+) -> None:
     """Register a probe under ``(feature, probe_type)``.
+
+    ``emits`` names every OTHER candidate type the probe can produce. It is what
+    a probe that could not look holds open: :func:`run_probes` reports the
+    registration's whole type set as unanswered, so an open advisory of any type
+    the probe owns stays open rather than resolving over a check that never ran
+    (R-2). A candidate of an undeclared type is still reported, with a NOTE
+    naming the missing declaration.
 
     Re-registering the same key overwrites — a feature owns its probe types.
     """
@@ -289,6 +319,7 @@ def register_probe(feature: str, probe_type: str, probe_version: int, fn: ProbeF
         "probe_type": probe_type,
         "probe_version": probe_version,
         "fn": fn,
+        "types": frozenset((probe_type, *emits)),
     }
 
 
@@ -304,11 +335,14 @@ def run_probes(
 
     Each candidate is stamped with the ``feature`` and ``probe_version`` from
     its registration (and ``type`` defaults to the registered ``probe_type``
-    when the probe left it blank). ``unanswered`` holds the registered
-    ``(feature, probe_type)`` of every probe that could not look: one that
-    returned ``None``, or one that raised — skipped so one bad probe cannot
-    block the others or the sync, but never read as "nothing to report", which
-    would resolve that type's open advisories over a check that never ran.
+    when the probe left it blank). ``unanswered`` holds ``(feature, type)`` for
+    EVERY type a probe that could not look is registered to emit — its
+    ``probe_type`` plus its ``emits``. A probe could not look when it returned
+    ``None`` or :class:`CouldNotLook`, or raised (skipped, so one bad probe
+    cannot block the others or the sync). None of these is "nothing to report",
+    which would resolve its open advisories over a check that never ran; keying
+    the hold to the registration rather than one type is what covers a probe
+    that emits several (R-2).
     """
     candidates: list[AdvisoryCandidate] = []
     unanswered: set[tuple[str, str]] = set()
@@ -316,25 +350,33 @@ def run_probes(
         fn = record["fn"]
         try:
             produced = fn(state, codebase)
-            produced = None if produced is None else list(produced)
+            looked = produced is not None and not isinstance(produced, CouldNotLook)
+            produced = list(produced or ())
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- a faulty probe must not block sync; skip it
             print(
                 f"NOTE: advisory probe {record['feature']}/{record['probe_type']} skipped: {exc}",
                 file=sys.stderr,
             )
-            produced = None
-        if produced is None:
-            # A None-returning probe prints its own NOTE naming what went
+            looked, produced = False, []
+        if not looked:
+            # A probe that could not look prints its own NOTE naming what went
             # unchecked; the raise path above printed one on its behalf.
-            unanswered.add((record["feature"], record["probe_type"]))
-            continue
+            unanswered.update((record["feature"], ctype) for ctype in record["types"])
         for cand in produced:
+            ctype = cand.type or record["probe_type"]
+            if ctype not in record["types"]:
+                print(
+                    f"NOTE: advisory probe {record['feature']}/{record['probe_type']} emitted type "
+                    f"{ctype!r}, which its registration does not declare in `emits` — an open "
+                    "advisory of that type would resolve on a sync where the probe could not look.",
+                    file=sys.stderr,
+                )
             candidates.append(
                 replace(
                     cand,
                     feature=record["feature"],
                     probe_version=record["probe_version"],
-                    type=cand.type or record["probe_type"],
+                    type=ctype,
                 )
             )
     return candidates, frozenset(unanswered)
@@ -674,8 +716,8 @@ def reconcile(
         the same ``(feature, type)`` → ``resolved`` / ``resolved_by: probe-update`` /
         ``superseded_by: <new-id>`` (spec §2.8, A8)
       - id ``active`` in store, its ``(feature, type)`` in ``unanswered`` → kept
-        as-is: its probe could not look this sync, which is not the condition
-        clearing (#917)
+        as-is: a probe registered to emit that type could not look this sync,
+        which is not the condition clearing (#917, R-2)
       - id ``active`` in store, not in candidates and not superseded → ``resolved`` / ``resolved_by: sync``
       - non-active in store, not in candidates → kept as-is (compaction/GC is
         a separate sync-persist pass, :func:`apply_retention`)

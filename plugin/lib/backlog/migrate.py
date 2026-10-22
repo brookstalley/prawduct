@@ -563,7 +563,7 @@ class ImportRecord:
     cleaned set), never a model call or a file format (MIG-5): parsing markdown into
     records is a separate, upstream step (``_records_from_backlog``)."""
 
-    __slots__ = ("pfx", "title", "body", "status", "labels", "block")
+    __slots__ = ("pfx", "title", "body", "status", "labels", "block", "superseded_titles")
 
     def __init__(
         self,
@@ -574,6 +574,7 @@ class ImportRecord:
         status: str,
         labels: list[str],
         block: dict,
+        superseded_titles: tuple[str, ...] = (),
     ) -> None:
         self.pfx = pfx
         self.title = title
@@ -581,6 +582,9 @@ class ImportRecord:
         self.status = status
         self.labels = labels
         self.block = block
+        # Titles an earlier, since-fixed parse would have written for this item —
+        # the only live titles a re-run may replace (:func:`_retitle_in_place`).
+        self.superseded_titles = superseded_titles
 
     def key_label(self) -> str:
         """The label the importer keys idempotency on. A hand-minted ``PFX`` → the
@@ -651,7 +655,23 @@ def _record_from_item(item: legacy.BacklogItem, pfx: str | None) -> ImportRecord
         # comes back verbatim, and a normalization that quietly rewrote it would
         # break that for every item on the backlog at once.
         block["original_title"] = stripped
-    return ImportRecord(pfx=pfx, title=title, body=item.body, status=status, labels=labels, block=block)
+    return ImportRecord(
+        pfx=pfx, title=title, body=item.body, status=status, labels=labels, block=block,
+        superseded_titles=_superseded_titles(item, stripped),
+    )
+
+
+def _superseded_titles(item: legacy.BacklogItem, stripped: str) -> tuple[str, ...]:
+    """The issue titles a pre-boundary import wrote for ``item`` (#613): its
+    unbounded bullet line with the ``[PFX]`` marker stripped, both bare and
+    ``area:``-normalized (whichever the run that wrote it applied). Empty when the
+    boundary rule changed nothing, since then no earlier parse differed."""
+    legacy_title = _ID_MARKER_RE.sub("", item.unbounded_title).strip()
+    if not legacy_title or legacy_title == stripped:
+        return ()
+    area = (item.metadata.get("area") or "").strip() or None
+    normalized = issuefmt.normalize_title(legacy_title, area)
+    return tuple(dict.fromkeys((legacy_title, normalized)))
 
 
 #: Markdown-vocabulary statuses that are DOCUMENTED but not service statuses, and
@@ -927,8 +947,9 @@ def import_backlog(
     *before* anything is written), then runs the deterministic :func:`import_items`.
     Resumable/idempotent (MG1/CRASH-4). The plan applies at create only, so an item
     already on GitHub never has its **body** rewritten — but "skipped" is not
-    "untouched": the skip branch retitles a PFX item to the corrected parse
-    (:func:`_retitle_in_place`, #613) and still reconciles the **status** axis
+    "untouched": the skip branch retitles a PFX item whose live title is still the
+    pre-boundary parse (:func:`_retitle_in_place`, #613 — any other title is an
+    edit and is left alone) and still reconciles the **status** axis
     (:func:`_reconcile_status`), which is what makes a created-but-crashed-before-close
     item converge on resume (CRASH-4). The consequence beyond resume: a re-run drives
     every already-migrated item back to its *markdown* status, so re-importing to
@@ -1449,21 +1470,28 @@ def _retitle_in_place(
     only; body, labels and state are untouched, and nothing is deleted, so a
     user-owned repo (where the operator cannot delete) is repairable.
 
+    Only a title an earlier parse wrote is replaced: the live title must be one of
+    ``record.superseded_titles`` (the pre-boundary run-on line #613 repairs). Any
+    other title is an edit — an owner-approved restructure title a plan-less re-run
+    would otherwise revert, or a retitle on GitHub since cutover an
+    ``--archive-scope all`` backfill would otherwise overwrite — and is left alone.
+
     Only a PFX item is retitled: its key is the title-independent ``id:PFX`` alias,
     so the retitle cannot mint a new key or a duplicate. A PFX-less item keys on
     ``import-key:<sha256(title+body)>`` — title-dependent — so it is left alone.
     ``state="all"`` in the lookup means closed matches are repaired too. A no-op
-    when the title already matches (a clean re-run costs no PATCH); a block-recovered
-    match arrives without a title and costs one read to learn it. A failed read or PATCH is a
+    for a record with nothing superseded and when the title already matches (a clean
+    re-run costs no PATCH); a block-recovered match with a superseded title arrives
+    without the live title and costs one read to learn it. A failed read or PATCH is a
     warning, never a cut — the title is cosmetic against the status the run converges."""
-    if not record.pfx:
+    if not record.pfx or not record.superseded_titles:
         return
     try:
         if number in titles:
             current = titles[number]
         else:
             current = transport.get_issue(owner, repo, number).get("title")
-        if current == record.title:
+        if current == record.title or current not in record.superseded_titles:
             return
         transport.update_issue(owner, repo, number, fields={"title": record.title})
     except TransportError as exc:
@@ -1473,11 +1501,6 @@ def _retitle_in_place(
             f"could not retitle {_canon(owner, repo, number)} to the corrected parse "
             f"({exc.code}); re-run the import to retry"
         )
-
-
-def _find_by_key(transport: Transport, owner: str, repo: str, key_label: str) -> list[int]:
-    """The issue numbers carrying ``key_label`` — see :func:`_find_issues_by_key`."""
-    return [issue["number"] for issue in _find_issues_by_key(transport, owner, repo, key_label)]
 
 
 def _find_issues_by_key(transport: Transport, owner: str, repo: str, key_label: str) -> list[dict]:
@@ -1600,7 +1623,9 @@ def _reconcile_status(
     decoded, _ = encode.decode_item(issue, canonical_id=canonical)
     if decoded.get("status") == record.status:
         return
-    result = core.set_status(transport, id_raw=canonical, target=record.status)
+    # own_repos=None skips the foreign-target guard on purpose: import writes to
+    # the tracker it provisioned, which is outside the skill's grant (#1013).
+    result = core.set_status(transport, id_raw=canonical, target=record.status, own_repos=None)
     if result.get("status") == "ok":
         return
     failure = result.get("error", {})
@@ -1754,7 +1779,7 @@ def verify_migration(
     # An ambiguous alias is its own recoverability class and must NOT ride in
     # `status_mismatch`: that list's remedy is "re-run the import", which cannot
     # clear this one. The labelled issue already matches, so the re-run's
-    # `_find_by_key` returns it and `_reconcile_status` writes nothing; the
+    # `_find_issues_by_key` returns it and `_reconcile_status` writes nothing; the
     # block-only duplicate carries no label, so `_AliasIndex` is never consulted and
     # it is never touched. The next scan sees the same disagreement and exits 4
     # again — a full ~900-write re-run that converges on nothing. Only a target-side
@@ -2046,8 +2071,8 @@ def merge(
         # `get_issue`, which reflects the `superseded_by` redirect written a step
         # above as well as the close. The target is not edited, so it has nothing
         # to mirror.
-        close = core.set_status(
-            transport, id_raw=sid.canonical, target="dropped", absorb=absorb
+        close = core.set_status(  # merge is owner-prompted, outside the guard (#1013)
+            transport, id_raw=sid.canonical, target="dropped", absorb=absorb, own_repos=None
         )
         if close.get("status") != "ok":
             return close
