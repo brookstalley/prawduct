@@ -26,9 +26,7 @@ classification:
     # Runs without user interaction. trigger: scheduled|event-driven|always-on
     runs_unattended: null
     # Exposes or consumes APIs. consumers: internal|external|both
-    # When this exposes an interface, record the versioning + deprecation + error-model
-    # decisions in design_decisions (api_versioning_approach, api_error_model_approach);
-    # the api-versioning advisory nudges until they are recorded.
+    # If it exposes one, record the API decisions in design_decisions below.
     exposes_programmatic_interface: null
     # Multiple distinct user types. parties: [list of distinct user types]
     has_multiple_party_types: null
@@ -250,11 +248,7 @@ coverage_required: false
 # test_commands:    (several environments; instead of test_command)
 #   - npm run test:ci -- --junit --outputFile={junit_xml}
 # tests_dirs: tests
-
-# Paths your tests read as data (docs a test scans): a change under one makes
-# recorded test evidence stale, as a code change does.
-# suite_coupled_prefixes:
-#   - documentation/
+# suite_coupled_prefixes: [documentation/]   # paths tests read as data
 
 # Learnings budgets: every rule is one line; core.md is capped and only the
 # owner raises it.
