@@ -784,3 +784,141 @@ def test_every_cache_reader_admits_both_cache_query_spellings(rel: str, key: str
             f"{rel} reads `skills/backlog/cache-reads.md` under a restricted tool list "
             f"but does not admit `{cmd}` — grant both spellings of `backlog cache-query`"
         )
+
+
+# ---------------------------------------------------------------------------
+# Bundled instruction files (#707)
+# ---------------------------------------------------------------------------
+#
+# `test_every_instructed_command_is_granted` reads SKILL.md only. A skill's
+# bundled `*.md` files are instruction prose read under the SAME grant — or under
+# the grant of the AGENT the skill hands the file to — and nothing swept them, so
+# a command instructed there could be ungranted with the suite green.
+#
+# Every non-SKILL `*.md` beside a SKILL.md must name the grant that governs it
+# here, or be named as swept elsewhere. A NEW bundled file with no row fails
+# `test_every_bundled_file_names_its_grant`, so the sweep cannot quietly miss it.
+
+#: bundled file (relative to skills/) -> (file holding the governing grant, key).
+#: Read by the skill itself unless the row says an agent reads it.
+_BUNDLED_GOVERNED_BY: dict[str, tuple[str, str]] = {
+    "backlog/adapter-mode.md": ("skills/backlog/SKILL.md", "allowed-tools:"),
+    "backlog/cache-reads.md": ("skills/backlog/SKILL.md", "allowed-tools:"),
+    "backlog/migration-scrub.md": ("skills/backlog/SKILL.md", "allowed-tools:"),
+    "janitor/themes.md": ("skills/janitor/SKILL.md", "allowed-tools:"),
+    # Read by the dispatched `pr-reviewer` agent, never by the pr skill, so the
+    # agent's `tools:` is the grant that governs it.
+    "pr/review-protocol.md": ("agents/pr-reviewer.md", "tools:"),
+}
+
+#: The Critic's bundled files are swept by `test_critic_skill_metadata.py`, which
+#: derives each file's reviewer surface and grant from SKILL.md's routing.
+_BUNDLED_SWEPT_ELSEWHERE = frozenset({"critic"})
+
+#: (bundled file, command) -> reason. Same bar as `_NOT_GRANTED`: a decision with
+#: a reason, never a suppression.
+#:
+#: The migration runbook's rows share one reason: the backlog skill grants only
+#: the everyday ops and withholds the one-shot migration set on purpose, so each
+#: step prompts at the moment it writes (BKL-5N9W,
+#: `test_backlog_skill_metadata.py::test_scrub_ops_not_granted_in_backlog_skill`).
+_BUNDLED_NOT_GRANTED: dict[tuple[str, str], str] = {
+    ("backlog/migration-scrub.md", "backlog verify-migration"): "read-only gate, but a "
+    "migration-set op; the skill withholds the whole set so the cutover steps prompt",
+    ("backlog/migration-scrub.md", "backlog provision"): "owner-confirmed one-time "
+    "migration step that creates the target's labels; the prompt is the confirmation",
+    ("backlog/migration-scrub.md", "backlog export"): "owner-confirmed one-time "
+    "migration step; writes a snapshot the owner has just approved",
+    ("backlog/migration-scrub.md", "backlog restructure-preview"): "owner-confirmed "
+    "one-time migration step; writes the artifact the owner then approves",
+    ("backlog/migration-scrub.md", "backlog import"): "owner-confirmed one-time "
+    "migration step that creates live issues; the prompt is the confirmation",
+    ("backlog/migration-scrub.md", "backlog merge"): "owner-confirmed one-time "
+    "migration step that closes a duplicate issue; the prompt is the confirmation",
+    ("backlog/migration-scrub.md", "backlog refresh-counts"): "final hand-off step of "
+    "the one-time migration; granting a recurring-use prefix for a one-time runbook "
+    "would widen every backlog session",
+    # Cross-references: both name what ANOTHER party runs. The pr skill runs the
+    # coverage gate before dispatch (the reviewer is told not to re-derive it),
+    # and the builder runs the cost probe when deciding a finding's disposition.
+    ("pr/review-protocol.md", "check-cumulative-critic"): "the pr skill runs the gate; "
+    "the reviewer is told its scoping does not rest on it",
+    ("pr/review-protocol.md", "cost-of-commit"): "advice about what the builder may "
+    "run when dispositioning a finding; the reviewer reports, never dispositions",
+    # Cross-reference: a NOTE the reviewer emits for the operator to act on.
+    ("pr/review-protocol.md", "backlog sync"): "remedy text the reviewer prints for "
+    "the operator; the reviewer holds a read-only cache grant and never syncs",
+}
+
+
+def _bundled_files() -> list[str]:
+    return sorted(
+        p.relative_to(SKILLS_DIR).as_posix()
+        for p in SKILLS_DIR.glob("*/*.md")
+        if p.name != "SKILL.md" and p.parent.name not in _BUNDLED_SWEPT_ELSEWHERE
+    )
+
+
+def test_every_bundled_file_names_its_grant() -> None:
+    files = _bundled_files()
+    assert len(files) >= 5, f"only {len(files)} bundled files found: {files}"
+    unmapped = [f for f in files if f not in _BUNDLED_GOVERNED_BY]
+    gone = [f for f in _BUNDLED_GOVERNED_BY if f not in files]
+    assert not unmapped and not gone, (
+        f"bundled instruction files without a governing grant row: {unmapped}; "
+        f"rows for files that no longer exist: {gone}. Add the file to "
+        f"_BUNDLED_GOVERNED_BY with the grant that governs who reads it."
+    )
+
+
+def _bundled_calls(rel: str) -> tuple[list[tuple[str, ...]], set[tuple[str, ...]]]:
+    grant_file, key = _BUNDLED_GOVERNED_BY[rel]
+    grant_text = (SKILLS_DIR.parent / grant_file).read_text(encoding="utf-8")
+    grant = re.search(rf"^{re.escape(key)}(.*)$", grant_text, re.M)
+    assert grant is not None, f"{grant_file} declares no `{key}`"
+    granted = {
+        _hook_call_key(grant.group(1), m.end())
+        for m in re.finditer(r"(?<![\w/-])prawduct-hook(?=\s)", grant.group(1))
+    }
+    granted |= {
+        _hook_call_key(grant.group(1), m.end())
+        for m in re.finditer(r"bin/prawduct-hook(?=\s)", grant.group(1))
+    }
+    body = (SKILLS_DIR / rel).read_text(encoding="utf-8")
+    calls = {
+        _hook_call_key(body, m.end())
+        for m in re.finditer(r"prawduct-hook(?=\s)", body)
+    }
+    return sorted(c for c in calls if c), granted
+
+
+@pytest.mark.parametrize("rel", sorted(_BUNDLED_GOVERNED_BY))
+def test_every_command_instructed_in_a_bundled_file_is_granted(rel: str) -> None:
+    calls, granted = _bundled_calls(rel)
+    missing = sorted(
+        " ".join(call)
+        for call in calls
+        if not any(_covers(g, call) for g in granted if g)
+        and (rel, call[0]) not in _BUNDLED_NOT_GRANTED
+        and (rel, " ".join(call)) not in _BUNDLED_NOT_GRANTED
+    )
+    assert not missing, (
+        f"skills/{rel} tells its reader to run "
+        f"{', '.join('prawduct-hook ' + c for c in missing)} but the grant that "
+        f"governs it ({_BUNDLED_GOVERNED_BY[rel][0]}) does not cover "
+        f"{'it' if len(missing) == 1 else 'them'}. Grant it, or add the pair to "
+        f"_BUNDLED_NOT_GRANTED with the reason."
+    )
+
+
+def test_no_stale_bundled_exemptions() -> None:
+    stale = []
+    for (rel, command), reason in _BUNDLED_NOT_GRANTED.items():
+        if rel not in _BUNDLED_GOVERNED_BY:
+            stale.append((rel, command, "file is not swept"))
+            continue
+        calls, _granted = _bundled_calls(rel)
+        joined = {" ".join(c) for c in calls}
+        if command not in joined and not any(j.split(" ")[0] == command for j in joined):
+            stale.append((rel, command, f"no longer mentioned ({reason})"))
+    assert not stale, f"stale _BUNDLED_NOT_GRANTED rows: {stale}"
