@@ -2937,6 +2937,31 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  session reflection is the story behind them.\n"
             ))
 
+    # Advisory 1a: the forward note — the reflection gate's resumability twin.
+    # The handoff note is advice, and advice fails soft, so this never blocks
+    # and needs no waiver. What it fixes is WHO hears about a missing note: the
+    # generated `.session-handoff.md` already says so, but to the next agent,
+    # who cannot write it. Presence only — the note's content is not graded.
+    # Same span and plan conjunct as the reflection gate's old advisory shape;
+    # silent on a turn that declares itself still working (RUNNING + DO NOT
+    # CLEAR), because the note is owed when the work stops, not at every turn.
+    if reflection_span["judgeable"] and has_build_plan and not verdict_defer:
+        _notes_file = prawduct_dir / ".handoff-notes.md"
+        try:
+            _notes_text = _notes_file.read_text().strip() if _notes_file.is_file() else ""
+        except (OSError, UnicodeDecodeError):
+            # Unreadable is not absent: the handoff renderer reports it on its
+            # own, and nagging to "write" a note that exists would mislead.
+            _notes_text = "unreadable"
+        if not _notes_text:
+            stop_advisories.append(
+                "HANDOFF NOTE: this session changed judgeable code against an active build\n"
+                "  plan, and .prawduct/.handoff-notes.md is empty or missing. If the work\n"
+                "  stops here, write where you stopped, what you would do next and what would\n"
+                "  bite the next session — it is the first thing that session reads, and only\n"
+                "  you can write it. Advisory: nothing is blocked and /clear stays open.\n"
+            )
+
     # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
     #
     # A repo still holding the pre-cutover corpus reads to every session exactly

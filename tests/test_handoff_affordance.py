@@ -32,6 +32,7 @@ loses: "no note was left" is not "a note was left and could not be read", and
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -373,3 +374,90 @@ class TestHandoffPreviewCli:
         assert "def cmd_handoff(" in src
         assert "briefing.handoff_cmd(" in src
         assert "handoff preview" in src.split("_USAGE = (", 1)[1].split(")", 1)[0]
+
+
+
+# =============================================================================
+# The Stop advisory — the outgoing agent hears about a missing note (#560)
+# =============================================================================
+from test_reflection_gate import (  # noqa: E402 — one home for the real-repo fixture
+    SHAPED_REFLECTION,
+    _commit_code,
+    _commit_doc,
+    _hook,
+    _mark_base,
+    _reflect,
+    _repo,
+)
+
+HANDOFF_ADVISORY = "HANDOFF NOTE:"
+
+
+class TestMissingNoteStopAdvisory:
+    """The generated handoff already tells the NEXT agent a note is missing;
+    this tells the agent who can still write one, at Stop, without blocking."""
+
+    def _planned_session(self, tmp_path: Path, *, code: bool = True) -> Path:
+        repo = _repo(tmp_path)
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Demo\n"
+        )
+        _mark_base(repo)
+        (_commit_code if code else _commit_doc)(repo)
+        # Reflected, so the reflection gate is out of the picture and the exit
+        # code below answers only "did the advisory block anything".
+        _reflect(repo, SHAPED_REFLECTION)
+        return repo
+
+    @staticmethod
+    def _stop(repo: Path, capsys, stop_input: dict | None = None) -> tuple[int, str]:
+        rc = _hook.cmd_stop(repo, stop_input or {})
+        out = capsys.readouterr().out.strip()
+        delivered = json.loads(out)["additionalContext"] if out else ""
+        return rc, delivered
+
+    def test_changed_code_and_no_note_reaches_the_agent_without_blocking(
+        self, tmp_path, capsys
+    ):
+        repo = self._planned_session(tmp_path)
+        rc, delivered = self._stop(repo, capsys)
+        assert rc == 0, "advice fails soft: the missing note must never block /clear"
+        assert HANDOFF_ADVISORY in delivered
+
+    def test_an_empty_note_counts_as_missing(self, tmp_path, capsys):
+        repo = self._planned_session(tmp_path)
+        (repo / ".prawduct" / ".handoff-notes.md").write_text("  \n")
+        _, delivered = self._stop(repo, capsys)
+        assert HANDOFF_ADVISORY in delivered
+
+    def test_silent_when_a_note_was_written(self, tmp_path, capsys):
+        repo = self._planned_session(tmp_path)
+        (repo / ".prawduct" / ".handoff-notes.md").write_text("Stopped after chunk 01.\n")
+        rc, delivered = self._stop(repo, capsys)
+        assert rc == 0
+        assert HANDOFF_ADVISORY not in delivered
+
+    def test_silent_on_a_doc_only_session(self, tmp_path, capsys):
+        repo = self._planned_session(tmp_path, code=False)
+        rc, delivered = self._stop(repo, capsys)
+        assert rc == 0
+        assert HANDOFF_ADVISORY not in delivered
+
+    def test_silent_without_an_active_build_plan(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _mark_base(repo)
+        _commit_code(repo)
+        _reflect(repo, SHAPED_REFLECTION)
+        _, delivered = self._stop(repo, capsys)
+        assert HANDOFF_ADVISORY not in delivered
+
+    def test_silent_on_a_turn_that_declares_it_is_still_working(self, tmp_path, capsys):
+        repo = self._planned_session(tmp_path)
+        still_working = (
+            "Mid-chunk.\n\n---\n\n`STATE` — one file changed.\n\n"
+            "`RUNNING` — the review.\n\n`DO NOT CLEAR` — the review is still running."
+        )
+        _, delivered = self._stop(repo, capsys, {"last_assistant_message": still_working})
+        assert HANDOFF_ADVISORY not in delivered
