@@ -1169,6 +1169,11 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "working_branch": block.working_branch(),
         "automated": block.get("automated") == "true",
         "url": issue.get("html_url"),
+        # Provider timestamps, passed through verbatim: `updated_at` is the
+        # comparand `update --if-updated-at` (CC2) checks, so a reformat here
+        # would make the guard unusable from a `get`. Additive per the api-contract norm.
+        "updated_at": issue.get("updated_at"),
+        "created_at": issue.get("created_at"),
         # The native comment count rides the issue payload, so every read path
         # (get/list/pick) can show "this item has discussion" for free; the
         # thread itself is fetched only by `get` (DM5 drill-down).

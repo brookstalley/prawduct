@@ -264,10 +264,10 @@ Route by what changed:
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
 
-The item envelope does **not** surface an `updated_at`, so the optional `--if-updated-at <ts>`
-optimistic-concurrency guard (exit **4 conflict** on a stale timestamp) is only usable when a caller
-already holds that timestamp from elsewhere; the skill's normal path omits it. It applies to the
-whole `update` op, not to any one field above.
+The optional `--if-updated-at <ts>` optimistic-concurrency guard takes the item's `data.updated_at`
+from a `get` (the envelope also carries `created_at`): read it, pass it back verbatim, and on exit
+**4 conflict** (a stale timestamp) re-read rather than retry. It applies to the whole `update` op,
+not to any one field above; the skill's normal path omits it.
 
 ### file-upstream
 Do not call it from here. It is the data plane for `/prawduct:report-bug`, its only caller, which

@@ -281,6 +281,19 @@ class TestGetItem:
         assert got["status"] == "ok"
         assert got["data"]["id"] == "octo/repo#1"
 
+    def test_get_surfaces_timestamps_that_feed_the_cc2_guard(self, fake):
+        # #836 — `get` must carry the CC2 comparand; the other CC2 tests read it off the transport.
+        n = _seed_item(fake)
+        raw = fake.get_issue(OWNER, REPO, n)
+        got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{n}")["data"]
+        assert got["updated_at"] is not None and got["updated_at"] == raw["updated_at"]
+        assert got["created_at"] is not None and got["created_at"] == raw["created_at"]
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "core: renamed on a get-supplied token"},
+            expected_updated_at=got["updated_at"],
+        )
+        assert r["status"] == "ok"
+
     def test_get_missing_is_not_found(self, fake):
         got = core.get_item(fake, id_raw="octo/repo#999")
         assert got["status"] == "error"
