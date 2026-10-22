@@ -874,7 +874,8 @@ _SESSION_RESET_DELETES = (
     # onto a run made against the previous one — the record says what the
     # invocation selected, never when it ran, and evidence freshness is what
     # would have caught it and is exactly what the ingest rewrites. A run is
-    # recoverable inside the session that made it.
+    # recoverable until the next invocation of the runner overwrites it, and
+    # never past the session boundary.
     ".test-report.xml",
     ".test-report.xml.scope.json",
 )
@@ -2798,7 +2799,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # is judgeable, so it no longer skips the reflection/Critic gates.
     doc_only = _gates().session_changes_all_non_judgeable(project_dir, status_output) if has_changes else False
 
-    # Load agent-declared gate waivers (auto-cleared at session start).
+    # Load agent-declared gate waivers (cleared at a session boundary — startup
+    # or /clear; a resume, compact or fork keeps them).
     # The convention: a waiver is only NOTED to the user when it actually
     # suppressed a blocker. Notes for gates that would have been silent anyway
     # are noise — they make every session look like it bypassed governance.
@@ -2936,6 +2938,37 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 "  names any line over the limit. Learnings are one-line standing rules; the\n"
                 "  session reflection is the story behind them.\n"
             ))
+
+    # Advisory 1a: the forward note — the reflection gate's resumability twin.
+    # The handoff note is advice, and advice fails soft, so this never blocks
+    # and needs no waiver. What it fixes is WHEN a missing note is heard about:
+    # the generated `.session-handoff.md` already says so, but to the next
+    # agent, who cannot write it. This says it before the clear. At exit 0 the
+    # advisory channel reaches the USER only (`_deliver_stop_advisories` — Stop
+    # has no model channel that does not start another turn), so the text is
+    # addressed to whoever reads it; when another gate blocks, it rides stderr
+    # beside the blockers and reaches the agent too. Presence only — the note's
+    # content is not graded.
+    # Same span and plan conjunct as the reflection gate's old advisory shape;
+    # silent on a turn that declares itself still working (RUNNING + DO NOT
+    # CLEAR), because the note is owed when the work stops, not at every turn.
+    if reflection_span["judgeable"] and has_build_plan and not verdict_defer:
+        _notes_file = prawduct_dir / ".handoff-notes.md"
+        try:
+            _notes_text = _notes_file.read_text().strip() if _notes_file.is_file() else ""
+        except (OSError, UnicodeDecodeError):
+            # Unreadable is not absent: the handoff renderer reports it on its
+            # own, and nagging to "write" a note that exists would mislead.
+            _notes_text = "unreadable"
+        if not _notes_text:
+            stop_advisories.append(
+                "HANDOFF NOTE: this session changed judgeable code against an active build\n"
+                "  plan, and .prawduct/.handoff-notes.md is empty or missing, so a clear now\n"
+                "  starts the next session without the agent's own account of where it stopped.\n"
+                "  If the work stops here, the note should say where it stopped, what comes next\n"
+                "  and what would bite the next session — only this session can write it.\n"
+                "  Advisory: nothing is blocked and /clear stays open.\n"
+            )
 
     # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
     #
@@ -3893,6 +3926,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: Delivered at the moment the builder stamps "the suite is green" into the
 #: record the gates read — the one point where green stops being an observation
 #: and becomes evidence someone else will rely on.
+#:
+#: The write-time instruction is ``methodology/building.md`` § Test Discipline,
+#: which opens its paragraph with this directive's first sentence verbatim, so
+#: the builder meets the rule while writing the test and this is the reminder
+#: at record time — one rule on two surfaces (#695).
 #:
 #: This text lives in code rather than in the learnings rules deliberately. The
 #: general form of this rule has been in that corpus for a long time and does not
@@ -6693,7 +6731,14 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
                "in one act: prawduct-hook coverage-scaffold --apply")
     elif norms_unratified:
         active_layer = 2
-        fix = "ratify the product's norms via /prawduct:doctor"
+        # Visibility, not correctness: norms bind from day one (docs/norms.md §
+        # Adoption), and /prawduct:doctor is an opt-in repair path nobody runs in
+        # the normal loop — so the line must not read as if skipping it leaves
+        # the norms without force (docs/norms.md § Enforcement, "Correctness
+        # never waits on an opt-in command").
+        fix = ("record the product's norms where governance can see them: "
+               "/prawduct:doctor ratification flow (they already bind — ratifying "
+               "records them, it never creates their force)")
     else:
         active_layer = None
         fix = None

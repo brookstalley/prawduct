@@ -12,7 +12,7 @@ its surface, so a sentence that moves or goes has to take its row with it.
 | # | Rule | Learned by | Channel | Surface | Anchor |
 |---|---|---|---|---|---|
 | 1 | A mutation must be shown to have applied — a mutant you did not watch go red proved nothing | discodon, samsung, hallucinote | skill step at PR pre-review (boundary) | `skills/pr/SKILL.md` | `a mutation you did not watch go red applied nothing` |
-| 2 | A test that passes identically when its subject is broken is vacuous | metallm, samsung, cordyceps, scriob | code directive at `test-evidence record` | `bin/prawduct-hook` | `Green is evidence only about what could have made it red` |
+| 2 | A test that passes identically when its subject is broken is vacuous | metallm, samsung, cordyceps, scriob | methodology at test-writing (`methodology/building.md`) + code directive at `test-evidence record` | `bin/prawduct-hook` | `Green is evidence only about what could have made it red` |
 | 3 | A partial run is a verification ceiling, never the verdict — green is claimed only on the suite the repo declares | scriob, metallm, puzzles, discodon | mechanism (`test-evidence record` runs the declared suite) + methodology | `methodology/delegation.md` | `A cost bound, not a rigor discount` |
 | 4 | An interface change means a census of every consumer | hallucinote, scriob, discodon, metallm | methodology | `methodology/building.md` | `grep for those consumers across layers` |
 | 5 | Retiring a claim is a repo-wide grep — code, tests and the prose describing it | samsung, discodon, hallucinote, trenchant, swordfishing | Critic goal 4 (final/cumulative modes) | `skills/critic/review-protocol.md` | `the citations a renamed or removed term leaves behind` |

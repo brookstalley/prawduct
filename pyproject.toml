@@ -113,7 +113,7 @@ markers = [
 #
 # **`--junit-xml` lives here, not in the command someone types** — the report is
 # a side effect of EVERY run (the plugin's `docs/test-report-contract.md`). Its
-# point is that no run is ever unrecordable: a hand-run of the suite can be
+# point is that the last run is never unrecordable: a hand-run of the suite can be
 # handed to `prawduct-hook test-evidence record --from-junit` instead of being
 # paid for twice, which is exactly the cost that produced the contract. The
 # declared `test_command` passes its own `--junit-xml={junit_xml}` and a
