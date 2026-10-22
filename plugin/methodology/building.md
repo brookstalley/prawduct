@@ -101,7 +101,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
 
-**Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
+**Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared at `/clear` or startup. Doc-only edits are skipped automatically.
 
 **In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands. An *untrackable* wait (CI, a remote queue) blocks unless the turn, still working, closes on `DO NOT CLEAR`, which defers reflection and Critic only (`session-hygiene.md`).
 

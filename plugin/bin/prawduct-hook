@@ -2799,7 +2799,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # is judgeable, so it no longer skips the reflection/Critic gates.
     doc_only = _gates().session_changes_all_non_judgeable(project_dir, status_output) if has_changes else False
 
-    # Load agent-declared gate waivers (auto-cleared at session start).
+    # Load agent-declared gate waivers (cleared at a session boundary — startup
+    # or /clear; a resume, compact or fork keeps them).
     # The convention: a waiver is only NOTED to the user when it actually
     # suppressed a blocker. Notes for gates that would have been silent anyway
     # are noise — they make every session look like it bypassed governance.

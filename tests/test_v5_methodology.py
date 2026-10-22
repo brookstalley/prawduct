@@ -501,7 +501,10 @@ LAST_MEASURED_TOKENS = {
     # resets (the Sessions paragraph's session-scoped state).
     # -1 on 2026-10-21 (#846): the report sentence says "the last run is never unrecordable"
     # in place of "no run in a session is" — the slot is one run, not one session.
-    "methodology/building.md": 5318,
+    # +2 on 2026-10-21 (#187): "Auto-cleared next session" names its sources (`/clear` or
+    # startup) now that the widened session-boundary pin sees the past participle; spends the
+    # two words the #695/#846 cuts left, so the reading is back where this branch began.
+    "methodology/building.md": 5320,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
