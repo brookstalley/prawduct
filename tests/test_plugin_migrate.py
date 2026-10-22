@@ -532,6 +532,7 @@ def test_an_undecodable_state_file_does_not_abort_the_cutover(tmp_path: Path):
     assert any("not decodable" in n for n in preview["notes"])
 
 
+@pytest.mark.non_root
 def test_an_unreadable_state_file_is_reported_not_only_an_undecodable_one(
     tmp_path: Path,
 ):

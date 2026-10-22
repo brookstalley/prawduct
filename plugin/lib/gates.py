@@ -4,7 +4,7 @@ Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 6). Holds the gate
 *decision helpers* the Stop hook orchestrates — test-evidence currency + schema
 validation, the critic-findings cache schema (validated at its writers:
 ``critic-consolidate`` and ``ledger-append``), the kernel-v3 composition
-gates, build-plan chunk counting, and the trivial/build-plan state probes —
+gates, build-plan chunk counting, and the build-plan state probes —
 plus the four self-contained gate CLI commands (``test_status`` /
 ``validate_evidence`` / ``check_cumulative_critic`` / ``verify_coverage``).
 The hook keeps thin ``cmd_*`` wrappers delegating here via the lazy
@@ -24,8 +24,8 @@ scope subsets, the ledger fallback) are deleted by design, not preserved.
 ``cmd_stop`` itself STAYS in the hook (it is the deliberately-inline hot-path
 gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 *attribution* machinery shared with ``cmd_clear``); it calls these helpers via
-``_gates()``. ``_has_active_build_plan_file`` and ``_is_trivial_fileset_eligible``
-were reassigned here (they are gate logic, lib-clean) from the briefing region.
+``_gates()``. ``_has_active_build_plan_file`` was reassigned here (it is gate
+logic, lib-clean) from the briefing region.
 
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
@@ -80,6 +80,12 @@ _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 # field keep their existing gate behavior.
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
+    # ``changes_unreferenced`` (#556): changed Python files declaring symbols no
+    # test mentions. With ``changes_referenced`` and ``changes_unjudged`` it
+    # partitions the changed set. Absent means empty; no gate reads it —
+    # ``verify-coverage`` derives "missing" from the diff itself, so a record
+    # without it gates exactly as before.
+    "changes_unreferenced": (list,),
     # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
     # before a live run starts (omitted when a path that affects the test outcome
@@ -866,7 +872,7 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
 
 #: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
 #: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
-#: (learnings, PR review, trivial bounds) is not about whether the session is
+#: (learnings, PR review) is not about whether the session is
 #: ending, so it keeps blocking on such a turn.
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
 
@@ -1890,7 +1896,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        ``_CRITIC_MODE_GOALS_1_3_ONLY`` (chunk or verify-resolutions)
        → unsatisfied. Run ``/prawduct:critic final`` for end-of-cycle synthesis.
     5. Multi-chunk plan, all chunks ``[x]``, latest mode is final/cumulative
-       (or no review fact exists — nothing to judge) → satisfied.
+       (or no review fact from this worktree and branch — nothing to judge)
+       → satisfied.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     plan_path = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
@@ -1902,7 +1909,18 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     if complete < total:
         return True, ""
 
-    review_facts = evidence.facts_of_kind(evidence.read_facts(project_dir), "review")
+    # The store is clone-global; this session's latest review is the latest one
+    # recorded from THIS worktree on THIS branch, so another worktree's review
+    # never steers this advisory. A fact with no `actor.branch` (written before
+    # it was recorded) is matched on its worktree alone.
+    here = str(project_dir)
+    branch = gitstate.current_branch(project_dir)
+    review_facts = [
+        f
+        for f in evidence.facts_of_kind(evidence.read_facts(project_dir), "review")
+        if (f.get("actor") or {}).get("worktree") == here
+        and (f.get("actor") or {}).get("branch", branch) == branch
+    ]
     if not review_facts:
         return True, ""
     latest_body = review_facts[-1].get("body") or {}
@@ -2127,78 +2145,6 @@ def _has_active_build_plan_file(
     return total > 0 and complete < total
 
 
-def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
-    """Check the current session's diff against the ``Type: trivial``
-    file-set bounds. Returns ``(eligible, reason)``.
-
-    Bounds (catastrophic-blast-radius classes, regardless of size):
-    no edits to a governance-protected path (the set
-    ``buildplan_refs.protected_path_violation`` owns); no test-file removals (porcelain ``D`` under
-    ``tests/`` OR rename whose source path is under ``tests/`` — a
-    ``git mv`` out of the test directory is semantically a deletion);
-    no newly-tracked files (porcelain ``A`` or ``??``).
-
-    Size is intentionally NOT a bound — trivial is a semantic judgment.
-    An 80-LOC project-wide rename can qualify; a 5-line state-machine
-    change cannot. The semantic claim lives in
-    ``**Trivial because:**``; Critic Goal 3 validates rationale-vs-diff
-    fit (Chunk 05).
-
-    Reason strings name the specific bound that failed for actionable
-    stop-hook messaging — e.g. ``"skill-file-edited: skills/critic/SKILL.md"``.
-    The first violating file wins (deterministic order: porcelain
-    output ordering); the user fixes one violation at a time.
-
-    Uses session-baseline filtering so pre-session dirt doesn't count
-    against the chunk (mirrors ``git_has_session_changes``).
-
-    Path-bound rules are delegated to ``_classify_trivial_change`` (now
-    this gate's sole consumer — the PR-boundary ``_pr_diff_is_trivial``
-    fast-path that once shared it was retired). This gate enforces a
-    *declared* ``Type: trivial`` chunk; it is not a triviality detector.
-    """
-    output = gitstate.git_status_output(project_dir)
-    if output is None:
-        # No git or git error — defer to other gates; treat as eligible
-        # so the trivial check doesn't fail the build when git itself is
-        # the problem.
-        return True, ""
-
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    baseline_path = prawduct_dir / ".session-git-baseline"
-    baseline_lines: set[str] = set()
-    if baseline_path.is_file():
-        try:
-            baseline_lines = set(baseline_path.read_text().splitlines())
-        except (UnicodeDecodeError, OSError):
-            pass
-
-    for line in output.splitlines():
-        if not line or line in baseline_lines:
-            continue
-        parsed = gitstate.parse_porcelain_line(line)
-        if parsed is None:
-            continue
-        status, src_path, path = parsed
-
-        # v1.5.1 Chunk 04(b): metadata-path filtering lives inside
-        # `_classify_trivial_change` (returns None for both src and dst
-        # metadata paths) — now reached only from this gate (the
-        # `_pr_diff_is_trivial` co-consumer was retired).
-        is_addition = status[0] == "A" or status == "??"
-        is_deletion = "D" in status
-        violation = buildplan_refs._classify_trivial_change(
-            path=path,
-            src_path=src_path,
-            is_addition=is_addition,
-            is_deletion=is_deletion,
-        )
-        if violation is not None:
-            return False, violation
-
-    return True, ""
-
-
 def test_status(project_dir: Path) -> int:
     """Print whether saved test evidence is fresh enough to trust.
 
@@ -2265,6 +2211,30 @@ def validate_evidence(project_dir: Path) -> int:
     return 0
 
 
+def _transfer_missing_input(transfer: dict) -> str:
+    """The missing input of an unrunnable transfer diff, and how to supply it.
+
+    #1002: "could not run" alone tells the reader the check is unavailable but
+    not how to make it available. The producer names the tree objects its
+    failed diff was asked about (``unresolved_trees``); this names them and the
+    commands that check for and supply one. Empty when the producer named none,
+    so a reason with no unrunnable diff behind it reads as before.
+    """
+    trees = [t for t in transfer.get("unresolved_trees") or [] if isinstance(t, str)]
+    if not trees:
+        return ""
+    shown = ", ".join(t[:12] for t in trees[:4])
+    if len(trees) > 4:
+        shown += f", and {len(trees) - 4} more"
+    return (
+        f". The missing input is git tree object(s) {shown}: `git cat-file -t "
+        "<id>` shows whether git holds one, and `git fetch origin` supplies one "
+        "a remote holds (a base from a shallow or partial clone). A tree from a "
+        "garbage-collected review snapshot cannot be restored; a review is then "
+        "the route"
+    )
+
+
 def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
     """The remedy prose for a base-advance transfer that did not grant.
 
@@ -2292,7 +2262,7 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
         return (
             f"the base-advance transfer check could not run ({transfer['reason']}) — "
             "that is not a finding that this gap is genuine work, only that the "
-            "cheap check was unavailable"
+            "cheap check was unavailable" + _transfer_missing_input(transfer)
         )
     return (
         f"the branch's own diff is byte-identical to the span review "
@@ -2316,6 +2286,18 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
 FIX_ORDER = (
     "make the fixes in the working tree, run one `/prawduct:critic"
     " verify-resolutions` over the uncommitted fixes, then land them in one commit"
+)
+#: How to make a fix that does not open the next round (#731), kept beside
+#: :data:`FIX_ORDER` and NOT inside it: FIX_ORDER is also printed unwrapped by
+#: :func:`blocking_remedy_lines`. Composed by ``critic_consolidate.next_action_line``
+#: into the two closes that tell the builder to fix — the blocking arm and the
+#: fix tail — and no other carrier restates it. One act per cascade shape.
+BLAST_RADIUS_CHECK = (
+    " Before the verify pass, check each fix's dependents: a changed signature,"
+    " return type or raised error → grep every caller; an added or changed"
+    " output, field or surface → check the contract that governs it, including"
+    " one this branch added; a reordered, tightened or removed guard → name"
+    " what it no longer reaches."
 )
 #: The one exception to :data:`FIX_ORDER`, kept beside it: after a boundary
 #: `cumulative`, inference's rule 1b recognizes a committed fix.

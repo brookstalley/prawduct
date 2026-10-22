@@ -581,14 +581,6 @@ class TestUnparsedHeadingReachesEveryCaller:
         assert chunk_type is None
         assert error and "Chunk 09" in error
 
-    def test_trivial_rationale_reader_refuses(self, tmp_path: Path):
-        prawduct, plan = self._plan(tmp_path, PLAN_UNPARSED)
-        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
-            prawduct, "01", plan
-        )
-        assert rationale is None
-        assert error and "Chunk 09" in error
-
     def test_critic_mode_reader_declines_rather_than_reading_a_neighbour(
         self, tmp_path: Path
     ):
@@ -722,11 +714,9 @@ class TestConsolidationPins:
         binds = (
             "_BUILD_PLAN_TYPE_RE.search(",
             "_BUILD_PLAN_CRITIC_MODE_RE.search(",
-            "_BUILD_PLAN_TRIVIAL_RATIONALE_RE.search(",
-            "_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE.search(",
-            # The alias the fallback is passed under. Without it the scan misses
-            # the exact defect this test names: the pattern arrives as a
-            # PARAMETER, so the module never spells its own constant's name.
+            # A pattern handed in as a PARAMETER, the shape the retired
+            # rationale fallback took: the module never spells its own
+            # constant's name, so the constant-name binds above cannot see it.
             "pattern.search(",
         )
         for mod in ("buildplan_refs.py", "critic_mode.py"):
@@ -1536,6 +1526,36 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
             prawduct, "01", plan_path=plan
         ) == ("doc-only", None)
 
+    @pytest.mark.parametrize("abbrev", ["e.g.", "i.e.", "E.g.", "cf.", "viz."])
+    def test_a_marker_quoted_after_an_abbreviation_binds_nothing(
+        self, tmp_path: Path, abbrev: str
+    ):
+        """#778: the sentence-opening arm fired after `e.g.`, so a chunk
+        declaring no type whose Description followed planning.md's own advice
+        (keep the marker inside the sentence) was graded `designer-handoff` —
+        the type the stop hook skips."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            f"- **Description:** unlike a handoff chunk ({abbrev} **Type:** "
+            "designer-handoff) which the stop hook skips\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    def test_a_declaration_after_a_sentence_ending_in_etc_still_binds(
+        self, tmp_path: Path
+    ):
+        """The control for the abbreviation carve-out: `etc.` ends sentences,
+        so a composed field after one is still a declaration."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "**Covers:** the readers, writers, etc. **Type:** doc-only\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
     def test_a_value_no_token_can_be_read_out_of_is_reported_verbatim(
         self, tmp_path: Path
     ):
@@ -1659,98 +1679,6 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
         assert buildplan_refs._parse_build_plan_chunk_type(
             prawduct, "01", plan_path=plan
         ) == ("code", None)
-
-
-class TestTheTrivialRationaleIsFoundWhereAuthorsWriteIt:
-    """A rationale the author DID write must not be reported as missing.
-
-    `Type: trivial` is the one type that buys a bounded review, and it is bought
-    with this field — so the field being unreadable blocks the chunk. Blocking a
-    plan that declares its rationale on the same line as the type it justifies
-    is the gate failing its own author, not catching one.
-    """
-
-    def test_a_rationale_sharing_its_line_with_the_type_binds(self, tmp_path: Path):
-        prawduct, plan = _plan_with_chunk_body(
-            tmp_path,
-            "**Type:** trivial · **Trivial because:** it renames one constant\n",
-        )
-        assert buildplan_refs._parse_build_plan_chunk_trivial_rationale(
-            prawduct, "01", plan_path=plan
-        ) == ("it renames one constant", None)
-
-    def test_a_field_position_rationale_still_binds_with_its_continuations(
-        self, tmp_path: Path
-    ):
-        prawduct, plan = _plan_with_chunk_body(
-            tmp_path,
-            "- **Trivial because:** it renames one constant\n"
-            "  across three call sites\n"
-            "- **Done when:** done\n",
-        )
-        assert buildplan_refs._parse_build_plan_chunk_trivial_rationale(
-            prawduct, "01", plan_path=plan
-        ) == ("it renames one constant across three call sites", None)
-
-    def test_prose_above_the_field_does_not_eat_the_rationale(self, tmp_path: Path):
-        """Why this is two passes and not one permissive one.
-
-        A single searching pass starts capturing at the prose line, and the
-        capture stops at the next `- **` line — which is the declaration. The
-        gate would then grade the sentence *about* the field instead of the
-        rationale, and the author would never know their words were not read.
-        """
-        prawduct, plan = _plan_with_chunk_body(
-            tmp_path,
-            "- **Notes:** every trivial chunk needs a **Trivial because:** line\n"
-            "- **Trivial because:** it renames one constant\n",
-        )
-        assert buildplan_refs._parse_build_plan_chunk_trivial_rationale(
-            prawduct, "01", plan_path=plan
-        ) == ("it renames one constant", None)
-
-    def test_prose_alone_cannot_supply_a_rationale_that_is_absent(
-        self, tmp_path: Path
-    ):
-        """The hole the composed-header fallback would otherwise open.
-
-        `Type: trivial` buys a bounded review, and this field is the price. A
-        section that declares no rationale at all, whose Description merely
-        mentions the field, must still block — prose satisfying the gate
-        silently is worse than the missing-field block it replaces, because the
-        author never learns their chunk was never graded. Distinct from the
-        suppression case above, which pins prose losing to a real declaration;
-        here there is nothing for it to lose to.
-        """
-        prawduct, plan = _plan_with_chunk_body(
-            tmp_path,
-            "- **Type:** trivial\n"
-            "- **Description:** every trivial chunk needs a **Trivial because:** "
-            "line, and this one has none\n",
-        )
-        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
-            prawduct, "01", plan_path=plan
-        )
-        assert rationale is None
-        assert error and error.startswith("missing-rationale:")
-
-    def test_an_absent_field_is_still_missing_rationale(self, tmp_path: Path):
-        prawduct, plan = _plan_with_chunk_body(tmp_path, "- **Type:** trivial\n")
-        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
-            prawduct, "01", plan_path=plan
-        )
-        assert rationale is None
-        assert error and error.startswith("missing-rationale:")
-
-    def test_a_blank_field_is_still_missing_rationale(self, tmp_path: Path):
-        prawduct, plan = _plan_with_chunk_body(
-            tmp_path, "**Type:** trivial · **Trivial because:**\n"
-        )
-        rationale, error = buildplan_refs._parse_build_plan_chunk_trivial_rationale(
-            prawduct, "01", plan_path=plan
-        )
-        assert rationale is None
-        assert error and error.startswith("missing-rationale:")
 
 
 def test_every_type_line_in_this_repo_is_honoured_or_reported():

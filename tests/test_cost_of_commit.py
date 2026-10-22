@@ -36,6 +36,8 @@ import sys
 import textwrap
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
@@ -575,6 +577,7 @@ class TestRoundPrice:
         assert "under a minute" in rendered
         assert "0 min" not in rendered
 
+    @pytest.mark.non_root
     def test_an_unreadable_ledger_is_not_reported_as_an_empty_history(
         self, tmp_path: Path
     ) -> None:

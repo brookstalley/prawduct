@@ -15,6 +15,7 @@ approve one payload and a send transmit another.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -35,9 +36,8 @@ from lib import core  # noqa: E402
 from lib.backlog import cli, encode, upstream  # noqa: E402
 from tests.fakes.fake_github import FakeGitHub  # noqa: E402
 
-# A pinned report, and the exact bytes it renders to. `found_in` and `submitter`
-# are passed explicitly so the fixture does not move when the plugin version or
-# the checkout does.
+# A pinned report, and the exact bytes it renders to. `found_in` is passed
+# explicitly so the fixture does not move when the plugin version does.
 _TITLE = "gate blocks on in-flight background work"
 _BODY = (
     "### Problem\n\n"
@@ -47,7 +47,6 @@ _BODY = (
 )
 _COMPONENT = "stop-hook"
 _FOUND_IN = "3.2.0"
-_SUBMITTER = "acme/widget"
 
 _EXPECTED_TITLE = "[prawduct] stop-hook: gate blocks on in-flight background work"
 _EXPECTED_BODY = (
@@ -62,10 +61,11 @@ _EXPECTED_BODY = (
     "```prawduct\n"
     "v: 1\n"
     "found_in: 3.2.0\n"
-    "source-key: sha256:80fb9025283ce992e77ddaf4245bfbd099e0f376a10f0770a0d2c3f6c0bb17e6\n"
+    "source-key: sha256:2a566c44f68b6f0414f8b3dfb73ffb7a2e754d5e1351dacf53ab1bddd4419298\n"
     "```"
 )
-_EXPECTED_DIGEST = "sha256:0463a7745650c33d6512345d0c7c837098994b0e8d5e03839361c7d9a759b1c2"
+# Both hashes moved deliberately in #763, when the submitter left the source-key.
+_EXPECTED_DIGEST = "sha256:a3ff502d92806c3d9fde895b5ded5235df076364731c790489a6484d283c0a71"
 
 
 def _payload(**overrides):
@@ -74,7 +74,6 @@ def _payload(**overrides):
         "body": _BODY,
         "component": _COMPONENT,
         "found_in": _FOUND_IN,
-        "submitter": _SUBMITTER,
     }
     kwargs.update(overrides)
     return upstream.build_payload(**kwargs)
@@ -125,10 +124,9 @@ class TestTheDigestTracksEveryByte:
             {"body": _BODY + "!"},
             {"component": "stop-hooks"},
             {"found_in": "3.2.1"},
-            {"submitter": "acme/other"},
             {"target": "someone/else"},
         ],
-        ids=["title", "body", "component", "found_in", "submitter", "target"],
+        ids=["title", "body", "component", "found_in", "target"],
     )
     def test_changing_any_input_changes_the_digest(self, overrides):
         """Including the target: digesting the body alone would let a payload
@@ -142,13 +140,41 @@ class TestTheDigestTracksEveryByte:
         a digest that survives a round-trip through a skill and one that does not."""
         assert upstream.payload_digest(_payload(body=f"\n  {_BODY}  \n")) == _EXPECTED_DIGEST
 
-    def test_the_submitter_and_the_title_cannot_be_confused_for_one_another(self):
-        """The source-key's inputs are separated, so no two distinct triples
+    def test_the_title_and_the_body_cannot_be_confused_for_one_another(self):
+        """The source-key's inputs are separated, so no two distinct pairs
         concatenate to the same bytes — an unseparated digest would collapse two
         different reports onto one issue and silently lose the second."""
-        assert upstream.source_key(submitter="ab", title="c", body="d") != upstream.source_key(
-            submitter="a", title="bc", body="d"
+        assert upstream.source_key(title="ab", body="c") != upstream.source_key(
+            title="a", body="bc"
         )
+
+
+class TestTheSourceKeyNamesNoSubmitter:
+    """#763 — the key once digested the submitter `owner/repo` beside the title
+    and body the issue publishes verbatim, which made it a confirmation oracle for
+    that one unknown input. The key now carries nothing the issue does not show."""
+
+    def _key(self, payload):
+        return encode.parse_block(payload["body"]).get("source-key")
+
+    def test_two_submitters_filing_one_report_stamp_one_key(self, tmp_path, monkeypatch):
+        keys = []
+        for identity in (("acme/widget",), ("other/thing",)):
+            monkeypatch.setattr(upstream, "resolve_self_identity", lambda _d, i=identity: i)
+            payload, _digest = upstream.render_preview(
+                tmp_path, title=_TITLE, body=_BODY, component=_COMPONENT
+            )
+            keys.append(self._key(payload))
+        assert keys[0] and keys[0].startswith("sha256:")
+        assert keys[0] == keys[1]
+
+    def test_the_published_title_and_body_alone_reproduce_the_key(self):
+        payload = _payload()
+        report = payload["body"].split("\n\n```prawduct")[0]
+        recomputed = "sha256:" + hashlib.sha256(
+            payload["title"].encode("utf-8") + b"\x00" + report.encode("utf-8") + b"\x00"
+        ).hexdigest()
+        assert self._key(payload) == recomputed
 
 
 class TestFoundInIsSourcedNeverGuessed:
@@ -195,10 +221,9 @@ class TestTheTrimmedBlockCarriesNothingElse:
             {},
             {"component": "provenance"},
             {"body": "### Problem\n\nsource: acme/widget leaked into prose"},
-            {"submitter": "acme/widget"},
             {"found_in": upstream.VERSION_UNKNOWN},
         ],
-        ids=["plain", "component-named-provenance", "prose-mentions-source", "submitter", "unknown"],
+        ids=["plain", "component-named-provenance", "prose-mentions-source", "unknown"],
     )
     def test_no_input_can_put_a_source_field_in_the_marker(self, overrides):
         """The product name is the field minimization exists to strip. It is absent
@@ -351,7 +376,6 @@ class TestIdentityResolvesFromTwoSignals:
         """The empty tuple is the fail-closed input: a caller enforcing the
         no-self-file invariant must read it as a refusal, never as a pass."""
         assert upstream.resolve_self_identity(tmp_path) == ()
-        assert upstream.submitter_identity(tmp_path) == ""
 
     def test_the_configured_backlog_repo_alone_resolves(self, tmp_path):
         self._state(tmp_path, "acme/widget")
@@ -371,7 +395,6 @@ class TestIdentityResolvesFromTwoSignals:
         self._state(tmp_path, "acme/widget")
 
         assert upstream.resolve_self_identity(tmp_path) == ("acme/widget", "acme/mirror")
-        assert upstream.submitter_identity(tmp_path) == "acme/widget"
 
     def test_two_signals_naming_one_repo_resolve_once(self, tmp_path):
         self._git_repo(tmp_path, "https://github.com/acme/widget")
@@ -1245,7 +1268,7 @@ class TestTheSendPathFiles:
         filed = fake.list_issues(*upstream.PINNED_TARGET.split("/"), state="all")[0]
 
         key = upstream.source_key(
-            submitter="acme/widget", title=_EXPECTED_TITLE,
+            title=_EXPECTED_TITLE,
             body=envelope["data"]["payload"]["body"].split("\n\n```prawduct")[0],
         )
         assert upstream.find_filed(

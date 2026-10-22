@@ -14,10 +14,11 @@ Three mechanisms, one predicate (``critic_mode.short_plan_deferral``):
   eligible plan with code in flight, and ``cumulative`` as ever once the tree
   is clean, so the boundary review is inferred exactly where it always was.
 - The Stop hook's Critic gate WARNS instead of blocking on an eligible plan's
-  non-final chunk, naming the boundary review, and delivers the warning on the
-  one channel the harness reads at exit 0 (a JSON ``systemMessage`` +
-  ``additionalContext`` on stdout); on the last chunk it blocks as ever and
-  says what the boundary review is.
+  non-final chunk, naming the boundary review. At exit 0 the warning reaches
+  the user only (a JSON ``systemMessage`` on stdout — Stop has no model channel
+  that does not start a turn); when another gate blocks it rides the exit-2
+  stderr beside the blockers. On the last chunk it blocks as ever and says
+  what the boundary review is.
 - ``check-cumulative-critic`` is untouched: the plan's acceptance criterion is
   that one ``cumulative`` fact spanning merge-base…HEAD passes the PR gate on
   its own, and a control here shows the gate can still fail.
@@ -366,6 +367,64 @@ class TestEligiblePlanDefers:
         assert rationale.startswith("short-plan deferral:")
 
 
+class TestAChunkShippedAsItsOwnPR:
+    """The deferral knows one boundary, the plan's last chunk, because it
+    assumes one PR per plan. A chunk merged as its own PR is a boundary too,
+    and `Critic mode: cumulative` on it is the existing way to say so (#999)."""
+
+    def _untick(self, prawduct: Path, chunk_id: str) -> None:
+        plan = prawduct / "artifacts" / "build-plan.md"
+        text = plan.read_text()
+        needle = f"- [x] Chunk {chunk_id}:"
+        assert needle in text, text
+        plan.write_text(text.replace(needle, f"- [ ] Chunk {chunk_id}:"))
+
+    def test_without_a_declaration_the_committed_first_chunk_defers(self, tmp_path: Path):
+        """Today's behaviour, the control: Chunk 01 committed but unticked and
+        an uncommitted non-plan file in flight — nothing knows a PR is coming.
+        (On a clean tree with nothing reviewed, rule 4 already answers
+        `cumulative`, so that state cannot be the control.)"""
+        prawduct = _short_plan_branch(tmp_path, chunks=2, committed=("01",))
+        self._untick(prawduct, "01")
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == critic_mode.MODE_DEFERRED, rationale
+
+    @pytest.mark.parametrize("dirty", [True, False])
+    @pytest.mark.parametrize("ticked", [True, False])
+    def test_the_declared_chunk_infers_cumulative_once_committed(
+        self, tmp_path: Path, ticked: bool, dirty: bool
+    ):
+        prawduct = _short_plan_branch(
+            tmp_path, chunks=2, committed=("01",), dirty=dirty,
+            chunk_modes={"01": "cumulative", "02": "cumulative"},
+        )
+        if not ticked:
+            self._untick(prawduct, "01")
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "cumulative", rationale
+
+    def test_the_deferred_rationale_names_the_way_to_a_per_chunk_pr(self, tmp_path: Path):
+        _short_plan_branch(tmp_path)
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == critic_mode.MODE_DEFERRED, rationale
+        assert critic_mode.SHORT_PLAN_OWN_PR_NOTE in rationale
+        assert "/prawduct:critic cumulative" in rationale and "own PR" in rationale
+
+    def test_the_stop_warning_names_it_too(self, tmp_path: Path):
+        prawduct = _short_plan_branch(tmp_path)
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path)
+        assert result.returncode == 0, result.stderr
+        flat = " ".join(json.loads(result.stdout)["systemMessage"].split())
+        assert critic_mode.SHORT_PLAN_OWN_PR_NOTE in flat, flat
+
+    @pytest.mark.parametrize("rel", ["methodology/planning.md", "templates/build-plan.md"])
+    def test_the_guide_and_template_carry_the_rule(self, rel: str):
+        text = (ROOT / rel).read_text()
+        line = next((l for l in text.splitlines() if "own PR" in l), "")
+        assert "Critic mode: cumulative" in line, rel
+
+
 class TestProseCarriesTheConstant:
     """The chunk bound is one rule on four carriers — the constant and three
     prose surfaces that state it as a number. A change to either side without
@@ -455,10 +514,10 @@ class TestStopGateOnShortPlans:
         assert _GENERIC_BLOCK not in result.stderr
         assert "deferred-boundary-review" in result.stderr
         # Delivered where exit 0 is read: ONE JSON object is the whole of stdout,
-        # carrying the same text for the user and for the model.
+        # for the user only — `additionalContext` would start a model turn on
+        # every Stop while the deferral is active (#822).
         payload = json.loads(result.stdout)
-        assert set(payload) == {"systemMessage", "additionalContext"}
-        assert payload["systemMessage"] == payload["additionalContext"]
+        assert set(payload) == {"systemMessage"}
         text = payload["systemMessage"]
         assert "deferred-boundary-review" in text
         assert "`cumulative`" in text and "/prawduct:critic chunk" in text
@@ -471,6 +530,35 @@ class TestStopGateOnShortPlans:
         assert "tick its box" in flat and "does not wait" in flat, flat
         assert "unticked now: Chunk 01, Chunk 02, Chunk 03" in flat, flat
         assert "carry on" not in flat
+
+    def test_the_advisory_rides_the_block_when_another_gate_blocks(self, tmp_path: Path):
+        """#822: exit 2 used to drop the queued advisory. Same non-final chunk,
+        plus an unshaped reflection over judgeable work, so the reflection gate
+        blocks while the Critic gate only defers."""
+        prawduct = _short_plan_branch(tmp_path)
+        _arm_stop(prawduct)
+        (prawduct / ".session-reflected").write_text("did stuff\n")
+        result = _run_stop(tmp_path)
+        assert result.returncode == 2, result.stderr
+        assert "REFLECTION:" in result.stderr
+        assert "ADVISORIES (not blocking):" in result.stderr
+        advisories = result.stderr.split("ADVISORIES (not blocking):", 1)[1]
+        assert "deferred-boundary-review" in advisories
+        assert result.stdout.strip() == ""
+
+    def test_every_stop_exit_after_the_advisories_delivers_them(self):
+        """Each `return` in `cmd_stop` after `stop_advisories` is declared goes
+        through `_deliver_stop_advisories` on the line before it."""
+        src = HOOK.read_text()
+        body = src[src.index("def cmd_stop("):]
+        body = body[: body.index("\ndef ", 1)]
+        after = body[body.index("stop_advisories: list[str] = []"):]
+        lines = after.splitlines()
+        returns = [i for i, ln in enumerate(lines) if ln.strip() in ("return 0", "return 2")]
+        assert len(returns) == 4, returns
+        for i in returns:
+            window = "\n".join(lines[max(0, i - 12):i])
+            assert "_deliver_stop_advisories(stop_advisories" in window, lines[i - 3:i + 1]
 
     def test_four_chunk_plan_still_blocks(self, tmp_path: Path):
         prawduct = _short_plan_branch(tmp_path, chunks=4)
@@ -581,6 +669,7 @@ class TestStopGateOnShortPlans:
         assert "RuntimeError: plan resolution exploded" in err
         assert "applied in full" in err
 
+    @pytest.mark.non_root
     def test_an_unreadable_evidence_store_still_blocks(self, tmp_path: Path):
         """`error` is not a coverage verdict, so it is not softened either: the
         deferral is asked only of `uncovered`. The one status that reaches the

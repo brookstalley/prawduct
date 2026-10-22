@@ -124,7 +124,7 @@ import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
+from .advisory_store import AdvisoryCandidate, Codebase, CouldNotLook, ProjectState, register_probe
 from .backlog.encode import parse_iso as encode_parse_iso
 from .backlog.legacy import BacklogItem, parse_backlog
 from .backlog_probes import post_cutover
@@ -760,8 +760,12 @@ class _CacheUnanswerable(Exception):
         self.reason = reason
 
 
-def _cache_advisory(exc: "_CacheUnanswerable", scope: str) -> list[AdvisoryCandidate]:
+def _cache_advisory(exc: "_CacheUnanswerable", scope: str) -> CouldNotLook:
     """The one advisory both probes raise, with both repairs named.
+
+    Returned as :class:`~lib.advisory_store.CouldNotLook`, and every probe passes
+    that mark through: the advisory says the check could not look, so the probe's
+    own open advisories must stay open on this sync rather than resolve (R-2).
 
     **Both routes are named unconditionally rather than one being chosen from the
     error code**, which is the opposite of what it should be and is deliberate.
@@ -779,7 +783,7 @@ def _cache_advisory(exc: "_CacheUnanswerable", scope: str) -> list[AdvisoryCandi
     the first line an operator copy-pastes — and a literal ``<placeholder>`` in
     that position is a command that does not run.
     """
-    return [
+    return CouldNotLook([
         AdvisoryCandidate(
             type=_CACHE_UNAVAILABLE_TYPE,
             evidence=_CACHE_UNAVAILABLE_EVIDENCE,
@@ -802,7 +806,7 @@ def _cache_advisory(exc: "_CacheUnanswerable", scope: str) -> list[AdvisoryCandi
             recommended_action=f"prawduct-hook backlog sync --repo {scope}   (or /prawduct:backlog for an alias collision)",
             priority="info",
         )
-    ]
+    ])
 
 
 def _resolve_citation(codebase: Codebase, scope: str, cited: str) -> dict | None:
@@ -1337,8 +1341,9 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
     # than short-circuiting: the expired-stopgap arm answered from the artifacts
     # alone, so there IS a finding to report, and the outage is still true and
     # still worth saying. Returning only one of the two would either hide a live
-    # departure or hide the fact that the other arm could not run.
-    return advisory + [
+    # departure or hide the fact that the other arm could not run — and it keeps
+    # its could-not-look mark, so the stall arm's silence is not read as an answer.
+    found = [
         AdvisoryCandidate(
             type="stalled-transition",
             evidence=(
@@ -1365,6 +1370,7 @@ def probe_stalled_transition(state: ProjectState, codebase: Codebase):
             priority="info",
         )
     ]
+    return CouldNotLook([*advisory, *found]) if advisory else found
 
 
 def probe_norm_registry_unratified(state: ProjectState, codebase: Codebase):
@@ -1465,12 +1471,12 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
             # `trigger_summary` (which is id-free) and, when the wording must change,
             # bump PROBE_VERSION so the supersession is deliberate.
             evidence=("norms exist (`## Direction` sections) but the janitor Norm Health sweep is overdue or never run",),
-            # The route lives HERE, not only in `alternative_actions`: no surface
-            # renders that field — briefing, `advisory list` and `advisory show`
-            # all print `trigger_summary` + `recommended_action` — so setting it
-            # alone left the reader still sent to a sweep over an empty registry.
-            # `trigger_summary` is rendered AND is not part of `compute_id`, so
-            # it is the one place this can be said without minting a new id.
+            # The Health Check #14 route lives HERE, once: the briefing renders
+            # `trigger_summary` and only `advisory show` renders
+            # `alternative_actions`, so the summary is the one field every surface
+            # prints — and it is not part of `compute_id`, so the route can be
+            # said here without minting a new id. Carrying it in
+            # `alternative_actions` too printed it twice under `show` (#785).
             trigger_summary=(
                 f"Norm Health sweep overdue (>{SWEEP_WINDOW_DAYS}d or never run) while norms exist — "
                 "erosion and decay go unmeasured. If this repo has ratified nothing, the rows are "
@@ -1482,13 +1488,12 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
                 "which are actually being followed, and which have quietly stopped applying. "
                 "It reads and reports; nothing is changed without you agreeing to it first."
             ),
-            recommended_action="/prawduct:janitor",
             # A repo that is here because it still carries the TEMPLATE's
             # scaffold rows owes no sweep at all — the fix is the repair, not
             # the audit. The probe cannot tell the two apart (it sees populated
-            # rows either way), so it names both routes rather than sending
-            # every reader to the one that is wrong for some of them.
-            alternative_actions=("/prawduct:doctor (Health Check #14 — leftover norm-index scaffold rows)",),
+            # rows either way), so it names both routes: the sweep here, the
+            # repair in `trigger_summary`.
+            recommended_action="/prawduct:janitor",
             priority="info",
         )
     ]
@@ -1497,7 +1502,8 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
 def register() -> None:
     """Register the norm-lifecycle probes. Idempotent (register_probe overwrites)."""
     register_probe(FEATURE, "revisit-due", PROBE_VERSION, probe_revisit_due)
-    register_probe(FEATURE, "dead-why", PROBE_VERSION, probe_dead_why)
-    register_probe(FEATURE, "stalled-transition", PROBE_VERSION, probe_stalled_transition)
+    cache = (_CACHE_UNAVAILABLE_TYPE,)
+    register_probe(FEATURE, "dead-why", PROBE_VERSION, probe_dead_why, emits=cache)
+    register_probe(FEATURE, "stalled-transition", PROBE_VERSION, probe_stalled_transition, emits=cache)
     register_probe(FEATURE, "norm-registry-unratified", PROBE_VERSION, probe_norm_registry_unratified)
     register_probe(FEATURE, "norm-health-sweep-overdue", PROBE_VERSION, probe_norm_health_sweep_overdue)

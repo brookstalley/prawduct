@@ -133,7 +133,7 @@ def probe_unintegrated_delegate_worktree(state: ProjectState, codebase: Codebase
             "unintegrated delegate worktree would go unreported this session",
             file=sys.stderr,
         )
-        return []
+        return None  # could not look — not "nothing to report" (#917)
     if len(records) < 2:
         return []
 

@@ -33,12 +33,14 @@ import pytest
 
 from lib.advisory_store import (
     Codebase,
+    CouldNotLook,
     ProjectState,
     clear_registry,
     compute_id,
     load_project_state,
     make_codebase,
     run_all_probes,
+    run_probes,
 )
 from lib import core, norm_probes as np
 from lib.backlog import core as backlog_core, encode, sync as backlog_sync
@@ -724,6 +726,8 @@ class TestStopgapClearsAndExpires:
         assert types == ["backlog-cache-unreadable", "stalled-transition"], types
         stall = next(c for c in out if c.type == "stalled-transition")
         assert "stopgap expired" in stall.trigger_summary
+        # R-2: the stall arm could not look, and the finding does not hide that.
+        assert isinstance(out, CouldNotLook)
 
     def test_advisory_id_is_stable_across_both_arms(self, tmp_path):
         # Arm-independent evidence, the `norm-registry-unratified` shape: the id
@@ -1103,14 +1107,16 @@ class TestNormHealthSweepOverdueProbe:
         assert np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path)) == []
 
     def test_the_advisory_names_the_repair_route_not_only_the_sweep(self, tmp_path):
-        """The pointer to Health Check #14 must live where a surface renders it.
+        """The pointer to Health Check #14 must live where every surface renders it.
 
-        It was first set on `alternative_actions`, which briefing, `advisory
-        list` and `advisory show` all ignore — so the fix was inert while
-        looking complete. `trigger_summary` is rendered AND is not hashed into
-        `compute_id`, so it is the one field that can carry this without
+        It was first set on `alternative_actions`, which the briefing does not
+        render (only `advisory show` does) — so the fix was inert where most
+        readers look. `trigger_summary` is rendered everywhere AND is not hashed
+        into `compute_id`, so it is the one field that can carry this without
         resurrecting the advisory in every repo that dismissed it. Without this
         test a reword silently deletes the only rendered pointer to the repair.
+        Said once: carrying it in `alternative_actions` as well printed it twice
+        under `advisory show` (#785).
         """
         _write_artifact(tmp_path, "architecture.md", _direction_artifact("- **X.**\n  Why: because.\n"))
         out = np.probe_norm_health_sweep_overdue(ProjectState({}), _cb(tmp_path))
@@ -1119,6 +1125,8 @@ class TestNormHealthSweepOverdueProbe:
             "a repo whose rows are leftover template scaffold owes no sweep — "
             "the summary must offer the repair, not only the audit"
         )
+        rendered = " ".join([out[0].trigger_summary, *out[0].alternative_actions])
+        assert rendered.count("Health Check #14") == 1, "the route is said once"
 
     def test_window_boundary_is_inclusive(self, tmp_path):
         # age == SWEEP_WINDOW_DAYS is still "fresh" (the guard is `<=`); one day past fires.
@@ -1641,6 +1649,8 @@ class TestPostCutoverResolvesThroughTheCache:
         assert len(out) == 1
         assert out[0].type == "backlog-cache-unreadable"
         assert "sync" in out[0].recommended_action
+        # R-2: and marked could-not-look, so the probe's own open advisories hold.
+        assert isinstance(out, CouldNotLook)
 
     @pytest.mark.parametrize(
         "why_lines",
@@ -1668,6 +1678,29 @@ class TestPostCutoverResolvesThroughTheCache:
         out = np.probe_dead_why(self._state(), _cb(tmp_path))
 
         assert [c.type for c in out] == ["backlog-cache-unreadable"]
+        assert isinstance(out, CouldNotLook)
+
+    def test_an_outage_holds_both_probes_open_advisories(self, tmp_path):
+        """R-2: the cache nag says the checks could not look, so a sync must hold
+        dead-why's and stalled-transition's open advisories rather than resolve
+        them. The hold is what ``run_probes`` reports as unanswered; a probe that
+        did not read the cache (revisit-due) is the control."""
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        _write_artifact(
+            tmp_path,
+            "observability-strategy.md",
+            _direction_artifact(
+                f"- **X.**\n  Why: settled by {self.SCOPE}#7.\n"
+                f"  Status: in-transition — tracked in {self.SCOPE}#7\n"
+            ),
+        )
+        np.register()
+
+        candidates, unanswered = run_probes(self._state(), make_codebase(tmp_path))
+
+        assert {(np.FEATURE, "dead-why"), (np.FEATURE, "stalled-transition")} <= unanswered
+        assert (np.FEATURE, "revisit-due") not in unanswered
+        assert "backlog-cache-unreadable" in {c.type for c in candidates}
 
     def test_both_probes_report_one_outage_not_two(self, tmp_path):
         """One cause, one nag. `compute_id` hashes (feature, type, version,

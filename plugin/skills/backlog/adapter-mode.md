@@ -73,7 +73,7 @@ returns — there is no loop and no backoff anywhere on the single-op path, and 
 30s. The one exception is `import`, which pauses and retries a *rate-limited record* inside its own
 run and then ends resumably; never wrap that op in a retry of your own.
 
-So every retry is yours, and `retryable: true` is a hint that re-attempting **can** work — never a
+The figures below are this skill's policy for the caller; no code enforces or pins them (the transport has no retry loop). So every retry is yours, and `retryable: true` is a hint that re-attempting **can** work — never a
 licence to loop until it does. The budget for one operation:
 
 - **Retry only a `retryable: true` error.** `unavailable`, `rate_limited` and `conflict` are the
@@ -231,6 +231,8 @@ Route by what changed:
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
   item's *stored* title does not conform — that is deliberate, so archiving an old item never forces
   a drive-by retitle; the result carries an advisory `lint[]` saying the title was left alone.
+  A **stage change** also scans the final body for prose still describing the old stage and warns
+  (the write succeeds): reconcile it in the same call with `--body`.
 - **tags** (`--tags a,b`) → sets the **whole** set: absent tags are stripped, `--tags ''` clears
   them. That is the only semantics under which a caller can remove one. Tags are an open
   folksonomy — invent values freely, and never build a check that reads them (`--tag T` on `list`
@@ -264,10 +266,10 @@ Route by what changed:
   `unlink …`.
 - **a free note** → `comment <id> --body B`.
 
-The item envelope does **not** surface an `updated_at`, so the optional `--if-updated-at <ts>`
-optimistic-concurrency guard (exit **4 conflict** on a stale timestamp) is only usable when a caller
-already holds that timestamp from elsewhere; the skill's normal path omits it. It applies to the
-whole `update` op, not to any one field above.
+The optional `--if-updated-at <ts>` optimistic-concurrency guard takes the item's `data.updated_at`
+from a `get` (the envelope also carries `created_at`): read it, pass it back verbatim, and on exit
+**4 conflict** (a stale timestamp) re-read rather than retry. It applies to the whole `update` op,
+not to any one field above; the skill's normal path omits it.
 
 ### file-upstream
 Do not call it from here. It is the data plane for `/prawduct:report-bug`, its only caller, which

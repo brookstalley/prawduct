@@ -49,7 +49,7 @@ failure modes, ranked by evidence strength:
 ## Actors
 
 - **Project agents** — Claude sessions working the project: file, query, pick, update, comment.
-- **Consumer agents** — sessions in downstream products filing upstream (today's incoming-bugs flow).
+- **Consumer agents** — sessions in downstream products filing upstream (the retired incoming-bugs drop-box flow, now direct cross-repo filing).
 - **Humans** — owner and collaborators: browse, prioritize, comment, decide.
 - **Background workers** — unattended triage/dedup/consolidation jobs.
 

@@ -75,7 +75,8 @@ def strand(repo: Path, branch: str) -> None:
 
 
 def probe(repo: Path):
-    return list(sbp.probe_stranded_branch(ProjectState({}), make_codebase(repo)))
+    found = sbp.probe_stranded_branch(ProjectState({}), make_codebase(repo))
+    return None if found is None else list(found)
 
 
 class TestFires:
@@ -177,7 +178,7 @@ class TestDegradesLoudly:
             return real(root, *args, **kwargs)
         monkeypatch.setattr(evidence, "run_git", run_git)
 
-        assert probe(clone) == []
+        assert probe(clone) is None, "could not look is not nothing to report (#917)"
         err = capsys.readouterr().err
         assert "stranded-branch probe skipped" in err
         assert "would go unreported" in err

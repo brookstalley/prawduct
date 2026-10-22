@@ -10,9 +10,10 @@ runner config.
 
 1. **The machine-readable report is a side effect of every run.** The report path lives in the
    runner's own default-arguments file, not in the command someone types. Nobody can run the suite
-   in a way that produces no report, so no run in a session is unrecoverable: whatever happened, it
+   in a way that produces no report, so the last run is always recoverable: whatever happened, it
    can be ingested with `prawduct-hook test-evidence record --from-junit <report>` instead of being
-   run again.
+   run again. The last run, not every run — the report is ingestible until the next invocation of
+   the runner overwrites it, so ingest a whole-suite run before running anything else.
 2. **The invocation's scope is recorded beside the report.** The runner's pre/post-run hook writes
    a small JSON record saying whether that invocation ran the whole suite or a narrowed part of it.
 
@@ -33,7 +34,7 @@ them, so an onboarded repo gets the ignore rules without doing anything. Both ar
 the session boundary** (`/clear`), with the rest of the session files: a report outliving its
 session invites an ingest that stamps the new session's tree onto the old session's run, and the
 scope record cannot catch that — it says what the invocation selected, never when it ran. A run is
-recoverable inside the session that made it.
+recoverable until the next invocation of the runner, and never past the session boundary.
 
 The convention is what lets prose and refusals name an exact command. A repo whose runner cannot
 write there is not excluded — it passes its own path to `--from-junit`, and the scope record is
@@ -259,5 +260,9 @@ advisory that fails *silently* manufactures the confidence it exists to check.
   present-but-mismatched record is not the un-wired population that absence is, so it is surfaced
   rather than ignored — but it is a real cost: ingest the report where it was produced, or download
   the report alone, which lands in the permissive absent case.
+- **A subset run overwrites a whole-suite report and its `full` record.** The slot is single, and the
+  producer writes a `partial` record before the first test runs — that early write is the
+  crash-safety guarantee, so it is deliberate, not an oversight. Ingest the whole-suite run before
+  the next invocation, or re-run it.
 - **It says nothing about the report's contents.** A hand-edited report is out of scope; this
   answers what the invocation selected, not whether the XML is truthful.

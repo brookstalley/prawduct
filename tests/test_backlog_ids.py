@@ -6,6 +6,8 @@ short/shell forms resolve same-owner only, and normalization is idempotent.
 
 from __future__ import annotations
 
+import ast
+import inspect
 import sys
 from pathlib import Path
 
@@ -295,6 +297,75 @@ class TestPfxAliases:
     @pytest.mark.parametrize("name", ["stage:ready", "id:not a pfx", "id:", "notid:BKL-1"])
     def test_non_alias_label_returns_none(self, name):
         assert ids.pfx_from_alias_label(name) is None
+
+
+class TestStoredRefsTakeNoDefault:
+    """#754 — a ref parsed out of issue-body text resolves only when fully
+    qualified. ``normalize_stored_ref`` owns that rule by signature, and the
+    ``default_*`` keywords of ``normalize_id`` are confined to the operator-input
+    functions by an AST allow-list, so a new body-reading site that passes a
+    default fails here rather than relying on a reviewer to remember."""
+
+    #: (module stem, top-level function) — the operator-input paths, where a
+    #: caller-supplied default is correct.
+    OPERATOR_INPUT = {("core", "resolve_ref"), ("cachequery", "resolve")}
+
+    #: The sites whose input is never operator text.
+    STORED_REF_SITES = {
+        ("cachequery", "_redirect_fetch"),
+        ("core", "resolve_survivor"),
+        ("ids", "parse_provider_alias"),
+        ("ids", "provider_alias"),
+    }
+
+    @staticmethod
+    def _calls(name: str):
+        """Every call to ``name`` (bare or attribute) across lib/backlog, as
+        ``(module stem, enclosing top-level function, ast.Call)``."""
+        found = []
+        for path in sorted(Path(ids.__file__).parent.glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for top in tree.body:
+                if not isinstance(top, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for node in ast.walk(top):
+                    if not isinstance(node, ast.Call):
+                        continue
+                    fn = node.func
+                    called = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+                    if called == name:
+                        found.append((path.stem, top.name, node))
+        return found
+
+    def test_the_helper_takes_exactly_one_positional_parameter(self):
+        params = list(inspect.signature(ids.normalize_stored_ref).parameters.values())
+        assert len(params) == 1
+        assert params[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+
+    @pytest.mark.parametrize("spelling", ["repo#7", "#7", "7"])
+    def test_the_helper_refuses_short_and_bare_spellings(self, spelling):
+        assert not ids.normalize_stored_ref(spelling).ok
+
+    def test_the_helper_accepts_the_canonical_spelling(self):
+        assert ids.normalize_stored_ref("octo/repo#7").canonical == "octo/repo#7"
+
+    def test_defaults_are_passed_only_from_operator_input_functions(self):
+        defaulted = {
+            (mod, fn)
+            for mod, fn, call in self._calls("normalize_id")
+            # `arg is None` is a `**kwargs` splat — it could carry a default, so
+            # it counts as one (fail closed).
+            if any(kw.arg in (None, "default_owner", "default_repo") for kw in call.keywords)
+        }
+        # Equality, not subset: a scanner that reached nothing would pass a
+        # subset check vacuously.
+        assert defaulted == self.OPERATOR_INPUT, defaulted
+
+    def test_stored_ref_sites_route_through_the_helper(self):
+        via_helper = {(m, f) for m, f, _ in self._calls("normalize_stored_ref")}
+        direct = {(m, f) for m, f, _ in self._calls("normalize_id")}
+        assert self.STORED_REF_SITES <= via_helper, self.STORED_REF_SITES - via_helper
+        assert not (self.STORED_REF_SITES & direct), self.STORED_REF_SITES & direct
 
 
 class TestProviderAliases:

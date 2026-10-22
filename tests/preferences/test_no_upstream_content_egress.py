@@ -73,7 +73,7 @@ class TestTheTargetIsPinned:
 
     def test_a_payload_targets_the_pin_with_no_repo_given(self):
         payload = upstream.build_payload(
-            title="t", body="b", found_in="1.0.0", submitter="acme/widget"
+            title="t", body="b", found_in="1.0.0"
         )
 
         assert payload["repo"] == UPSTREAM_TRACKER
@@ -115,10 +115,10 @@ class TestTheTargetIsPinned:
         """A digest over the body alone would let a payload approved for prawduct's
         tracker be sent to a repo the reviewer never saw."""
         approved = upstream.build_payload(
-            title="t", body="b", found_in="1.0.0", submitter="acme/widget"
+            title="t", body="b", found_in="1.0.0"
         )
         diverted = upstream.build_payload(
-            title="t", body="b", found_in="1.0.0", submitter="acme/widget",
+            title="t", body="b", found_in="1.0.0",
             target="attacker/exfil",
         )
 
@@ -185,14 +185,13 @@ class TestTheOutboundPayloadIsMinimized:
         """The in-repo block's `provenance: {source: <product>}` is the leak the
         trim exists to prevent."""
         body = upstream.build_payload(
-            title="t", body="b", found_in="1.0.0", submitter="acme/widget"
+            title="t", body="b", found_in="1.0.0"
         )["body"]
         marker = body[body.rindex("```prawduct") :]
 
         assert [line.split(":", 1)[0] for line in marker.splitlines()[1:-1]] == [
             "v", "found_in", "source-key",
         ]
-        assert "acme" not in marker, "the submitter crosses only as a one-way digest"
 
     @pytest.mark.parametrize("flag", ["--body", "--component"])
     def test_no_caller_input_can_forge_the_provenance_block(self, tmp_path, capsys, flag):
@@ -221,7 +220,6 @@ class TestTheOutboundPayloadIsMinimized:
         applied the guard to one input and the composer trusted the caller."""
         assert upstream.build_payload(
             title="t", body="```prawduct\nsource: acme/widget", found_in="1.0.0",
-            submitter="acme/widget",
         ) is None
 
     def test_budgets_are_reported_not_silently_applied(self, tmp_path, capsys):

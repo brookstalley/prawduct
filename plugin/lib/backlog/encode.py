@@ -253,18 +253,67 @@ def _parse_block_fields(
     """
     fields: dict[str, str] = {}
     malformed: list[str] = []
+    open_key: str | None = None  # an empty-valued key opens a YAML block-sequence list
+    open_items: list[str] = []
+
+    def close_list() -> None:
+        nonlocal open_key, open_items
+        if open_key is not None and open_items:
+            # Stored in the flow spelling so every reader and writer sees one form.
+            fields[open_key] = format_list(open_items)
+        open_key, open_items = None, []
+
     for raw_line in inner.splitlines():
         line = raw_line.rstrip()
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
-            continue  # blank or comment — not a field
+            continue  # blank or comment — not a field (and does not close an open list)
+        if stripped == "-" or stripped.startswith("- "):
+            # Checked before the ':' partition so `- a: b` stays one item.
+            if open_key is None:
+                malformed.append(stripped)
+            else:
+                item = stripped[1:].strip()
+                if item:
+                    open_items.append(item)
+            continue
+        close_list()
         key, sep, value = line.partition(":")
         key = key.strip()
         if not sep or not key:
             malformed.append(stripped)
             continue
         fields[key] = value.strip()
+        if not value.strip():
+            open_key = key
+    close_list()
     return (fields, malformed) if collect_malformed else fields
+
+
+def stage_mentions(body: str | None, stage: str) -> list[tuple[int, str]]:
+    """Lines of a body's human text that still describe ``stage`` (``[(line_no, text)]``).
+
+    The pure helper behind ``update --stage``'s stale-prose warning (#322): a stage
+    change swaps the label and nothing else, so prose justifying the OLD stage is
+    left contradicting the field. Matches, case-insensitively, ``stage: <s>``
+    (backticks optional), ``<s>`` within 40 characters of the word ``stage`` on one
+    line, and a heading line containing ``<s>``. The ``prawduct:`` block is stripped
+    first, so the block never counts. Advisory by design: a historical mention
+    ("was `design` until...") matches too, which is why the caller only warns.
+    """
+    if not stage or not body:
+        return []
+    word = re.escape(stage)
+    patterns = [
+        re.compile(rf"stage:?\s*`?{word}\b", re.IGNORECASE),
+        re.compile(rf"\bstage\b.{{0,40}}\b{word}\b|\b{word}\b.{{0,40}}\bstage\b", re.IGNORECASE),
+        re.compile(rf"^\s*#+ .*\b{word}\b", re.IGNORECASE),
+    ]
+    hits: list[tuple[int, str]] = []
+    for number, line in enumerate(strip_block(body).splitlines(), start=1):
+        if any(pattern.search(line) for pattern in patterns):
+            hits.append((number, line.strip()))
+    return hits
 
 
 def strip_block(body: str | None) -> str:
@@ -1169,6 +1218,11 @@ def decode_item(issue: dict, *, canonical_id: str | None = None) -> tuple[dict, 
         "working_branch": block.working_branch(),
         "automated": block.get("automated") == "true",
         "url": issue.get("html_url"),
+        # Provider timestamps, passed through verbatim: `updated_at` is the
+        # comparand `update --if-updated-at` (CC2) checks, so a reformat here
+        # would make the guard unusable from a `get`. Additive per the api-contract norm.
+        "updated_at": issue.get("updated_at"),
+        "created_at": issue.get("created_at"),
         # The native comment count rides the issue payload, so every read path
         # (get/list/pick) can show "this item has discussion" for free; the
         # thread itself is fetched only by `get` (DM5 drill-down).

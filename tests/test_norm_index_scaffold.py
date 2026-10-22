@@ -101,6 +101,28 @@ class TestCheck:
         assert out["status"] == nis.STATUS_UNREADABLE
         assert out["status"] != nis.STATUS_OK
 
+    def test_the_detail_names_which_read_failure(self, tmp_path, monkeypatch):
+        """#796: a permission problem must not be reported as an encoding one."""
+        d = tmp_path / ".prawduct" / "artifacts"
+        d.mkdir(parents=True)
+        path = d / "project-preferences.md"
+        path.write_bytes(b"\xff\xfe not utf-8 \xff")
+        assert "not decodable utf-8" in nis.check(tmp_path)["detail"]
+
+        path.write_text("fine\n", encoding="utf-8")
+        real_open = Path.open
+
+        def _denied(self, *args, **kwargs):
+            if self == path:
+                raise PermissionError(13, "Permission denied")
+            return real_open(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", _denied)
+        out = nis.check(tmp_path)
+        assert out["status"] == nis.STATUS_UNREADABLE
+        assert "Permission denied" in out["detail"]
+        assert "decodable" not in out["detail"]
+
     def test_the_shipped_template_reads_ok(self):
         """Detector and artifact pinned against each other, not against a fixture.
 

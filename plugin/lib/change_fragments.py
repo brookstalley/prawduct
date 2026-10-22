@@ -754,7 +754,7 @@ def _legacy_tags_line(extra: dict[str, object]) -> str:
     parts = []
     for key in sorted(extra):
         value = extra[key]
-        parts.append(f"{key}={', '.join(map(str, value)) if isinstance(value, list) else value}")
+        parts.append(f"{key}={value}")
     return "Legacy tags: " + "; ".join(parts)
 
 

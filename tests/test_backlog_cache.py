@@ -1853,7 +1853,10 @@ class TestTheCostSurface:
         for root in (first, second):
             store_dir = root / ".git" / cache.STORE_SUBDIR
             entries = sorted(p.name for p in store_dir.iterdir())
-            footprints.append(entries)
+            durable = {cache.STORE_BASENAME, "backlog-counts.json"}
+            # sqlite decides whether WAL sidecars outlive the close (build-dependent).
+            assert durable <= set(entries) <= durable | set(cache.STORE_SIDECARS), entries
+            footprints.append([e for e in entries if e not in cache.STORE_SIDECARS])
             # Inside the clone, never in the working tree — so it cannot be
             # committed, and deleting the clone reclaims all of it.
             assert store_dir.is_dir()

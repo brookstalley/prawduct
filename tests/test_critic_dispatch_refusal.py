@@ -441,6 +441,7 @@ class TestUncertaintyNeverBuysASkip:
     conflating them is what made the original criterion unfalsifiable.
     """
 
+    @pytest.mark.non_root
     def test_an_uncomputable_diff_never_refuses(self, tmp_path):
         """A corrupted object store cannot yield a file list, so the interval's
         judgeability is unknown — and unknown must not resolve to "free"."""

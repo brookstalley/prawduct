@@ -2599,7 +2599,9 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
     marker = "**Critic mode:**"
     field_position = re.compile(r"^[\s\-\*]*" + re.escape(marker))
     lost, misread, noisy = [], [], []
-    bound = declared = prose = 0
+    bound = 0
+    declared_at: dict[Path, set[int]] = {plan: set() for plan in plans}
+    prose_at: dict[Path, set[int]] = {plan: set() for plan in plans}
     for plan in plans:
         for lineno, line in enumerate(
             plan.read_text(encoding="utf-8").splitlines(), start=1
@@ -2615,7 +2617,6 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
                 None,
             )
             token = honoured.group(1) if honoured else None
-            reported = critic_mode._BUILD_PLAN_CRITIC_MODE_FIELD_RE.search(line)
 
             after = line.split(marker, 1)[1].split()
             reads_as = after[0].strip("`.,;*") if after else ""
@@ -2625,17 +2626,50 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
                     misread.append(f"{where} reads as {reads_as!r}, read as {token!r}")
 
             if field_position.match(line):
-                declared += 1
-                if after and not (token or reported):
-                    lost.append(where)
+                if after:
+                    declared_at[plan].add(lineno)
             else:
-                prose += 1
-                if reported:
-                    noisy.append(where)
+                prose_at[plan].add(lineno)
+
+    # The other two properties, asked of the READER (#781), as the `Type:` twin
+    # does since 28d1bc85. Phrased as "some pattern matches this line" they were
+    # inert: `_BUILD_PLAN_CRITIC_MODE_FIELD_RE` is the field-position prefix plus
+    # a value capture, so it matched every line the field-position check
+    # admitted (`lost` empty by construction) and no line it refused (`noisy`
+    # empty by construction). What the contract is about is what the chunk's
+    # read RETURNS: a mode, or the value it reports, and from which line.
+    graded = quiet = 0
+    for plan in plans:
+        content = plan.read_text(encoding="utf-8")
+        roster = (
+            buildplan_refs._chunk_id_from_item_text(text)
+            for _checked, text in buildplan_refs._iter_status_section_items(content)
+        )
+        for chunk_id in filter(None, roster):
+            section = buildplan_refs._chunk_section_lines(content, chunk_id)
+            if buildplan_refs.chunk_section_gap(chunk_id, section):
+                continue
+            nums = {num for num, _text in section.lines}
+            declared = nums & declared_at[plan]
+            prose = nums & prose_at[plan]
+            if not (declared or prose):
+                continue
+            read = critic_mode._critic_mode_for_chunk(plan.parent, chunk_id, plan)
+            where = f"{plan.name} Chunk {chunk_id}"
+            if declared:
+                graded += 1
+                if read.mode is None and read.unrecognized is None:
+                    lost.append(f"{where}: field-position lines {sorted(declared)}")
+            if prose:
+                quiet += 1
+                if read.unrecognized_line is not None and read.unrecognized_line not in declared:
+                    noisy.append(
+                        f"{where}: reported line {read.unrecognized_line}, which is prose"
+                    )
 
     assert bound, "no corpus line names a mode — the binding half proves nothing"
-    assert declared, "no corpus line puts the field in field position"
-    assert prose, "no corpus line mentions the field mid-line — the quiet half proves nothing"
+    assert graded, "no chunk section puts the field in field position"
+    assert quiet, "no chunk section mentions the field mid-line — the quiet half proves nothing"
     assert not misread, "\n".join(misread)
     assert not lost, "\n".join(lost)
     assert not noisy, "\n".join(noisy)

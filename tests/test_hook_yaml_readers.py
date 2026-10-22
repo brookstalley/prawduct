@@ -73,6 +73,9 @@ CASES = {
     "item_ending_in_a_quoted_argument": "risk_surfaces:\n  - node --test 'a/*.mjs'\n  - x \"y\"\n",
     "item_quoted_at_both_ends_but_not_whole": "risk_surfaces:\n  - \"$V/pytest\" -k \"not slow\"\n",
     "quoted_empty_item": "risk_surfaces:\n  - ''\n",
+    # #968: a `#` inside a quoted item is data, not a comment.
+    "item_quoting_a_hash": "risk_surfaces:\n  - \"pytest -k 'not #slow'\"  # why\n  - '#12'\n",
+    "item_with_an_unquoted_trailing_comment": "risk_surfaces:\n  - pytest -k fast # slow ones elsewhere\n",
 }
 
 #: ``(status, items)`` the canonical reader must produce for each case above.
@@ -96,6 +99,8 @@ EXPECTED = {
     "item_ending_in_a_quoted_argument": (YAML_DECLARED, ("node --test 'a/*.mjs'", 'x "y"')),
     "item_quoted_at_both_ends_but_not_whole": (YAML_DECLARED, ('"$V/pytest" -k "not slow"',)),
     "quoted_empty_item": (YAML_UNPARSEABLE, ()),
+    "item_quoting_a_hash": (YAML_DECLARED, ("pytest -k 'not #slow'", "#12")),
+    "item_with_an_unquoted_trailing_comment": (YAML_DECLARED, ("pytest -k fast",)),
 }
 
 

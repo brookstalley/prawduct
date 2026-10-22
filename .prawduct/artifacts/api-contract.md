@@ -200,8 +200,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **PR / release gates & views** — `check-pr-doc-only`, `check-change-log-entry`,
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
-  `resolve-base`,
-  `regen-views` (deprecated, inert), `stamp-merged` (deprecated, inert).
+  `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
 - **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
   resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
   core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
@@ -384,18 +383,15 @@ subcommand has no parameter to receive is refused with exit 2 and nothing runs �
 usage-error convention already used by `_reject_unknown_args`. The check sits ahead of
 the dispatch chain (and ahead of project-dir resolution) rather than inside each command,
 because a per-command guard misses whichever command nobody thought of; that is the same
-placement `_check_binary_skew` and `_check_ephemeral_worktree` already use. Two carve-outs
-are deliberate and are the only ones:
+placement `_check_binary_skew` and `_check_ephemeral_worktree` already use. One carve-out
+is deliberate and is the only one:
 
 - **`stop` / `subagent-stop` name the stray argument on stderr and still run.** These are
   the harness's own calls, never typed. A usage error on a Stop hook does not protect a
   caller — it blocks the session and feeds the refusal back as a turn, which is a worse
   failure than the silence it would close.
-- **`stamp-merged` is unchecked and silent.** It is retired-but-callable and its
-  deprecation contract is exit 0 for any input, so a copied release script keeps working.
-  An inert command cannot act on an argument it ignored, so there is no surprise to
-  prevent — the harm this guard exists for is a command that *did* something other than
-  what was asked.
+  (A second, `stamp-merged` passing any argument silently as an inert command, went with
+  the command in #303.)
 
 **Commands that DO receive `argv` refuse their own unknown tokens** — the dispatcher cannot
 speak for them, because they can see their arguments and it cannot know their vocabulary.
@@ -535,6 +531,11 @@ files to touch previews first. That framing is descriptive — the binding rule 
     opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
     `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
     in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
+  - `aggregate-stats --json` → **no skill consumer today**: top-level `schema_version`,
+    `generated_at`, `sources` (`local`, `local_skipped`, `contributed` — `bundles`, `lines`,
+    `refused`, `schema_ahead`) and `by_version`, keyed by plugin `major.minor` like `stats`.
+  - `change-record --json` → **no skill consumer today**: an object keyed by the scope argument,
+    each value `null` when the scope has no record, else `{source, path, closes[]}`.
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
     consumer that would otherwise recount findings by hand. Top-level `schema_version` (the second
     report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`,
@@ -636,7 +637,7 @@ Fail-direction is deliberate and per-purpose:
   A command whose *subject* could not be read is a different case and takes the third outcome below.
 - **Unevaluable *writer*** (a state-mutating command whose lib failed to import) → **fail-closed,
   exit 1**: never report a false success. (`regen-views` used to be the worked example, escalating
-  to **2** for validation/IO errors; it writes nothing at all now, so the rule's subjects are the
+  to **2** for validation/IO errors; it has since been removed (#303), so the rule's subjects are the
   operator-verification and coverage writers.)
 - **Advisory report** (`verify-records`) → **exit 0 even with findings**, because it advises the
   builder and gates nothing; **exit 1 only when it could not run.** Findings are not a failure
@@ -652,8 +653,8 @@ Fail-direction is deliberate and per-purpose:
   not free:** #167's `self-inflicted-refusal` held it on `develop` until its 2026-09-20 revert,
   and never shipped in a release, so it is left unclaimed rather than given a new meaning;
   `evidence status` **2** = schema-ahead records present (gates can't be trusted until update).
-  (`regen-views` **2** and **3** are RETIRED, not repurposed: the command is inert and exits 0
-  unconditionally, so those two meanings were removed rather than given new ones. Retiring a
+  (`regen-views` **2** and **3** are RETIRED, not repurposed: the command went inert and was
+  then removed (#303), so those two meanings were removed rather than given new ones. Retiring a
   meaning is what the additive-first norm permits; the thing it forbids is a new meaning wearing
   an old number.)
 
@@ -773,12 +774,14 @@ Evolution rules we want to hold, so new versions stay rare:
   rather than hard-failing (evidence torn-tail repair; advisory corrupt-file quarantine).
 - **Deprecation is signalled, not silent.** The established pattern: mark the subcommand deprecated
   in its help, print a deprecation notice to stderr on use, keep it working, and defer removal to a
-  future **major** version. `stamp-merged`, `regen-views` and `bug-inbox` are all in this state:
-  each stays callable, prints its notice, does nothing, and exits 0. `bug-inbox` joined them
+  future **major** version. `bug-inbox` is in this state: it stays callable, prints its notice,
+  does nothing, and exits 0. It joined the tier
   2026-09-08 with the upstream drop-box it resolved — and it is the member that shows the clause
   binding rather than merely describing, because the 2026-08-11 departure below did **not** reach
   it: that departure is scoped to a caller which is a stale hook registration, and this one's
   caller is a person.
+
+  **REMOVED 2026-10-21 (#303, owner ruling 2026-09-28: "do").** `stamp-merged` and `regen-views` were deleted outright — the deprecate-then-remove path's *remove* step, taken by owner ruling rather than at a major boundary. Neither was ever registered by a shipped `hooks.json`, so the harness-skew retention rule below does not reach them; a copied script that still calls one now gets the usage error. The clause's "defer removal to a major" makes this a release-time obligation: the release carrying it should be a major, or the release notes must say why not. The parser's special cases for the retired `chunks=` key (comma-split, cross-line union) went in the same change.
 
   **DEPARTURE, recorded not amended — 2026-08-11 (v3.3.3), pending owner ratification.**
   `build-index` and `user-prompt-submit` join the inert tier printing **nothing on either stream**,
@@ -830,15 +833,29 @@ Evolution rules we want to hold, so new versions stay rare:
   `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
   ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
   § Operations, "Backlog service", is the entry, and it names what would move it.
+- **Consumer-authored configuration: the project-state key surface** (declare a chunk that adds,
+  renames or removes one as `**Exposed API:** project-state keys`). The keys a product writes in its
+  `.prawduct/project-state.yaml` and the plugin reads — `test_command`, `tests_dirs`,
+  `release_version_files`, `backlog_service_repo`, `base_branch`, `risk_surfaces`, `learnings_budgets`
+  and the rest of those `plugin/templates/project-state.yaml` documents. **Tier: supported, not
+  `stable`.** The `stable` tier is exactly the two published subcommands (§ Direction), and nothing
+  here promises a major for a key change; what it promises is the compatibility norms below, because
+  a product's committed file is written once and read by every later plugin version. A key the
+  template documents is supported; one the plugin reads but the template does not is internal.
+  **Cost of a change:** adding a key is additive and free, and an absent key must keep meaning what
+  it meant before it existed. Removing or repurposing one is a breaking change to every product that
+  set it, so the **additive-first and deprecation norms apply** (§ Deprecation & Compatibility): keep
+  reading the old key, say so with attribution, and defer removal to a major. Readers stay tolerant of
+  unknown keys. Versioning the file format itself is out of scope.
 - **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). The
   members § Operations marks so, in two sub-shapes, split by **who calls them** — which decides whether they announce
   themselves:
 
-  - *Announcing* — `stamp-merged`, `regen-views`, `bug-inbox`, and since learnings v2
+  - *Announcing* — `bug-inbox`, and since learnings v2
     `audit-learnings`, `learnings-obligation`, `check-learnings-pairing` (their notice names the
-    rules layout that replaced the corpus they graded). Notice on stderr. The first two lost their
-    bodies when derived views were retired: `regen-views` had no views left to regenerate, and
-    `stamp-merged`'s only output (`status=`) had no reader left. `bug-inbox` resolved the local
+    rules layout that replaced the corpus they graded). Notice on stderr. `stamp-merged` and
+    `regen-views` were members until their removal (#303); they lost their bodies when derived
+    views were retired. `bug-inbox` resolved the local
     `incoming-bugs/` drop-box for `/prawduct:report-bug`, which files GitHub issues instead, so
     there is no directory left to resolve. **Prawduct's own release runbook no longer calls any of
     them**, so the remaining reason to keep them callable is the one that cannot be audited from

@@ -150,7 +150,7 @@ class TestStopGate:
         assert result.returncode == 0, result.stderr
         assert _GENERIC_BLOCK not in result.stderr
         assert "deferred-boundary-review" in result.stderr
-        assert "starts from the last reviewed state" in result.stderr
+        assert "starts from the newest committed state a review covers" in result.stderr
 
     def test_near_the_end_the_uncovered_fix_still_blocks(self, tmp_path):
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=True)
@@ -195,7 +195,7 @@ class TestCostOfCommit:
         (repo / "src/other.py").write_text("y = 1\n")
         answer = self._price(repo)
         assert answer["verdict"] == "free"
-        assert "starts from the last reviewed state" in answer["rides_next_review"]
+        assert "starts from the newest committed state a review covers" in answer["rides_next_review"]
 
     def test_near_the_end_it_still_costs_a_round(self, tmp_path):
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=True)
@@ -380,6 +380,45 @@ class TestReviewChain:
         monkeypatch.setattr(evidence, "read_facts",
                             lambda _p: {"status": "ok", "facts": [chunk, cumulative]})
         assert critic_mode._newest_branch_review(Path("."))["id"] == "r2"
+
+
+class TestOnlyASuppliedChunkIdIsCredited:
+    """Condition 1 credits a chunk id a dispatch supplied, inherited along the
+    review chain — never record-lint's Status-derived graded chunk, which is
+    the same first-unticked reading as ``progress.current_id`` (#911)."""
+
+    def _owed(self, monkeypatch, facts: list, current_id: str, complete: int):
+        from lib import evidence, gates
+        for f in facts:
+            f["actor"] = {"branch": "feat/work"}
+        monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
+        monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
+        monkeypatch.setattr(gates, "covered_frontier", lambda _p: {"commit": "abcdef1234567890"})
+        plan = type("Plan", (), {"path": Path("plan.md"), "rel": "plan.md"})
+        progress = type("P", (), {"total": 5, "complete": complete, "current_id": current_id})
+        return critic_mode.extension_deferral_owed(Path("."), Path(".prawduct"), plan, progress)
+
+    def test_a_chunkless_verify_is_not_credited_to_a_parked_chunk(self, monkeypatch):
+        """Status `[ ] 01` (parked), `[x] 02`, `[x] 03`, `[ ] 04`, `[ ] 05`: the
+        newest review is a verify pass with no `--chunk`, so record-lint graded
+        the parked 01 — and so does current_id. No dispatch said 01."""
+        verify = {"kind": "review", "id": "r1", "body": {
+            "base_tree": "t0", "head_tree": "t1", "findings": [],
+            "mode": "verify-resolutions (delta review, prior findings only)",
+            "record_lint": {"chunk_graded": "01"}}}
+        assert self._owed(monkeypatch, [verify], "01", 2) is None
+
+    def test_a_chunkless_verify_inherits_the_chunk_review_it_verifies(self, monkeypatch):
+        chunk = {"kind": "review", "id": "r1", "body": {
+            "base_tree": "t0", "head_tree": "t1", "findings": [], "mode": "chunk",
+            "chunk": "04"}}
+        verify = {"kind": "review", "id": "r2", "body": {
+            "base_tree": "t1", "head_tree": "t2", "findings": [],
+            "mode": "verify-resolutions (delta review, prior findings only)"}}
+        owed = self._owed(monkeypatch, [chunk, verify], "04", 3)
+        assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+        assert "starts from the newest committed state a review covers (abcdef123456)" in owed[1]
+        assert "last reviewed state" not in owed[1]
 
 
 CUMULATIVE_FINAL = "cumulative-final"

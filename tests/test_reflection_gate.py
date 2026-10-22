@@ -20,11 +20,10 @@ actual, plus a root cause or its explicit absence. Substring tests, deliberately
 the weakest check that can tell the two shapes apart, because anything stronger
 grades phrasing rather than whether the work was done.
 
-**The half that did NOT change, pinned in `TestTheCriticGuardIsUnchanged`.** The
-Critic composition gate keeps its porcelain guard. A reflection false-fire costs
-two lines; a Critic false-fire costs a review round. Flipping both at once was
-available and was declined, so the test that would notice the flip lives here
-next to the span that would do it.
+**The Critic gate reads the same span, pinned in `TestTheCriticGuardReadsTheSpan`.**
+Its firing guard and its doc-only carveout moved onto `session_work_span`
+together (#304); the merge-only case is confined by the verdict's merge-base
+fallback, not by the guard.
 
 Fixture shape mirrors `tests/test_learnings_cutover_gate.py`: a real git repo,
 `cmd_stop` called in-process, stderr read back.
@@ -485,9 +484,9 @@ class TestTheWaiverFooter:
         assert rc == 0, err
 
     def test_nothing_waivable_prints_no_footer(self):
-        """The budget floor, the clear verdict and `trivial` have no waiver, so
-        a block made only of them offers none."""
-        for gate_ids in ([], ["clear-verdict"], ["learnings-over-budget", "trivial", None]):
+        """The budget floor and the clear verdict have no waiver, so a block
+        made only of them offers none."""
+        for gate_ids in ([], ["clear-verdict"], ["learnings-over-budget", None]):
             assert _hook._waiver_footer(gate_ids, True) == "", gate_ids
 
     def test_a_waiver_already_in_the_file_survives_the_printed_recipe(
@@ -530,11 +529,16 @@ class TestTheWaiverFooter:
 
 
 # ---------------------------------------------------------------------------
-# The decision's other half
+# The Critic composition gate reads the same span (#304)
 # ---------------------------------------------------------------------------
 
 
-class TestTheCriticGuardIsUnchanged:
+class TestTheCriticGuardReadsTheSpan:
+    """The Critic gate's firing guard used to be porcelain, so a session that
+    committed its work ended without the composition verdict. It now reads
+    `session_work_span` — the same span, read once, as the reflection gate —
+    and its doc-only carveout moves with it."""
+
     def _plan_repo(self, tmp_path: Path) -> Path:
         repo = _repo(tmp_path)
         artifacts = repo / ".prawduct" / "artifacts"
@@ -546,59 +550,166 @@ class TestTheCriticGuardIsUnchanged:
 
     @staticmethod
     def _verdict_says_uncovered(monkeypatch) -> None:
-        """Force the composition verdict to the blocking answer.
-
-        Not decoration: on a fresh single-branch fixture the real verdict
-        composes to `covered` through the merge-base fallback, so a test that
-        let it run would report the Critic gate silent no matter what its guard
-        read. Pinning the verdict leaves the GUARD as the only variable, which
-        is what this class is about.
-        """
+        """Force the composition verdict to the blocking answer, so the GUARD is
+        the only variable: on a fresh single-branch fixture the real verdict
+        composes to `covered` through the merge-base fallback."""
         monkeypatch.setattr(
             gates,
             "session_review_verdict",
             lambda *_a, **_k: {"status": "uncovered", "reason": "no composed review coverage"},
         )
 
-    def test_a_committed_change_leaves_the_critic_gate_silent(
+    def test_a_committed_change_fires_the_critic_gate(
         self, tmp_path, capsys, monkeypatch
     ):
-        """The recorded decision: in this wave ONLY the reflection gate reads
-        the span. This fixture has an active build plan, a committed judgeable
-        change and no review evidence — every ingredient the Critic gate needs
-        except a dirty porcelain. It must stay silent, and the span assertion
-        beside it proves the silence is the guard's choice rather than an empty
-        diff. Flip that guard onto `session_work_span` and this goes red, which
-        is the point: the flip is a decision, not a refactor.
-        """
+        """Active plan, committed judgeable change, clean porcelain, no review:
+        the case the porcelain guard left silent."""
         repo = self._plan_repo(tmp_path)
         _mark_base(repo)
         _commit_code(repo)
         _reflect(repo, SHAPED_REFLECTION)
         self._verdict_says_uncovered(monkeypatch)
+        assert _git(repo, "status", "--porcelain", "--", "code.py") == ""
 
-        span = gates.session_work_span(repo)
-        assert span["judgeable"] is True, (
-            "the span must SEE this work, or the silence below proves nothing"
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert "gate: critic" in err
+        assert "CRITIC" in err
+
+    def test_a_committed_change_with_no_review_fact_blocks_on_the_real_verdict(
+        self, tmp_path, capsys
+    ):
+        """The same case with nothing forced: a feature branch whose own diff no
+        review covers."""
+        repo = self._plan_repo(tmp_path)
+        (repo / ".gitignore").write_text(".prawduct/\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "ignore")
+        _git(repo, "checkout", "-q", "-b", "feature")
+        _mark_base(repo)
+        _commit_code(repo)
+        _reflect(repo, SHAPED_REFLECTION)
+
+        rc, err = _stop(repo, capsys)
+        assert rc == 2, err
+        assert "gate: critic" in err
+
+    def test_a_committed_designer_handoff_chunk_still_skips_it(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The `Type: designer-handoff` carveout is read under the same span as
+        the guard, so widening the guard to committed work does not drop it."""
+        repo = self._plan_repo(tmp_path)
+        (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: Demo\n\n"
+            "### Chunk 01: Demo\n**Type:** designer-handoff\n\nBody.\n"
+        )
+        _mark_base(repo)
+        _commit_code(repo)
+        _reflect(repo, SHAPED_REFLECTION)
+        self._verdict_says_uncovered(monkeypatch)
+
+        rc, err = _stop(repo, capsys)
+        assert rc == 0, err
+        assert "CRITIC" not in err
+        assert "designer-handoff" in err
+
+    def test_a_committed_doc_only_change_leaves_it_silent(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The companion trap: widening the trigger without moving `doc_only`
+        onto the span makes a docs-only committed session fire."""
+        repo = self._plan_repo(tmp_path)
+        _mark_base(repo)
+        _commit_doc(repo)
+        self._verdict_says_uncovered(monkeypatch)
+
+        rc, err = _stop(repo, capsys)
+        assert rc == 0, err
+        assert "CRITIC" not in err
+
+    def test_a_merge_of_the_base_over_covered_work_leaves_it_silent(
+        self, tmp_path, capsys
+    ):
+        """Merge-only: the branch's own diff is covered by a cumulative review;
+        the session merges the base, bringing judgeable files nobody here wrote.
+        The verdict's merge-base fallback confines the demand to the branch's
+        own work, so the gate passes."""
+        from lib import evidence
+
+        repo = self._plan_repo(tmp_path)
+        (repo / ".gitignore").write_text(".prawduct/\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "ignore")
+        _git(repo, "checkout", "-q", "-b", "feature")
+        (repo / "feature.py").write_text("y = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "feature work")
+        result = evidence.append_fact(
+            repo,
+            "review",
+            "rev-cumulative-0001",
+            {
+                "base_tree": _git(repo, "rev-parse", "main^{tree}"),
+                "head_tree": _git(repo, "rev-parse", "HEAD^{tree}"),
+                "files_changed": ["feature.py"],
+                "files_reviewed": ["feature.py"],
+                "findings": [],
+            },
+        )
+        assert result["status"] == "appended", result
+        _mark_base(repo)  # the session opens on the reviewed branch tip
+        _git(repo, "checkout", "-q", "main")
+        (repo / "upstream.py").write_text("z = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "base advances")
+        _git(repo, "checkout", "-q", "feature")
+        _git(repo, "merge", "-q", "--no-edit", "main")
+        _reflect(repo, SHAPED_REFLECTION)
+        # The base-advance transfer needs a saved suite run at this tree — the
+        # remedy `/prawduct:pr` would demand anyway, not a review round.
+        capture = evidence.capture_tree(repo)
+        assert capture["status"] == "ok", capture
+        (repo / ".prawduct" / ".test-evidence.json").write_text(json.dumps({
+            "timestamp": "2026-08-13T12:00:00Z",
+            "passed": 1, "failed": 0, "skipped": 0, "duration_seconds": 1,
+            "command": "pytest",
+            "verifier": "test-reference-verify (floor: symbol-grep)",
+            "tests_executed": ["tests/test_x.py"],
+            "changes_referenced": ["feature.py"],
+            "coverage_level": "referenced",
+            "evidence_tree": capture["tree"],
+        }))
+        assert gates.session_work_span(repo)["judgeable"] is True, (
+            "the merge must put judgeable work in the span, or the pass proves nothing"
         )
 
         rc, err = _stop(repo, capsys)
-        assert rc == 0, f"the Critic gate must not have fired. stderr={err!r}"
+        assert rc == 0, err
         assert "CRITIC" not in err
 
-    def test_the_control_the_gate_does_fire_on_a_dirty_porcelain(
+    def test_without_a_base_marker_a_committed_change_stays_silent(
         self, tmp_path, capsys, monkeypatch
     ):
-        """The positive control the test above needs.
-
-        Without it, "the Critic gate stayed silent" is satisfied by a fixture
-        the gate could never fire on for some unrelated reason, and the guard
-        assertion measures nothing. Same repo, same plan, same forced verdict —
-        the change is left UNCOMMITTED, which is the one thing the porcelain
-        guard reads.
-        """
+        """Missing `.session-base-tree`: the span degrades to porcelain, so the
+        guard behaves as the porcelain guard did — committed work unseen."""
         repo = self._plan_repo(tmp_path)
-        _mark_base(repo)
+        _commit_code(repo)
+        _reflect(repo, SHAPED_REFLECTION)
+        self._verdict_says_uncovered(monkeypatch)
+        assert gates.session_work_span(repo)["source"] == "porcelain"
+
+        rc, err = _stop(repo, capsys)
+        assert rc == 0, err
+        assert "CRITIC" not in err
+
+    def test_without_a_base_marker_a_dirty_change_still_fires(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The control for the test above: the porcelain answer still fires on
+        uncommitted work, so that silence is the degraded span's, not a fixture
+        the gate could never fire on."""
+        repo = self._plan_repo(tmp_path)
         (repo / "code.py").write_text("x = 2\n")   # dirty, not committed
         _reflect(repo, SHAPED_REFLECTION)
         self._verdict_says_uncovered(monkeypatch)

@@ -1380,9 +1380,9 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
 2. Can a reader who has never seen this system execute every step without asking a question — *and*
    can a reader who does this monthly skip everything that newcomer needed? If the second one has
    to wade, you wrote a tutorial.
-2a. Is every fact placed where it is used? Look for anything introduced early and not needed until
-    much later, any forward reference to something not yet named, any value the reader must derive
-    from another, and any sentence explaining this document's relationship to a different one.
+   - (2a) Is every fact placed where it is used? Look for anything introduced early and not needed until
+     much later, any forward reference to something not yet named, any value the reader must derive
+     from another, and any sentence explaining this document's relationship to a different one.
 3. Is every placeholder resolvable from information the runbook itself provides, *and shown filled
    in with a real example where it first appears*? `vX.Y.Z` without a `v3.1.1` next to it fails.
 
@@ -1393,8 +1393,8 @@ R6. Read it as someone with 30 seconds and a page alert. Can they start acting i
    step says, and ask whether the expectation appears on screen. Then: does it *describe* rather
    than direct? Where it names two or more observations, are they a list saying **all** or **any**
    rather than a run-on? Is it the distinctive fragment rather than a transcript?
-4a. Conversely, does any step carry an `Expected:` line that just restates the action you were
-    told to take, on a step that cannot fail without you noticing? Delete those.
+   - (4a) Conversely, does any step carry an `Expected:` line that just restates the action you were
+     told to take, on a step that cannot fail without you noticing? Delete those.
 5. Search your draft for "verify", "check", "confirm", "ensure", "make sure", "looks good",
    "healthy", "working", "successful". Each hit is a suspected unmeasurable condition. Fix or
    justify every one. Then search for "may", "might", "should probably", "usually", "typically",

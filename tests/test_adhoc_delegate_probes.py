@@ -117,9 +117,8 @@ def _delegate(
 
 
 def _probe(root: Path):
-    return list(
-        adp.probe_unintegrated_delegate_worktree(ProjectState({}), make_codebase(root))
-    )
+    found = adp.probe_unintegrated_delegate_worktree(ProjectState({}), make_codebase(root))
+    return None if found is None else list(found)
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +394,7 @@ class TestDegradesLoudly:
         _delegate(repo)
         # `None` is the shared parser's "git failed in a real repo" answer.
         monkeypatch.setattr(gitstate, "worktree_records", lambda root: None)
-        assert _probe(repo) == []
+        assert _probe(repo) is None, "could not look is not nothing to report (#917)"
         err = capsys.readouterr().err
         assert "delegate-worktree probe skipped" in err
         assert "would go unreported" in err

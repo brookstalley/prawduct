@@ -2181,20 +2181,11 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     warnings: list[str] = []
 
-    # Capture `git status --porcelain` once and thread it through the three
-    # baseline-diff probes below (STH-6Q9D) instead of each re-spawning git.
-    status_output = gitstate.git_status_output(project_dir)
-
-    # Was there a previous session with changes? Two readers, because the two
-    # gates at session end read two spans: the reflection gate reads the
-    # session's WORK span (base tree -> working tree, committed work included)
-    # and the Critic gate reads porcelain. An advisory that asked only porcelain
-    # would stay silent at session start about a committed session the
-    # reflection gate blocks at session end — the divergence the comment on
-    # Gate 2 below promises cannot happen.
-    had_changes = gitstate.git_has_session_changes(project_dir, status_output)
-    span = gates.session_work_span(project_dir, status_output)
-    if not had_changes and not span["judgeable"]:
+    # Both gates at session end read the session's WORK span (base tree ->
+    # working tree, committed work included), so this advisory reads it too:
+    # judgeable work in the span is what either gate can fire on.
+    span = gates.session_work_span(project_dir)
+    if not span["judgeable"]:
         return warnings
 
     # Honor any waivers the previous session declared (file is deleted right
@@ -2215,10 +2206,6 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
         if not shaped:
             warnings.append("reflection not captured")
 
-    # Gate 2's "doc-only" stays the porcelain answer, because the Critic gate
-    # it mirrors still reads porcelain (the span flip for that gate is #304's).
-    doc_only = gates.session_changes_all_non_judgeable(project_dir, status_output)
-
     # Gate 2: Critic review (only when building against an active plan).
     # STH-4F7C: delegates to the shared lib/gates.py session gate — the same
     # composed-coverage verdict cmd_stop blocks on (kernel-v3 chunk 04), so
@@ -2234,7 +2221,8 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
         gates._has_active_build_plan_file(prawduct_dir, gate_plan)
         or gates._has_build_plan_in_state(prawduct_dir)
     )
-    if has_build_plan and not doc_only and "critic" not in waivers and gitstate.git_has_code_changes(project_dir, status_output):
+    # Fires on the same span as cmd_stop's guard: judgeable work, committed or not.
+    if has_build_plan and "critic" not in waivers:
         verdict = gates.session_review_verdict(project_dir)
         status = verdict.get("status")
         if status == "blocked":
@@ -2242,6 +2230,16 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
                 f"Critic review left {len(verdict.get('unresolved', []))} "
                 "unresolved blocking finding(s)"
             )
+        elif status == "schema-ahead":
+            # Not "no review": the store holds facts this plugin cannot read,
+            # and the remedy is the update, not another review.
+            warnings.append(
+                "Critic review evidence is from a newer plugin and cannot be "
+                "read here (update the plugin)"
+            )
+        elif status == "error":
+            reason = (verdict.get("reason") or "no detail").splitlines()[0]
+            warnings.append(f"Critic review check failed ({reason})")
         elif status != "covered":
             warnings.append("Critic review not recorded")
 

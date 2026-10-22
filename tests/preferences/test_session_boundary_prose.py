@@ -30,6 +30,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 PLUGIN = ROOT / "plugin"
 
@@ -46,7 +48,8 @@ SURFACES = [
 # The phrasing family that recurred: "<happens> at/on next session start",
 # without naming which sources actually qualify.
 _BARE_NEXT_SESSION = re.compile(
-    r"(?:on|at|the)\s+next\s+session\s+start\b|auto-?clears?\s+next\s+session\b",
+    r"(?:on|at|the)\s+next\s+session\s+start\b"
+    r"|auto-?clear(?:s|ed|ing)?\s+(?:next\s+session|at\s+session\s+start)\b",
     re.IGNORECASE,
 )
 
@@ -83,6 +86,24 @@ class TestNoUnqualifiedNextSessionPromise:
         )
         assert "session" in corpus and "boundary" in corpus, (
             "the surfaces no longer discuss session boundaries — re-point this pin"
+        )
+
+    @pytest.mark.parametrize(
+        "sentence",
+        [
+            # The two sentences the first version of this pin could not see: it
+            # matched `auto-clear`/`auto-clears` only, and both use the past
+            # participle. A prose pin is shown red on the sentence that
+            # motivated it before it is trusted green (#187).
+            "Auto-cleared next session.",
+            "# Load agent-declared gate waivers (auto-cleared at session start).",
+            "The marker auto-clears next session.",
+            "Waivers are auto-clearing at session start.",
+        ],
+    )
+    def test_the_pin_catches_its_own_class(self, sentence):
+        assert _BARE_NEXT_SESSION.search(sentence), (
+            f"the pin's regex cannot see {sentence!r} — it would pass vacuously"
         )
 
     def test_no_surface_promises_a_reset_at_bare_next_session_start(self):

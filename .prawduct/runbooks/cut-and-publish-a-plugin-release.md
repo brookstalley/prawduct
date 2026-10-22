@@ -55,7 +55,7 @@ If you are **re-entering** this runbook after Phase 0 already sent you to write
 the plan, you'll get `releasable: vX.Y.Z — N release-pending scope(s) …` or
 `not-releasable: …` instead. Both still name the scope list, so both mean
 "there is something to cut" — read them the same way and carry on to Phase 0,
-which is where those two verdicts actually differ.
+which is where those two verdicts actually differ. (A Phase 0 re-run with nothing pending prints no suite verdict at all: `release_readiness` asks for it only below the no-pending return, so do not read its absence as a green suite.)
 
 Note the inversion: the *stop* case is the one that exits 0, and the *proceed*
 case is the one that exits non-zero. Phase 0 step 0 runs this same command for a
@@ -187,8 +187,11 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      and re-run it.
 
    `cannot-verify-blockers:`
-   - This repo has cut over to the GitHub Issues backlog, so `backlog.md` is frozen history and
-     blocker liveness cannot be read from it. **Confirm each withholding blocker is open by hand**
+   - A withholding blocker's liveness could not be read. On the GitHub Issues backlog it is read
+     from the local backlog cache, so the message says whether the cache could not be opened or
+     does not hold that id: **run `prawduct-hook backlog sync --repo <owner/repo>` and re-run**
+     first. On the markdown backlog an Issues blocker (`#N`, `owner/repo#N`) cannot be read at all.
+     If it still refuses, **confirm each withholding blocker is open by hand**
      and record that confirmation in the release plan beside the classification table. Then proceed
      — the gate stays red by design and the recorded hand check is what replaces it. **Blocker
      liveness is the only thing it withholds**: every other check still ran, so fix any other
@@ -313,7 +316,10 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    |---|---|---|
    | coverage-perf | ships | |
    | v3.2.0-golive | withheld | BKL-6J2X |
+   | backlog-sync | withheld | #1024 |
    ```
+
+   A blocker is a markdown id (`BKL-6J2X`) or an Issues id (`#1024`, `owner/repo#1024`).
 
 ---
 

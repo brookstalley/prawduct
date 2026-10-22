@@ -19,9 +19,9 @@ Silence is load-bearing and is the second thing pinned here. Both hook events
 inject a hook's **stdout** into the model's context on exit 0 — SessionStart
 prepends it to the session, UserPromptSubmit prepends it to the turn — so a
 deprecation notice printed the ordinary way would be read as instruction on every
-turn. That is why these two are silent where ``regen-views`` and ``stamp-merged``
-warn: those are called by people who can act on the warning, these by a stale
-registration that the next plugin update replaces on its own.
+turn. That is why these two are silent where ``bug-inbox`` and the retired
+learnings verbs warn: those are called by people who can act on the warning,
+these by a stale registration that the next plugin update replaces on its own.
 """
 
 from __future__ import annotations
@@ -244,7 +244,7 @@ class TestTheFieldScenarioIsSilent:
 
 class TestUsageAdvertisesTheRetiredCommands:
     def test_listed_as_deprecated_and_inert(self) -> None:
-        """Same shape as regen-views/stamp-merged, so `prawduct-hook` with no
+        """Same shape as the announcing inert verbs, so `prawduct-hook` with no
         args tells a reader these exist and do nothing."""
         usage = subprocess.run(
             ["python3", str(_HOOK)], capture_output=True, text=True, timeout=30
@@ -313,9 +313,8 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
     So membership in `_EPHEMERAL_SAFE_COMMANDS` is what makes "exits 0
     everywhere" true. Without it the two hook-invoked members reproduce the exact
     session-start hook error they were restored to remove, in the one environment
-    prawduct itself creates. `regen-views` and `stamp-merged` carried the same
-    gap and the same false docstring claim, so the whole tier is pinned together
-    — one classification, not a decision per member. `bug-inbox` joined it
+    prawduct itself creates. The whole tier is pinned together — one
+    classification, not a decision per member. `bug-inbox` joined it
     2026-09-08 when the upstream bug drop-box retired, and inherits the same
     requirement for the same reason.
 
@@ -330,8 +329,6 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
     INERT_TIER = (
         "build-index",
         "user-prompt-submit",
-        "regen-views",
-        "stamp-merged",
         "audit-learnings",
         "learnings-obligation",
         "check-learnings-pairing",
@@ -368,68 +365,3 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
                 f"_EPHEMERAL_APPLY_GATED_COMMANDS, which says it writes under "
                 f"`--apply` — it has no `--apply` left to honour"
             )
-
-
-# ---------------------------------------------------------------------------
-# The general form of what this module pins by hand
-# ---------------------------------------------------------------------------
-
-
-class TestTheHandMaintainedSetHasAGeneralForm:
-    """`EVER_REGISTERED_HOOK_COMMANDS` closed v3.3.2's instance for one surface.
-
-    It generalises to no consumer: any other product with a recorded
-    removal-defers-to-a-major policy gets no check at all, because the guard is
-    this repo's own literal set of hook command names. `api_versioning_probes.
-    conformance_departures` is the declaration-driven form — the same question
-    asked of whatever surface an api-contract artifact DECLARES — and these tests
-    are the join: the general leg, run over this repo's own incident, reports
-    what the hand-maintained set reports.
-
-    The two are not redundant. This module also pins that the retired commands
-    stay *dispatchable and silent*, which is the remedy; the leg below only
-    detects that the promise was broken.
-    """
-
-    _CONTRACT = (
-        "# API Contract\n\n"
-        "## Deprecation & Compatibility\n\n"
-        "Retention: additive-first evolution; removal defers to a major.\n\n"
-        "## Surface Inventory & Stability Tiers\n\n"
-        "- `clear` — stable\n"
-        "- `stop` — stable\n"
-        "- `subagent-stop` — stable\n"
-        "- `build-index` — deprecated\n"
-        "- `user-prompt-submit` — deprecated\n"
-    )
-
-    def _departures(self, present):
-        from lib import api_versioning_probes as av  # noqa: PLC0415
-
-        return av.conformance_departures(self._CONTRACT, present)
-
-    def test_the_v3_3_2_deletion_replays_as_two_departures(self):
-        """The measured incident: both commands deleted from the binary in the
-        same commit that dropped their registration. Every guardrail was green,
-        because "a versioning decision is recorded" was true throughout."""
-        v332 = {"clear", "stop", "subagent-stop"}
-        out = self._departures(v332)
-        assert {d.member for d in out} == {"build-index", "user-prompt-submit"}
-        assert {d.kind for d in out} == {"removed"}
-
-    def test_the_shipped_binary_is_conformant(self):
-        """v3.3.3's remedy — retired but dispatchable — reads as conformance,
-        which is what makes the check a regression guard rather than a standing
-        complaint."""
-        assert self._departures(set(EVER_REGISTERED_HOOK_COMMANDS)) == ()
-
-    def test_the_general_leg_and_the_hand_set_agree_on_this_repo(self):
-        """The join. Anything `EVER_REGISTERED_HOOK_COMMANDS` still lists is a
-        member the declaration-driven leg must also treat as owed."""
-        declared = {
-            m.member for m in self._departures(set())
-        }
-        assert declared <= set(EVER_REGISTERED_HOOK_COMMANDS), (
-            "the fixture declares a member this module does not consider ever "
-            "registered — the two guards disagree about the same surface"
-        )

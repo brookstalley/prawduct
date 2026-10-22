@@ -328,6 +328,17 @@ Probes fire **only** on the mechanical hooks named in the Session-sync row — d
 literals, structural presence — never on prose interpretation. Rare and high-signal is a hard
 bar. Anything subtler belongs to the janitor's judgment or the Critic's.
 
+**Correctness never waits on an opt-in command.** `/prawduct:doctor` is a repair path, not a
+workflow step: people run it when something is visibly broken. So a mechanism whose *absence*
+produces a wrong answer lives on a surface that runs unconditionally — exactly SessionStart
+(banner, digest, `clear --session-start`, `build-index`), UserPromptSubmit, Stop and
+SubagentStop. Everything else (doctor, janitor, any skill a person must invoke) is opt-in and
+may only **repair** or **report**. The Repair row passes that test: binding is automatic
+(§ Adoption), so a product that never runs the ratification flow loses its norms' visibility,
+never their force — and a remedy line routing there must say so. Before hoisting anything
+through doctor (a default, a check, a registry write), ask what is wrong in a repo that never
+runs it; if anything, it belongs on an always-run surface.
+
 **Structural-coverage staging.** The structural-presence hooks form a three-layer chain that
 stages a product from "we don't yet know what this is" to "its norms are ratified", so a fresh
 product never gets three simultaneous nags:

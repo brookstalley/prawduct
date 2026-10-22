@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -458,6 +459,96 @@ class TestPostCutoverFailsClosed:
         )
         self._cut_over(project)
         assert release_readiness.check_releasability(project) == 0
+
+
+class TestAnIssuesBlockerCanBeNamed:
+    """#1033 — a `withheld` row may name its blocker as `#N` or `owner/repo#N`,
+    and post-cutover its liveness comes from the local backlog cache."""
+
+    SCOPE = "acme/backlog"
+
+    def _project(self, tmp_path, blocker, *, cut_over=True):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification=f"| alpha | withheld | {blocker} |\n",
+        )
+        if cut_over:
+            _write(
+                project / ".prawduct" / "project-state.yaml",
+                f"backlog_service_repo: {self.SCOPE}\n",
+            )
+        return project
+
+    def _cache(self, project, *, close_first=False):
+        """A synced cache holding two items, #1 and #2; ``close_first`` ships #1."""
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from fakes.fake_github import FakeGitHub
+        from lib.backlog import core, sync
+
+        # The store lives under `git --git-common-dir`, so the project is a work tree.
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+        fake = FakeGitHub()
+        owner, repo = self.SCOPE.split("/")
+        for title in ("release: the first item under test", "release: the second item under test"):
+            assert core.file_item(fake, owner=owner, repo=repo, title=title, body="b")["status"] == "ok"
+        if close_first:
+            assert core.set_status(fake, id_raw=f"{self.SCOPE}#1", target="shipped")["status"] == "ok"
+        assert sync.full_rebuild(fake, project_dir=project, owner=owner, repo=repo)["status"] == "ok"
+
+    @pytest.mark.parametrize("cell", ["#12", "acme/backlog#12", "`#12` (go-live)"])
+    def test_the_issues_spellings_parse(self, cell):
+        classification, errors = release_readiness.parse_classification(
+            f"## Release classification\n\n| alpha | withheld | {cell} |\n"
+        )
+        assert errors == []
+        assert classification["alpha"][0] == release_readiness.WITHHELD
+        assert classification["alpha"][1] in {"#12", "acme/backlog#12"}
+
+    @pytest.mark.parametrize("cell", ["repo#12", "12", "#twelve"])
+    def test_a_spelling_naming_no_repo_or_number_is_still_refused(self, cell):
+        _classification, errors = release_readiness.parse_classification(
+            f"## Release classification\n\n| alpha | withheld | {cell} |\n"
+        )
+        assert any("requires a blocker item id" in e for e in errors)
+
+    @pytest.mark.parametrize("blocker", ["#1", "acme/backlog#1"])
+    def test_an_open_issues_blocker_stands(self, tmp_path, capsys, blocker):
+        project = self._project(tmp_path, blocker)
+        self._cache(project)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 0
+        assert f"alpha (blocked by {blocker})" in capsys.readouterr().out
+
+    def test_a_closed_issues_blocker_is_stale(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#1")
+        self._cache(project, close_first=True)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert "alpha (withheld behind #1, which is not open)" in err
+
+    def test_an_unreadable_cache_is_unverifiable_never_releasable(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#1")  # cut over, no cache synced
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        captured = capsys.readouterr()
+        assert "cannot-verify-blockers: the backlog cache could not be read" in captured.err
+        assert "which is not open" not in captured.err
+        assert "releasable:" not in captured.out
+
+    def test_an_id_the_cache_does_not_hold_is_unverifiable(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#9")
+        self._cache(project)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert f"the backlog cache for {self.SCOPE} holds no item #9" in err
+        assert "which is not open" not in err
+
+    def test_the_markdown_backend_accepts_the_row_and_cannot_verify_it(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#1", cut_over=False)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        captured = capsys.readouterr()
+        assert "requires a blocker item id" not in captured.err
+        assert "cannot say whether the GitHub issue #1 is still open" in captured.err
+        assert "releasable:" not in captured.out
 
 
 class TestIdempotentAcrossItsOwnRunbook:

@@ -490,6 +490,20 @@ LAST_MEASURED_TOKENS = {
     # -4 more (goal-grounding chunk 02): Deciding Mid-Build names fork-tier drift as a reason to
     # stop, paid by pointing the decision-record sentence at planning.md "Goals", which states
     # the same rule. Ceiling lowered with it.
+    # -1 on 2026-10-21 (#560, #695): § Test Discipline gains the write-time "Green is evidence
+    # only about what could have made it red" paragraph and step 7 names the Stop hook's
+    # missing-note advisory, PAID IN PLACE by cutting restatements this file already makes
+    # elsewhere: the HEAD-reading hazard (Delegating Work to Subagents), "depth proportionate
+    # to risk" (Test coverage is proportionate), the verify step's second `test-status`
+    # exit-0 rule (the baseline step's), the Critic section's "after medium+ work" (the
+    # Critic-review step), "flag ambiguity" (Working With Specs), "multiple work cycles per
+    # session" (implied by `/clear` between cycles), and the `/clear` gloss's list of what
+    # resets (the Sessions paragraph's session-scoped state).
+    # -1 on 2026-10-21 (#846): the report sentence says "the last run is never unrecordable"
+    # in place of "no run in a session is" — the slot is one run, not one session.
+    # +2 on 2026-10-21 (#187): "Auto-cleared next session" names its sources (`/clear` or
+    # startup) now that the widened session-boundary pin sees the past participle; spends the
+    # two words the #695/#846 cuts left, so the reading is back where this branch began.
     "methodology/building.md": 5320,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
@@ -655,7 +669,10 @@ LAST_MEASURED_TOKENS = {
     # route sums in test_reviewer_payload_budget.py. A READING.
     # -1 on 2026-10-21 (goal-grounding, #1029): a goal still hedged rates like one still
     # inferred, paid by dropping Goal 2's own definition from its parenthesis. Ceiling lowered.
-    "skills/critic/review-protocol.md": 3897,
+    # +30 on 2026-10-21 (#706): Goal 2 checks a declared Exposed API surface against the contract
+    # artifact, after tightening the bullet's two decision clauses (net of that). DECLARED, a READING.
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "skills/critic/review-protocol.md": 3926,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -763,7 +780,10 @@ LAST_MEASURED_TOKENS = {
     # -12 on 2026-10-19 (change-log-fragments): the record-lint line names the new
     # `change-fragment` check, paid by cutting a reason `cross-checks.md` owns ("that is
     # how a record defect buys a review round"); the ceiling lowered with it.
-    "skills/critic/goals-1-3.md": 2658,
+    # +30 on 2026-10-21 (#706): the same contract-presence clause as review-protocol.md, net of the
+    # tightened decision clauses. DECLARED, a READING.
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "skills/critic/goals-1-3.md": 2687,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -947,7 +967,10 @@ LAST_MEASURED_TOKENS = {
     # verify pass drops off-topic ones, is rewritten to say what is dropped and counted.
     # -10 on 2026-10-14 (agents-md-anchor): the protected set names root AGENTS.md, paid in
     # place by folding "let the gate say otherwise; it is the gate's answer" into one clause.
-    "skills/critic/review-cycle.md": 7507,
+    # +204 on 2026-10-21 (#95), DECLARED: the integrator section (stage-and-`chunk` pattern, the
+    # `.prawduct/` gitignore trap, in-session vs unattended invocation). No review mode loads this
+    # file (see test_critic_skill_metadata), so no reviewer route pays it; it serves integrators.
+    "skills/critic/review-cycle.md": 7711,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1102,7 +1125,8 @@ LAST_MEASURED_TOKENS = {
     # `change-fragment` record-lint check. Every check must carry a severity on every reviewer
     # surface (test_record_lint), and this table is the only place the row can live; the row
     # was shortened in place first and there is no duplication left to pay from.
-    "skills/critic/cross-checks.md": 3404,
+    # -4 on 2026-10-21 (#301): the `trivial` row's file-set wording left with the retired gate.
+    "skills/critic/cross-checks.md": 3400,
     "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1319,7 +1343,16 @@ LAST_MEASURED_TOKENS = {
     # brief's revisit triggers and scope words, pointing to discovery.md's drift tiers. A READING.
     # -8 (chunk 02 review observation): the scope-word list discovery.md owns is no longer
     # restated here. A READING.
-    "methodology/planning.md": 5865,
+    # +26 on 2026-10-21 (#706): the Exposed API rule says the contract must describe the surface. DECLARED.
+    # +43 on 2026-10-21 (#999): a chunk that ships as its own PR declares `Critic mode:
+    # cumulative`, the boundary the short-plan deferral cannot see. A READING, no ceiling.
+    # +4 on 2026-10-21 (#778): a marker after `e.g.`/`i.e.` no longer binds, so the
+    # write-about-a-field advice names it. A READING, no ceiling.
+    # -82 on 2026-10-21 (#301): the `trivial` bullet's two machine-enforced layers and its
+    # over-declaration blocker left with the retired file-set gate; the Critic's rationale check
+    # is stated in one sentence instead. A READING.
+    # +3 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "methodology/planning.md": 5859,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1545,7 +1578,11 @@ LAST_MEASURED_TOKENS = {
     # isolation, where the brief goes, and WHY the pointed-at shape fails — the
     # reason is what stops it being restored. A RAISE, on-demand class: paid
     # only by a session already about to delegate.
-    "methodology/delegation.md": 2858,
+    # +39 on 2026-10-21 (backlog-burndown): the worktree is cut from the default
+    # branch, not the coordinator's, so a gitflow delegate resets onto the
+    # integration branch first; ten delegates built against v3.7.1 without it. A
+    # RAISE, on-demand class: paid only by a session about to delegate.
+    "methodology/delegation.md": 2897,
 }
 
 
@@ -2350,6 +2387,16 @@ class TestBuildingMethodology:
         assert "Decision Research" in self.content
         assert "lock-in" in self.content.lower()
         assert "research subagent" in self.content.lower() or "research subagent" in self.content
+
+    def test_test_discipline_teaches_green_is_evidence_at_write_time(self):
+        """The record-time directive (`_GREEN_IS_EVIDENCE_DIRECTIVE`) arrives
+        after the tests are written, when re-checking every fixture is
+        expensive. § Test Discipline is the write-time surface, and it carries
+        the directive's anchor verbatim so the two are one rule (#695)."""
+        start = self.content.index("## Test Discipline")
+        section = self.content[start:self.content.index("\n## ", start + 1)]
+        assert "Green is evidence only about what could have made it red" in section
+        assert "fixture" in section
 
     def test_build_cycle_structure(self):
         """Has build cycle, test discipline, and common traps sections."""
@@ -5156,12 +5203,34 @@ class TestCriticSkill:
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3898, f"review-protocol.md is ~{tokens} tokens, should be <3898"
+        assert tokens < 3928, f"review-protocol.md is ~{tokens} tokens, should be <3928"
 
 
 # =============================================================================
 # goals-1-3.md — the chunk / verify-resolutions payload
 # =============================================================================
+
+
+class TestExposedApiContractPresence:
+    """#706: a declared `Exposed API:` surface must appear in the contract artifact.
+
+    Both Goal 2 carriers state it, with the same anchor phrase, because the
+    chunk reviewer and the final reviewer read different files and neither
+    reads the other; `planning.md` states the author-side rule.
+    """
+
+    @pytest.mark.parametrize(
+        "rel", ["skills/critic/goals-1-3.md", "skills/critic/review-protocol.md"]
+    )
+    def test_goal_2_checks_the_surface_against_the_contract(self, rel):
+        text = read_file(rel)
+        assert "Contract presence:" in text
+        assert "must appear in the API contract artifact" in text
+        assert "naming the surface and its artifact" in text
+
+    def test_planning_states_the_rule(self):
+        text = read_file("methodology/planning.md")
+        assert "contract must describe the named surface by the time the chunk ships" in text
 
 
 class TestCriticGoals13:
@@ -5440,7 +5509,7 @@ class TestCriticGoals13:
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
-        assert tokens < 2659, f"goals-1-3.md is ~{tokens} tokens, should be <2659"
+        assert tokens < 2689, f"goals-1-3.md is ~{tokens} tokens, should be <2689"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -6037,7 +6106,7 @@ class TestReviewCycle:
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
         # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
-        assert tokens < 7508, f"review-cycle.md is ~{tokens} tokens, should be <7508"
+        assert tokens < 7712, f"review-cycle.md is ~{tokens} tokens, should be <7712"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

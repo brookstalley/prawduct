@@ -47,6 +47,7 @@ cache (§6) projects the same fields for the queries GitHub can't serve read-you
 | `affected` | structured path list, **no prose** | **`prawduct:` block `affected`** | Cache Spec §3 — the half of `refs` that can be matched against a changed-file set. Entries are repo-relative paths or directory prefixes (a directory covers everything under it); **not globs**. Annotations belong in the body, and the write path refuses an entry carrying whitespace (prose) or a glob metacharacter — a pattern is not a broader match here, it is a literal that matches nothing forever |
 | `working-branch` | `owner/repo@branch` | **`prawduct:` block `working_branch`** | Cache Spec §3 — replaces the claim concept: if populated, someone is working the item, and the branch's last commit is the staleness signal, so no stored expiry policy is needed. **Must be a pushed ref** (an unpublished branch is an invisible claim) and **must name the repo** (`backlog_service_repo` can differ from the code repo); both are enforced at the write, the first by `GET /repos/{owner}/{repo}/branches/{branch}`. The branch is additionally held to git's own `check-ref-format` rules and the repo to a single `owner/repo` pair, because both segments are interpolated into that path: a value like `owner/repo@../../../user` would otherwise resolve some *other* endpoint and be stored as a verified branch — the pushed-ref check failing **open**, which is the invisible claim it exists to prevent |
 | `reviewed` / verification | `{by, on}` | **`prawduct:` block `verified`** (round-trip) + **cache `reviewed`** (the TF2 date-range query) — *no label, no marker-comment* (M6) | TF2 |
+| `updated_at` / `created_at` | provider timestamps, passed through verbatim | issue **`updated_at` / `created_at`** — **native, not writable by prawduct** | CC2 (`updated_at` is the `--if-updated-at` compare-and-set comparand, so `get` must surface it byte-identical to what `update` compares) · the creation-time and staleness filters of §1.2 |
 | `assignee` | user/agent | issue **assignee** — **native/protected, not writable by prawduct** | none. It was ready-work's claimed-item signal until the claim mechanism retired; `working-branch` replaces it, and nothing prawduct runs reads assignment as meaning any more. GitHub's own UI still assigns, and `list --assignee` still filters on it, but no prawduct write path sets it and no predicate keys on it |
 | `relationships` | §1.3 | native dependencies / sub-issues / refs | DM3, ready-work |
 | `provenance` | §1.5 | block (detail) + `source:<product>` label (the coarse XP2/Q4 filter) | XP2 |
@@ -282,15 +283,17 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
 - **The accepted ID grammar, stated once here.** This section is the home; API contract §3/§8, the
   Direction bullet, the test specs' ID-1 and `plugin/skills/backlog/cache-reads.md` point here rather
   than restating the list, because a spelling added to some carriers and not others is how the grammar
-  forked before. Five forms, in two classes:
-  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax, and
-    **short `repo#number` same-owner only** (ambiguous under federation). These need no default and
-    are the only forms accepted from a *stored* value.
+  forked before. Five forms:
+  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax. It needs
+    no default and is the only form accepted from a *stored* value.
+  - **Short** — `repo#number`, same-owner only (ambiguous under federation): it resolves against a
+    supplied default owner. **Operator input only.**
   - **Bare** — `number` and `#number`. These carry no repo, so they resolve **only against a supplied
     default** (`--repo`, or the store's own `scope`, which is where `cachequery.resolve` derives it).
     **Operator input only.** A ref parsed out of an issue *body* — a `superseded-by:` target, a
-    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all, because a body is
-    attacker-writable and a bare `7` would otherwise redirect a lookup to a real item (Security Model
+    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all
+    (`ids.normalize_stored_ref`, which takes no default), because a body is attacker-writable and a
+    short `repo#7` or bare `7` would otherwise redirect a lookup to a real item (Security Model
     §5/F3).
   - **Digit-suffix `repo-number`** — the shell spelling, whose collision with the PFX alias grammar the
     precedence rule below resolves.
@@ -320,13 +323,13 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
   arguments, so a re-run finds and skips what it already produced (API contract §2.3/§2.4):
   - **`split-op:<token>#<index>`** — `token` = a digest of *(parent canonical id, ordered child specs)*;
     stamped on each child so a resumed `split` skips children already made and creates only the missing.
-  - **`source-key:<digest>`** — `digest` = `sha256` over *(submitter identity, title, body)*,
-    NUL-separated so no two different triples can concatenate to the same bytes; stamped on a
+  - **`source-key:<digest>`** — `digest` = `sha256` over the rendered *(title, body)*,
+    NUL-separated so no two different pairs can concatenate to the same bytes; stamped on a
     `file-upstream` item so a re-file finds it rather than duplicating. **The guarantee's exact shape is
     API contract §2.4's to state and is bounded to a recent window, not absolute** — cited here rather
-    than restated, because this section is the marker's field-home and not the lookup's. The submitter
-    identity is exactly what minimization forbids *sending*, so it crosses only as an input to this
-    one-way digest. **The outbound block this marker rides in is trimmed, and the trim is structural:**
+    than restated, because this section is the marker's field-home and not the lookup's. The digest
+    covers only text the issue itself publishes, so it carries no submitter identity at all (a
+    submitter input made it a confirmation oracle — #763). **The outbound block this marker rides in is trimmed, and the trim is structural:**
     a `file-upstream` payload carries `v:`, `found_in:` and `source-key:` and nothing else — it is
     built field-by-field through the shared block serializer rather than filtered down from a fuller
     dict, so a field added to the in-repo block cannot leak across the owner boundary by default.

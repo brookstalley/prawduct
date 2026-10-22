@@ -215,7 +215,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 
 ## Governance Checkpoints
 
-**Commit & PR cadence:** commit per chunk after its Critic review passes (per-chunk commit is what scopes `chunk`-mode reviews). A short plan ticks and reviews differently — see methodology/planning.md "Critic Mode Per Chunk"; this plan is not one, because Chunk 02 declares a `Critic mode:`. The last chunk commits first, and its `cumulative` review makes the branch PR-ready — `/prawduct:pr create` is gated on it and runs when the user asks for a PR.
+**Commit & PR cadence:** commit per chunk after its Critic review passes (per-chunk commit is what scopes `chunk`-mode reviews). A short plan ticks and reviews differently — see methodology/planning.md "Critic Mode Per Chunk"; this plan is not one, because Chunk 02 declares a `Critic mode:`. If chunks merge as separate PRs, each such chunk declares `Critic mode: cumulative` (its own PR is a boundary). The last chunk commits first, and its `cumulative` review makes the branch PR-ready — `/prawduct:pr create` is gated on it and runs when the user asks for a PR.
 
 - After chunk 01: confirm the architecture (routes → store → SQLite) before widening.
 - After chunk 03 (cumulative): full-bundle review; verify the offline fallback has real coverage.
