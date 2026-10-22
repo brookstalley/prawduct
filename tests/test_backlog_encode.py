@@ -232,6 +232,39 @@ class TestComposeBodyMergesAnEmbeddedBlock:
         assert out.startswith("Just prose.\n\n")
 
 
+class TestBlockSequenceLists:
+    """#929 — an outside filer's YAML block-sequence list is read, not warned about."""
+
+    BODY = "Why.\n\n```prawduct\nv: 1\naffected:\n  - plugin/lib\n  - plugin/skills\nrefs: x.md\n```"
+
+    def test_block_sequence_is_read_without_warnings(self):
+        block = encode.parse_block(self.BODY)
+        assert block.affected() == ["plugin/lib", "plugin/skills"]
+        assert block.warnings == []
+        assert block.get("refs") == "x.md"
+
+    def test_dash_item_with_a_colon_is_one_item_not_a_key(self):
+        block = encode.parse_block("```prawduct\ntags:\n  - a: b\n  - c\n```")
+        assert encode.parse_list(block.get("tags")) == ["a: b", "c"]
+        assert "a" not in block.fields and block.warnings == []
+
+    def test_a_dash_line_with_no_open_list_is_still_malformed(self):
+        block = encode.parse_block("```prawduct\nv: 1\nrefs: x.md\n- stray\n```")
+        assert block.warnings == ["ignored malformed block line: '- stray'"]
+        block = encode.parse_block("```prawduct\n- stray\n```")
+        assert block.warnings == ["ignored malformed block line: '- stray'"]
+
+    def test_writers_see_the_flow_spelling(self):
+        assert encode.merge_all_block_fields(self.BODY)["affected"] == "[plugin/lib, plugin/skills]"
+        out = encode.upsert_block_field(self.BODY, "refs", "y.md")
+        assert "affected: [plugin/lib, plugin/skills]" in out
+        assert "  - plugin/lib" not in out
+
+    def test_empty_key_with_no_items_stays_empty(self):
+        block = encode.parse_block("```prawduct\naffected:\nrefs: x.md\n```")
+        assert block.get("affected") == "" and block.warnings == []
+
+
 class TestUpsertPreservesEveryBlock:
     """`upsert_block_field` had `compose_body`'s defect one function over.
 

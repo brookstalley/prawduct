@@ -253,17 +253,40 @@ def _parse_block_fields(
     """
     fields: dict[str, str] = {}
     malformed: list[str] = []
+    open_key: str | None = None  # an empty-valued key opens a YAML block-sequence list
+    open_items: list[str] = []
+
+    def close_list() -> None:
+        nonlocal open_key, open_items
+        if open_key is not None and open_items:
+            # Stored in the flow spelling so every reader and writer sees one form.
+            fields[open_key] = format_list(open_items)
+        open_key, open_items = None, []
+
     for raw_line in inner.splitlines():
         line = raw_line.rstrip()
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
-            continue  # blank or comment — not a field
+            continue  # blank or comment — not a field (and does not close an open list)
+        if stripped == "-" or stripped.startswith("- "):
+            # Checked before the ':' partition so `- a: b` stays one item.
+            if open_key is None:
+                malformed.append(stripped)
+            else:
+                item = stripped[1:].strip()
+                if item:
+                    open_items.append(item)
+            continue
+        close_list()
         key, sep, value = line.partition(":")
         key = key.strip()
         if not sep or not key:
             malformed.append(stripped)
             continue
         fields[key] = value.strip()
+        if not value.strip():
+            open_key = key
+    close_list()
     return (fields, malformed) if collect_malformed else fields
 
 
