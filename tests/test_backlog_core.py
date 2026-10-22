@@ -304,6 +304,25 @@ class TestGetItem:
         assert got["status"] == "error"
         assert got["error"]["code"] == "validation"
 
+    def test_a_short_superseded_by_in_a_body_does_not_redirect(self, fake):
+        # #754: `superseded_by` is parsed out of attacker-writable body text. A
+        # short `repo#n` must not be qualified against the item's own owner and
+        # followed to a real item — `merge` only ever writes the canonical form.
+        target = _seed_item(fake, body="the real target")
+        planted = _seed_item(fake, body=f"t\n\n```prawduct\nv: 1\nsuperseded_by: {REPO}#{target}\n```\n")
+        got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{planted}")
+        assert got["status"] == "ok"
+        assert got["data"]["superseded_by"] == f"{REPO}#{target}"  # the field was read
+        assert "resolves_to" not in got["data"]
+
+    def test_a_canonical_superseded_by_in_a_body_still_redirects(self, fake):
+        # Control for the test above: the same plant, fully qualified, resolves.
+        target = _seed_item(fake, body="the real target")
+        canon = f"{OWNER}/{REPO}#{target}"
+        planted = _seed_item(fake, body=f"t\n\n```prawduct\nv: 1\nsuperseded_by: {canon}\n```\n")
+        got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{planted}")
+        assert got["data"]["resolves_to"] == canon
+
 
 class TestGetComments:
     """The DM5 drill-down read — `get` carries the comment thread, because the

@@ -853,13 +853,9 @@ def _redirect_fetch(conn: sqlite3.Connection):
         target = encode.parse_block(row[0]).superseded_by()
         if not target:
             return None
-        # No `default_repo` here, deliberately, and it is not the omission it
-        # looks like beside the operator-input path above. This target is parsed
-        # out of ISSUE BODY TEXT, which is attacker-writable; qualifying a bare
-        # number against the store's scope would let a body containing `7`
-        # redirect a lookup to a real item. Stored refs resolve canonically or
-        # not at all (the same rule `ids.parse_provider_alias` states).
-        nid = ids.normalize_id(target)
+        # Parsed out of issue body text: `ids.normalize_stored_ref` owns the
+        # rule (no default repo, unlike the operator-input path above).
+        nid = ids.normalize_stored_ref(target)
         if not nid.ok or _item(conn, nid.canonical) is None:
             return None
         return nid.canonical

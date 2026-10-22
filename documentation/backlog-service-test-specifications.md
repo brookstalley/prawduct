@@ -682,8 +682,8 @@ Data Model §2)
 **XP-1 — `file-upstream` payload minimization + submitted-landing + session-identity auth + `source-key:` dedup** (→ XP1/XP2, API §2.4, Security §1)
 - Level: integration
 - Setup: a target project owned by a **different owner**; the caller has no local checkout of it.
-- Action: `file-upstream` into the target; then **re-file the same source item** (same submitter + source
-  digest → same `source-key:`), simulating a retry; then a distinct source item.
+- Action: `file-upstream` into the target; then **re-file the same source item** (same rendered title +
+  body → same `source-key:`), simulating a retry; then a distinct source item.
 - Expected: the item is filed with **no upstream checkout and no drop-box**; the outbound body carries
   **exactly the fields the upstream-filing design §2 fixes and no others** — the in-repo
   `provenance: {source: <product>, …}` pair is the field minimization exists to strip, so asserting its

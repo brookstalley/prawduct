@@ -283,15 +283,17 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
 - **The accepted ID grammar, stated once here.** This section is the home; API contract §3/§8, the
   Direction bullet, the test specs' ID-1 and `plugin/skills/backlog/cache-reads.md` point here rather
   than restating the list, because a spelling added to some carriers and not others is how the grammar
-  forked before. Five forms, in two classes:
-  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax, and
-    **short `repo#number` same-owner only** (ambiguous under federation). These need no default and
-    are the only forms accepted from a *stored* value.
+  forked before. Five forms:
+  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax. It needs
+    no default and is the only form accepted from a *stored* value.
+  - **Short** — `repo#number`, same-owner only (ambiguous under federation): it resolves against a
+    supplied default owner. **Operator input only.**
   - **Bare** — `number` and `#number`. These carry no repo, so they resolve **only against a supplied
     default** (`--repo`, or the store's own `scope`, which is where `cachequery.resolve` derives it).
     **Operator input only.** A ref parsed out of an issue *body* — a `superseded-by:` target, a
-    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all, because a body is
-    attacker-writable and a bare `7` would otherwise redirect a lookup to a real item (Security Model
+    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all
+    (`ids.normalize_stored_ref`, which takes no default), because a body is attacker-writable and a
+    short `repo#7` or bare `7` would otherwise redirect a lookup to a real item (Security Model
     §5/F3).
   - **Digit-suffix `repo-number`** — the shell spelling, whose collision with the PFX alias grammar the
     precedence rule below resolves.
@@ -321,13 +323,13 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
   arguments, so a re-run finds and skips what it already produced (API contract §2.3/§2.4):
   - **`split-op:<token>#<index>`** — `token` = a digest of *(parent canonical id, ordered child specs)*;
     stamped on each child so a resumed `split` skips children already made and creates only the missing.
-  - **`source-key:<digest>`** — `digest` = `sha256` over *(submitter identity, title, body)*,
-    NUL-separated so no two different triples can concatenate to the same bytes; stamped on a
+  - **`source-key:<digest>`** — `digest` = `sha256` over the rendered *(title, body)*,
+    NUL-separated so no two different pairs can concatenate to the same bytes; stamped on a
     `file-upstream` item so a re-file finds it rather than duplicating. **The guarantee's exact shape is
     API contract §2.4's to state and is bounded to a recent window, not absolute** — cited here rather
-    than restated, because this section is the marker's field-home and not the lookup's. The submitter
-    identity is exactly what minimization forbids *sending*, so it crosses only as an input to this
-    one-way digest. **The outbound block this marker rides in is trimmed, and the trim is structural:**
+    than restated, because this section is the marker's field-home and not the lookup's. The digest
+    covers only text the issue itself publishes, so it carries no submitter identity at all (a
+    submitter input made it a confirmation oracle — #763). **The outbound block this marker rides in is trimmed, and the trim is structural:**
     a `file-upstream` payload carries `v:`, `found_in:` and `source-key:` and nothing else — it is
     built field-by-field through the shared block serializer rather than filtered down from a fuller
     dict, so a field added to the in-repo block cannot leak across the owner boundary by default.
