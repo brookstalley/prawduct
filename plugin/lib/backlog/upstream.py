@@ -184,29 +184,13 @@ def canonical_repo(spec: str | None) -> str | None:
     """``owner/repo`` in one comparable spelling, or ``None`` if it is not one.
 
     Case-folded, because **GitHub owner and repo names are case-insensitive** and
-    the comparisons built on this are not opinions about spelling: two spellings
-    of one repo must produce one ``source-key:`` so a retry collapses, and — the
-    sharper one — the no-self-file check must refuse ``BrooksTalley/Prawduct`` as
-    readily as the lowercase form. A case-sensitive compare there is fail-open,
-    and it is fail-open on an input the caller picks.
+    the comparisons built on this are not opinions about spelling: the
+    no-self-file check must refuse ``BrooksTalley/Prawduct`` as readily as the
+    lowercase form. A case-sensitive compare there is fail-open, and it is
+    fail-open on an input the caller picks.
     """
     parsed = ids.parse_repo(spec) if spec else None
     return f"{parsed[0].lower()}/{parsed[1].lower()}" if parsed else None
-
-
-def submitter_identity(project_dir) -> str:
-    """The ``source-key:`` submitter component: the first resolved identity, or ``""``.
-
-    The key's job is to let *one submitter's* retry collapse onto the issue it
-    already filed, so it has to name the filer — but the filer's name is exactly
-    what minimization forbids sending, which is why it crosses only as one input
-    to a one-way digest (design §2). An unresolved identity keys as the empty
-    string rather than refusing: preview is a pure rendering, and a payload that
-    could never be sent is caught at *send*, where the no-self-file check fails
-    closed on the same empty tuple.
-    """
-    identities = resolve_self_identity(project_dir)
-    return identities[0] if identities else ""
 
 
 def _origin_repo(directory: Path) -> str | None:
@@ -333,18 +317,25 @@ def version_label(found_in: str) -> str:
     return f"prawduct v{found_in} (plugin)"
 
 
-def source_key(*, submitter: str, title: str, body: str) -> str:
+def source_key(*, title: str, body: str) -> str:
     """The api-contract §2.4 idempotency key: ``sha256:<hex>``.
 
-    A digest of *(submitter identity, title + body)*. A re-file with the same key
-    returns the existing upstream issue instead of duplicating it, which is what
-    makes a retried filing safe. The inputs are NUL-separated so no two different
-    triples can concatenate to the same bytes — without the separator,
-    ``("ab", "c", …)`` and ``("a", "bc", …)`` collide, and two distinct reports
-    that collide are one report silently lost.
+    A digest of the rendered *(title, body)* — exactly the text the issue itself
+    publishes, so the key carries nothing a reader cannot already see. It once
+    also digested the submitter ``owner/repo``, which made it a confirmation
+    oracle: with title and body public, anyone holding a candidate repo name could
+    recompute it (#763). The submitter bought nothing the key's job needs — the
+    dedup scan reads a seconds-wide retry window, and two filers sending
+    byte-identical reports inside it have sent one report.
+
+    A re-file with the same key returns the existing upstream issue instead of
+    duplicating it, which is what makes a retried filing safe. The inputs are
+    NUL-separated so two different pairs cannot concatenate to the same bytes —
+    without the separator, ``("ab", "c")`` and ``("a", "bc")`` collide, and two
+    distinct reports that collide are one report silently lost.
     """
     digest = hashlib.sha256()
-    for part in (submitter, title, body):
+    for part in (title, body):
         digest.update((part or "").encode("utf-8"))
         digest.update(b"\x00")
     return f"sha256:{digest.hexdigest()}"
@@ -417,7 +408,6 @@ def build_payload(
     body: str,
     component: str = "",
     found_in: str,
-    submitter: str,
     target: str = PINNED_TARGET,
 ) -> dict | None:
     """The complete outbound payload: ``{repo, title, body, labels}``.
@@ -438,7 +428,7 @@ def build_payload(
         return None
     rendered_title = render_title(component, title)
     report = render_report(component=component, found_in=found_in, body=body)
-    key = source_key(submitter=submitter, title=rendered_title, body=report)
+    key = source_key(title=rendered_title, body=report)
     marker = marker_block(found_in=found_in, key=key)
     return {
         "repo": target,
@@ -466,7 +456,6 @@ def render_preview(
         body=body,
         component=component,
         found_in=plugin_version(),
-        submitter=submitter_identity(project_dir),
     )
     if payload is None:
         return None

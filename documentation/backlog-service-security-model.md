@@ -198,8 +198,8 @@ and forgeable by any actor with write access** to the repo. So:
   relationship*, not unattributed.
 - **The trimmed `file-upstream` block is self-asserted like every other one; its trim is a
   minimization, never a trust claim (XP2).** The outbound payload carries exactly `v:`, `found_in:`
-  and `source-key:` — no paths, no product identity, no submitter name (the submitter crosses only as
-  an input to the `source-key:` one-way digest, Data Model §5). Those three fields are body text, so a
+  and `source-key:` — no paths, no product identity, no submitter name (the `source-key:` digests only
+  the published title and body, Data Model §5). Those three fields are body text, so a
   write-capable actor upstream can forge or edit them exactly as this section already says of every
   `prawduct:` field; what stays trustworthy about a filed report is the **API identity that filed it**
   (§1). The reconciliation worth naming, because the two are easy to conflate: minimization protects

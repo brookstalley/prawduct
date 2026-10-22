@@ -107,7 +107,6 @@ def _filed_report(
         body=body,
         component=component,
         found_in="prawduct v3.4.1-dev.2",
-        submitter="octo/product",
     )
     assert payload is not None, "the fixture's own inputs must compose a real payload"
     issue = fake.create_issue(
