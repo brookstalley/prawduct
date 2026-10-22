@@ -926,8 +926,9 @@ def import_backlog(
     an optional owner-confirmed restructure ``plan`` (MG6 — validated fail-closed
     *before* anything is written), then runs the deterministic :func:`import_items`.
     Resumable/idempotent (MG1/CRASH-4). The plan applies at create only, so an item
-    already on GitHub never has its **title or body** rewritten — but "skipped" is
-    not "untouched": the skip branch still reconciles the **status** axis
+    already on GitHub never has its **body** rewritten — but "skipped" is not
+    "untouched": the skip branch retitles a PFX item to the corrected parse
+    (:func:`_retitle_in_place`, #613) and still reconciles the **status** axis
     (:func:`_reconcile_status`), which is what makes a created-but-crashed-before-close
     item converge on resume (CRASH-4). The consequence beyond resume: a re-run drives
     every already-migrated item back to its *markdown* status, so re-importing to
@@ -1038,6 +1039,40 @@ def preflight_titles(records: list[ImportRecord]) -> list[dict]:
     return offenders
 
 
+def preflight_facet_labels(records: list[ImportRecord]) -> list[dict]:
+    """Every record carrying a facet label GitHub would refuse, in source order
+    (#1014). Pure — no transport, no I/O.
+
+    ``encode.check_enum`` refuses an over-long ``<facet>:<value>`` label on
+    ``file`` and ``update`` (#1004), but the importer builds its labels straight
+    from markdown metadata (:func:`_labels_for`) and never crosses that seam, so a
+    long value surfaced only as a 422 on the labels endpoint mid-run, naming
+    neither the record nor the flag. Run over the WHOLE set before the first
+    write, it refuses the corpus with every offender listed. Same entry shape as
+    :func:`preflight_titles`, with ``rules: ["facet-label-length"]``."""
+    offenders: list[dict] = []
+    for index, record in enumerate(records):
+        messages = []
+        for label in record.labels:
+            facet, sep, value = label.partition(":")
+            if not sep:
+                continue
+            check = encode.check_enum(facet, value)
+            if not check.ok:
+                messages.append(check.message)
+        if messages:
+            offenders.append(
+                {
+                    "index": index,
+                    "key": record.key_label(),
+                    "title": record.title,
+                    "rules": ["facet-label-length"],
+                    "messages": messages,
+                }
+            )
+    return offenders
+
+
 def import_items(
     transport: Transport,
     *,
@@ -1090,6 +1125,21 @@ def import_items(
     # the migration scrub hands a cleaned record set straight to `import_items`,
     # and `restructure.apply` rewrites titles upstream, so a gate any further out
     # would validate titles that are not the ones written.
+    label_offenders = preflight_facet_labels(records)
+    if label_offenders:
+        return core.error(
+            "validation",
+            f"{len(label_offenders)} of {len(records)} item(s) carry a facet value too long "
+            "for a GitHub label (`<facet>:<value>` must fit 50 characters) — nothing was "
+            "written. Shorten the named values in the source, then re-run the import.",
+            details={
+                "nonconforming_labels": label_offenders,
+                "total_source": len(records),
+                "created": [],
+                "skipped": [],
+                "resumable": False,
+            },
+        )
     offenders = preflight_titles(records)
     if offenders:
         return core.error(
@@ -1333,7 +1383,9 @@ def _import_one_record(
     warnings: list[str] = []
     unreconciled: list[dict] = []
     key_label = record.key_label()
-    existing = _find_by_key(transport, owner, repo, key_label)
+    found = _find_issues_by_key(transport, owner, repo, key_label)
+    existing = [issue["number"] for issue in found]
+    titles = {issue["number"]: issue.get("title") for issue in found}
     healed = False
     if not existing and record.pfx:
         # The `id:PFX` label — the primary skip authority — is missing (a human
@@ -1361,6 +1413,7 @@ def _import_one_record(
             _restore_alias_label(transport, owner, repo, existing[0], key_label, run_warnings)
         # Reconcile only the status, so a resumed item created-but-crashed before its
         # close still converges (CRASH-4).
+        _retitle_in_place(transport, owner, repo, existing[0], record, titles, warnings)
         _reconcile_status(transport, owner, repo, existing[0], record, warnings, unreconciled)
         return {
             "outcome": "skipped",
@@ -1380,8 +1433,52 @@ def _import_one_record(
     }
 
 
+def _retitle_in_place(
+    transport: Transport,
+    owner: str,
+    repo: str,
+    number: int,
+    record: ImportRecord,
+    titles: dict,
+    warnings: list,
+) -> None:
+    """Repair a matched issue's TITLE to the record's corrected parse (#613) — title
+    only; body, labels and state are untouched, and nothing is deleted, so a
+    user-owned repo (where the operator cannot delete) is repairable.
+
+    Only a PFX item is retitled: its key is the title-independent ``id:PFX`` alias,
+    so the retitle cannot mint a new key or a duplicate. A PFX-less item keys on
+    ``import-key:<sha256(title+body)>`` — title-dependent — so it is left alone.
+    ``state="all"`` in the lookup means closed matches are repaired too. A no-op
+    when the title already matches (a clean re-run costs no PATCH); a block-recovered
+    match arrives without a title and costs one read to learn it. A failed read or PATCH is a
+    warning, never a cut — the title is cosmetic against the status the run converges."""
+    if not record.pfx:
+        return
+    try:
+        if number in titles:
+            current = titles[number]
+        else:
+            current = transport.get_issue(owner, repo, number).get("title")
+        if current == record.title:
+            return
+        transport.update_issue(owner, repo, number, fields={"title": record.title})
+    except TransportError as exc:
+        if exc.code == "rate_limited":
+            raise  # the replay-after-pause path owns this; every step is idempotent
+        warnings.append(
+            f"could not retitle {_canon(owner, repo, number)} to the corrected parse "
+            f"({exc.code}); re-run the import to retry"
+        )
+
+
 def _find_by_key(transport: Transport, owner: str, repo: str, key_label: str) -> list[int]:
-    """The issue numbers carrying ``key_label`` (an alias/idempotency marker). More
+    """The issue numbers carrying ``key_label`` — see :func:`_find_issues_by_key`."""
+    return [issue["number"] for issue in _find_issues_by_key(transport, owner, repo, key_label)]
+
+
+def _find_issues_by_key(transport: Transport, owner: str, repo: str, key_label: str) -> list[dict]:
+    """The issues carrying ``key_label`` (an alias/idempotency marker). More
     than one is an integrity violation the caller flags. Searches all states — a
     resumed item may already be closed (an archive import). The label is the
     **primary** skip authority; when a PFX item's label is missing the caller falls
@@ -1392,7 +1489,7 @@ def _find_by_key(transport: Transport, owner: str, repo: str, key_label: str) ->
     # Labels can sit on PRs too; a labeled PR must never count as the item
     # (BKL-5T3J — the raw list interleaves them).
     issues = [issue for issue in issues if not encode.is_pull_request(issue)]
-    return [issue["number"] for issue in issues if issue.get("number") is not None]
+    return [issue for issue in issues if issue.get("number") is not None]
 
 
 class _AliasIndex:

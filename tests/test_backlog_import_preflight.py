@@ -339,3 +339,43 @@ def test_failed_survives_the_unexpected_boundary_cut(fake, monkeypatch):
     failed = result["error"]["details"]["failed"]
     assert len(failed) == 1
     assert failed[0]["title"] == CONFORMING
+
+
+# --- pre-flight: facet label length (#1014) ----------------------------------
+
+
+def _label_of(length: int) -> str:
+    """A ``kind:<value>`` label of exactly ``length`` characters."""
+    return "kind:" + "k" * (length - len("kind:"))
+
+
+def test_preflight_refuses_over_long_facet_label_with_zero_writes(fake):
+    """One 51-char label in the corpus: nothing is written, and the offender is
+    named by record and flag (not a 422 mid-import)."""
+    records = [
+        _record(CONFORMING, pfx="DIS-0001"),
+        _record("backlog: another conforming title here", pfx="DIS-0002",
+                labels=[_label_of(51)]),
+    ]
+    _seed(fake, records[:1])
+
+    result = _run(fake, records)
+
+    assert result["status"] == "error"
+    assert result["error"]["code"] == "validation"
+    assert _creates(fake) == []
+    offenders = result["error"]["details"]["nonconforming_labels"]
+    assert len(offenders) == 1
+    assert offenders[0]["index"] == 1
+    assert offenders[0]["key"] == "id:DIS-0002"
+    assert any("--kind" in m for m in offenders[0]["messages"])
+
+
+def test_preflight_accepts_facet_label_at_exactly_the_limit(fake):
+    records = [_record(CONFORMING, pfx="DIS-0001", labels=[_label_of(50)])]
+    _seed(fake, records)
+
+    result = _run(fake, records)
+
+    assert result["status"] == "ok", result
+    assert len(_creates(fake)) == 1
