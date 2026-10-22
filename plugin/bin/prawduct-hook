@@ -9022,7 +9022,7 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # settles it. Note what is NOT the test: taking a `project_dir` is not
     # necessary for a local write — `export` and `restructure-preview` take
     # none and write to caller-supplied `--to`/`--out` paths, which is why they
-    # sit in `_BACKLOG_LOCAL_WRITE_OPS` below alongside the two that do.
+    # sit in `_BACKLOG_LOCAL_WRITE_OPS` below alongside `import`.
     # `pick` stays read-only although it revalidates the backlog cache on its way
     # in. The cache lives under `--git-common-dir`, which every worktree of a
     # clone shares by construction, so that write lands in the clone and not in
@@ -9039,13 +9039,13 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # simply never warmed in an agent worktree — while every `unavailable`
     # message names `sync` as the repair, in the one tree where a dispatched
     # reviewer meets it.
-    #   NOT fixed here, and deliberately: `refresh-counts` writes
-    # `snapshot.snapshot_path`, which also keys off `--git-common-dir` and
-    # therefore also cannot strand — so it is misclassified by this same test.
-    # It stays a write because a shipped test pins it that way on a stated
-    # rationale ("a read + a local snapshot write"), and rewriting a test to
-    # match new reasoning is a decision to take deliberately, not a side effect
-    # of fixing `sync`. Revisit both together.
+    # `refresh-counts` is here on the same test (#624): its one write is
+    # `snapshot.snapshot_path`, which also keys off `--git-common-dir`, so it
+    # lands in the clone and cannot strand. It is "a read + a local snapshot
+    # write" — local to the CLONE, not to this tree, and only a write into this
+    # tree is what the refusal's "discarded when it merges" reason is true of.
+    # The briefing warms it beside `sync`, detached, so a refusal here was as
+    # silent as `sync`'s was.
     "backlog": frozenset(
         {
             "get",
@@ -9054,6 +9054,7 @@ _EPHEMERAL_READ_ONLY_OPS = {
             "counts",
             "pick",
             "sync",
+            "refresh-counts",
             "verify-migration",
             "cache-query",
         }
@@ -9063,10 +9064,10 @@ _EPHEMERAL_READ_ONLY_OPS = {
 # Backlog ops that write into THIS tree even when the backlog itself lives on a
 # service, so the service-backed allowance below must never cover them. The
 # tempting shorthand — "Issues backend ⇒ every backlog op is a network call" —
-# is false: `lib/backlog/cli.py` documents `refresh-counts` in as many words as
-# "a read + a local snapshot write".
+# is false: `export` reads the service and writes its `--to` directory here.
+# (`refresh-counts` is NOT here: its local write goes to the clone-shared
+# `--git-common-dir`, which outlives this worktree — see the read-only set.)
 _BACKLOG_LOCAL_WRITE_OPS = frozenset({
-    "refresh-counts",       # derives from the service, persists the briefing snapshot locally
     "export",               # writes its `--to` directory
     "restructure-preview",  # writes its `--out` artifact
     "import",               # migration; stamps local backlog-format state
