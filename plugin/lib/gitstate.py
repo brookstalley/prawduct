@@ -748,6 +748,11 @@ def branch_push_state(project_dir: Path, branch: str | None = None) -> dict[str,
     ref_code, upstream_sha, ref_err = _git_text(
         project_dir, "rev-parse", "--verify", f"{upstream}^{{commit}}"
     )
+    if ref_code == -1:
+        # git could not be run here — the named-branch path's arm, mirrored. Not a
+        # missing ref, whose remedy (fetch) would send the operator the wrong way.
+        answer["detail"] = ref_err or "git could not be run"
+        return answer
     if ref_code != 0 or not upstream_sha:
         answer["state"] = "upstream-ref-missing"
         answer["detail"] = ref_err or f"{upstream} does not resolve to a commit"
