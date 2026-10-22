@@ -231,6 +231,8 @@ Route by what changed:
   §1 is refused (exit 2) before any write. Every OTHER field goes through untouched even when the
   item's *stored* title does not conform — that is deliberate, so archiving an old item never forces
   a drive-by retitle; the result carries an advisory `lint[]` saying the title was left alone.
+  A **stage change** also scans the final body for prose still describing the old stage and warns
+  (the write succeeds): reconcile it in the same call with `--body`.
 - **tags** (`--tags a,b`) → sets the **whole** set: absent tags are stripped, `--tags ''` clears
   them. That is the only semantics under which a caller can remove one. Tags are an open
   folksonomy — invent values freely, and never build a check that reads them (`--tag T` on `list`

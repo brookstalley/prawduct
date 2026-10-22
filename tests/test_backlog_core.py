@@ -941,6 +941,39 @@ class TestUpdateItem:
         assert r["status"] == "ok" and r["data"]["stage"] == "brainstorm"
         assert any("brainstorm" in w for w in r["warnings"])
 
+    def _stage_item(self, fake, body, stage="design"):
+        return _seed_item(fake, labels=(f"stage:{stage}",), body=body)
+
+    def test_stage_change_warns_when_body_still_describes_old_stage(self, fake):
+        # #322
+        n = self._stage_item(fake, "`stage: design` is deliberate here.")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
+        assert r["status"] == "ok"
+        assert any("describes stage `design`" in w for w in r["warnings"])
+
+    def test_stage_change_with_reconciling_body_does_not_warn(self, fake):
+        n = self._stage_item(fake, "`stage: design` is deliberate here.")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready", "body": "Ready to build."})
+        assert r["status"] == "ok"
+        assert not any("describes stage" in w for w in r["warnings"])
+
+    def test_stage_mention_of_new_stage_or_inside_block_does_not_warn(self, fake):
+        body = "Now `stage: ready`.\n\n```prawduct\nv: 1\nrefs: stage design notes\n```"
+        n = self._stage_item(fake, body)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
+        assert not any("describes stage" in w for w in r["warnings"])
+
+    def test_update_without_a_stage_change_never_scans(self, fake):
+        n = self._stage_item(fake, "`stage: design` is deliberate here.")
+        for fields in ({"stage": "design"}, {"title": "core: a retitled item under test"}):
+            r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields=fields)
+            assert not any("describes stage" in w for w in r["warnings"])
+
+    def test_stage_change_catches_the_heading_form(self, fake):
+        n = self._stage_item(fake, "## Open questions (why this is design, not ready)\n\ntext")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
+        assert any("describes stage `design`" in w and "line 1" in w for w in r["warnings"])
+
     def test_empty_update_is_validation(self, fake):
         n = _seed_item(fake)
         r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={})

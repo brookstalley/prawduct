@@ -939,6 +939,20 @@ def update_item(
         # no-op write makes the item look edited to every later reader.
         if new_body is not None and new_body != (issue.get("body") or ""):
             patch["body"] = new_body
+        # #322 — a stage change swaps the label and nothing else, so prose that
+        # justifies the OLD stage is left contradicting the field. Advisory only:
+        # the data plane does not rewrite prose, and a historical mention is legitimate.
+        if "stage" in fields:
+            old_stage = encode.facet_value(encode.label_names(issue), "stage")
+            if old_stage and old_stage.casefold() != str(fields["stage"]).casefold():
+                final_body = new_body if new_body is not None else (issue.get("body") or "")
+                mentions = encode.stage_mentions(final_body, old_stage)
+                if mentions:
+                    line_no, text = mentions[0]
+                    warnings.append(
+                        f"body still describes stage `{old_stage}` — e.g. line {line_no}: "
+                        f"\"{text[:80]}\". Reconcile it in the same call with `--body`."
+                    )
         if patch:
             issue = transport.update_issue(nid.owner, nid.repo, nid.number, fields=patch)
 

@@ -290,6 +290,32 @@ def _parse_block_fields(
     return (fields, malformed) if collect_malformed else fields
 
 
+def stage_mentions(body: str | None, stage: str) -> list[tuple[int, str]]:
+    """Lines of a body's human text that still describe ``stage`` (``[(line_no, text)]``).
+
+    The pure helper behind ``update --stage``'s stale-prose warning (#322): a stage
+    change swaps the label and nothing else, so prose justifying the OLD stage is
+    left contradicting the field. Matches, case-insensitively, ``stage: <s>``
+    (backticks optional), ``<s>`` within 40 characters of the word ``stage`` on one
+    line, and a heading line containing ``<s>``. The ``prawduct:`` block is stripped
+    first, so the block never counts. Advisory by design: a historical mention
+    ("was `design` until...") matches too, which is why the caller only warns.
+    """
+    if not stage or not body:
+        return []
+    word = re.escape(stage)
+    patterns = [
+        re.compile(rf"stage:?\s*`?{word}\b", re.IGNORECASE),
+        re.compile(rf"\bstage\b.{{0,40}}\b{word}\b|\b{word}\b.{{0,40}}\bstage\b", re.IGNORECASE),
+        re.compile(rf"^\s*#+ .*\b{word}\b", re.IGNORECASE),
+    ]
+    hits: list[tuple[int, str]] = []
+    for number, line in enumerate(strip_block(body).splitlines(), start=1):
+        if any(pattern.search(line) for pattern in patterns):
+            hits.append((number, line.strip()))
+    return hits
+
+
 def strip_block(body: str | None) -> str:
     """Return an issue body with any ``prawduct:`` block removed (human text only).
 
