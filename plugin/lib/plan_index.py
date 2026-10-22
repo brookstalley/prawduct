@@ -674,3 +674,128 @@ def duplicate_scope_errors(artifacts_dir: Path) -> list[tuple[str, str]]:
         else:
             first_seen[scope] = plan_path
     return errors
+
+
+# ---------------------------------------------------------------------------
+# The Status roster — which chunks a plan still has open (#657)
+# ---------------------------------------------------------------------------
+# Here rather than in ``buildplan_refs`` because ``core.resolve_branch_claim``
+# asks it to choose the governing plan, and ``core`` may only reach DOWN:
+# ``buildplan_refs`` imports ``core``, this module imports nothing in ``lib``.
+# ``buildplan_refs`` re-exports each under its old name.
+
+
+def status_section_bounds(lines: list[str]) -> "tuple[int, int] | None":
+    """0-based ``[start, end)`` line indices of the ``## Status`` section BODY.
+
+    ``None`` when the plan has no Status section. The section opens after a line
+    that is exactly ``## Status`` and runs to the next ``## `` heading (a ``###``
+    chunk heading does NOT close it) or to end of document.
+
+    **Public, and the single home for the section's BOUNDS** — which is the part
+    two readers genuinely share. :func:`iter_status_section_lines` wants the
+    body with comments skipped; ``lifecycle_repair`` wants the comment spans
+    themselves, by index, because it deletes them. Neither can reuse the other's
+    body handling, and a private bounds rule copied into both is how BLD-6Q1N's
+    five divergent Status readers started. The two agreed when the second was
+    written; that is the moment to merge them, not evidence that they will stay
+    agreed.
+    """
+    start = None
+    for index, line in enumerate(lines):
+        if line.strip() == "## Status":
+            start = index + 1
+            break
+    if start is None:
+        return None
+    end = start
+    while end < len(lines):
+        stripped = lines[end].strip()
+        if stripped.startswith("## ") and stripped != "## Status":
+            break
+        end += 1
+    return (start, end)
+
+
+def iter_status_section_lines(content: str):
+    """Yield stripped lines inside the build plan's ``## Status`` section.
+
+    The one canonical Status-section walk (BLD-6Q1N): bounded by
+    :func:`status_section_bounds`, skipping HTML-comment spans (``<!-- ... -->``,
+    multi-line). This skeleton was previously copied in five readers across
+    ``buildplan_refs`` / ``gates`` / ``critic_mode``; all of them now fold onto
+    this generator, which is now the only Status-section *content* reader in the
+    tree — the index-based Status *rewriter* that once stood beside it went with
+    the derived view it regenerated.
+    """
+    lines = content.splitlines()
+    bounds = status_section_bounds(lines)
+    if bounds is None:
+        return
+    in_comment = False
+    for line in lines[bounds[0] : bounds[1]]:
+        stripped = line.strip()
+        # A repeated `## Status` does not close the section (see the bounds
+        # walk) and is not content either — it was skipped before this function
+        # was bounded elsewhere, and it stays skipped.
+        if stripped == "## Status":
+            continue
+        if "<!--" in stripped:
+            in_comment = True
+        if "-->" in stripped:
+            in_comment = False
+            continue
+        if in_comment:
+            continue
+        yield stripped
+
+
+def iter_status_section_items(content: str):
+    """Yield ``(checked, text)`` for each ``- [ ]`` / ``- [x]`` Status item."""
+    for stripped in iter_status_section_lines(content):
+        if stripped.startswith("- [ ]"):
+            yield False, stripped[5:].strip()
+        elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
+            yield True, stripped[5:].strip()
+
+
+def has_unfinished_chunk(plan_path: Path) -> bool:
+    """True when ``plan_path``'s Status section still holds an unchecked chunk.
+
+    **Read this before tuning it: it now decides which plan GOVERNS.**
+    :func:`core.resolve_branch_claim` uses it to choose among several live plans
+    claiming one branch, so a change here moves what every gate grades. Its other
+    consumer is the session briefing's "claims a branch this repo does not have"
+    advisory, which fires only for a plan with work left, because a finished plan
+    whose merged branch is gone is the documented end state, not a finding.
+    Branch-name scope inference asks it alongside
+    ``buildplan_refs._plan_changed_on_branch``, because every box is ticked by a
+    plan's own final review, which is when that inference is needed most.
+
+    **The signal is blunt: the boxes flip per chunk, so a plan reads finished
+    from the moment its last chunk is ticked** — typically before its branch
+    merges. Resolution answers that by ordering a *sole* claimant ahead of this
+    test, so a lone plan keeps governing through its own closing PR; what the
+    bluntness still costs is the tie-break among SEVERAL claimants, where a
+    just-ticked plan stops counting as open work. Repos whose checkboxes were a
+    derived view never had this: their boxes flipped at *release*, so "all
+    checked" meant shipped, which is precisely the question asked here. Retiring
+    the derived view removed that sharpness along with the false readings it
+    produced everywhere else — a deliberate trade, stated here rather than
+    discovered later. Sharpening it needs a liveness signal a plan does not carry
+    (a terminal state in frontmatter is the obvious candidate, and archival
+    introduces exactly that); ``active_build_plan`` and ``--scope`` are the
+    remedies meanwhile.
+
+    A plan with no Status items at all reads as unfinished — an unparseable plan
+    is not evidence of completion, and the caller's fallback (the pointer) is no
+    better an answer for it.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    items = list(iter_status_section_items(content))
+    if not items:
+        return True
+    return any(not checked for checked, _text in items)

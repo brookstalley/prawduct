@@ -858,22 +858,7 @@ def resolve_branch_claim(prawduct_dir: Path) -> BranchClaim | None:
     if len(matched) == 1:
         return BranchClaim(matched[0], matched, branch, "sole")  # open set not asked
 
-    # **Lazy is load-bearing here, not an optimization.** `buildplan_refs`
-    # imports THIS module at module scope, so hoisting this to the top would be
-    # an import cycle at plugin load — unlike the `plan_index` import in that
-    # module, which was hoisted on measured cost precisely because it could be.
-    # A maintainer applying that same reasoning here breaks the install, so the
-    # reason is the constraint and not the cost. (The cost is real too: only a
-    # contested branch pays it, and the common shapes are answered above.)
-    #
-    # It also reaches a private, which is the honest cost of putting the choice
-    # here. Considered and not taken: moving the Status-roster predicate down
-    # into `plan_index`, which would keep core's dependencies pointing downward.
-    # That is the better shape and it is a refactor of the parser's home, not a
-    # line — filed rather than smuggled into a fix for something else.
-    from . import buildplan_refs  # noqa: PLC0415 — lazy is REQUIRED: buildplan_refs imports core
-
-    unfinished = [p for p in matched if buildplan_refs._has_unfinished_chunk(p)]
+    unfinished = [p for p in matched if plan_index.has_unfinished_chunk(p)]
     if len(unfinished) == 1:
         return BranchClaim(unfinished[0], matched, branch, "unfinished", unfinished)
     # An empty `unfinished` means every claimant reads finished, which is the
