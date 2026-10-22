@@ -1000,6 +1000,8 @@ class TestUncheckedReporting:
                 "learnings-area-dead": 0,
                 # Record-scoped: no fragment changed, so it honestly found nothing.
                 "change-fragment": 0,
+                # Repo-wide, but this fixture declares no retired phrase.
+                "retired-claim-survives": 0,
             },
         }
 

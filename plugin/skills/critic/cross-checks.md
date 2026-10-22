@@ -123,6 +123,7 @@ Severity per check:
 | `learnings-core-raise-unapproved` | A `core.md` raise without `owner_approved:` (ignored) | **WARNING** |
 | `learnings-area-dead` | An area file whose `paths:` globs match no tracked file | **WARNING** |
 | `change-fragment` | A changed fragment fails its schema, or its `reopens:` names an unknown scope | **WARNING** |
+| `retired-claim-survives` | A phrase a record's `Retires:` field retired survives in a tracked file or an open issue (repo-wide, not added lines only) | **WARNING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and

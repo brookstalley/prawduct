@@ -63,7 +63,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence, learnings_files
+from . import buildplan_refs, evidence, learnings_files, retired_claims
 from .core import resolve_build_plan_path
 
 #: Every check this module can run, in manifest order. Named so a consumer can
@@ -79,6 +79,7 @@ CHECKS = (
     "learnings-rule-body",
     "learnings-area-dead",
     "change-fragment",
+    "retired-claim-survives",
 )
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
@@ -1568,6 +1569,9 @@ def lint_records(
     for arm_findings, arm_gaps, arm_no_answer in (
         _check_learnings_budget(project_dir, prawduct_dir, base_tree, layout),
         _check_learnings_areas(project_dir, layout),
+        # Repo-wide by nature: a retired claim's survivors are exactly the text
+        # the change did not touch (`retired_claims` states the coverage).
+        retired_claims.check(project_dir, prawduct_dir),
     ):
         findings.extend(arm_findings)
         unchecked.extend(arm_gaps)
