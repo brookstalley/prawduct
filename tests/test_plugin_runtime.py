@@ -3350,6 +3350,31 @@ class TestSuiteCoupledPrefixesDeclaration:
             self._state(tmp_path / "c", "suite_coupled_prefixes: []\n")
         ) == ()
 
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "suite_coupled_prefixes:\n  - documentation/\n    plugin/\n",  # wrapped continuation
+            "suite_coupled_prefixes:\n  - documentation/\n  plugin/\n",  # mis-indented root
+            "suite_coupled_prefixes: [documentation/, plugin/]\n",  # flow style
+            "suite_coupled_prefixes:\n  - documentation/\n  -\n",  # bare dash
+        ],
+    )
+    def test_a_declaration_it_cannot_read_whole_couples_everything(self, tmp_path, body):
+        """#780: a partial list dropped a root, so a change under it read as not
+        suite-coupled and day-old evidence read `current` over a red tree. A
+        declaration the reader cannot read whole must fail toward a suite run."""
+        core = self._core()
+        from lib import coverage_algebra as ca  # noqa: PLC0415
+
+        declared = core.suite_coupled_prefixes(self._state(tmp_path, body))
+        assert declared == ("",)
+        assert ca.affects_test_outcome("plugin/anything.md", declared) is True
+        # control: the same root, declared readably, couples only itself
+        readable = core.suite_coupled_prefixes(
+            self._state(tmp_path / "ok", "suite_coupled_prefixes:\n  - documentation/\n")
+        )
+        assert ca.affects_test_outcome("plugin/anything.md", readable) is False
+
     def test_this_repo_declares_the_roots_its_guards_sweep(self):
         """The declaration is live state, not an example. Deleting it is what
         the blocking finding described, and this is what notices."""

@@ -193,6 +193,25 @@ One verifier run unions discovery across all of them.
 tests_dirs: engine/tests server/tests
 ```
 
+## suite_coupled_prefixes (opt-in)
+
+The test-evidence freshness check treats a doc or metadata change as unable to change what the
+suite says, so evidence recorded before it still reads `current`. That is wrong for files a test
+reads as data — a guard that scans `documentation/` prose goes red on a doc edit. Declare those
+paths, and a change under one makes recorded evidence stale, as a code change does.
+
+Entries are repo-relative path PREFIXES, not globs, so the trailing slash is yours to write
+(`doc/` does not match `documentation/`), and a prefix couples every file under it. Declare it ONLY
+as a block sequence of strings; a declaration the reader cannot read whole (flow style, a wrapped
+or mis-indented entry, a bare dash) couples EVERY path rather than dropping an entry, so a typo
+costs suite runs, never a false `current`. Absent or `[]` couples nothing extra.
+
+```yaml
+suite_coupled_prefixes:
+  - documentation/
+  - .prawduct/artifacts/data-model.md
+```
+
 ## learnings_budgets (opt-in override)
 
 Learnings live in `.claude/rules/learnings/`: `core.md` is in every session's context from launch,
