@@ -105,3 +105,7 @@ first.
   names each offender.
 - Product-code detection works by exclusion, so repos in languages that were not listed before
   (C#, PHP, TSX and others) now get the product-code nudges.
+- The Critic warns when a chunk declares an Exposed API the contract artifact does not describe.
+- `test-evidence record` warns, naming untracked files a review cannot cover.
+- "Green is evidence" now also fires on new code that no test mentions.
+- A quoted `#` in a `test_command` or other block value no longer cuts the value short.
