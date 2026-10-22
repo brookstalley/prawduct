@@ -752,13 +752,13 @@ def _read_str_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
     items: list[str] = []
     in_block = False
     for raw in content.splitlines():
-        stripped = raw.split("#", 1)[0].strip()
+        stripped = _strip_scalar_comment(raw)
         if not stripped:
             continue
         if not in_block:
             if raw[:1] in (" ", "\t"):
                 continue
-            if raw.split("#", 1)[0].rstrip() == f"{key}:":
+            if _strip_scalar_comment(raw) == f"{key}:":
                 in_block = True
             continue
         if raw[:1] not in (" ", "\t"):
@@ -784,7 +784,7 @@ def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
         return False
     return any(
         raw[:1] not in (" ", "\t")
-        and raw.split("#", 1)[0].rstrip().startswith(f"{key}:")
+        and _strip_scalar_comment(raw).startswith(f"{key}:")
         for raw in content.splitlines()
     )
 

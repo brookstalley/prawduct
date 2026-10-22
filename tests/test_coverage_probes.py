@@ -647,6 +647,23 @@ def test_structural_recorded_tolerates_indent_width(tmp_path, step):
     assert cp._structural_recorded_at(sp, "overall") is False
 
 
+def test_structural_value_quoting_a_hash_is_recorded(tmp_path):
+    """#968: a quoted ``#`` is data — ``"#12"`` is a recorded value, not empty."""
+    content = (
+        "classification:\n"
+        "  structural:\n"
+        "    has_human_interface: \"#12\"  # issue ref\n"
+        "    runs_unattended: # nothing recorded yet\n"
+    )
+    d = tmp_path / ".prawduct"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "project-state.yaml").write_text(content, encoding="utf-8")
+    sp = _state_path(tmp_path)
+    assert cp._structural_recorded_at(sp, "has_human_interface") is True
+    # control: an unquoted comment is still a comment, so this stays unrecorded
+    assert cp._structural_recorded_at(sp, "runs_unattended") is False
+
+
 def test_absent_values_include_zero(tmp_path):
     # `exposes_programmatic_interface: 0` is an explicit negative, not a recorded
     # presence — it must not require an api-contract.

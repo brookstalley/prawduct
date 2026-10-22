@@ -78,6 +78,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
+from .core import strip_scalar_comment, unquote_scalar
 
 FEATURE = "structural-coverage"
 PROBE_VERSION = 1
@@ -219,7 +220,7 @@ def _structural_recorded_at(state_path: Path, characteristic: str) -> bool:
         key, _, rest = line.strip().partition(":")
         if key != characteristic:
             continue
-        value = rest.split("#", 1)[0].strip().strip("\"'")
+        value = unquote_scalar(strip_scalar_comment(rest)).strip()
         if value:
             return value.lower() not in _ABSENT_VALUES
         # Empty inline value: a nested attribute block records presence; a bare

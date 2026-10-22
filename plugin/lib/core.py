@@ -521,16 +521,16 @@ def read_yaml_block(text: str, key: str) -> tuple[str, tuple[str, ...]]:
     for index, raw in enumerate(lines):
         if raw[:1] in (" ", "\t"):
             continue
-        if not raw.split("#", 1)[0].rstrip().startswith(needle):
+        if not strip_scalar_comment(raw).startswith(needle):
             continue
-        inline = raw.split("#", 1)[0].rstrip().split(":", 1)[1].strip()
+        inline = strip_scalar_comment(raw).split(":", 1)[1].strip()
         if inline == "[]":
             return YAML_DECLARED, ()
         if inline:
             return YAML_UNPARSEABLE, ()
         body: list[str] = []
         for follow in lines[index + 1:]:
-            stripped = follow.split("#", 1)[0].strip()
+            stripped = strip_scalar_comment(follow)
             if not stripped:
                 continue  # blank or comment-only — inert at any indent
             if follow[:1] not in (" ", "\t"):
@@ -573,7 +573,7 @@ def yaml_top_level_key_present(text: str, key: str) -> bool:
     ones that only carry a ``list | None``.
     """
     return any(
-        raw[:1] not in (" ", "\t") and raw.split("#", 1)[0].rstrip().startswith(f"{key}:")
+        raw[:1] not in (" ", "\t") and strip_scalar_comment(raw).startswith(f"{key}:")
         for raw in text.splitlines()
     )
 
