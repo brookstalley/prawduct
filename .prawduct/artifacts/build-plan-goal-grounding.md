@@ -238,8 +238,9 @@ owner says "close to public" (not "MIT"), and the record was already half aware.
 
 Root causes and fixes:
 - t1: the hedge paragraph offered a complete-feeling path (record it) that competed with the
-  stop. It now says recording a hedge does not settle it; with a lot resting on it, it is also
-  the fork to raise now, audience first.
+  stop. Run 1's fix said recording a hedge does not settle it; with a lot resting on it, it is
+  also the fork to raise now. Superseded by the owner's ruling (Decisions made mid-build): the
+  agent names the cost and the owner may defer.
 - t2: "someone else's ownership" read as whose machine. It now names repo, code and data, and
   says to raise a fork before the act that causes it.
 - t4: "publishing is a hard stop" read as covering the design. It now applies at the act; a
