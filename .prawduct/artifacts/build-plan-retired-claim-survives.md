@@ -147,9 +147,12 @@ rows answers every phrase at once.
 - [ ] Chunk 02: The convention, the dogfood sweep, and the replay
 Context: Plan written 2026-10-22 on `feature/retired-claim-survives`, cut from develop @ 7d8c24a2.
 #136 is `in-progress`; its `working_branch` claim needs the branch pushed first. Chunk 01 built
-and committed; all twelve behaviour mutants killed, a wording control survived. Next: Chunk 02.
-The first dogfood run over this repo found ten survivors of the stage-keyed norm's `Retires:`
-line, two of them wrapped copies a plain `git grep -F` misses; Chunk 02 dispositions each.
+and committed; all twelve behaviour mutants killed, a wording control survived. Chunk 02 built
+and committed: the convention in `norms.md`, the eight quotations in this repo waived with
+reasons (nine survivors, three invisible to a case-sensitive per-line grep), the replay of all
+thirteen recurrences, a dogfood guard red-verified, and the reviewer-payload readings lowered
+after paying the new rows in place. Suite green. Next: `/prawduct:critic cumulative`, then tick
+Chunk 02. The backlog leg reports #136 itself until it ships; that is expected.
 
 ## Build Chunks
 

@@ -28,6 +28,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 _TESTS_DIR = Path(__file__).resolve().parent
 _PLUGIN = _TESTS_DIR.parent / "plugin"
 for _p in (str(_PLUGIN), str(_TESTS_DIR)):
@@ -295,6 +297,21 @@ class TestDecisionRecordsDeclareTheSameWay:
             ("docs/d.md", 1),
         ]
 
+    def test_the_templates_category_nesting_is_read(self, tmp_path):
+        """The scaffolded `project-state.yaml` nests decisions under category
+        keys (`technical_decisions.architecture[]`), one level deeper than a
+        flat list. A product filling the template writes exactly this shape."""
+        state = (
+            "technical_decisions:\n"
+            "  architecture:\n"
+            "    - decision: two planes on one host\n"
+            "      retires:\n"
+            '        - "two planes on two machines"\n'
+            "  technology: []\n"
+        )
+        repo = _make_repo(tmp_path, {"docs/a.md": "Two planes on two machines.\n"}, state=state)
+        assert _found(_lint(repo)) == [("docs/a.md", 1)]
+
     def test_a_decision_records_own_retires_lines_are_not_survivors(self, tmp_path):
         """The state file is tracked, so its own `retires:` values would match
         themselves. They are declarations, excluded like a norm's field."""
@@ -416,3 +433,120 @@ class TestWiring:
         doc = retired_claims.__doc__ or ""
         for needle in ("paraphrase", "Goal 4", "verify-resolutions"):
             assert needle in doc, needle
+
+
+# ---------------------------------------------------------------------------
+# Replay: the recorded recurrences (#136 Evidence)
+# ---------------------------------------------------------------------------
+
+#: One row per recorded recurrence, restating its SHAPE in new words (the
+#: evidence lives in another product's record; its text is not copied). Each row
+#: declares a phrase, plants the surviving copy as the recurrence left it, and
+#: says whether this check catches it. A row expected NOT caught pins the
+#: coverage statement's other half: paraphrase and half-consumed findings
+#: belong to Critic Goal 4 and `verify-resolutions`, and a check that started
+#: "catching" them would be matching something other than the phrase.
+_REPLAY = [
+    # (recurrence, cause class, declared phrase, {path: text}, caught)
+    ("R1", "1: a heading in another file", "the split is not negotiable",
+     {".prawduct/learnings.md": "# L\n\n## Why the split is not negotiable\n"}, True),
+    ("R2", "1: verbatim in a state block", "agents cannot accept on their own",
+     {".prawduct/project-state.yaml": "risk_profile:\n  note: agents cannot accept on their own\n"}, True),
+    ("R3", "1: literal copies the sweep did not reach", "moves the heavy work off the small box",
+     {"docs/a.md": "It moves the heavy work off the small box.\n",
+      "docs/b.md": "That moves the heavy work\noff the small box.\n"}, True),
+    ("R3p", "2: the same recurrence's paraphrased copies", "forced by a version conflict",
+     {"docs/c.md": "Forced by the interpreter mismatch, not chosen.\n"}, False),
+    ("R4", "1+3: below the new rule, in the file being edited", "spend attributes to the first run",
+     {"docs/model.md": "## Spend\n\nNew rule: spend follows the re-run.\n" + "\n" * 180
+      + "Spend attributes to the first run.\n"}, True),
+    ("R5", "3: the edited file's older section", "one product-wide runtime target",
+     {"docs/prefs.md": "## Per plane\n\nEach plane pins its own.\n" + "\n" * 140
+      + "We keep one product-wide runtime target.\n"}, True),
+    ("R6-R7", "4+2: a finding's other files, phrased differently", "every unfinished run is failed",
+     {"docs/arch.md": "Startup reconciles each non-terminal run to failed.\n"}, False),
+    ("R8", "4: the table cell the grep could not see", "a waiting run dies with the service",
+     {"docs/arch.md": "| down | in-flight work is lost | waiting runs survive |\n"}, False),
+    ("R10", "4: a finding's enumerated sites, the survivors literal", "single consumer, shipped together",
+     {"docs/api.md": "Exempt: single consumer, shipped together.\n",
+      ".prawduct/project-state.yaml": "notes:\n  - single consumer, shipped together\n"}, True),
+    ("R11", "1: a dangling pointer to a closed question", "see the open question in state",
+     {"docs/security.md": "## Open\n\nRights display: see the open question in state.\n"}, True),
+    ("R11p", "1: the same section still framing it as open", "rights display is undecided",
+     {"docs/security.md": "## Open\n\nWhether rights show is still to be settled.\n"}, False),
+    ("R12", "1: an old wording quoted verbatim elsewhere", "has seen its image",
+     {"docs/api.md": 'The gate passes once a reviewer "has seen its image".\n'}, True),
+    ("R13", "4: a finding's fourth home, a literal token", "label/",
+     {".prawduct/learnings.md": "# L\n\n## Cache contract\n\nKeys live under label/ today.\n"}, True),
+]
+
+
+def _replay_repo(tmp_path: Path, phrase: str, files: "dict[str, str]") -> Path:
+    files = dict(files)
+    declared = f'technical_decisions:\n  - name: replay\n    retires: ["{phrase}"]\n'
+    state = files.pop(".prawduct/project-state.yaml", "")
+    return _make_repo(tmp_path, files, state=declared + state)
+
+
+class TestReplayOfTheRecordedRecurrences:
+    def test_every_class_1_3_and_literal_survivor_is_caught(self, tmp_path):
+        """#136's replay box: each class-1/3/5 recurrence, rebuilt, is caught,
+        and a class-4 recurrence whose surviving sites carried the phrase
+        verbatim is caught for the same reason. R9, the backlog home, is the
+        next test, because it needs a cache."""
+        rows = [row for row in _REPLAY if row[4]]
+        assert len(rows) >= 8
+        for recurrence, cause, phrase, files, _ in rows:
+            repo = _replay_repo(tmp_path / recurrence, phrase, files)
+            found = {path for path, _ in _found(_lint(repo, sorted(files)))}
+            expected = {path for path in files}
+            assert found == expected, (recurrence, cause, found)
+
+    def test_paraphrase_and_unseen_cells_are_not_caught(self, tmp_path):
+        """The other half of the coverage statement. If one of these starts
+        firing, the matcher is matching something other than the phrase."""
+        rows = [row for row in _REPLAY if not row[4]]
+        assert len(rows) >= 4
+        for recurrence, cause, phrase, files, _ in rows:
+            repo = _replay_repo(tmp_path / recurrence, phrase, files)
+            result = _lint(repo, sorted(files))
+            assert _found(result) == [], (recurrence, cause)
+            assert result["counts"][CHECK] == 0
+
+    def test_r9_a_stale_tally_in_the_issue_that_argues_from_it(self, tmp_path):
+        """Class 5: the tally was refreshed in the learnings file and not in the
+        open issue whose argument it is. No sweep of `.prawduct/` reaches it."""
+        repo = _replay_repo(
+            tmp_path, "three times in two sessions",
+            {".prawduct/project-state.yaml": f"backlog_service_repo: {SCOPE}\n"},
+        )
+        fake = FakeGitHub(user={"login": "agent-a", "id": 1})
+        issue = _file_issue(
+            fake, "governance: acknowledge dependent artifacts",
+            "The learning was broken three times in two sessions.",
+        )
+        _rebuild(fake, repo)
+        assert _found(_lint(repo)) == [(issue, None)]
+
+
+class TestThisRepoIsClean:
+    # It searches this repo's tracked files through `git grep`, which a
+    # history-less runner checkout cannot answer; the reached-assertion below
+    # turns that into a failure rather than a vacuous pass.
+    @pytest.mark.requires_history
+    def test_no_unacknowledged_survivor_in_this_repos_tracked_files(self):
+        """Dogfood: the stage-keyed norm's `Retires:` line is a live declaration,
+        and every tracked copy of its phrases is rewritten or waived with a
+        reason. The subject is asserted REACHED first, or a reader that lost the
+        declaration would pass this as clean. The backlog leg is left out: the
+        cache is per-clone state a CI runner does not have, and an open issue
+        quoting a claim it retires closes when it ships."""
+        root = _TESTS_DIR.parent
+        declared, unreadable = retired_claims._artifact_declarations(root, root / ".prawduct")
+        assert unreadable == []
+        phrases = {d.phrase for d in declared}
+        assert "fails safe to thoroughness" in phrases  # prawduct:allow prawduct/retired-claim-survives -- asserts the declaration was read
+        findings, unchecked, _ = retired_claims.check(root, root / ".prawduct")
+        assert not [r for r in unchecked if "tracked files" in r], unchecked
+        in_files = [f"{f['path']}:{f['line']}" for f in findings if f["line"] is not None]
+        assert in_files == []

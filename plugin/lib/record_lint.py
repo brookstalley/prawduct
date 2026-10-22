@@ -18,7 +18,12 @@ do is *silently pass* — a check that cannot read its inputs reports itself
 requires of the compliance canary), because an unrun check and a clean one are
 otherwise indistinguishable at the output.
 
-**Cost is proportional to the diff, never the repo.** Consumers are ~20x this
+**Cost is proportional to the diff, never the repo** — with one named
+exception, ``retired-claim-survives``, whose subject is text the diff did not
+touch (``retired_claims`` states its cost). It is also the one check that reads
+beyond the record set, into every tracked file: the phrase it looks for is a
+record's own retired wording, so a hit grades the record's sweep, not the
+product's content. Consumers are ~20x this
 repo's size, so every line-scoped check reads only the lines a change *added*
 (``git diff --unified=0``) rather than re-scanning whole files. That is also why
 the tripwire below does not drown in history: ``.prawduct/change-log.md`` holds

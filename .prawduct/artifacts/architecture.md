@@ -159,7 +159,9 @@ The flagship multi-process flow, and the clearest expression of invariant 1.
   never reach a review's severity counts, and their per-check counts ride into the review fact so the
   control's own yield is a query rather than an argument. Cost is proportional to the diff, not the
   repo: line-scoped checks read one `git diff --unified=0` over the changed records and see only
-  added lines. It also **hands the reviewer the rules its payload cannot carry** — the dispatch
+  added lines. The one repo-wide check is `retired-claim-survives`, because a retired claim's
+  survivors are by definition text the diff did not touch; it pays one `git grep -l` plus a read of
+  the files that grep names, and nothing in a repo that declares no `Retires:` phrase. It also **hands the reviewer the rules its payload cannot carry** — the dispatch
   directives (`critic_consolidate`'s `FINDING_SCOPE_DIRECTIVE`, `VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE`,
   `RESOLUTION_IS_A_CLAIM_DIRECTIVE`), printed per mode. They are instruction text, never data: no
   gate reads them, and a mode's total load — payload file plus whatever its dispatch prints — is

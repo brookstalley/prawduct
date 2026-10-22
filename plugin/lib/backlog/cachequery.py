@@ -221,12 +221,15 @@ def _open_placeholders() -> str:
 
 
 def open_items(project_dir: Path, *, scope: str, now: datetime) -> dict:
-    """Every open item with its id, title and body — consumers 1 and 6.
+    """Every open item with its id, title and body — consumers 1 and 6, and
+    record-lint's ``retired-claim-survives`` backlog leg.
 
     The Critic's backlog-reconciliation walk and the PR reviewer's resolved-items
     check both need the full open set with text, which is the query that made a
     persisted cache worth building: it is one scan of local rows rather than a
-    paginated fetch on every review.
+    paginated fetch on every review. The retired-claim check reads the same set
+    rather than ``search``: full-text search matches terms, not phrases, so every
+    hit would need the exact filter anyway, and one scan answers every phrase.
 
     **Open means every non-terminal status, not the literal ``open`` one.**
     ``submitted`` and ``in-progress`` items are live — an in-progress item is

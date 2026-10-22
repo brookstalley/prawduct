@@ -783,7 +783,9 @@ LAST_MEASURED_TOKENS = {
     # +30 on 2026-10-21 (#706): the same contract-presence clause as review-protocol.md, net of the
     # tightened decision clauses. DECLARED, a READING.
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
-    "skills/critic/goals-1-3.md": 2687,
+    # -3 on 2026-10-22 (retired-claim-survives): the record-lint WARNING line names the new
+    # `retired-claim-survives` check, paid by tightening the chunk-ref-missing parenthesis. A READING.
+    "skills/critic/goals-1-3.md": 2684,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -904,12 +906,12 @@ LAST_MEASURED_TOKENS = {
     # severity test, which the chunk's own review falsified). Nothing to pay
     # in place with.
     # +/-0 net on 2026-09-17 (review-stages Chunk 03): the canonical
-    # fail-safe statement ("run `final`; every layer fails safe to
+    # fail-safe statement ("run `final`; every layer fails safe to  # prawduct:allow prawduct/retired-claim-survives -- the budget ledger records this retirement
     # thoroughness") is now the canonical default-when-unsure statement — the
     # inner-stage review of whatever interval exists, two modes named because
     # a clean tree and a dirty one have different intervals, and `final` never
     # a default (+10 on its own). Paid in full inside the file: the
-    # risk-surface paragraph SHRANK (the "never reviewed less than before"
+    # risk-surface paragraph SHRANK (the "never reviewed less than before"  # prawduct:allow prawduct/retired-claim-survives -- the budget ledger records this retirement
     # promise and the 5-file fallback it described are retired; the measurement
     # lives in the roster config block, pointed at), and the per-mode table's
     # `final` row lost "or any time the right answer is unclear" — the retired
@@ -1126,7 +1128,10 @@ LAST_MEASURED_TOKENS = {
     # surface (test_record_lint), and this table is the only place the row can live; the row
     # was shortened in place first and there is no duplication left to pay from.
     # -4 on 2026-10-21 (#301): the `trivial` row's file-set wording left with the retired gate.
-    "skills/critic/cross-checks.md": 3400,
+    # -10 on 2026-10-22 (retired-claim-survives): one severity row for the new
+    # `retired-claim-survives` check, paid in place. The section intro stops calling the pass one over
+    # the changed records (two arms are repo-wide), and two reasons lost words. Ceiling lowered with it.
+    "skills/critic/cross-checks.md": 3390,
     "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1162,7 +1167,7 @@ LAST_MEASURED_TOKENS = {
     # Unfunded, and it is the on-demand class -- growth here is declared, not
     # blocked (#688), and paid only by a session that opens the guide.
     # -34 on 2026-09-17 (review-stages Chunk 03): § Surface Risk Surfaces no
-    # longer promises that an undeclared product is "never reviewed less than
+    # longer promises that an undeclared product is "never reviewed less than  # prawduct:allow prawduct/retired-claim-survives -- the budget ledger records this retirement
     # before" or that declaring raises a file-count threshold — the fallback
     # both sentences described is retired, so the paragraph states the one
     # effect that remains (size-independence on the named paths). A CUT.
@@ -6114,7 +6119,8 @@ class TestReviewCycle:
         # on a coordinator roster, so growth here is paid per reviewer. The next
         # addition trims or relocates; it does not bump.
         tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
-        assert tokens < 3405, f"cross-checks.md is ~{tokens} tokens, should be <3405"
+        # RATCHETED 3405 -> 3391 (retired-claim-survives, 2026-10-22) with the reading.
+        assert tokens < 3391, f"cross-checks.md is ~{tokens} tokens, should be <3391"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).
@@ -6465,7 +6471,7 @@ class TestRigorIsStageKeyed:
     # The property, not a spelling: every phrasing under `plugin/` that names
     # thoroughness / the fuller review as the SAFE direction to fail toward.
     # `CHANGELOG.md` is excluded on purpose — the v3.2.2 section quotes the
-    # "never reviewed less than before" promise as released history, and a
+    # "never reviewed less than before" promise as released history, and a  # prawduct:allow prawduct/retired-claim-survives -- names the released history the scan excludes
     # released section is not a surface a reader is instructed by.
     THOROUGHNESS_IS_SAFE = re.compile(
         r"fails?[- ]safe to thoroughness"
@@ -6516,9 +6522,9 @@ class TestRigorIsStageKeyed:
         """A zero from this scan is only evidence once the scan has returned
         non-zero on text it should catch — the canonical fail-safe statement
         and the under-declaring sentence are the two the norm names."""
-        assert self.THOROUGHNESS_IS_SAFE.search("Every layer fails safe to thoroughness.")
+        assert self.THOROUGHNESS_IS_SAFE.search("Every layer fails safe to thoroughness.")  # prawduct:allow prawduct/retired-claim-survives -- positive control for the absence scan
         assert self.THOROUGHNESS_IS_SAFE.search("defaults to `final` (fail-safe to thoroughness)")
-        assert self.THOROUGHNESS_IS_SAFE.search("Under-declaring Type is safe (worst case: redundant Critic work)")
+        assert self.THOROUGHNESS_IS_SAFE.search("Under-declaring Type is safe (worst case: redundant Critic work)")  # prawduct:allow prawduct/retired-claim-survives -- positive control for the absence scan
         assert self.THOROUGHNESS_IS_SAFE.search("is never reviewed *less* than before")
         assert not self.THOROUGHNESS_IS_SAFE.search("a control that never fires is removed")
 
