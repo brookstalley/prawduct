@@ -551,7 +551,12 @@ def check_github_release(project_dir: Path, tag: str) -> tuple[str, str]:
     if viewed == MISSING:
         return UNVERIFIABLE, "gh is not installed"
     if viewed == ERRORED:
-        return UNVERIFIABLE, "gh did not complete"
+        # Timeout and failed spawn both land here, so name the ceiling: the reader
+        # must be able to tell a slow network from a missing Release (#578).
+        return UNVERIFIABLE, (
+            f"gh did not complete within {_TIMEOUT}s (timed out or failed to start) — "
+            "transient; re-run before treating the release as incomplete"
+        )
     if viewed[0] != 0:
         detail = _scrub(viewed[2]) or "no release"
         # Measured against gh 2.x rather than assumed — an absent release prints

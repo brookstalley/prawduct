@@ -854,6 +854,31 @@ class TestTagOnMain:
         assert state == rv.UNVERIFIABLE
         assert "could not resolve" in detail
 
+    def test_missing_git_at_the_tag_resolve_is_not_the_errored_message(self, tmp_path, monkeypatch):
+        """#575: the tag rev-parse MISSING leg, distinct from ERRORED above."""
+        monkeypatch.setattr(rv, "_run", lambda *a, **k: rv.MISSING)
+        state, detail = rv.check_tag_on_main(tmp_path, "v1.0.0")
+        assert (state, detail) == (rv.UNVERIFIABLE, "git is not installed")
+
+    @pytest.mark.parametrize("sentinel", [rv.MISSING, rv.ERRORED])
+    @pytest.mark.parametrize("failing_call", ["origin/main", "merge-base"])
+    def test_a_sentinel_at_the_later_git_calls_collapses_to_git_unavailable(
+        self, tmp_path, monkeypatch, sentinel, failing_call
+    ):
+        """#575: `isinstance(str)` deliberately merges MISSING and ERRORED to one message at
+        these two sites (the tag-resolve call keeps them apart). Pinned as deliberate:
+        un-collapsing is a design change that must edit this test, not drift in unseen."""
+
+        def fake(args, cwd):
+            if "--verify" in args:
+                return sentinel if failing_call == "origin/main" else (0, "deadbeef", "")
+            if "merge-base" in args:
+                return sentinel
+            return (0, "abc1234567890", "")  # tag rev-parse
+
+        monkeypatch.setattr(rv, "_run", fake)
+        assert rv.check_tag_on_main(tmp_path, "v1.0.0") == (rv.UNVERIFIABLE, "git unavailable")
+
     def test_absent_origin_main_is_unverifiable_not_failed(self, tmp_path):
         """A clone that cannot answer must not answer "broken".
 
@@ -904,6 +929,15 @@ class TestGithubRelease:
         state, detail = rv.check_github_release(tmp_path, "v1")
         assert state == rv.UNVERIFIABLE
         assert "not installed" in detail
+
+    def test_a_gh_timeout_names_the_ceiling_and_is_unverifiable(self, tmp_path, monkeypatch):
+        """#578/#575: ERRORED is not MISSING, and its message names the 15s ceiling."""
+        monkeypatch.setattr(rv, "_run", lambda *a, **k: rv.ERRORED)
+        state, detail = rv.check_github_release(tmp_path, "v1")
+        assert state == rv.UNVERIFIABLE
+        assert f"within {rv._TIMEOUT}s" in detail
+        assert "transient" in detail
+        assert "not installed" not in detail
 
     def test_other_gh_error_is_unverifiable(self, tmp_path, monkeypatch):
         monkeypatch.setattr(rv, "_run", lambda *a, **k: (1, "", "HTTP 503 upstream"))
