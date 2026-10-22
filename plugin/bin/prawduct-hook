@@ -6651,9 +6651,8 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
     recorded = staging.get("structural_recorded")
     missing = staging.get("missing") or []  # [(name, characteristic|None)]
     # Whether discovery is owed YET. False means "no product work this scan
-    # RECOGNISES" (the source-suffix allowlist, #561), never "this repo is empty" —
-    # every rendering below is worded to that, because the one population it is
-    # wrong about is a repo full of source in an unlisted language.
+    # RECOGNISES", never "this repo is empty" — every rendering below is worded to
+    # that: the scan classifies by exclusion (#561), but no scan is the repo.
     expected = staging.get("discovery_expected")
 
     # Layer 2 composes over the norm probe (its own gate is "strategy artifacts

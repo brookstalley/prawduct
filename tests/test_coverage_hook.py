@@ -226,34 +226,32 @@ class TestReportAgreesWithTheNudge:
         assert (data["active_layer"] == 1) == layer1_nudged
         assert data["active_layer"] is None
 
-    def test_an_unrecognised_language_is_reported_as_unfound_not_as_absent(self, tmp_path):
-        """The population this staging predicate is wrong about.
+    def test_a_language_no_list_names_owes_discovery(self, tmp_path):
+        """#561: a repo written entirely in C# owes discovery, and layer 0 says so.
 
-        `_has_product_definition_work` reads source by suffix allowlist, so a repo
-        written entirely in a language the tuple omits (`.cs`, `.tsx`, `.php`, …)
-        scans as unstarted. Under-firing is the right direction for a *nudge* —
-        silence costs advice, never soundness — but the report renders the same
-        predicate as prose, and prose that says "no product work in this repo" to a
-        repo full of C# is a new false claim, printed as fact, by the one surface
-        that was telling that population the truth before this chunk.
-
-        So the pin is on the CLAIM, not on the classification: the report may say it
-        found nothing, and may not say there is nothing. `#561` is the real fix
-        (classify by exclusion); this keeps the wording honest until it lands, and
-        it is what fails if someone re-tightens the sentence.
+        The staging predicate once read source from a suffix allowlist, so a repo
+        in a language the tuple omitted (`.cs`, `.tsx`, `.php`, …) scanned as
+        unstarted and both the nudge and the report went silent. It classifies by
+        exclusion now; report and nudge must still agree.
         """
         _write_state(tmp_path, _ALL_NULL)
         (tmp_path / "src").mkdir()
         (tmp_path / "src" / "Program.cs").write_text("class P {}\n", encoding="utf-8")
 
+        assert self._reports_layer0(tmp_path) is True
+        assert self._nudged(tmp_path) is True
+
+    def test_unstarted_is_reported_as_unfound_not_as_absent(self, tmp_path):
+        """The pin is on the CLAIM, not on the classification: the report may say
+        it found nothing, and may not say there is nothing — "found nothing" stays
+        the honest phrasing for any scan, and this fails if someone re-tightens the
+        sentence."""
+        _write_state(tmp_path, _ALL_NULL)
+
         result = _run("coverage-status", tmp_path)
         assert result.returncode == 0
         assert "recognises" in result.stdout
         assert "no product work in this repo" not in result.stdout
-        # And the report still agrees with the nudge, which is the chunk's invariant
-        # — both are wrong about this repo together, which is a filed item, not a
-        # disagreement.
-        assert self._reports_layer0(tmp_path) == self._nudged(tmp_path)
 
     def test_human_output_does_not_call_an_unstarted_chain_satisfied(self, tmp_path):
         """The `--json` path never exercises the formatter (learning: a human-mode

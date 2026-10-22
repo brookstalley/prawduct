@@ -280,13 +280,10 @@ def discovery_expected(codebase: Codebase) -> bool:
     is not yet true of anything.
 
     **False is "nothing recognised", NOT "nothing there" — and the difference is
-    load-bearing for any caller that renders it.** The underlying scan reads source
-    code from a suffix allowlist (``gitstate._PRODUCT_CODE_SUFFIXES``), so a repo
-    written entirely in a language the tuple omits reads as unstarted. Under-firing
-    is the intended direction for a *nudge* (silence costs advice, never soundness),
-    but a caller that turns this into prose must not upgrade it to a claim about the
-    repo: `#561` tracks classifying by exclusion, which is the fix that removes the
-    distinction rather than documenting it.
+    load-bearing for any caller that renders it.** The underlying scan
+    (``gitstate._has_product_code``) classifies by exclusion (#561), so an unlisted
+    language counts; but a caller that turns this into prose must still not upgrade
+    it to a claim about the repo — a scan is not the repo.
 
     Split out from :func:`layer0_active` because the *report* needs a distinction the
     *nudge* does not: silence means "nothing owed yet" here and "everything
