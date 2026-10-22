@@ -163,9 +163,25 @@ Propose two candidate sets:
    merge→survivor) | reason`. This table is the model's decision, expressed as
    data.
 
+   **Write the survey baseline on the table: `surveyed through: <UTC date>`** — the
+   date the corpus was read, because a survey is a claim about the corpus *at a
+   moment* and an approved table has unknown currency without one. A **date**, not a
+   commit ref: a ref stops resolving at cutover, and a short SHA does not survive an
+   amend. Every open markdown item carries `added:` and every issue `created_at`, so
+   the same filter works on both sides of the cutover.
+
 **3. Owner confirms.** Show the table. The owner accepts, edits (change an
 action, correct a survivor), or defers individual rows. **Apply nothing that is
 not confirmed.** Deferred rows stay live and untouched — never a silent drop.
+
+Before the owner confirms, **re-derive the unsurveyed set against the baseline**:
+the open items added after `surveyed through` (source file: items whose `added:` is
+later; after a first import: `prawduct-hook backlog list --repo <target> --json`
+filtered on `created_at`). Report it as a stated choice — "N items were filed after
+the survey; screen them now, or confirm without them" — not a refusal, because a
+survey is judgment and a hard gate would block sound runs. If the owner screens
+them, extend the table and move the baseline date forward; if not, the table
+records that N items went unsurveyed. This adds no adapter op.
 
 **3b. Restructure pre-pass (issue-standard §5).** For the items being
 migrated (typically the open set; archive items may stay verbatim), *propose* a
