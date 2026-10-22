@@ -34,7 +34,7 @@ For the product's **own codebase craft** — code/docs/tests/dependency quality 
 | "check coverage" / "which strategy artifacts am I missing" / the `strategy-artifact-missing` advisory pointed here / "scaffold the missing artifacts" | **Coverage check** (Health Check #11) + optional **coverage-scaffold** |
 | "reconcile labels" / "fix the backlog taxonomy" / "a base label went missing" (post-cutover repos) | **Reconcile taxonomy** (Health Check #12) — `reconcile-labels` |
 | "the Norm Health nudge fires but I have no norms" / "my preferences table still has the example rows" | **Norm-index scaffold check** (Health Check #14) — `norm-index-scaffold` |
-| "my build plan checkboxes don't stick" / "what is `views_enabled`" / "archive my finished plans" / "`regen-views` says it does nothing" | **Lifecycle Convergence** (Health Checks #15/#16) — see Lifecycle Convergence Flow |
+| "my build plan checkboxes don't stick" / "what is `views_enabled`" / "archive my finished plans" | **Lifecycle Convergence** (Health Checks #15/#16) — see Lifecycle Convergence Flow |
 | "clean up old prawduct versions" / "the plugin cache is huge" / "delete stale plugin caches" | **Unused plugin caches** (Health Check #21) — relay the delete commands; never run them |
 | "record how we delegate here" / "why does it keep asking before it fans out" / "turn delegation off for this repo" | **Delegation policy** (Health Check #18) — see Delegation Policy Flow |
 

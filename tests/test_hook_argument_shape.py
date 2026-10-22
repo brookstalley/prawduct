@@ -113,9 +113,7 @@ def test_the_collections_match_the_dispatch_chain():
     no_argument = set(branches) - takes_argv - single
 
     assert no_argument == (
-        _hook._NO_ARGUMENT_COMMANDS
-        | _hook._NO_ARGUMENT_NOTE_ONLY_COMMANDS
-        | _hook._NO_ARGUMENT_UNCHECKED_COMMANDS
+        _hook._NO_ARGUMENT_COMMANDS | _hook._NO_ARGUMENT_NOTE_ONLY_COMMANDS
     )
     assert single == _hook._SINGLE_POSITIONAL_COMMANDS
 
@@ -164,7 +162,6 @@ _REFUSAL_VERIFIED = {
 _REFUSAL_NOT_WANTED = {
     "user-prompt-submit": "harness hook; must exit 0 for any argv or it blocks the session",
     "build-index": "inert — `del argv`; an ignored argument cannot act",
-    "regen-views": "deprecated and inert; exit 0 for any input is its contract",
     "audit-learnings": "deprecated and inert; exit 0 for any input is its contract",
     "learnings-obligation": "deprecated and inert; exit 0 for any input is its contract",
     "check-learnings-pairing": "deprecated and inert; exit 0 for any input is its contract",
@@ -352,15 +349,11 @@ def test_the_delegation_record_names_only_real_commands():
     assert set(_REFUSAL_DELEGATED_TO_LIB) <= set(branches)
 
 
-def test_the_three_no_argument_dispositions_are_disjoint():
-    """Refuse / note-only / unchecked are answers to the same question, so a
-    command in two of them would get whichever the guard tested first."""
-    refuse = _hook._NO_ARGUMENT_COMMANDS
-    note = _hook._NO_ARGUMENT_NOTE_ONLY_COMMANDS
-    unchecked = _hook._NO_ARGUMENT_UNCHECKED_COMMANDS
-    assert not refuse & note
-    assert not refuse & unchecked
-    assert not note & unchecked
+def test_the_no_argument_dispositions_are_disjoint():
+    """Refuse / note-only are answers to the same question, so a command in
+    both would get whichever the guard tested first. (A third, unchecked
+    disposition held only `stamp-merged`, and went with it in #303.)"""
+    assert not _hook._NO_ARGUMENT_COMMANDS & _hook._NO_ARGUMENT_NOTE_ONLY_COMMANDS
 
 
 # --- The guard's behavior ----------------------------------------------------
@@ -404,21 +397,6 @@ class TestHarnessInvokedCommands:
         err = capsys.readouterr().err
         assert "--force" in err
         assert command in err
-
-
-class TestRetiredInertCommands:
-    """`stamp-merged` promises exit 0 for any input so a copied release script
-    keeps working (`test_deprecated_inert_commands.py`). An inert command
-    cannot act on an argument it ignored, so there is no surprise to prevent."""
-
-    @pytest.mark.parametrize("command", sorted(_hook._NO_ARGUMENT_UNCHECKED_COMMANDS))
-    def test_any_argument_passes_the_guard_silently(self, command: str, capsys):
-        assert _hook._check_argument_shape(command, ["--a-flag-that-never-existed"]) == 0
-        assert capsys.readouterr().err == ""
-
-    def test_end_to_end_the_deprecation_contract_survives(self, tmp_path: Path):
-        proc = _run(tmp_path, ["stamp-merged", "--a-flag-that-never-existed"])
-        assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
 class TestSinglePositionalCommands:
@@ -518,10 +496,8 @@ def test_documented_invocations_are_not_refused(capsys):
         ("archive-plan", ["p.md", "--state", "completed", "--release", "v1.2.3"]),
         ("check-released", ["v1.2.3", "--json"]),
         ("check-pr-doc-only", []),
-        ("stamp-merged", []),
         ("build-index", []),
         ("user-prompt-submit", []),
-        ("regen-views", ["--check"]),
         ("infer-critic-mode", ["cumulative"]),
         ("resolve-base", []),
         ("disposition", ["rev-9", "F1", "--accept", "reason"]),
@@ -581,7 +557,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
         "check-plugin-active",
         "check-learnings-pairing", "learnings-migrate", "learnings-compact",
-        "stamp-merged", "build-index", "user-prompt-submit", "regen-views",
+        "build-index", "user-prompt-submit",
         "infer-critic-mode", "resolve-base", "disposition", "render-dispositions",
         "evidence", "bug-inbox", "version", "print-install-reference", "advisory",
         "backlog", "coverage-status", "coverage-scaffold", "migrate-plugin",

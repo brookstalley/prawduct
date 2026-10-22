@@ -19,9 +19,9 @@ Silence is load-bearing and is the second thing pinned here. Both hook events
 inject a hook's **stdout** into the model's context on exit 0 — SessionStart
 prepends it to the session, UserPromptSubmit prepends it to the turn — so a
 deprecation notice printed the ordinary way would be read as instruction on every
-turn. That is why these two are silent where ``regen-views`` and ``stamp-merged``
-warn: those are called by people who can act on the warning, these by a stale
-registration that the next plugin update replaces on its own.
+turn. That is why these two are silent where ``bug-inbox`` and the retired
+learnings verbs warn: those are called by people who can act on the warning,
+these by a stale registration that the next plugin update replaces on its own.
 """
 
 from __future__ import annotations
@@ -244,7 +244,7 @@ class TestTheFieldScenarioIsSilent:
 
 class TestUsageAdvertisesTheRetiredCommands:
     def test_listed_as_deprecated_and_inert(self) -> None:
-        """Same shape as regen-views/stamp-merged, so `prawduct-hook` with no
+        """Same shape as the announcing inert verbs, so `prawduct-hook` with no
         args tells a reader these exist and do nothing."""
         usage = subprocess.run(
             ["python3", str(_HOOK)], capture_output=True, text=True, timeout=30
@@ -313,9 +313,8 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
     So membership in `_EPHEMERAL_SAFE_COMMANDS` is what makes "exits 0
     everywhere" true. Without it the two hook-invoked members reproduce the exact
     session-start hook error they were restored to remove, in the one environment
-    prawduct itself creates. `regen-views` and `stamp-merged` carried the same
-    gap and the same false docstring claim, so the whole tier is pinned together
-    — one classification, not a decision per member. `bug-inbox` joined it
+    prawduct itself creates. The whole tier is pinned together — one
+    classification, not a decision per member. `bug-inbox` joined it
     2026-09-08 when the upstream bug drop-box retired, and inherits the same
     requirement for the same reason.
 
@@ -330,8 +329,6 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
     INERT_TIER = (
         "build-index",
         "user-prompt-submit",
-        "regen-views",
-        "stamp-merged",
         "audit-learnings",
         "learnings-obligation",
         "check-learnings-pairing",
