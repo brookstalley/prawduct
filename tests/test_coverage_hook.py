@@ -129,6 +129,10 @@ class TestCoverageStatus:
         assert data["missing_artifacts"] == []
         assert data["norms_unratified"] is True
         assert data["active_layer"] == 2
+        # The remedy is opt-in, so it must say what never running it costs:
+        # visibility, not binding force (docs/norms.md § Enforcement).
+        assert "/prawduct:doctor" in data["fix"]
+        assert "already bind" in data["fix"]
 
     def test_human_output_names_the_active_layer(self, tmp_path):
         _write_state(tmp_path, _ALL_NULL)

@@ -6692,7 +6692,14 @@ def cmd_coverage_status(project_dir: Path, argv: list[str]) -> int:
                "in one act: prawduct-hook coverage-scaffold --apply")
     elif norms_unratified:
         active_layer = 2
-        fix = "ratify the product's norms via /prawduct:doctor"
+        # Visibility, not correctness: norms bind from day one (docs/norms.md §
+        # Adoption), and /prawduct:doctor is an opt-in repair path nobody runs in
+        # the normal loop — so the line must not read as if skipping it leaves
+        # the norms without force (docs/norms.md § Enforcement, "Correctness
+        # never waits on an opt-in command").
+        fix = ("record the product's norms where governance can see them: "
+               "/prawduct:doctor ratification flow (they already bind — ratifying "
+               "records them, it never creates their force)")
     else:
         active_layer = None
         fix = None
