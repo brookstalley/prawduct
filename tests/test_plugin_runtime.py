@@ -557,8 +557,8 @@ class TestPluginStopGateBackgroundDefer:
 
 class TestPluginStopGateRegressions:
     """TST-7Q3D: regression coverage for three previously-untested stop-gate
-    branches — verify-resolutions out-of-scope blocking, Type:trivial fileset
-    violations, and the unknown-gate-waiver-key diagnostic. Mirrors
+    branches — verify-resolutions out-of-scope blocking, a Type:trivial chunk
+    (no trivial gate since #301), and the unknown-gate-waiver-key diagnostic. Mirrors
     TestPluginStopGate's fixtures (active plan + session markers + fresh findings).
     """
 
@@ -598,10 +598,14 @@ class TestPluginStopGateRegressions:
         # successor of the deleted scope check).
         assert "verify-resolutions" in result.stderr
 
-    def test_trivial_chunk_outside_fileset_bounds_blocks(self, tmp_path):
-        # (b) A chunk declaring Type: trivial that edits skills/ (a catastrophic-
-        # blast-radius bound) must block with the fileset reason, even though the
-        # rationale is present.
+    def test_trivial_chunk_editing_a_skill_meets_the_critic_gate_not_a_trivial_gate(
+        self, tmp_path
+    ):
+        # (b) Renegotiated by #301 (owner ruling: retire the trivial gate). A
+        # chunk declaring Type: trivial that edits skills/ used to block with a
+        # TYPE: TRIVIAL file-set reason. That gate is gone; the chunk runs as code
+        # for gate purposes, so the unreviewed skill edit still blocks — on the
+        # Critic gate, which is what must keep holding after the deletion.
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
@@ -619,8 +623,9 @@ class TestPluginStopGateRegressions:
             "stop", tmp_path, git_status=" M skills/critic/SKILL.md",
         )
         assert result.returncode == 2, (result.stdout, result.stderr)
-        assert "TYPE: TRIVIAL" in result.stderr
-        assert "skill-file-edited" in result.stderr
+        assert "no composed review coverage" in result.stderr
+        assert "TYPE: TRIVIAL" not in result.stderr
+        assert "gate: trivial" not in result.stderr
 
     def test_unknown_gate_waiver_key_warns_without_blocking(self, tmp_path):
         # (c) An unknown key in .gates-waived emits a stderr diagnostic but never
@@ -1388,7 +1393,7 @@ class TestDocOnlyProtectedPaths:
     Fork-skill prose is behavioral logic in this framework, so a PR touching
     `skills/*.md` (or methodology/, templates/, root CLAUDE.md) must not take
     the doc-only fast path past the cumulative-Critic and PR-reviewer gates.
-    Bound list shared with the `Type: trivial` gate (_TRIVIAL_PROTECTED_PATHS).
+    Bound list: `buildplan_refs._GOVERNANCE_PROTECTED_PATHS`.
     """
 
     @staticmethod
@@ -1425,7 +1430,7 @@ class TestDocOnlyProtectedPaths:
 
     def test_nested_claude_md_is_still_doc_only(self, gitflow_repo):
         # The CLAUDE.md bound is exact-match: a nested foo/CLAUDE.md is
-        # ordinary product doc (mirrors the trivial gate's semantics).
+        # ordinary product doc.
         self._use_develop_base(gitflow_repo)
         nested = gitflow_repo / "subpkg" / "CLAUDE.md"
         nested.parent.mkdir(parents=True)

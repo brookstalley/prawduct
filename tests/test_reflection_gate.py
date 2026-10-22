@@ -484,9 +484,9 @@ class TestTheWaiverFooter:
         assert rc == 0, err
 
     def test_nothing_waivable_prints_no_footer(self):
-        """The budget floor, the clear verdict and `trivial` have no waiver, so
-        a block made only of them offers none."""
-        for gate_ids in ([], ["clear-verdict"], ["learnings-over-budget", "trivial", None]):
+        """The budget floor and the clear verdict have no waiver, so a block
+        made only of them offers none."""
+        for gate_ids in ([], ["clear-verdict"], ["learnings-over-budget", None]):
             assert _hook._waiver_footer(gate_ids, True) == "", gate_ids
 
     def test_a_waiver_already_in_the_file_survives_the_printed_recipe(

@@ -239,7 +239,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1 on 2026-10-21 (goal-grounding, #1029): Goal 5 rates a hedged goal like an inferred one,
     # paid by dropping Goal 2's definition from its own parenthesis. Ceiling lowered with it.
     # +30 on 2026-10-21 (#706), DECLARED: Goal 2 checks a declared Exposed API surface against the contract artifact (one clause in goals-1-3.md / review-protocol.md, net of the bullet's tightened decision clauses). Priced against the SUM: ~30 tokens per review against a declared surface shipping with no contract entry (1 of 4 declarations missed in the sweep).
-    "single-pass-full": 11578,
+    # -4 on 2026-10-21 (#301): the `trivial` cross-checks row lost its file-set wording with the
+    # retired gate; the rationale check gained "missing" at no net cost. Ceiling lowered with it.
+    "single-pass-full": 11574,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -315,7 +317,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1 on 2026-10-21 (goal-grounding, #1029): Goal 5 rates a hedged goal like an inferred one,
     # paid by dropping Goal 2's definition from its own parenthesis. Ceiling lowered with it.
     # +30 on 2026-10-21 (#706), DECLARED: Goal 2 checks a declared Exposed API surface against the contract artifact (one clause in goals-1-3.md / review-protocol.md, net of the bullet's tightened decision clauses). Priced against the SUM: ~30 tokens per review against a declared surface shipping with no contract entry (1 of 4 declarations missed in the sweep).
-    "dispatched-reviewer": 11009,
+    # -4 on 2026-10-21 (#301): the `trivial` cross-checks row lost its file-set wording with the
+    # retired gate; the rationale check gained "missing" at no net cost. Ceiling lowered with it.
+    "dispatched-reviewer": 11005,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -332,14 +336,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1 on 2026-10-21 (goal-grounding, #1029): Goal 5 rates a hedged goal like an inferred one,
     # paid by dropping Goal 2's definition from its own parenthesis. Ceiling lowered with it.
     # +30 on 2026-10-21 (#706), DECLARED: Goal 2 checks a declared Exposed API surface against the contract artifact (one clause in goals-1-3.md / review-protocol.md, net of the bullet's tightened decision clauses). Priced against the SUM: ~30 tokens per review against a declared surface shipping with no contract entry (1 of 4 declarations missed in the sweep).
-    "coordinator-fork": 12172,
+    # -4 on 2026-10-21 (#301): the `trivial` cross-checks row lost its file-set wording with the
+    # retired gate; the rationale check gained "missing" at no net cost. Ceiling lowered with it.
+    "coordinator-fork": 12168,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5828,
-    "single-pass-full": 11579,
-    "dispatched-reviewer": 11010,
-    "coordinator-fork": 12173,
+    "single-pass-full": 11575,
+    "dispatched-reviewer": 11006,
+    "coordinator-fork": 12169,
 }
 
 

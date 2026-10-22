@@ -3,8 +3,7 @@
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 5) — the diff-base
 resolution layer (honoring the ``base_branch:`` gitflow knob) and the coverage /
 PR fast-path inspection it feeds: which files changed against the base, whether a
-PR diff is documentation-only, and whether every commit on the branch is
-``Type: trivial`` fileset-eligible. Pure git inspection + path classification —
+PR diff is documentation-only. Pure git inspection + path classification —
 no mutation.
 
 Depends on its lib siblings ``core`` (for ``read_str_yaml_key`` — the canonical

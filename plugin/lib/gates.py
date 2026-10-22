@@ -4,7 +4,7 @@ Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 6). Holds the gate
 *decision helpers* the Stop hook orchestrates — test-evidence currency + schema
 validation, the critic-findings cache schema (validated at its writers:
 ``critic-consolidate`` and ``ledger-append``), the kernel-v3 composition
-gates, build-plan chunk counting, and the trivial/build-plan state probes —
+gates, build-plan chunk counting, and the build-plan state probes —
 plus the four self-contained gate CLI commands (``test_status`` /
 ``validate_evidence`` / ``check_cumulative_critic`` / ``verify_coverage``).
 The hook keeps thin ``cmd_*`` wrappers delegating here via the lazy
@@ -24,8 +24,8 @@ scope subsets, the ledger fallback) are deleted by design, not preserved.
 ``cmd_stop`` itself STAYS in the hook (it is the deliberately-inline hot-path
 gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 *attribution* machinery shared with ``cmd_clear``); it calls these helpers via
-``_gates()``. ``_has_active_build_plan_file`` and ``_is_trivial_fileset_eligible``
-were reassigned here (they are gate logic, lib-clean) from the briefing region.
+``_gates()``. ``_has_active_build_plan_file`` was reassigned here (it is gate
+logic, lib-clean) from the briefing region.
 
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
 (build-plan Status parsing, including ``_count_build_plan_chunks``),
@@ -872,7 +872,7 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
 
 #: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
 #: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
-#: (learnings, PR review, trivial bounds) is not about whether the session is
+#: (learnings, PR review) is not about whether the session is
 #: ending, so it keeps blocking on such a turn.
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
 
@@ -2143,78 +2143,6 @@ def _has_active_build_plan_file(
     """
     total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
     return total > 0 and complete < total
-
-
-def _is_trivial_fileset_eligible(project_dir: Path) -> tuple[bool, str]:
-    """Check the current session's diff against the ``Type: trivial``
-    file-set bounds. Returns ``(eligible, reason)``.
-
-    Bounds (catastrophic-blast-radius classes, regardless of size):
-    no edits to a governance-protected path (the set
-    ``buildplan_refs.protected_path_violation`` owns); no test-file removals (porcelain ``D`` under
-    ``tests/`` OR rename whose source path is under ``tests/`` — a
-    ``git mv`` out of the test directory is semantically a deletion);
-    no newly-tracked files (porcelain ``A`` or ``??``).
-
-    Size is intentionally NOT a bound — trivial is a semantic judgment.
-    An 80-LOC project-wide rename can qualify; a 5-line state-machine
-    change cannot. The semantic claim lives in
-    ``**Trivial because:**``; Critic Goal 3 validates rationale-vs-diff
-    fit (Chunk 05).
-
-    Reason strings name the specific bound that failed for actionable
-    stop-hook messaging — e.g. ``"skill-file-edited: skills/critic/SKILL.md"``.
-    The first violating file wins (deterministic order: porcelain
-    output ordering); the user fixes one violation at a time.
-
-    Uses session-baseline filtering so pre-session dirt doesn't count
-    against the chunk (mirrors ``git_has_session_changes``).
-
-    Path-bound rules are delegated to ``_classify_trivial_change`` (now
-    this gate's sole consumer — the PR-boundary ``_pr_diff_is_trivial``
-    fast-path that once shared it was retired). This gate enforces a
-    *declared* ``Type: trivial`` chunk; it is not a triviality detector.
-    """
-    output = gitstate.git_status_output(project_dir)
-    if output is None:
-        # No git or git error — defer to other gates; treat as eligible
-        # so the trivial check doesn't fail the build when git itself is
-        # the problem.
-        return True, ""
-
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    baseline_path = prawduct_dir / ".session-git-baseline"
-    baseline_lines: set[str] = set()
-    if baseline_path.is_file():
-        try:
-            baseline_lines = set(baseline_path.read_text().splitlines())
-        except (UnicodeDecodeError, OSError):
-            pass
-
-    for line in output.splitlines():
-        if not line or line in baseline_lines:
-            continue
-        parsed = gitstate.parse_porcelain_line(line)
-        if parsed is None:
-            continue
-        status, src_path, path = parsed
-
-        # v1.5.1 Chunk 04(b): metadata-path filtering lives inside
-        # `_classify_trivial_change` (returns None for both src and dst
-        # metadata paths) — now reached only from this gate (the
-        # `_pr_diff_is_trivial` co-consumer was retired).
-        is_addition = status[0] == "A" or status == "??"
-        is_deletion = "D" in status
-        violation = buildplan_refs._classify_trivial_change(
-            path=path,
-            src_path=src_path,
-            is_addition=is_addition,
-            is_deletion=is_deletion,
-        )
-        if violation is not None:
-            return False, violation
-
-    return True, ""
 
 
 def test_status(project_dir: Path) -> int:

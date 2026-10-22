@@ -339,14 +339,14 @@ class TestTheIdentityCoversTheCodeThatFormsKeys:
         owners = {
             Path(coverage_algebra.__file__).name,
             Path(gitstate.__file__).name,  # METADATA_PREFIXES
-            Path(buildplan_refs.__file__).name,  # _TRIVIAL_PROTECTED_PATHS
+            Path(buildplan_refs.__file__).name,  # _GOVERNANCE_PROTECTED_PATHS
         }
         assert owners <= set(verdict_cache._IDENTITY_MODULES)
 
     @pytest.mark.parametrize(
         ("module", "table"),
         [("gitstate.py", "METADATA_PREFIXES = (\n"),
-         ("buildplan_refs.py", "_TRIVIAL_PROTECTED_PATHS: ")],
+         ("buildplan_refs.py", "_GOVERNANCE_PROTECTED_PATHS: ")],
     )
     def test_a_classifier_table_edit_moves_the_module_digest(self, tmp_path, module, table):
         lib = Path(verdict_cache.__file__).resolve().parent

@@ -1,14 +1,14 @@
-"""Build-plan reference parsing + trivial-change classification for the runtime.
+"""Build-plan reference parsing + governance-protected path bounds for the runtime.
 
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 3) — the build-plan
 parsing cluster: it reads the active build plan's Status section and per-chunk
-sections (file-path refs, ``Type:`` declaration, ``Trivial because:`` rationale)
-and classifies a single file change against the ``Type: trivial`` / doc-only
-file-set bounds. Parsing + path inspection, plus read-only ``git log`` /
+sections (file-path refs, ``Type:`` declaration) and owns the
+governance-protected path bounds (``protected_path_violation``). Parsing + path
+inspection, plus read-only ``git log`` /
 ``git rev-list`` queries where "which chunk is current" cannot be answered from
 the file alone — no git mutation, no network.
 
-Depends on its lib siblings ``gitstate`` (for ``_is_metadata_path``), ``core``
+Depends on its lib siblings ``gitstate`` (git and ``.prawduct`` lookups), ``core``
 (``resolve_build_plan_path``, ``read_str_yaml_key``), ``coverage``
 (``_resolve_base_branch``) and ``plan_index`` (the canonical frontmatter ``scope:``
 reader) plus the stdlib. This module reaches the canonical resolver in ``lib.core``
@@ -1477,12 +1477,10 @@ def iter_field_declarations(
 # type at a declaration position is the only thing that can bind.
 _BUILD_PLAN_TYPE_RE = field_token_re("Type")
 _BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
-# `trivial` is in the allowed set. File-set bounds (no edit to a
-# governance-protected path — `protected_path_violation` owns the set; no
-# test deletion; no new files) + required `**Trivial because:**`
-# rationale are enforced structurally; semantic-fit is Critic Goal 3 in
-# Chunk 05. Size is unbounded — trivial is a semantic claim, not a LOC
-# metric.
+# `trivial` is in the allowed set; it changes only the Critic's protocol (Goal
+# 3 judges its `**Trivial because:**` rationale against the diff). Its stop-hook
+# file-set + rationale gate was retired (#301) — a file set enforces nothing
+# about triviality.
 _BUILD_PLAN_ALLOWED_TYPES = frozenset(
     {"code", "doc-only", "cleanup", "designer-handoff", "cumulative-final", "trivial"}
 )
@@ -1499,26 +1497,6 @@ _BUILD_PLAN_TYPE_ALIASES = {
     "hotfix": "code",
     "debt-paydown": "code",
 }
-# `**Trivial because:** <rationale>` — first line; continuation lines (no
-# list-item / heading prefix) are joined onto the rationale until the next
-# field. Empty after the colon → missing-rationale.
-_BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
-    r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
-)
-# The same field wherever it sits on its line, for the composed-header form
-# (`**Type:** trivial · **Trivial because:** it renames a constant`). Bounded
-# twice, and this field needs both. Read ONLY as a fallback, after the anchored
-# pass above has found no field at all: a mid-line marker in prose would
-# otherwise start the capture, and the capture stops at the next `- **` line —
-# so a sentence discussing the field would eat the rationale declared below it
-# and hand the gate the prose instead. And read only from a DECLARATION
-# position, so a section with no rationale at all cannot have one supplied by a
-# sentence mentioning the field — that sentence would buy `Type: trivial` its
-# bounded review, which is the whole thing the field is asked for.
-_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE = re.compile(
-    r"\*\*Trivial because:\*\*\s*(.*)$"
-)
-
 # Git branch/ref names (`feature/backlog-service-relayout`, `origin/develop`) are
 # backticked identifiers that contain `/` but name a branch, not a file — the same
 # "contains `/`, isn't a path" family as the slash-command / URL carveouts in
@@ -2114,7 +2092,7 @@ def chunk_section_gap(chunk_id: str, section: ChunkSection) -> str | None:
       section before it either, so the section that *did* resolve runs on
       through its neighbour's body and answers with a confident, non-empty,
       wrong set — a deliverable check that verifies another chunk's files and
-      passes, a ``Type:`` or ``Trivial because:`` read off a declaration written
+      passes, a ``Type:`` read off a declaration written
       for different work.
     """
     unparsed = unparsed_chunk_heading_reason(section)
@@ -2833,135 +2811,18 @@ def _parse_build_plan_chunk_type(
     return declared, None
 
 
-def _capture_trivial_rationale(
-    section: "ChunkSection", pattern: "re.Pattern[str]"
-) -> tuple[bool, list[str]]:
-    """Read a ``**Trivial because:**`` rationale out of ``section``.
-
-    Returns ``(found, lines)`` — ``found`` says the field was present at all,
-    which is a different question from whether it carried anything, because an
-    empty field and an absent one earn the same block for different reasons.
-
-    ``pattern`` decides WHERE the field may sit: the anchored pattern reads a
-    declaration in field position, the ``_ANYWHERE_`` one reads the composed
-    header. Two passes rather than one permissive pass, so a declaration always
-    beats prose — see the ``_ANYWHERE_`` pattern's comment for what one pass
-    would eat.
-
-    Either way the match goes through :func:`iter_field_declarations`, the same
-    predicate the other two chunk fields bind through. It is what stops the
-    composed-header pass from reading a SENTENCE about the field: this rationale
-    is what buys ``Type: trivial`` its bounded review, so prose satisfying it
-    silently is worse than the missing-field block it would replace. (On the
-    anchored pattern the predicate is a no-op — a match there starts at column
-    zero — which is the point: one rule, no second spelling of it.)
-    """
-    capturing = False
-    rationale_lines: list[str] = []
-    for _line_num, line in section.lines:
-        stripped = line.strip()
-        m = next(iter_field_declarations(line, pattern), None)
-        if m:
-            capturing = True
-            first = m.group(1).strip()
-            if first:
-                rationale_lines.append(first)
-            continue
-        if capturing:
-            # Stop at the next list-item field, bolded label, or sub-heading.
-            if (
-                stripped.startswith("- **")
-                or stripped.startswith("* **")
-                or stripped.startswith("**")
-                or stripped.startswith("#")
-            ):
-                break
-            if stripped:
-                rationale_lines.append(stripped)
-    return capturing, rationale_lines
-
-
-def _parse_build_plan_chunk_trivial_rationale(
-    prawduct_dir: Path, chunk_id: str, plan_path: "Path | None" = None
-) -> tuple[str | None, str | None]:
-    """Extract the ``**Trivial because:**`` rationale from a chunk's section.
-
-    Returns ``(rationale, error)``. Empty or absent field → ``(None,
-    "missing-rationale: Type: trivial requires non-empty **Trivial
-    because:** field")``. Multi-line rationale (continuation lines without
-    a list-item / heading prefix) is joined into a single string until the
-    next field. A field in field position is read first; only when the
-    section has none is the composed-header form (``**Type:** trivial ·
-    **Trivial because:** …``) read, so a rationale the author did write
-    cannot be blocked as missing.
-
-    Section discovery is the shared ``_chunk_section_lines`` walker —
-    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
-    fenced code blocks are skipped.
-
-    ``plan_path`` names the plan to read, defaulting to the pointer — the third
-    of the chunk-level fields to take it. The chunk id and the rationale must
-    come from the SAME plan: validating a trivial declaration against another
-    plan's same-numbered chunk either blocks on a rationale that is present, or
-    passes on one written for different work.
-    """
-    if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
-        return None, f"missing build-plan: {plan_path}"
-    try:
-        content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        return None, f"unreadable build-plan: {exc}"
-
-    # Same gate as the `Type:` reader one function up, and it earns its place
-    # here for a sharper reason: a rationale written for a LATER chunk would
-    # otherwise justify this chunk's trivial declaration, which is the one thing
-    # the field exists to stop.
-    section = _chunk_section_lines(content, chunk_id)
-    gap = chunk_section_gap(chunk_id, section)
-    if gap:
-        return None, gap
-
-    capturing, rationale_lines = _capture_trivial_rationale(
-        section, _BUILD_PLAN_TRIVIAL_RATIONALE_RE
-    )
-    if not capturing:
-        # No field in field position anywhere in the section. Before blocking,
-        # look for the composed-header form — the author may have written the
-        # rationale on the same line as the type it justifies.
-        capturing, rationale_lines = _capture_trivial_rationale(
-            section, _BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE
-        )
-
-    if not capturing:
-        return None, (
-            "missing-rationale: Type: trivial requires non-empty "
-            "**Trivial because:** field"
-        )
-    rationale = " ".join(rationale_lines).strip()
-    if not rationale:
-        return None, (
-            "missing-rationale: Type: trivial requires non-empty "
-            "**Trivial because:** field"
-        )
-    return rationale, None
-
-
-# STH-1W5N — single source of truth for the unconditional ``Type: trivial`` /
-# doc-only protected-path bounds. Each entry is ``(path, is_exact, reason_label)``:
-# a change touching ``path`` (prefix match unless ``is_exact``) is a
-# catastrophic-blast-radius edit that a trivial/doc-only chunk may never make,
-# and the violation is reported as ``"<reason_label>: <path>"``. Centralized
-# here (was inline in ``_classify_trivial_change``) so the stop-hook gate and
-# the PR-boundary gate share one provably-identical list — and so the bound set
-# is testable as data. The conditional bounds (test-file removals, newly-tracked
-# files) stay in ``_classify_trivial_change`` because they depend on the change
-# verb, not just the path.
+# STH-1W5N — single source of truth for the governance-protected path bounds.
+# Each entry is ``(path, is_exact, reason_label)``: a change touching ``path``
+# (segment match unless ``is_exact``) edits the framework's own governance, so it
+# is judgeable even when it is pure ``.md`` and may never ride a doc-only fast
+# path, and a match is reported as ``"<reason_label>: <path>"``. Kept as data so
+# every consumer of ``protected_path_violation`` shares one provably-identical
+# list and the bound set is testable as data. (It began as the ``Type: trivial``
+# file-set bound; that gate was retired, #301, and the list outlived it.)
 #   skills/       — the critic/pr/etc. SKILL definitions + bundled protocols ARE
 #                   the governance; editing one changes the framework itself.
 #   methodology/  — the build/discovery/planning/reflection guides Claude reads
-#                   as operating instructions; a "trivial" rewrite is never trivial.
+#                   as operating instructions.
 #   templates/    — the artifact templates every product's specs are generated
 #                   from; a silent change propagates to all downstream output.
 #   agents/       — a subagent's own system prompt IS its behaviour, by exactly
@@ -2975,7 +2836,7 @@ def _parse_build_plan_chunk_trivial_rationale(
 #   AGENTS.md     — the same contract for every agent host: it carries the
 #                   governance anchor, and CLAUDE.md imports it, so an unreviewed
 #                   edit here changes what every session is told (exact match).
-_TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
+_GOVERNANCE_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
     ("skills/", False, "skill-file-edited"),
     ("methodology/", False, "methodology-edited"),
     ("templates/", False, "template-edited"),
@@ -2990,10 +2851,11 @@ def protected_path_violation(path: str) -> str | None:
     falls under a governance-protected bound (``skills/``, ``methodology/``,
     ``templates/``, ``agents/``, root ``CLAUDE.md`` or ``AGENTS.md``), else ``None``.
 
-    Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
-    and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-
-    skill prose is behavioral logic in this framework, so a ``skills/*.md``
-    change must never ride a doc-only fast path past the reviewers.
+    Read through ``coverage_algebra.is_judgeable_path`` by the session doc-only
+    classification and the PR-boundary doc-only gate (``lib/coverage.py``,
+    PR-5K8D): fork-skill prose is behavioral logic in this framework, so a
+    ``skills/*.md`` change must never ride a doc-only fast path past the
+    reviewers.
 
     **Directory bounds match the path SEGMENT, not a root anchor.** They were
     root-anchored, which silently stopped matching the moment a repo kept its
@@ -3008,69 +2870,13 @@ def protected_path_violation(path: str) -> str | None:
     session that reviews when it need not; the cost of the false negative was
     governance-protected prose shipping unreviewed. The leading ``/`` in the
     containment test keeps ``myskills/`` from matching ``skills/``."""
-    for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
+    for protected, is_exact, reason_label in _GOVERNANCE_PROTECTED_PATHS:
         if is_exact:
             matched = path == protected
         else:
             matched = path.startswith(protected) or f"/{protected}" in path
         if matched:
             return f"{reason_label}: {path}"
-    return None
-
-
-def _classify_trivial_change(
-    *,
-    path: str,
-    src_path: str | None,
-    is_addition: bool,
-    is_deletion: bool,
-) -> str | None:
-    """Single-file path-rule check for the ``Type: trivial`` file-set
-    bounds. Returns the violation reason or ``None`` when the change
-    is eligible. Used by ``_is_trivial_fileset_eligible`` (Chunk 04 —
-    working-tree porcelain) to enforce a *declared* ``Type: trivial``
-    chunk at session-end. (The ``_pr_diff_is_trivial`` PR-boundary
-    co-consumer was retired — it used these bounds as a triviality
-    *detector* at the bundle boundary, with no link to a ``Type: trivial``
-    declaration, so multi-chunk feature work that only touched existing
-    files skipped both review gates.)
-
-    The unconditional path bounds live in the module-level
-    ``_TRIVIAL_PROTECTED_PATHS`` constant (STH-1W5N — single source of
-    truth, referenced from this one call site). The conditional bounds
-    (test-file removals, newly-tracked files) stay inline below because
-    they depend on the change verb, not just the path.
-
-    Metadata paths (``.prawduct/``, ``.claude/settings.json``, etc. —
-    see ``_is_metadata_path``) are treated as out-of-scope and return
-    ``None``. The check applies to BOTH ``path`` (rename dst / single-
-    file change) AND ``src_path`` (rename src) — without that
-    symmetry, a rename FROM a metadata path that landed somewhere
-    interesting would silently be classified, and a rename TO a
-    metadata path would be classified differently depending on which
-    gate ran (the callers previously did dst-only filtering before
-    calling this helper — v1.5.1 Chunk 04(b) consolidates).
-
-    The caller translates its status format into the boolean inputs
-    (porcelain handles 2-char codes; name-status handles single-char).
-    Path bounds are catastrophic-blast-radius classes regardless of
-    size — size is intentionally not a bound.
-    """
-    if gitstate._is_metadata_path(path):
-        return None
-    if src_path is not None and gitstate._is_metadata_path(src_path):
-        return None
-    # Unconditional path bounds — shared with the PR-boundary doc-only gate
-    # via protected_path_violation (one provably-identical list).
-    violation = protected_path_violation(path)
-    if violation is not None:
-        return violation
-    if is_deletion and path.startswith("tests/"):
-        return f"test-file-deleted: {path}"
-    if src_path is not None and src_path.startswith("tests/"):
-        return f"test-file-deleted: {src_path} (renamed out)"
-    if is_addition:
-        return f"new-file: {path}"
     return None
 
 

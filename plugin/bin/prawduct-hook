@@ -98,7 +98,7 @@ def _gitstate():
 
 
 def _buildplan_refs():
-    """Lazy-import the build-plan reference parser + trivial-change classifier
+    """Lazy-import the build-plan reference parser + protected-path bounds
     (lib/buildplan_refs). Same lazy idiom as _gitstate() — seeds sys.path so the
     hook's top level stays lib-free; after the ch.1 __init__ slim this loads only
     buildplan_refs.py (+ its light siblings gitstate, core), isolated."""
@@ -562,7 +562,7 @@ def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | No
 
 
 #: Stop-gate blocker id → the `.gates-waived` key that waives it. A gate absent
-#: here has no waiver (the learnings budget, the clear verdict, `trivial`).
+#: here has no waiver (the learnings budget, the clear verdict).
 _WAIVER_KEY_BY_GATE = {
     "reflection": "reflection",
     "learnings-unmigrated": "learnings",
@@ -3295,24 +3295,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     #
     # v1.4 F6 — Type: designer-handoff also skips the gate (formalizes the
     # prior user-memory carveout into a framework rule). Other declared types
-    # (code, doc-only, cleanup, cumulative-final) leave the gate behavior
-    # unchanged — only Critic's *protocol* adjusts inside the agent.
+    # (code, doc-only, cleanup, cumulative-final, trivial) leave the gate
+    # behavior unchanged — only Critic's *protocol* adjusts inside the agent.
+    # (`trivial` once had its own file-set + rationale gate here, retired by
+    # owner ruling (#301) — a file set enforces nothing about triviality, and the
+    # Critic's Goal 3 rationale-vs-diff check is what judges the declaration.)
     designer_handoff_skip = False
-    # v1.5 Chunk 04 — Type: trivial fileset + rationale enforcement. The
-    # checks fire BEFORE the Critic gate and emit BLOCKING for any
-    # violation, but the chunk is still treated as `code` for gate
-    # purposes (so the Critic gate still applies on top). Fail-closed:
-    # over-declaring `trivial` produces a named blocker pointing at the
-    # specific bound violated, never a silent carveout. The trivial
-    # check does NOT honor the doc-only skip — bounds like
-    # "no edits under skills/" matter even when the diff is empirically
-    # all-.md (the skills/ tree itself is pure prose). Doc-only only
-    # carves out the Critic protocol (which has no code to review); the
-    # trivial-declaration contract is independent.
-    trivial_block_reason = ""
     if (has_changes or critic_has_work) and has_build_plan:
-        # Resolve WHICH plan once, then read all three chunk-level fields from
-        # it: the current chunk id, its `Type:`, and its trivial rationale.
+        # Resolve WHICH plan once, then read both chunk-level fields from it:
+        # the current chunk id and its `Type:`.
         # `active_build_plan` names the plan in progress in this repo; on a repo
         # running several plans across worktrees that is not the plan this
         # branch is building, and the gate's Type-driven carveouts would be
@@ -3346,16 +3337,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff "
                     "— a visual handoff is reviewed by a human, not by code analysis)"
                 )
-            elif chunk_type == "trivial" and has_changes:
-                fileset_ok, fileset_reason = _gates()._is_trivial_fileset_eligible(project_dir)
-                if not fileset_ok:
-                    trivial_block_reason = fileset_reason
-                else:
-                    _, rationale_error = _bpr._parse_build_plan_chunk_trivial_rationale(
-                        prawduct_dir, current_chunk_id, gate_plan
-                    )
-                    if rationale_error:
-                        trivial_block_reason = rationale_error
 
     # Gate 2a (Chunk 05, CRT-9K7T follow-up): an ABANDONED coordinator Critic
     # review — the .critic-active marker is still set because critic-begin ran but
@@ -3695,16 +3676,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     + _committed_work_remedy(project_dir)
                     + "  A `Type: designer-handoff` chunk skips this gate automatically.\n"
                 ))
-
-    # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
-    # gate (not in place of it). The chunk is still treated as `code`
-    # for gate purposes; this block adds a separate BLOCKING if either
-    # the file-set bound or rationale presence failed.
-    if trivial_block_reason:
-        blockers.append(_attributed("trivial",
-            f"TYPE: TRIVIAL — declared but {trivial_block_reason}.\n"
-            "  Either fix the violation or change Type to `code`.\n"
-        ))
 
     # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
     # coverage vouches for the current state). The mode is telemetry read from
@@ -5270,13 +5241,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 # =============================================================================
 
 
-# Build-plan reference parsing + trivial-change classification moved to
-# lib/buildplan_refs.py (STH-9V4K ch.3): the chunk-ref/Type/Trivial-rationale
-# parsers, _looks_like_file_path, _classify_trivial_change, and the
-# _TRIVIAL_PROTECTED_PATHS / _BUILD_PLAN_* constants. Resident callers below
-# (cmd_verify_chunk_refs, the stop gate) reach them via _buildplan_refs().<fn>();
-# lib.gates' _is_trivial_fileset_eligible (ch.6) reaches them as a sibling import.
-# (The PR-boundary _pr_diff_is_trivial consumer was retired — see lib/coverage.py.)
+# Build-plan reference parsing moved to lib/buildplan_refs.py (STH-9V4K ch.3):
+# the chunk-ref/Type parsers, _looks_like_file_path, and the
+# _GOVERNANCE_PROTECTED_PATHS / _BUILD_PLAN_* constants. Resident callers below
+# (cmd_verify_chunk_refs, the stop gate) reach them via _buildplan_refs().<fn>().
+# (The `Type: trivial` file-set gate and its PR-boundary sibling were both
+# retired — a file set enforces nothing about triviality.)
 
 
 # _current_chunk_id_from_status + _verify_chunk_refs moved to
