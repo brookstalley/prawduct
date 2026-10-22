@@ -658,6 +658,8 @@ class TestArchiveScope:
         assert result["data"]["archive_skipped"] == 2
         assert any("archive-scope open" in w for w in result["warnings"])
         self._assert_preservation_claim_is_true(result["warnings"])
+        skip_warning = next(w for w in result["warnings"] if "archive-scope open" in w)
+        assert "backlog_archive_scope: open" in skip_warning  # #320: names the cutover key
         assert _alias_issues(fake, "SCP-0001")  # open item created
         assert _alias_issues(fake, "SCP-0002") == []  # shipped item NOT minted
         assert _alias_issues(fake, "SCP-0003") == []  # dropped item NOT minted
@@ -1095,6 +1097,69 @@ class TestAliasSelfHeal:
         # always passes labels=[...]. An unfiltered list_issues ⇒ the scan ran.
         unfiltered = [c for c in fake.calls if c[0] == "list_issues" and not c[4]]
         assert unfiltered == []
+
+
+class TestRetitleOnSkip:
+    """#613: a re-run repairs the TITLE of an issue it matches by `id:PFX`, open or
+    closed, without touching body, labels or state — and never a PFX-less item,
+    whose `import-key` digest is title-dependent."""
+
+    @staticmethod
+    def _pollute(fake, pfx, title="polluted: run-on title that swallowed the body"):
+        issue = _alias_issues(fake, pfx)[0]
+        fake.update_issue(OWNER, REPO, issue["number"], fields={"title": title})
+        return issue["number"], title
+
+    def test_rerun_retitles_and_leaves_body_labels_state_alone(self, fake):
+        _import(fake, DISCODON_MINI)
+        open_num, _ = self._pollute(fake, "DIS-0002")
+        before = {i["number"]: dict(i) for i in fake.list_issues(OWNER, REPO, state="all")}
+        want = {r.pfx: r.title for r in migrate.collect_records(DISCODON_MINI)[0]}
+
+        result = _import(fake, DISCODON_MINI)
+
+        assert result["status"] == "ok", result
+        assert fake.get_issue(OWNER, REPO, open_num)["title"] == want["DIS-0002"]
+        for n, old in before.items():
+            now = fake.get_issue(OWNER, REPO, n)
+            assert now["body"] == old["body"]
+            assert now["labels"] == old["labels"]
+            assert now["state"] == old["state"]
+
+    def test_closed_matched_issue_is_retitled(self, fake):
+        _import(fake, DISCODON_MINI)
+        number, _ = self._pollute(fake, "DIS-0003")
+        fake.update_issue(OWNER, REPO, number, fields={"state": "closed", "state_reason": "completed"})
+        want = {r.pfx: r.title for r in migrate.collect_records(DISCODON_MINI)[0]}
+
+        # Reconcile may reopen it (markdown says open); the title is what is asserted.
+        result = _import(fake, DISCODON_MINI)
+
+        assert result["status"] == "ok", result
+        assert fake.get_issue(OWNER, REPO, number)["title"] == want["DIS-0003"]
+
+    def test_clean_rerun_issues_no_title_patch(self, fake):
+        _import(fake, DISCODON_MINI)
+        fake.calls.clear()
+        assert _import(fake, DISCODON_MINI)["status"] == "ok"
+        assert [c for c in fake.calls if c[0] == "update_issue"
+                and "title" in (c[-1] if isinstance(c[-1], dict) else {})] == []
+
+    def test_pfxless_item_is_not_retitled(self, fake):
+        record = migrate.ImportRecord(
+            pfx=None, title="backlog: an id-less item that keeps its title",
+            body="b", status="open", labels=[], block={"v": "1"},
+        )
+        fake.seed_labels(OWNER, REPO, [record.key_label()])
+        migrate.import_items(fake, owner=OWNER, repo=REPO, records=[record])
+        number = fake.list_issues(OWNER, REPO, state="all")[0]["number"]
+        fake.update_issue(OWNER, REPO, number, fields={"title": "hand edited title"})
+
+        result = migrate.import_items(fake, owner=OWNER, repo=REPO, records=[record])
+
+        assert result["status"] == "ok", result
+        assert len(result["data"]["skipped"]) == 1
+        assert fake.get_issue(OWNER, REPO, number)["title"] == "hand edited title"
 
 
 # --- CRASH-2 / merge ---------------------------------------------------------

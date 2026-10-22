@@ -1345,6 +1345,7 @@ def _run_restructure_preview(rest: list[str]):
     # WARN-only body lints sit right beside these; what it could not say before is
     # which of them BLOCK.
     preflight_offenders = migrate.preflight_titles(applied["records"])
+    label_offenders = migrate.preflight_facet_labels(applied["records"])
 
     source_label = flags["from"] + (f" + {flags['archive']}" if "archive" in flags else "")
     preview = restructure.render_preview(
@@ -1371,6 +1372,7 @@ def _run_restructure_preview(rest: list[str]):
         "lint_findings": sum(len(e["lint"]) for e in entries),
         "preflight_blocking": len(preflight_offenders),
         "nonconforming_titles": preflight_offenders,
+        "nonconforming_labels": label_offenders,
         "collisions": len(collisions),
         "archive_skipped": archive_skipped,
         "total_source": len(records),  # records entering the import (post archive-scope filter)
@@ -1384,6 +1386,12 @@ def _run_restructure_preview(rest: list[str]):
             "issue standard §1 — an import of this plan would refuse before writing anything. "
             "Fix these titles in the restructure plan and re-preview; the per-item rules are in "
             "`nonconforming_titles` (and --json carries the full list)"
+        ] + warnings
+    if label_offenders:
+        warnings = [
+            f"{len(label_offenders)} of {len(records)} item(s) carry a facet value too long "
+            "for a GitHub label — an import of this plan would refuse before writing "
+            "anything; the named values are in `nonconforming_labels`"
         ] + warnings
     if archive_skipped:
         # Surface the dropped count in human mode too (not JSON-only) so an owner
@@ -1737,6 +1745,7 @@ def _render_detail_list(value: list) -> str:
 #: bookkeeping and would bury the message.
 _NAMED_DETAIL_ENTRIES = {
     "nonconforming_titles": lambda e: f"{e.get('title')!r} — {', '.join(e.get('rules') or [])}",
+    "nonconforming_labels": lambda e: f"{e.get('title')!r} — {'; '.join(e.get('messages') or [])}",
     "failed": lambda e: f"{e.get('title')!r} — {e.get('error')}",
 }
 

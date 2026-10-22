@@ -268,6 +268,7 @@ review_round_budget: 6
 # Backlog resolution facts, written by /prawduct:backlog.
 # backlog_format_version:
 # backlog_backend:
+# backlog_archive_scope:
 # backlog_prefixes: []
 # backlog_external_imports: []
 # backlog_last_groomed_at:
