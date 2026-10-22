@@ -1241,7 +1241,7 @@ class TestTheCacheQueryOp:
         cannot leave a trace in the tree it is reviewing."""
         _file(fake, title="cache: an item to read back", area="backlog")
         _rebuild(fake, repo_dir)
-        # A WAL reader touching `-shm` is how a WAL read works; every other file,
+        # A WAL reader touching a sidecar is how a WAL read works; every other file,
         # the `.sqlite3` itself included, must be untouched.
         def mtimes():
             return {
