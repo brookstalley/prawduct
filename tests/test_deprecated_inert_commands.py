@@ -1,8 +1,7 @@
 """The **announcing** inert tier: deprecated, callable, loud on stderr, doing nothing.
 
-Six commands lost their bodies without losing their names. `regen-views` had no
-views left to regenerate and `stamp-merged`'s only output (`status=`) had no
-reader left, when derived views were retired. `audit-learnings`,
+Four commands lost their bodies without losing their names. `bug-inbox` had no
+drop-box left to resolve once reports became GitHub issues. `audit-learnings`,
 `learnings-obligation` and `check-learnings-pairing` graded a lifecycle that no
 longer exists: rules moved to `.claude/rules/learnings/`, where the harness loads
 them by path match, so there is no `learnings.md` to audit, no descent obligation
@@ -10,15 +9,18 @@ to insert, and no summary/detail pair to grade.
 
 None was DELETED, because `api-contract.md`'s deprecation norm requires a retired
 subcommand a human or a skill can call to stay callable, announce itself on
-stderr, and defer removal to a major: prawduct's own release runbook called
-`regen-views`, and a copied `/prawduct:doctor` flow on an older per-project plugin
-pin still calls the three learnings verbs. A non-zero exit in either is a pipeline
+stderr, and defer removal to a major: a copied `/prawduct:doctor` flow on an
+older per-project plugin pin still calls the three learnings verbs.
+
+`regen-views` and `stamp-merged` were in this tier until #303 removed them
+outright (owner ruling 2026-09-28); `TestRemovedCommandsAreGone` below pins that
+they are now unknown commands rather than silently inert. A non-zero exit in either is a pipeline
 break where a notice would have been enough.
 
 **That inert-but-callable shape is a promise to those callers, and this file is
 the only thing holding it.** The tests that covered these commands died correctly
-with the machinery they exercised — ~20 in `tests/test_views.py`, and over 200
-across the three learnings-lifecycle files; the surviving contract needs its own
+with the machinery they exercised — over 200 across the three
+learnings-lifecycle files; the surviving contract needs its own
 pin. Without one, a later edit that drops the subcommand, restores a non-zero
 exit, or removes the notice breaks a copied script silently and the suite stays
 green.
@@ -42,10 +44,8 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 HOOK = REPO_ROOT / "bin" / "prawduct-hook"
 
-# Every command, and the argument forms an old script might still pass. `--check`
-# is here because it was `regen-views`' own previously-deprecated flag: a script
-# pinned before that deprecation passes it, and must not now hit a usage error.
-# The learnings verbs carry the flags they used to honour for the same reason,
+# Every command, and the argument forms an old script might still pass. The
+# learnings verbs carry the flags they used to honour for the same reason,
 # `--apply` most of all: it selected the WRITING path, so a caller that passes it
 # is the one that most needs "inert" to mean inert. `--json` was a machine
 # contract, and a caller still piping it must get an empty stdout rather than a
@@ -55,10 +55,6 @@ HOOK = REPO_ROOT / "bin" / "prawduct-hook"
 # passes one, and it stays in the hook's `_NO_ARGUMENT_COMMANDS` refusal set
 # where a mistyped argument is still worth reporting as a usage error.
 INERT_INVOCATIONS = [
-    ("regen-views",),
-    ("regen-views", "--check"),
-    ("regen-views", "--a-flag-that-never-existed"),
-    ("stamp-merged",),
     ("bug-inbox",),
     ("audit-learnings",),
     ("audit-learnings", "--json"),
@@ -78,8 +74,9 @@ def _repo(tmp_path: Path) -> Path:
     used to write — so "nothing changed" is evidence rather than a fixture with
     nothing to change.
 
-    For `regen-views` and `stamp-merged`: an unflipped build-plan `## Status` and
-    a tagged, release-pending change-log entry.
+    An unflipped build-plan `## Status` and a tagged, release-pending change-log
+    entry — the state the retired view commands used to write over, kept so the
+    whole-tree comparison has something a regression could touch.
 
     For the three learnings verbs, a legacy corpus in the shape each one acted
     on. `audit-learnings --apply` retired an entry whose `superseded-by=` pointer
@@ -312,3 +309,35 @@ def test_no_announcing_command_reports_a_condition_it_can_no_longer_have(
         proc = _run(tmp_path, (name,))
         assert proc.returncode == 0, f"{name}: {proc.stdout + proc.stderr}"
         assert proc.stdout == "", f"{name} wrote to stdout: {proc.stdout!r}"
+
+
+REMOVED_COMMANDS = ("regen-views", "stamp-merged")
+
+
+class TestRemovedCommandsAreGone:
+    """#303 (owner ruling 2026-09-28): `regen-views` and `stamp-merged` left the
+    inert tier by deletion. Neither was ever registered by a shipped `hooks.json`
+    (see `test_retired_hook_subcommands.EVER_REGISTERED_HOOK_COMMANDS`), so the
+    harness-skew reason that keeps `build-index` dispatchable does not apply.
+
+    Pinned so a revert that restored a stub, or a usage string still advertising
+    them, is seen."""
+
+    @pytest.mark.parametrize("name", REMOVED_COMMANDS)
+    def test_is_an_unknown_command(self, tmp_path: Path, name: str):
+        proc = _run(_repo(tmp_path), (name,))
+        assert proc.returncode != 0, proc.stdout + proc.stderr
+        assert "Usage: prawduct-hook" in proc.stderr, proc.stderr
+
+    def test_a_still_announcing_command_is_the_control(self, tmp_path: Path):
+        # Same fixture, same runner: a surviving inert verb still exits 0, so the
+        # non-zero above is the removal and not a broken harness.
+        proc = _run(_repo(tmp_path), ("bug-inbox",))
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+
+    def test_the_usage_text_no_longer_lists_them(self, tmp_path: Path):
+        proc = _run(_repo(tmp_path), ("a-command-that-never-existed",))
+        usage = proc.stdout + proc.stderr
+        assert "bug-inbox [deprecated, inert]" in usage, usage
+        for name in REMOVED_COMMANDS:
+            assert name not in usage, f"`{name}` is still in the usage text: {usage!r}"

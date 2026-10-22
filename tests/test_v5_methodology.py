@@ -1123,7 +1123,8 @@ LAST_MEASURED_TOKENS = {
     # `change-fragment` record-lint check. Every check must carry a severity on every reviewer
     # surface (test_record_lint), and this table is the only place the row can live; the row
     # was shortened in place first and there is no duplication left to pay from.
-    "skills/critic/cross-checks.md": 3404,
+    # -4 on 2026-10-21 (#301): the `trivial` row's file-set wording left with the retired gate.
+    "skills/critic/cross-checks.md": 3400,
     "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1345,7 +1346,10 @@ LAST_MEASURED_TOKENS = {
     # cumulative`, the boundary the short-plan deferral cannot see. A READING, no ceiling.
     # +4 on 2026-10-21 (#778): a marker after `e.g.`/`i.e.` no longer binds, so the
     # write-about-a-field advice names it. A READING, no ceiling.
-    "methodology/planning.md": 5938,
+    # -82 on 2026-10-21 (#301): the `trivial` bullet's two machine-enforced layers and its
+    # over-declaration blocker left with the retired file-set gate; the Critic's rationale check
+    # is stated in one sentence instead. A READING.
+    "methodology/planning.md": 5856,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

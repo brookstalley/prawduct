@@ -2064,13 +2064,13 @@ class TestBatchFixDirective:
 
     def test_directive_names_every_protected_path_class(self):
         """The other direction, and the one hand-maintenance missed: every bound
-        in the protected set (`buildplan_refs._TRIVIAL_PROTECTED_PATHS`, the one
+        in the protected set (`buildplan_refs._GOVERNANCE_PROTECTED_PATHS`, the one
         home) must be named, or the directive calls a protected `.md` free to
         write mid-review — which moves the tree the review is judging. Derived
         from the set, so a new member is covered the day it lands."""
         from lib import buildplan_refs
 
-        for path, _exact, _label in buildplan_refs._TRIVIAL_PROTECTED_PATHS:
+        for path, _exact, _label in buildplan_refs._GOVERNANCE_PROTECTED_PATHS:
             assert f"`{path}`" in cc._BATCH_FIX_DIRECTIVE, (
                 f"the directive does not name protected path `{path}`"
             )

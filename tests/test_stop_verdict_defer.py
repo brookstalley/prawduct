@@ -509,28 +509,24 @@ class TestStopStillBlocks:
         assert "GATES DEFERRED" not in result.stderr
 
     def test_a_non_session_end_gate_still_blocks_on_a_dnc_turn(self, tmp_path):
-        """The verdict defers the session-end gates ONLY. A `Type: trivial` chunk
-        outside its fileset bounds still blocks, and the Critic blocker that
-        deferred is named rather than hidden, and is not in the BLOCKED report."""
+        """The verdict defers the session-end gates ONLY. An unmigrated legacy
+        learnings corpus still blocks, and the Critic blocker that deferred is
+        named rather than hidden, and is not in the BLOCKED report. (This used
+        the `Type: trivial` file-set gate until #301 retired it.)"""
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
         artifacts.mkdir(parents=True)
-        (artifacts / "build-plan.md").write_text(
-            "# Build Plan\n\n## Status\n- [ ] Chunk 01: tweak a skill\n\n"
-            "## Build Chunks\n\n"
-            "### Chunk 01: tweak a skill\n"
-            "**Type:** trivial\n"
-            "**Trivial because:** a one-word typo fix in a skill doc.\n"
-        )
+        (artifacts / "build-plan.md").write_text("# Build Plan\n\n## Status\n- [ ] Chunk 1\n")
+        (prawduct / "learnings.md").write_text("# L\n\n## a rule\n")
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         (prawduct / ".session-git-baseline").write_text("")
         _make_session_start(prawduct)
         result = run_plugin_hook(
-            "stop", tmp_path, git_status=" M skills/critic/SKILL.md", stdin=_payload(DNC_TURN)
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_TURN)
         )
         assert result.returncode == 2, (result.stdout, result.stderr)
         blocked = _blocked_section(result.stderr)
-        assert "TYPE: TRIVIAL" in blocked
+        assert "LEARNINGS UNMIGRATED" in blocked
         assert "gate: critic-review" not in blocked
         assert "GATES DEFERRED" in result.stderr
         assert "deferred: [prawduct" in result.stderr

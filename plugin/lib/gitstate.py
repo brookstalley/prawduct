@@ -890,7 +890,7 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
         return ""  # Corrupted baseline — treat as no baseline (safe: permits session end)
     # No whole-output .strip(): it eats the FIRST line's leading status space
     # (" M x" → "M x"), corrupting the fixed-offset porcelain parse. Both sides
-    # unstripped, matching the trivial gate's reads (review-fixes Chunk 1).
+    # unstripped (review-fixes Chunk 1).
     baseline_lines = set(baseline.splitlines())
     current_lines = current.splitlines()
 

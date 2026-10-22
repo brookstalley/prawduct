@@ -20,12 +20,6 @@
       "summary": "PR review evidence is required before a PR merges"
     },
     {
-      "id": "trivial",
-      "name": "trivial-declaration",
-      "since": "1.5.0",
-      "summary": "Type: trivial chunks must satisfy the fileset + rationale bounds"
-    },
-    {
       "id": "learnings-unmigrated",
       "name": "learnings-unmigrated",
       "since": "3.6.0",

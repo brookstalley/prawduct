@@ -98,7 +98,7 @@ def _gitstate():
 
 
 def _buildplan_refs():
-    """Lazy-import the build-plan reference parser + trivial-change classifier
+    """Lazy-import the build-plan reference parser + protected-path bounds
     (lib/buildplan_refs). Same lazy idiom as _gitstate() — seeds sys.path so the
     hook's top level stays lib-free; after the ch.1 __init__ slim this loads only
     buildplan_refs.py (+ its light siblings gitstate, core), isolated."""
@@ -562,7 +562,7 @@ def _gate_attribution(gate_id: str, registry: dict[str, dict], version: str | No
 
 
 #: Stop-gate blocker id → the `.gates-waived` key that waives it. A gate absent
-#: here has no waiver (the learnings budget, the clear verdict, `trivial`).
+#: here has no waiver (the learnings budget, the clear verdict).
 _WAIVER_KEY_BY_GATE = {
     "reflection": "reflection",
     "learnings-unmigrated": "learnings",
@@ -3295,24 +3295,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     #
     # v1.4 F6 — Type: designer-handoff also skips the gate (formalizes the
     # prior user-memory carveout into a framework rule). Other declared types
-    # (code, doc-only, cleanup, cumulative-final) leave the gate behavior
-    # unchanged — only Critic's *protocol* adjusts inside the agent.
+    # (code, doc-only, cleanup, cumulative-final, trivial) leave the gate
+    # behavior unchanged — only Critic's *protocol* adjusts inside the agent.
+    # (`trivial` once had its own file-set + rationale gate here, retired by
+    # owner ruling (#301) — a file set enforces nothing about triviality, and the
+    # Critic's Goal 3 rationale-vs-diff check is what judges the declaration.)
     designer_handoff_skip = False
-    # v1.5 Chunk 04 — Type: trivial fileset + rationale enforcement. The
-    # checks fire BEFORE the Critic gate and emit BLOCKING for any
-    # violation, but the chunk is still treated as `code` for gate
-    # purposes (so the Critic gate still applies on top). Fail-closed:
-    # over-declaring `trivial` produces a named blocker pointing at the
-    # specific bound violated, never a silent carveout. The trivial
-    # check does NOT honor the doc-only skip — bounds like
-    # "no edits under skills/" matter even when the diff is empirically
-    # all-.md (the skills/ tree itself is pure prose). Doc-only only
-    # carves out the Critic protocol (which has no code to review); the
-    # trivial-declaration contract is independent.
-    trivial_block_reason = ""
     if (has_changes or critic_has_work) and has_build_plan:
-        # Resolve WHICH plan once, then read all three chunk-level fields from
-        # it: the current chunk id, its `Type:`, and its trivial rationale.
+        # Resolve WHICH plan once, then read both chunk-level fields from it:
+        # the current chunk id and its `Type:`.
         # `active_build_plan` names the plan in progress in this repo; on a repo
         # running several plans across worktrees that is not the plan this
         # branch is building, and the gate's Type-driven carveouts would be
@@ -3346,16 +3337,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff "
                     "— a visual handoff is reviewed by a human, not by code analysis)"
                 )
-            elif chunk_type == "trivial" and has_changes:
-                fileset_ok, fileset_reason = _gates()._is_trivial_fileset_eligible(project_dir)
-                if not fileset_ok:
-                    trivial_block_reason = fileset_reason
-                else:
-                    _, rationale_error = _bpr._parse_build_plan_chunk_trivial_rationale(
-                        prawduct_dir, current_chunk_id, gate_plan
-                    )
-                    if rationale_error:
-                        trivial_block_reason = rationale_error
 
     # Gate 2a (Chunk 05, CRT-9K7T follow-up): an ABANDONED coordinator Critic
     # review — the .critic-active marker is still set because critic-begin ran but
@@ -3695,16 +3676,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     + _committed_work_remedy(project_dir)
                     + "  A `Type: designer-handoff` chunk skips this gate automatically.\n"
                 ))
-
-    # v1.5 Chunk 04: Type: trivial enforcement runs alongside the Critic
-    # gate (not in place of it). The chunk is still treated as `code`
-    # for gate purposes; this block adds a separate BLOCKING if either
-    # the file-set bound or rationale presence failed.
-    if trivial_block_reason:
-        blockers.append(_attributed("trivial",
-            f"TYPE: TRIVIAL — declared but {trivial_block_reason}.\n"
-            "  Either fix the violation or change Type to `code`.\n"
-        ))
 
     # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
     # coverage vouches for the current state). The mode is telemetry read from
@@ -5270,13 +5241,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 # =============================================================================
 
 
-# Build-plan reference parsing + trivial-change classification moved to
-# lib/buildplan_refs.py (STH-9V4K ch.3): the chunk-ref/Type/Trivial-rationale
-# parsers, _looks_like_file_path, _classify_trivial_change, and the
-# _TRIVIAL_PROTECTED_PATHS / _BUILD_PLAN_* constants. Resident callers below
-# (cmd_verify_chunk_refs, the stop gate) reach them via _buildplan_refs().<fn>();
-# lib.gates' _is_trivial_fileset_eligible (ch.6) reaches them as a sibling import.
-# (The PR-boundary _pr_diff_is_trivial consumer was retired — see lib/coverage.py.)
+# Build-plan reference parsing moved to lib/buildplan_refs.py (STH-9V4K ch.3):
+# the chunk-ref/Type parsers, _looks_like_file_path, and the
+# _GOVERNANCE_PROTECTED_PATHS / _BUILD_PLAN_* constants. Resident callers below
+# (cmd_verify_chunk_refs, the stop gate) reach them via _buildplan_refs().<fn>().
+# (The `Type: trivial` file-set gate and its PR-boundary sibling were both
+# retired — a file set enforces nothing about triviality.)
 
 
 # _current_chunk_id_from_status + _verify_chunk_refs moved to
@@ -5521,54 +5491,6 @@ def _read_bool_yaml_key(state_path: Path, key: str) -> bool:
 # =============================================================================
 # main
 # =============================================================================
-
-
-def cmd_regen_views(project_dir: Path, args: list[str] | None = None) -> int:
-    """DEPRECATED and inert — derived views are retired. Prints a notice, writes
-    nothing, exits 0.
-
-    This once regenerated three views from change-log tags: a build plan's
-    ``## Status`` checkboxes, a release-notes file, and a scope-rollup block in
-    ``project-state.yaml``. All three are gone. A build plan's checkboxes are now
-    the plan's own content, ticked by hand when a chunk finishes, so there is
-    nothing to regenerate them FROM and nothing that would be more authoritative
-    if there were.
-
-    **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
-    a retired subcommand to be signalled rather than removed: kept working,
-    announced on stderr, removal deferred to a major. The caller this protects is
-    a hand-written operator script or a copied runbook — prawduct's own release
-    runbook called this command — which gets a notice telling it what to do
-    instead, not a non-zero exit that breaks a pipeline mid-release.
-
-    **One category of caller this docstring used to rule out, wrongly.** It said
-    the skew "cannot arise between a prawduct skill and this CLI — they ship from
-    one version-keyed cache." True of a skill; **false of a hook registration**,
-    which is also shipped-in-cache but is invoked by the *harness*, and the
-    harness pins a plugin version per project and updates those pins lazily. So
-    an old ``hooks.json`` routinely calls a new binary. v3.3.2 read that sentence
-    as covering hooks too and deleted ``build-index`` and ``user-prompt-submit``
-    outright; every product repo mid-update then hit usage text and exit 1 on
-    session start and on every prompt. Both are inert commands again below — the
-    norm applies to anything a shipped artifact can invoke, hooks included.
-
-    Exit 0 unconditionally, including for unknown flags: a command that does
-    nothing cannot be misused, and a usage error here would be the pipeline break
-    the deprecation exists to avoid. ``--check`` was already deprecated and is
-    accepted silently for the same reason.
-    """
-    # Both parameters are kept so the dispatcher's call site is unchanged — a
-    # deprecated command that still accepts its old invocation is the point.
-    del project_dir, args
-    print(
-        "WARNING: regen-views no longer does anything and will be removed in a "
-        "future major version. A build plan's Status checkboxes are now written "
-        "by hand — tick a box when its chunk is finished, and nothing will "
-        "overwrite it. Release notes are kept in the change log itself. If a "
-        "script or checklist still calls this command, drop the call.",
-        file=sys.stderr,
-    )
-    return 0
 
 
 def cmd_check_operator_verification(project_dir: Path) -> int:
@@ -6964,7 +6886,7 @@ def cmd_bug_inbox(project_dir: Path) -> int:
     **Why it is still callable.** ``api-contract.md``'s deprecation norm requires
     a retired subcommand to be signalled rather than removed. The caller this
     protects is a person — a hand-written script or a habit — so the notice goes
-    to stderr where ``regen-views`` and ``stamp-merged`` put theirs, rather than
+    to stderr, as the other announcing inert verbs put theirs, rather than
     into the silence ``build-index`` and ``user-prompt-submit`` keep for a stale
     hook registration that cannot read one. Removal defers to a major.
 
@@ -7051,41 +6973,6 @@ def cmd_print_install_reference() -> int:
     return 0
 
 
-def cmd_stamp_merged(project_dir: Path) -> int:
-    """DEPRECATED and inert — prints a notice, writes nothing, exits 0.
-
-    This stamped ``status=merged`` onto tagged change-log entries. It had already
-    been removed from every flow before being emptied here: a statusless tagged
-    entry IS the release-pending state, since the entry rides in the feature PR
-    and its presence on the integration branch already proves the work merged.
-    The post-merge stamp commit it fed forced consumers with protected
-    integration branches into a second, bookkeeping-only PR.
-
-    **Why the body went and not just the flow.** ``status=`` had exactly one
-    reader — the derived-view regeneration — and that reader is retired. A
-    command whose sole effect is writing a key nothing reads is not harmless
-    bookkeeping; it is a channel produced and never consumed, and the next reader
-    of a stamped entry would reasonably infer a consumer exists. Kept callable
-    and signalled, per ``api-contract.md``'s deprecation norm, on the same
-    reasoning as ``regen-views``: removal defers to a major.
-
-    The branch guard went with the body. It existed because stamping asserted
-    "this work is integrated", which is only true on the integration branch —
-    an assertion nothing makes anymore. Exits 0 everywhere, so a checklist that
-    still calls this does not break.
-    """
-    del project_dir  # kept so the dispatcher's call site is unchanged
-    print(
-        "WARNING: stamp-merged no longer does anything and will be removed in a "
-        "future major version. A tagged change-log entry with no release marker "
-        "is already the record that work is merged and not yet shipped, so there "
-        "is nothing to stamp. If a checklist still calls this command, drop the "
-        "call.",
-        file=sys.stderr,
-    )
-    return 0
-
-
 def cmd_build_index(project_dir: Path, argv: list[str] | None = None) -> int:
     """DEPRECATED and inert — writes nothing, prints nothing to stdout, exits 0.
 
@@ -7104,8 +6991,8 @@ def cmd_build_index(project_dir: Path, argv: list[str] | None = None) -> int:
     contract. This docstring cites it rather than restating it, because the last
     copy of that reasoning to live in a docstring is the one that went wrong.
 
-    **Silent, unlike ``regen-views`` and ``stamp-merged``.** They warn because a
-    human reads their output and can drop the call; nobody reads this one, so a
+    **Silent, unlike the announcing inert verbs** (``bug-inbox`` and the retired
+    learnings verbs). They warn because a human reads their output and can drop the call; nobody reads this one, so a
     notice has no audience. **Nothing may reach stdout** — a SessionStart hook's
     stdout is injected into the model's context.
 
@@ -8674,7 +8561,6 @@ _USAGE = (
     "archive-plan <path> [--state completed|superseded] [--date YYYY-MM-DD] "
     "[--release vX.Y.Z] [--superseded-by <text>] [--dry-run]|"
     "check-released vX.Y.Z [--json] [--allow-unverifiable]|"
-    "regen-views [deprecated, inert]|stamp-merged [deprecated, inert]|"
     "bug-inbox [deprecated, inert]|"
     "build-index [deprecated, inert]|user-prompt-submit [deprecated, inert]|"
     "infer-critic-mode [args]|"
@@ -9031,16 +8917,13 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     # fail-closed guard above treats an unlisted command as a write and refuses
     # with exit 1 inside a disposable worktree, which for the hook-invoked
     # members is the very session-start hook error they were restored to remove
-    # (v3.3.3). `regen-views` and `stamp-merged` carried the same gap and the
-    # same false claim since they were emptied; this is one classification, not
-    # a decision per member. The three learnings verbs arrived from
+    # (v3.3.3). This is one classification, not a decision per member. The
+    # three learnings verbs arrived from
     # `_EPHEMERAL_APPLY_GATED_COMMANDS` when they were emptied — an apply-gated
     # entry says "this writes under --apply", and a stub has no --apply left to
     # honour. Pinned in tests/test_retired_hook_subcommands.py.
     "build-index",
     "user-prompt-submit",
-    "regen-views",
-    "stamp-merged",
     "audit-learnings",
     "learnings-obligation",
     "check-learnings-pairing",
@@ -9480,15 +9363,6 @@ _NO_ARGUMENT_NOTE_ONLY_COMMANDS = frozenset({
     "subagent-stop",
 })
 
-# Say nothing. `stamp-merged` is retired-but-callable, and its deprecation
-# contract is exit 0 for ANY input so that a copied release script keeps
-# working. An inert command cannot act on an argument it ignored, so there is no
-# surprise to prevent — the harm this guard exists for is a command that DID
-# something other than what was asked.
-_NO_ARGUMENT_UNCHECKED_COMMANDS = frozenset({
-    "stamp-merged",
-})
-
 # One positional, read as `sys.argv[2]`, and everything after it dropped on the
 # floor. Both halves of that are reportable: an unquoted multi-word value is
 # silently truncated to its first word, and a flag-shaped token is recorded as
@@ -9663,8 +9537,6 @@ def _dispatch() -> int:
         return cmd_check_released(project_dir, sys.argv[2:])
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
-    elif command == "stamp-merged":
-        return cmd_stamp_merged(project_dir)
     # Retired at v3.3.2, kept dispatchable: a pre-3.3.2 hooks.json still
     # registers both, and plugin version pins update per project rather than
     # all at once.
@@ -9672,8 +9544,6 @@ def _dispatch() -> int:
         return cmd_build_index(project_dir, sys.argv[2:])
     elif command == "user-prompt-submit":
         return cmd_user_prompt_submit(project_dir, sys.argv[2:])
-    elif command == "regen-views":
-        return cmd_regen_views(project_dir, sys.argv[2:])
     elif command == "infer-critic-mode":
         args = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else None
         return cmd_infer_critic_mode(project_dir, args)

@@ -13,7 +13,7 @@ Each chunk also declares `Type:` — a separate axis from `Critic mode:`; defini
 |---|---|---|---|---|---|---|
 | `code` (default) | Code or behavior changes | full | full | full | required | fires |
 | `doc-only` | Methodology / template / prose-only edits | prose only | requirement coverage of prose deliverables | scope discipline | skipped | fires unless session is empirically doc-only too (file-extension based) |
-| `trivial` | Small-blast-radius code change within the file-set bounds | full | full | full + **rationale-vs-diff fit** sub-check (Goal 3) | required | fires (file-set bounds + `**Trivial because:**` rationale enforced structurally) |
+| `trivial` | Code change whose low risk the author can name in `**Trivial because:**` | full | full | full + **rationale-vs-diff fit** sub-check (Goal 3) | required | fires |
 | `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
 | `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** |
 | `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — the chunk's review is the one `/prawduct:critic cumulative` (commit first, then run it once; no separate `final`) | — | — | — | fires |
