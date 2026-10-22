@@ -790,6 +790,46 @@ class TestBaseAdvanceTransfer:
         assert rc == 1
         assert "base-advance transfer check could not run" in err
 
+    def test_could_not_run_names_the_missing_tree_and_how_to_supply_it(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """#1002: an unrunnable diff names its missing input — the tree object
+        the diff was asked about — and the commands that check for and supply
+        it, so the reader learns how to make the check available, not only
+        that it was not."""
+        repo, _prior_base, _prior_head = _advanced_base_repo(tmp_path)
+        _write_test_evidence(repo)
+        self._prune_reviewed_heads(repo)
+        monkeypatch.setattr(evidence, "missing_objects", lambda *a, **k: None)
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        note = next(
+            ln for ln in err.splitlines()
+            if "base-advance transfer check could not run" in ln
+        )
+        assert "missing input is git tree object(s)" in note
+        assert "0" * 12 in note  # the pruned head the diff could not read
+        assert "git cat-file -t" in note
+        assert "git fetch origin" in note
+
+    def test_a_reason_without_unresolved_trees_reads_as_before(self):
+        """The suffix is driven by the producer's ``unresolved_trees``, not by
+        matching reason text: absent, the remedy is unchanged."""
+        bare = gates.transfer_remedy(
+            {"status": "unavailable", "reason": "missing span endpoints"}, None
+        )
+        assert bare.endswith("the cheap check was unavailable")
+        named = gates.transfer_remedy(
+            {
+                "status": "unavailable",
+                "reason": "branch diff unresolvable",
+                "unresolved_trees": ["a" * 40, "b" * 40],
+            },
+            None,
+        )
+        assert "a" * 12 in named and "b" * 12 in named
+        assert "a" * 13 not in named  # shortened, not dumped
+
     def test_a_stacked_branch_with_a_pruned_candidate_is_not_could_not_run(
         self, tmp_path, capsys
     ):
