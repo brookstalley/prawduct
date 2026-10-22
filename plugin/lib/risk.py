@@ -119,16 +119,6 @@ def read_declared_surfaces(state_path: Path, key: str) -> tuple[str, list[str]]:
     return status, list(items)
 
 
-def _read_list_yaml_key(state_path: Path, key: str) -> list[str] | None:
-    """The ``list | None`` view of :func:`read_declared_surfaces`.
-
-    ``None`` covers both "absent" and "unparseable", which is exactly why the
-    callers that must tell them apart use the status form instead.
-    """
-    status, items = read_declared_surfaces(state_path, key)
-    return items if status == YAML_DECLARED else None
-
-
 def _boundary_pattern_paths(prawduct_dir: Path) -> list[str]:
     """Literal backticked file paths from ``boundary-patterns.md`` — the
     product's documented contract surfaces. Globs and slash-commands are
@@ -191,57 +181,6 @@ def resolve_surfaces(prawduct_dir: Path) -> tuple[list[str], str]:
         [*DERIVED_DEFAULT_SURFACES, *_boundary_pattern_paths(prawduct_dir)],
         SOURCE_DERIVED,
     )
-
-
-def has_product_risk_declaration(prawduct_dir: Path) -> bool:
-    """True only when THIS REPO has explicitly said where its risk
-    concentrates — a non-empty ``risk_surfaces:`` list. Nothing else counts.
-
-    Neither the derived defaults nor ``boundary-patterns.md`` do. The defaults
-    are framework-shaped (``skills/``, ``lib/gates*``, ``bin/*hook*``), so in an
-    onboarded product they describe the *plugin's* hot spots and typically match
-    nothing in the product's own tree. The contract paths are a product
-    documenting its API, which says nothing about whether it has declared
-    where its risk concentrates.
-
-    The roster no longer reads this (the file-count fallback it gated is
-    retired; ``critic_consolidate``'s roster config block has the measurement).
-    It answers "is a NON-EMPTY ``risk_surfaces:`` list declared" — and ``[]``
-    is deliberately *no* here while being an exclusive opt-out for
-    :func:`resolve_surfaces`. This predicate is for a consumer that needs to
-    know whether any surface is actually named. No runtime caller today.
-
-    **When no key is declared**, both still feed :func:`resolve_surfaces`, so
-    both still ESCALATE even though neither can relax anything. **When the key
-    IS declared it is exclusive**, so neither contributes at all — a filled
-    `boundary-patterns.md` then escalates nothing unless its paths are also
-    listed under ``risk_surfaces:``. That asymmetry is easy to misread in the
-    direction that loses review, so it is stated in both places rather than
-    once.
-
-    "No risk surface matched" and "this repo never had a risk signal to give"
-    look identical at the match site; this is the predicate that tells them
-    apart, for a consumer that needs to know whether a list was declared
-    rather than whether a path matched.
-
-    An explicit ``risk_surfaces: []`` reads as no signal here, not as an
-    answer: the empty list turns the risk predicate off permanently, and a
-    consumer that treated it as a declaration would read an opt-out as a list.
-    """
-    # Only the explicit key. Absent -> None -> False; declared-empty -> [] ->
-    # False (a present key is EXCLUSIVE in :func:`resolve_surfaces`, so it must
-    # be exclusive here); a non-empty list -> True.
-    #
-    # A filled `boundary-patterns.md` deliberately does NOT count. It still
-    # feeds :func:`resolve_surfaces` — and so can still ESCALATE — but ONLY
-    # while no `risk_surfaces:` key is declared; a present key is exclusive and
-    # drops those paths entirely. Those paths are a product documenting its
-    # contract surfaces — `discovery.md` asks every contract-bearing product to
-    # write them — which says nothing about whether it has named where its
-    # risk concentrates. Escalating is a safe inference from a documented
-    # contract; treating it as an answer to a question nobody asked is not.
-    declared = _read_list_yaml_key(prawduct_dir / "project-state.yaml", "risk_surfaces")
-    return bool(declared)
 
 
 def surface_matches(

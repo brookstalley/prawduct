@@ -4800,12 +4800,7 @@ class TestRosterKeyedToRiskSurface:
         exclusive opt-out, so the derived defaults and `boundary-patterns.md`
         paths stop matching — a one-file change to a gate-kernel path that
         escalates in an UNDECLARED repo reviews single-pass here. The volume
-        escalator is not a surface and survives the opt-out. And
-        ``has_product_risk_declaration`` still reads `[]` as *no declaration*
-        (truthiness): the roster no longer consults it, but "has this repo
-        named its surfaces" is a different question from "does this path
-        match one", and the two readers of one key are kept distinct on
-        purpose so an ask about declaring cannot be silenced by an empty list.
+        escalator is not a surface and survives the opt-out.
         """
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
@@ -4815,7 +4810,6 @@ class TestRosterKeyedToRiskSurface:
         prawduct_dir.mkdir(exist_ok=True)
         (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
 
-        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
         surfaces, source = risk_mod.resolve_surfaces(prawduct_dir)
         assert surfaces == [] and source == risk_mod.SOURCE_DECLARED
 
@@ -4870,9 +4864,9 @@ class TestRosterKeyedToRiskSurface:
         repo_root = Path(__file__).resolve().parent.parent
         sys.path.insert(0, str(repo_root / "plugin"))
         from lib import risk as risk_mod
-        assert risk_mod.has_product_risk_declaration(repo_root / ".prawduct")
         surfaces, source = risk_mod.resolve_surfaces(repo_root / ".prawduct")
         assert source == risk_mod.SOURCE_DECLARED
+        assert surfaces, "declared, and non-empty — `[]` would be the opt-out"
         # Declared list must still cover the framework's own machinery, or the
         # opt-in would silently change which reviews escalate.
         for real in ("plugin/lib/gates.py", "plugin/bin/prawduct-hook",

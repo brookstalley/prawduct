@@ -132,7 +132,12 @@ def main(argv: list[str] | None = None) -> int:
         if store is None:
             continue
         prawduct_dir = repo / ".prawduct"
-        declared = risk.has_product_risk_declaration(prawduct_dir)
+        # A NON-EMPTY `risk_surfaces:` list — the fallback's own gate; `[]` was
+        # an opt-out, not a declaration, and still got the fallback.
+        status, items = risk.read_declared_surfaces(
+            prawduct_dir / "project-state.yaml", "risk_surfaces"
+        )
+        declared = status == risk.YAML_DECLARED and bool(items)
         rows = list(_reviews(store, args.since, args.until))
         if not rows:
             continue
