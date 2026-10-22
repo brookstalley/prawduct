@@ -1036,6 +1036,40 @@ class TestNextActionLine:
             "no longer dispatches"
         )
 
+    def test_the_closes_that_ask_for_a_fix_carry_the_blast_radius_check(self):
+        """#731: three rounds in a row each opened on a defect the previous
+        round's fix made — a fix whose dependents it never visited. The check
+        rides the two closes that tell the builder to fix, and only those."""
+        blocking = cc.next_action_line("rev-1", 1, 0, 0)
+        warnings = cc.next_action_line("rev-1", 0, 2, 1)
+        clean = cc.next_action_line("rev-1", 0, 0, 0)
+        assert gates.BLAST_RADIUS_CHECK in blocking, blocking
+        assert gates.BLAST_RADIUS_CHECK in warnings, warnings
+        assert gates.BLAST_RADIUS_CHECK not in clean, clean
+        # No fix is made now when a later review carries it.
+        from lib import critic_mode
+
+        rides = cc.next_action_line(
+            "rev-1", 0, 2, 0, rides_next_review=critic_mode.OWED_LATER_CHUNK
+        )
+        assert gates.BLAST_RADIUS_CHECK not in rides, rides
+        # Nor does the reviewer-context directive carry it.
+        assert gates.BLAST_RADIUS_CHECK not in cc._BATCH_FIX_DIRECTIVE
+
+    def test_the_blast_radius_check_names_an_act_per_shape(self):
+        text = gates.BLAST_RADIUS_CHECK
+        for act in ("grep every caller", "check the contract that governs it",
+                    "name what it no longer reaches"):
+            assert act in text, act
+
+    def test_the_blast_radius_check_has_one_home(self):
+        lib = ROOT / "lib"
+        homes = [
+            p.name for p in sorted(lib.glob("*.py"))
+            if "check each fix's dependents" in p.read_text(encoding="utf-8")
+        ]
+        assert homes == ["gates.py"], homes
+
     def test_blocking_names_one_commit_and_one_verify_pass(self):
         line = cc.next_action_line("rev-1", 2, 5, 3)
         assert "2 BLOCKING" in line
