@@ -37,9 +37,10 @@ Confirm you are in that situation:
 **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld` where **K is
 1 or more**, followed by the withheld list.
 
-**Also valid:** `cannot-verify-blockers: …` after this repo has cut over to the GitHub Issues
-backlog. The gate cannot judge blocker liveness from a frozen `backlog.md`, so it refuses rather than
-guessing. You are still in the right document — confirm each withholding blocker is open **by hand**,
+**Also valid:** `cannot-verify-blockers: …` when a withholding blocker's liveness could not be read —
+on the GitHub Issues backlog, because the local backlog cache could not be opened or does not hold
+the id (sync it with `prawduct-hook backlog sync --repo <owner/repo>` and re-run first). The gate
+refuses rather than guessing. You are still in the right document — confirm each withholding blocker is open **by hand**,
 record that confirmation in the release plan beside the classification table, and proceed to step 1.
 
 **Blocker liveness is the only check that refusal withholds.** Every other one still ran, so any
