@@ -208,27 +208,35 @@ def _cumulative_final_last_chunk(project_dir: Path, prawduct_dir: Path, plan) ->
 DEFERRED_REVIEW_TOKEN = "deferred-boundary-review"
 
 
-def _emit_stop_advisories(advisories: list[str]) -> None:
-    """Deliver the Stop gate's non-blocking advisories on the one channel the
-    harness reads at exit 0.
+def _deliver_stop_advisories(advisories: list[str], *, blocking: bool) -> None:
+    """Deliver the Stop gate's non-blocking advisories — the one owner, called
+    at every exit of ``cmd_stop`` once ``stop_advisories`` is declared.
 
-    Plain stdout/stderr at exit 0 is LOGGED by Claude Code and reaches nobody
-    (hooks reference: "exit 0 with non-JSON stdout is logged but doesn't affect
-    the turn"). A JSON object on stdout is read on every exit code:
-    ``systemMessage`` is shown to the user in the transcript and
-    ``additionalContext`` is added to the model's context — and ``Stop`` is one
-    of the events that honors ``additionalContext``. Both are set to the same
-    text so the deferral is never silent to either reader; "advice fails soft,
-    never silent" (architecture § Direction) is what this function exists for.
+    What reaches whom differs by exit code, and this says what is true:
 
-    Printed LAST and only when there is something to say: the object must be
-    the whole of stdout for the harness to parse it, and ``cmd_stop`` writes
-    everything else to stderr.
+    - ``blocking=True`` (exit 2): stderr is the block reason, which reaches the
+      model and the user both. The advisories print there, after the blockers,
+      under ``ADVISORIES (not blocking):``.
+    - ``blocking=False`` (exit 0): reaches the USER only. Plain stdout/stderr at
+      exit 0 is logged and reaches nobody, so a ``{"systemMessage": ...}``
+      object is printed as the whole of stdout and shown in the transcript.
+      Stop has no channel that puts text in the model's context without
+      starting another turn (``hookSpecificOutput.additionalContext``
+      continues the conversation, under the same continuation cap as a
+      block), so none is used: the advisory's remedy reaches the model where
+      the gate blocks. The text is mirrored on stderr for the log.
     """
     if not advisories:
         return
-    text = "\n\n".join(advisories)
-    print(json.dumps({"systemMessage": text, "additionalContext": text}))
+    if blocking:
+        print("ADVISORIES (not blocking):", file=sys.stderr)
+        for advisory in advisories:
+            print(advisory, file=sys.stderr)
+        return
+    for advisory in advisories:
+        print("", file=sys.stderr)
+        print(advisory, file=sys.stderr)
+    print(json.dumps({"systemMessage": "\n\n".join(advisories)}))
 
 
 def _record_lint():
@@ -2702,9 +2710,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     blockers: list[str] = []
     canary_findings: list[str] = []
-    # Non-blocking advisories the gate wants BOTH readers to see at exit 0 —
-    # delivered through `_emit_stop_advisories` at every `return 0` below,
-    # because stderr at exit 0 reaches neither the user nor the model.
+    # Non-blocking advisories, delivered through `_deliver_stop_advisories` at
+    # every return below: at exit 0 they reach the user only (systemMessage),
+    # at exit 2 both readers (stderr, beside the blockers).
     stop_advisories: list[str] = []
 
     # STH-3W7F: is harness-tracked background work still producing the diff?
@@ -3796,7 +3804,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # First line of each blocker names the gate — enough to show what's pending.
             print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
         if not clear_blockers:
-            _emit_stop_advisories(stop_advisories)
+            _deliver_stop_advisories(stop_advisories, blocking=False)
             return 0
         blockers = []
 
@@ -3828,7 +3836,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # and a self-citation needs SAFE TO CLEAR where this needs DO NOT
             # CLEAR. So `clear_blockers` is empty on this path.
             if not blockers:
-                _emit_stop_advisories(stop_advisories)
+                _deliver_stop_advisories(stop_advisories, blocking=False)
                 return 0
 
     blockers.extend(clear_blockers)
@@ -3845,6 +3853,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         )
         if _footer:
             print(_footer, file=sys.stderr)
+        _deliver_stop_advisories(stop_advisories, blocking=True)
         # Include canary findings in stderr so model sees them alongside blockers
         if canary_findings:
             print("COMPLIANCE CANARY (address if possible):", file=sys.stderr)
@@ -3861,11 +3870,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for f in canary_findings:
             print(f"  {f}", file=sys.stderr)
 
-    # Mirrored on stderr for the log, then delivered where exit 0 is read.
-    for advisory in stop_advisories:
-        print("", file=sys.stderr)
-        print(advisory, file=sys.stderr)
-    _emit_stop_advisories(stop_advisories)
+    _deliver_stop_advisories(stop_advisories, blocking=False)
     return 0
 
 
