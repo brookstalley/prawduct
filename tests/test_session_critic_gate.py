@@ -682,6 +682,28 @@ class TestBriefingAdvisoryUsesSharedGate:
         warnings = briefing._check_previous_session_gates(repo)
         assert "Critic review not recorded" in warnings
 
+    def test_committed_changes_warn_like_the_gate(self, tmp_path, monkeypatch):
+        """The advisory reads the work span the blocking gate reads (#304), so
+        a session that committed its work is not silent here either."""
+        repo = self._plan_repo(tmp_path)
+        _commit(repo, "code.py", "x = 2\n", "c2")
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda *_a, **_k: {"status": "uncovered", "reason": "r"},
+        )
+        warnings = briefing._check_previous_session_gates(repo)
+        assert "Critic review not recorded" in warnings
+
+    def test_committed_doc_only_changes_do_not_warn(self, tmp_path, monkeypatch):
+        repo = self._plan_repo(tmp_path)
+        _commit(repo, "notes.md", "n\n", "c2")
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda *_a, **_k: {"status": "uncovered", "reason": "r"},
+        )
+        warnings = briefing._check_previous_session_gates(repo)
+        assert not any("Critic" in w for w in warnings)
+
     def test_covered_changes_do_not_warn(self, tmp_path):
         repo = self._plan_repo(tmp_path)
         (repo / "code.py").write_text("x = 2\n")

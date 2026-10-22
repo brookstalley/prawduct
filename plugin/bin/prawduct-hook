@@ -2887,6 +2887,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     #   porcelain-scoped question about docs makes a docs-only committed session
     #   fire. The two must move together or not at all.
     reflection_span = _gates().session_work_span(project_dir, status_output)
+    # The Critic composition gate (Gate 2) fires on the same span, read once:
+    # its trigger and its doc-only carveout move together for the reason above.
+    critic_has_work = bool(reflection_span["changed"])
+    critic_doc_only = not reflection_span["judgeable"]
     reflected_file = prawduct_dir / ".session-reflected"
     _reflection_text = ""
     if reflected_file.is_file():
@@ -2932,12 +2936,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # the end of the same session saying it again, because the state that matters
     # is "code was written here today without the rules that govern it".
     #
-    # The trigger is judgeable code LITERALLY, which is narrower than the Critic
-    # gate's `not doc_only`: that predicate reads False for a session whose only
-    # changes were `.prawduct/` metadata (an empty non-metadata set is
-    # deliberately NOT doc-only, so the reflection and Critic gates still fire on
-    # a governance-only session). Nothing was judged in such a session, so
-    # nothing here is owed — and a blocker whose first sentence says "this
+    # The trigger is judgeable code LITERALLY: a session whose only changes were
+    # `.prawduct/` metadata judged nothing, so nothing here is owed — and a blocker whose first sentence says "this
     # session changed judgeable code" must not fire where that sentence is false.
     # Read from the SPAN (base tree -> working tree, committed work included),
     # as the reflection gate above and the budget arm below already do: the
@@ -3249,8 +3249,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Gate 2: Critic review (only when building against a plan)
     # Skipped for doc-only changes (no code to review). The waiver is only
     # noted when the gate would have actually blocked (valid findings absent).
-    # `has_changes` already reflects baseline-aware diff via git_has_session_changes,
-    # so no extra "code changes" check is needed beyond `not doc_only`.
+    # It reads the session's work span (`critic_has_work` / `critic_doc_only`),
+    # committed work included, so no extra "code changes" check is needed.
     #
     # v1.4 F6 — Type: designer-handoff also skips the gate (formalizes the
     # prior user-memory carveout into a framework rule). Other declared types
@@ -3269,7 +3269,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # carves out the Critic protocol (which has no code to review); the
     # trivial-declaration contract is independent.
     trivial_block_reason = ""
-    if has_changes and has_build_plan:
+    if (has_changes or critic_has_work) and has_build_plan:
         # Resolve WHICH plan once, then read all three chunk-level fields from
         # it: the current chunk id, its `Type:`, and its trivial rationale.
         # `active_build_plan` names the plan in progress in this repo; on a repo
@@ -3297,7 +3297,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # only person who can fix it.
             if _bpr.is_reportable_type_error(type_error):
                 waiver_notes.append(f"chunk-type-parse-error: {type_error}")
-            if chunk_type == "designer-handoff" and not doc_only:
+            if chunk_type == "designer-handoff" and not critic_doc_only:
                 designer_handoff_skip = True
                 waiver_notes.append(
                     # Waiver notes are printed at session end; the carveout's
@@ -3305,7 +3305,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     f"critic: skipped (Chunk {current_chunk_id} declares Type: designer-handoff "
                     "— a visual handoff is reviewed by a human, not by code analysis)"
                 )
-            elif chunk_type == "trivial":
+            elif chunk_type == "trivial" and has_changes:
                 fileset_ok, fileset_reason = _gates()._is_trivial_fileset_eligible(project_dir)
                 if not fileset_ok:
                     trivial_block_reason = fileset_reason
@@ -3516,18 +3516,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Skip the coverage gate when the abandoned-marker blocker already fired:
     # both describe one underlying cause (the review never landed), and the
     # abandoned message is the accurate, actionable one — don't double-block.
-    #
-    # This guard is still PORCELAIN — `has_changes` and `doc_only` both answer
-    # "what is uncommitted right now", so a session that committed its work
-    # leaves this gate silent. `gates.session_work_span` is the span that would
-    # fix that, and the reflection gate above already reads it; this one does
-    # not, deliberately. A reflection false-fire costs two lines and a Critic
-    # false-fire costs a review round, and the merge-only case — a pull that
-    # brings judgeable files nobody here wrote — has not been reasoned about for
-    # a gate priced that way. Flipping this guard onto the span is one edit when
-    # it has been.
+    # The guard reads the session's work span (`critic_has_work` /
+    # `critic_doc_only`, from `gates.session_work_span`), so committed work fires it.
     if (
-        has_changes and has_build_plan and not doc_only
+        critic_has_work and has_build_plan and not critic_doc_only
         and not designer_handoff_skip and not abandoned_critic
     ):
         critic_would_block = True
