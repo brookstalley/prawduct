@@ -970,7 +970,10 @@ def import_backlog(
                 "not in the migrated tracker — post-cutover they are outside list and "
                 "add-time dedup; backfilling is possible but re-syncs every item's "
                 "status from the markdown, so see the migration-scrub runbook's "
-                "`--archive-scope open` backfill guidance under \"Owner confirms\")"
+                "`--archive-scope open` backfill guidance under \"Owner confirms\"); "
+                "record `backlog_archive_scope: open` in project-state.yaml beside "
+                "`backlog_service_repo` at cutover so a session-start advisory keeps "
+                "the choice visible"
             ] + result["warnings"]
     return result
 

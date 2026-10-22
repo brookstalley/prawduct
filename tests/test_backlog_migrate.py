@@ -658,6 +658,8 @@ class TestArchiveScope:
         assert result["data"]["archive_skipped"] == 2
         assert any("archive-scope open" in w for w in result["warnings"])
         self._assert_preservation_claim_is_true(result["warnings"])
+        skip_warning = next(w for w in result["warnings"] if "archive-scope open" in w)
+        assert "backlog_archive_scope: open" in skip_warning  # #320: names the cutover key
         assert _alias_issues(fake, "SCP-0001")  # open item created
         assert _alias_issues(fake, "SCP-0002") == []  # shipped item NOT minted
         assert _alias_issues(fake, "SCP-0003") == []  # dropped item NOT minted

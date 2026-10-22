@@ -301,6 +301,12 @@ facts auto-resolve a teammate's advisory on next sync.
   scalar, written by `scrub`) wins outright if both are set — having migrated beats declaring you
   never will.
 
+- **`backlog_archive_scope`** — set to `open` by hand at cutover (beside `backlog_service_repo`)
+  when the import ran with `--archive-scope open`, so the closed/archived items stayed off the
+  tracker. Post-cutover `list` and add-time dedup cannot see them; the `backlog-archive-deferred`
+  advisory (info) states that. Set it to `all` after a backfill, or delete it, to resolve.
+  Absent means `all` or undecided; there is no other defined value.
+
 Also read by the backlog probes:
 
 - **`backlog_external_imports`** — list of external backlog files already audited via

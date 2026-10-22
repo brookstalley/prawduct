@@ -419,7 +419,12 @@ bound in Step 0:
 
 ```yaml
 backlog_service_repo: <target>
+backlog_archive_scope: open   # only if the import used --archive-scope open; omit for the default (all)
 ```
+
+`backlog_archive_scope: open` is the stamp that keeps the skipped archive visible: it
+raises the info-level `backlog-archive-deferred` advisory, and deleting it (or setting
+`all` after a backfill) resolves it.
 
 Setting this key makes every prawduct surface read the backlog from the service
 instead of the markdown file, and stops the markdown-premise advisories. **Do not
