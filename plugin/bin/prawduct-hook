@@ -3904,9 +3904,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: should vouch for — a docs-only cycle, or a run that touched no source, stays
 #: silent, because a directive that prints every time is one the reader learns
 #: to skip. The trigger is language-agnostic (see
-#: ``_evidence_changed_judged_code``): it fires off ``changes_referenced``, and
-#: ALSO off any ``changes_unjudged`` path that needs review coverage, which is
-#: how a Swift/Go/Rust/C#/TS product reaches it at all.
+#: ``_evidence_changed_judged_code``): it fires off ``changes_referenced`` and
+#: ``changes_unreferenced`` (#556), and ALSO off any ``changes_unjudged`` path
+#: that needs review coverage, which is how a Swift/Go/Rust/C#/TS product
+#: reaches it at all.
 #:
 #: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
 #: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
@@ -3918,16 +3919,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: asks. The only thing that silences it is "nothing needing review coverage
 #: changed" — which since the widening below is a claim about the changed FILES,
 #: not about whether a Python symbol grep happened to match.
-#:
-#: **Known limitation, recorded where the reader meets it, WITH its id.** One
-#: population still cannot reach this directive: a Python file declaring symbols
-#: no test mentions appears in NEITHER ``changes_referenced`` nor
-#: ``changes_unjudged`` — ``bin/test-reference-verify`` withholds it from both on
-#: purpose, since it is the gap ``verify-coverage`` exists to catch. So the record does
-#: not carry the whole changed set and no trigger composed from those two fields
-#: can. That is brookstalley/prawduct#556 — closing it means a schema change or a
-#: second git diff on this path, both larger than this trigger. The direction is
-#: the safe one: it under-fires, costing advice rather than soundness.
 #:
 #: The predecessor limitation — "empty in every non-Python product, so the
 #: directive is dark there" — is CLOSED (#348), and this comment previously said
@@ -3998,6 +3989,11 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
         return False
     if not isinstance(merged, dict):
         return False
+    # First clause (#556): a changed Python file with symbols no test mentions
+    # is exactly the code this directive matters most for.
+    unreferenced = merged.get("changes_unreferenced")
+    if isinstance(unreferenced, list) and unreferenced:
+        return True
     referenced = merged.get("changes_referenced")
     if isinstance(referenced, list) and referenced:
         return True

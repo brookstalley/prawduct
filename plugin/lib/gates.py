@@ -80,6 +80,12 @@ _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 # field keep their existing gate behavior.
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
+    # ``changes_unreferenced`` (#556): changed Python files declaring symbols no
+    # test mentions. With ``changes_referenced`` and ``changes_unjudged`` it
+    # partitions the changed set. Absent means empty; no gate reads it —
+    # ``verify-coverage`` derives "missing" from the diff itself, so a record
+    # without it gates exactly as before.
+    "changes_unreferenced": (list,),
     # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
     # before a live run starts (omitted when a path that affects the test outcome

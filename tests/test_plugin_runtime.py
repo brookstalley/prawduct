@@ -3724,6 +3724,23 @@ class TestGreenIsEvidenceDelivery:
         hook = _load_hook_module()
         assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
 
+    def test_directive_fires_on_new_code_no_test_mentions(self, tmp_path):
+        """#556: a changed Python file declaring symbols no test references is
+        the case the directive matters most for. The record now carries it in
+        ``changes_unreferenced`` and the directive fires off it. The fixture's
+        shape is asserted first: with a referenced or judgeable-unjudged path in
+        the record, a green here would prove nothing about the new clause."""
+        repo = self._repo(tmp_path)
+        (repo / "orphan.py").write_text("def lonely_untested_fn():\n    return 1\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert not ev["changes_referenced"]
+        assert "orphan.py" not in ev["changes_unjudged"]
+        assert ev["changes_unreferenced"] == ["orphan.py"]
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
+
     def test_directive_reaches_stdout_when_judged_code_changed(self, tmp_path):
         repo = self._repo(tmp_path)
         self._judged_change(repo)
@@ -3785,6 +3802,22 @@ class TestGreenIsEvidenceTrigger:
     def test_fires_when_judged_code_changed(self, tmp_path):
         hook = _load_hook_module()
         path = self._write(tmp_path, json.dumps({"changes_referenced": ["lib/a.py"]}))
+        assert hook._evidence_changed_judged_code(path) is True
+
+    def test_fires_on_unreferenced_python(self, tmp_path):
+        """#556: ``changes_unreferenced`` alone is enough — the other two
+        buckets empty."""
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {
+                    "changes_referenced": [],
+                    "changes_unreferenced": ["orphan.py"],
+                    "changes_unjudged": [],
+                }
+            ),
+        )
         assert hook._evidence_changed_judged_code(path) is True
 
     def test_silent_when_nothing_judged_changed(self, tmp_path):
