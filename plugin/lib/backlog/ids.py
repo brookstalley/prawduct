@@ -286,6 +286,19 @@ def alias_label(pfx: str) -> str:
 _PROVIDER_TAG = re.compile(r"^[a-z][a-z0-9]*$")
 
 
+def normalize_stored_ref(ref: str) -> NormalizedId:
+    """Normalize a ref that was STORED — parsed out of an issue body
+    (``superseded_by``, ``id_aliases``) or otherwise not typed by the operator.
+
+    **A stored ref resolves only when fully qualified, or not at all.** Body text
+    is attacker-writable: qualifying a short (``repo#7``) or bare (``7``) spelling
+    against a default owner or repo would let a body redirect a lookup to a real
+    item the writer never named. So this takes no defaults, by signature — the
+    operator-input paths (``core.resolve_ref``, ``cachequery.resolve``) are the
+    only places a default is supplied, and a test pins that allow-list."""
+    return normalize_id(ref)
+
+
 def provider_alias(canonical: str, *, provider: str = "github") -> str | None:
     """The tagged alias spelling for a provider id, or ``None`` if either half is
     malformed.
@@ -295,7 +308,7 @@ def provider_alias(canonical: str, *, provider: str = "github") -> str | None:
     would be worse than no alias."""
     if not _PROVIDER_TAG.match(provider or ""):
         return None
-    nid = normalize_id(canonical)
+    nid = normalize_stored_ref(canonical)
     if not nid.ok:
         return None
     return f"{provider}:{nid.canonical}"
@@ -305,7 +318,7 @@ def parse_provider_alias(token: str | None) -> tuple[str, str] | None:
     """``(provider, canonical)`` for a tagged alias, or ``None``.
 
     **The ref half is re-normalized rather than trusted**, and that is the point
-    of routing it through :func:`normalize_id` instead of splitting on ``#``. An
+    of routing it through :func:`normalize_stored_ref` instead of splitting on ``#``. An
     alias arrives from an issue body — attacker-writable text — and the canonical
     id it yields is handed to callers that interpolate ``owner`` and ``repo`` into
     ``repos/{owner}/{repo}/…`` at the transport. The question at this seam is not
@@ -318,11 +331,10 @@ def parse_provider_alias(token: str | None) -> tuple[str, str] | None:
     provider, sep, ref = token.strip().partition(":")
     if not sep or not _PROVIDER_TAG.match(provider):
         return None
-    nid = normalize_id(ref)
+    nid = normalize_stored_ref(ref)
     if not nid.ok or nid.canonical != ref.strip():
-        # Only the canonical spelling is an alias. A short form (`repo#7`) would
-        # need a default owner to mean anything, so accepting one here would make
-        # the same stored string resolve to different items in different repos.
+        # Only the canonical spelling is an alias — on top of the stored-ref rule,
+        # a padded or otherwise non-canonical spelling (`o/r#007`) is refused too.
         return None
     return provider, nid.canonical
 

@@ -282,15 +282,17 @@ every call and decoded it all to rank, which measured ~12.4s at ~209 issues, ~6x
 - **The accepted ID grammar, stated once here.** This section is the home; API contract §3/§8, the
   Direction bullet, the test specs' ID-1 and `plugin/skills/backlog/cache-reads.md` point here rather
   than restating the list, because a spelling added to some carriers and not others is how the grammar
-  forked before. Five forms, in two classes:
-  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax, and
-    **short `repo#number` same-owner only** (ambiguous under federation). These need no default and
-    are the only forms accepted from a *stored* value.
+  forked before. Five forms:
+  - **Self-describing** — **canonical `owner/repo#number`**, GitHub's own cross-ref syntax. It needs
+    no default and is the only form accepted from a *stored* value.
+  - **Short** — `repo#number`, same-owner only (ambiguous under federation): it resolves against a
+    supplied default owner. **Operator input only.**
   - **Bare** — `number` and `#number`. These carry no repo, so they resolve **only against a supplied
     default** (`--repo`, or the store's own `scope`, which is where `cachequery.resolve` derives it).
     **Operator input only.** A ref parsed out of an issue *body* — a `superseded-by:` target, a
-    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all, because a body is
-    attacker-writable and a bare `7` would otherwise redirect a lookup to a real item (Security Model
+    `resolve_survivor` fetch, a provider alias — resolves canonically or not at all
+    (`ids.normalize_stored_ref`, which takes no default), because a body is attacker-writable and a
+    short `repo#7` or bare `7` would otherwise redirect a lookup to a real item (Security Model
     §5/F3).
   - **Digit-suffix `repo-number`** — the shell spelling, whose collision with the PFX alias grammar the
     precedence rule below resolves.

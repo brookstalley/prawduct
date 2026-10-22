@@ -371,14 +371,21 @@ def resolve_survivor(transport: Transport, canonical: str, *, owner: str) -> str
     for the pure redirect-follow (CRASH-2)."""
 
     def fetch(canon: str) -> str | None:
-        nid = ids.normalize_id(canon, default_owner=owner)
+        nid = ids.normalize_stored_ref(canon)
         if not nid.ok:
             return None
         try:
             issue = transport.get_issue(nid.owner, nid.repo, nid.number)
         except TransportError:
             return None
-        return encode.parse_block(issue.get("body")).superseded_by()
+        target = encode.parse_block(issue.get("body")).superseded_by()
+        if not target:
+            return None
+        # Parsed out of issue body text: `ids.normalize_stored_ref` owns the rule
+        # (no default owner). Normalized HERE, not on the next hop, because
+        # `resolve_redirect` reports whatever this returns as the survivor.
+        hop = ids.normalize_stored_ref(target)
+        return hop.canonical if hop.ok else None
 
     return ids.resolve_redirect(canonical, fetch=fetch)
 

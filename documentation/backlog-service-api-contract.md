@@ -177,9 +177,9 @@ field home.)*
   backfillable. IDs accept `owner/repo#number` · `repo#number` · `repo-number` · `repo/number` ·
   bare `number`/`#number` and **normalize** to canonical (D4). The short and shell forms need a
   `--repo` owner; the bare forms carry no repo either and need the full `--repo`, so an owner alone
-  will not resolve one. Bare forms are accepted from OPERATOR INPUT only — a ref parsed out of issue
-  body text (`superseded_by`) resolves canonically or not at all, since body text is writable by
-  anyone who can file an issue. Normalization also enforces **one canonical form per item**: the
+  will not resolve one. Short and bare forms are accepted from OPERATOR INPUT only — a ref parsed out
+  of issue body text (`superseded_by`, `id_aliases`) resolves canonically or not at all, since body
+  text is writable by anyone who can file an issue. Normalization also enforces **one canonical form per item**: the
   number is re-rendered from its integer value, so `#007` and `#7` are one id, and the digit class is
   ASCII `[0-9]` only, so a non-ASCII decimal digit is rejected rather than normalized into a canonical
   id GitHub cannot resolve. The grammar's home is Data Model §5; the list above is a summary of it.
