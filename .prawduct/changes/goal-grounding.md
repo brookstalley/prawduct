@@ -4,6 +4,7 @@ type: feature
 scope: goal-grounding
 date: 2026-10-21
 title: the alignment pass judges whether the goals under the work are grounded
+closes: [brookstalley/prawduct#1029]
 ---
 - #1029, building the settled design in `.prawduct/artifacts/goal-grounding-discovery.md`.
 - At any decision that commits investment (a plan, a design artifact, an architectural choice,
