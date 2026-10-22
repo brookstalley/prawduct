@@ -492,6 +492,7 @@ class TestStopStillBlocks:
         assert "CRITIC" in _blocked_section(result.stderr)
         assert "GATES DEFERRED" not in result.stderr
 
+    @pytest.mark.non_root
     def test_unreadable_transcript_with_no_field_blocks(self, tmp_path):
         _plan_repo(tmp_path, reflected=True)
         transcript = tmp_path / "t.jsonl"

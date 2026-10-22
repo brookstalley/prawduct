@@ -581,6 +581,7 @@ class TestStopGateOnShortPlans:
         assert "RuntimeError: plan resolution exploded" in err
         assert "applied in full" in err
 
+    @pytest.mark.non_root
     def test_an_unreadable_evidence_store_still_blocks(self, tmp_path: Path):
         """`error` is not a coverage verdict, so it is not softened either: the
         deferral is asked only of `uncovered`. The one status that reaches the

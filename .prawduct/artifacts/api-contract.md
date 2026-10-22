@@ -535,6 +535,11 @@ files to touch previews first. That framing is descriptive — the binding rule 
     opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
     `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
     in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
+  - `aggregate-stats --json` → **no skill consumer today**: top-level `schema_version`,
+    `generated_at`, `sources` (`local`, `local_skipped`, `contributed` — `bundles`, `lines`,
+    `refused`, `schema_ahead`) and `by_version`, keyed by plugin `major.minor` like `stats`.
+  - `change-record --json` → **no skill consumer today**: an object keyed by the scope argument,
+    each value `null` when the scope has no record, else `{source, path, closes[]}`.
   - `render-dispositions --json` → the disposition census, for a change-log entry, a PR body, or any
     consumer that would otherwise recount findings by hand. Top-level `schema_version` (the second
     report to carry one), `reviews[]` (each `review_id`, `ts`, `mode`, `scope`, `chunk`, `rows[]`,
