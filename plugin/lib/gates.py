@@ -2359,6 +2359,18 @@ FIX_ORDER = (
     "make the fixes in the working tree, run one `/prawduct:critic"
     " verify-resolutions` over the uncommitted fixes, then land them in one commit"
 )
+#: How to make a fix that does not open the next round (#731), kept beside
+#: :data:`FIX_ORDER` and NOT inside it: FIX_ORDER is also printed unwrapped by
+#: :func:`blocking_remedy_lines`. Composed by ``critic_consolidate.next_action_line``
+#: into the two closes that tell the builder to fix — the blocking arm and the
+#: fix tail — and no other carrier restates it. One act per cascade shape.
+BLAST_RADIUS_CHECK = (
+    " Before the verify pass, check each fix's dependents: a changed signature,"
+    " return type or raised error → grep every caller; an added or changed"
+    " output, field or surface → check the contract that governs it, including"
+    " one this branch added; a reordered, tightened or removed guard → name"
+    " what it no longer reaches."
+)
 #: The one exception to :data:`FIX_ORDER`, kept beside it: after a boundary
 #: `cumulative`, inference's rule 1b recognizes a committed fix.
 FIX_ORDER_AFTER_CUMULATIVE = (

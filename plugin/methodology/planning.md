@@ -158,6 +158,7 @@ error handling go missing one context at a time.
 - **Short plan** (at most 3 chunks, nothing the branch changes is a risk surface) → no per-chunk review is inferred at all: mid-chunk inference answers `deferred`, the Stop gate warns rather than blocks on a non-final chunk, and the last chunk's `cumulative` is every chunk's review. So tick each earlier chunk when it is committed: inference counts unticked boxes, and a box held for a review that never comes reads as a chunk still to build. Declaring `Critic mode:` on any chunk opts the whole plan back into per-chunk review — do it when an early chunk is a keystone you want seen before the rest is built on it.
 - **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it.
 - **Override forward to `cumulative`** on the last chunk of a plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final` and no explicit `Critic mode:` needed).
+- **A chunk that ships as its own PR declares `Critic mode: cumulative`** — that PR is a boundary the short-plan deferral cannot see; once the chunk is committed, `/prawduct:critic` infers the cumulative.
 - **Trivial chunks** (typo-level edits inside a larger plan) → waive Critic via `.gates-waived`; for bounded mechanical code changes, prefer `Type: trivial` (below).
 
 **Why this layering:** the per-chunk goals catch the high-frequency failures cheaply because they scope to local changes; the final-chunk goals need the full diff — coherence is across files — so they belong at the end of the cycle.
@@ -187,7 +188,7 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 
 **Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits: over-declaring is unsafe per each Type's own bullet above, and under-declaring buys review work the stage norm prices as a defect, not a margin.
 
-**Don't open a LINE or a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Backticks do not escape it: a line-opening ``` `**Type:** code` ``` is a declaration and binds deliberately. To write *about* a field, keep the marker inside the sentence (`unlike a **Type:** trivial chunk`) or drop the asterisks (`Type:`).
+**Don't open a LINE or a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Backticks do not escape it: a line-opening ``` `**Type:** code` ``` is a declaration and binds deliberately. To write *about* a field, keep the marker inside the sentence (`unlike a **Type:** trivial chunk`, or after `e.g.`/`i.e.`) or drop the asterisks (`Type:`).
 
 ### Forward-References to Not-Yet-Created Files
 

@@ -1536,6 +1536,36 @@ class TestTheTypeFieldIsFoundWhereAuthorsWriteIt:
             prawduct, "01", plan_path=plan
         ) == ("doc-only", None)
 
+    @pytest.mark.parametrize("abbrev", ["e.g.", "i.e.", "E.g.", "cf.", "viz."])
+    def test_a_marker_quoted_after_an_abbreviation_binds_nothing(
+        self, tmp_path: Path, abbrev: str
+    ):
+        """#778: the sentence-opening arm fired after `e.g.`, so a chunk
+        declaring no type whose Description followed planning.md's own advice
+        (keep the marker inside the sentence) was graded `designer-handoff` —
+        the type the stop hook skips."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            f"- **Description:** unlike a handoff chunk ({abbrev} **Type:** "
+            "designer-handoff) which the stop hook skips\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("code", None)
+
+    def test_a_declaration_after_a_sentence_ending_in_etc_still_binds(
+        self, tmp_path: Path
+    ):
+        """The control for the abbreviation carve-out: `etc.` ends sentences,
+        so a composed field after one is still a declaration."""
+        prawduct, plan = _plan_with_chunk_body(
+            tmp_path,
+            "**Covers:** the readers, writers, etc. **Type:** doc-only\n",
+        )
+        assert buildplan_refs._parse_build_plan_chunk_type(
+            prawduct, "01", plan_path=plan
+        ) == ("doc-only", None)
+
     def test_a_value_no_token_can_be_read_out_of_is_reported_verbatim(
         self, tmp_path: Path
     ):

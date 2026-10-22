@@ -3627,6 +3627,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
                     "  This chunk's review is deferred to the boundary. Next:\n"
                     + _wrap_gate_prose(_critic_mode().short_plan_next_step(deferral) + ".")
+                    + _wrap_gate_prose(_critic_mode().SHORT_PLAN_OWN_PR_NOTE + ".")
                     + "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
                     "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
                     "  the plan to restore per-chunk review for the whole plan.\n"

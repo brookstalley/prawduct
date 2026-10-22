@@ -58,6 +58,8 @@ PLAN_PARSERS = frozenset(
         "frontmatter_lines",
         "_iter_status_section_lines",
         "_iter_status_section_items",
+        "iter_status_section_lines",  # plan_index's names for the two above (#657)
+        "iter_status_section_items",
         "_chunk_section_lines",
         "_resolve_chunk_progress_from",
         "_chunk_id_from_item_text",
