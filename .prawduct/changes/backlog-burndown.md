@@ -97,3 +97,11 @@ first.
   advisories.
 - The session Critic gate now sees work the session already committed, not only uncommitted work.
 - A release plan's `withheld` row may name an Issues blocker (`#N` or `owner/repo#N`).
+- A short plan's Stop gate credits a review to a chunk only when the review was dispatched for
+  that chunk, so a Stop can now ask for a chunk review it used to waive.
+- A short `repo#N` stored in an issue body (such as `superseded_by`) no longer resolves; stored refs
+  must be fully qualified (`owner/repo#N`).
+- `import` refuses the whole set before writing when any facet label is over 50 characters, and
+  names each offender.
+- Product-code detection works by exclusion, so repos in languages that were not listed before
+  (C#, PHP, TSX and others) now get the product-code nudges.
