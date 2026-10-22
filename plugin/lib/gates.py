@@ -1890,7 +1890,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        ``_CRITIC_MODE_GOALS_1_3_ONLY`` (chunk or verify-resolutions)
        → unsatisfied. Run ``/prawduct:critic final`` for end-of-cycle synthesis.
     5. Multi-chunk plan, all chunks ``[x]``, latest mode is final/cumulative
-       (or no review fact exists — nothing to judge) → satisfied.
+       (or no review fact from this worktree and branch — nothing to judge)
+       → satisfied.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     plan_path = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
@@ -1902,7 +1903,18 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     if complete < total:
         return True, ""
 
-    review_facts = evidence.facts_of_kind(evidence.read_facts(project_dir), "review")
+    # The store is clone-global; this session's latest review is the latest one
+    # recorded from THIS worktree on THIS branch, so another worktree's review
+    # never steers this advisory. A fact with no `actor.branch` (written before
+    # it was recorded) is matched on its worktree alone.
+    here = str(project_dir)
+    branch = gitstate.current_branch(project_dir)
+    review_facts = [
+        f
+        for f in evidence.facts_of_kind(evidence.read_facts(project_dir), "review")
+        if (f.get("actor") or {}).get("worktree") == here
+        and (f.get("actor") or {}).get("branch", branch) == branch
+    ]
     if not review_facts:
         return True, ""
     latest_body = review_facts[-1].get("body") or {}

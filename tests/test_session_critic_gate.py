@@ -704,6 +704,30 @@ class TestBriefingAdvisoryUsesSharedGate:
         warnings = briefing._check_previous_session_gates(repo)
         assert not any("Critic" in w for w in warnings)
 
+    def test_schema_ahead_names_the_update_remedy(self, tmp_path):
+        """#305(a): a store this plugin cannot read is not "no review"."""
+        repo = self._plan_repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        _fact(repo, _tree(repo), _captured_tree(repo), ["code.py"])
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(
+                {"schema": 99, "kind": "review", "id": "future-1", "ts": "t", "body": {}}
+            ) + "\n")
+        warnings = briefing._check_previous_session_gates(repo)
+        assert "Critic review not recorded" not in warnings
+        assert any("newer plugin" in w and "update the plugin" in w for w in warnings)
+
+    def test_an_error_verdict_names_its_reason(self, tmp_path, monkeypatch):
+        repo = self._plan_repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda *_a, **_k: {"status": "error", "reason": "no HEAD tree to compose from"},
+        )
+        warnings = briefing._check_previous_session_gates(repo)
+        assert "Critic review not recorded" not in warnings
+        assert "Critic review check failed (no HEAD tree to compose from)" in warnings
+
     def test_covered_changes_do_not_warn(self, tmp_path):
         repo = self._plan_repo(tmp_path)
         (repo / "code.py").write_text("x = 2\n")

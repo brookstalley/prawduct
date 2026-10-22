@@ -2230,6 +2230,16 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
                 f"Critic review left {len(verdict.get('unresolved', []))} "
                 "unresolved blocking finding(s)"
             )
+        elif status == "schema-ahead":
+            # Not "no review": the store holds facts this plugin cannot read,
+            # and the remedy is the update, not another review.
+            warnings.append(
+                "Critic review evidence is from a newer plugin and cannot be "
+                "read here (update the plugin)"
+            )
+        elif status == "error":
+            reason = (verdict.get("reason") or "no detail").splitlines()[0]
+            warnings.append(f"Critic review check failed ({reason})")
         elif status != "covered":
             warnings.append("Critic review not recorded")
 
