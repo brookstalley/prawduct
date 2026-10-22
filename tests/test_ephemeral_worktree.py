@@ -377,14 +377,14 @@ class TestGuardRefusesWrites:
 
         assert "BLOCKED" not in _run(wt, "backlog", "file", "--title", "T").stderr
 
-    @pytest.mark.parametrize("op", ["refresh-counts", "export", "restructure-preview"])
+    @pytest.mark.parametrize("op", ["export", "restructure-preview"])
     def test_service_backed_local_write_ops_still_refuse(self, tmp_path, op):
         """"Issues backend ⇒ every backlog op is a network call" is FALSE.
 
-        `lib/backlog/cli.py` documents `refresh-counts` as "a read + a local
-        snapshot write", and `export`/`restructure-preview` write their output
-        into this tree. The service-backed allowance must not cover them, or it
-        reintroduces the strand it was carved out to avoid.
+        `export`/`restructure-preview` write their output into this tree. The
+        service-backed allowance must not cover them, or it reintroduces the
+        strand it was carved out to avoid. (`refresh-counts` left this list in
+        #624 — its snapshot write is clone-shared; see the test below.)
         """
         primary = tmp_path / "primary"
         _init_repo(primary)
@@ -416,6 +416,33 @@ class TestGuardRefusesWrites:
         wt = _agent_worktree(primary)
 
         assert "BLOCKED" not in _run(wt, "backlog", "sync", "--repo", "owner/repo").stderr
+
+    @pytest.mark.parametrize("service_backed", [True, False], ids=["issues", "markdown"])
+    def test_refresh_counts_is_not_refused_because_its_write_cannot_strand(
+        self, tmp_path, service_backed
+    ):
+        """#624: `refresh-counts` is decided on the same test as `sync`.
+
+        Its one local write is `snapshot.snapshot_path`, keyed off
+        `--git-common-dir` like the cache `sync` writes, so it lands in the clone
+        and survives this worktree. The old refusal said the write "is discarded
+        when it merges", which was false for it. On BOTH backends — the markdown
+        fall-through must not refuse it either.
+        """
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        if service_backed:
+            state = primary / ".prawduct" / "project-state.yaml"
+            state.write_text(state.read_text() + "backlog_service_repo: owner/repo\n")
+            _git(primary, "add", "-A")
+            _git(primary, "commit", "-m", "service backend", "--quiet")
+        wt = _agent_worktree(primary)
+        # Control: the guard IS live in this tree — a local write still refuses.
+        assert "BLOCKED" in _run(wt, "backlog", "export", "--repo", "owner/repo").stderr
+
+        result = _run(wt, "backlog", "refresh-counts", "--repo", "owner/repo")
+        assert "BLOCKED" not in result.stderr
+        assert "discarded when it merges" not in result.stderr
 
     def test_refusal_names_the_consequence_and_the_override(self, tmp_path):
         """A refusal that does not explain itself just moves the confusion."""

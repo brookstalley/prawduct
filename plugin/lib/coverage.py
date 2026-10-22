@@ -545,8 +545,14 @@ def diagnose_base_advance_transfer(
 
         {"status": "match", "prior_fact_id", "prior_reviews", "prior_base",
          "prior_head", "files": [...], "advance_files": [...] | None}
-      | {"status": "unavailable", "reason": str}
+      | {"status": "unavailable", "reason": str, "unresolved_trees": [...]}
       | None                                    # no transferable prior span
+
+    ``unresolved_trees`` (#1002) names the tree objects a diff that could not
+    be computed was asked about — the missing input — so the remedy can say
+    what would make the check runnable rather than only that it was not. Both
+    endpoints of a failed diff are listed, since git's failure does not say
+    which side it lacked.
 
     ``advance_files`` is ``None`` — not ``[]`` — when the advance's own diff
     could not be read. It is message detail only, so an unreadable one does not
@@ -567,7 +573,11 @@ def diagnose_base_advance_transfer(
 
     branch_diff = diff_fn(base_tree, head_tree)
     if branch_diff is None:
-        return {"status": "unavailable", "reason": "branch diff unresolvable"}
+        return {
+            "status": "unavailable",
+            "reason": "branch diff unresolvable",
+            "unresolved_trees": [base_tree, head_tree],
+        }
     required = set(coverage_algebra.judgeable_files(branch_diff))
     if not required:
         # Nothing judgeable differs across the required span — that composes as
@@ -632,6 +642,10 @@ def diagnose_base_advance_transfer(
     # reads as "could not be computed" and denies, the same direction as every
     # other failure here.
     degraded: "str | None" = None
+    unresolved: list[str] = []
+
+    def _unresolved(*trees: str) -> None:
+        unresolved.extend(t for t in trees if t not in unresolved)
 
     def _survivors(candidates: list[str], anchor: str) -> list[str]:
         nonlocal degraded
@@ -645,6 +659,7 @@ def diagnose_base_advance_transfer(
             )
             if differing is None:
                 degraded = degraded or "a candidate tree could not be diffed"
+                _unresolved(candidate, anchor)
             elif not differing:
                 kept.append(candidate)
         return kept
@@ -664,6 +679,7 @@ def diagnose_base_advance_transfer(
             prior_diff = diff_fn(prior_base, prior_head)
             if prior_diff is None:
                 degraded = degraded or "a candidate span could not be diffed"
+                _unresolved(prior_base, prior_head)
                 continue
             if set(coverage_algebra.judgeable_files(prior_diff)) != required:
                 continue
@@ -695,7 +711,9 @@ def diagnose_base_advance_transfer(
                 ),
             }
 
-    return {"status": "unavailable", "reason": degraded} if degraded else None
+    if not degraded:
+        return None
+    return {"status": "unavailable", "reason": degraded, "unresolved_trees": unresolved}
 
 
 def count_branch_rounds(

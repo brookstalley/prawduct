@@ -6,6 +6,11 @@ Produces the F4a fields of `.test-evidence.json`:
     - `coverage_level`     — always `referenced` (floor)
     - `changes_referenced` — changed files whose symbols appear textually in
                              at least one test file
+    - `changes_unreferenced` — changed Python files that declare def/class
+                             symbols NONE of which any test file mentions —
+                             the gap `verify-coverage` exists to catch, kept
+                             in the record so a consumer reading it sees the
+                             whole changed set (#556)
     - `changes_unjudged`   — changed files the symbol-grep mechanism cannot
                              meaningfully judge: non-Python files, Python files
                              declaring no def/class symbols, and files deleted
@@ -24,6 +29,11 @@ Produces the F4a fields of `.test-evidence.json`:
                              repo having inspected nothing — the norm's "reported
                              unchecked, never silently passed" clause.
     - `tests_executed`     — test files discovered under the tests directory
+
+`changes_referenced`, `changes_unreferenced` and `changes_unjudged` PARTITION the
+changed set: every changed path is in exactly one of them. A record that
+silently dropped a path would present as complete while hiding exactly the
+unreferenced file the floor exists to catch.
 
 `changes_unchecked` deliberately carries NO opinion about whether a file matters:
 a `README.md` and a `Foo.swift` both land in it, because from here they are the
@@ -246,6 +256,7 @@ def _build_evidence_fields(
     test_texts = _read_test_texts(test_files)
 
     referenced: list[str] = []
+    unreferenced: list[str] = []
     unjudged: list[str] = []
     unchecked: list[str] = []
     judgeable = 0
@@ -273,8 +284,11 @@ def _build_evidence_fields(
         judgeable += 1
         if _has_reference(test_texts, symbols):
             referenced.append(f)
-        # else: a judged Python file with no test reference — the legitimate
-        # gap `verify-coverage` exists to catch. It stays out of both lists.
+        else:
+            # A judged Python file with no test reference — the legitimate gap
+            # `verify-coverage` exists to catch, recorded so the record carries
+            # the whole changed set.
+            unreferenced.append(f)
 
     # Zero test discovery while there ARE judgeable files is almost always a
     # misconfigured tests dir (monorepo / engine subdir whose tests live outside
@@ -314,6 +328,7 @@ def _build_evidence_fields(
         "coverage_level": "referenced",
         "tests_executed": test_file_paths,
         "changes_referenced": referenced,
+        "changes_unreferenced": sorted(unreferenced),
         "changes_unjudged": sorted(unjudged),
         "changes_unchecked": sorted(unchecked),
     }

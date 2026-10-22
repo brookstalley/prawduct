@@ -73,6 +73,65 @@ class TestPluginHookStructure:
         assert "_coverage()._resolve_base_branch(" in src
         assert "resolve-base" in src.split("_USAGE = (", 1)[1].split(")", 1)[0]
 
+    def test_usage_banner_admits_every_flag_the_parsers_accept(self):
+        """#786: the banner is an instruction surface, so a flag a parser accepts
+        and the banner omits reads as a flag that does not exist. The flag sets
+        are DERIVED from each parser's own membership test, not listed here, so
+        a flag added to a parser without the banner turns this red."""
+        import re
+
+        src = HOOK.read_text()
+        block = src.split("_USAGE = (", 1)[1].split(")", 1)[0]
+        usage = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', block))
+        body = usage.split("Usage: prawduct-hook ", 1)[1][1:-1]
+        # Split on top-level `|` only — a `{a|b}` or `<a|b>` group belongs to its entry.
+        entries, depth, cur = [], 0, ""
+        for ch in body:
+            depth += ch in "{[<" and 1 or 0
+            depth -= ch in "}]>" and 1 or 0
+            if ch == "|" and depth == 0:
+                entries.append(cur)
+                cur = ""
+            else:
+                cur += ch
+        entries.append(cur)
+
+        def banner(sub: str) -> str:
+            hits = [e for e in entries if e.split(" ", 1)[0] == sub]
+            assert hits, f"{sub} has no usage-banner entry"
+            return " ".join(hits)
+
+        lib = HOOK.parent.parent / "lib"
+        begin_body = src.split("def cmd_critic_begin(", 1)[1].split("\ndef ", 1)[0]
+        begin_flags = set(re.findall(r'"(--[a-z-]+)":', begin_body))
+        begin_flags |= set(re.findall(r'arg == "(--[a-z-]+)"', begin_body))
+        ledger_src = (lib / "ledger.py").read_text()
+        ledger_flags = set(
+            re.findall(
+                r'"(--[a-z-]+)"',
+                re.search(r'if arg in \(("--event"[^)]*)\)', ledger_src).group(1),
+            )
+        )
+        disp_src = (lib / "dispositions.py").read_text()
+        disp_body = disp_src.split("def disposition_cmd(", 1)[1].split("\ndef ", 1)[0]
+        disp_flags = set(
+            re.findall(
+                r'"(--[a-z-]+)"',
+                re.search(r'if arg in \(("--accept"[^)]*)\)', disp_body).group(1),
+            )
+        )
+        cases = {
+            "critic-begin": begin_flags,
+            "ledger-append": ledger_flags,
+            "disposition": disp_flags,
+        }
+        for sub, flags in cases.items():
+            # The derivation must have found the parser — an empty set would
+            # pass vacuously.
+            assert len(flags) >= 3, (sub, flags)
+            missing = sorted(f for f in flags if f not in banner(sub))
+            assert not missing, f"usage banner for {sub} omits {missing}"
+
     def test_lib_imported_via_plugin_root(self):
         src = HOOK.read_text()
         assert "def _plugin_root(" in src
@@ -3724,6 +3783,23 @@ class TestGreenIsEvidenceDelivery:
         hook = _load_hook_module()
         assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
 
+    def test_directive_fires_on_new_code_no_test_mentions(self, tmp_path):
+        """#556: a changed Python file declaring symbols no test references is
+        the case the directive matters most for. The record now carries it in
+        ``changes_unreferenced`` and the directive fires off it. The fixture's
+        shape is asserted first: with a referenced or judgeable-unjudged path in
+        the record, a green here would prove nothing about the new clause."""
+        repo = self._repo(tmp_path)
+        (repo / "orphan.py").write_text("def lonely_untested_fn():\n    return 1\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert not ev["changes_referenced"]
+        assert "orphan.py" not in ev["changes_unjudged"]
+        assert ev["changes_unreferenced"] == ["orphan.py"]
+        hook = _load_hook_module()
+        assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
+
     def test_directive_reaches_stdout_when_judged_code_changed(self, tmp_path):
         repo = self._repo(tmp_path)
         self._judged_change(repo)
@@ -3766,6 +3842,55 @@ class TestGreenIsEvidenceDelivery:
         assert a.returncode == b.returncode == 0
 
 
+class TestUntrackedFilesWarning:
+    """#1008: a run before `git add` can record an index-only result.
+
+    The record is keyed to the working tree, but a test reading the git index
+    misses a file nobody has added yet. `test-evidence record` names untracked,
+    non-ignored files that need review coverage — and stays quiet otherwise.
+    """
+
+    WARNING = "untracked file(s) that need review coverage"
+
+    def _repo(self, tmp_path) -> Path:
+        repo = TestGreenIsEvidenceDelivery()._repo(tmp_path)
+        # The run's own byproducts are ignored, as in any real Python repo, so
+        # the clean-tree control measures the guard rather than pytest's cache.
+        (repo / ".gitignore").write_text("__pycache__/\n.pytest_cache/\n*.log\n")
+        _git(repo, "add", ".gitignore")
+        _git(repo, "commit", "-m", "ignore", "--quiet")
+        return repo
+
+    def test_warns_naming_an_untracked_judgeable_file(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / "newmod.py").write_text("def fresh():\n    return 1\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        line = next(
+            (ln for ln in res.stderr.splitlines() if self.WARNING in ln), ""
+        )
+        assert "newmod.py" in line, res.stderr
+        assert "recorded:" in res.stdout  # the record still went out
+
+    def test_ignored_and_tracked_files_stay_quiet(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / "debug.log").write_text("ignored\n")
+        (repo / "tests" / "test_baseline.py").write_text(
+            "def test_ok():\n    assert 1\n"
+        )  # tracked, modified
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        assert "recorded:" in res.stdout
+        assert self.WARNING not in res.stderr
+
+    def test_untracked_prose_stays_quiet(self, tmp_path):
+        repo = self._repo(tmp_path)
+        (repo / "NOTES.md").write_text("prose\n")
+        res = _run_in(repo, "test-evidence", "record")
+        assert res.returncode == 0, res.stderr
+        assert self.WARNING not in res.stderr
+
+
 class TestGreenIsEvidenceTrigger:
     """`_evidence_changed_judged_code` decides whether the directive prints.
 
@@ -3785,6 +3910,22 @@ class TestGreenIsEvidenceTrigger:
     def test_fires_when_judged_code_changed(self, tmp_path):
         hook = _load_hook_module()
         path = self._write(tmp_path, json.dumps({"changes_referenced": ["lib/a.py"]}))
+        assert hook._evidence_changed_judged_code(path) is True
+
+    def test_fires_on_unreferenced_python(self, tmp_path):
+        """#556: ``changes_unreferenced`` alone is enough — the other two
+        buckets empty."""
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {
+                    "changes_referenced": [],
+                    "changes_unreferenced": ["orphan.py"],
+                    "changes_unjudged": [],
+                }
+            ),
+        )
         assert hook._evidence_changed_judged_code(path) is True
 
     def test_silent_when_nothing_judged_changed(self, tmp_path):

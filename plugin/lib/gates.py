@@ -80,6 +80,12 @@ _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 # field keep their existing gate behavior.
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
+    # ``changes_unreferenced`` (#556): changed Python files declaring symbols no
+    # test mentions. With ``changes_referenced`` and ``changes_unjudged`` it
+    # partitions the changed set. Absent means empty; no gate reads it —
+    # ``verify-coverage`` derives "missing" from the diff itself, so a record
+    # without it gates exactly as before.
+    "changes_unreferenced": (list,),
     # ``evidence_tree`` (spike-tree-validated-test-evidence.md): the working-tree
     # SHA the recorded run ran against, captured via ``evidence.capture_tree`` just
     # before a live run starts (omitted when a path that affects the test outcome
@@ -2277,6 +2283,30 @@ def validate_evidence(project_dir: Path) -> int:
     return 0
 
 
+def _transfer_missing_input(transfer: dict) -> str:
+    """The missing input of an unrunnable transfer diff, and how to supply it.
+
+    #1002: "could not run" alone tells the reader the check is unavailable but
+    not how to make it available. The producer names the tree objects its
+    failed diff was asked about (``unresolved_trees``); this names them and the
+    commands that check for and supply one. Empty when the producer named none,
+    so a reason with no unrunnable diff behind it reads as before.
+    """
+    trees = [t for t in transfer.get("unresolved_trees") or [] if isinstance(t, str)]
+    if not trees:
+        return ""
+    shown = ", ".join(t[:12] for t in trees[:4])
+    if len(trees) > 4:
+        shown += f", and {len(trees) - 4} more"
+    return (
+        f". The missing input is git tree object(s) {shown}: `git cat-file -t "
+        "<id>` shows whether git holds one, and `git fetch origin` supplies one "
+        "a remote holds (a base from a shallow or partial clone). A tree from a "
+        "garbage-collected review snapshot cannot be restored; a review is then "
+        "the route"
+    )
+
+
 def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
     """The remedy prose for a base-advance transfer that did not grant.
 
@@ -2304,7 +2334,7 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
         return (
             f"the base-advance transfer check could not run ({transfer['reason']}) — "
             "that is not a finding that this gap is genuine work, only that the "
-            "cheap check was unavailable"
+            "cheap check was unavailable" + _transfer_missing_input(transfer)
         )
     return (
         f"the branch's own diff is byte-identical to the span review "
