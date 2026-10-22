@@ -3918,6 +3918,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: record the gates read — the one point where green stops being an observation
 #: and becomes evidence someone else will rely on.
 #:
+#: The write-time instruction is ``methodology/building.md`` § Test Discipline,
+#: which opens its paragraph with this directive's first sentence verbatim, so
+#: the builder meets the rule while writing the test and this is the reminder
+#: at record time — one rule on two surfaces (#695).
+#:
 #: This text lives in code rather than in the learnings rules deliberately. The
 #: general form of this rule has been in that corpus for a long time and does not
 #: fire: a rule read at session start competes with the whole rest of the

@@ -6,11 +6,11 @@ How deep the governance goes is determined by the work's size and type.
 
 A **session** is one Claude Code invocation. Only `startup` and `/clear` begin one; `resume`, `compact` and `fork` are continuations — the transcript survives, so they brief but reset nothing. The git baseline, reflection gate, and Critic gate all scope to the session.
 
-A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
+A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect.
 
 **Context compaction** passes no governance checkpoint, so anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
-**`/clear` between work cycles is recommended** (not required): it resets the git baseline so the next cycle's canary only sees its own changes, clears the previous reflection, and starts fresh context.
+**`/clear` between work cycles is recommended** (not required): it resets session-scoped state, so the next cycle's canary sees only its own changes, in fresh context.
 
 **Working in a git worktree.** Run the work cycle (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to it. One edge: entering a worktree *mid*-cycle leaves the SessionStart markers in the primary checkout (gate readers fail safe) — launch, or `/clear`, in the worktree.
 
@@ -76,11 +76,11 @@ There is no "pre-existing" exception: every session starts clean. Recording a pr
 
 **Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Validate that referenced files and components still exist — plans go stale. Open the `.claude/rules/learnings/` area files covering this chunk.
 
-**Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once. *Writing* it is not enough before you delegate: a worktree-isolated subagent reads HEAD, so an uncommitted amendment is invisible to it (see "Delegating Work to Subagents").
+**Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once, and commit it before you delegate ("Delegating Work to Subagents").
 
 **Write tests.** Tests come first or alongside implementation, not after. If you can't write the test, you don't understand the requirement well enough to implement it.
 
-Test at the right level — **unit** (functions, logic), **integration** (component interactions, data flow, state), **end-to-end** (critical user flows, acceptance criteria). Depth proportionate to risk.
+Test at the right level — **unit** (functions, logic), **integration** (component interactions, data flow, state), **end-to-end** (critical user flows, acceptance criteria).
 
 **Implement.** Write the code that makes the tests pass, following `project-preferences.md` conventions. Prefer simplicity — the minimum abstraction the current chunk needs. Add observability alongside features, not after.
 
@@ -96,7 +96,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Verify.** Two layers:
 
-- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
+- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
@@ -175,6 +175,8 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Multi-hop behavior needs multi-hop tests.** When tested behavior depends on a subsequent invocation (accumulators, coordinators, cursors, stateful retries), exercise at least one step beyond the immediate post-state.
 
+**Green is evidence only about what could have made it red.** Writing each guard test, name the input that must trip it and confirm the fixture reaches that path. Three pass forever: a fixture that cannot trigger the guard, an assertion blind to ordering, a branch on a file that exists only here.
+
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively.
 
 **Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes land in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a floor: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`.
@@ -183,7 +185,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 ## The Critic
 
-After medium+ work, invoke the Critic as a separate agent. It reasons from signals through seven prioritized goals, from Nothing Is Broken to The Design Is Sound (definitions: `skills/critic/review-protocol.md`).
+The Critic reasons from signals through seven prioritized goals, from Nothing Is Broken to The Design Is Sound (definitions: `skills/critic/review-protocol.md`).
 
 In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
 

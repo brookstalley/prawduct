@@ -490,7 +490,16 @@ LAST_MEASURED_TOKENS = {
     # -4 more (goal-grounding chunk 02): Deciding Mid-Build names fork-tier drift as a reason to
     # stop, paid by pointing the decision-record sentence at planning.md "Goals", which states
     # the same rule. Ceiling lowered with it.
-    "methodology/building.md": 5320,
+    # -1 on 2026-10-21 (#560, #695): § Test Discipline gains the write-time "Green is evidence
+    # only about what could have made it red" paragraph and step 7 names the Stop hook's
+    # missing-note advisory, PAID IN PLACE by cutting restatements this file already makes
+    # elsewhere: the HEAD-reading hazard (Delegating Work to Subagents), "depth proportionate
+    # to risk" (Test coverage is proportionate), the verify step's second `test-status`
+    # exit-0 rule (the baseline step's), the Critic section's "after medium+ work" (the
+    # Critic-review step), "flag ambiguity" (Working With Specs), "multiple work cycles per
+    # session" (implied by `/clear` between cycles), and the `/clear` gloss's list of what
+    # resets (the Sessions paragraph's session-scoped state).
+    "methodology/building.md": 5319,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -2358,6 +2367,16 @@ class TestBuildingMethodology:
         assert "Decision Research" in self.content
         assert "lock-in" in self.content.lower()
         assert "research subagent" in self.content.lower() or "research subagent" in self.content
+
+    def test_test_discipline_teaches_green_is_evidence_at_write_time(self):
+        """The record-time directive (`_GREEN_IS_EVIDENCE_DIRECTIVE`) arrives
+        after the tests are written, when re-checking every fixture is
+        expensive. § Test Discipline is the write-time surface, and it carries
+        the directive's anchor verbatim so the two are one rule (#695)."""
+        start = self.content.index("## Test Discipline")
+        section = self.content[start:self.content.index("\n## ", start + 1)]
+        assert "Green is evidence only about what could have made it red" in section
+        assert "fixture" in section
 
     def test_build_cycle_structure(self):
         """Has build cycle, test discipline, and common traps sections."""
