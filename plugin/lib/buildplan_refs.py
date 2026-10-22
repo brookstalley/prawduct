@@ -1548,7 +1548,15 @@ FIELD_VALUE_QUOTE_LIMIT = 60
 #: sentence — those three are how every composed chunk header in this repo is
 #: written. Anything else in front of the marker is a sentence *about* the
 #: field: `- **Notes:** the old reader took **Type:** anything as a value`.
-_FIELD_DECLARATION_PREFIX_RE = re.compile(r"(?:^[\s\-\*`]*|[·•|]\s*|\.\s+)$")
+#: A period after an abbreviation that never ends a sentence (`e.g.`, `i.e.`,
+#: `cf.`, `viz.`) opens nothing: `(e.g. **Type:** designer-handoff)` is prose
+#: quoting the field, and binding it would switch review off (#778). `etc.` is
+#: left out on purpose — it does end sentences, and a composed field after one
+#: must still bind.
+_FIELD_DECLARATION_PREFIX_RE = re.compile(
+    r"(?:^[\s\-\*`]*|[·•|]\s*"
+    r"|(?<!\b[eE]\.g)(?<!\b[iI]\.e)(?<!\b[cC]f)(?<!\b[vV]iz)\.\s+)$"
+)
 
 
 def iter_field_declarations(

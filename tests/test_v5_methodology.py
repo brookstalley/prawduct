@@ -1321,7 +1321,9 @@ LAST_MEASURED_TOKENS = {
     # restated here. A READING.
     # +43 on 2026-10-21 (#999): a chunk that ships as its own PR declares `Critic mode:
     # cumulative`, the boundary the short-plan deferral cannot see. A READING, no ceiling.
-    "methodology/planning.md": 5908,
+    # +4 on 2026-10-21 (#778): a marker after `e.g.`/`i.e.` no longer binds, so the
+    # write-about-a-field advice names it. A READING, no ceiling.
+    "methodology/planning.md": 5912,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
