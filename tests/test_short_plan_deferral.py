@@ -14,10 +14,11 @@ Three mechanisms, one predicate (``critic_mode.short_plan_deferral``):
   eligible plan with code in flight, and ``cumulative`` as ever once the tree
   is clean, so the boundary review is inferred exactly where it always was.
 - The Stop hook's Critic gate WARNS instead of blocking on an eligible plan's
-  non-final chunk, naming the boundary review, and delivers the warning on the
-  one channel the harness reads at exit 0 (a JSON ``systemMessage`` +
-  ``additionalContext`` on stdout); on the last chunk it blocks as ever and
-  says what the boundary review is.
+  non-final chunk, naming the boundary review. At exit 0 the warning reaches
+  the user only (a JSON ``systemMessage`` on stdout — Stop has no model channel
+  that does not start a turn); when another gate blocks it rides the exit-2
+  stderr beside the blockers. On the last chunk it blocks as ever and says
+  what the boundary review is.
 - ``check-cumulative-critic`` is untouched: the plan's acceptance criterion is
   that one ``cumulative`` fact spanning merge-base…HEAD passes the PR gate on
   its own, and a control here shows the gate can still fail.
@@ -455,10 +456,10 @@ class TestStopGateOnShortPlans:
         assert _GENERIC_BLOCK not in result.stderr
         assert "deferred-boundary-review" in result.stderr
         # Delivered where exit 0 is read: ONE JSON object is the whole of stdout,
-        # carrying the same text for the user and for the model.
+        # for the user only — `additionalContext` would start a model turn on
+        # every Stop while the deferral is active (#822).
         payload = json.loads(result.stdout)
-        assert set(payload) == {"systemMessage", "additionalContext"}
-        assert payload["systemMessage"] == payload["additionalContext"]
+        assert set(payload) == {"systemMessage"}
         text = payload["systemMessage"]
         assert "deferred-boundary-review" in text
         assert "`cumulative`" in text and "/prawduct:critic chunk" in text
@@ -471,6 +472,35 @@ class TestStopGateOnShortPlans:
         assert "tick its box" in flat and "does not wait" in flat, flat
         assert "unticked now: Chunk 01, Chunk 02, Chunk 03" in flat, flat
         assert "carry on" not in flat
+
+    def test_the_advisory_rides_the_block_when_another_gate_blocks(self, tmp_path: Path):
+        """#822: exit 2 used to drop the queued advisory. Same non-final chunk,
+        plus an unshaped reflection over judgeable work, so the reflection gate
+        blocks while the Critic gate only defers."""
+        prawduct = _short_plan_branch(tmp_path)
+        _arm_stop(prawduct)
+        (prawduct / ".session-reflected").write_text("did stuff\n")
+        result = _run_stop(tmp_path)
+        assert result.returncode == 2, result.stderr
+        assert "REFLECTION:" in result.stderr
+        assert "ADVISORIES (not blocking):" in result.stderr
+        advisories = result.stderr.split("ADVISORIES (not blocking):", 1)[1]
+        assert "deferred-boundary-review" in advisories
+        assert result.stdout.strip() == ""
+
+    def test_every_stop_exit_after_the_advisories_delivers_them(self):
+        """Each `return` in `cmd_stop` after `stop_advisories` is declared goes
+        through `_deliver_stop_advisories` on the line before it."""
+        src = HOOK.read_text()
+        body = src[src.index("def cmd_stop("):]
+        body = body[: body.index("\ndef ", 1)]
+        after = body[body.index("stop_advisories: list[str] = []"):]
+        lines = after.splitlines()
+        returns = [i for i, ln in enumerate(lines) if ln.strip() in ("return 0", "return 2")]
+        assert len(returns) == 4, returns
+        for i in returns:
+            window = "\n".join(lines[max(0, i - 12):i])
+            assert "_deliver_stop_advisories(stop_advisories" in window, lines[i - 3:i + 1]
 
     def test_four_chunk_plan_still_blocks(self, tmp_path: Path):
         prawduct = _short_plan_branch(tmp_path, chunks=4)
