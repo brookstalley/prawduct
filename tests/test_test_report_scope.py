@@ -835,3 +835,39 @@ def test_an_unsplittable_declared_command_refuses_before_any_suite_runs(tmp_path
     assert "cannot be split into arguments" in res.stderr and "'unbalanced" in res.stderr
     assert not ran.exists(), "the first suite ran before the refusal"
     assert "Traceback" not in res.stderr
+
+
+# =============================================================================
+# The record's lifetime, as prose states it (#846)
+# =============================================================================
+
+
+class TestLifetimeProseMatchesTheSingleSlot:
+    """The report and its record are one slot the next runner invocation
+    overwrites — a subset run's configure-time `partial` write included — so
+    no surface may promise a lifetime of one session."""
+
+    SURFACES = (
+        PLUGIN_ROOT / "docs" / "test-report-contract.md",
+        PLUGIN_ROOT / "bin" / "prawduct-hook",
+        PLUGIN_ROOT / "methodology" / "building.md",
+        REPO_ROOT / "pyproject.toml",
+    )
+    OVERCLAIMS = (
+        "recoverable inside the session",
+        "no run in a session is unrec",
+        "no run is ever unrecordable",
+    )
+
+    @pytest.mark.parametrize("path", SURFACES, ids=lambda p: p.name)
+    def test_no_surface_promises_a_session_lifetime(self, path):
+        text = " ".join(path.read_text(encoding="utf-8").split())
+        # A list, not `assert claim not in text`: pytest's rewrite diffs the
+        # whole file on failure, which on the hook takes minutes.
+        stale = [claim for claim in self.OVERCLAIMS if claim in text]
+        assert stale == [], f"{path.name} still promises a session lifetime: {stale}"
+
+    def test_the_contract_states_the_next_invocation_lifetime(self):
+        text = " ".join(self.SURFACES[0].read_text(encoding="utf-8").split())
+        stated = "next invocation" in text
+        assert stated, "test-report-contract.md must say the report lives until the next invocation"

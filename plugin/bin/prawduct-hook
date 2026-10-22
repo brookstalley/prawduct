@@ -874,7 +874,8 @@ _SESSION_RESET_DELETES = (
     # onto a run made against the previous one — the record says what the
     # invocation selected, never when it ran, and evidence freshness is what
     # would have caught it and is exactly what the ingest rewrites. A run is
-    # recoverable inside the session that made it.
+    # recoverable until the next invocation of the runner overwrites it, and
+    # never past the session boundary.
     ".test-report.xml",
     ".test-report.xml.scope.json",
 )

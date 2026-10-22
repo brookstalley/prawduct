@@ -499,7 +499,9 @@ LAST_MEASURED_TOKENS = {
     # Critic-review step), "flag ambiguity" (Working With Specs), "multiple work cycles per
     # session" (implied by `/clear` between cycles), and the `/clear` gloss's list of what
     # resets (the Sessions paragraph's session-scoped state).
-    "methodology/building.md": 5319,
+    # -1 on 2026-10-21 (#846): the report sentence says "the last run is never unrecordable"
+    # in place of "no run in a session is" — the slot is one run, not one session.
+    "methodology/building.md": 5318,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
