@@ -229,7 +229,7 @@ carrying `recommended_action` on live entries across the fleet, and a rename wou
 ### 4.2 Resolution detection
 
 Resolution is the inverse of triggering. After running all probes, sync diffs:
-- IDs in the previous advisory store but not in this run's probe output → mark resolved (with `resolved_by: sync`).
+- IDs in the previous advisory store but not in this run's probe output → mark resolved (with `resolved_by: sync`) — unless that advisory's probe could not answer this run (it returned `None` or raised), in which case its active advisories are left as they were: "could not look" is not the condition clearing (#917).
 - IDs in this run's probe output but not in the store → write as new active advisory.
 - IDs in both, still `active` → **state** is a no-op (same id, same `triggered_at`, same position — which is what idempotency A2 asks for), but the **derived presentation refreshes** from the fresh candidate: `trigger_summary`, `evidence`, `owner_action`, `recommended_action`, `prerequisite_of`, `alternative_actions`, `priority`.
 - IDs in both, `dismissed` → untouched. A dismissal is sticky and refreshing its text would re-open a settled question.

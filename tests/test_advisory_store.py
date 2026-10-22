@@ -529,6 +529,45 @@ class TestRunSyncAdvisories:
         assert adv["state"] == "resolved"
         assert adv["resolved_by"] == "sync"
 
+    @pytest.mark.parametrize("failure", ["returns-none", "raises"])
+    def test_probe_that_cannot_look_leaves_advisory_open(self, tmp_path: Path, failure):
+        """#917: a probe that could not answer is not a probe reporting nothing.
+
+        Reading it as the latter resolves every open advisory of its type over a
+        check that never ran, records a resolution the yield record counts, and
+        re-activates it on the next good sync.
+        """
+        (tmp_path / ".prawduct").mkdir()
+        (tmp_path / "SYNTHETIC_TRIGGER").write_text("x")
+        register_probe("synthetic", "synthetic-condition", 1, self._trigger_probe)
+        run_sync_advisories(tmp_path, now="2026-05-29T00:00:00Z", sync_version="v1.6.0")
+        before = read_store(tmp_path)["advisories"]
+        assert [a["state"] for a in before] == ["active"]
+
+        def _cannot_look(state, codebase):
+            if failure == "raises":
+                raise RuntimeError("timed out")
+            return None
+
+        register_probe("synthetic", "synthetic-condition", 1, _cannot_look)
+        result = run_sync_advisories(tmp_path, now="2026-06-01T00:00:00Z", sync_version="v1.6.0")
+        assert result["newly_resolved"] == []
+        assert result["active"] == 1
+        assert read_store(tmp_path)["advisories"] == before
+
+    def test_unanswered_scopes_to_its_own_type(self):
+        """Control for #917: only the unanswered type is held open; a type whose
+        probe answered "nothing" still resolves."""
+        store = {"schema_version": 1, "advisories": []}
+        both = reconcile(
+            store, [_candidate(), _candidate(ctype="other-condition")], now="2026-05-29T00:00:00Z"
+        )
+        after = reconcile(
+            both, [], now="2026-05-31T00:00:00Z", unanswered={("synthetic", "synthetic-condition")}
+        )
+        states = {a["type"]: a["state"] for a in after["advisories"]}
+        assert states == {"synthetic-condition": "active", "other-condition": "resolved"}
+
     def test_sync_compacts_resolved_entry(self, tmp_path: Path):
         """The sync-persist retention pass shrinks an auto-resolved advisory to
         compact form on disk (Chunk 04 / spec §3.4)."""

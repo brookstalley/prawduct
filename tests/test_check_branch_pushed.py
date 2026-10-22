@@ -352,6 +352,28 @@ def test_a_git_that_cannot_run_is_not_a_pass_on_the_named_branch_path(tmp_path):
     assert exit_code == 3
 
 
+def test_a_git_that_cannot_run_on_the_upstream_lookup_is_git_failed(tmp_path):
+    """#806: the upstream `rev-parse --verify` mirrors the named-branch arm. A `-1`
+    there is git that could not run, not a missing ref — `upstream-ref-missing`
+    would hand the operator a fetch remedy for a problem fetching cannot fix."""
+    repo = _repo_on_pushed_branch(tmp_path)
+    real = gitstate._git_text
+
+    def _fail_upstream_lookup(project_dir, *args):
+        if args[:2] == ("rev-parse", "--verify") and not args[2].startswith("refs/heads/"):
+            return (-1, "", "FileNotFoundError('git')")
+        return real(project_dir, *args)
+
+    try:
+        gitstate._git_text = _fail_upstream_lookup
+        state = gitstate.branch_push_state(repo)
+    finally:
+        gitstate._git_text = real
+    assert state["upstream"], "the fixture must reach the upstream lookup"
+    assert state["state"] == "git-failed"
+    assert "git" in state["detail"]
+
+
 def test_a_named_detached_repo_still_answers(tmp_path):
     """Detachment is only fatal when nothing names the subject — the argument is
     the remedy the detached-head message offers, so it has to work."""
@@ -483,7 +505,9 @@ def test_push_remote_prefers_origin_among_several_and_falls_back_to_it(tmp_path)
     _git(repo, "remote", "add", "fork", str(tmp_path / "origin.git"))
     assert gitstate.push_remote(repo) == "origin"
     _git(repo, "remote", "rename", "origin", "canonical")
-    assert gitstate.push_remote(repo) in {"canonical", "fork"}
+    # `git remote` lists names sorted, so the first is `canonical`; pinned so a
+    # `remotes[-1]` mutant dies (#806).
+    assert gitstate.push_remote(repo) == "canonical"
     _git(repo, "remote", "remove", "canonical")
     _git(repo, "remote", "remove", "fork")
     assert gitstate.push_remote(repo) == "origin"

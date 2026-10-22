@@ -748,6 +748,11 @@ def branch_push_state(project_dir: Path, branch: str | None = None) -> dict[str,
     ref_code, upstream_sha, ref_err = _git_text(
         project_dir, "rev-parse", "--verify", f"{upstream}^{{commit}}"
     )
+    if ref_code == -1:
+        # git could not be run here — the named-branch path's arm, mirrored. Not a
+        # missing ref, whose remedy (fetch) would send the operator the wrong way.
+        answer["detail"] = ref_err or "git could not be run"
+        return answer
     if ref_code != 0 or not upstream_sha:
         answer["state"] = "upstream-ref-missing"
         answer["detail"] = ref_err or f"{upstream} does not resolve to a commit"
@@ -932,51 +937,58 @@ def _is_framework_tooling(f: Path, project_dir: Path) -> bool:
     return rel == "tools/product-hook" or rel.startswith("tools/lib/")
 
 
-# Suffixes that count as the product's own source code. Shared by the
-# project-preferences CRITICAL (cmd_clear) and the discovery-capture probe
-# (lib/coverage_probes.probe_discovery_not_captured).
-_PRODUCT_CODE_SUFFIXES = (
-    ".py", ".js", ".ts", ".go", ".rs", ".java", ".rb", ".swift", ".kt",
-    ".c", ".cpp", ".h",
-)
-
-
-# Directory names pruned from the product-code walk (STH-6Q9D): never descend
-# into them. ``node_modules``/``.git`` can hold tens of thousands of files the old
-# ``rglob`` enumerated before the per-file filter discarded them; ``.prawduct`` is
-# framework state. ``node_modules`` and ``.prawduct`` were already excluded by the
-# prior filter; ``.git`` is added — it never holds product source, so the verdict
-# is unchanged while the heaviest tree (``.git/objects``) is no longer walked.
-_PRODUCT_WALK_PRUNE_DIRS = frozenset({".prawduct", "node_modules", ".git"})
-
-
-def _has_product_code(project_dir: Path) -> bool:
-    """True if the repo contains the product's OWN source code — not framework
-    tooling, not ``.prawduct/`` state, not vendored deps. The single definition
-    behind both the project-preferences CRITICAL and the discovery-capture nudge.
-
-    Prunes ``node_modules``/``.git``/``.prawduct`` at the directory level
-    (STH-6Q9D) so a large ``node_modules`` is never enumerated, and short-circuits
-    on the first product-code file — same verdict as the prior ``rglob`` + filter.
-    """
-    for dirpath, dirnames, filenames in os.walk(str(project_dir)):
-        # Prune in place so os.walk never descends into excluded trees.
-        dirnames[:] = [d for d in dirnames if d not in _PRODUCT_WALK_PRUNE_DIRS]
-        for name in filenames:
-            if name == "conftest.py":
-                continue
-            f = Path(dirpath) / name
-            if f.suffix in _PRODUCT_CODE_SUFFIXES and not _is_framework_tooling(
-                f, project_dir
-            ):
-                return True
-    return False
-
+# "Is this file the product's own code?" is answered by EXCLUSION (#561): a file
+# counts unless it is one of the known non-code shapes below. An allowlist of
+# source suffixes went dark on every language nobody had listed (`.cs`, `.tsx`,
+# `.php`, ...); an unknown file here speaks, and over-firing costs one nudge.
+# A repo whose only non-excluded content is config or data (`package.json`, a
+# CSV) therefore reads as started — the accepted cost.
+_NON_CODE_SUFFIXES = (".md", ".markdown", ".txt", ".rst", ".adoc")
+_NON_CODE_STEMS = frozenset({"LICENSE", "LICENCE", "COPYING", "NOTICE", "AUTHORS", "CODEOWNERS"})
 
 # Conventional documentation roots prawduct recognizes — CLAUDE.md (and the
 # MIG-6B0R backlog item) both name docs/ and documentation/ as real product-doc
 # trees worth keeping on deploy-to-main.
 _DOC_ROOTS = ("docs", "documentation")
+
+
+def _is_non_code_file(f: Path, project_dir: Path) -> bool:
+    """True when ``f`` is a known non-code shape (see :data:`_NON_CODE_SUFFIXES`)."""
+    name = f.name
+    if name.startswith(".") or name == "conftest.py":
+        return True
+    suffix = f.suffix.lower()
+    if suffix in _NON_CODE_SUFFIXES:
+        return True
+    if f.stem.upper() in _NON_CODE_STEMS:
+        return True
+    return _is_framework_tooling(f, project_dir)
+
+
+def _has_product_code(project_dir: Path) -> bool:
+    """True if the repo contains the product's OWN source code — not framework
+    tooling, not dot-directory state (``.prawduct``, ``.claude``, ``.git``,
+    ``.github``, ``.venv``), not vendored deps, not docs. The single definition
+    behind the project-preferences CRITICAL, the discovery-capture nudge and the
+    ``risk_surfaces`` declaration status.
+
+    Classifies by exclusion (#561), so a language nobody listed still counts.
+    Prunes dot-directories and ``node_modules`` at any depth, and the top-level
+    documentation roots, at the directory level (STH-6Q9D) so a large tree is
+    never enumerated, and short-circuits on the first product-code file.
+    """
+    root = str(project_dir)
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune in place so os.walk never descends into excluded trees.
+        top = dirpath == root
+        dirnames[:] = [
+            d for d in dirnames
+            if not d.startswith(".") and d != "node_modules" and not (top and d in _DOC_ROOTS)
+        ]
+        for name in filenames:
+            if not _is_non_code_file(Path(dirpath) / name, project_dir):
+                return True
+    return False
 
 
 def _has_product_definition_work(project_dir: Path) -> bool:

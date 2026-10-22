@@ -1335,6 +1335,34 @@ def ephemeral_facts(facts: list[dict]) -> list[dict]:
     return [f for f in facts if is_ephemeral_fact(f)]
 
 
+def _store_size_line(path: Path) -> str | None:
+    """``size: <MB> MB, <n> lines; largest kinds: review <MB> MB, …`` for the store.
+
+    Bytes per kind, because parse cost tracks bytes and the kinds differ ~30x in
+    fact size (#953). A line that is not a JSON object with a string ``kind`` is
+    counted in the total and left out of the per-kind split, so the kinds sum
+    to the file size within the bytes of excluded lines. ``None`` when the file
+    cannot be read — the rest of the report stands without it.
+    """
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    by_kind: dict[str, int] = {}
+    lines = raw.splitlines(keepends=True)
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        kind = record.get("kind") if isinstance(record, dict) else None
+        if isinstance(kind, str):
+            by_kind[kind] = by_kind.get(kind, 0) + len(line)
+    ranked = sorted(by_kind.items(), key=lambda item: (-item[1], item[0]))
+    kinds = ", ".join(f"{kind} {size / 1_000_000:.2f} MB" for kind, size in ranked) or "none"
+    return f"size: {len(raw) / 1_000_000:.2f} MB, {len(lines)} lines; largest kinds: {kinds}"
+
+
 def _cmd_status(project_dir: Path) -> int:
     path = store_path(project_dir)
     if path is None:
@@ -1356,6 +1384,9 @@ def _cmd_status(project_dir: Path) -> int:
         by_kind[fact["kind"]] = by_kind.get(fact["kind"], 0) + 1
     counts = ", ".join(f"{k}={n}" for k, n in sorted(by_kind.items())) or "none"
     print(f"facts: {counts}")
+    size_line = _store_size_line(path)
+    if size_line:
+        print(size_line)
     trees = distinct_trees(result["facts"])
     print(f"trees referenced: {len(trees)}")
     # Only COVERAGE-BEARING kinds belong in the wasted-cost sentence. A

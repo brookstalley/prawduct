@@ -251,6 +251,11 @@ coverage_required: false
 #   - npm run test:ci -- --junit --outputFile={junit_xml}
 # tests_dirs: tests
 
+# Paths your tests read as data (docs a test scans): a change under one makes
+# recorded test evidence stale, as a code change does.
+# suite_coupled_prefixes:
+#   - documentation/
+
 # Learnings budgets: every rule is one line; core.md is capped and only the
 # owner raises it.
 # learnings_budgets:

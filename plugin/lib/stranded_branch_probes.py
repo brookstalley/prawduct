@@ -52,7 +52,7 @@ def probe_stranded_branch(state: ProjectState, codebase: Codebase):
             "unpushed work would go unreported this session",
             file=sys.stderr,
         )
-        return []
+        return None  # could not look — not "nothing to report" (#917)
     candidates: list[AdvisoryCandidate] = []
     for row in rows:
         candidates.append(

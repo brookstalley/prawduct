@@ -261,7 +261,12 @@ class Codebase:
                 yield path
 
 
-ProbeFn = Callable[[ProjectState, Codebase], Iterable[AdvisoryCandidate]]
+#: A probe returns its candidates — ``[]`` meaning "looked, nothing to report" —
+#: or ``None`` meaning "could not look" (git failed, a file would not read). The
+#: two must stay distinct: :func:`reconcile` resolves an active advisory whose
+#: probe reported nothing, and a probe that could not answer has reported
+#: nothing about the condition at all (#917).
+ProbeFn = Callable[[ProjectState, Codebase], "Iterable[AdvisoryCandidate] | None"]
 
 
 # =============================================================================
@@ -292,24 +297,36 @@ def clear_registry() -> None:
     _REGISTRY.clear()
 
 
-def run_all_probes(state: ProjectState, codebase: Codebase) -> list[AdvisoryCandidate]:
-    """Run every registered probe and return enriched candidates.
+def run_probes(
+    state: ProjectState, codebase: Codebase
+) -> tuple[list[AdvisoryCandidate], frozenset[tuple[str, str]]]:
+    """Run every registered probe; return ``(candidates, unanswered)``.
 
     Each candidate is stamped with the ``feature`` and ``probe_version`` from
     its registration (and ``type`` defaults to the registered ``probe_type``
-    when the probe left it blank). A probe that raises is skipped — one bad
-    probe must not block the others or the sync.
+    when the probe left it blank). ``unanswered`` holds the registered
+    ``(feature, probe_type)`` of every probe that could not look: one that
+    returned ``None``, or one that raised — skipped so one bad probe cannot
+    block the others or the sync, but never read as "nothing to report", which
+    would resolve that type's open advisories over a check that never ran.
     """
     candidates: list[AdvisoryCandidate] = []
+    unanswered: set[tuple[str, str]] = set()
     for record in _REGISTRY.values():
         fn = record["fn"]
         try:
-            produced = list(fn(state, codebase))
+            produced = fn(state, codebase)
+            produced = None if produced is None else list(produced)
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- a faulty probe must not block sync; skip it
             print(
                 f"NOTE: advisory probe {record['feature']}/{record['probe_type']} skipped: {exc}",
                 file=sys.stderr,
             )
+            produced = None
+        if produced is None:
+            # A None-returning probe prints its own NOTE naming what went
+            # unchecked; the raise path above printed one on its behalf.
+            unanswered.add((record["feature"], record["probe_type"]))
             continue
         for cand in produced:
             candidates.append(
@@ -320,7 +337,12 @@ def run_all_probes(state: ProjectState, codebase: Codebase) -> list[AdvisoryCand
                     type=cand.type or record["probe_type"],
                 )
             )
-    return candidates
+    return candidates, frozenset(unanswered)
+
+
+def run_all_probes(state: ProjectState, codebase: Codebase) -> list[AdvisoryCandidate]:
+    """The candidates of :func:`run_probes`, for callers that only render them."""
+    return run_probes(state, codebase)[0]
 
 
 # =============================================================================
@@ -628,14 +650,21 @@ def _supersession_targets(
     return targets
 
 
-def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str | None = None, sync_version: str = "") -> dict:
+def reconcile(
+    store: dict,
+    candidates: Iterable[AdvisoryCandidate],
+    *,
+    now: str | None = None,
+    sync_version: str = "",
+    unanswered: Iterable[tuple[str, str]] = (),
+) -> dict:
     """Diff fresh probe candidates against the existing store (spec §4.2, §2.8).
 
     Decides advisory *states* — ``active``, ``resolved``, ``dismissed``, and
     probe-version supersession. The complementary question of *what form to
     keep non-active entries in* (compaction, TTL GC, soft caps) belongs to the
     sync-persist pass :func:`apply_retention`, kept separate so this function
-    stays a clean state-diff. The six cases:
+    stays a clean state-diff. The seven cases:
 
       - id in candidates, not in store        → new ``active`` advisory
       - id in candidates, ``active`` in store  → no-op (idempotent; ``triggered_at`` unchanged)
@@ -644,6 +673,9 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
       - id ``active`` in store, superseded by a higher-version new candidate for
         the same ``(feature, type)`` → ``resolved`` / ``resolved_by: probe-update`` /
         ``superseded_by: <new-id>`` (spec §2.8, A8)
+      - id ``active`` in store, its ``(feature, type)`` in ``unanswered`` → kept
+        as-is: its probe could not look this sync, which is not the condition
+        clearing (#917)
       - id ``active`` in store, not in candidates and not superseded → ``resolved`` / ``resolved_by: sync``
       - non-active in store, not in candidates → kept as-is (compaction/GC is
         a separate sync-persist pass, :func:`apply_retention`)
@@ -663,6 +695,7 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
         advisory_id = compute_id(cand.feature, cand.type, cand.probe_version, cand.evidence)
         cand_by_id[advisory_id] = cand
 
+    no_answer = set(unanswered)
     existing_ids = {a.get("id") for a in store.get("advisories", [])}
     supersedes = _supersession_targets(cand_by_id, existing_ids)
 
@@ -704,6 +737,8 @@ def reconcile(store: dict, candidates: Iterable[AdvisoryCandidate], *, now: str 
                 )
             else:
                 result.append(_refreshed_active(advisory, cand_by_id[advisory_id]))
+        elif state == "active" and (advisory.get("feature"), advisory.get("type")) in no_answer:
+            result.append(advisory)
         elif state == "active":
             target = supersedes.get((advisory.get("feature"), advisory.get("type")))
             resolved = dict(advisory)
@@ -836,9 +871,9 @@ def run_sync_advisories(product_dir, *, now: str | None = None, sync_version: st
     # register_probe (see bin/prawduct-hook cmd_clear, which registers the four
     # backlog probes — including legacy-backlog-format, the /prawduct:backlog
     # migrate nudge — before the roster runs).
-    candidates = run_all_probes(state, codebase)
+    candidates, unanswered = run_probes(state, codebase)
     store = read_store(product)
-    reconciled = reconcile(store, candidates, now=now, sync_version=sync_version)
+    reconciled = reconcile(store, candidates, now=now, sync_version=sync_version, unanswered=unanswered)
     new_store = apply_retention(reconciled, now=now)
     write_result = write_store(product, new_store)
     advisories = new_store["advisories"]

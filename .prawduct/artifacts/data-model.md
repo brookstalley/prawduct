@@ -184,6 +184,8 @@ An absent file is the empty store.
   a guard whose only output is stderr can never be measured, and therefore never retired.
   **Droppability:** a refusal sits on no coverage path and targets no other fact, so it is droppable
   at any time — dropping one loses a data point about the guard's yield, never a governance answer.
+  Nothing drops one yet: the store has no compaction (#953 measured this kind and session-start at
+  0.27% of a real store's bytes; the `oversized-evidence-store` advisory surfaces growth instead).
   Written by `evidence.append_guard_refusal`, the one sink for the whole class (#596).
   **Stop-hook blocks ride this kind** rather than one of their own, because a Stop gate is a control
   like any guard and #563's owner decision (2026-09-30) asks for one firing shape across the class:
@@ -196,7 +198,7 @@ An absent file is the empty store.
   and records none), written by `evidence.append_session_start` from `cmd_clear`. It is the
   denominator that turns a count of Stop blocks or guard firings into a per-session rate. No gate
   reads it, and it is one of `evidence.OBSERVATIONAL_KINDS`. **Droppability:** droppable at any time
-  — dropping one undercounts sessions, never changes a governance answer.
+  — dropping one undercounts sessions, never changes a governance answer. Nothing drops one yet (#953).
 - **Test-run fact `body`** — one recorded suite run (#653): the `tree` it met (as `capture_tree`
   returned it just before a live run started — a run records no fact when that capture failed or
   when `gates._test_evidence_tree_valid` cannot confirm the tree held until it ended — or at ingest
@@ -210,8 +212,9 @@ An absent file is the empty store.
   worktree's own record has declined; among the candidates, the newest run that met the tree
   decides it. **Observational to the coverage data plane**: composition never reads
   it, and it is one of `evidence.OBSERVATIONAL_KINDS`, which the verdict cache's key leaves out.
-  **Droppability:** droppable at any time — the per-worktree `.test-evidence.json` stays the run's
-  primary record, so losing a fact costs a later suite re-run, never a governance answer.
+  **Droppability:** coverage-neutral, not freshness-neutral — `gates._store_run_vouching` reads it,
+  and among the candidates the newest run that met a tree decides it, so dropping one can flip a
+  freshness verdict (#953). Nothing drops one today.
 
 **Tree-keying (the load-bearing idea).** Facts reference git *tree SHAs*, captured via a temporary
 index that never touches the session's working tree or real index. Because a verbatim commit

@@ -23,6 +23,8 @@ import importlib.machinery
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 _loader = importlib.machinery.SourceFileLoader(
     "prawduct_hook_discovery", str(_ROOT / "bin" / "prawduct-hook")
@@ -163,6 +165,32 @@ class TestHasProductCode:
         (tmp_path / "docs").mkdir()
         (tmp_path / "docs" / "vision.md").write_text("# Vision\n")
         assert gitstate._has_product_code(tmp_path) is False
+
+    # #561: classified by exclusion, so a language nobody listed still counts.
+    @pytest.mark.parametrize("rel", ["src/Program.cs", "web/App.tsx"])
+    def test_an_unlisted_language_counts(self, tmp_path, rel):
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True)
+        f.write_text("x\n")
+        assert gitstate._has_product_code(tmp_path) is True
+
+    def test_the_init_product_scaffold_alone_is_not_code(self, tmp_path):
+        """Built by the scaffolder itself, so the guard follows the scaffold."""
+        from lib.init_product import init_product
+
+        init_product(tmp_path, "Fresh", apply=True)
+        assert (tmp_path / ".prawduct").is_dir(), "the scaffold must have run"
+        assert gitstate._has_product_code(tmp_path) is False
+
+    def test_license_readme_and_docs_media_are_not_code(self, tmp_path):
+        (tmp_path / "LICENSE").write_text("MIT\n")
+        (tmp_path / "README.md").write_text("# x\n")
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "docs" / "diagram.png").write_bytes(b"\x89PNG")
+        assert gitstate._has_product_code(tmp_path) is False
+        # control: one source file beside them flips the answer
+        (tmp_path / "main.go").write_text("package main\n")
+        assert gitstate._has_product_code(tmp_path) is True
 
 
 class TestHasProductDefinitionWork:

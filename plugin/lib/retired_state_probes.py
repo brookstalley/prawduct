@@ -89,8 +89,9 @@ REPAIR_COMMAND = "prawduct-hook lifecycle-repair --apply"
 def probe_retired_test_tracking(state: ProjectState, codebase: Codebase):
     """Raise one advisory when the retired test-count block is still present.
 
-    Raises nothing on any input it cannot read: an absent, unreadable or
-    undecodable state file yields ``[]`` rather than a guess. This is the
+    Raises nothing on any input it cannot read: an absent state file yields
+    ``[]`` and an unreadable or undecodable one ``None`` (could not look, so
+    an open advisory stays open), never a guess. This is the
     *advice fails soft* half of ``architecture.md`` § Direction — nagging a repo
     about a file that was never read would be a confident claim about something
     unexamined, and unlike a gate there is no caller here to fail closed on.
@@ -120,7 +121,7 @@ def probe_retired_test_tracking(state: ProjectState, codebase: Codebase):
             f"NOTE: {path} could not be read ({exc}) — this session did not "
             "check it for retired governance keys."
         )
-        return []
+        return None  # could not look — not "nothing to report" (#917)
 
     if not any(item["key"] == RETIRED_KEY for item in lifecycle_repair.state_removals(text)):
         return []

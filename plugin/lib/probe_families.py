@@ -52,6 +52,7 @@ def register_all() -> None:
     from .adhoc_delegate_probes import register as register_adhoc_delegate
     from .oversized_state_probes import register as register_oversized_state
     from .stranded_branch_probes import register as register_stranded_branch
+    from .evidence_size_probes import register as register_evidence_size
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe
@@ -66,4 +67,5 @@ def register_all() -> None:
     register_onboarding()  # plugin enabled but /prawduct:onboard never run in this repo
     register_adhoc_delegate()  # ad-hoc delegate worktree left unintegrated (its brief is the signal)
     register_oversized_state()  # governance files over this repo's size threshold
+    register_evidence_size()  # clone-shared evidence store over its size threshold (#953)
     register_stranded_branch()  # local branch checked out nowhere, commits no remote has (#843's local arm)

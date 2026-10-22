@@ -521,16 +521,16 @@ def read_yaml_block(text: str, key: str) -> tuple[str, tuple[str, ...]]:
     for index, raw in enumerate(lines):
         if raw[:1] in (" ", "\t"):
             continue
-        if not raw.split("#", 1)[0].rstrip().startswith(needle):
+        if not strip_scalar_comment(raw).startswith(needle):
             continue
-        inline = raw.split("#", 1)[0].rstrip().split(":", 1)[1].strip()
+        inline = strip_scalar_comment(raw).split(":", 1)[1].strip()
         if inline == "[]":
             return YAML_DECLARED, ()
         if inline:
             return YAML_UNPARSEABLE, ()
         body: list[str] = []
         for follow in lines[index + 1:]:
-            stripped = follow.split("#", 1)[0].strip()
+            stripped = strip_scalar_comment(follow)
             if not stripped:
                 continue  # blank or comment-only — inert at any indent
             if follow[:1] not in (" ", "\t"):
@@ -573,7 +573,7 @@ def yaml_top_level_key_present(text: str, key: str) -> bool:
     ones that only carry a ``list | None``.
     """
     return any(
-        raw[:1] not in (" ", "\t") and raw.split("#", 1)[0].rstrip().startswith(f"{key}:")
+        raw[:1] not in (" ", "\t") and strip_scalar_comment(raw).startswith(f"{key}:")
         for raw in text.splitlines()
     )
 
@@ -610,10 +610,16 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
     """Path prefixes this repo declares its non-hermetic tests read.
 
     Reads :data:`SUITE_COUPLED_PREFIXES_KEY` from ``project-state.yaml`` as a
-    YAML list. Fail-soft to ``()`` on a missing file, an absent key, or an
-    unparseable block — the empty answer is the pre-declaration behaviour, so a
-    typo here can only fail toward running the suite's freshness check as it
-    always did, never toward a false-fresh verdict.
+    block sequence of strings via :func:`read_block_sequence`. ``()`` on a
+    missing file or an absent key — the pre-declaration behaviour.
+
+    **A declaration the reader cannot read whole couples EVERYTHING** (``("",)``,
+    a prefix every path starts with), never a partial list or ``()`` (#780). A
+    dropped root reads its files as not suite-coupled, so a change under it would
+    let day-old evidence read *current* over a red tree — the false-fresh verdict
+    the key exists to prevent. Coupling every path can only cost a suite run, the
+    same escalation the ``risk_surfaces`` path-wise reader makes on a shape it
+    cannot parse.
 
     Entries are plain path prefixes against repo-relative paths, so a trailing
     slash matters and is the caller's to write: ``doc/`` must not match
@@ -623,19 +629,12 @@ def suite_coupled_prefixes(prawduct_dir: Path) -> tuple[str, ...]:
     state = prawduct_dir / "project-state.yaml"
     try:
         text = state.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return ()
-    status, lines = read_yaml_block(text, SUITE_COUPLED_PREFIXES_KEY)
-    if status != YAML_DECLARED:
-        return ()
-    out = []
-    for line in lines:
-        if not line.startswith("- "):
-            continue
-        value = unquote_scalar(line[2:].strip())
-        if value:
-            out.append(value)
-    return tuple(out)
+    status, items = read_block_sequence(text, SUITE_COUPLED_PREFIXES_KEY)
+    if status == YAML_UNPARSEABLE:
+        return ("",)
+    return items
 
 
 def oversized_file_threshold(prawduct_dir: Path) -> int:
