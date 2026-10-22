@@ -1,14 +1,14 @@
 """Pins the pytest ``addopts`` that keep a timed-out or crashed xdist worker from hanging the run (#997).
 
-The timeout-method and worker-restart flags are read from this repo's ``pyproject.toml``
-rather than restated, so the test follows the config it protects.
+The timeout-method and worker-restart flags are read from the ``addopts`` pytest itself
+loaded (``pytestconfig.getini``) rather than restated, so the test follows the config it
+protects. Not ``tomllib``: it is 3.11+, and CI's floor leg runs 3.10.
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
-import tomllib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -16,8 +16,8 @@ REPO = Path(__file__).resolve().parent.parent
 _BOUND = 120
 
 
-def _flags() -> list[str]:
-    addopts = tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["pytest"]["ini_options"]["addopts"]
+def _flags(pytestconfig) -> list[str]:
+    addopts = list(pytestconfig.getini("addopts"))
     out: list[str] = []
     for i, tok in enumerate(addopts):
         if tok in ("--timeout-method", "--max-worker-restart"):
@@ -38,11 +38,11 @@ def _run(tmp_path: Path, files: dict[str, str], flags: list[str]):
     return proc, junit
 
 
-def test_addopts_pin_signal_timeout_and_no_worker_restart():
-    assert _flags() == ["--timeout-method", "signal", "--max-worker-restart", "0"]
+def test_addopts_pin_signal_timeout_and_no_worker_restart(pytestconfig):
+    assert _flags(pytestconfig) == ["--timeout-method", "signal", "--max-worker-restart", "0"]
 
 
-def test_a_timed_out_test_fails_alone_and_the_run_completes(tmp_path: Path):
+def test_a_timed_out_test_fails_alone_and_the_run_completes(tmp_path: Path, pytestconfig):
     proc, junit = _run(
         tmp_path,
         {
@@ -50,7 +50,7 @@ def test_a_timed_out_test_fails_alone_and_the_run_completes(tmp_path: Path):
             "test_b.py": "import time\n\ndef test_slow():\n    time.sleep(30)\n",
             "test_c.py": "def test_c():\n    pass\n",
         },
-        _flags(),
+        _flags(pytestconfig),
     )
     out = proc.stdout + proc.stderr
     assert proc.returncode != 0
@@ -64,7 +64,7 @@ def test_a_timed_out_test_fails_alone_and_the_run_completes(tmp_path: Path):
     assert "Timeout" in (results["test_slow"].get("message") or "") + (results["test_slow"].text or "")
 
 
-def test_a_killed_worker_ends_the_run_non_zero_naming_it(tmp_path: Path):
+def test_a_killed_worker_ends_the_run_non_zero_naming_it(tmp_path: Path, pytestconfig):
     proc, _ = _run(
         tmp_path,
         {
@@ -72,7 +72,7 @@ def test_a_killed_worker_ends_the_run_non_zero_naming_it(tmp_path: Path):
             "test_b.py": "import os, signal\n\ndef test_die():\n    os.kill(os.getpid(), signal.SIGKILL)\n",
             "test_c.py": "def test_c():\n    pass\n",
         },
-        _flags(),
+        _flags(pytestconfig),
     )
     out = proc.stdout + proc.stderr
     assert proc.returncode != 0, out
