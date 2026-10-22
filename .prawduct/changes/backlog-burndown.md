@@ -14,6 +14,11 @@ Closed directly as no longer applicable: #1012 (the fragment record shipped), #7
 tag left to give a convention), and #609, #610 and #611 (their premises live only on the
 three-month-stale `feature/upstream-dependency-policy` branch).
 
+Integration surfaced one methodology gap, fixed here: a worktree delegate's branch is cut from
+the repo's default branch, not the coordinator's, so all ten first-wave delegates started on the
+v3.7.1 release. `delegation.md` now says a gitflow delegate resets onto the integration branch
+first.
+
 ### Fixed
 - #159: migration-scrub records a survey baseline date and re-derives the unsurveyed set at Step 3
 - #187: the session-boundary prose pin also catches "auto-cleared" and "at session start"; red on both motivating sentences

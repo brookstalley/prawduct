@@ -1578,7 +1578,11 @@ LAST_MEASURED_TOKENS = {
     # isolation, where the brief goes, and WHY the pointed-at shape fails — the
     # reason is what stops it being restored. A RAISE, on-demand class: paid
     # only by a session already about to delegate.
-    "methodology/delegation.md": 2858,
+    # +39 on 2026-10-21 (backlog-burndown): the worktree is cut from the default
+    # branch, not the coordinator's, so a gitflow delegate resets onto the
+    # integration branch first; ten delegates built against v3.7.1 without it. A
+    # RAISE, on-demand class: paid only by a session about to delegate.
+    "methodology/delegation.md": 2897,
 }
 
 
