@@ -157,6 +157,107 @@ class TestFileWritesOnlyToItsOwnRepo:
         assert fake.calls == []
 
 
+#: Every transport method that writes. A refused op must have called none of them.
+_WRITES = {
+    "create_issue", "update_issue", "add_labels", "remove_label", "create_label",
+    "create_comment", "add_blocked_by", "remove_blocked_by", "add_sub_issue",
+    "remove_sub_issue",
+}
+
+#: One argv per id-addressed write the backlog skill pre-grants, `{id}` the item
+#: written and `{own}` a second, own-repo item where the op needs one.
+_ID_WRITES = {
+    "comment": ["comment", "{id}", "--body", "hello"],
+    "update": ["update", "{id}", "--effort", "s"],
+    "status": ["status", "{id}", "--to", "shipped"],
+    "link": ["link", "{id}", "--edge", "related", "--to", "{own}"],
+    "link-to": ["link", "{own}", "--edge", "blocked-by", "--to", "{id}"],
+    "unlink": ["unlink", "{id}", "--edge", "related", "--to", "{own}"],
+}
+
+
+class TestIdWritesOnlyToItsOwnRepo:
+    """#1013 — the id-addressed writes refuse a target that is not this repo's own."""
+
+    def _write(self, project_dir, op, item, own, fake, capsys, extra=()):
+        argv = [a.format(id=item, own=own) for a in _ID_WRITES[op]] + [*extra, "--json"]
+        code = cli.run(str(project_dir), argv, transport=fake)
+        return code, json.loads(capsys.readouterr().out)
+
+    @staticmethod
+    def _wrote(fake):
+        return [c for c in fake.calls if c[0] in _WRITES]
+
+    @pytest.mark.parametrize("op", sorted(_ID_WRITES))
+    def test_a_foreign_id_is_refused_before_any_request(self, op, tmp_path, capsys):
+        fake = FakeGitHub()
+        own = _file(fake, capsys)
+        fake.calls.clear()
+        code, envelope = self._write(
+            own_tracker(tmp_path, REPO), op, "someone-else/x#1", own, fake, capsys
+        )
+        assert code == 2, envelope
+        assert envelope["error"]["code"] == "foreign-target"
+        assert envelope["error"]["details"]["reason"] == "foreign"
+        assert envelope["error"]["retryable"] is False
+        assert fake.calls == []
+
+    def test_a_bare_number_against_a_foreign_repo_flag_is_refused(self, tmp_path, capsys):
+        fake = FakeGitHub()
+        code, envelope = self._write(
+            own_tracker(tmp_path, REPO), "comment", "1", "", fake, capsys,
+            extra=("--repo", "someone-else/x"),
+        )
+        assert envelope["error"]["code"] == "foreign-target"
+        assert fake.calls == []
+
+    @pytest.mark.parametrize("op", sorted(_ID_WRITES))
+    def test_own_ids_write_as_before(self, op, tmp_path, capsys):
+        fake = FakeGitHub()
+        item = _file(fake, capsys)
+        other = _file(fake, capsys)
+        if op == "unlink":
+            assert self._write(own_tracker(tmp_path, REPO), "link", item, other, fake, capsys)[0] == 0
+        code, envelope = self._write(own_tracker(tmp_path, REPO), op, item, other, fake, capsys)
+        assert code == 0, envelope
+        assert self._wrote(fake)
+
+    @pytest.mark.parametrize("op", sorted(_ID_WRITES))
+    def test_a_transfer_into_a_foreign_repo_is_refused(self, op, tmp_path, capsys):
+        fake = FakeGitHub()
+        item = _file(fake, capsys)
+        own = _file(fake, capsys)
+        fake.transfer_issue("octo", "repo", 1, to_owner="someone-else", to_repo="x")
+        fake.calls.clear()
+        code, envelope = self._write(own_tracker(tmp_path, REPO), op, item, own, fake, capsys)
+        assert code == 2, envelope
+        assert envelope["error"]["code"] == "foreign-target"
+        assert envelope["error"]["details"]["target"] == "someone-else/x"
+        assert fake.calls and self._wrote(fake) == []  # it looked, and wrote nothing
+
+    def test_an_unresolved_identity_refuses(self, tmp_path, capsys):
+        bare = tmp_path / "no-identity"
+        bare.mkdir()
+        fake = FakeGitHub()
+        own = _file(fake, capsys)
+        fake.calls.clear()
+        code, envelope = self._write(bare, "comment", own, own, fake, capsys)
+        assert envelope["error"]["code"] == "foreign-target"
+        assert envelope["error"]["details"]["reason"] == "unresolved"
+        assert fake.calls == []
+
+    def test_the_refusal_holds_unattended(self, tmp_path, capsys, monkeypatch):
+        monkeypatch.setenv("PRAWDUCT_UNATTENDED", "1")
+        fake = FakeGitHub()
+        own = _file(fake, capsys)
+        fake.calls.clear()
+        code, envelope = self._write(
+            own_tracker(tmp_path, REPO), "comment", "someone-else/x#1", own, fake, capsys
+        )
+        assert envelope["error"]["code"] == "foreign-target"
+        assert fake.calls == []
+
+
 class TestFileSaysItFiled:
     """#1006 — a successful `file` reads as a success, ahead of any advisory lint."""
 

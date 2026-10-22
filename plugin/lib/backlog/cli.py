@@ -456,7 +456,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "update":
             result = _run_update(rest, transport, project_dir)
         elif op == "comment":
-            result = _run_comment(rest, transport)
+            result = _run_comment(rest, transport, project_dir)
         elif op == "list":
             result = _run_list(rest, transport)
         elif op == "pick":
@@ -732,6 +732,7 @@ def _run_status(rest: list[str], transport, project_dir):
             default_owner=default_owner,
             default_repo=default_repo,
             absorb=absorb,
+            own_repos=_own_repos(project_dir),
         ),
     )
 
@@ -786,11 +787,12 @@ def _run_update(rest: list[str], transport, project_dir):
             default_owner=default_owner,
             default_repo=default_repo,
             absorb=absorb,
+            own_repos=_own_repos(project_dir),
         ),
     )
 
 
-def _run_comment(rest: list[str], transport):
+def _run_comment(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(rest, valued={"repo", "body"})
     if err:
         return core.error("validation", err)
@@ -808,6 +810,7 @@ def _run_comment(rest: list[str], transport):
         body=flags["body"],
         default_owner=default_owner,
         default_repo=default_repo,
+        own_repos=_own_repos(project_dir),
     )
 
 
@@ -1176,6 +1179,7 @@ def _run_link(op: str, rest: list[str], transport, project_dir):
             default_owner=default_owner,
             default_repo=default_repo,
             absorb=absorb,
+            own_repos=_own_repos(project_dir),
         ),
     )
 
@@ -1476,6 +1480,17 @@ def _is_write(op: str, rest: list[str]) -> bool:
     again the moment an op takes a mutating flag, and re-threading the argument at
     that point is how the check gets skipped instead."""
     return op in _WRITE_OPS
+
+
+def _own_repos(project_dir) -> tuple[str, ...]:
+    """The running repo's identities, for ``core``'s own-target guard (#1013).
+
+    Always a tuple, never ``None``: ``None`` is how ``core`` spells "an
+    owner-prompted caller that skips the guard", and no in-skill write is one. No
+    project directory resolves to no identity, which the guard refuses."""
+    if project_dir is None:
+        return ()
+    return upstream.resolve_self_identity(project_dir)
 
 
 def _with_mirror(project_dir, call):

@@ -220,7 +220,7 @@ Surface likely-duplicate / overlapping items and propose merges. Idempotent and 
 ### scrub (migration to GitHub Issues)
 The **owner-confirmed cleanup** run once when a project moves its markdown backlog onto GitHub Issues through the backlog service (`prawduct-hook backlog <op>`). It surfaces stale/duplicate items *before* they become live issues (model proposes → owner confirms → the deterministic `status`/`merge`/`import` ops apply the cleaned set; the model is in the decision, never the data plane). Distinct from `dedup`/`migrate` above, which edit `.prawduct/backlog.md` in place; this drives the service CLI and requires `gh`. **Full runbook: `migration-scrub.md`** (in this skill directory).
 
-The scrub's high-consequence ops (`import`, `merge`, `provision`, `reconcile-labels`) are outside this skill's grant on purpose, so each prompts at the moment it would write. The adapter does not check these ops' `--repo`: `import --repo <any-valid-slug>` writes to that repo, and the runbook's Step 0 owner-confirmed target is the only guard. (`file` is different: it refuses any repo but this one's own tracker, `foreign-target`.)
+The scrub's high-consequence ops (`import`, `merge`, `provision`, `reconcile-labels`) are outside this skill's grant on purpose, so each prompts at the moment it would write. The adapter does not check these ops' `--repo`: `import --repo <any-valid-slug>` writes to that repo, and the runbook's Step 0 owner-confirmed target is the only guard. (`file` and the id-addressed writes are different: they refuse any repo but this one's own tracker, `foreign-target`.)
 
 ## Triage method
 

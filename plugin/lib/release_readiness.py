@@ -168,7 +168,8 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
 
     Returns ``(classification, errors)`` where classification maps
     ``scope -> (disposition, blocker_id_or_None)``. Rows are markdown table
-    rows: ``| scope | ships |  |`` or ``| scope | withheld | ABC-1234 |``.
+    rows: ``| scope | ships |  |`` or ``| scope | withheld | ABC-1234 |``; a
+    blocker may also be an Issues id, ``#123`` or ``owner/repo#123`` (#1033).
 
     A row with a recognised shape but bad content (unknown disposition,
     duplicate scope, `withheld` with no blocker id) becomes an **error**: a row
@@ -214,18 +215,43 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
             errors.append(f"scope `{scope}`: classified twice")
             continue
         if disposition == WITHHELD:
-            match = _ITEM_ID_RE.search(blocker)
-            if not match:
+            blocker_id = _blocker_id(blocker)
+            if blocker_id is None:
                 errors.append(
                     f"scope `{scope}`: `{WITHHELD}` requires a blocker item id "
-                    "(e.g. `ABC-1234`) — a withholding with no named blocker is "
-                    "an unrecorded decision"
+                    "(e.g. `ABC-1234`, `#123` or `owner/repo#123`) — a withholding "
+                    "with no named blocker is an unrecorded decision"
                 )
                 continue
-            classification[scope] = (WITHHELD, match.group(1))
+            classification[scope] = (WITHHELD, blocker_id)
         else:
             classification[scope] = (SHIPS, None)
     return classification, errors
+
+
+def _blocker_id(cell: str) -> str | None:
+    """The blocker id a classification cell names, or ``None``.
+
+    A markdown ``PFX-XXXX`` first, as before. Otherwise the first token carrying
+    a ``#`` that the backlog service's own id parser accepts — ``#123`` or
+    ``owner/repo#123`` — so a repo whose backlog lives on Issues can name the
+    blocker it actually has, and so this module does not grow a second
+    definition of what an Issues id looks like. The parser needs a repo to accept
+    a bare ``#123``; the placeholder only lets it judge the spelling, and the id is
+    kept as written, to be resolved against the real scope by
+    :func:`_issues_blocker_liveness`. The short ``repo#123`` form needs an owner
+    and stays rejected: nothing here could say whose repo it means.
+    """
+    match = _ITEM_ID_RE.search(cell)
+    if match:
+        return match.group(1)
+    from .backlog import ids  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
+
+    for raw in cell.split():
+        token = raw.strip("`.,;:()[]")
+        if "#" in token and ids.normalize_id(token, default_repo=("owner", "repo")).ok:
+            return token
+    return None
 
 
 def _open_item_ids(backlog_content: str) -> set[str]:
@@ -253,25 +279,30 @@ def _open_item_ids(backlog_content: str) -> set[str]:
     }
 
 
-def _markdown_backlog_unavailable_reason(project_dir: Path) -> str | None:
-    """``None`` when ``.prawduct/backlog.md`` is the live backlog; else *why* not.
+def _blocker_liveness(project_dir: Path, blockers: set[str]) -> tuple[set[str], dict[str, str]]:
+    """Which withholding blockers are open, routed by the backlog that is live.
 
+    Returns ``(open_blockers, unverifiable)``, ``unverifiable`` mapping a blocker
+    to *why* its liveness could not be established. A blocker in neither is
+    closed. Raises an ``_UNREADABLE`` error when the markdown backlog is the live
+    one and cannot be read, which the caller reports as ``no-backlog``.
+
+    **Routed by backend, because only one backlog is ever the truth.**
     ``data-model.md`` § Direction: once ``backlog_service_repo`` is set the
     markdown is **frozen history**, and every item archived at cutover still
-    parses as ``status: open``. Reading it post-cutover would make
-    :func:`_open_item_ids` return the whole frozen roster, so a withholding
-    blocker that has since closed would still look open and the gate would
-    print ``releasable:`` on exactly the stale decision it exists to catch.
-    Every other ``lib/`` reader checks this scalar first; this is not an
-    exception.
+    parses as ``status: open``. Reading it post-cutover would make every
+    withholding blocker look open, so the gate would print ``releasable:`` on
+    exactly the stale decision it exists to catch. Post-cutover, liveness comes
+    from the local backlog cache (``cachequery.resolve``, the reader behind
+    ``prawduct-hook backlog cache-query resolve``) — which also resolves a legacy
+    ``PFX`` blocker through the alias the importer stamped. Pre-cutover, the
+    markdown answers for ``PFX`` ids and cannot answer for an Issues id at all.
 
-    Returns the *reason* rather than a bool because two unrelated causes land
-    here — a real cutover, and a project-state that would not load — and they
-    need different remedies. Collapsing both into False made the caller state
-    the cutover as fact, so an operator with a corrupt ``project-state.yaml``
-    was told something about their backlog backend that was not true and sent
-    to check a scalar that is unset. A wrong remedy is worse than a bare
-    failure. Both directions still fail CLOSED.
+    **Unverifiable is never closed.** A cache that will not open, an id the
+    cache does not hold, a project-state that will not load: each lands in
+    ``unverifiable`` with its own reason, because each needs a different remedy
+    and "the blocker closed, re-take the decision" is the remedy for none of
+    them. Every direction still fails CLOSED.
     """
     from . import advisory_store  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
     from . import backlog_probes  # noqa: PLC0415
@@ -279,18 +310,73 @@ def _markdown_backlog_unavailable_reason(project_dir: Path) -> str | None:
     try:
         state = advisory_store.load_project_state(project_dir)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- unreadable state must fail CLOSED, and the loader's failure modes are not enumerable here
-        return (
+        reason = (
             "unreadable-project-state: cannot determine which backlog is live "
             f"(project-state did not load: {exc}), so blocker liveness is "
             "unverifiable."
         )
+        return set(), {blocker: reason for blocker in blockers}
     if backlog_probes.post_cutover(state):
-        return (
-            "cannot-verify-blockers: this repo has cut over to the GitHub Issues "
-            "backlog (`backlog_service_repo` set), so `.prawduct/backlog.md` is "
-            "frozen history and cannot say whether a blocker is still open."
+        return _issues_blocker_liveness(
+            project_dir, str(state.get("backlog_service_repo")), blockers
         )
-    return None
+
+    markdown = {blocker for blocker in blockers if _ITEM_ID_RE.fullmatch(blocker)}
+    unverifiable = {
+        blocker: (
+            "cannot-verify-blockers: this repo's live backlog is "
+            f"`{_BACKLOG_REL_PATH}` (`backlog_service_repo` unset), which cannot say "
+            f"whether the GitHub issue {blocker} is still open."
+        )
+        for blocker in blockers - markdown
+    }
+    if not markdown:
+        return set(), unverifiable
+    content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
+    return markdown & _open_item_ids(content), unverifiable
+
+
+def _issues_blocker_liveness(
+    project_dir: Path, scope: str, blockers: set[str]
+) -> tuple[set[str], dict[str, str]]:
+    """:func:`_blocker_liveness` for a repo whose backlog lives on GitHub Issues.
+
+    Read from the local cache, never the network: this gate runs in a release
+    procedure that must not depend on a live provider, and the cache already
+    owns id resolution — bare ``#N`` against its own scope, aliases, redirects.
+    A bare ``#N`` means an issue in ``scope``, the repo the cache holds."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from .backlog import cachequery  # noqa: PLC0415 -- lazy: only the post-cutover arm
+
+    now = datetime.now(timezone.utc)
+    default_owner = scope.split("/", 1)[0] if "/" in scope else None
+    open_blockers: set[str] = set()
+    unverifiable: dict[str, str] = {}
+    for blocker in sorted(blockers):
+        envelope = cachequery.resolve(
+            project_dir, scope=scope, id_raw=blocker, now=now, default_owner=default_owner
+        )
+        if envelope.get("status") != "ok":
+            err = envelope.get("error") or {}
+            unverifiable[blocker] = (
+                "cannot-verify-blockers: the backlog cache could not be read "
+                f"({err.get('message') or err.get('code') or 'unknown error'}), so "
+                "whether a blocker is still open is unknown — run "
+                f"`prawduct-hook backlog sync --repo {scope}`."
+            )
+            continue
+        data = envelope.get("data") or {}
+        if not data.get("resolved"):
+            unverifiable[blocker] = (
+                f"cannot-verify-blockers: the backlog cache for {scope} holds no "
+                f"item {blocker} — sync it (`prawduct-hook backlog sync --repo "
+                f"{scope}`) or correct the id."
+            )
+            continue
+        if not data.get("dead"):
+            open_blockers.add(blocker)
+    return open_blockers, unverifiable
 
 
 def normalize_version(release: str) -> str:
@@ -1051,7 +1137,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # a release that withholds nothing needs no backlog read at all.
     withheld_scopes = [s for s, (d, _) in classification.items() if d == WITHHELD]
     open_ids: set[str] = set()
-    # Blocker liveness is the ONLY sub-verdict a frozen backlog can withhold.
+    # Blocker liveness is the ONLY sub-verdict an unreadable backlog can withhold.
     # Returning here instead would report the one thing the gate could not check
     # and stay silent about the thing it exists to check — whether every
     # release-pending scope is classified at all. The runbooks tell the operator
@@ -1059,16 +1145,14 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # past an unclassified scope on the way to an unrecallable publish: the
     # v3.1.2 near-miss this module was built for, re-entered through its own
     # remedy. Carry the reason as a problem and let every other check run.
-    liveness_unverifiable: str | None = None
+    unverifiable: dict[str, str] = {}
     if withheld_scopes:
-        liveness_unverifiable = _markdown_backlog_unavailable_reason(project_dir)
-    if withheld_scopes and liveness_unverifiable is None:
+        blockers = {b for s, (d, b) in classification.items() if d == WITHHELD and b}
         try:
-            backlog_content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
+            open_ids, unverifiable = _blocker_liveness(project_dir, blockers)
         except _UNREADABLE as exc:
             print(f"no-backlog: cannot read {_BACKLOG_REL_PATH}: {exc}", file=sys.stderr)
             return 1
-        open_ids = _open_item_ids(backlog_content)
 
     unclassified = [s for s in pending if s not in classification]
     stale_blockers: list[str] = []
@@ -1096,7 +1180,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
             # branch exists to fix.
             blocker_note = (
                 f"{blocker}, which is no longer open"
-                if blocker and liveness_unverifiable is None and blocker not in open_ids
+                if blocker and blocker not in unverifiable and blocker not in open_ids
                 else blocker
             )
             contradictions.append(
@@ -1115,17 +1199,24 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         if (
             disposition == WITHHELD
             and blocker
-            and liveness_unverifiable is None
+            and blocker not in unverifiable
             and blocker not in open_ids
         ):
             stale_blockers.append(f"{scope} (withheld behind {blocker}, which is not open)")
 
     problems = list(errors)
-    if liveness_unverifiable is not None:
+    # One problem per distinct reason: the reasons carry different remedies (sync
+    # the cache, fix project-state, verify by hand), so merging them would hand
+    # every scope the wrong one.
+    unverified_by_reason: dict[str, list[str]] = {}
+    for scope, (disposition, blocker) in classification.items():
+        if disposition == WITHHELD and blocker in unverifiable:
+            unverified_by_reason.setdefault(unverifiable[blocker], []).append(scope)
+    for reason, scopes in unverified_by_reason.items():
         problems.append(
-            f"{liveness_unverifiable} {len(withheld_scopes)} scope(s) are withheld "
+            f"{reason} {len(scopes)} scope(s) are withheld "
             "behind blockers that must be confirmed open by hand before publishing: "
-            f"{', '.join(sorted(withheld_scopes))}. Every other check still ran — "
+            f"{', '.join(sorted(scopes))}. Every other check still ran — "
             "fix any other problem listed beside this one first."
         )
     if unclassified:
