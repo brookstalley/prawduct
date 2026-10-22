@@ -4013,6 +4013,50 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
     return any(isinstance(p, str) and is_judgeable(p) for p in unjudged)
 
 
+#: How many untracked paths the warning names before it summarises the rest.
+_UNTRACKED_PREVIEW = 10
+
+
+def _untracked_judgeable_warning(project_dir: Path) -> str | None:
+    """A warning naming untracked, non-ignored files that need review coverage.
+
+    #1008: the record is keyed to the working tree, but a test that reads the
+    git INDEX (``git ls-files``) sees the tree without a file nobody has
+    ``git add``-ed yet — so a run before ``git add`` can record a failure (or a
+    pass) the committed tree does not have, and the stale record costs a full
+    re-run. One owner for that class here, rather than per-test fixes: the
+    record still goes out unchanged, and this says why it may not match.
+
+    Filtered through ``is_judgeable_path`` so prose and framework metadata stay
+    quiet. Advice fails soft: a git or import failure returns None.
+    """
+    from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    rc, out, _ = _evidence_mod.run_git(
+        project_dir, "ls-files", "-z", "--others", "--exclude-standard", strip=False
+    )
+    if rc != 0:
+        return None
+    try:
+        is_judgeable = _coverage_algebra().is_judgeable_path
+    except ImportError:
+        return None
+    paths = sorted(p for p in out.split("\0") if p and is_judgeable(p))
+    if not paths:
+        return None
+    shown = ", ".join(paths[:_UNTRACKED_PREVIEW])
+    more = len(paths) - _UNTRACKED_PREVIEW
+    if more > 0:
+        shown += f", and {more} more"
+    return (
+        f"warning: {len(paths)} untracked file(s) that need review coverage are "
+        f"not in the git index: {shown}. A test that reads the index (git "
+        "ls-files) ran without them, so this record may hold a result the "
+        "committed tree does not. `git add` them and re-record if the suite "
+        "reads the index."
+    )
+
+
 def _parse_evidence_counts(tokens: list[str]) -> tuple[dict | None, str]:
     """Parse ``--from-counts`` ``key=value`` tokens into a counts dict.
 
@@ -5133,6 +5177,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 "worktrees cannot reuse this run.",
                 file=sys.stderr,
             )
+
+    # A restamp ran nothing, so there is no run for the index to have skewed.
+    if not no_rerun:
+        untracked_warning = _untracked_judgeable_warning(project_dir)
+        if untracked_warning:
+            print(untracked_warning, file=sys.stderr)
 
     # A restamp announces itself. The old line said `recorded: N passed` for
     # both paths, so a reused count was typographically identical to a fresh
