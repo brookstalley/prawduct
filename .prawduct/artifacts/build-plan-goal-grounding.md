@@ -49,8 +49,8 @@ Signal 3 and the product-vs-solution filter stay judgment, never word-matching.
 
 **Tradeoffs accepted:** Signals 1 and 2 ship as prose read at plan approval, not mechanised. They
 are the concrete ones, so prose may miss them. Revisit if chunk 04's replay misses the Arrt
-triggers or the testament join token. *Inferred:* the yield counter is a lexical lead read by
-hand, like the existing `corrections` count, not a verdict.
+triggers or the testament join token. The yield counter is a lexical lead read by
+hand (owner confirmed 2026-10-21: "Looks good"), like the existing `corrections` count, not a verdict.
 
 **Decisions made mid-build:**
 - Chunk 01: the grounding check's home is `discovery.md`, not `building.md`. building.md sat at
@@ -73,6 +73,13 @@ hand, like the existing `corrections` count, not a verdict.
   fourth wording fix: both turn on whether a fork overrides the owner's explicit deferral, an
   owner question (#1030). NOT settled by the goals; the unmet "all five" criterion is the
   owner's to accept.
+- Owner rulings, 2026-10-21, on the three open items: (1) replays: "Yes, I do need the ability to
+  defer, just want cost flagged." Accepted at 3/5, and the ruling changes the guidance: the
+  hedge paragraph now says to name the cost of leaving a high-stakes hedge open, and that
+  deferring is the owner's call. Under it, t1's run 3 (named the auth and secrets cost, took the
+  cheap hedges, deferred) is a pass; t5 stays short (never flagged the audience cost), and #1030
+  narrows to that. (2) Chunk 01's reworded criterion: "Yes". (3) The yield counter as a lead read
+  by hand: "Looks good".
 
 **Level:** High. The design is settled and calibrated on four products. The uncertainty is
 whether prose alone changes behaviour, and chunk 04 measures that directly.
@@ -82,12 +89,13 @@ whether prose alone changes behaviour, and chunk 04 measures that directly.
 - [x] Chunk 01: The grounding check and the hedged answer
 - [x] Chunk 02: Drift, by tier, read at plan approval
 - [x] Chunk 03: The control's yield — owner-raised goal questions
-- [ ] Chunk 04: Replay testament and Arrt against the new guidance
+- [x] Chunk 04: Replay testament and Arrt against the new guidance
 Context: Plan written 2026-10-21 after the owner settled scope. Chunk 01 committed (e8acb2b3)
 and reviewed; its acceptance criterion was reworded when the check moved to discovery.md (see
 Decisions made mid-build), awaiting the owner's one-line confirmation. Chunks 02 and 03 committed and reviewed. Chunk 04's
 replay ran three rounds: t2–t4 pass, t1 and t5 are disclosed gaps (Replay section), filed as
-#1030; the unmet "all five" criterion is the owner's to accept or reopen. After merge and a
+#1030; the owner accepted 3/5 on 2026-10-21 with a ruling that made t1 a pass (Decisions
+made mid-build). After merge and a
 prawduct-live advance, the backfill (#1031) runs as one session per governed product
 (testament, discodon, hallucinote, Arrt); it is outside this plan's acceptance.
 
@@ -260,11 +268,12 @@ there is recorded as a known gap and filed, not fixed again in this plan.
 | t1 | PARTIAL, improved: names what rests on audience ("decides how the coordinator authenticates and where secrets live"), takes cheap hedges, invites correction of "trusted with root", but says "I'm not asking you to settle it now". It flags; it does not stop. |
 | t5 | MISS, stable across runs 2 and 3: heads-up tier chosen, aimed at the nearest stale line (repo visibility), never the brief's one-composer audience |
 
-**Outcome:** t2, t3 and t4 pass. t1 and t5 are known gaps, filed as #1030. Both are judgment where the owner's own words point the other way: t1's owner said
-"scope that out for now", and t5's said "don't sweat it", so prose that defers to the owner
-reads them as instructions. Whether the fork should override an owner's explicit deferral is an
-owner question, not a wording fix. Acceptance criterion "all five cases" is NOT met; this plan
-ships with the gap disclosed rather than iterated a fourth time.
+**Outcome:** t2, t3 and t4 pass. t1 and t5 stayed short where the owner explicitly deferred
+("scope that out for now", "don't sweat it"). The owner ruled 2026-10-21: "I do need the ability
+to defer, just want cost flagged." So a deferral is honoured once its cost is named. t1's run 3
+did exactly that and passes under the ruling; the hedge paragraph now states the rule. t5 never
+flagged the audience cost and stays a gap, filed as #1030. Accepted by the owner's
+ruling, not by rewording the criterion.
 
 ## Governance Checkpoints
 

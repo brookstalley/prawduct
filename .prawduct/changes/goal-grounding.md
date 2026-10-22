@@ -24,8 +24,10 @@ title: the alignment pass judges whether the goals under the work are grounded
 - The session digest tells the agent to name drift from the brief when it sees it, pointing to
   the tiers. A replay of four governed products' real moments (chunk 04) drove it, and drove
   wording fixes: a recorded hedge with a lot resting on it is still raised; publishing is a hard
-  stop at the act; ownership covers repo, code and data, and a fork comes before the act. Two
-  cases where the owner explicitly deferred stay short and are filed as a follow-up.
+  stop at the act; ownership covers repo, code and data, and a fork comes before the act.
+- Owner ruling, 2026-10-21: the owner can defer a high-stakes product question; the agent names
+  its cost first. The hedge paragraph says so. One replay case (record lag aimed at the wrong
+  line) stays short, filed as #1030.
 - `tools/measure-alignment-yield.py` reports `goal_questions`: owner turns asking what the
   product or the work is trying to achieve, the control's yield (it should fall). A lead, read
   by hand. Baseline: `tools/measure-alignment-yield.py --until 2026-10-22`.
@@ -33,6 +35,7 @@ title: the alignment pass judges whether the goals under the work are grounded
 ## Consumer note
 Plans now say in their Goals response line whether any goal they rest on is ungrounded, and a
 product goal you answer with a hedge ("maybe others later") is kept as an open question with a
-revisit trigger instead of being settled for you. Expect an occasional one-sentence stop before a
-plan when much rests on an audience or ownership question nobody has answered, and a one-line
+revisit trigger instead of being settled for you. Expect an occasional one-sentence flag before a
+plan when much rests on an audience or ownership question nobody has answered, naming what it
+costs to leave open (you can still defer it), and a one-line
 note when work moves the product away from what its brief says (more users, public exposure).

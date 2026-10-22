@@ -1183,8 +1183,10 @@ LAST_MEASURED_TOKENS = {
     # judgment (t1 quoted the lead and missed the tail), and record lag checks the brief's
     # audience, personas and scope (t5 caught a lagging line, not the lagging audience). +2 in the
     # second cumulative (R-2): hedges and weak drift signals go to the brief's Open Questions, a
-    # template section that now exists. A READING.
-    "methodology/discovery.md": 5309,
+    # template section that now exists. +14 by owner ruling 2026-10-21 ("I do need the ability
+    # to defer, just want cost flagged"): a high-stakes hedge is named with its cost, and
+    # deferring is the owner's call. A READING.
+    "methodology/discovery.md": 5323,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
