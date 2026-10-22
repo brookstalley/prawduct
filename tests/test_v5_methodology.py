@@ -671,7 +671,8 @@ LAST_MEASURED_TOKENS = {
     # inferred, paid by dropping Goal 2's own definition from its parenthesis. Ceiling lowered.
     # +30 on 2026-10-21 (#706): Goal 2 checks a declared Exposed API surface against the contract
     # artifact, after tightening the bullet's two decision clauses (net of that). DECLARED, a READING.
-    "skills/critic/review-protocol.md": 3927,
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "skills/critic/review-protocol.md": 3926,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -781,7 +782,8 @@ LAST_MEASURED_TOKENS = {
     # how a record defect buys a review round"); the ceiling lowered with it.
     # +30 on 2026-10-21 (#706): the same contract-presence clause as review-protocol.md, net of the
     # tightened decision clauses. DECLARED, a READING.
-    "skills/critic/goals-1-3.md": 2688,
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "skills/critic/goals-1-3.md": 2687,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1349,7 +1351,8 @@ LAST_MEASURED_TOKENS = {
     # -82 on 2026-10-21 (#301): the `trivial` bullet's two machine-enforced layers and its
     # over-declaration blocker left with the retired file-set gate; the Critic's rationale check
     # is stated in one sentence instead. A READING.
-    "methodology/planning.md": 5856,
+    # +3 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "methodology/planning.md": 5859,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

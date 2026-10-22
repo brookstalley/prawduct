@@ -198,7 +198,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -12 on 2026-10-19 (change-log-fragments): goals-1-3.md drops a reason cross-checks.md owns, paying
     # for the `change-fragment` check's name on the record-lint line.
     # +30 on 2026-10-21 (#706), DECLARED: Goal 2 checks a declared Exposed API surface against the contract artifact (one clause in goals-1-3.md / review-protocol.md, net of the bullet's tightened decision clauses). Priced against the SUM: ~30 tokens per review against a declared surface shipping with no contract entry (1 of 4 declarations missed in the sweep).
-    "single-pass-inner": 5827,
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "single-pass-inner": 5826,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -241,7 +242,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +30 on 2026-10-21 (#706), DECLARED: Goal 2 checks a declared Exposed API surface against the contract artifact (one clause in goals-1-3.md / review-protocol.md, net of the bullet's tightened decision clauses). Priced against the SUM: ~30 tokens per review against a declared surface shipping with no contract entry (1 of 4 declarations missed in the sweep).
     # -4 on 2026-10-21 (#301): the `trivial` cross-checks row lost its file-set wording with the
     # retired gate; the rationale check gained "missing" at no net cost. Ceiling lowered with it.
-    "single-pass-full": 11574,
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "single-pass-full": 11573,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -319,7 +321,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +30 on 2026-10-21 (#706), DECLARED: Goal 2 checks a declared Exposed API surface against the contract artifact (one clause in goals-1-3.md / review-protocol.md, net of the bullet's tightened decision clauses). Priced against the SUM: ~30 tokens per review against a declared surface shipping with no contract entry (1 of 4 declarations missed in the sweep).
     # -4 on 2026-10-21 (#301): the `trivial` cross-checks row lost its file-set wording with the
     # retired gate; the rationale check gained "missing" at no net cost. Ceiling lowered with it.
-    "dispatched-reviewer": 11005,
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "dispatched-reviewer": 11004,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -338,14 +341,15 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +30 on 2026-10-21 (#706), DECLARED: Goal 2 checks a declared Exposed API surface against the contract artifact (one clause in goals-1-3.md / review-protocol.md, net of the bullet's tightened decision clauses). Priced against the SUM: ~30 tokens per review against a declared surface shipping with no contract entry (1 of 4 declarations missed in the sweep).
     # -4 on 2026-10-21 (#301): the `trivial` cross-checks row lost its file-set wording with the
     # retired gate; the rationale check gained "missing" at no net cost. Ceiling lowered with it.
-    "coordinator-fork": 12168,
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "coordinator-fork": 12167,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5828,
-    "single-pass-full": 11575,
-    "dispatched-reviewer": 11006,
-    "coordinator-fork": 12169,
+    "single-pass-inner": 5827,
+    "single-pass-full": 11574,
+    "dispatched-reviewer": 11005,
+    "coordinator-fork": 12168,
 }
 
 

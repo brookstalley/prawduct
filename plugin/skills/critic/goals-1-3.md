@@ -104,7 +104,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 - Norm departures → **BLOCKING** per Normative authority above; never fix divergence by editing the artifact.
 - No extra functionality beyond what was planned → **WARNING**.
 - No broad exception handling without logging/re-raising → **WARNING**. Waiver pragmas (`prawduct:allow <scope>/<rule-id> -- reason`, legacy `prawduct:ok-broad-except`) are reviewed-but-verifiable: the reason must be present and genuine — for `broad-except`, the catch logs with context at a real boundary. "Intentional," not "exempt"; a reason-less or defect-masking waiver is a finding.
-- **Rationale-vs-diff fit (`Type: trivial` only)**: compare the `**Trivial because:**` claim against the diff. Missing or mismatched rationale (claim "rename", diff adds defs) → **BLOCKING**. Low-information rationale ("small change") → **WARNING**.
+- **Rationale-vs-diff fit (`Type: trivial` only)**: compare the `**Trivial because:**` claim against the diff. Mismatch (claim "rename", diff adds defs) → **BLOCKING**. Missing or low-information rationale ("small change") → **WARNING**.
 
 ## Severity
 
