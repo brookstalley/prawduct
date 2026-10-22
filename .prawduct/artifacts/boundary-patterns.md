@@ -83,6 +83,24 @@ hashed by `unit_hash`; each file carries a byte budget (16KB default; `learnings
 `project-state.yaml` overrides with a reason). A change to the glob semantics or the unit grammar
 crosses this boundary for every consumer above.
 
+### Session-file registry — four sites edited in lockstep
+
+**Producers:** whoever adds a per-session file (a marker, a note, a log under `.prawduct/`).
+**Sites:** (1) `core.GITIGNORE_ENTRIES` (`plugin/lib/core.py`), the canonical set `update_gitignore`
+writes into a governed repo; (2) the hook's `_SESSION_GITIGNORED_PATHS` (`plugin/bin/prawduct-hook`),
+the untrack set; (3) this repo's own `.gitignore`, which nothing writes for it; (4) the `/clear`
+boundary's disposition of the file (`_boundary_close_session`'s deletion loop): deleted, or
+deliberately carried across.
+**Guards:** sites 1↔2 — `TestSessionGitignoreMirror` (`tests/test_build_plan_resolution.py`, with a
+`__pycache__` carve-out); sites 1↔3 and the partition at 4 — `tests/test_hook_session_file_registry.py`
+(`TestSiteThreeThisReposOwnGitignore`, `TestSiteFourTheBoundaryDisposition`, and
+`TestEveryDispatchMarkerJoinsEveryRegistry` for dispatch markers). A new session file fails the last
+two until it is placed on a side of the site-4 partition.
+**Failure if a site is missed:** site 3 — the file is committed by accident; site 4 — it survives
+`/clear` and leaks state into the next session.
+**Sweep rule:** add the file to all four and run the registry test file; the tests read the sources,
+so never copy the registry into a fifth place.
+
 ### Generator/Tuple Yields Consumed Positionally
 
 **Producer:** `plugin/lib/backlog/core.py` — `iter_alias_issues` yields

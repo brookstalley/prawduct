@@ -53,6 +53,14 @@ the three version files alone turns `develop` red on the next push. This is the 
 the runbook does not cover: it has the cut (Phase 1 step 10) and the reopen (Phase 3 step 22), and
 the bump between them happens here.
 
+**The bump rides the work PR that promotes the work — never a PR of its own.** Commit it on the
+work branch as `chore: develop opens X.Y.Z-dev.N for <branch>` (or `moves to` within an open
+cycle), so the work PR's review covers the four-line diff. A standalone bump PR costs a full
+cumulative Critic round for a change whose correctness is already machine-checked
+(`test_version_is_semver`, `test_changelog_has_current_version_entry`, `release_verification`'s
+declared-carrier checks); the coverage ruling in `coverage_algebra.is_judgeable_path` deliberately
+does not exempt it.
+
 **`-dev` / `-dev.N` is the only prerelease form this project permits**, and that is enforced, not
 convention: `banner.version_tuple` parses exactly that shape and returns the malformed sentinel for
 anything else, and `test_version_is_semver` refuses a manifest carrying any other suffix. An `-rc.N`

@@ -835,6 +835,20 @@ Evolution rules we want to hold, so new versions stay rare:
   `/prawduct:backlog` skill and adopter agents rather than the harness, and § Direction's 2026-08-02
   ruling puts every subcommand outside the two published surfaces here. Unpromised, not unused —
   § Operations, "Backlog service", is the entry, and it names what would move it.
+- **Consumer-authored configuration: the project-state key surface** (declare a chunk that adds,
+  renames or removes one as `**Exposed API:** project-state keys`). The keys a product writes in its
+  `.prawduct/project-state.yaml` and the plugin reads — `test_command`, `tests_dirs`,
+  `release_version_files`, `backlog_service_repo`, `base_branch`, `risk_surfaces`, `learnings_budgets`
+  and the rest of those `plugin/templates/project-state.yaml` documents. **Tier: supported, not
+  `stable`.** The `stable` tier is exactly the two published subcommands (§ Direction), and nothing
+  here promises a major for a key change; what it promises is the compatibility norms below, because
+  a product's committed file is written once and read by every later plugin version. A key the
+  template documents is supported; one the plugin reads but the template does not is internal.
+  **Cost of a change:** adding a key is additive and free, and an absent key must keep meaning what
+  it meant before it existed. Removing or repurposing one is a breaking change to every product that
+  set it, so the **additive-first and deprecation norms apply** (§ Deprecation & Compatibility): keep
+  reading the old key, say so with attribution, and defer removal to a major. Readers stay tolerant of
+  unknown keys. Versioning the file format itself is out of scope.
 - **Deprecated and inert** (callable, writes nothing, exits 0; removal deferred to a major). The
   members § Operations marks so, in two sub-shapes, split by **who calls them** — which decides whether they announce
   themselves:

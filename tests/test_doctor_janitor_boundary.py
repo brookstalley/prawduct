@@ -143,9 +143,9 @@ class TestGitignoreCrossReference:
         )
 
     def test_janitor_points_contract_to_doctor(self):
-        src = _read(JANITOR)
+        src = _read("skills/janitor/themes.md")  # the theme taxonomy's companion file
         assert "Health-Check #8" in src, (
-            f"{JANITOR}'s Version Control Hygiene theme must route the prawduct gitignore "
+            "janitor themes.md's Version Control Hygiene theme must route the prawduct gitignore "
             "contract to /prawduct:doctor Health-Check #8"
         )
 

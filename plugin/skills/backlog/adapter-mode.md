@@ -73,7 +73,7 @@ returns — there is no loop and no backoff anywhere on the single-op path, and 
 30s. The one exception is `import`, which pauses and retries a *rate-limited record* inside its own
 run and then ends resumably; never wrap that op in a retry of your own.
 
-So every retry is yours, and `retryable: true` is a hint that re-attempting **can** work — never a
+The figures below are this skill's policy for the caller; no code enforces or pins them (the transport has no retry loop). So every retry is yours, and `retryable: true` is a hint that re-attempting **can** work — never a
 licence to loop until it does. The budget for one operation:
 
 - **Retry only a `retryable: true` error.** `unavailable`, `rate_limited` and `conflict` are the
