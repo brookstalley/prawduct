@@ -165,8 +165,8 @@ interpreter, no root pytest config, monorepo test trees), declare it — don't w
 **`test_command:`** — the canonical suite invocation (the exact command CI runs), shlex-split and
 run from the repo root. Must contain the `{junit_xml}` literal — the hook substitutes its report
 path there. Shell operators (&&, |, FOO=1) are not supported; point the command at a script for
-compound runs. Caveat: the value is read by a YAML-comment-aware scalar reader, so a literal `#`
-anywhere in the command truncates it — wrap such invocations in a script too.
+compound runs. Caveat: the value is read by a YAML-comment-aware reader, so a `#` that starts a word
+outside quotes begins a comment — quote it (`-k "not #slow"`) or wrap the invocation in a script.
 
 ```yaml
 test_command: uv run pytest --junit-xml={junit_xml} -q
@@ -174,7 +174,7 @@ test_command: uv run pytest --junit-xml={junit_xml} -q
 
 **`test_commands:`** — the multi-environment form (backend + web + mobile): one canonical
 invocation per environment, each run under the same rules as `test_command:` (shlex-split,
-mandatory `{junit_xml}`, `#` truncates); counts aggregate across all reports into ONE evidence
+mandatory `{junit_xml}`, an unquoted ` #` begins a comment); counts aggregate across all reports into ONE evidence
 record, and any launch failure or unparseable report fails the whole record. Declare it ONLY as
 this block-sequence-of-strings shape (flow style `[a, b]` and nested mappings are refused, not
 silently ignored). Mutually exclusive with `test_command:`. Ingest path: repeat `--from-junit` once
