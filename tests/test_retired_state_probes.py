@@ -154,7 +154,7 @@ class TestWhenItCannotAnswer:
     def test_undecodable_state_file(self, tmp_path: Path) -> None:
         repo = _repo(tmp_path, WITH_BLOCK)
         (repo / ".prawduct" / "project-state.yaml").write_bytes(b"\xff\xfe\x80 bad")
-        assert _probe(repo) == []
+        assert _probe(repo) is None, "could not look is not nothing to report (#917)"
 
     def test_an_unreadable_state_file_is_SAID_not_merely_survived(
         self, tmp_path: Path, capsys
@@ -170,7 +170,7 @@ class TestWhenItCannotAnswer:
         repo = _repo(tmp_path, WITH_BLOCK)
         (repo / ".prawduct" / "project-state.yaml").write_bytes(b"\xff\xfe\x80 bad")
 
-        assert _probe(repo) == []
+        assert _probe(repo) is None, "could not look is not nothing to report (#917)"
 
         said = capsys.readouterr()
         assert "could not be read" in (said.out + said.err), (

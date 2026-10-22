@@ -226,7 +226,7 @@ class TestProbe:
         """
         repo = _repo(tmp_path)
         monkeypatch.setattr(gitstate, "git_merge_attribute", lambda *_a, **_k: None)
-        assert _probe(repo) == []
+        assert _probe(repo) is None, "could not look is not nothing to report (#917)"
         err = capsys.readouterr().err
         assert "NOTE:" in err
         assert CHANGE_LOG_REL_PATH in err

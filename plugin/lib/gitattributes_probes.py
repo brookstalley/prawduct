@@ -59,7 +59,8 @@ clone answering for itself is the honest scope.
 
 **Fail soft, never fail silent.** Three states, not two: the attribute is
 ``union``, the attribute is something else, or **git could not be asked**. The
-third is not evidence of the second, so it raises no advisory *and* — when the
+third is not evidence of the second, so it raises no advisory, returns ``None``
+(could not look — an open advisory stays open rather than resolving) *and* — when the
 log is committed, which is when the harm is live — prints a ``NOTE:`` naming
 what went unchecked. A degraded advisory path that says nothing manufactures the
 false success it exists to prevent. When git cannot be asked at all (no repo, no
@@ -126,7 +127,7 @@ def probe_change_log_union_merge(state: ProjectState, codebase: Codebase):
             "which merge driver applies to it — this session did not check whether "
             "the log is protected against merge conflicts."
         )
-        return []
+        return None  # could not look — not "nothing to report" (#917)
 
     return [
         AdvisoryCandidate(
