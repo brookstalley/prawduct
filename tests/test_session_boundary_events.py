@@ -52,6 +52,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -776,6 +778,7 @@ class TestBoundaryDependentInterpretation:
             "`begin_review` refuses on a complete roster at any age, so it will not"
         )
 
+    @pytest.mark.non_root
     def test_force_sweeps_a_marker_it_cannot_read(self, tmp_path):
         """`--force` does not depend on classifying the marker first.
 
