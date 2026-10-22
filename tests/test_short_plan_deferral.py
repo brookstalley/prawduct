@@ -366,6 +366,64 @@ class TestEligiblePlanDefers:
         assert rationale.startswith("short-plan deferral:")
 
 
+class TestAChunkShippedAsItsOwnPR:
+    """The deferral knows one boundary, the plan's last chunk, because it
+    assumes one PR per plan. A chunk merged as its own PR is a boundary too,
+    and `Critic mode: cumulative` on it is the existing way to say so (#999)."""
+
+    def _untick(self, prawduct: Path, chunk_id: str) -> None:
+        plan = prawduct / "artifacts" / "build-plan.md"
+        text = plan.read_text()
+        needle = f"- [x] Chunk {chunk_id}:"
+        assert needle in text, text
+        plan.write_text(text.replace(needle, f"- [ ] Chunk {chunk_id}:"))
+
+    def test_without_a_declaration_the_committed_first_chunk_defers(self, tmp_path: Path):
+        """Today's behaviour, the control: Chunk 01 committed but unticked and
+        an uncommitted non-plan file in flight — nothing knows a PR is coming.
+        (On a clean tree with nothing reviewed, rule 4 already answers
+        `cumulative`, so that state cannot be the control.)"""
+        prawduct = _short_plan_branch(tmp_path, chunks=2, committed=("01",))
+        self._untick(prawduct, "01")
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == critic_mode.MODE_DEFERRED, rationale
+
+    @pytest.mark.parametrize("dirty", [True, False])
+    @pytest.mark.parametrize("ticked", [True, False])
+    def test_the_declared_chunk_infers_cumulative_once_committed(
+        self, tmp_path: Path, ticked: bool, dirty: bool
+    ):
+        prawduct = _short_plan_branch(
+            tmp_path, chunks=2, committed=("01",), dirty=dirty,
+            chunk_modes={"01": "cumulative", "02": "cumulative"},
+        )
+        if not ticked:
+            self._untick(prawduct, "01")
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "cumulative", rationale
+
+    def test_the_deferred_rationale_names_the_way_to_a_per_chunk_pr(self, tmp_path: Path):
+        _short_plan_branch(tmp_path)
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == critic_mode.MODE_DEFERRED, rationale
+        assert critic_mode.SHORT_PLAN_OWN_PR_NOTE in rationale
+        assert "/prawduct:critic cumulative" in rationale and "own PR" in rationale
+
+    def test_the_stop_warning_names_it_too(self, tmp_path: Path):
+        prawduct = _short_plan_branch(tmp_path)
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path)
+        assert result.returncode == 0, result.stderr
+        flat = " ".join(json.loads(result.stdout)["systemMessage"].split())
+        assert critic_mode.SHORT_PLAN_OWN_PR_NOTE in flat, flat
+
+    @pytest.mark.parametrize("rel", ["methodology/planning.md", "templates/build-plan.md"])
+    def test_the_guide_and_template_carry_the_rule(self, rel: str):
+        text = (ROOT / rel).read_text()
+        line = next((l for l in text.splitlines() if "own PR" in l), "")
+        assert "Critic mode: cumulative" in line, rel
+
+
 class TestProseCarriesTheConstant:
     """The chunk bound is one rule on four carriers — the constant and three
     prose surfaces that state it as a number. A change to either side without

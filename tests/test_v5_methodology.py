@@ -1319,7 +1319,9 @@ LAST_MEASURED_TOKENS = {
     # brief's revisit triggers and scope words, pointing to discovery.md's drift tiers. A READING.
     # -8 (chunk 02 review observation): the scope-word list discovery.md owns is no longer
     # restated here. A READING.
-    "methodology/planning.md": 5865,
+    # +43 on 2026-10-21 (#999): a chunk that ships as its own PR declares `Critic mode:
+    # cumulative`, the boundary the short-plan deferral cannot see. A READING, no ceiling.
+    "methodology/planning.md": 5908,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

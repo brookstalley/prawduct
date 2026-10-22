@@ -1475,6 +1475,19 @@ LAST_CHUNK_BOUNDARY_STEP = (
 )
 
 
+#: The short-plan deferral knows one boundary, the plan's last chunk, because
+#: it assumes one PR per plan. A chunk that ships as its own PR is a boundary
+#: too, and the existing declaration already handles it (#999): any
+#: `Critic mode:` turns the deferral off, and the current chunk's declaration
+#: is what inference honours. One wording, read by the inference rationale and
+#: the Stop gate's non-final warning.
+SHORT_PLAN_OWN_PR_NOTE = (
+    "If this branch opens a PR before the plan's last chunk, that PR is a "
+    "boundary: run `/prawduct:critic cumulative`, and declare "
+    "`Critic mode: cumulative` on chunks that ship as their own PR"
+)
+
+
 def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     """What a builder on a deferring short plan does next — the ONE statement.
 
@@ -1514,7 +1527,8 @@ def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
     """
     return (
         f"short-plan deferral: no per-chunk review is owed — {deferral.reason}; "
-        f"{short_plan_next_step(deferral)}. An explicit mode (`/prawduct:critic chunk`) or a "
+        f"{short_plan_next_step(deferral)}. {SHORT_PLAN_OWN_PR_NOTE}. "
+        "An explicit mode (`/prawduct:critic chunk`) or a "
         "`Critic mode:` field on any chunk restores per-chunk review. "
         f"Grounded on {_plan_relation_note(plan)}"
     )
