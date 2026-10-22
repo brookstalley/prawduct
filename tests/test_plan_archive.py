@@ -910,7 +910,7 @@ class TestTheMergeFlowArchivesOnBothPaths:
 
     def test_the_janitor_cleanup_step_archives(self):
         """The other surface that retires plans on its own initiative."""
-        janitor = (_REPO_ROOT / "skills" / "janitor" / "SKILL.md").read_text(encoding="utf-8")
+        janitor = (_REPO_ROOT / "skills" / "janitor" / "themes.md").read_text(encoding="utf-8")
         bullet = self._bullet_containing(janitor, "Stale build plans")
         assert "archive-plan" in bullet
         assert "superseded" in bullet, (
