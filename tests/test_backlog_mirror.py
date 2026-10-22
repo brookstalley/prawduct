@@ -233,6 +233,7 @@ class TestTheMirrorCostsNothingAndBreaksNothing:
         other = repo_dir / "control"
         other.mkdir()
         subprocess.run(["git", "init", "-q"], cwd=other, check=True)
+        own_tracker(other, SCOPE)  # an identity, so `status` may write; still no cache
         before = len(fake.calls)
         assert _run(other, ["status", f"{SCOPE}#1", "--to", "open", "--json"], fake) == 0
         without_mirror = len(fake.calls) - before

@@ -493,6 +493,72 @@ def resolve_ref(
     return verdict
 
 
+# --- own-target guard (#1013) -------------------------------------------------
+#
+# The id-addressed writes (`comment`, `update`, `status`, `link`/`unlink`) take
+# their target from the id, so `other/x#1` would write as the session's user into
+# another project with no prompt. The check runs HERE, where the id resolves, and
+# twice: on the resolved coordinates before any write, and on the repo the fetched
+# issue actually lives in, because GitHub follows a transferred issue's old
+# coordinates to wherever it went. `own_repos` is the running repo's identities
+# (`upstream.resolve_self_identity`), injected by the CLI; empty refuses (nothing
+# confirmed the target is this repo). `None` means an owner-prompted caller
+# (`import`, `merge`) that does not take this guard.
+
+
+def _target_refusal(
+    own_repos: tuple[str, ...] | None, owner: str, repo: str, op: str
+) -> dict | None:
+    """The ``foreign-target`` envelope when ``owner/repo`` is not this repo's own."""
+    if own_repos is None:
+        return None
+    from . import upstream  # noqa: PLC0415 — upstream imports core; lazy breaks the cycle
+
+    refusal = upstream.check_own_target(f"{owner}/{repo}", own_repos, op=op)
+    if refusal is None:
+        return None
+    return error(refusal.code, refusal.message, retryable=False, details=refusal.details)
+
+
+def _landed_repo(issue: dict) -> tuple[str, str] | None:
+    """The ``(owner, repo)`` a fetched issue lives in, from the API's own URLs.
+
+    ``repository_url`` (``https://api.github.com/repos/o/r``) first, then
+    ``html_url`` (``https://github.com/o/r/issues/N``); ``None`` when neither
+    parses."""
+    api = issue.get("repository_url") or ""
+    marker = "/repos/"
+    if marker in api:
+        parsed = ids.parse_repo(api.split(marker, 1)[1].strip("/"))
+        if parsed:
+            return parsed
+    html = issue.get("html_url") or ""
+    if "://" in html:
+        parts = html.split("://", 1)[1].split("/")
+        if len(parts) >= 3:
+            return ids.parse_repo(f"{parts[1]}/{parts[2]}")
+    return None
+
+
+def _landed_refusal(
+    own_repos: tuple[str, ...] | None, issue: dict, nid, op: str
+) -> dict | None:
+    """The ``foreign-target`` envelope when a transfer redirect carried ``nid``'s
+    issue into another repo — or when the issue names no repo at all (fail closed)."""
+    if own_repos is None:
+        return None
+    landed = _landed_repo(issue)
+    if landed is None:
+        return error(
+            "foreign-target",
+            f"`{op}` could not confirm which repo {nid.canonical} lives in (the "
+            "fetched issue names none), so it was not written",
+            retryable=False,
+            details={"reason": "unresolved", "target": nid.canonical},
+        )
+    return _target_refusal(own_repos, landed[0], landed[1], op)
+
+
 def _alias_verdict(
     transport: Transport, owner: str, repo: str, pfx: str
 ) -> "ids.NormalizedId | None":
@@ -547,6 +613,7 @@ def set_status(
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
     absorb: Absorb | None = None,
+    own_repos: tuple[str, ...] | None = None,
 ) -> dict:
     """Idempotent, crash-safe two-axis status transition (Data Model §4 B1, CC1/M5).
 
@@ -586,7 +653,13 @@ def set_status(
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
+        refused = _target_refusal(own_repos, nid.owner, nid.repo, "status")
+        if refused is not None:
+            return refused
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+        refused = _landed_refusal(own_repos, issue, nid, "status")
+        if refused is not None:
+            return refused
 
         # Step 1 — move the state authority first.
         cur_state = (issue.get("state") or "open").lower()
@@ -757,6 +830,7 @@ def update_item(
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
     absorb: Absorb | None = None,
+    own_repos: tuple[str, ...] | None = None,
 ) -> dict:
     """Field-wise edit with optimistic CAS (CC2) and a mass-assignment guard (SEC-2).
 
@@ -857,7 +931,13 @@ def update_item(
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
+        refused = _target_refusal(own_repos, nid.owner, nid.repo, "update")
+        if refused is not None:
+            return refused
         issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+        refused = _landed_refusal(own_repos, issue, nid, "update")
+        if refused is not None:
+            return refused
 
         # CC2 — optimistic CAS on updated_at (only when the caller supplied one).
         if expected_updated_at is not None and issue.get("updated_at") != expected_updated_at:
@@ -1058,9 +1138,13 @@ def comment_item(
     body: str,
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
+    own_repos: tuple[str, ...] | None = None,
 ) -> dict:
     """Add a native, attributed comment (DM5). Not idempotent. Attribution is the
     **API identity** (GitHub stamps the authenticated user), never caller-supplied.
+
+    With ``own_repos`` set, the issue is read before the comment is posted, so a
+    transfer redirect into another repo is refused rather than followed (#1013).
     """
     if not body or not body.strip():
         return error("validation", "comment body is required")
@@ -1070,6 +1154,14 @@ def comment_item(
         nid = resolve_ref(transport, id_raw, default_owner=default_owner, default_repo=default_repo)
         if not nid.ok:
             return error(nid.error or "validation", nid.message or f"bad ID {id_raw!r}")
+        refused = _target_refusal(own_repos, nid.owner, nid.repo, "comment")
+        if refused is not None:
+            return refused
+        if own_repos is not None:
+            issue = transport.get_issue(nid.owner, nid.repo, nid.number)
+            refused = _landed_refusal(own_repos, issue, nid, "comment")
+            if refused is not None:
+                return refused
         comment = transport.create_comment(nid.owner, nid.repo, nid.number, body=body)
     except TransportError as exc:
         return from_transport_error(exc)
@@ -1105,12 +1197,15 @@ def link(
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
     absorb: Absorb | None = None,
+    own_repos: tuple[str, ...] | None = None,
 ) -> dict:
     """Set a typed edge from an item to a target (idempotent). ``edge`` is one of
     ``blocks``/``blocked-by``/``parent``/``child``/``related``. Either endpoint may
-    be a hand-minted ``PFX`` alias, resolved against ``default_repo`` (``--repo``)."""
+    be a hand-minted ``PFX`` alias, resolved against ``default_repo`` (``--repo``).
+    With ``own_repos`` set, both endpoints must be this repo's own (#1013)."""
     return _mutate_edge(
-        transport, id_raw, edge, target_raw, default_owner, default_repo, add=True, absorb=absorb
+        transport, id_raw, edge, target_raw, default_owner, default_repo,
+        add=True, absorb=absorb, own_repos=own_repos,
     )
 
 
@@ -1123,10 +1218,12 @@ def unlink(
     default_owner: str | None = None,
     default_repo: tuple[str, str] | None = None,
     absorb: Absorb | None = None,
+    own_repos: tuple[str, ...] | None = None,
 ) -> dict:
     """Clear a typed edge from an item to a target (idempotent)."""
     return _mutate_edge(
-        transport, id_raw, edge, target_raw, default_owner, default_repo, add=False, absorb=absorb
+        transport, id_raw, edge, target_raw, default_owner, default_repo,
+        add=False, absorb=absorb, own_repos=own_repos,
     )
 
 
@@ -1140,6 +1237,7 @@ def _mutate_edge(
     *,
     add: bool,
     absorb: Absorb | None = None,
+    own_repos: tuple[str, ...] | None = None,
 ) -> dict:
     if edge not in _EDGE_TYPES:
         return error(
@@ -1161,6 +1259,20 @@ def _mutate_edge(
             )
         if nid.canonical == tid.canonical:
             return error("validation", "an item cannot be linked to itself")
+        # BOTH endpoints must be this repo's own: whichever side the edge is
+        # written on, GitHub surfaces a native edge (and a `related` ref's
+        # cross-reference) on the other issue too.
+        verb = "link" if add else "unlink"
+        for end in (nid, tid):
+            refused = _target_refusal(own_repos, end.owner, end.repo, verb)
+            if refused is not None:
+                return refused
+        if own_repos is not None:
+            for end in (nid, tid):
+                landed = transport.get_issue(end.owner, end.repo, end.number)
+                refused = _landed_refusal(own_repos, landed, end, verb)
+                if refused is not None:
+                    return refused
 
         if edge == "blocked-by":
             _dep(transport, nid, tid, add=add)

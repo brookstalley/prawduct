@@ -681,16 +681,25 @@ def check_not_self(identities: tuple[str, ...]) -> Refusal | None:
     )
 
 
-def check_own_target(target: str, identities: tuple[str, ...]) -> Refusal | None:
-    """In-repo ``file`` writes only to the running repo's own tracker.
+def check_own_target(
+    target: str, identities: tuple[str, ...], *, op: str = "file"
+) -> Refusal | None:
+    """In-repo writes go only to the running repo's own tracker.
 
-    The mirror of :func:`check_not_self`, for the other operation. ``file`` is the
+    The mirror of :func:`check_not_self`, for the other operations. ``file`` is the
     zero-ceremony create, and it can be zero-ceremony only because nothing it
     writes crosses an owner boundary (design §1: its target is "self, never a free
     `--repo`"). The adapter files as the session's GitHub user, and a public
     issue cannot be deleted, so a free ``--repo`` would be an unprompted,
     permanent, attributed write into someone else's project. That makes the target
     the adapter's to check, not the skill's to instruct.
+
+    The id-addressed writes the skill pre-grants (``comment``, ``update``,
+    ``status``, ``link``/``unlink``) carry the same hazard through the id rather
+    than ``--repo``: ``other/x#1`` names its repo. ``core`` calls this with the
+    *resolved* target, and again with the repo a transfer redirect landed the
+    issue in (#1013). ``op`` names the refused operation; only ``file`` has
+    ``file-upstream`` as a route to another repo.
 
     **Empty is a refusal, not a pass**, for the reason ``check_not_self`` gives:
     an unresolved identity means nothing confirmed the target is this repo.
@@ -699,17 +708,22 @@ def check_own_target(target: str, identities: tuple[str, ...]) -> Refusal | None
         return Refusal(
             "foreign-target",
             "this repo's own identity could not be resolved from either "
-            "`backlog_service_repo` or an `origin` remote, so `file` cannot confirm "
+            f"`backlog_service_repo` or an `origin` remote, so `{op}` cannot confirm "
             f"{target} is this repo's tracker — set one of the two and retry",
             {"reason": "unresolved", "target": target, "identities": []},
         )
     if canonical_repo(target) in identities:
         return None
+    route = (
+        "to report a bug in prawduct itself, use `file-upstream`, which shows the "
+        "exact bytes before anything is sent"
+        if op == "file"
+        else "the backlog adapter does not write into another project's issues"
+    )
     return Refusal(
         "foreign-target",
-        f"`file` writes only to this repo's own tracker ({', '.join(identities)}), and "
-        f"{target} is another repo — to report a bug in prawduct itself, use "
-        "`file-upstream`, which shows the exact bytes before anything is sent",
+        f"`{op}` writes only to this repo's own tracker ({', '.join(identities)}), and "
+        f"{target} is another repo — {route}",
         {"reason": "foreign", "target": target, "identities": list(identities)},
     )
 

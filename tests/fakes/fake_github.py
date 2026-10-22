@@ -126,8 +126,27 @@ class FakeGitHub(Transport):
         # window that outlasts the reactive backoff's budget.
         self._rate_limited = False
         self._rate_limited_details: dict = {}
+        # Transferred issues (`transfer_issue`): old coordinates → new ones.
+        self._moved: dict[tuple[str, str, int], tuple[str, str, int]] = {}
 
     # -- helpers -----------------------------------------------------------
+
+    def transfer_issue(
+        self, owner: str, repo: str, number: int, *, to_owner: str, to_repo: str
+    ) -> int:
+        """Model GitHub's issue transfer: the issue moves to ``to_owner/to_repo``
+        under a new number, and a read of the OLD coordinates follows the redirect
+        to it, the way the API's 301 does. Returns the new number."""
+        issue = self._repo(owner, repo).issues.pop(number)
+        dest = self._repo(to_owner, to_repo)
+        new = dest.next_number
+        dest.next_number += 1
+        issue = dict(issue, number=new,
+                     html_url=f"https://github.com/{to_owner}/{to_repo}/issues/{new}",
+                     repository_url=f"https://api.github.com/repos/{to_owner}/{to_repo}")
+        dest.issues[new] = issue
+        self._moved[(owner, repo, number)] = (to_owner, to_repo, new)
+        return new
 
     def _repo(self, owner: str, repo: str) -> _RepoState:
         key = (owner, repo)
@@ -310,6 +329,7 @@ class FakeGitHub(Transport):
     def get_issue(self, owner: str, repo: str, number: int) -> dict:
         self._maybe_unreachable()
         self.calls.append(("get_issue", owner, repo, number))
+        owner, repo, number = self._moved.get((owner, repo, number), (owner, repo, number))
         state = self._repo(owner, repo)
         issue = state.issues.get(number)
         if issue is None or self._replication_hidden(state, number):
