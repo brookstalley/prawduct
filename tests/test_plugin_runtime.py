@@ -73,6 +73,65 @@ class TestPluginHookStructure:
         assert "_coverage()._resolve_base_branch(" in src
         assert "resolve-base" in src.split("_USAGE = (", 1)[1].split(")", 1)[0]
 
+    def test_usage_banner_admits_every_flag_the_parsers_accept(self):
+        """#786: the banner is an instruction surface, so a flag a parser accepts
+        and the banner omits reads as a flag that does not exist. The flag sets
+        are DERIVED from each parser's own membership test, not listed here, so
+        a flag added to a parser without the banner turns this red."""
+        import re
+
+        src = HOOK.read_text()
+        block = src.split("_USAGE = (", 1)[1].split(")", 1)[0]
+        usage = "".join(re.findall(r'"((?:[^"\\]|\\.)*)"', block))
+        body = usage.split("Usage: prawduct-hook ", 1)[1][1:-1]
+        # Split on top-level `|` only — a `{a|b}` or `<a|b>` group belongs to its entry.
+        entries, depth, cur = [], 0, ""
+        for ch in body:
+            depth += ch in "{[<" and 1 or 0
+            depth -= ch in "}]>" and 1 or 0
+            if ch == "|" and depth == 0:
+                entries.append(cur)
+                cur = ""
+            else:
+                cur += ch
+        entries.append(cur)
+
+        def banner(sub: str) -> str:
+            hits = [e for e in entries if e.split(" ", 1)[0] == sub]
+            assert hits, f"{sub} has no usage-banner entry"
+            return " ".join(hits)
+
+        lib = HOOK.parent.parent / "lib"
+        begin_body = src.split("def cmd_critic_begin(", 1)[1].split("\ndef ", 1)[0]
+        begin_flags = set(re.findall(r'"(--[a-z-]+)":', begin_body))
+        begin_flags |= set(re.findall(r'arg == "(--[a-z-]+)"', begin_body))
+        ledger_src = (lib / "ledger.py").read_text()
+        ledger_flags = set(
+            re.findall(
+                r'"(--[a-z-]+)"',
+                re.search(r'if arg in \(("--event"[^)]*)\)', ledger_src).group(1),
+            )
+        )
+        disp_src = (lib / "dispositions.py").read_text()
+        disp_body = disp_src.split("def disposition_cmd(", 1)[1].split("\ndef ", 1)[0]
+        disp_flags = set(
+            re.findall(
+                r'"(--[a-z-]+)"',
+                re.search(r'if arg in \(("--accept"[^)]*)\)', disp_body).group(1),
+            )
+        )
+        cases = {
+            "critic-begin": begin_flags,
+            "ledger-append": ledger_flags,
+            "disposition": disp_flags,
+        }
+        for sub, flags in cases.items():
+            # The derivation must have found the parser — an empty set would
+            # pass vacuously.
+            assert len(flags) >= 3, (sub, flags)
+            missing = sorted(f for f in flags if f not in banner(sub))
+            assert not missing, f"usage banner for {sub} omits {missing}"
+
     def test_lib_imported_via_plugin_root(self):
         src = HOOK.read_text()
         assert "def _plugin_root(" in src
