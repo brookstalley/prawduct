@@ -482,7 +482,15 @@ LAST_MEASURED_TOKENS = {
     # -1 on 2026-10-19 (change-log-fragments): the sentence calling plan and change-log
     # edits "safe" during a review was false once consolidation refused any tracked
     # change; it now points at `review-cycle.md`, which owns the attestation rule.
-    "methodology/building.md": 5326,
+    # -3 on 2026-10-21 (goal-grounding, #1029): the alignment pass judges the goals under the
+    # work, in a one-line pointer to discovery.md, which owns grounded / hedged / inferred.
+    # Paid by compressing the "moment for questions" sentence, whose batch-ask half
+    # discovery.md already states. Ceiling lowered with it. +1 more: the four-response
+    # intro says "clear and grounded", matching the digest (chunk 01 review observation).
+    # -4 more (goal-grounding chunk 02): Deciding Mid-Build names fork-tier drift as a reason to
+    # stop, paid by pointing the decision-record sentence at planning.md "Goals", which states
+    # the same rule. Ceiling lowered with it.
+    "methodology/building.md": 5320,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -645,7 +653,9 @@ LAST_MEASURED_TOKENS = {
     # +104 on 2026-10-09 (requirements-alignment w2, #975): Goal 5 judges the work against the
     # plan's Goals and the brief, and lists mid-build decisions for the owner. DECLARED with the
     # route sums in test_reviewer_payload_budget.py. A READING.
-    "skills/critic/review-protocol.md": 3898,
+    # -1 on 2026-10-21 (goal-grounding, #1029): a goal still hedged rates like one still
+    # inferred, paid by dropping Goal 2's own definition from its parenthesis. Ceiling lowered.
+    "skills/critic/review-protocol.md": 3897,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -1157,7 +1167,26 @@ LAST_MEASURED_TOKENS = {
     # goals statement, rewritten in place on amendment, and an inference keeps its mark until
     # the owner confirms it. Merged into the existing inference paragraph rather than added
     # beside it; nothing else here restates it. A READING.
-    "methodology/discovery.md": 4339,
+    # +499 on 2026-10-21 (goal-grounding, #1029): the grounding check at investment decisions
+    # (cost ranking, the product-vs-solution filter, audience first, the one-sentence stop) and
+    # a hedged owner answer kept open with a revisit trigger. New obligations from the settled
+    # goal-grounding design; its one home, since grounded and hedged sit beside inferred.
+    # building.md and planning.md point here; feature-level discovery says "clear and grounded".
+    # A READING.
+    # +380 on 2026-10-21 (goal-grounding chunk 02, #1029): drift announced by tier (record,
+    # heads-up, fork), the three adjusting rules and the signals read at plan approval, beside
+    # the characteristic flip it generalises. New obligations from the settled design. A READING.
+    # +61 (goal-grounding chunk 04 replay): a recorded hedge with a lot resting on it is still
+    # the fork to raise (t1 recorded it and moved on); publishing is a hard stop at the act, not
+    # the design (t4); ownership covers repo, code and data, and a fork comes before the act
+    # (t2 minted, then raised it). +28 after run 2: the hedge paragraph now LEADS with the fork
+    # judgment (t1 quoted the lead and missed the tail), and record lag checks the brief's
+    # audience, personas and scope (t5 caught a lagging line, not the lagging audience). +2 in the
+    # second cumulative (R-2): hedges and weak drift signals go to the brief's Open Questions, a
+    # template section that now exists. +14 by owner ruling 2026-10-21 ("I do need the ability
+    # to defer, just want cost flagged"): a high-stakes hedge is named with its cost, and
+    # deferring is the owner's call. A READING.
+    "methodology/discovery.md": 5323,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1283,7 +1312,14 @@ LAST_MEASURED_TOKENS = {
     # fallback records its assumed surface as an inference in Goals. A READING, no ceiling.
     # +5 on 2026-10-14 (agents-md-anchor): the trivial bound's file-set list names root
     # AGENTS.md and `agents/`, both in the protected set it restates. A READING, no ceiling.
-    "methodology/planning.md": 5787,
+    # +31 on 2026-10-21 (goal-grounding, #1029): the Goals response line names any ungrounded
+    # goal the plan rests on, and a hedged answer is marked like an inference. Both point to
+    # discovery.md. A READING, no ceiling.
+    # +55 on 2026-10-21 (goal-grounding chunk 02): before presenting a plan, read it against the
+    # brief's revisit triggers and scope words, pointing to discovery.md's drift tiers. A READING.
+    # -8 (chunk 02 review observation): the scope-word list discovery.md owns is no longer
+    # restated here. A READING.
+    "methodology/planning.md": 5865,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3389,7 +3425,7 @@ class TestBuildingMethodology:
         # the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5328, f"building.md is ~{tokens} tokens, should be <5328"
+        assert tokens < 5322, f"building.md is ~{tokens} tokens, should be <5322"
 
 
 # =============================================================================
@@ -5120,7 +5156,7 @@ class TestCriticSkill:
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3899, f"review-protocol.md is ~{tokens} tokens, should be <3899"
+        assert tokens < 3898, f"review-protocol.md is ~{tokens} tokens, should be <3898"
 
 
 # =============================================================================

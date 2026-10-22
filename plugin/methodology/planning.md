@@ -72,14 +72,16 @@ How many plans, and how big, is settled before chunking begins.
 
 Every build plan opens with **Goals** — the alignment pass's written form (`methodology/building.md` "Before You Build"), placed where a cold session reads it before any chunk. Mid-build decisions are made against it, and the boundary review judges the work by it.
 
-- **Response taken** — which of the four, and when the owner answered.
+- **Response taken** — which of the four, when the owner answered, and any ungrounded goal the plan rests on (`methodology/discovery.md` "Ground the goals under an investment").
 - **Product** — what the work is for and for whom. Cite the brief's near-term and North Star rather than restating them.
 - **Architecture** — what must hold, and what must stay possible (the `accommodate` items this work touches).
 - **Constraints**, stated and sourced, and **tradeoffs accepted** — including debt taken knowingly, each with what would make it worth revisiting. Debt that definitely must be paid also gets a backlog item; debt that may never matter does not.
 - **Decisions made mid-build** — appended while building, one line each naming the goal or prior choice that settled it; mark any the goals did not settle.
 - **Level** — High, Medium, or Low: an honest read of whether you understand what to build well enough to build it well (Principle 6). Medium or Low says what would raise it — the cheapest concrete step, not "more thinking".
 
-**Say what the owner said and what you inferred.** Mark each inference in plain words — *"Inferred: one household; no auth beyond a shared device"* — so the owner, and the boundary review, can find it. An inference is a decision made on the owner's behalf: never record one as their ruling.
+**Say what the owner said and what you inferred.** Mark each inference in plain words — *"Inferred: one household; no auth beyond a shared device"* — so the owner, and the boundary review, can find it. An inference is a decision made on the owner's behalf: never record one as their ruling. Mark a hedged owner answer *Hedged:* the same way (`methodology/discovery.md`).
+
+**Before presenting a plan, read it against the record**: the brief's open revisit triggers and scope words against what the plan does. A match is drift, announced by its tier (`methodology/discovery.md` "Drift is announced, by tier").
 
 **Chunks usually work best** as vertical slices (working, testable functionality across layers), in dependency order, each verifiable without later chunks and small enough for one Critic pass — the last is the firm limit. A thin first slice through the whole architecture proves the layers connect before you widen it.
 

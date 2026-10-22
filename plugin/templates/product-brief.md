@@ -13,6 +13,8 @@
      once they confirm it:
        Inferred: no accounts; one shared device.   (before)
        No accounts; one shared device.              (after the owner confirms)
+     A hedged answer stays open, with what would settle it:
+       Hedged: one household for now — revisit when a second person needs access.
 -->
 ---
 artifact: product-brief
@@ -91,6 +93,16 @@ last_validated: null
      - Later: Genuinely deferred
      - Out of scope: Explicitly excluded, with rationale
      Source: project-state.yaml → product_definition.scope -->
+
+## Open Questions
+
+<!-- Product questions the owner hedged, kept open instead of resolved
+     (methodology/discovery.md "A hedged answer stays open"). Each: the question, what the
+     owner said, the revisit trigger (the event that would settle it), and the cheap hedges
+     taken now. Weak drift signals are noted here too, so later ones add up. These do not
+     shrink to zero by being guessed; a revisit trigger firing reopens them.
+       Hedged: others may use it later — revisit when a second person needs access;
+       every record carries an owner field from day one. -->
 
 ## Platform
 

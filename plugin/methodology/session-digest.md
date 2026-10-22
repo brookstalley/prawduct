@@ -6,10 +6,11 @@ judgment, not mechanically.
 Every unit of work follows **understand → plan → build → verify → Critic → reflect**, scaled by
 size and by type — the table is in `/prawduct:methodology building`.
 
-**Align on goals before building.** Judge how clear they are against the work ahead, then proceed,
-proceed citing a backlog item or spec, ask everything in one batch before a plan exists, or hold up
-— and say which. Mid-build, decide what the goals settle — do it right, match the product's
-choices and backlog, prefer the durable choice — stopping only for high stakes. Scale
+**Align on goals before building.** Judge how clear and grounded they are against the work
+ahead, then proceed, proceed citing a backlog item or spec, ask in one batch before a plan
+exists, or hold up, and say which. Mid-build, decide what the goals settle (do it right, match the product's
+choices and backlog, prefer the durable choice); stop only for high stakes, and name drift from
+the brief when you see it (`methodology/discovery.md`). Scale
 **rigor** to **stakes × knowledge-confidence × volatility** — fast-moving data is verified, not
 recalled (`methodology/discovery.md` "Calibrate Rigor").
 
@@ -42,8 +43,8 @@ coding without it is the most common governance failure.
 - **Rigor is stage-keyed:** inner-loop reviews block only on ships-broken; the boundary review
   runs everything and is never skipped. Unsure defaults to the cheaper inner review.
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with
-  `# prawduct:allow prawduct/broad-except -- reason`; never swallow errors silently.
-  (`prawduct:allow <scope>/<rule-id> -- reason` is the general pragma — `docs/waivers.md`.)
+  `# prawduct:allow prawduct/broad-except -- reason` (`docs/waivers.md`); never swallow errors
+  silently.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`**, yours to write (as is
   `.session-reflected`) at each chunk close, and never ask whether to prepare one — prepare it,

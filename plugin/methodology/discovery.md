@@ -47,7 +47,7 @@ One common entry point is **a backlog item at an early `stage:`** (`idea`/`resea
 **The brief is the product-level goals statement**, so it reads as current: an amendment rewrites
 the part it changes, and history stays in git and the change log.
 
-**Feature-level discovery** is the alignment pass (`methodology/building.md` "Before You Build"): judge how clear the goals are against the work ahead, then proceed, proceed citing a backlog item or spec, ask in one batch, or hold up — and say which.
+**Feature-level discovery** is the alignment pass (`methodology/building.md` "Before You Build"): judge how clear and grounded the goals are against the work ahead, then proceed, proceed citing a backlog item or spec, ask in one batch, or hold up — and say which.
 
 **A structural characteristic flipped.** The six characteristics (human interface, unattended,
 programmatic interface, multiple parties, sensitive data, multi-process/distributed) are the
@@ -59,6 +59,29 @@ re-opens the security model), and run an **assumption audit** — walk the assum
 classification licensed and surface the ones the new reality invalidates. The audit's output is
 **backlog requirements**, not a mental note. Update `classification` in `project-state.yaml` so the
 flip is durable (`/prawduct:methodology norms`, Ambient norms).
+
+**Drift is announced, by tier.** Goals drift as work goes on. That is normal, and calling it out
+is the job; a flip nobody decided is drift that went unannounced. Three tiers:
+- **Record**: one weak signal, little resting on it. Nothing in the turn; note it in the brief's
+  Open Questions so later signals add up.
+- **Heads-up**: signals building on one axis, or one moderate signal. One line in your ordinary
+  voice: *"This moves us toward multi-user. The brief still says one owner."* When the owner made
+  the change out loud and only the record lags, this is the tier: *"The record is behind you;
+  update it?"* Check the brief's audience, personas and scope, not only the line in front of you.
+- **Fork**: drift nobody chose (your own act contradicts the brief, signals add up past the bar,
+  or a lot rests on the axis): *"This is really changing: one owner → three people's repos. Worth
+  redefining the goals before the next plan."*
+
+Irreversibility raises the tier on its own, and an act that publishes (a public repo, a release,
+a client that cannot be recalled) is a hard stop at that act, whatever its tier; a design that
+anticipates it gets the tier its signals earn. Touching someone else's ownership (their repo,
+code or data, not only their machine) outranks every signal below. Raise a fork before the act
+that causes it, not after. Signals, strongest first: an act that contradicts the record's own text (a public repo, a tunnel or public
+URL, an invite or token for another person, a new commit author, a listing, set against
+"single-user", "LAN-only", "private" or a `never` item); an armed revisit trigger the plan
+matches; a product hedge in conversation. Read the first two at plan approval. A fork's output is
+a question, "do we update the goals?", and the answer updates the brief and `classification`,
+as a flip does above. Keep forks rare: each costs the owner an interruption.
 
 **A norm surfaced.** When discovery produces a statement meant to bind future work ("all money is
 integer cents", "every asset is vector"), capture it as a norm at birth — **statement + why +
@@ -99,9 +122,13 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 
 **Make your inferences explicit (intentional inference).** Answer what you can yourself, and mark each answer you *inferred* — rather than confirmed or verified — in plain words (*"Inferred: one household"*), so it is visible and correctable instead of buried; the mark comes off only when the owner confirms, so no later session cites your guess as their ruling. An example the owner shows — a reference image, a competitor, a default — is evidence of taste, not a spec: ask which of its qualities matter before any one becomes a rule. Research and code answer questions about the world; only the owner answers questions about their intent. Put every question whose answer would change the goals, the architecture, or a high-stakes choice to the owner **together, before a plan is written** — not one at a time, and not mid-build.
 
+**Ground the goals under an investment.** At any decision that commits investment — a plan, a design artifact, an architectural choice later work builds on, spending, an outward commitment (an invite, a publish, a public endpoint) — name the product goals it rests on: who it is for, what job it does, what success means, who else touches it, whose machines it runs on. Look at audience first — who may use, listen or contribute — the costliest ungrounded goal in every product checked. A goal is *grounded* when the owner stated it without a hedge and it still holds given what has happened since. An ungrounded goal costs what rests on it times how hard that is to undo once built. With a lot resting on it, stop and say so in a sentence, opening with what the product is for and how this work serves it: *"This is a big fork, worth defining now: auth, network exposure and where secrets live all turn on it."* The owner answers or chooses best judgment. With little resting on it, record the default taken and what would reopen it, and keep going. Batch them costliest first. **What a hedge is about decides whether it counts, never its wording:** a hedge about the product (customers, needs, goals, parties, whose machine) is a goal question; one about the solution (vendor, stack, library) gets a recorded default, unless it stands in for a goal ("a customer requires Azure").
+
+**A hedged answer stays open.** When the owner hedges about the product (*"might be used by others… scope that out for now"*), first judge what rests on it: when auth, exposure or secrets turn on it, say so now in a sentence, audience first, naming the cost of leaving it open. Deferring is the owner's call; flagging the cost is yours. Either way, record the hedge, not a resolution: an entry marked *Hedged:* in the brief's Open Questions, beside said and inferred, with a revisit trigger worded as the event that would settle it (*"when a second person needs access"*), so a later plan can be read against it, and the cheap hedges taken now (an owner field on every record from day one). Never `null`, never a `never` item: a hedge filed as a ruling is how an audience changes with nobody deciding it. A plan resting on a hedged goal is treated like one resting on an inference (the paragraph above judges which hedges count).
+
 ## How to Discover
 
-**Open with the expert take.** Discovery's first move is your read of the problem — what you think this is, the risk you already see, the option they may not have considered — stated before the first question. An agent that only *asks* has offloaded the expertise the user came for (Principle 7), and the read is cheaper to correct than an interview is to sit through.
+**Open with the expert take.** Discovery's first move is your read of the problem — what the product is trying to achieve and how this work serves it, what you think this is, the risk you already see, the option they may not have considered — stated before the first question. An agent that only *asks* has offloaded the expertise the user came for (Principle 7), and the read is cheaper to correct than an interview is to sit through.
 
 **Infer, confirm, proceed.** Don't interrogate. Form hypotheses from context, state them, and let the user correct you: "Since this handles payment data, I'm assuming PCI-DSS awareness and encrypted storage. Sound right?" moves faster than "What security requirements do you have?"
 

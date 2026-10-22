@@ -252,6 +252,7 @@ def test_json_totals_carry_every_count_even_when_zero(tmp_path, capsys):
     for side in ("governed", "ungoverned"):
         assert set(out["total"][side]) == set(tool.KEYS)
     assert out["projects"][0]["corrections"] == 0
+    assert out["projects"][0]["goal_questions"] == 0
     assert "health" in out
 
 
@@ -262,3 +263,20 @@ def test_an_agent_reading_the_digest_file_does_not_govern_the_session(tmp_path):
     result["message"]["content"][0]["content"] = tool.DIGEST_MARKER + " **Prawduct**"
     path = _session(tmp_path, "r", [_owner(LONG, cwd=gone), _calls("Edit"), result])
     assert _total(tool.measure([path], None, None, 60, ()), governed=True) == {}
+
+
+def test_an_owner_asking_what_the_work_is_for_counts_as_a_goal_question(tmp_path):
+    """The goal-grounding control's yield: the owner, not the agent, asking what the product or
+    the work is trying to achieve. Counted on any owner turn, built or not, because the owner's
+    complaint was having to ask it at all. A solution question is not one."""
+    path = _session(tmp_path, "p", [
+        _owner(LONG), _calls("Edit"),
+        _owner("wait, what are we really trying to achieve here?"),
+        _owner("how does this implementation meet our product goals?"),
+        _owner("is it clear what this build plan is trying to achieve, at the product level?"),
+        _owner("can you sharpen what we’re trying to achieve before you plan?"),
+        _owner("what\u2019s the point here, really?"),
+        _owner("should this use AWS or Azure?"),
+        _owner("what's the point of telling me a reason that was not used?"),
+    ])
+    assert _total(tool.measure([path], None, None, 60, ()))["goal_questions"] == 5
