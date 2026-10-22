@@ -31,6 +31,20 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 
 **Default when unsure (canonical statement):** If the mode is missing, unrecognized, or no inference rule fires, run the inner-stage review of whatever interval exists — `chunk` on a dirty tree, `cumulative` on a clean tree with a committed bundle at the boundary. `final` is never a default: it is inferred on a signal or declared. The boundary is never inferred away, and neither direction of error is safe ("Severity is stage-keyed", below).
 
+## Reviewing a proposed artifact, and invoking the Critic from automation
+
+- **There is no non-git mode, by decision.** Every mode is anchored to git. To review a proposed
+  artifact (a rule edit, a generated file), write it to a **non-ignored path in the working tree**,
+  run `chunk`, and delete the file afterwards. `chunk` sees untracked files, so nothing needs
+  committing. **Never stage it under `.prawduct/`**: that directory is gitignored and invisible to
+  the review.
+- **Model-driven invocation from a governed session is supported and stable** — an agent running
+  `/prawduct:critic` in its own governed repo is what `AGENTS.md` tells builders to do.
+- **Unattended or scheduled invocation, with no interactive session, is not ratified.** Untested
+  edges: the session-mutation guard and critic-active marker with no session (no session event
+  releases a live marker), and serialization across callers (one live review per repo). Expect
+  such a review to be counted in `review-stats` and `stats` like any build-cycle review.
+
 ## Per-Mode Behavior
 
 | Aspect | `chunk` | `final` | `cumulative` | `verify-resolutions` |

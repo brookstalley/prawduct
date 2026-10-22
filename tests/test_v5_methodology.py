@@ -951,7 +951,10 @@ LAST_MEASURED_TOKENS = {
     # verify pass drops off-topic ones, is rewritten to say what is dropped and counted.
     # -10 on 2026-10-14 (agents-md-anchor): the protected set names root AGENTS.md, paid in
     # place by folding "let the gate say otherwise; it is the gate's answer" into one clause.
-    "skills/critic/review-cycle.md": 7507,
+    # +204 on 2026-10-21 (#95), DECLARED: the integrator section (stage-and-`chunk` pattern, the
+    # `.prawduct/` gitignore trap, in-session vs unattended invocation). No review mode loads this
+    # file (see test_critic_skill_metadata), so no reviewer route pays it; it serves integrators.
+    "skills/critic/review-cycle.md": 7711,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6064,7 +6067,7 @@ class TestReviewCycle:
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
         # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
-        assert tokens < 7508, f"review-cycle.md is ~{tokens} tokens, should be <7508"
+        assert tokens < 7712, f"review-cycle.md is ~{tokens} tokens, should be <7712"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
