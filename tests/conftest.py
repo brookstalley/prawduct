@@ -237,9 +237,6 @@ def pytest_configure(config):
     beside such a report says so, rather than the PREVIOUS run's `full` verdict
     sitting there vouching for it.
     """
-    config.addinivalue_line(
-        "markers", "non_root: permission fixture that cannot refuse root; skipped when euid is 0"
-    )
     if not hasattr(config, "workerinput"):
         warning = venv_warning(sys.prefix, sys.executable, Path(config.rootpath), dict(os.environ))
         if warning:
