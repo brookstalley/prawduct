@@ -123,10 +123,21 @@ markers = [
 # It is safe only because `tests/conftest.py` writes the scope record beside the
 # report: with a report always sitting at this path, one from `pytest -k foo`
 # would otherwise be indistinguishable from the suite's.
+#
+# **`--timeout-method signal` and `--max-worker-restart 0` go together (#997).** The
+# `thread` method ends the whole xdist worker with `os._exit` when a test crosses the
+# budget; the controller sees only `node down: Not properly terminated`, and the replacement
+# worker never picks up the dead worker's `loadfile` group, so the run hangs at ~99% with
+# no verdict. `signal` (SIGALRM, delivered on the worker's main thread under xdist >=3) fails
+# only the one test with `Timeout`, and the worker and its group carry on. With timeouts no
+# longer killing workers, a dying worker is a genuine crash (segfault, OOM): restart 0 makes
+# it end the run non-zero, naming the worker, rather than re-entering the lost-group hang.
+# Do not restore `thread` as a "safer" default; `tests/test_pytest_config.py` pins both.
 addopts = [
     "-n", "5",
     "--junit-xml=.prawduct/.test-report.xml",
     "--dist", "loadfile",
     "--timeout", "30",
-    "--timeout-method", "thread",
+    "--timeout-method", "signal",
+    "--max-worker-restart", "0",
 ]
