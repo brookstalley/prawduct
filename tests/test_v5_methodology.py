@@ -655,7 +655,9 @@ LAST_MEASURED_TOKENS = {
     # route sums in test_reviewer_payload_budget.py. A READING.
     # -1 on 2026-10-21 (goal-grounding, #1029): a goal still hedged rates like one still
     # inferred, paid by dropping Goal 2's own definition from its parenthesis. Ceiling lowered.
-    "skills/critic/review-protocol.md": 3897,
+    # +30 on 2026-10-21 (#706): Goal 2 checks a declared Exposed API surface against the contract
+    # artifact, after tightening the bullet's two decision clauses (net of that). DECLARED, a READING.
+    "skills/critic/review-protocol.md": 3927,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -763,7 +765,9 @@ LAST_MEASURED_TOKENS = {
     # -12 on 2026-10-19 (change-log-fragments): the record-lint line names the new
     # `change-fragment` check, paid by cutting a reason `cross-checks.md` owns ("that is
     # how a record defect buys a review round"); the ceiling lowered with it.
-    "skills/critic/goals-1-3.md": 2658,
+    # +30 on 2026-10-21 (#706): the same contract-presence clause as review-protocol.md, net of the
+    # tightened decision clauses. DECLARED, a READING.
+    "skills/critic/goals-1-3.md": 2688,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1319,7 +1323,8 @@ LAST_MEASURED_TOKENS = {
     # brief's revisit triggers and scope words, pointing to discovery.md's drift tiers. A READING.
     # -8 (chunk 02 review observation): the scope-word list discovery.md owns is no longer
     # restated here. A READING.
-    "methodology/planning.md": 5865,
+    # +26 on 2026-10-21 (#706): the Exposed API rule says the contract must describe the surface. DECLARED.
+    "methodology/planning.md": 5891,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -5156,12 +5161,34 @@ class TestCriticSkill:
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3898, f"review-protocol.md is ~{tokens} tokens, should be <3898"
+        assert tokens < 3928, f"review-protocol.md is ~{tokens} tokens, should be <3928"
 
 
 # =============================================================================
 # goals-1-3.md — the chunk / verify-resolutions payload
 # =============================================================================
+
+
+class TestExposedApiContractPresence:
+    """#706: a declared `Exposed API:` surface must appear in the contract artifact.
+
+    Both Goal 2 carriers state it, with the same anchor phrase, because the
+    chunk reviewer and the final reviewer read different files and neither
+    reads the other; `planning.md` states the author-side rule.
+    """
+
+    @pytest.mark.parametrize(
+        "rel", ["skills/critic/goals-1-3.md", "skills/critic/review-protocol.md"]
+    )
+    def test_goal_2_checks_the_surface_against_the_contract(self, rel):
+        text = read_file(rel)
+        assert "Contract presence:" in text
+        assert "must appear in the API contract artifact" in text
+        assert "naming the surface and its artifact" in text
+
+    def test_planning_states_the_rule(self):
+        text = read_file("methodology/planning.md")
+        assert "contract must describe the named surface by the time the chunk ships" in text
 
 
 class TestCriticGoals13:
@@ -5440,7 +5467,7 @@ class TestCriticGoals13:
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
-        assert tokens < 2659, f"goals-1-3.md is ~{tokens} tokens, should be <2659"
+        assert tokens < 2689, f"goals-1-3.md is ~{tokens} tokens, should be <2689"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion

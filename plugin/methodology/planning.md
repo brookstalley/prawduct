@@ -203,7 +203,7 @@ When a chunk wraps a foreign API or SDK — anything whose surface the agent doe
 
 The mirror for the interface a product *produces* — any programmatic surface others call (network service, library/SDK, on-device/platform, or CLI). Two design decisions must be *recorded*, not left to silence: the versioning + deprecation/compatibility scheme and the error model — introducing either later is a breaking change for every consumer. The framework forces the decision, not versioning itself: "none — internal-only" is valid; a deferral must be dated with a revisit trigger.
 
-**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a WARNING for each missing decision. Discovery's `exposes_programmatic_interface` flag carries into the plan on the chunk that first builds the surface; the `api-versioning` advisory independently nudges already-built products.
+**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a WARNING for each missing decision. The contract must describe the named surface by the time the chunk ships (Goal 2 warns when it does not). Discovery's `exposes_programmatic_interface` flag carries into the plan on the chunk that first builds the surface; the `api-versioning` advisory independently nudges already-built products.
 
 ### Visual Change Verification
 
