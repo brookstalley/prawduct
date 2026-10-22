@@ -395,7 +395,8 @@ HANDOFF_ADVISORY = "HANDOFF NOTE:"
 
 class TestMissingNoteStopAdvisory:
     """The generated handoff already tells the NEXT agent a note is missing;
-    this tells the agent who can still write one, at Stop, without blocking."""
+    this says it at Stop, while the session that can write one is still open,
+    without blocking."""
 
     def _planned_session(self, tmp_path: Path, *, code: bool = True) -> Path:
         repo = _repo(tmp_path)
@@ -415,7 +416,8 @@ class TestMissingNoteStopAdvisory:
     def _stop(repo: Path, capsys, stop_input: dict | None = None) -> tuple[int, str]:
         rc = _hook.cmd_stop(repo, stop_input or {})
         out = capsys.readouterr().out.strip()
-        delivered = json.loads(out)["additionalContext"] if out else ""
+        # The exit-0 advisory channel (`_deliver_stop_advisories`).
+        delivered = json.loads(out)["systemMessage"] if out else ""
         return rc, delivered
 
     def test_changed_code_and_no_note_reaches_the_agent_without_blocking(

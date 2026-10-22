@@ -391,7 +391,8 @@ session would receive is no longer the same act as replacing what is there. The 
 and worth stating: the absence signal reaches the incoming agent, who cannot act on it. What reaches
 the agent who still could — the chunk-close step, the digest line, the preview, and the Stop hook's
 `HANDOFF NOTE:` advisory (judgeable code changed under an active build plan, note empty or missing;
-silent on a `RUNNING` + `DO NOT CLEAR` turn) — is all advisory too, by the same norm.
+silent on a `RUNNING` + `DO NOT CLEAR` turn; the user's transcript at exit 0, the agent's stderr
+when another gate blocks) — is all advisory too, by the same norm.
 
 **Known gap in the marker scheme:** it recognises a handoff that was *replaced* (no marker), not one
 that was *appended to* (marker still present) — that text is still overwritten. Closing it needs a

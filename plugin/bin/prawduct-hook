@@ -2941,9 +2941,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Advisory 1a: the forward note — the reflection gate's resumability twin.
     # The handoff note is advice, and advice fails soft, so this never blocks
-    # and needs no waiver. What it fixes is WHO hears about a missing note: the
-    # generated `.session-handoff.md` already says so, but to the next agent,
-    # who cannot write it. Presence only — the note's content is not graded.
+    # and needs no waiver. What it fixes is WHEN a missing note is heard about:
+    # the generated `.session-handoff.md` already says so, but to the next
+    # agent, who cannot write it. This says it before the clear. At exit 0 the
+    # advisory channel reaches the USER only (`_deliver_stop_advisories` — Stop
+    # has no model channel that does not start another turn), so the text is
+    # addressed to whoever reads it; when another gate blocks, it rides stderr
+    # beside the blockers and reaches the agent too. Presence only — the note's
+    # content is not graded.
     # Same span and plan conjunct as the reflection gate's old advisory shape;
     # silent on a turn that declares itself still working (RUNNING + DO NOT
     # CLEAR), because the note is owed when the work stops, not at every turn.
@@ -2958,10 +2963,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         if not _notes_text:
             stop_advisories.append(
                 "HANDOFF NOTE: this session changed judgeable code against an active build\n"
-                "  plan, and .prawduct/.handoff-notes.md is empty or missing. If the work\n"
-                "  stops here, write where you stopped, what you would do next and what would\n"
-                "  bite the next session — it is the first thing that session reads, and only\n"
-                "  you can write it. Advisory: nothing is blocked and /clear stays open.\n"
+                "  plan, and .prawduct/.handoff-notes.md is empty or missing, so a clear now\n"
+                "  starts the next session without the agent's own account of where it stopped.\n"
+                "  If the work stops here, the note should say where it stopped, what comes next\n"
+                "  and what would bite the next session — only this session can write it.\n"
+                "  Advisory: nothing is blocked and /clear stays open.\n"
             )
 
     # Gate 1b: the learnings cutover floor — the reflection gate's sibling.
