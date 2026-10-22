@@ -55,7 +55,7 @@ If you are **re-entering** this runbook after Phase 0 already sent you to write
 the plan, you'll get `releasable: vX.Y.Z — N release-pending scope(s) …` or
 `not-releasable: …` instead. Both still name the scope list, so both mean
 "there is something to cut" — read them the same way and carry on to Phase 0,
-which is where those two verdicts actually differ.
+which is where those two verdicts actually differ. (A Phase 0 re-run with nothing pending prints no suite verdict at all: `release_readiness` asks for it only below the no-pending return, so do not read its absence as a green suite.)
 
 Note the inversion: the *stop* case is the one that exits 0, and the *proceed*
 case is the one that exits non-zero. Phase 0 step 0 runs this same command for a
