@@ -203,6 +203,13 @@ class TestOnlinePlan:
         assert network and set(network) == {gh.evidence.NETWORK_TIMEOUT_FLOOR}
         assert local and max(local) < gh.evidence.NETWORK_TIMEOUT_FLOOR, "local reads keep their own budget"
 
+    def test_a_malformed_override_still_bounds_gh(self, monkeypatch):
+        """The git legs refuse a malformed override; `gh` cannot be refused the
+        same way without dropping its call, and `timeout=None` would let it run
+        unbounded — so it takes the floor."""
+        monkeypatch.setenv("PRAWDUCT_GIT_TIMEOUT", "1O")
+        assert gh._gh_timeout() == gh.evidence.NETWORK_TIMEOUT_FLOOR
+
 
 class TestSquashProof:
     def _squash_merged(self, clone, name="feat/sq") -> str:
