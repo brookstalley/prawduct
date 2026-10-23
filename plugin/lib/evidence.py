@@ -109,6 +109,24 @@ STORE_BASENAME = "evidence.jsonl"
 
 _GIT_TIMEOUT_DEFAULT = 15
 _GIT_TIMEOUT_ENV = "PRAWDUCT_GIT_TIMEOUT"
+#: The floor for a call that talks to a remote. The default above is priced
+#: for a local disk; a fetch or a ``push --delete`` pays a network round-trip
+#: (and possibly a credential helper), which 15s routinely does not cover.
+NETWORK_TIMEOUT_FLOOR = 60
+#: git subcommands that reach a remote, and so take the network floor.
+_NETWORK_SUBCOMMANDS = frozenset({"fetch", "push", "ls-remote", "pull", "clone"})
+
+
+def network_timeout() -> "tuple[int | None, str | None]":
+    """The budget for one call that reaches a remote — git's network legs and
+    ``gh`` alike. It is the local budget raised to :data:`NETWORK_TIMEOUT_FLOOR`,
+    so ``PRAWDUCT_GIT_TIMEOUT`` still raises it past the floor but cannot drop it
+    below; a malformed override is refused here exactly as :func:`_git_timeout`
+    refuses it."""
+    timeout, unusable = _git_timeout()
+    if unusable is not None:
+        return None, unusable
+    return max(timeout, NETWORK_TIMEOUT_FLOOR), None
 
 
 def _git_timeout() -> "tuple[int | None, str | None]":
@@ -841,8 +859,12 @@ def run_git(
 
     ``strip=False`` returns stdout verbatim. Porcelain formats need it: the
     first entry of ``git status --porcelain`` can open with a space that is
-    part of its status code, and stripping it shifts the whole parse."""
-    timeout, unusable = _git_timeout()
+    part of its status code, and stripping it shifts the whole parse.
+
+    A subcommand that reaches a remote (fetch, push, ls-remote…) takes
+    :func:`network_timeout` instead of the local budget."""
+    network = bool(args) and args[0] in _NETWORK_SUBCOMMANDS
+    timeout, unusable = network_timeout() if network else _git_timeout()
     if unusable is not None:
         return 1, "", unusable
     try:
@@ -859,7 +881,14 @@ def run_git(
         # Named before the generic branch below (TimeoutExpired IS a
         # SubprocessError). The default message says only that a command timed
         # out, which reads as a git fault; the budget is prawduct's, so the
-        # remedy is prawduct's to state.
+        # remedy is prawduct's to state — and the cause differs by leg: a
+        # network call waited on the remote, a local one on file reads.
+        if network:
+            return 1, "", (
+                f"git {args[0]} exceeded the {timeout}s budget waiting on the "
+                f"remote — raise it with {_GIT_TIMEOUT_ENV}=<seconds> on a slow "
+                "network"
+            )
         return 1, "", (
             f"git {args[0]} exceeded the {timeout}s budget — raise it with "
             f"{_GIT_TIMEOUT_ENV}=<seconds> if this working tree is reached "

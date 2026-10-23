@@ -651,6 +651,49 @@ class TestGitTimeoutBudget:
         # is reporting — that is the knock-on being traceable, not a repeat.
         assert "seeding the capture with" in err
 
+    @pytest.mark.parametrize("override, local, network", [
+        (None, 15, 60),    # unset: each leg its own default
+        ("5", 5, 60),      # lowering for fast local failure cannot starve the network
+        ("120", 120, 120), # raising past the floor raises both
+    ])
+    def test_network_subcommands_take_the_network_floor(
+        self, tmp_path, monkeypatch, override, local, network
+    ):
+        repo = _make_repo(tmp_path)
+        if override is None:
+            monkeypatch.delenv(evidence._GIT_TIMEOUT_ENV, raising=False)
+        else:
+            monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, override)
+        seen = {}
+
+        def spy(cmd, **kwargs):
+            seen[cmd[1]] = kwargs.get("timeout")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr(evidence.subprocess, "run", spy)
+        for sub in ("status", "fetch", "push", "ls-remote"):
+            evidence.run_git(repo, sub)
+        assert seen == {"status": local, "fetch": network, "push": network, "ls-remote": network}
+
+    def test_a_network_timeout_blames_the_remote_not_the_disk(self, tmp_path, monkeypatch):
+        """The local message tells the reader to suspect a mounted working tree;
+        on a push that waited on the remote that sends them to the wrong place."""
+        def boom(cmd, **kwargs):
+            raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+
+        monkeypatch.setattr(evidence.subprocess, "run", boom)
+        _rc, _out, err = evidence.run_git(tmp_path, "push", "origin", "--delete", "x")
+        assert "waiting on the remote" in err and "mount" not in err
+        assert evidence._GIT_TIMEOUT_ENV in err
+        _rc, _out, err = evidence.run_git(tmp_path, "status")
+        assert "mount latency" in err
+
+    def test_a_malformed_override_is_refused_on_the_network_leg_too(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(evidence, "_ATTRIBUTED_BAD_TIMEOUTS", set())
+        monkeypatch.setenv(evidence._GIT_TIMEOUT_ENV, "1O")
+        rc, _out, err = evidence.run_git(tmp_path, "fetch")
+        assert rc == 1 and evidence._GIT_TIMEOUT_ENV in err
+
     def test_timeout_names_the_remedy_and_leaves_no_lock(self, tmp_path, monkeypatch):
         """`GIT_INDEX_FILE` moves git's index lock alongside the temp index,
         so a capture killed mid-`add` litters the temp dir — never

@@ -187,6 +187,29 @@ class TestOnlinePlan:
         assert not [a for a in started if a[0] == "gh" or (a[0] == "git" and set(a) & {"fetch", "push", "ls-remote"})]
         assert fake_gh.calls() == []
 
+    def test_network_legs_take_the_network_budget(self, clone, fake_gh, monkeypatch):
+        """A `push --delete` that ran out of the 15s local budget is how this
+        was found: every call that reaches the remote — git's and gh's — waits on
+        a round-trip, so it takes the network floor while local reads keep 15s."""
+        monkeypatch.delenv("PRAWDUCT_GIT_TIMEOUT", raising=False)
+        pushed_merged(clone, "feat/a")
+        seen = []
+        real = subprocess.run
+        monkeypatch.setattr(subprocess, "run",
+                            lambda a, *x, **k: (seen.append((list(a), k.get("timeout"))), real(a, *x, **k))[1])
+        online(clone)
+        network = [t for a, t in seen if a[0] == "gh" or (a[0] == "git" and a[1] in {"fetch", "push", "ls-remote"})]
+        local = [t for a, t in seen if a[0] == "git" and a[1] in {"for-each-ref", "rev-parse"}]
+        assert network and set(network) == {gh.evidence.NETWORK_TIMEOUT_FLOOR}
+        assert local and max(local) < gh.evidence.NETWORK_TIMEOUT_FLOOR, "local reads keep their own budget"
+
+    def test_a_malformed_override_still_bounds_gh(self, monkeypatch):
+        """The git legs refuse a malformed override; `gh` cannot be refused the
+        same way without dropping its call, and `timeout=None` would let it run
+        unbounded — so it takes the floor."""
+        monkeypatch.setenv("PRAWDUCT_GIT_TIMEOUT", "1O")
+        assert gh._gh_timeout() == gh.evidence.NETWORK_TIMEOUT_FLOOR
+
 
 class TestSquashProof:
     def _squash_merged(self, clone, name="feat/sq") -> str:
