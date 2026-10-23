@@ -382,6 +382,21 @@ class TestADeclarationThatNamesNothingIsReported:
             (".prawduct/project-state.yaml", 6),
         ]
 
+    def test_retires_as_an_entrys_first_key_stops_at_the_next_entry(self, tmp_path):
+        """`  - retires:` puts the key two columns right of its dash. Its list ends
+        at the next record (`  - name: b`), which must not be read as a phrase."""
+        state = (
+            "technical_decisions:\n"
+            '  - retires:\n    - "an entry-first old phrase"\n'
+            "  - name: b\n"
+        )
+        repo = _make_repo(
+            tmp_path,
+            {"docs/a.md": "An entry-first old phrase.\n", "docs/b.md": "name: b is fine\n"},
+            state=state,
+        )
+        assert _found(_lint(repo)) == [("docs/a.md", 1)]
+
     def test_a_trailing_comment_and_a_same_indent_list_still_declare(self, tmp_path):
         """Valid YAML both: a comment after a flow list, and a block list at the
         key's own indentation. Each declares its phrase."""

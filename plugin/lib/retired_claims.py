@@ -87,7 +87,10 @@ _INLINE_RETIRES_RE = re.compile(r"\S.*?(?:\*{1,2}|_{1,2})?\bRetires:")
 _INLINE = "\0inline"
 
 _TOP_KEY_RE = re.compile(r"^([A-Za-z_][\w-]*):")
-_YAML_RETIRES_RE = re.compile(r"^(\s+)(?:-\s+)?retires:\s*(.*?)\s*$")
+#: The prefix group spans any ``- `` marker, so its length is the KEY's column:
+#: a list under ``  - retires:`` belongs to it only at that column or deeper,
+#: and the next record's ``  - name:`` at the dash's column ends it.
+_YAML_RETIRES_RE = re.compile(r"^(\s+(?:-\s+)?)retires:\s*(.*?)\s*$")
 _YAML_ITEM_RE = re.compile(r"^(\s*)-\s+(.*?)\s*$")
 
 #: Between two words of a phrase: spaces, or a line break optionally followed by
