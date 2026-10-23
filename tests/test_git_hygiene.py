@@ -87,7 +87,7 @@ class TestLocalBranches:
         assert (action.target, action.sha) == ("feat/done", sha)
         # Merged locally and not yet pushed: local main is what reaches it.
         assert action.proof == "reachable from main"
-        assert action.command == ("git", "branch", "-d", "feat/done")
+        assert action.command == ("git", "branch", "-d", "--", "feat/done")
 
     def test_merged_into_develop_counts_as_integrated(self, clone):
         git(clone, "branch", "develop", "main")
@@ -199,15 +199,27 @@ class TestRemoteBranches:
         p = plan(clone)
         [remote] = [a for a in p.actions if a.kind == DELETE_REMOTE_BRANCH]
         assert remote.target == "origin/feat/pushed"
-        assert remote.command == ("git", "push", "origin", "--delete", "feat/pushed")
+        assert remote.command == ("git", "push", "origin", "--delete", "refs/heads/feat/pushed")
         assert remote.unchecked == gh.OPEN_PR_UNCHECKED
         assert not p.fully_checked, "an unchecked removal is not a fully checked plan"
+
+    def test_only_a_remote_long_lived_branch_proves_a_remote_deletion(self, clone):
+        """Merged into local main and not pushed: deleting the remote copy would
+        leave the merge on this machine alone. Pushing main is what proves it."""
+        feature(clone, "feat/pushed")
+        git(clone, "push", "-q", "origin", "feat/pushed")
+        merge(clone, "feat/pushed")
+        assert targets(plan(clone), DELETE_REMOTE_BRANCH) == set()
+        assert "feat/pushed" in targets(plan(clone), DELETE_BRANCH), "the local copy is proven locally"
+        git(clone, "push", "-q", "origin", "main")
+        assert targets(plan(clone), DELETE_REMOTE_BRANCH) == {"origin/feat/pushed"}
 
     def test_a_remote_branch_whose_local_namesake_is_in_use_is_kept(self, clone):
         for name in ("feat/reused", "feat/control"):
             feature(clone, name)
             git(clone, "push", "-q", "origin", name)
             merge(clone, name)
+        git(clone, "push", "-q", "origin", "main")
         git(clone, "checkout", "-q", "feat/reused")  # local is held, so its remote stays
         assert targets(plan(clone), DELETE_REMOTE_BRANCH) == {"origin/feat/control"}
 
@@ -391,7 +403,7 @@ class TestCommand:
         before = git(clone, "for-each-ref")
         result = run_hook(clone, home=tmp_path / "home")
         assert result.returncode == 0, result.stderr
-        assert "feat/done" in result.stdout and "git branch -d feat/done" in result.stdout
+        assert "feat/done" in result.stdout and "git branch -d -- feat/done" in result.stdout
         assert "fingerprint" in result.stdout
         assert git(clone, "for-each-ref") == before
 

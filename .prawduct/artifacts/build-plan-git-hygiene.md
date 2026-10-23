@@ -42,6 +42,11 @@ governed_by:
         names every target, the count, and what cannot be undone (a remote delete). `--apply
         <fingerprint>` binds the approval to exactly that set. After-merge cleanup rides the merge
         the owner approved; reap rides the reap delegation.md already prescribes."
+      - "a product's content leaves its own repo and owner only through a pinned, owner-approved
+        surface -> inapplicable because git-tidy sends no product content anywhere. Its network
+        calls delete refs on, and query pull requests in, the product's OWN remote, the repo the
+        owner already pushes to, so nothing leaves the repo or its owner. Chunk 03 adds these to the
+        egress SITE lists, which are a different inventory from content surfaces."
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 -> inapplicable because no review payload changes."
@@ -112,12 +117,14 @@ The one inference: `release/*` is long-lived and `hotfix/*` is not (requirements
 
 ## Status
 
-- [ ] Chunk 01: Classifier and offline dry run
+- [x] Chunk 01: Classifier and offline dry run
 - [ ] Chunk 02: Session-start advisory and the preference rows
 - [ ] Chunk 03: Apply, network legs and egress
 - [ ] Chunk 04: After-merge, reap, and the prose surfaces
-Context: Plan drafted 2026-10-22 after requirements were confirmed. Next: Chunk 01. This clone's
-own leftovers are the fixture source; don't tidy them by hand.
+Context: Chunk 01 reviewed (rev-20261023T033625Z-2514f9f7, 0 blocking) and committed. Its fixes
+for O-2, O-6 and O-7 landed in a separate commit, which the Chunk 02 review covers. O-5 (the
+sibling narrowing in R6) awaits the owner. Next: Chunk 02. This clone's own leftovers are the
+fixture source; don't tidy them by hand.
 
 ## Verification Strategy
 

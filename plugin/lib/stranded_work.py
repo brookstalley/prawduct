@@ -309,7 +309,7 @@ def stranded_branches(
         return [], True, None
     held = gitstate.held_branches(records)
 
-    remotes =_git(project_dir, "for-each-ref", "--format=%(refname)", "refs/remotes/")
+    remotes = _git(project_dir, "for-each-ref", "--format=%(refname)", "refs/remotes/")
     if remotes is None:
         return [], True, "could not list remote-tracking refs"
     if not remotes.strip():

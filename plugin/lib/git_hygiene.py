@@ -215,14 +215,21 @@ def plan(
     proof_refs = [r for r in (*remote_refs, *local) if is_long_lived(_short(r, remote), names)]
     result.long_lived = sorted({_short(r, remote) for r in proof_refs})
     # Which long-lived ref proves each ref integrated: the first that reaches it.
+    # A remote deletion is proven only by a remote long-lived branch: a local one
+    # may hold merges nobody has pushed, and deleting the remote copy on their
+    # strength would leave those commits on this machine alone.
     proven_by: dict[str, str] = {}
+    proven_remotely: dict[str, str] = {}
     for ref in proof_refs:
         reached = _refs(project_dir, "refs/heads/", f"refs/remotes/{remote}/", merged=ref)
         if reached is None:
             result.problems.append(f"could not compare branches with {_short(ref, remote)}")
             continue
+        shown = ref.removeprefix("refs/").removeprefix("heads/").removeprefix("remotes/")
         for name in reached:
-            proven_by.setdefault(name, ref.removeprefix("refs/").removeprefix("heads/").removeprefix("remotes/"))
+            proven_by.setdefault(name, shown)
+            if ref.startswith("refs/remotes/"):
+                proven_remotely.setdefault(name, shown)
 
     report = stranded_work.scan(project_dir, now=now, roots=roots, branches=False)
     result.problems.extend(report.problems)
@@ -253,19 +260,19 @@ def plan(
         via = "; checked out only in a worktree removed first" if name in freed else ""
         result.actions.append(Action(
             DELETE_BRANCH, name, sha, f"reachable from {proven_by[ref]}{via}",
-            ("git", "branch", "-d", name),
+            ("git", "branch", "-d", "--", name),
         ))
 
     deleted_local = {a.target for a in result.actions if a.kind == DELETE_BRANCH}
     for ref, sha in sorted(remote_refs.items()):
         name = _short(ref, remote)
-        if is_long_lived(name, names) or ref not in proven_by:
+        if is_long_lived(name, names) or ref not in proven_remotely:
             continue
         if f"refs/heads/{name}" in local and name not in deleted_local:
             continue  # a local branch of that name is still in use
         result.actions.append(Action(
-            DELETE_REMOTE_BRANCH, f"{remote}/{name}", sha, f"reachable from {proven_by[ref]}",
-            ("git", "push", remote, "--delete", name),
+            DELETE_REMOTE_BRANCH, f"{remote}/{name}", sha, f"reachable from {proven_remotely[ref]}",
+            ("git", "push", remote, "--delete", f"refs/heads/{name}"),
             unchecked=OPEN_PR_UNCHECKED if offline else None,
         ))
 
