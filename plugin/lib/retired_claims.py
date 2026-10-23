@@ -1,11 +1,9 @@
 """``retired-claim-survives`` — a retired claim's old wording, found where it survives.
 
 When a governing record retires a claim, the old phrasing keeps living wherever
-the author's sweep did not reach. In one governed product that happened thirteen
-times across four sessions. The Critic caught twelve and a requested design
-review the thirteenth; the author's own sweep caught none. Each correction is a
-fresh chance to miss a home, so a reminder to sweep harder cannot fix it. This
-check makes the literal part mechanical.
+the author's sweep did not reach. Every correction is a fresh chance to miss a
+home, so the sweep cannot be left to the author's attention. This check makes
+the literal part mechanical.
 
 **The declaration.** A ``Retires:`` field lists the retired phrasings as
 double-quoted strings; prose around the quotes is ignored. It is read in two
@@ -32,17 +30,18 @@ on it or the line above, for a site that quotes the claim as its subject, such
 as an absence test. Files the current change edits are **not** exempt: they
 are the ones the decision is about.
 
-**Coverage, by the five cause classes the recurrences fell into.** It catches:
+**Coverage, by the five ways a retired claim survives.** It catches:
 
-1. *literal survival* — the phrase verbatim, somewhere the sweep did not reach;
-2. *a survivor inside a file the author is editing* (class 3 of #136);
-3. *a survivor in the backlog*, which no artifact graph reaches (class 5).
+- *literal survival*: the phrase verbatim, somewhere the sweep did not reach;
+- *a survivor inside a file the author is editing*, which a sweep that skips
+  its own edits misses;
+- *a survivor in the backlog*, which no artifact graph reaches.
 
-It does **not** catch a *paraphrase* (class 2). Grep cannot see a restatement;
+It does **not** catch a *paraphrase*. Grep cannot see a restatement;
 the complementary control is Critic Goal 4, which reads for the citations a
 renamed or removed term leaves behind, and an author can list a known
 paraphrase as one more ``Retires:`` phrase. It does **not** catch a finding's
-enumerated sites consumed only in part (class 4). The complementary control is
+enumerated sites consumed only in part. The complementary control is
 ``verify-resolutions``, which re-reviews exactly the sites a finding named.
 
 **Repo-wide, unlike record-lint's line checks.** Those read only lines a change
@@ -79,6 +78,13 @@ _QUOTED_RE = re.compile(r'"([^"\n]+)"|“([^”\n]+)”')
 #: The field marker, tolerant of the same emphasis and blockquote prefixes the
 #: norm reader accepts for its own fields.
 _RETIRES_FIELD_RE = re.compile(r"^\s*(?:>\s?)*\s*(?:\*{1,2}|_{1,2})?Retires:")
+
+#: ``Retires:`` after other text on the same line — the inline form, not read.
+_INLINE_RETIRES_RE = re.compile(r"\S.*?(?:\*{1,2}|_{1,2})?\bRetires:")
+
+#: Sentinel phrases for a declaration that names nothing searchable. Each is
+#: reported at its record instead of searched, so an inert field is visible.
+_INLINE = "\0inline"
 
 _TOP_KEY_RE = re.compile(r"^([A-Za-z_][\w-]*):")
 _YAML_RETIRES_RE = re.compile(r"^(\s+)(?:-\s+)?retires:\s*(.*?)\s*$")
@@ -164,11 +170,26 @@ def _artifact_declarations(
         # A field is a declaration only where the norm reader sees it as a line
         # of a Direction section. Asking that reader, rather than tracking
         # headings here as well, keeps one definition of "inside Direction".
-        direction = {line.strip() for line in _direction_lines(text)}
-        for start, _end, joined in _markdown_fields(text.splitlines()):
+        logical = _direction_lines(text)
+        direction = {line.strip() for line in logical}
+        lines = text.splitlines()
+        for start, _end, joined in _markdown_fields(lines):
             if joined.strip() not in direction:
                 continue
-            declarations.extend(_Declaration(p, rel, start + 1) for p in _phrases(joined))
+            phrases = _phrases(joined)
+            declarations.extend(_Declaration(p, rel, start + 1) for p in phrases)
+            if not phrases:
+                declarations.append(_Declaration("", rel, start + 1))
+        # The inline form (`- **S.** Detail. Retires: "x"`) is not read; say so
+        # where it is written rather than leave it looking like a declaration.
+        for entry in logical:
+            if _INLINE_RETIRES_RE.search(entry) and not _RETIRES_FIELD_RE.match(entry):
+                at = next(
+                    (n for n, line in enumerate(lines) if _INLINE_RETIRES_RE.search(line)
+                     and not _RETIRES_FIELD_RE.match(line)),
+                    None,
+                )
+                declarations.append(_Declaration(_INLINE, rel, (at or 0) + 1))
     return declarations, unreadable
 
 
@@ -176,7 +197,7 @@ def _yaml_value_phrases(value: str) -> list[str]:
     """Phrases from a flow list (``["a", 'b']``) or a single scalar."""
     from .record_lint import _split_unquoted, _unquote  # noqa: PLC0415 — the module's YAML posture
 
-    value = value.split(" #", 1)[0].strip() if not value.startswith(("[", '"', "'")) else value
+    value = _split_unquoted(value, "#")[0].strip()
     if value.startswith("[") and value.endswith("]"):
         items = _split_unquoted(value[1:-1], ",")
     else:
@@ -212,22 +233,28 @@ def _state_declarations(
             continue
         indent, value = len(match.group(1)), match.group(2)
         occupied.add(i)
+        key_line = i + 1
+        before = len(declarations)
         if value:
             declarations.extend(
                 _Declaration(p, _STATE_REL, i + 1) for p in _yaml_value_phrases(value)
             )
             i += 1
+            if len(declarations) == before:
+                declarations.append(_Declaration("", _STATE_REL, key_line))
             continue
         i += 1
         while i < len(lines):
             item = _YAML_ITEM_RE.match(lines[i])
-            if item is None or len(item.group(1)) <= indent:
+            if item is None or len(item.group(1)) < indent:
                 break
             occupied.add(i)
             declarations.extend(
                 _Declaration(p, _STATE_REL, i + 1) for p in _yaml_value_phrases(item.group(2))
             )
             i += 1
+        if len(declarations) == before:
+            declarations.append(_Declaration("", _STATE_REL, key_line))
     return declarations, occupied, None
 
 
@@ -278,10 +305,18 @@ def _candidates(project_dir: Path, words: list[str]) -> "list[str] | None":
 
 
 def _matches(
-    text: str, declarations: "list[_Declaration]", excluded: "set[int]"
+    text: str, declarations: "list[_Declaration]", excluded: "set[int] | None" = None
 ) -> "list[tuple[int, _Declaration]]":
-    """``(1-based line, declaration)`` for every unexcused copy in ``text``."""
+    """``(1-based line, declaration)`` for every unexcused copy in ``text``.
+
+    ``excluded`` defaults to the lines of every ``Retires:`` field in ``text``,
+    so a declaration is never its own survivor — in a file or in an issue body
+    alike. The state file passes its own ``retires:`` spans instead."""
     lines = text.splitlines()
+    if excluded is None:
+        excluded = {
+            i for start, end, _ in _markdown_fields(lines) for i in range(start, end + 1)
+        }
     starts = [0]
     for line in text.splitlines(keepends=True):
         starts.append(starts[-1] + len(line))
@@ -330,14 +365,7 @@ def _search_files(
             text = (project_dir / rel).read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue  # tracked but deleted in the worktree: nothing survives there
-        if rel == _STATE_REL:
-            excluded = state_lines
-        else:
-            excluded = {
-                i
-                for start, end, _ in _markdown_fields(text.splitlines())
-                for i in range(start, end + 1)
-            }
+        excluded = state_lines if rel == _STATE_REL else None
         for line, decl in _matches(text, declarations, excluded):
             findings.append(_finding(rel, line, _detail(decl)))
     return findings, None
@@ -359,7 +387,7 @@ def _search_backlog(
     findings: list[dict] = []
     for item in (envelope.get("data") or {}).get("items") or []:
         text = f"{item.get('title') or ''}\n{item.get('body') or ''}"
-        hits = _matches(text, declarations, set())
+        hits = _matches(text, declarations)
         for _line, decl in hits:
             findings.append(
                 _finding(
@@ -389,6 +417,26 @@ def check(project_dir: Path, prawduct_dir: Path) -> "tuple[list[dict], list[str]
 
     declarations: list[_Declaration] = []
     for decl in artifact_decls + state_decls:
+        if decl.phrase == _INLINE:
+            findings.append(
+                _finding(
+                    decl.record,
+                    decl.line,
+                    "`Retires:` written inline after the statement is not read; put it on a "
+                    "line of its own (`docs/norms.md` § Anatomy)",
+                )
+            )
+            continue
+        if not decl.phrase:
+            findings.append(
+                _finding(
+                    decl.record,
+                    decl.line,
+                    "this retires field names no double-quoted phrase, so nothing is "
+                    'searched; quote each retired phrasing (`Retires: "old wording"`)',
+                )
+            )
+            continue
         if len(decl.phrase.replace(" ", "")) < _MIN_PHRASE_CHARS:
             findings.append(
                 _finding(

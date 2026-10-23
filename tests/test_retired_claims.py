@@ -338,6 +338,88 @@ class TestADegeneratePhraseIsADeclarationDefect:
         assert any("too short" in d for d in details)
 
 
+class TestADeclarationThatNamesNothingIsReported:
+    """A `Retires:` that yields no searchable phrase would otherwise be inert:
+    it searches nothing and the tally reads a clean zero. Each shape is reported
+    at its record, and the control beside it proves the record was read."""
+
+    def test_a_markdown_field_with_no_quoted_phrase(self, tmp_path):
+        repo = _make_repo(
+            tmp_path,
+            {
+                ".prawduct/artifacts/architecture.md": (
+                    "# A\n\n## Direction\n\n- **A norm.** Detail.\n  Why: a reason.\n"
+                    "  Retires: the old split rule, unquoted.\n"
+                ),
+            },
+        )
+        assert _found(_lint(repo)) == [(".prawduct/artifacts/architecture.md", 7)]
+
+    def test_the_inline_form_is_reported_not_read(self, tmp_path):
+        repo = _make_repo(
+            tmp_path,
+            {
+                ".prawduct/artifacts/architecture.md": (
+                    "# A\n\n## Direction\n\n"
+                    '- **A norm.** Detail. Why: a reason. Retires: "an inline old phrase".\n'
+                ),
+                "docs/x.md": "An inline old phrase.\n",
+            },
+        )
+        result = _lint(repo)
+        assert _found(result) == [(".prawduct/artifacts/architecture.md", 5)]
+        assert "inline" in next(f["detail"] for f in result["findings"] if f["check"] == CHECK)
+
+    def test_an_empty_or_unquoted_state_list(self, tmp_path):
+        state = (
+            "technical_decisions:\n"
+            "  - name: a\n    retires: []\n"
+            "  - name: b\n    retires:\n    note: nothing listed\n"
+        )
+        repo = _make_repo(tmp_path, state=state)
+        assert _found(_lint(repo)) == [
+            (".prawduct/project-state.yaml", 4),
+            (".prawduct/project-state.yaml", 6),
+        ]
+
+    def test_a_trailing_comment_and_a_same_indent_list_still_declare(self, tmp_path):
+        """Valid YAML both: a comment after a flow list, and a block list at the
+        key's own indentation. Each declares its phrase."""
+        state = (
+            "technical_decisions:\n"
+            '  - name: a\n    retires: ["first old phrase"]  # why it went\n'
+            "  - name: b\n    retires:\n    - second old phrase\n"
+        )
+        repo = _make_repo(
+            tmp_path,
+            {"docs/a.md": "The first old phrase.\n", "docs/b.md": "The second old phrase.\n"},
+            state=state,
+        )
+        assert _found(_lint(repo)) == [("docs/a.md", 1), ("docs/b.md", 1)]
+
+
+class TestTheFileLegNeverPassesSilently:
+    def test_git_that_cannot_search_is_unchecked(self, tmp_path):
+        """A project dir git cannot answer for: declarations read, search
+        unanswerable. `unchecked`, and the tally is None."""
+        repo = tmp_path / "plain"
+        _write(repo, ".prawduct/project-state.yaml", "project_name: t\n")
+        _write(repo, ".prawduct/artifacts/nonfunctional-requirements.md", NORM_ARTIFACT)
+        findings, unchecked, no_answer = retired_claims.check(repo, repo / ".prawduct")
+        assert findings == []
+        assert any("could not search the tracked files" in r for r in unchecked), unchecked
+        assert no_answer == {CHECK}
+
+    def test_an_unreadable_declaring_record_is_unchecked(self, tmp_path):
+        repo = _make_repo(tmp_path, {"docs/x.md": "It " + PHRASE + ".\n"})
+        (repo / ".prawduct/artifacts/broken.md").write_bytes(b"# B\n\xff\xfe Retires: \x80\n")
+        result = _lint(repo)
+        assert _found(result) == [("docs/x.md", 1)]
+        reasons = _check_unchecked(result)
+        assert len(reasons) == 1 and "broken.md" in reasons[0]
+        assert result["counts"][CHECK] is None
+
+
 # ---------------------------------------------------------------------------
 # The backlog leg (cause class 5)
 # ---------------------------------------------------------------------------
@@ -372,6 +454,11 @@ class TestTheBacklogIsPartOfTheSweepSet:
             "Retire\n\"" + PHRASE + "\"  <!-- prawduct:allow prawduct/retired-claim-survives -- the item retires it -->",
         )
         _file_issue(fake, "governance: unrelated", "Nothing to see.")
+        _file_issue(
+            fake,
+            "governance: propose a retirement in the documented form",
+            'Amend the norm.\n\nRetires: "' + PHRASE + '"\n',
+        )
         assert backlog_core.set_status(fake, id_raw=closed, target="shipped")["status"] == "ok"
         _rebuild(fake, repo)
 

@@ -103,7 +103,7 @@ consumed): `verify-resolutions` owns that.
 input is `unchecked`. No YAML dependency, matching record-lint.
 
 **Inferences** (mine, for the boundary review to show the owner):
-- *Acknowledgement is a waiver.* A site that quotes a retired claim as its subject, such as an
+- *Acknowledgement is a waiver.* **Confirmed by the owner 2026-10-22** (cumulative review R-10). A site that quotes a retired claim as its subject, such as an
   absence test or an analysis arguing against it, is not a survivor. Without a way to say so, the
   check fires on that site forever and gets ignored. #136's title says "acknowledge" but its body
   names no mechanism, so I reuse the repo's existing one: `prawduct:allow
@@ -137,6 +137,7 @@ rows answers every phrase at once.
 
 **Decisions made mid-build:**
 - Chunk 01 — the severity rows (`cross-checks.md`, `goals-1-3.md`, `cross-cutting-concerns.md`) and the `waivers.md` registry row moved here from Chunk 02: a registry guard requires every check's severity on the reviewer surfaces, and `waivers.md` requires the row in the change that honours the id. Settled by the repo's own guards.
+- Cumulative review — a `Retires:` that yields no phrase (unquoted, empty, or written inline) is now a finding at its record, and a `Retires:` field in an issue body is a declaration like one in a file. Settled by "never silently pass" and the docstring's own claim.
 
 **Level:** High — the design is settled on the issue, the code it extends was read on develop
 2026-10-22, and nothing here depends on fast-moving external facts.
