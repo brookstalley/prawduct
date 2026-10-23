@@ -9000,9 +9000,12 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "version",
     # Read-only: git reads with --no-optional-locks and file mtimes.
     "worktrees",
-    # Writes nothing under `.prawduct/`: its only writes are git refs and worktree
-    # records, which live in the clone's common dir that every worktree shares, so
-    # nothing it does can strand when a scratch branch merges.
+    # Writes nothing under `.prawduct/`: its local writes are git refs, branch config
+    # and worktree records, which live in the clone's common dir that every worktree
+    # shares, plus `--after-merge` moving this worktree onto the updated base
+    # (`git switch`, `merge --ff-only`) after the merge it follows. Its other writes
+    # land on the remote (retargeted PRs, a deleted remote branch). Nothing it does
+    # can strand when a scratch branch merges.
     "git-tidy",
     # Read-only: lists and sizes plugin cache directories under the home dir.
     "stale-plugin-caches",

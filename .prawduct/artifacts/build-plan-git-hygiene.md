@@ -141,11 +141,13 @@ The one inference: `release/*` is long-lived and `hotfix/*` is not (requirements
 - [x] Chunk 01: Classifier and offline dry run
 - [x] Chunk 02: Session-start advisory and the preference rows
 - [x] Chunk 03: Apply, network legs and egress
-- [ ] Chunk 04: After-merge, reap, and the prose surfaces
-Context: Chunk 01 reviewed (rev-20261023T033625Z-2514f9f7, 0 blocking) and committed. Its fixes
-for O-2, O-6 and O-7 landed in a separate commit, which the Chunk 02 review covers. O-5 (the
-sibling narrowing in R6) awaits the owner. Next: Chunk 02. This clone's own leftovers are the
-fixture source; don't tidy them by hand.
+- [x] Chunk 04: After-merge, reap, and the prose surfaces
+Context: All four chunks are built, reviewed and committed. The cumulative review
+(rev-20261023T042213Z-e0941aa1) found 0 blocking. Its warnings are fixed in the commit that
+follows their verify pass, and its notes were accepted on the record. The owner confirmed both mid-build
+decisions on 2026-10-22. What remains is a PR through `/prawduct:pr` when the owner asks. This
+clone's own leftovers are still untidied: they make a live demonstration of `git-tidy`, which is
+the owner's to run.
 
 ## Verification Strategy
 

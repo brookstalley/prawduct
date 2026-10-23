@@ -29,11 +29,15 @@ def opt(name):
 if args[:2] == ["pr", "view"]:
     key = "view-" + args[2]
 elif args[:2] == ["pr", "edit"]:
-    sys.exit(1 if os.path.exists(os.path.join(d, "edit-fails")) else 0)
+    key = "edit"
 elif "--base" in args:
     key = "base-" + opt("--base")
 else:
     key = opt("--state") + "-head-" + opt("--head")
+if os.path.exists(os.path.join(d, "fail-" + key)):
+    sys.exit(1)
+if key == "edit":
+    sys.exit(0)
 path = os.path.join(d, key + ".json")
 print(open(path).read() if os.path.exists(path) else "[]")
 '''
@@ -80,8 +84,15 @@ def fake(tmp_path, monkeypatch):
         def serve(self, key, data):
             (d / f"{key.replace('/', '--')}.json").write_text(json.dumps(data))
 
+        def fails(self, key):
+            """Make the one query answered by ``key`` exit 1."""
+            (d / f"fail-{key.replace('/', '--')}").write_text("")
+
+        def base_listing_fails(self, branch):
+            self.fails(f"base-{branch}")
+
         def edit_fails(self):
-            (d / "edit-fails").write_text("")
+            self.fails("edit")
 
         def calls(self):
             log = d / "calls.log"
@@ -149,11 +160,20 @@ class TestAfterMergeFromTheMainWorktree:
         assert ["pr", "view", "31"] == fake.calls()[0][:3]
         assert steps[-1].result == REMOVED
 
-    def test_an_unmerged_or_unknown_request_touches_nothing(self, repo, fake):
+    def test_no_merged_request_fails_the_step_and_touches_nothing(self, repo, fake):
+        """A merge flow that reaches this step with no merged request to follow has
+        gone wrong, so the step fails (exit 1) rather than skipping quietly."""
         feature_pushed(repo, "feat/x")
         steps = gh.after_merge(repo, "feat/x")
-        assert [s.result for s in steps] == [SKIPPED]
+        assert [s.result for s in steps] == [FAILED] and "no merged pull request" in steps[0].detail
         assert has_branch(repo, "feat/x") and remote_has(repo, "feat/x")
+
+    def test_a_pr_number_from_another_branch_says_so(self, repo, fake):
+        feature_pushed(repo, "feat/x")
+        fake.serve("view-31", {"number": 31, "state": "MERGED", "headRefName": "feat/other",
+                               "headRefOid": "0" * 40, "baseRefName": "develop", "isCrossRepository": False})
+        [step] = gh.after_merge(repo, "feat/x", pr="31")
+        assert step.result == FAILED and "'feat/other', not 'feat/x'" in step.detail
 
 
 class TestAfterMergeFromALinkedWorktree:
@@ -184,6 +204,26 @@ class TestTheGuards:
         assert not remote_has(repo, "feat/base")
         later_lookups = [c for c in calls[edit + 1:] if c[:2] == ["pr", "list"]]
         assert later_lookups, "the remote delete's own open-request check came after the retarget"
+
+    def test_an_unreadable_stacked_list_keeps_both_branches(self, repo, tmp_path, fake):
+        """A list that could not be read is never read as empty: deleting the base
+        of an open request closes it."""
+        sha = feature_pushed(repo, "feat/base")
+        merge_on_remote(repo, tmp_path, "feat/base")
+        serve_merged(fake, "feat/base", sha)
+        fake.base_listing_fails("feat/base")
+        [step] = gh.after_merge(repo, "feat/base")
+        assert step.result == KEPT and "could not list" in step.detail
+        assert remote_has(repo, "feat/base") and has_branch(repo, "feat/base")
+
+    def test_a_full_page_of_stacked_requests_keeps_both_branches(self, repo, tmp_path, fake):
+        sha = feature_pushed(repo, "feat/base")
+        merge_on_remote(repo, tmp_path, "feat/base")
+        serve_merged(fake, "feat/base", sha)
+        fake.serve("base-feat/base", [{"number": n} for n in range(gh.OPEN_PR_LIMIT)])
+        [step] = gh.after_merge(repo, "feat/base")
+        assert step.result == KEPT and remote_has(repo, "feat/base")
+        assert not [c for c in fake.calls() if c[:2] == ["pr", "edit"]], "nothing retargeted from a partial list"
 
     def test_a_failed_retarget_keeps_the_remote_branch(self, repo, tmp_path, fake):
         sha = feature_pushed(repo, "feat/base")
@@ -295,6 +335,13 @@ class TestReap:
         [step] = gh.reap(repo, str(wt))
         assert step.result == KEPT and "locked" in step.detail and wt.exists()
 
+    def test_unreadable_worktrees_fail_rather_than_not_found(self, repo, tmp_path, monkeypatch):
+        from lib import gitstate
+        wt = self._delegate(repo, tmp_path)
+        monkeypatch.setattr(gitstate, "worktree_records", lambda _d: None)
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == FAILED and "could not list" in step.detail and wt.exists()
+
     def test_the_main_worktree_cannot_be_reaped(self, repo, tmp_path):
         wt = self._delegate(repo, tmp_path)
         [step] = gh.reap(wt, str(repo))
@@ -326,6 +373,7 @@ class TestCommand:
 
     @pytest.mark.parametrize("args", [
         ["--pr", "3"], ["--reap"], ["--after-merge", "x", "--reap", "y"], ["--apply", "f", "--reap", "y"],
+        ["--after-merge", "x", "--offline"],
     ])
     def test_bad_combinations_are_usage(self, repo, tmp_path, args):
         assert self._run(repo, *args, home=tmp_path / "h").returncode == 2
@@ -364,3 +412,109 @@ class TestTheSurfacesDescribeThisMechanism:
             hits += [f"{path.relative_to(REPO_ROOT)}: {s}" for s in stale if s in text]
         assert hits == []
         assert any("git-tidy" in p.read_text() for p in self.PLUGIN.rglob("*.md")), "control: the sweep reads real files"
+
+
+class TestTheEgressInventory:
+    """Every `gh` subcommand and network git verb git_hygiene runs is named in
+    project-state's egress_boundary, so the inventory cannot drift from the code."""
+
+    def test_each_network_call_is_declared(self):
+        import re
+        source = (REPO_ROOT / "plugin" / "lib" / "git_hygiene.py").read_text()
+        calls = set(re.findall(r'"gh", "pr", "(\w+)"|_gh_json\(project_dir, "pr", "(\w+)"', source))
+        verbs = {a or b for a, b in calls}
+        git_verbs = {v for v in ("fetch", "ls-remote", "push") if f'"{v}"' in source}
+        assert {"list", "view", "edit"} <= verbs, f"the collector reached the calls: {verbs}"
+        state = (REPO_ROOT / ".prawduct" / "project-state.yaml").read_text()
+        clause = state[state.index("lib/git_hygiene.py"):]
+        clause = clause[:clause.index('"')]
+        missing = [f"gh pr {v}" for v in sorted(verbs) if f"gh pr {v}" not in clause]
+        missing += [f"git {v}" for v in sorted(git_verbs) if v not in clause]
+        assert missing == [], f"egress_boundary's git_hygiene clause omits: {missing}"
+
+
+class TestEveryFailureBranchKeepsTheWork:
+    """One test per way a read can fail in the targeted modes and the dry run:
+    each reports it and deletes nothing."""
+
+    def _merged(self, repo, tmp_path, fake, branch="feat/x"):
+        sha = feature_pushed(repo, branch)
+        merge_on_remote(repo, tmp_path, branch)
+        serve_merged(fake, branch, sha)
+        return sha
+
+    def test_gh_failing_on_the_merged_lookup(self, repo, fake):
+        feature_pushed(repo, "feat/x")
+        fake.fails("merged-head-feat/x")
+        [step] = gh.after_merge(repo, "feat/x")
+        assert step.result == FAILED and "could not ask" in step.detail
+        assert has_branch(repo, "feat/x") and remote_has(repo, "feat/x")
+
+    def test_gh_failing_on_a_named_pull_request(self, repo, fake):
+        feature_pushed(repo, "feat/x")
+        fake.fails("view-31")
+        [step] = gh.after_merge(repo, "feat/x", pr="31")
+        assert step.result == FAILED and "could not read pull request #31" in step.detail
+        assert has_branch(repo, "feat/x")
+
+    def test_an_unreadable_open_list_keeps_the_remote_branch(self, repo, tmp_path, fake):
+        self._merged(repo, tmp_path, fake)
+        fake.fails("open-head-")
+        steps = gh.after_merge(repo, "feat/x")
+        assert steps[0].result == KEPT and "could not list open pull requests" in steps[0].detail
+        assert remote_has(repo, "feat/x")
+
+    def test_an_open_request_still_using_the_branch_keeps_the_remote(self, repo, tmp_path, fake):
+        self._merged(repo, tmp_path, fake)
+        fake.serve("open-head-", [{"number": 5, "headRefName": "feat/x", "baseRefName": "develop",
+                                   "isCrossRepository": False}])
+        steps = gh.after_merge(repo, "feat/x")
+        assert steps[0].result == KEPT and "#5" in steps[0].detail and remote_has(repo, "feat/x")
+
+    def test_a_failed_switch_keeps_the_branch(self, repo, tmp_path, fake, monkeypatch):
+        self._merged(repo, tmp_path, fake)
+        real = gh._git_write
+        monkeypatch.setattr(gh, "_git_write", lambda cwd, *a: (False, "switch refused")
+                            if a[:1] == ("switch",) else real(cwd, *a))
+        steps = gh.after_merge(repo, "feat/x")
+        assert [(s.result, s.detail) for s in steps[-2:]] == [
+            (FAILED, "switch refused"), (KEPT, "it is still checked out here")]
+        assert has_branch(repo, "feat/x")
+
+    def test_a_base_that_cannot_fast_forward_keeps_the_branch(self, repo, tmp_path, fake):
+        self._merged(repo, tmp_path, fake)
+        git(repo, "checkout", "-q", "develop")
+        commit(repo, "local-only-on-develop.txt")  # local develop diverges from origin's
+        git(repo, "checkout", "-q", "feat/x")
+        steps = gh.after_merge(repo, "feat/x")
+        assert steps[-2].result == FAILED
+        assert steps[-1].result == KEPT and "could not be fast-forwarded" in steps[-1].detail
+        assert has_branch(repo, "feat/x")
+
+    def test_unreadable_worktrees_fail_the_local_delete(self, repo, tmp_path, fake, monkeypatch):
+        from lib import gitstate
+        self._merged(repo, tmp_path, fake)
+        git(repo, "checkout", "-q", "develop")
+        monkeypatch.setattr(gitstate, "worktree_records", lambda _d: None)
+        step = gh.after_merge(repo, "feat/x")[-1]
+        assert step.result == FAILED and "could not list worktrees" in step.detail
+        assert has_branch(repo, "feat/x")
+
+    def test_reap_with_unreadable_status_fails(self, repo, tmp_path, monkeypatch):
+        wt = TestReap()._delegate(repo, tmp_path)
+        real = gh._git
+        monkeypatch.setattr(gh, "_git", lambda cwd, *a: None if a[:1] == ("status",) else real(cwd, *a))
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == FAILED and "could not read its status" in step.detail and wt.exists()
+
+    def test_reap_with_unreadable_branches_fails(self, repo, tmp_path, monkeypatch):
+        wt = TestReap()._delegate(repo, tmp_path, integrate=False)
+        monkeypatch.setattr(gh, "_refs", lambda *a, **k: None)
+        [step] = gh.reap(repo, str(wt))
+        assert step.result == FAILED and "could not list branches" in step.detail and wt.exists()
+
+    def test_an_unreadable_tracking_list_is_a_problem_not_tidy(self, repo, fake, monkeypatch):
+        monkeypatch.setattr(gh, "_upstream_gone_and_age", lambda _d: None)
+        p = gh.plan(repo, roots=[], offline=False)
+        assert any("upstream tracking" in pr for pr in p.problems) and not p.fully_checked
+        assert "Nothing to tidy." not in gh.render(p)

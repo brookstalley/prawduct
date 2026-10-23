@@ -44,9 +44,12 @@ Build plan: `.prawduct/artifacts/build-plan-git-hygiene.md`.
    - The "held" computation moves out of `stranded_work.stranded_branches` into
      `gitstate.held_branches(records)`, which both modules read (R1: one classifier).
    - Integration is computed in one call per long-lived ref: `git for-each-ref --merged=<ref>
-     refs/heads refs/remotes/<remote>`. A detached worktree HEAD uses `merge-base --is-ancestor`.
-   - The classifier is pure over a snapshot of git output, so tests feed it fixtures as well as
-     real repos.
+     refs/heads refs/remotes/<remote>`. `--apply`'s re-proof and `--reap` use
+     `merge-base --is-ancestor` against the proving ref.
+   - The classifier reads git directly. Tests drive it against real repositories built per
+     test, with a fake `gh` on `PATH` for the network legs. (Amended in build: the design first
+     said the classifier would be pure over a git snapshot, and the real-repo fixtures made that
+     indirection unnecessary.)
 2. **The long-lived set** is the union of:
    - `origin/HEAD`'s target;
    - the resolved base (`coverage._resolve_base_branch`, the resolver `resolve-base` already uses);
@@ -106,7 +109,7 @@ Build plan: `.prawduct/artifacts/build-plan-git-hygiene.md`.
    removes it without `--force` once it is clean, unlocked and integrated, then deletes its
    branch. No idle wait applies.
 7. **Advisory `git-hygiene:tidy-available`** (R6), in a new `plugin/lib/git_hygiene_probes.py`:
-   - It runs `git_hygiene.classify(offline=True)`.
+   - It runs `git_hygiene.plan(offline=True)`.
    - Sibling worktrees' cleanliness and idleness come from `stranded_work.scan`, whose budgeted,
      `GIT_OPTIONAL_LOCKS=0` scan already computes both. This adds no second worktree walk.
    - Evidence is the sorted candidate lines, so the id is stable for an unchanged set.
