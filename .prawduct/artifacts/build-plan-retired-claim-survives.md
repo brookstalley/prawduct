@@ -145,15 +145,14 @@ rows answers every phrase at once.
 ## Status
 
 - [x] Chunk 01: The check — `Retires:` declarations read, tracked files and open issues searched
-- [ ] Chunk 02: The convention, the dogfood sweep, and the replay
-Context: Plan written 2026-10-22 on `feature/retired-claim-survives`, cut from develop @ 7d8c24a2.
-#136 is `in-progress`; its `working_branch` claim needs the branch pushed first. Chunk 01 built
-and committed; all twelve behaviour mutants killed, a wording control survived. Chunk 02 built
-and committed: the convention in `norms.md`, the eight quotations in this repo waived with
-reasons (nine survivors, three invisible to a case-sensitive per-line grep), the replay of all
-thirteen recurrences, a dogfood guard red-verified, and the reviewer-payload readings lowered
-after paying the new rows in place. Suite green. Next: `/prawduct:critic cumulative`, then tick
-Chunk 02. The backlog leg reports #136 itself until it ships; that is expected.
+- [x] Chunk 02: The convention, the dogfood sweep, and the replay
+Context: Built and reviewed 2026-10-22 on `feature/retired-claim-survives` (not pushed). The
+cumulative review raised no blocking findings and six warnings. Five were fixed and verified, and
+R-10 (acknowledgement is a waiver) was confirmed by the owner. Its follow-up observation O-1 was a
+regression in the R-3 fix (`- retires:` swallowed the next entry); fixed, verified, committed.
+Suite green after the last fix. #136 stays `in-progress` until merge: its `working_branch` claim
+needs the branch pushed, and the backlog leg reports #136 itself until it closes. Next: owner's
+call on PR (`/prawduct:pr create`).
 
 ## Build Chunks
 
