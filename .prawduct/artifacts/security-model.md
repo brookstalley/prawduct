@@ -70,7 +70,7 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
 - **Zero external dependencies, no network.** The governance runtime is standard-library Python with
   no third-party packages and makes no network calls — the entire coordination substrate is process
   spawn + local files + git. This shrinks the supply-chain surface to prawduct's own code plus git.
-  **Five sites reach the network, and one of them IS on a hook path** — stated precisely because
+  **Six sites reach the network, and one of them IS on a hook path** — stated precisely because
   the first version of this paragraph said "neither on a hook path" and was wrong:
   `lib/backlog/transport.py` (TWO callers — the opt-in backlog backend, and the owner-approved
   `file-upstream` op, which reaches the pinned upstream repo with `backlog_service_repo` unset);
@@ -79,7 +79,13 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   `cmd_stop` (`plugin/bin/prawduct-hook`), which runs on the **Stop hook**; `lib/contribution.py`'s
   `_post`, the opt-in stats upload to the pinned collector (2026-10-03); and `lib/aggregate.py`'s
   bundle fetch, an operator-invoked GET of the collector's public bundles that sends nothing from
-  the product (2026-10-04). The first two scrub credentials out of foreign-CLI stderr before
+  the product (2026-10-04); and `lib/git_hygiene.py`, behind `prawduct-hook git-tidy`
+  (2026-10-22): `git fetch`, `ls-remote` and `push --delete` to the product's own remote, and
+  `gh pr list`, `gh pr view` and `gh pr edit --base` against its own repo (the last retargets
+  a pull request stacked on a merged branch, a write on the host). It carries none of the
+  product's content and runs only when a person or the agent invokes the command (never from a
+  hook; its session-start probe runs offline).
+  The first two and git-tidy scrub credentials out of foreign-CLI stderr before
   echoing or serialising it; the Stop-hook call does not echo stderr at all; the two collector
   sites carry no credential and refuse redirects.
 - **Subprocess safety is enforced, not advised.** Every subprocess invocation passes arguments as an

@@ -53,6 +53,7 @@ def register_all() -> None:
     from .oversized_state_probes import register as register_oversized_state
     from .stranded_branch_probes import register as register_stranded_branch
     from .evidence_size_probes import register as register_evidence_size
+    from .git_hygiene_probes import register as register_git_hygiene
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe
@@ -69,3 +70,4 @@ def register_all() -> None:
     register_oversized_state()  # governance files over this repo's size threshold
     register_evidence_size()  # clone-shared evidence store over its size threshold (#953)
     register_stranded_branch()  # local branch checked out nowhere, commits no remote has (#843's local arm)
+    register_git_hygiene()  # merged branches and dead worktrees whose removal loses nothing

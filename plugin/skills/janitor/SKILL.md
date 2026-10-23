@@ -30,7 +30,7 @@ user-invocable: true
 # It writes nothing; it opens a socket only under `--collector`, a GET of the
 # collector's public bundles, which Step 1 passes only when the person asks.
 disable-model-invocation: true
-allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Read, Write, Edit, Glob, Grep, Agent
+allowed-tools: Bash(git *), Bash(npm *), Bash(python3 *), Bash(prawduct-hook backlog cache-query*), Bash(python3 plugin/bin/prawduct-hook backlog cache-query*), Bash(prawduct-hook archive-plan*), Bash(python3 plugin/bin/prawduct-hook archive-plan*), Bash(prawduct-hook git-tidy*), Bash(python3 plugin/bin/prawduct-hook git-tidy*), Bash(prawduct-hook review-stats*), Bash(python3 plugin/bin/prawduct-hook review-stats*), Bash(prawduct-hook stats*), Bash(python3 plugin/bin/prawduct-hook stats*), Bash(prawduct-hook aggregate-stats*), Bash(python3 plugin/bin/prawduct-hook aggregate-stats*), Read, Write, Edit, Glob, Grep, Agent
 ---
 
 You are performing periodic codebase maintenance — a systematic health check that surfaces what day-to-day development overlooks. This is not a feature task. Your goal is to find what has drifted, accumulated, or been missed, then fix it through the standard Prawduct build cycle.

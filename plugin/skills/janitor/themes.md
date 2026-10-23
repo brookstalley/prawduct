@@ -10,7 +10,7 @@ After investigating all themes, step back and ask: **what else has drifted, accu
 
 Is the repository's history and branch structure clean and navigable?
 
-- Branches that were merged but never deleted
+- Branches that were merged but never deleted, and worktrees left behind (`prawduct-hook git-tidy` lists each with its proof; remove them with `--apply` on the owner's yes, not by hand)
 - Branches with no activity within the staleness window (default: 14 days; see Arguments)
 - Branches superseded by other work — started, then abandoned in favor of a different approach
 - Orphaned work that was started but apparently abandoned with no resolution
