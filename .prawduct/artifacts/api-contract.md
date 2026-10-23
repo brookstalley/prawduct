@@ -188,13 +188,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   their commit counts. The session briefing renders the worktree half as counts that name nothing;
   each stranded branch is a `branch-landing:stranded-branch` advisory. Exit 0 whenever a report was
   produced — a partial one names its failed probes in it — and 2 on an unknown argument.
-- **Git hygiene** — `git-tidy [--offline] [--json]` (read-only today): the merged branches,
-  merged remote branches, dead worktree entries and finished idle sibling worktrees whose removal
-  loses nothing, each with the commit it is about, its proof (the long-lived branch that reaches
-  it), the exact git command, and a fingerprint naming the whole set. What counts as proof and what
-  is never a candidate is `lib/git_hygiene.py`'s docstring. Exit 0 whenever a plan was produced,
-  an empty one included; 2 on an unknown argument; 3 when git could not be read, which is never
-  reported as "nothing to tidy".
+- **Git hygiene** — `git-tidy [--offline] [--json] [--apply <fingerprint>]` (mutating under
+  `--apply`): the dry run lists the merged branches, merged remote branches, dead worktree entries
+  and finished idle sibling worktrees whose removal loses nothing, each with the commit it is
+  about, its proof, the exact git command, and a fingerprint naming the whole set. Online (the
+  default) it first runs `git fetch --prune` and asks `gh` which branches open pull requests use;
+  `--offline` skips both and marks remote removals unchecked. `--apply <fingerprint>` removes
+  exactly that set, re-checking each proof first, and changes nothing when the set has changed.
+  What counts as proof and what is never a candidate is `lib/git_hygiene.py`'s docstring. Dry
+  run: exit 0 whenever a plan was produced, an empty one included, and 3 when git could not be
+  read, which is never reported as "nothing to tidy". `--apply`: 0 when every approved removal
+  happened, 1 when the set changed or any removal was kept, skipped or failed. 2 on bad usage.
 - **Stale plugin caches** — `stale-plugin-caches [--json]` (read-only): the prawduct plugin cache
   version directories, in every config profile on the machine, that no install record uses, with
   disk sizes and a delete command for each; it deletes nothing. What counts as in use, and why a
@@ -534,10 +538,14 @@ files to touch previews first. That framing is descriptive — the binding rule 
     Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
   - `git-tidy --json` → **no skill consumer today**: top-level `schema_version`, `fingerprint`,
     `fully_checked` (false when any part went unchecked, so an empty `actions[]` with it false means
-    *not looked at*, never *nothing to tidy*), `remote`, `long_lived[]`, `actions[]` (`kind` — one of
-    `remove-worktree` / `prune-worktree` / `delete-branch` / `delete-remote-branch` — `target`,
-    `sha`, `proof`, `command[]`, and `unchecked`, null or the reason the action awaits a network
-    check), `notes[]`, `problems[]`. Named as unconsumed on purpose, like `worktrees`.
+    *not looked at*, never *nothing to tidy*), `remote`, `online`, `long_lived[]`, `actions[]`
+    (`kind` — one of `remove-worktree` / `prune-worktree` / `delete-branch` /
+    `delete-remote-branch` — `target`, `sha`, `proof`, `command[]`, `unchecked`, null or the reason
+    the action awaits a network check, and `proven_by`, the full ref whose reach is the proof or
+    `pull-request:<n>`), `notes[]`, `problems[]`. With `--apply` the keys are `schema_version`,
+    `approved`, `fingerprint`, `applied` (false when the set changed and nothing was touched),
+    `outcomes[]` (`kind`, `target`, `result` — one of `removed` / `kept` / `skipped` / `failed` —
+    and `detail`), and `problems[]`. Named as unconsumed on purpose, like `worktrees`.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the

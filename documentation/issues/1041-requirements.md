@@ -88,6 +88,15 @@ Checked against `develop` at `0b0ddffc`.
    -d` and worktrees with `git worktree remove` without `--force`. A refusal is reported with the
    branch kept, never escalated to `-D` or `--force`. A `-d` refusal after a merge is the
    unpushed-commit signal (`.claude/rules/learnings/pr.md`), and it must stay visible.
+
+   *Departure raised during build and confirmed by the owner, 2026-10-22 (plan Goals, Chunk 03):*
+   local branches are deleted with `git update-ref -d refs/heads/<b> <sha>` after the proof is
+   re-run, not with `git branch -d`. Measured: `-d` asks whether a branch is merged into HEAD or
+   its upstream, so it refuses a branch merged into `main` while `develop` is checked out. That
+   is how this clone's harness branches look, so `-d` would keep them forever. The
+   compare-and-delete removes only the commit just proven, and `-D` and `--force` are still never
+   used. The unpushed-commit signal moves to R4, which compares the merged PR's head with the local
+   tip before deleting.
 3. **Remote branches.** A remote branch is a candidate only if it is on the repo's own remote (not
    a fork), not long-lived, and integrated, and no open PR uses it as its head or base. Deleting a
    stacked PR's base closes the child PR on GitHub, so the merge flow retargets such PRs first
@@ -109,7 +118,7 @@ Checked against `develop` at `0b0ddffc`.
    directory is gone; integrated remote branches, read from local remote-tracking refs; and sibling
    worktrees that are clean, integrated and idle for 7 days or more, listed by name. It makes no
    network call. Its evidence is the sorted candidate list, so a dismissal holds until the set
-   changes. *Inferred during build, 2026-10-22, for owner confirmation:* a sibling is proposed only
+   changes. *Raised during build and confirmed by the owner, 2026-10-22:* a sibling is proposed only
    when it holds a non-long-lived branch. A detached or long-lived-branch checkout, such as an
    install a plugin runs from, is never proposed, because being merged says nothing about it being
    finished. Its recommended action is the R7 dry run. The agent shows the owner what would be
@@ -122,6 +131,11 @@ Checked against `develop` at `0b0ddffc`.
    the others. Network steps (`fetch --prune`, the open-PR check, squash-merge proof, remote
    deletes) run only here and in R4. They are declared in `egress_boundary`, reached only when a
    person acts. The janitor's version-control theme routes to this command.
+
+   *Clarified during build, 2026-10-22:* the online dry run refreshes remote-tracking refs with
+   `git fetch --prune` before it classifies, because a proof against stale refs is not a proof. It
+   changes no branch, worktree or remote, and its header says so. `--offline` changes nothing at
+   all.
 8. **Never deleted:** long-lived branches; held branches; unintegrated branches of any age; the
    current or main worktree; locked worktrees; worktrees with tracked changes or untracked
    non-ignored files; branches on forks. Prawduct never changes repository settings on GitHub.

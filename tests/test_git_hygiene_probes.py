@@ -109,7 +109,7 @@ class TestFires:
         for line in c.evidence:
             kind, target = line.split(" ", 1)
             assert target in result.stdout
-        assert "git branch -d -- feat/a" in result.stdout
+        assert "git update-ref -d refs/heads/feat/a" in result.stdout
 
     def test_copy_names_no_internal_identifier(self, clone):
         merged(clone, "feat/a")

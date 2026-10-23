@@ -59,7 +59,9 @@ Build plan: `.prawduct/artifacts/build-plan-git-hygiene.md`.
    an environment branch kept equal to `main`, such as `staging`, would read as integrated. The
    dry run and the owner's yes protect it, but the row is the durable answer, and the dry run says
    so when such a branch appears.
-3. **Squash/rebase proof is compare-and-delete, not `-D`.**
+3. **Every local delete is compare-and-delete, never `-D`, and squash/rebase merges get a PR proof.**
+   (Amended in build: `git branch -d` checks merge into HEAD, not into the proving branch, so it
+   is not used at all; see the plan's Chunk 03 decision.)
    - For a branch with no ancestry proof, the network leg asks
      `gh pr list --state merged --head <b> --json number,headRefOid`.
    - On a match with the local tip, it deletes with `git update-ref -d refs/heads/<b> <sha>`, then
@@ -70,7 +72,9 @@ Build plan: `.prawduct/artifacts/build-plan-git-hygiene.md`.
    - The check is capped at 8 branches per run, oldest first. The overflow is reported (the #843
      design's cap and posture).
 4. **`prawduct-hook git-tidy`** (new subcommand; additive under the api-contract norm):
-   - With no flags it is a dry run. Each action prints its kind, object, proof and exact command,
+   - With no flags it is a dry run: online, it first refreshes remote-tracking refs with `git
+     fetch --prune`, and it changes no branch, worktree or remote. Each action prints its kind,
+     object, proof and exact command,
      and the run ends with a fingerprint: 12 hex characters of SHA-256 over the sorted
      `(kind, object, sha)` list.
    - `--apply <fp>` recomputes the set, refuses on a mismatch (printing the new dry run), and then
@@ -91,7 +95,9 @@ Build plan: `.prawduct/artifacts/build-plan-git-hygiene.md`.
    3. `git fetch <remote> <base>`;
    4. if this worktree is on `<branch>`: switch to `<base>` and fast-forward when no other
       worktree holds `<base>`, otherwise `git switch --detach <remote>/<base>`;
-   5. `git branch -d`, or decision 3's compare-and-delete on a squash repo.
+   5. decision 3's compare-and-delete, once the merged PR's head is confirmed equal to the local
+      tip. A local tip ahead of the merged head is the unpushed-commit signal, and the branch is
+      kept.
 
    With `Branch cleanup: off` it keeps the branches, except when the configured `PR merge
    strategy` is squash or rebase, where the single-use rule makes deletion mandatory. The merge

@@ -87,7 +87,7 @@ class TestLocalBranches:
         assert (action.target, action.sha) == ("feat/done", sha)
         # Merged locally and not yet pushed: local main is what reaches it.
         assert action.proof == "reachable from main"
-        assert action.command == ("git", "branch", "-d", "--", "feat/done")
+        assert action.command == ("git", "update-ref", "-d", "refs/heads/feat/done", sha)
 
     def test_merged_into_develop_counts_as_integrated(self, clone):
         git(clone, "branch", "develop", "main")
@@ -401,16 +401,16 @@ class TestCommand:
         feature(clone, "feat/done")
         merge(clone, "feat/done")
         before = git(clone, "for-each-ref")
-        result = run_hook(clone, home=tmp_path / "home")
+        result = run_hook(clone, "--offline", home=tmp_path / "home")
         assert result.returncode == 0, result.stderr
-        assert "feat/done" in result.stdout and "git branch -d -- feat/done" in result.stdout
+        assert "feat/done" in result.stdout and "git update-ref -d refs/heads/feat/done" in result.stdout
         assert "fingerprint" in result.stdout
         assert git(clone, "for-each-ref") == before
 
     def test_json_carries_the_fingerprint_and_the_actions(self, clone, tmp_path):
         feature(clone, "feat/done")
         merge(clone, "feat/done")
-        result = run_hook(clone, "--json", home=tmp_path / "home")
+        result = run_hook(clone, "--offline", "--json", home=tmp_path / "home")
         payload = json.loads(result.stdout)
         assert payload["schema_version"] == gh.SCHEMA_VERSION
         assert [a["target"] for a in payload["actions"]] == ["feat/done"]
@@ -418,7 +418,7 @@ class TestCommand:
             **payload["actions"][0], "command": tuple(payload["actions"][0]["command"])})])
 
     def test_an_unknown_argument_is_usage_exit_2(self, clone, tmp_path):
-        result = run_hook(clone, "--apply", home=tmp_path / "home")
+        result = run_hook(clone, "--bogus", home=tmp_path / "home")
         assert result.returncode == 2
         assert "usage" in result.stderr
 

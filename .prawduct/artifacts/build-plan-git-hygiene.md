@@ -110,10 +110,20 @@ pushed-branch arm.
   detached or long-lived-branch checkout is never proposed. Settled by the goal that nothing is
   removed by surprise: `prawduct-live`, the install every governed repo here runs from, is
   detached, clean and integrated, and after a quiet week R6 as written would have proposed it.
-  This narrows R6 and is an inference, so it is put to the owner at the chunk boundary.
+  This narrows R6. Owner confirmed 2026-10-22 ("Yes to both decisions").
 - Chunk 01: offline, a remote-tracking ref whose remote branch is already gone looks like a
   merged remote branch (`origin/docs/goal-grounding` here). The online dry run fetches with
   `--prune` first (Chunk 03), so it drops out there. Offline it stays listed as unchecked.
+- Chunk 03: `[DECISION: delete local branches with a re-proved compare-and-delete (git update-ref
+  -d refs/heads/<b> <sha>) rather than R2's git branch -d | measured that -d checks merge into
+  HEAD or upstream, not into the long-lived branch that is the proof, so it refuses this clone's
+  worktree-agent branches (merged into main, HEAD on a develop-based branch) and the tool could
+  never tidy them; R2's purpose, nothing unproven dropped, holds because the proof is re-run just
+  before and the delete is conditional on the exact commit; no -D or --force anywhere | owner can
+  veto]`. R2's clause is left as written, with the departure recorded beneath it. Not settled by
+  the goals. Owner confirmed 2026-10-22 ("Yes to both decisions").
+- Chunk 03: git's own error messages already redact URL credentials, so the scrub test injects
+  the leaky message at the runner. The first version of that test passed with the scrub removed.
 
 **Level:** High. Requirements are owner-confirmed, the volatile facts (gh 2.86 source, harness
 worktree lifecycle) were verified, and every mutation is a git primitive with its own refusal.
@@ -122,8 +132,8 @@ The one inference: `release/*` is long-lived and `hotfix/*` is not (requirements
 ## Status
 
 - [x] Chunk 01: Classifier and offline dry run
-- [ ] Chunk 02: Session-start advisory and the preference rows
-- [ ] Chunk 03: Apply, network legs and egress
+- [x] Chunk 02: Session-start advisory and the preference rows
+- [x] Chunk 03: Apply, network legs and egress
 - [ ] Chunk 04: After-merge, reap, and the prose surfaces
 Context: Chunk 01 reviewed (rev-20261023T033625Z-2514f9f7, 0 blocking) and committed. Its fixes
 for O-2, O-6 and O-7 landed in a separate commit, which the Chunk 02 review covers. O-5 (the
@@ -221,7 +231,7 @@ repo, never on this clone itself, until the owner says so.
   - A stale fingerprint changes nothing.
   - A branch that gains a commit between the dry run and `--apply` is kept, with the reason
     reported.
-  - `-d` refusal is surfaced.
+  - A removal whose proof no longer holds is kept, with the reason reported.
   - Compare-and-delete refuses when the ref moved.
   - A remote branch that is an open PR's base or head is skipped, using a fake `gh`.
   - A cross-repo head is never pushed to.

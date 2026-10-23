@@ -43,11 +43,11 @@ _NOUNS = {
 }
 
 
-def _summary(plan: git_hygiene.Plan) -> str:
+def _summary(tidy: git_hygiene.Plan) -> str:
     """Counts by kind in run order, such as `5 merged local branches, 1 dead worktree entry`."""
     parts = []
     for kind in git_hygiene.KIND_ORDER:
-        n = sum(1 for a in plan.actions if a.kind == kind)
+        n = sum(1 for a in tidy.actions if a.kind == kind)
         if n:
             parts.append(f"{n} {_NOUNS[kind][0 if n == 1 else 1]}")
     return ", ".join(parts)
@@ -57,22 +57,22 @@ def probe_tidy_available(state: ProjectState, codebase: Codebase):
     """One advisory when the clone holds removals that lose nothing, or none."""
     if not git_hygiene.cleanup_enabled(codebase.root):
         return []
-    plan = git_hygiene.plan(codebase.root, offline=True)
-    if plan.problems and not plan.actions:
+    tidy = git_hygiene.plan(codebase.root, offline=True)
+    if tidy.problems and not tidy.actions:
         print(
-            f"NOTE: tidy probe skipped: {plan.problems[0]} — merged branches and dead "
+            f"NOTE: tidy probe skipped: {tidy.problems[0]} — merged branches and dead "
             "worktrees would go unreported this session",
             file=sys.stderr,
         )
         return None  # could not look — not "nothing to report"
-    if not plan.actions:
+    if not tidy.actions:
         return []
     return [
         AdvisoryCandidate(
             type=PROBE_TYPE,
-            evidence=tuple(f"{a.kind} {a.target}" for a in plan.actions),
+            evidence=tuple(f"{a.kind} {a.target}" for a in tidy.actions),
             trigger_summary=(
-                f"{_summary(plan)} can be removed without losing anything: each is "
+                f"{_summary(tidy)} can be removed without losing anything: each is "
                 "already carried by a long-lived branch, or is a record of a directory "
                 "that no longer exists"
             ),
