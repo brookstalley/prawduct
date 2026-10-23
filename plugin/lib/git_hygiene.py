@@ -94,8 +94,7 @@ MAX_PR_PROOFS = 8
 #: Open pull requests listed in one call. A full page means the list may be
 #: incomplete, and then no remote deletion is proven by it.
 OPEN_PR_LIMIT = 500
-#: Seconds one ``gh`` call may take before it counts as unavailable.
-GH_TIMEOUT = 15
+
 
 # Action kinds, in the order they run: removing a worktree frees its branch, so
 # worktrees go before branches, and local deletes go before remote ones.
@@ -220,12 +219,22 @@ def _shown(ref: str) -> str:
     return ref.removeprefix("refs/").removeprefix("heads/").removeprefix("remotes/")
 
 
+def _gh_timeout() -> int:
+    """Seconds one ``gh`` call may take before it counts as unavailable: the
+    network budget git's remote legs take, so one knob raises both. A malformed
+    override falls back to the floor here rather than refusing, because every
+    git call of the same run refuses it and announces it (``evidence``), and a
+    ``gh`` call cannot run unbounded."""
+    timeout, _unusable = evidence.network_timeout()
+    return timeout or evidence.NETWORK_TIMEOUT_FLOOR
+
+
 def _gh_json(project_dir: Path, *args: str) -> list | None:
     """Parsed JSON from one ``gh`` call against the product's own repo, or None
     when gh is missing, unauthenticated, slow or answers with something else."""
     try:
         proc = subprocess.run(
-            ["gh", *args], cwd=str(project_dir), capture_output=True, text=True, timeout=GH_TIMEOUT,
+            ["gh", *args], cwd=str(project_dir), capture_output=True, text=True, timeout=_gh_timeout(),
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -689,7 +698,7 @@ def _merged_pr(project_dir: Path, branch: str, number: str | None) -> dict | str
         try:
             proc = subprocess.run(
                 ["gh", "pr", "view", number, "--json", fields],
-                cwd=str(project_dir), capture_output=True, text=True, timeout=GH_TIMEOUT,
+                cwd=str(project_dir), capture_output=True, text=True, timeout=_gh_timeout(),
             )
             data = json.loads(proc.stdout) if proc.returncode == 0 else None
         except (OSError, subprocess.SubprocessError, ValueError):
@@ -741,7 +750,7 @@ def after_merge(project_dir: Path, branch: str, *, pr: str | None = None) -> lis
             continue
         try:
             proc = subprocess.run(["gh", "pr", "edit", number, "--base", base], cwd=str(project_dir),
-                                  capture_output=True, text=True, timeout=GH_TIMEOUT)
+                                  capture_output=True, text=True, timeout=_gh_timeout())
             ok = proc.returncode == 0
         except (OSError, subprocess.SubprocessError):
             ok = False
