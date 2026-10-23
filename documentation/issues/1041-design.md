@@ -132,7 +132,7 @@ Build plan: `.prawduct/artifacts/build-plan-git-hygiene.md`.
 | `plugin/bin/prawduct-hook` | `git-tidy` dispatch and help |
 | `plugin/skills/pr/SKILL.md` step 7 | one `git-tidy --after-merge` call |
 | `plugin/methodology/delegation.md` "Reaping ends with the worktree" | `git-tidy --reap` |
-| `plugin/methodology/session-digest.md` single-use sentence | names the command (char wall applies) |
+| `plugin/methodology/session-digest.md` | unchanged: the advisory and step 7 carry the default, and the digest's reserve is for defaults nothing else carries |
 | `plugin/skills/janitor/themes.md` Version Control Hygiene | routes to `git-tidy` |
 | `plugin/templates/project-preferences.md` | `Branch cleanup`, `Long-lived branches` rows |
 | `.prawduct/artifacts/security-model.md`, `.prawduct/project-state.yaml` | egress sites |

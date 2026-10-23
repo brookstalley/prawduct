@@ -635,6 +635,196 @@ def apply(
     return current, outcomes
 
 
+# --- the targeted moments: after a merge, and reaping a delegate ---------------
+#
+# Here the caller names the object, which is what ownership means: the merge
+# flow names its own head branch, and reaping names the delegate it just took
+# the work from. The week-idle wait does not apply; every proof still does.
+
+
+@dataclass(frozen=True)
+class Step:
+    name: str  # what was attempted, in words
+    result: str  # removed | kept | skipped | failed | done
+    detail: str = ""
+
+
+DONE = "done"
+
+
+def _ancestor(project_dir: Path, sha: str, ref: str) -> bool:
+    return _git(project_dir, "merge-base", "--is-ancestor", sha, ref) is not None
+
+
+def _current_worktree_branch(project_dir: Path) -> str | None:
+    out = _git(project_dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+    return out.strip() if out else None
+
+
+def _merged_pr(project_dir: Path, branch: str, number: str | None) -> dict | None:
+    """The merged pull request this cleanup follows, or None if gh cannot say."""
+    fields = "number,state,headRefName,headRefOid,baseRefName,isCrossRepository"
+    if number:
+        try:
+            proc = subprocess.run(
+                ["gh", "pr", "view", number, "--json", fields],
+                cwd=str(project_dir), capture_output=True, text=True, timeout=GH_TIMEOUT,
+            )
+            data = json.loads(proc.stdout) if proc.returncode == 0 else None
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return None
+        return data if isinstance(data, dict) and data.get("headRefName") == branch else None
+    prs = _gh_json(project_dir, "pr", "list", "--state", "merged", "--head", branch, "--json", fields, "--limit", "5")
+    same_repo = [p for p in prs or [] if isinstance(p, dict) and p.get("isCrossRepository") is False]
+    return same_repo[0] if same_repo else None
+
+
+def after_merge(project_dir: Path, branch: str, *, pr: str | None = None) -> list[Step]:
+    """Clean up after ``branch``'s pull request merged: the merge flow's last step.
+
+    The merge the owner approved is the operation; these are its granular steps.
+    Remote first, then this worktree's position, then the local branch, so a
+    failure partway leaves the local branch (the one copy git cannot fetch back).
+    """
+    steps: list[Step] = []
+    remote = gitstate.push_remote(project_dir)
+    names = long_lived_names(project_dir, remote)
+    if is_long_lived(branch, names):
+        return [Step(f"keep {branch}", KEPT, "it is a long-lived branch")]
+    info = _merged_pr(project_dir, branch, pr)
+    if info is None or info.get("state", "MERGED") != "MERGED":
+        return [Step(f"clean up after {branch}", SKIPPED,
+                     "could not confirm its pull request merged (is `gh` installed and signed in?)")]
+    base = info.get("baseRefName") or ""
+    merged_head = info.get("headRefOid") or ""
+    keep_branches = not cleanup_enabled(project_dir) and not rewrites_history(project_dir)
+
+    for stacked in _gh_json(project_dir, "pr", "list", "--state", "open", "--base", branch,
+                            "--json", "number", "--limit", "100") or []:
+        number = str(stacked.get("number")) if isinstance(stacked, dict) else ""
+        if not number:
+            continue
+        try:
+            proc = subprocess.run(["gh", "pr", "edit", number, "--base", base], cwd=str(project_dir),
+                                  capture_output=True, text=True, timeout=GH_TIMEOUT)
+            ok = proc.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+        steps.append(Step(f"retarget pull request #{number} onto {base}", DONE if ok else FAILED))
+        if not ok:
+            return steps + [Step(f"delete {remote}/{branch}", KEPT,
+                                 f"pull request #{number} still targets it, and deleting it would close that request")]
+
+    if keep_branches:
+        steps.append(Step(f"delete {branch} and {remote}/{branch}", KEPT, f"`{CLEANUP_LABEL}` is off"))
+    elif info.get("isCrossRepository"):
+        steps.append(Step(f"delete {remote}/{branch}", SKIPPED, "the head is on a fork, not this remote"))
+    else:
+        steps.append(_delete_remote_after_merge(project_dir, remote, branch, merged_head))
+
+    fetched, detail = _git_write(project_dir, "fetch", "--quiet", remote, base)
+    if not fetched:
+        return steps + [Step(f"update {base}", FAILED, detail)]
+    tracking = f"refs/remotes/{remote}/{base}"
+    if _current_worktree_branch(project_dir) == branch:
+        records = gitstate.worktree_records(project_dir) or []
+        here = _git(project_dir, "rev-parse", "--show-toplevel")
+        held_elsewhere = any(
+            gitstate.record_branch(r) == base and r.get("worktree") != (here or "").strip() for r in records
+        )
+        if held_elsewhere:
+            ok, detail = _git_write(project_dir, "switch", "--quiet", "--detach", tracking)
+            steps.append(Step(f"detach this worktree at {remote}/{base} ({base} is checked out elsewhere)",
+                              DONE if ok else FAILED, detail if not ok else ""))
+        else:
+            ok, detail = _git_write(project_dir, "switch", "--quiet", base)
+            if ok:
+                ok, detail = _git_write(project_dir, "merge", "--quiet", "--ff-only", tracking)
+            steps.append(Step(f"switch to {base} and fast-forward it", DONE if ok else FAILED, detail if not ok else ""))
+        if not ok:
+            return steps + [Step(f"delete {branch}", KEPT, "it is still checked out here")]
+
+    if not keep_branches:
+        steps.append(_delete_local_after_merge(project_dir, branch, merged_head, tracking))
+    return steps
+
+
+def _delete_remote_after_merge(project_dir: Path, remote: str, branch: str, merged_head: str) -> Step:
+    name = f"delete {remote}/{branch}"
+    out = _git(project_dir, "ls-remote", remote, f"refs/heads/{branch}")
+    if out is None:
+        return Step(name, FAILED, f"could not ask {remote} for it")
+    if not out.strip():
+        return Step(name, SKIPPED, "already gone (the host deletes merged heads)")
+    if out.split()[0] != merged_head:
+        return Step(name, KEPT, f"it moved on {remote} after the merge; someone pushed to it")
+    users = _gh_json(project_dir, "pr", "list", "--state", "open", "--head", branch, "--json", "number")
+    if users is None:
+        return Step(name, SKIPPED, "could not check for other open pull requests from it")
+    if users:
+        return Step(name, KEPT, f"open pull request #{users[0].get('number')} still comes from it")
+    ok, detail = _git_write(project_dir, "push", "--quiet", remote, "--delete", f"refs/heads/{branch}")
+    return Step(name, REMOVED if ok else FAILED, "" if ok else detail)
+
+
+def _delete_local_after_merge(project_dir: Path, branch: str, merged_head: str, tracking: str) -> Step:
+    """The unpushed-commit check lives here: a local tip that is neither the
+    merged head nor carried by the updated base holds work the merge never took."""
+    name = f"delete {branch}"
+    tip = (_git(project_dir, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}") or "").strip()
+    if not tip:
+        return Step(name, SKIPPED, "no local branch of that name")
+    if tip != merged_head and not _ancestor(project_dir, tip, tracking):
+        return Step(name, KEPT, "it has commits the merge did not take; push them and open another pull request")
+    records = gitstate.worktree_records(project_dir)
+    if records is None or branch in gitstate.held_branches(records):
+        return Step(name, KEPT, "it is checked out in another worktree")
+    ok, detail = _git_write(project_dir, *_delete_branch_command(branch, tip)[1:])
+    if ok:
+        _git_write(project_dir, "config", "--remove-section", f"branch.{branch}")
+    return Step(name, REMOVED if ok else FAILED, "" if ok else detail)
+
+
+def reap(project_dir: Path, worktree: str) -> list[Step]:
+    """Remove a delegate's worktree and its branch once its work is integrated.
+
+    Integrated here also means reachable from this worktree's HEAD: a reaped
+    delegate's branch is merged into the coordinator's own branch, which carries
+    it from then on, and the coordinator named this worktree explicitly."""
+    path = str(stranded_work._resolve(worktree))
+    records = gitstate.worktree_records(project_dir) or []
+    record = next((r for i, r in enumerate(records) if i and str(stranded_work._resolve(r.get("worktree", ""))) == path), None)
+    name = f"remove worktree {path}"
+    if record is None:
+        return [Step(name, SKIPPED, "not a linked worktree of this repository")]
+    if path == str(stranded_work._resolve((_git(project_dir, "rev-parse", "--show-toplevel") or "").strip())):
+        return [Step(name, KEPT, "it is the worktree this command runs in")]
+    if "locked" in record:
+        return [Step(name, KEPT, "it is locked; the harness holds a running agent's worktree that way")]
+    status = _git(Path(path), "status", "--porcelain")
+    if status is None or status.strip():
+        return [Step(name, KEPT, "it has uncommitted or untracked files; integrate or discard them first")]
+    sha = record.get("HEAD", "")
+    branch = gitstate.record_branch(record)
+    remote = gitstate.push_remote(project_dir)
+    proof = "HEAD" if _ancestor(project_dir, sha, "HEAD") else next(
+        (_shown(r) for r in _refs(project_dir, "refs/heads/", f"refs/remotes/{remote}/") or {}
+         if is_long_lived(_short(r, remote), long_lived_names(project_dir, remote)) and _ancestor(project_dir, sha, r)),
+        None,
+    )
+    if proof is None:
+        return [Step(name, KEPT, "its work is not integrated: merge it into this branch first, or abandon "
+                                 "it deliberately with `git worktree remove` and say why")]
+    ok, detail = _git_write(project_dir, "worktree", "remove", path)
+    steps = [Step(name, REMOVED if ok else FAILED, "" if ok else detail)]
+    if ok and branch and not is_long_lived(branch, long_lived_names(project_dir, remote)):
+        ok, detail = _git_write(project_dir, *_delete_branch_command(branch, sha)[1:])
+        if ok:
+            _git_write(project_dir, "config", "--remove-section", f"branch.{branch}")
+        steps.append(Step(f"delete {branch}", REMOVED if ok else FAILED, "" if ok else detail))
+    return steps
+
+
 # --- rendering ----------------------------------------------------------------
 
 _HEADINGS = {
@@ -716,37 +906,70 @@ def applied_json(result: Plan, approved: str, outcomes: list[Outcome]) -> str:
     })
 
 
-USAGE = "usage: prawduct-hook git-tidy [--offline] [--json] [--apply <fingerprint>]"
+USAGE = (
+    "usage: prawduct-hook git-tidy [--offline] [--json] [--apply <fingerprint>] | "
+    "--after-merge <branch> [--pr <n>] [--json] | --reap <worktree> [--json]"
+)
+
+_VALUE_FLAGS = {
+    "--apply": "the fingerprint the dry run printed",
+    "--after-merge": "the branch whose pull request merged",
+    "--pr": "the merged pull request's number",
+    "--reap": "the delegate worktree's path",
+}
 
 
 def _parse(argv: list[str]) -> tuple[dict, str | None]:
-    opts: dict = {"offline": False, "json": False, "apply": None}
+    opts: dict = {"offline": False, "json": False, "apply": None, "after-merge": None, "pr": None, "reap": None}
     args = iter(argv)
     for arg in args:
         if arg == "--offline":
             opts["offline"] = True
         elif arg == "--json":
             opts["json"] = True
-        elif arg == "--apply":
+        elif arg in _VALUE_FLAGS:
             value = next(args, None)
             if not value or value.startswith("-"):
-                return opts, "--apply needs the fingerprint the dry run printed"
-            opts["apply"] = value
+                return opts, f"{arg} needs {_VALUE_FLAGS[arg]}"
+            opts[arg[2:]] = value
         else:
             return opts, f"unknown argument {arg!r}"
+    modes = [m for m in ("apply", "after-merge", "reap") if opts[m]]
+    if len(modes) > 1:
+        return opts, f"--{modes[0]} and --{modes[1]} cannot be combined"
+    if opts["pr"] and not opts["after-merge"]:
+        return opts, "--pr goes with --after-merge"
     return opts, None
+
+
+def render_steps(title: str, steps: list[Step]) -> str:
+    lines = [f"GIT TIDY — {title}."]
+    for step in steps:
+        lines.append(f"  {step.result:<8} {step.name}" + (f" — {step.detail}" if step.detail else ""))
+    return "\n".join(lines)
 
 
 def git_tidy_cmd(project_dir: Path, argv: list[str]) -> int:
     """``prawduct-hook git-tidy``. Dry run: exit 0 when a plan was produced (an
     empty one included), 3 when git could not be read at all, which is never
     "nothing to tidy". ``--apply``: exit 0 when every approved removal happened,
-    1 when the set changed or any removal was kept, skipped or failed. Exit 2 on
-    bad usage."""
+    1 when the set changed or any removal was kept, skipped or failed.
+    ``--after-merge`` and ``--reap``: exit 1 when a step failed; a kept or skipped
+    step is an expected outcome and says why. Exit 2 on bad usage."""
     opts, error = _parse(argv)
     if error:
         print(f"git-tidy: {error}; {USAGE}", file=sys.stderr)
         return 2
+    if opts["after-merge"] or opts["reap"]:
+        if opts["after-merge"]:
+            steps = after_merge(project_dir, opts["after-merge"], pr=opts["pr"])
+            title = f"after {opts['after-merge']} merged"
+        else:
+            steps = reap(project_dir, opts["reap"])
+            title = f"reaping {opts['reap']}"
+        print(json.dumps({"schema_version": SCHEMA_VERSION, "steps": [asdict(st) for st in steps]})
+              if opts["json"] else render_steps(title, steps))
+        return 1 if any(st.result == FAILED for st in steps) else 0
     if opts["apply"]:
         result, outcomes = apply(project_dir, opts["apply"], offline=opts["offline"])
         print(applied_json(result, opts["apply"], outcomes) if opts["json"]

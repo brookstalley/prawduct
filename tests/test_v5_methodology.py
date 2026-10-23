@@ -1587,7 +1587,9 @@ LAST_MEASURED_TOKENS = {
     # branch, not the coordinator's, so a gitflow delegate resets onto the
     # integration branch first; ten delegates built against v3.7.1 without it. A
     # RAISE, on-demand class: paid only by a session about to delegate.
-    "methodology/delegation.md": 2897,
+    # -1 on 2026-10-22 (git-hygiene): reaping now names `git-tidy --reap`, paid in
+    # place by tightening the reaping paragraph's own next sentence.
+    "methodology/delegation.md": 2896,
 }
 
 

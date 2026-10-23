@@ -287,6 +287,10 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # mutate the session it is reviewing. `clear` appears only as the thing the
     # critic-active marker REFUSES.
     ("critic", "clear"): "the review must not mutate the session it reviews",
+    # Cross-reference: merge step 7 says merged branches from elsewhere are the bare
+    # `git-tidy` sweep's to propose. The merge flow runs only `--after-merge`, which
+    # is granted explicitly; the sweep's `--apply` is not this flow's to run.
+    ("pr", "git-tidy"): "names the sweep as another flow's job; only --after-merge is this skill's, and it is granted",
     # Cross-reference: doctor explains that `init-product`'s starter corpus wrote
     # a marker, and points at `/prawduct:onboard` for onboarding. Doctor covers
     # already-onboarded repos and must not scaffold one.

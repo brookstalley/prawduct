@@ -198,7 +198,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   What counts as proof and what is never a candidate is `lib/git_hygiene.py`'s docstring. Dry
   run: exit 0 whenever a plan was produced, an empty one included, and 3 when git could not be
   read, which is never reported as "nothing to tidy". `--apply`: 0 when every approved removal
-  happened, 1 when the set changed or any removal was kept, skipped or failed. 2 on bad usage.
+  happened, 1 when the set changed or any removal was kept, skipped or failed. Two targeted modes
+  name their object: `--after-merge <branch> [--pr <n>]` is `/prawduct:pr` merge's cleanup step,
+  and `--reap <worktree>` removes an integrated delegate's worktree and branch. Both exit 1 only
+  when a step failed; a kept or skipped step is an expected outcome and gives its reason. 2 on bad
+  usage, including two modes at once.
 - **Stale plugin caches** — `stale-plugin-caches [--json]` (read-only): the prawduct plugin cache
   version directories, in every config profile on the machine, that no install record uses, with
   disk sizes and a delete command for each; it deletes nothing. What counts as in use, and why a
@@ -545,7 +549,9 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `pull-request:<n>`), `notes[]`, `problems[]`. With `--apply` the keys are `schema_version`,
     `approved`, `fingerprint`, `applied` (false when the set changed and nothing was touched),
     `outcomes[]` (`kind`, `target`, `result` — one of `removed` / `kept` / `skipped` / `failed` —
-    and `detail`), and `problems[]`. Named as unconsumed on purpose, like `worktrees`.
+    and `detail`), and `problems[]`. With `--after-merge` or `--reap` the keys are `schema_version`
+    and `steps[]` (`name`, `result` — one of `removed` / `done` / `kept` / `skipped` / `failed` —
+    and `detail`). Named as unconsumed on purpose, like `worktrees`.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the

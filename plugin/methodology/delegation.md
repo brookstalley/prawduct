@@ -78,7 +78,7 @@ The partition above is drawn at plan time. The other trigger is an interrupt —
 
 **Do not dispatch what this session cannot reap.** Expected runtime against the useful context you have left is a real comparison, and "no" means backlog. The unreapable delegate is the worst outcome on offer: compute spent, no result read, a worktree orphaned. Reap at a work-cycle boundary, never as a mid-flow interrupt — the mechanism that exists to protect focus must not become the thing that breaks it. What an unreaped delegate does to the clear verdict is `/prawduct:methodology session-hygiene`.
 
-**Reaping ends with the worktree, not with the merge.** Take the branch and the report, then remove the worktree — or at least its brief. The brief is what a session start reads to notice an orphan, so one left behind in a checkout reused for ordinary work raises an advisory about work nobody delegated, and it does so under a fresh id each time the branch changes, which no dismissal settles.
+**Reaping ends with the worktree, not with the merge.** Take the branch and the report, merge it, then `prawduct-hook git-tidy --reap <worktree>` removes the worktree and its branch. The brief is what a session start reads to notice an orphan, so one left in a reused checkout raises an advisory about work nobody delegated, and it does so under a fresh id each time the branch changes, which no dismissal settles.
 
 ### Anti-patterns, ad-hoc
 

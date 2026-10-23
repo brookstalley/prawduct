@@ -122,6 +122,13 @@ pushed-branch arm.
   before and the delete is conditional on the exact commit; no -D or --force anywhere | owner can
   veto]`. R2's clause is left as written, with the departure recorded beneath it. Not settled by
   the goals. Owner confirmed 2026-10-22 ("Yes to both decisions").
+- Chunk 04: the session digest gets no sentence, a departure from this chunk's deliverable list.
+  The digest's 500-character reserve is for a default no other surface carries, and the full
+  suite went red when the sentence spent it. This default reaches every onboarded repo through
+  the `tidy-available` advisory, which runs at each session start, and through `/prawduct:pr`'s
+  step 7. The authoring rule "a new default must land in the digest" protects defaults that live
+  only in a place-once template, and this one does not. Settled by the goals (lean, out of the
+  developer's way).
 - Chunk 03: git's own error messages already redact URL credentials, so the scrub test injects
   the leaky message at the runner. The first version of that test passed with the scrub removed.
 
@@ -260,8 +267,7 @@ repo, never on this clone itself, until the owner says so.
   - `git-tidy --after-merge <branch> [--pr <n>]` and `git-tidy --reap <worktree>`;
   - PR skill merge step 7 becomes the one call;
   - `delegation.md` reaping names `--reap`;
-  - the session digest's single-use sentence names the command, within the 10,000-character
-    wall;
+  - the session digest: descoped, with the reason under Decisions made mid-build;
   - the janitor theme routes to `git-tidy`;
   - a change fragment under `.prawduct/changes/`.
 - **Foreign API:** gh-cli

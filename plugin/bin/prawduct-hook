@@ -8577,7 +8577,7 @@ _USAGE = (
     "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
     "classify-diff-risk [<base>]|"
     "worktrees [--json]|"
-    "git-tidy [--offline] [--json] [--apply <fingerprint>]|"
+    "git-tidy [--offline] [--json] [--apply <fingerprint>] [--after-merge <branch> [--pr <n>]] [--reap <worktree>]|"
     "stale-plugin-caches [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
