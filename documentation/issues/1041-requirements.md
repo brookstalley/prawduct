@@ -109,7 +109,10 @@ Checked against `develop` at `0b0ddffc`.
    directory is gone; integrated remote branches, read from local remote-tracking refs; and sibling
    worktrees that are clean, integrated and idle for 7 days or more, listed by name. It makes no
    network call. Its evidence is the sorted candidate list, so a dismissal holds until the set
-   changes. Its recommended action is the R7 dry run. The agent shows the owner what would be
+   changes. *Inferred during build, 2026-10-22, for owner confirmation:* a sibling is proposed only
+   when it holds a non-long-lived branch. A detached or long-lived-branch checkout, such as an
+   install a plugin runs from, is never proposed, because being merged says nothing about it being
+   finished. Its recommended action is the R7 dry run. The agent shows the owner what would be
    removed and applies it on a yes. It does not raise the advisory as a question mid-chunk;
    cleanup waits for a work boundary.
 7. **On-demand command.** `prawduct-hook git-tidy` lists every action with its object, its proof

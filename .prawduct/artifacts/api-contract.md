@@ -188,6 +188,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   their commit counts. The session briefing renders the worktree half as counts that name nothing;
   each stranded branch is a `branch-landing:stranded-branch` advisory. Exit 0 whenever a report was
   produced — a partial one names its failed probes in it — and 2 on an unknown argument.
+- **Git hygiene** — `git-tidy [--offline] [--json]` (read-only today): the merged branches,
+  merged remote branches, dead worktree entries and finished idle sibling worktrees whose removal
+  loses nothing, each with the commit it is about, its proof (the long-lived branch that reaches
+  it), the exact git command, and a fingerprint naming the whole set. What counts as proof and what
+  is never a candidate is `lib/git_hygiene.py`'s docstring. Exit 0 whenever a plan was produced,
+  an empty one included; 2 on an unknown argument; 3 when git could not be read, which is never
+  reported as "nothing to tidy".
 - **Stale plugin caches** — `stale-plugin-caches [--json]` (read-only): the prawduct plugin cache
   version directories, in every config profile on the machine, that no install record uses, with
   disk sizes and a delete command for each; it deletes nothing. What counts as in use, and why a
@@ -525,6 +532,12 @@ files to touch previews first. That framing is descriptive — the binding rule 
     git could not list worktrees: every count is then "not checked", never "none"), `has_remotes`,
     `problems[]`. The briefing and the advisory read the report in-process, not this payload.
     Named as unconsumed on purpose, like `cost-of-commit`; the key set is pinned by a test.
+  - `git-tidy --json` → **no skill consumer today**: top-level `schema_version`, `fingerprint`,
+    `fully_checked` (false when any part went unchecked, so an empty `actions[]` with it false means
+    *not looked at*, never *nothing to tidy*), `remote`, `long_lived[]`, `actions[]` (`kind` — one of
+    `remove-worktree` / `prune-worktree` / `delete-branch` / `delete-remote-branch` — `target`,
+    `sha`, `proof`, `command[]`, and `unchecked`, null or the reason the action awaits a network
+    check), `notes[]`, `problems[]`. Named as unconsumed on purpose, like `worktrees`.
   - `review-stats --json` → the cross-project telemetry aggregator, carrying a top-level
     `schema_version` (see Versioning).
   - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the

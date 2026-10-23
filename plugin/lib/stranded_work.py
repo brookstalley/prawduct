@@ -297,9 +297,7 @@ def stranded_branches(
     the incident this exists for was 18 hours old — a reviewed fix built one
     afternoon and planned again the next morning.
 
-    A worktree whose directory is gone does not hold its branch: git still lists it, but nobody can be working there, and
-    counting it as "checked out" would hide exactly the work a deleted tree
-    leaves behind.
+    "Checked out" is ``gitstate.held_branches``, which git hygiene shares.
 
     ``count_commits`` adds one ``rev-list --count`` per stranded branch — the
     table wants it, the advisory and the briefing do not."""
@@ -309,14 +307,9 @@ def stranded_branches(
             return [], True, "could not list worktrees, so could not tell which branches are checked out"
     if not records:  # not a git repository: nothing to compare, and nothing went wrong
         return [], True, None
-    held: set[str] = set()
-    for record in records:
-        branch = gitstate.record_branch(record)
-        # Unreadable (None) is not gone: the branch stays held.
-        if branch and gitstate.record_is_gone(record) is not True:
-            held.add(branch)
+    held = gitstate.held_branches(records)
 
-    remotes = _git(project_dir, "for-each-ref", "--format=%(refname)", "refs/remotes/")
+    remotes =_git(project_dir, "for-each-ref", "--format=%(refname)", "refs/remotes/")
     if remotes is None:
         return [], True, "could not list remote-tracking refs"
     if not remotes.strip():

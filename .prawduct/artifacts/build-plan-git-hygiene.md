@@ -96,7 +96,15 @@ pushed-branch arm.
 - An environment branch kept equal to `main` reads as integrated until it is listed in
   `Long-lived branches`. The dry run and the owner's yes guard it, and the dry run names the row.
 
-**Decisions made mid-build:** *(appended while building)*
+**Decisions made mid-build:**
+- Chunk 01: a sibling worktree is proposed only when it holds a non-long-lived branch. A
+  detached or long-lived-branch checkout is never proposed. Settled by the goal that nothing is
+  removed by surprise: `prawduct-live`, the install every governed repo here runs from, is
+  detached, clean and integrated, and after a quiet week R6 as written would have proposed it.
+  This narrows R6 and is an inference, so it is put to the owner at the chunk boundary.
+- Chunk 01: offline, a remote-tracking ref whose remote branch is already gone looks like a
+  merged remote branch (`origin/docs/goal-grounding` here). The online dry run fetches with
+  `--prune` first (Chunk 03), so it drops out there. Offline it stays listed as unchecked.
 
 **Level:** High. Requirements are owner-confirmed, the volatile facts (gh 2.86 source, harness
 worktree lifecycle) were verified, and every mutation is a git primitive with its own refusal.
@@ -148,7 +156,9 @@ repo, never on this clone itself, until the owner says so.
   gives exit 3 and never "nothing to tidy". Red-verify: replacing the ancestry proof with an age
   check fails a test.
 - **Acceptance criteria:** on this clone the offline dry run lists the five merged local branches,
-  the missing worktree entry and the seven merged `claude/*` remotes. It omits
+  the missing worktree entry, and eight merged remotes awaiting the network check (the seven
+  `claude/*` plus a stale tracking ref a fetch would prune). It omits `prawduct-live`, a detached
+  checkout, and
   `fix/skew-note-harness-hooks` (locked worktree, unintegrated) and every unmerged branch.
   `stranded_work` tests stay green.
 - **Done when:**

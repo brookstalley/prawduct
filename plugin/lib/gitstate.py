@@ -554,6 +554,22 @@ def record_is_gone(record: dict) -> bool | None:
     return not present
 
 
+def held_branches(records: list[dict]) -> set[str]:
+    """Branches checked out in a worktree somebody could be working in — the one
+    definition of "held" that the stranded-branch scan and git hygiene share.
+
+    A worktree whose directory is gone does not hold its branch: git still lists
+    it, but nobody can be working there, and counting it would hide exactly the
+    work a deleted tree leaves behind. Unreadable (``record_is_gone`` None) is not
+    gone, so that branch stays held."""
+    held: set[str] = set()
+    for record in records:
+        branch = record_branch(record)
+        if branch and record_is_gone(record) is not True:
+            held.add(branch)
+    return held
+
+
 def local_branches(project_dir: Path) -> set[str] | None:
     """Every local branch name, or ``None`` when git could not be asked.
 

@@ -6076,6 +6076,26 @@ def cmd_worktrees(project_dir: Path, argv: list[str]) -> int:
     return stranded_work.worktrees_cmd(project_dir, argv)
 
 
+def cmd_git_tidy(project_dir: Path, argv: list[str]) -> int:
+    """Dry-run the removal of merged branches and dead worktrees, each with the
+    proof that removing it loses nothing. Thin wrapper — body lives in
+    ``lib.git_hygiene``."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import git_hygiene  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError:
+        print(
+            "git-tidy unavailable (could not import the plugin lib/ from "
+            "${CLAUDE_PLUGIN_ROOT})",
+            file=sys.stderr,
+        )
+        return 1
+
+    return git_hygiene.git_tidy_cmd(project_dir, argv)
+
+
 def cmd_stale_plugin_caches(argv: list[str]) -> int:
     """List the prawduct plugin cache versions no install record uses, in every
     config profile on the machine. Read-only. Thin wrapper — body lives in
@@ -8557,6 +8577,7 @@ _USAGE = (
     "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
     "classify-diff-risk [<base>]|"
     "worktrees [--json]|"
+    "git-tidy [--offline] [--json]|"
     "stale-plugin-caches [--json]|"
     "cost-of-commit [--json] [<paths>...]|"
     "check-operator-verification|accept-operator-verification <rationale>|"
@@ -8979,6 +9000,10 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "version",
     # Read-only: git reads with --no-optional-locks and file mtimes.
     "worktrees",
+    # Writes nothing under `.prawduct/`: its only writes are git refs and worktree
+    # records, which live in the clone's common dir that every worktree shares, so
+    # nothing it does can strand when a scratch branch merges.
+    "git-tidy",
     # Read-only: lists and sizes plugin cache directories under the home dir.
     "stale-plugin-caches",
 })
@@ -9512,6 +9537,8 @@ def _dispatch() -> int:
         return cmd_aggregate_stats(sys.argv[2:])
     elif command == "worktrees":
         return cmd_worktrees(project_dir, sys.argv[2:])
+    elif command == "git-tidy":
+        return cmd_git_tidy(project_dir, sys.argv[2:])
     elif command == "stale-plugin-caches":
         return cmd_stale_plugin_caches(sys.argv[2:])
     elif command == "classify-diff-risk":

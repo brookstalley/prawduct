@@ -418,11 +418,14 @@ class PreferenceRow(NamedTuple):
     error: "str | None" = None
 
 
-def read_preference_row(project_dir: Path, label: str) -> PreferenceRow:
+def read_preference_row(project_dir: Path, label: str, *, lower: bool = True) -> PreferenceRow:
     """THE reader of a ``- **<Label>**: value (…)`` row, shared by every consent
     gate so a parser fix cannot reach one gate and miss another. Each caller
     maps the result to its own states and defaults, because they differ on
-    purpose: upstream filing defaults to asking, stats contribution to never."""
+    purpose: upstream filing defaults to asking, stats contribution to never.
+
+    ``lower=False`` keeps the value's case, for a row whose value names things
+    that are case-sensitive, such as git branches."""
     path = Path(project_dir) / ".prawduct" / "artifacts" / "project-preferences.md"
     try:
         text = path.read_text(encoding="utf-8")
@@ -437,9 +440,8 @@ def read_preference_row(project_dir: Path, label: str) -> PreferenceRow:
     )
     if match is None:
         return PreferenceRow(PREF_ROW_ABSENT)
-    return PreferenceRow(
-        PREF_ROW_PRESENT, value=match.group("value").split("(", 1)[0].strip().strip("`").lower()
-    )
+    value = match.group("value").split("(", 1)[0].strip().strip("`")
+    return PreferenceRow(PREF_ROW_PRESENT, value=value.lower() if lower else value)
 
 
 def read_str_yaml_key(state_path: Path, key: str) -> str | None:
