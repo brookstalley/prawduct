@@ -122,8 +122,9 @@ Checked against `develop` at `0b0ddffc`.
 8. **Never deleted:** long-lived branches; held branches; unintegrated branches of any age; the
    current or main worktree; locked worktrees; worktrees with tracked changes or untracked
    non-ignored files; branches on forks. Prawduct never changes repository settings on GitHub.
-9. **Policy belongs to the product.** *Inferred, owner may veto:* a `project-preferences.md` row
-   `Branch cleanup`, either `propose` (the default) or `off`. `off` silences the R6 advisory and
+9. **Policy belongs to the product.** A `project-preferences.md` row `Branch cleanup`, either
+   `propose` or `off` (owner ruling, 2026-10-22). An absent or unrecognised row means `propose`;
+   only an explicit `off` changes behaviour. `off` silences the R6 advisory and
    makes R4 keep the branch, except where the single-use rule in R4 applies. The same row may
    name extra long-lived branches.
 10. **Fail visibly.** A probe that cannot read git reports what it could not check. "Nothing to
