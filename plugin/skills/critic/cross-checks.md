@@ -106,9 +106,9 @@ worth what clearing one costs.
 
 ### Record-Lint — the checks the machine already ran
 
-`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
-re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
-is how a record defect buys a review round, which is the cost this exists to remove.
+`prawduct-hook critic-begin` runs deterministic record checks and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
+re-derive any of it, and do not recount anything it counted — re-deriving one is how a record
+defect buys a review round.
 
 Severity per check:
 
@@ -123,6 +123,7 @@ Severity per check:
 | `learnings-core-raise-unapproved` | A `core.md` raise without `owner_approved:` (ignored) | **WARNING** |
 | `learnings-area-dead` | An area file whose `paths:` globs match no tracked file | **WARNING** |
 | `change-fragment` | A changed fragment fails its schema, or its `reopens:` names an unknown scope | **WARNING** |
+| `retired-claim-survives` | A `Retires:` phrase survives in a tracked file or open issue | **WARNING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
@@ -130,8 +131,7 @@ only that reviewer reads it, so splitting the findings by their natural goal los
 
 **The severities above are the other three modes'.** In `verify-resolutions` only the **BLOCKING** rows
 stay findings; the WARNING and NOTE rows become observations like anything else rated below
-BLOCKING (see `review-cycle.md` "A re-review does not manufacture work" — the general rule is not suspended for this
-table).
+BLOCKING (`review-cycle.md` "A re-review does not manufacture work").
 
 **`unchecked` is not a pass: an entry inherits one step below its check's severity** — BLOCKING
 → **WARNING**, else **NOTE**. Each entry names a check that could not run, or an assumption made

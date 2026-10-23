@@ -18,7 +18,12 @@ do is *silently pass* — a check that cannot read its inputs reports itself
 requires of the compliance canary), because an unrun check and a clean one are
 otherwise indistinguishable at the output.
 
-**Cost is proportional to the diff, never the repo.** Consumers are ~20x this
+**Cost is proportional to the diff, never the repo** — with one named
+exception, ``retired-claim-survives``, whose subject is text the diff did not
+touch (``retired_claims`` states its cost). It is also the one check that reads
+beyond the record set, into every tracked file: the phrase it looks for is a
+record's own retired wording, so a hit grades the record's sweep, not the
+product's content. Consumers are ~20x this
 repo's size, so every line-scoped check reads only the lines a change *added*
 (``git diff --unified=0``) rather than re-scanning whole files. That is also why
 the tripwire below does not drown in history: ``.prawduct/change-log.md`` holds
@@ -63,7 +68,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence, learnings_files
+from . import buildplan_refs, evidence, learnings_files, retired_claims
 from .core import resolve_build_plan_path
 
 #: Every check this module can run, in manifest order. Named so a consumer can
@@ -79,6 +84,7 @@ CHECKS = (
     "learnings-rule-body",
     "learnings-area-dead",
     "change-fragment",
+    "retired-claim-survives",
 )
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
@@ -1568,6 +1574,9 @@ def lint_records(
     for arm_findings, arm_gaps, arm_no_answer in (
         _check_learnings_budget(project_dir, prawduct_dir, base_tree, layout),
         _check_learnings_areas(project_dir, layout),
+        # Repo-wide by nature: a retired claim's survivors are exactly the text
+        # the change did not touch (`retired_claims` states the coverage).
+        retired_claims.check(project_dir, prawduct_dir),
     ):
         findings.extend(arm_findings)
         unchecked.extend(arm_gaps)

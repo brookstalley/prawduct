@@ -144,6 +144,15 @@ A Direction entry (or preferences row) carries these parts:
   `grandfather: <inventory ref>`).
 - **Rulings** — each boundary or precedence decision, named `[[like-this]]` and stated in full
   here. Norms accrete case law; the norm's own statement stays short.
+- **Retires** — present when an amendment retires wording: each retired phrasing as a
+  double-quoted string, with any prose around the quotes ignored —
+  `Retires: "phrase one", "phrase two" — why they went`. A `retires:` list of strings on a
+  `technical_decisions` / `design_decisions` entry in `project-state.yaml` reads the same. The
+  `retired-claim-survives` record-lint check reports every surviving copy in tracked files and
+  open backlog issues. A line that quotes one as its subject (an absence test, an argument for
+  the retirement) is acknowledged with its waiver (`docs/waivers.md`). Literal copies only: list a
+  known paraphrase as one more phrase. It is read only on a line of its own, never in the inline
+  form below.
 - **Re-affirmed** — the owner's answer to a decay finding (§ Trajectory), one line per answer:
   `Re-affirmed: <date> (owner) — <id>: <why the norm holds without it>`. It answers the
   `dead-why` advisory for every id written on it, in this entry, on `Why:` lines — spell each id
@@ -218,7 +227,8 @@ effective force of its why — is an amendment, **whether or not any code accomp
 whether the change edits, adds, or removes sentences. It requires the recorded decision. The
 amend-to-match-own-code tell (Authority Rule) is the aggravated form; the doc-only form is the
 same decision split from its code. Updating a norm's *descriptive surroundings* (examples,
-current-state notes) is ordinary documentation upkeep.
+current-state notes) is ordinary documentation upkeep. An amendment that retires wording names it
+in `Retires:` (§ Anatomy), so its survivors are found by a check rather than by the author's sweep.
 
 ### Exceptions expire
 
