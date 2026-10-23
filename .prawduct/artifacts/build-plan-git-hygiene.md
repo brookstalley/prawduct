@@ -100,6 +100,10 @@ pushed-branch arm.
 - Squash-merge proof checks at most 8 branches per run. Revisit if a repo shows the cap binding.
 - An environment branch kept equal to `main` reads as integrated until it is listed in
   `Long-lived branches`. The dry run and the owner's yes guard it, and the dry run names the row.
+- The advisory adds about 0.36 s to each session start on this clone (four worktrees, about 40
+  refs; measured 2026-10-22). About half of that is the worktree scan the briefing also runs.
+  Revisit if a clone with dozens of worktrees makes it felt, by passing the briefing's scan to the
+  probe.
 
 **Decisions made mid-build:**
 - Chunk 01: a sibling worktree is proposed only when it holds a non-long-lived branch. A
