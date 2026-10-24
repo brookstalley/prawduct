@@ -390,6 +390,29 @@ class TestCaptureTree:
         assert "untracked.py" in names.splitlines()
         assert "secret.txt" not in names.splitlines()
 
+    def test_capture_lists_untracked_but_not_ignored_or_excluded(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        (repo / ".gitignore").write_text("secret.txt\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "ignore")
+        (repo / ".git" / "info" / "exclude").write_text("local.bin\n")
+        (repo / "untracked.py").write_text("y = 1\n")
+        (repo / "sub").mkdir()
+        (repo / "sub" / "deep.txt").write_text("d\n")
+        (repo / "secret.txt").write_text("no\n")
+        (repo / "local.bin").write_text("no\n")
+        (repo / "code.py").write_text("x = 9\n")  # tracked edit: not untracked
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert result["untracked"] == ["sub/deep.txt", "untracked.py"]
+        names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"]).splitlines()
+        assert "local.bin" not in names and "untracked.py" in names
+
+    def test_capture_untracked_is_empty_on_a_clean_tree(self, tmp_path):
+        result = evidence.capture_tree(_make_repo(tmp_path))
+        assert result["status"] == "ok"
+        assert result["untracked"] == []
+
     def test_clean_tree_equals_head_tree(self, tmp_path):
         repo = _make_repo(tmp_path)
         result = evidence.capture_tree(repo)
