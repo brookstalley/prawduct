@@ -633,11 +633,43 @@ class _GateMessage(str):
     """
 
     gate: str = ""
+    #: Why the gate fired and what it could see, recorded on the block's fact
+    #: (``evidence.append_guard_refusal``); ``None`` records neither.
+    reason: "str | None" = None
+    observed: "dict | None" = None
 
-    def __new__(cls, text: str, gate: str) -> "_GateMessage":
+    def __new__(
+        cls, text: str, gate: str, reason: "str | None" = None, observed: "dict | None" = None
+    ) -> "_GateMessage":
         obj = super().__new__(cls, text)
         obj.gate = gate
+        obj.reason = reason
+        obj.observed = observed
         return obj
+
+
+def _clear_observations(prawduct_dir: Path, work_in_flight: bool) -> dict:
+    """What a clear gate could see when it fired, for the reader that tells a
+    catch from a slip (``stats``). ``work_live``: harness background work or a
+    live Critic review, either of which makes ``DO NOT CLEAR`` true (an
+    unreaped delegate is invisible here, so it can read False when the hold
+    was right). ``notes_present``: a non-empty ``.handoff-notes.md``, so what
+    the turn held may already have a home. ``None`` where it could not tell."""
+    from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    try:
+        work_live = work_in_flight or _critic_marker().review_active(prawduct_dir)[0]
+    except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; it must never change a Stop's verdict
+        work_live = None
+    notes = prawduct_dir / ".handoff-notes.md"
+    try:
+        notes_present = notes.is_file() and bool(notes.read_text().strip())
+    except (OSError, UnicodeDecodeError):
+        notes_present = None
+    return {
+        evidence.OBSERVED_WORK_LIVE: work_live,
+        evidence.OBSERVED_NOTES_PRESENT: notes_present,
+    }
 
 
 # --- Column-0 YAML scalar reading (inline mirror of lib/core.py) ---
@@ -1151,14 +1183,28 @@ def _record_session_start(project_dir: Path) -> None:
 def _record_stop_block(project_dir: Path, blockers: list) -> None:
     """Append one fact per gate that blocked this Stop, so a gate's firing rate
     is a query rather than a transcript search. A blocker that carries no gate
-    id is recorded as ``unattributed`` so the count stays complete. Advice: the
-    block stands whether or not its record lands, and a failure says so."""
+    id is recorded as ``unattributed`` so the count stays complete. A blocker's
+    ``reason`` and ``observed`` (:class:`_GateMessage`) ride its gate's fact.
+    Advice: the block stands whether or not its record lands, and a failure
+    says so."""
     gates_blocking = list(
         dict.fromkeys(getattr(b, "gate", None) or "unattributed" for b in blockers)
     )
+    # A gate that raised several blockers in one Stop reports its first one's
+    # detail: one fact per gate is the record's grain.
+    details: dict = {}
+    for b in blockers:
+        gate = getattr(b, "gate", None)
+        if gate and gate not in details:
+            detail = {
+                k: getattr(b, k, None) for k in ("reason", "observed")
+                if getattr(b, k, None) is not None
+            }
+            if detail:
+                details[gate] = detail
     try:
         from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
-        results = evidence.append_stop_block(project_dir, gates_blocking)
+        results = evidence.append_stop_block(project_dir, gates_blocking, details)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- recording a block is advice; an escape here would end the session instead of blocking it
         results = [{"status": "error", "reason": f"{type(exc).__name__}: {exc}"}]
     failed = [r for r in results if r.get("status") != "appended"]
@@ -1166,6 +1212,13 @@ def _record_stop_block(project_dir: Path, blockers: list) -> None:
         print(
             f"NOTE: this block was not recorded ({failed[0].get('reason', 'unknown')}) "
             "— `prawduct-hook stats` will undercount Stop blocks",
+            file=sys.stderr,
+        )
+    refused = sorted({f for r in results for f in r.get("refused_fields", ())})
+    if refused:
+        print(
+            f"NOTE: this block was recorded without its {', '.join(refused)} "
+            "(not machine-shaped) — `prawduct-hook stats` counts it as unspecified",
             file=sys.stderr,
         )
 
@@ -2691,7 +2744,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     session over (``YOUR TURN`` / ``COMPLETE``) while saying ``DO NOT CLEAR``
     is refused (``lib/gates.turn_contradicts_its_verdict``), and so is a
     ``SAFE TO CLEAR`` whose reason is the turn itself (the ``clear-reason``
-    gate, ``lib/gates.turn_cites_itself_as_record``).
+    gate, ``lib/gates.turn_self_citation``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     stop_input = stop_input or {}
@@ -2742,13 +2795,16 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     _plugin_ver = _plugin_manifest_version()
     _gate_registry = _load_gate_registry()
 
-    def _attributed(gate_id: str, body: str) -> str:
+    def _attributed(gate_id: str, body: str, reason=None, observed=None) -> str:
         return _GateMessage(
-            f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}", gate_id
+            f"{_gate_attribution(gate_id, _gate_registry, _plugin_ver)}\n{body}",
+            gate_id, reason, observed,
         )
 
     handed_over = _gates().turn_contradicts_its_verdict(stop_input)
     if handed_over:
+        from lib import standing_block  # noqa: PLC0415 — lazy keeps top-level cheap
+
         clear_blockers.append(_attributed("clear-verdict",
             f"CLEAR VERDICT: this turn closes on `{handed_over}` and `DO NOT CLEAR`,\n"
             "  which contradict each other. `DO NOT CLEAR` means you are still working\n"
@@ -2764,13 +2820,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  A process that runs on its own (a server, a recorder, an app you\n"
             "  launched) is not that: a clear ends the conversation, not the process.\n"
             "  Name it in the copy and close `SAFE TO CLEAR`.\n"
-            "  See `/prawduct:methodology session-hygiene`.\n"
+            "  See `/prawduct:methodology session-hygiene`.\n",
+            reason=standing_block.handed_over_reason(handed_over),
+            observed=_clear_observations(prawduct_dir, defer_active),
         ))
     # The other way a clear verdict misleads: `SAFE TO CLEAR` whose reason is
     # the turn itself, which is exactly what a clear deletes. Its own gate id,
-    # so its firings count apart from the pair check's.
-    self_cited = _gates().turn_cites_itself_as_record(stop_input)
-    if self_cited:
+    # so its firings count apart from the pair check's. It records the
+    # citation's kind, never the phrase, which is the turn's own words.
+    self_citation = _gates().turn_self_citation(stop_input)
+    if self_citation:
+        self_cited, citation_kind = self_citation
         clear_blockers.append(_attributed("clear-reason",
             f"CLEAR VERDICT: this turn closes `SAFE TO CLEAR` and gives itself as the\n"
             f"  record (\"{self_cited}\"). A clear deletes this message, so a reason\n"
@@ -2778,7 +2838,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  holds (findings, the pending questions, where you stopped) to\n"
             "  .prawduct/.handoff-notes.md, then give THAT as the reason, or name the\n"
             "  commit, file or issue that already holds it.\n"
-            "  See `/prawduct:methodology session-hygiene`.\n"
+            "  See `/prawduct:methodology session-hygiene`.\n",
+            reason=citation_kind,
+            observed=_clear_observations(prawduct_dir, defer_active),
         ))
 
     # v5: Compliance canary (informational)

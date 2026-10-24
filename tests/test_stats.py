@@ -67,13 +67,13 @@ def _disposition(rid, fid, action, n=1):
     )
 
 
-def _block(gate, stop, session="s1"):
-    return _fact(
-        "guard-refusal",
-        {"guard": f"{evidence.STOP_GATE_PREFIX}{gate}", "gate": gate, "stop": stop, "co_gates": []},
-        fid=f"g-{gate}-{stop}",
-        session=session,
-    )
+def _block(gate, stop, session="s1", *, reason=None, observed=None):
+    body = {"guard": f"{evidence.STOP_GATE_PREFIX}{gate}", "gate": gate, "stop": stop, "co_gates": []}
+    if reason is not None:
+        body["reason"] = reason
+    if observed is not None:
+        body["observed"] = observed
+    return _fact("guard-refusal", body, fid=f"g-{gate}-{stop}", session=session)
 
 
 def _v(facts, version="3.7", **kw):
@@ -267,6 +267,75 @@ class TestCost:
         assert sb["stops_blocked"] == 2 and sb["stops_blocked_per_session"] == 1.0
 
 
+class TestRefusalReasons:
+    """Why a control fired, and whether that firing was a catch or a slip.
+
+    The verdict is derived here from the recorded reason and observations, never
+    stored, so each case pairs the observation that makes it a catch with the
+    one that makes it a slip, plus the one that leaves it unclassified."""
+
+    def test_blocks_count_by_gate_and_reason(self):
+        facts = [
+            _block("clear-verdict", "x1", reason="handed-over-your-turn"),
+            _block("clear-verdict", "x2", reason="handed-over-your-turn"),
+            _block("clear-verdict", "x3", reason="handed-over-complete"),
+            _block("reflection", "x4"),
+        ]
+        assert _v(facts)["stop_blocks"]["by_gate_reason"] == {
+            "clear-verdict": {"handed-over-your-turn": 2, "handed-over-complete": 1},
+            "reflection": {"unspecified": 1},
+        }
+
+    @pytest.mark.parametrize(
+        "observed, verdict",
+        [
+            ({"notes_present": False, "work_live": False}, "catch"),
+            ({"notes_present": True, "work_live": False}, "slip"),
+            ({"notes_present": None, "work_live": False}, "unclassified"),
+            (None, "unclassified"),
+        ],
+    )
+    def test_clear_reason_is_a_catch_only_when_nothing_was_written_down(self, observed, verdict):
+        facts = [_block("clear-reason", "x1", reason="in-this-message", observed=observed)]
+        verdicts = _v(facts)["stop_blocks"]["verdicts"]["clear-reason"]
+        assert verdicts[verdict] == 1 and sum(verdicts.values()) == 1
+
+    @pytest.mark.parametrize(
+        "observed, verdict",
+        [
+            ({"work_live": False, "notes_present": True}, "catch"),
+            ({"work_live": True, "notes_present": False}, "slip"),
+            ({"work_live": None}, "unclassified"),
+        ],
+    )
+    def test_clear_verdict_is_a_catch_only_when_nothing_was_running(self, observed, verdict):
+        facts = [_block("clear-verdict", "x1", reason="handed-over-complete", observed=observed)]
+        verdicts = _v(facts)["stop_blocks"]["verdicts"]["clear-verdict"]
+        assert verdicts[verdict] == 1 and sum(verdicts.values()) == 1
+
+    def test_a_gate_with_no_verdict_rule_reports_none(self):
+        """Absent, not all-unclassified: no rule exists to classify by."""
+        facts = [_block("reflection", "x1", reason="no-root-cause", observed={"x": True})]
+        assert "reflection" not in _v(facts)["stop_blocks"]["verdicts"]
+
+    def test_a_malformed_reason_or_observation_is_unspecified_not_a_crash(self):
+        facts = [
+            _block("clear-reason", "x1", reason=7, observed="nope"),
+        ]
+        sb = _v(facts)["stop_blocks"]
+        assert sb["by_gate_reason"] == {"clear-reason": {"unspecified": 1}}
+        assert sb["verdicts"]["clear-reason"]["unclassified"] == 1
+
+    def test_guard_refusals_count_by_reason_too(self):
+        facts = [
+            _fact("guard-refusal", {"guard": "critic-dispatch-round-budget", "reason": "spent"}, fid="g1"),
+            _fact("guard-refusal", {"guard": "critic-dispatch-round-budget"}, fid="g2"),
+        ]
+        assert _v(facts)["guard_refusals"]["by_guard_reason"] == {
+            "critic-dispatch-round-budget": {"spent": 1, "unspecified": 1}
+        }
+
+
 class TestPopulation:
     def test_p90_is_nearest_rank(self):
         assert stats._population([1, 9])["p90"] == 9
@@ -338,6 +407,22 @@ class TestCli:
         assert "stops blocked      1 (1 per recorded session)" in result.stdout
         assert "reflection 1" in result.stdout
         assert "acted on" in result.stdout
+
+    def test_the_human_report_names_each_gates_reasons_and_verdicts(self, tmp_path):
+        repo = self._repo(tmp_path)
+        evidence.append_stop_block(
+            repo,
+            ["clear-reason"],
+            details={
+                "clear-reason": {
+                    "reason": "in-this-message",
+                    "observed": {"notes_present": False, "work_live": False},
+                }
+            },
+        )
+        result = self._run(repo)
+        assert result.returncode == 0, result.stderr
+        assert "clear-reason: in-this-message 1 (catch 1, slip 0, unclassified 0)" in result.stdout
 
     def test_the_human_report_says_when_newer_facts_were_left_out(self):
         base = {"project": "p", "window": {"since": None, "until": None}, "by_version": {}}

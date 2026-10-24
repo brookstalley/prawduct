@@ -968,10 +968,18 @@ def turn_cites_itself_as_record(stop_input) -> str | None:
     :func:`turn_contradicts_its_verdict`: a missing field or an unclear block
     returns ``None``, because the caller blocks on it.
     """
+    match = turn_self_citation(stop_input)
+    return match[0] if match else None
+
+
+def turn_self_citation(stop_input) -> "tuple[str, str] | None":
+    """:func:`turn_cites_itself_as_record` with the citation's kind beside the
+    phrase (``standing_block.self_citation_match``) — the kind is what the gate
+    records, since the phrase is the turn's own words."""
     message = _last_message(stop_input)
     if message is None:
         return None
-    return standing_block.self_citation(message)
+    return standing_block.self_citation_match(message)
 
 
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"

@@ -36,7 +36,7 @@ from . import dispositions, evidence, gitstate
 from .review_dispatch import fact_interval_seconds
 from .timewindow import in_window, is_usable_bound
 
-REPORT_SCHEMA_VERSION = 1
+REPORT_SCHEMA_VERSION = 2
 
 #: Severities whose findings a review is expected to act on.
 _ACTIONABLE = ("blocking", "warning")
@@ -57,6 +57,19 @@ _OUTCOMES = (*_OUTCOME_OF_STATE.values(), "other")
 _FIXED = ("fixed", "fixed_unreviewed")
 #: One gate blocking this many times in one session is reported as a loop.
 LOOP_THRESHOLD = 3
+
+#: A firing whose control recorded no reason, or one this reader cannot use.
+UNSPECIFIED = "unspecified"
+#: Per Stop gate, the observation that says the harm the gate guards against
+#: was already handled when it fired. True: a slip (the turn's words were wrong,
+#: the situation was not). False: a catch. Absent or unreadable: unclassified.
+#: The verdict is derived here and never stored, so a revised rule re-reads
+#: every recorded firing. Rationale per rule: ``docs/governance-telemetry.md``.
+SLIP_WHEN_OBSERVED = {
+    "clear-reason": evidence.OBSERVED_NOTES_PRESENT,
+    "clear-verdict": evidence.OBSERVED_WORK_LIVE,
+}
+VERDICTS = ("catch", "slip", "unclassified")
 
 
 def version_bucket(plugin) -> str:
@@ -142,11 +155,33 @@ def _new_bucket() -> dict:
         "stops": [],  # (stop id, session) per blocking-gate fact
         "blocks_by_gate": Counter(),
         "blocks_by_session": defaultdict(Counter),
+        "reasons_by_gate": defaultdict(Counter),
+        "verdicts_by_gate": defaultdict(Counter),
         "guard_refusals": [],  # (guard, session)
+        "reasons_by_guard": defaultdict(Counter),
         "transfer_grants": [],  # (guard, session)
         "test_runs": 0,
         "red_test_runs": 0,
     }
+
+
+def _reason(body: dict) -> str:
+    reason = body.get("reason")
+    return reason if isinstance(reason, str) and reason else UNSPECIFIED
+
+
+def _verdict(gate: str, body: dict) -> str:
+    observed = body.get("observed")
+    seen = observed.get(SLIP_WHEN_OBSERVED[gate]) if isinstance(observed, dict) else None
+    if seen is True:
+        return "slip"
+    if seen is False:
+        return "catch"
+    return "unclassified"
+
+
+def _counts(by_key) -> dict:
+    return {key: dict(counter.most_common()) for key, counter in by_key.items()}
 
 
 def aggregate(facts: list[dict], since=None, until=None, bucket=None) -> dict:
@@ -189,10 +224,14 @@ def aggregate(facts: list[dict], since=None, until=None, bucket=None) -> dict:
                 b["stops"].append((stop, session))
                 b["blocks_by_gate"][gate] += 1
                 b["blocks_by_session"][session][gate] += 1
+                b["reasons_by_gate"][gate][_reason(body)] += 1
+                if gate in SLIP_WHEN_OBSERVED:
+                    b["verdicts_by_gate"][gate][_verdict(gate, body)] += 1
             elif guard == evidence.TRANSFER_GRANT_GUARD:
                 b["transfer_grants"].append((guard, session))
             elif isinstance(guard, str) and guard:
                 b["guard_refusals"].append((guard, session))
+                b["reasons_by_guard"][guard][_reason(body)] += 1
         elif kind == "test-run":
             b["test_runs"] += 1
             failed = body.get("failed")
@@ -316,12 +355,18 @@ def _finish(b: dict) -> dict:
             "stops_blocked": len(stops),
             "stops_blocked_per_session": _per_session(stops, sessions),
             "by_gate": dict(b["blocks_by_gate"].most_common()),
+            "by_gate_reason": _counts(b["reasons_by_gate"]),
+            "verdicts": {
+                gate: {v: counter[v] for v in VERDICTS}
+                for gate, counter in b["verdicts_by_gate"].items()
+            },
             "loops": loops,
         },
         "guard_refusals": {
             "total": len(b["guard_refusals"]),
             "per_session": _per_session(b["guard_refusals"], sessions),
             "by_guard": dict(refusals.most_common()),
+            "by_guard_reason": _counts(b["reasons_by_guard"]),
         },
         "transfer_grants": {
             "total": len(b["transfer_grants"]),
@@ -349,6 +394,23 @@ def _fmt(value) -> str:
 
 def _minutes(seconds) -> str:
     return "-" if seconds is None else f"{seconds / 60:.1f}m"
+
+
+def _reason_lines(stop_blocks: dict) -> list:
+    """One line per Stop gate that recorded a reason or has a verdict rule; a
+    gate whose every block is unspecified and unclassifiable adds nothing the
+    by-gate tally does not already say."""
+    lines = []
+    for gate, reasons in stop_blocks["by_gate_reason"].items():
+        verdicts = stop_blocks["verdicts"].get(gate)
+        if set(reasons) == {UNSPECIFIED} and verdicts is None:
+            continue
+        line = f"{gate}: " + ", ".join(f"{r} {n}" for r, n in reasons.items())
+        if verdicts is not None:
+            line += " (" + ", ".join(f"{k} {verdicts[k]}" for k in VERDICTS) + ")"
+        label = "stop reasons" if not lines else ""
+        lines.append(f"    {label:<19}{line}")
+    return lines
 
 
 def render_human(report: dict) -> str:
@@ -380,6 +442,7 @@ def render_human(report: dict) -> str:
                 " — " + ", ".join(f"{g} {n}" for g, n in sb["by_gate"].items())
                 if sb["by_gate"] else ""
             ),
+            *_reason_lines(sb),
             f"    guard refusals     {v['guard_refusals']['total']} "
             f"({_fmt(v['guard_refusals']['per_session'])} per recorded session)",
             "  benefit",
