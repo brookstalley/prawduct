@@ -221,12 +221,15 @@ def _open_placeholders() -> str:
 
 
 def open_items(project_dir: Path, *, scope: str, now: datetime) -> dict:
-    """Every open item with its id, title and body — consumers 1 and 6.
+    """Every open item with its id, title and body — consumers 1 and 6, and
+    record-lint's ``retired-claim-survives`` backlog leg.
 
     The Critic's backlog-reconciliation walk and the PR reviewer's resolved-items
     check both need the full open set with text, which is the query that made a
     persisted cache worth building: it is one scan of local rows rather than a
-    paginated fetch on every review.
+    paginated fetch on every review. The retired-claim check reads the same set
+    rather than ``search``: full-text search matches terms, not phrases, so every
+    hit would need the exact filter anyway, and one scan answers every phrase.
 
     **Open means every non-terminal status, not the literal ``open`` one.**
     ``submitted`` and ``in-progress`` items are live — an in-progress item is
@@ -853,13 +856,9 @@ def _redirect_fetch(conn: sqlite3.Connection):
         target = encode.parse_block(row[0]).superseded_by()
         if not target:
             return None
-        # No `default_repo` here, deliberately, and it is not the omission it
-        # looks like beside the operator-input path above. This target is parsed
-        # out of ISSUE BODY TEXT, which is attacker-writable; qualifying a bare
-        # number against the store's scope would let a body containing `7`
-        # redirect a lookup to a real item. Stored refs resolve canonically or
-        # not at all (the same rule `ids.parse_provider_alias` states).
-        nid = ids.normalize_id(target)
+        # Parsed out of issue body text: `ids.normalize_stored_ref` owns the
+        # rule (no default repo, unlike the operator-input path above).
+        nid = ids.normalize_stored_ref(target)
         if not nid.ok or _item(conn, nid.canonical) is None:
             return None
         return nid.canonical

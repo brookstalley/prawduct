@@ -479,7 +479,32 @@ LAST_MEASURED_TOKENS = {
     # Both were review WARNINGs on new text, with no duplication left to pay from. DECLARED.
     # +17 more, same review (R-3): the alignment pass says its written form scales with the
     # response, a chunk-01 deliverable the shipped text had dropped. DECLARED.
-    "methodology/building.md": 5327,
+    # -1 on 2026-10-19 (change-log-fragments): the sentence calling plan and change-log
+    # edits "safe" during a review was false once consolidation refused any tracked
+    # change; it now points at `review-cycle.md`, which owns the attestation rule.
+    # -3 on 2026-10-21 (goal-grounding, #1029): the alignment pass judges the goals under the
+    # work, in a one-line pointer to discovery.md, which owns grounded / hedged / inferred.
+    # Paid by compressing the "moment for questions" sentence, whose batch-ask half
+    # discovery.md already states. Ceiling lowered with it. +1 more: the four-response
+    # intro says "clear and grounded", matching the digest (chunk 01 review observation).
+    # -4 more (goal-grounding chunk 02): Deciding Mid-Build names fork-tier drift as a reason to
+    # stop, paid by pointing the decision-record sentence at planning.md "Goals", which states
+    # the same rule. Ceiling lowered with it.
+    # -1 on 2026-10-21 (#560, #695): § Test Discipline gains the write-time "Green is evidence
+    # only about what could have made it red" paragraph and step 7 names the Stop hook's
+    # missing-note advisory, PAID IN PLACE by cutting restatements this file already makes
+    # elsewhere: the HEAD-reading hazard (Delegating Work to Subagents), "depth proportionate
+    # to risk" (Test coverage is proportionate), the verify step's second `test-status`
+    # exit-0 rule (the baseline step's), the Critic section's "after medium+ work" (the
+    # Critic-review step), "flag ambiguity" (Working With Specs), "multiple work cycles per
+    # session" (implied by `/clear` between cycles), and the `/clear` gloss's list of what
+    # resets (the Sessions paragraph's session-scoped state).
+    # -1 on 2026-10-21 (#846): the report sentence says "the last run is never unrecordable"
+    # in place of "no run in a session is" — the slot is one run, not one session.
+    # +2 on 2026-10-21 (#187): "Auto-cleared next session" names its sources (`/clear` or
+    # startup) now that the widened session-boundary pin sees the past participle; spends the
+    # two words the #695/#846 cuts left, so the reading is back where this branch began.
+    "methodology/building.md": 5320,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -642,7 +667,12 @@ LAST_MEASURED_TOKENS = {
     # +104 on 2026-10-09 (requirements-alignment w2, #975): Goal 5 judges the work against the
     # plan's Goals and the brief, and lists mid-build decisions for the owner. DECLARED with the
     # route sums in test_reviewer_payload_budget.py. A READING.
-    "skills/critic/review-protocol.md": 3898,
+    # -1 on 2026-10-21 (goal-grounding, #1029): a goal still hedged rates like one still
+    # inferred, paid by dropping Goal 2's own definition from its parenthesis. Ceiling lowered.
+    # +30 on 2026-10-21 (#706): Goal 2 checks a declared Exposed API surface against the contract
+    # artifact, after tightening the bullet's two decision clauses (net of that). DECLARED, a READING.
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "skills/critic/review-protocol.md": 3926,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -747,7 +777,15 @@ LAST_MEASURED_TOKENS = {
     # that mode an observation without `about` is dropped by consolidation, so the rule has to be stated
     # here or every observation the reviewer writes vanishes. Priced against the verify round each
     # off-topic observation used to buy (median ~2 min).
-    "skills/critic/goals-1-3.md": 2670,
+    # -12 on 2026-10-19 (change-log-fragments): the record-lint line names the new
+    # `change-fragment` check, paid by cutting a reason `cross-checks.md` owns ("that is
+    # how a record defect buys a review round"); the ceiling lowered with it.
+    # +30 on 2026-10-21 (#706): the same contract-presence clause as review-protocol.md, net of the
+    # tightened decision clauses. DECLARED, a READING.
+    # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    # -3 on 2026-10-22 (retired-claim-survives): the record-lint WARNING line names the new
+    # `retired-claim-survives` check, paid by tightening the chunk-ref-missing parenthesis. A READING.
+    "skills/critic/goals-1-3.md": 2684,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -868,12 +906,12 @@ LAST_MEASURED_TOKENS = {
     # severity test, which the chunk's own review falsified). Nothing to pay
     # in place with.
     # +/-0 net on 2026-09-17 (review-stages Chunk 03): the canonical
-    # fail-safe statement ("run `final`; every layer fails safe to
+    # fail-safe statement ("run `final`; every layer fails safe to  # prawduct:allow prawduct/retired-claim-survives -- the budget ledger records this retirement
     # thoroughness") is now the canonical default-when-unsure statement — the
     # inner-stage review of whatever interval exists, two modes named because
     # a clean tree and a dirty one have different intervals, and `final` never
     # a default (+10 on its own). Paid in full inside the file: the
-    # risk-surface paragraph SHRANK (the "never reviewed less than before"
+    # risk-surface paragraph SHRANK (the "never reviewed less than before"  # prawduct:allow prawduct/retired-claim-survives -- the budget ledger records this retirement
     # promise and the 5-file fallback it described are retired; the measurement
     # lives in the roster config block, pointed at), and the per-mode table's
     # `final` row lost "or any time the right answer is unclear" — the retired
@@ -931,7 +969,10 @@ LAST_MEASURED_TOKENS = {
     # verify pass drops off-topic ones, is rewritten to say what is dropped and counted.
     # -10 on 2026-10-14 (agents-md-anchor): the protected set names root AGENTS.md, paid in
     # place by folding "let the gate say otherwise; it is the gate's answer" into one clause.
-    "skills/critic/review-cycle.md": 7507,
+    # +204 on 2026-10-21 (#95), DECLARED: the integrator section (stage-and-`chunk` pattern, the
+    # `.prawduct/` gitignore trap, in-session vs unattended invocation). No review mode loads this
+    # file (see test_critic_skill_metadata), so no reviewer route pays it; it serves integrators.
+    "skills/critic/review-cycle.md": 7711,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1082,7 +1123,15 @@ LAST_MEASURED_TOKENS = {
     # New on 2026-09-28 (opus-55-w3b). cross-checks.md holds the reviewer-facing half of the review
     # cycle (C-8), and coordinator.md holds the coordinator's dispatch steps (C-20). Each is loaded on
     # a reviewer route, so each carries a ceiling.
-    "skills/critic/cross-checks.md": 3380,
+    # +24 on 2026-10-19 (change-log-fragments), DECLARED: one severity row for the new
+    # `change-fragment` record-lint check. Every check must carry a severity on every reviewer
+    # surface (test_record_lint), and this table is the only place the row can live; the row
+    # was shortened in place first and there is no duplication left to pay from.
+    # -4 on 2026-10-21 (#301): the `trivial` row's file-set wording left with the retired gate.
+    # -10 on 2026-10-22 (retired-claim-survives): one severity row for the new
+    # `retired-claim-survives` check, paid in place. The section intro stops calling the pass one over
+    # the changed records (two arms are repo-wide), and two reasons lost words. Ceiling lowered with it.
+    "skills/critic/cross-checks.md": 3390,
     "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1118,7 +1167,7 @@ LAST_MEASURED_TOKENS = {
     # Unfunded, and it is the on-demand class -- growth here is declared, not
     # blocked (#688), and paid only by a session that opens the guide.
     # -34 on 2026-09-17 (review-stages Chunk 03): § Surface Risk Surfaces no
-    # longer promises that an undeclared product is "never reviewed less than
+    # longer promises that an undeclared product is "never reviewed less than  # prawduct:allow prawduct/retired-claim-survives -- the budget ledger records this retirement
     # before" or that declaring raises a file-count threshold — the fallback
     # both sentences described is retired, so the paragraph states the one
     # effect that remains (size-independence on the named paths). A CUT.
@@ -1147,7 +1196,26 @@ LAST_MEASURED_TOKENS = {
     # goals statement, rewritten in place on amendment, and an inference keeps its mark until
     # the owner confirms it. Merged into the existing inference paragraph rather than added
     # beside it; nothing else here restates it. A READING.
-    "methodology/discovery.md": 4339,
+    # +499 on 2026-10-21 (goal-grounding, #1029): the grounding check at investment decisions
+    # (cost ranking, the product-vs-solution filter, audience first, the one-sentence stop) and
+    # a hedged owner answer kept open with a revisit trigger. New obligations from the settled
+    # goal-grounding design; its one home, since grounded and hedged sit beside inferred.
+    # building.md and planning.md point here; feature-level discovery says "clear and grounded".
+    # A READING.
+    # +380 on 2026-10-21 (goal-grounding chunk 02, #1029): drift announced by tier (record,
+    # heads-up, fork), the three adjusting rules and the signals read at plan approval, beside
+    # the characteristic flip it generalises. New obligations from the settled design. A READING.
+    # +61 (goal-grounding chunk 04 replay): a recorded hedge with a lot resting on it is still
+    # the fork to raise (t1 recorded it and moved on); publishing is a hard stop at the act, not
+    # the design (t4); ownership covers repo, code and data, and a fork comes before the act
+    # (t2 minted, then raised it). +28 after run 2: the hedge paragraph now LEADS with the fork
+    # judgment (t1 quoted the lead and missed the tail), and record lag checks the brief's
+    # audience, personas and scope (t5 caught a lagging line, not the lagging audience). +2 in the
+    # second cumulative (R-2): hedges and weak drift signals go to the brief's Open Questions, a
+    # template section that now exists. +14 by owner ruling 2026-10-21 ("I do need the ability
+    # to defer, just want cost flagged"): a high-stakes hedge is named with its cost, and
+    # deferring is the owner's call. A READING.
+    "methodology/discovery.md": 5323,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1273,7 +1341,23 @@ LAST_MEASURED_TOKENS = {
     # fallback records its assumed surface as an inference in Goals. A READING, no ceiling.
     # +5 on 2026-10-14 (agents-md-anchor): the trivial bound's file-set list names root
     # AGENTS.md and `agents/`, both in the protected set it restates. A READING, no ceiling.
-    "methodology/planning.md": 5787,
+    # +31 on 2026-10-21 (goal-grounding, #1029): the Goals response line names any ungrounded
+    # goal the plan rests on, and a hedged answer is marked like an inference. Both point to
+    # discovery.md. A READING, no ceiling.
+    # +55 on 2026-10-21 (goal-grounding chunk 02): before presenting a plan, read it against the
+    # brief's revisit triggers and scope words, pointing to discovery.md's drift tiers. A READING.
+    # -8 (chunk 02 review observation): the scope-word list discovery.md owns is no longer
+    # restated here. A READING.
+    # +26 on 2026-10-21 (#706): the Exposed API rule says the contract must describe the surface. DECLARED.
+    # +43 on 2026-10-21 (#999): a chunk that ships as its own PR declares `Critic mode:
+    # cumulative`, the boundary the short-plan deferral cannot see. A READING, no ceiling.
+    # +4 on 2026-10-21 (#778): a marker after `e.g.`/`i.e.` no longer binds, so the
+    # write-about-a-field advice names it. A READING, no ceiling.
+    # -82 on 2026-10-21 (#301): the `trivial` bullet's two machine-enforced layers and its
+    # over-declaration blocker left with the retired file-set gate; the Critic's rationale check
+    # is stated in one sentence instead. A READING.
+    # +3 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
+    "methodology/planning.md": 5859,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1499,7 +1583,13 @@ LAST_MEASURED_TOKENS = {
     # isolation, where the brief goes, and WHY the pointed-at shape fails — the
     # reason is what stops it being restored. A RAISE, on-demand class: paid
     # only by a session already about to delegate.
-    "methodology/delegation.md": 2858,
+    # +39 on 2026-10-21 (backlog-burndown): the worktree is cut from the default
+    # branch, not the coordinator's, so a gitflow delegate resets onto the
+    # integration branch first; ten delegates built against v3.7.1 without it. A
+    # RAISE, on-demand class: paid only by a session about to delegate.
+    # -1 on 2026-10-22 (git-hygiene): reaping now names `git-tidy --reap`, paid in
+    # place by tightening the reaping paragraph's own next sentence.
+    "methodology/delegation.md": 2896,
 }
 
 
@@ -2304,6 +2394,16 @@ class TestBuildingMethodology:
         assert "Decision Research" in self.content
         assert "lock-in" in self.content.lower()
         assert "research subagent" in self.content.lower() or "research subagent" in self.content
+
+    def test_test_discipline_teaches_green_is_evidence_at_write_time(self):
+        """The record-time directive (`_GREEN_IS_EVIDENCE_DIRECTIVE`) arrives
+        after the tests are written, when re-checking every fixture is
+        expensive. § Test Discipline is the write-time surface, and it carries
+        the directive's anchor verbatim so the two are one rule (#695)."""
+        start = self.content.index("## Test Discipline")
+        section = self.content[start:self.content.index("\n## ", start + 1)]
+        assert "Green is evidence only about what could have made it red" in section
+        assert "fixture" in section
 
     def test_build_cycle_structure(self):
         """Has build cycle, test discipline, and common traps sections."""
@@ -3379,7 +3479,7 @@ class TestBuildingMethodology:
         # the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5328, f"building.md is ~{tokens} tokens, should be <5328"
+        assert tokens < 5322, f"building.md is ~{tokens} tokens, should be <5322"
 
 
 # =============================================================================
@@ -5110,12 +5210,34 @@ class TestCriticSkill:
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3899, f"review-protocol.md is ~{tokens} tokens, should be <3899"
+        assert tokens < 3928, f"review-protocol.md is ~{tokens} tokens, should be <3928"
 
 
 # =============================================================================
 # goals-1-3.md — the chunk / verify-resolutions payload
 # =============================================================================
+
+
+class TestExposedApiContractPresence:
+    """#706: a declared `Exposed API:` surface must appear in the contract artifact.
+
+    Both Goal 2 carriers state it, with the same anchor phrase, because the
+    chunk reviewer and the final reviewer read different files and neither
+    reads the other; `planning.md` states the author-side rule.
+    """
+
+    @pytest.mark.parametrize(
+        "rel", ["skills/critic/goals-1-3.md", "skills/critic/review-protocol.md"]
+    )
+    def test_goal_2_checks_the_surface_against_the_contract(self, rel):
+        text = read_file(rel)
+        assert "Contract presence:" in text
+        assert "must appear in the API contract artifact" in text
+        assert "naming the surface and its artifact" in text
+
+    def test_planning_states_the_rule(self):
+        text = read_file("methodology/planning.md")
+        assert "contract must describe the named surface by the time the chunk ships" in text
 
 
 class TestCriticGoals13:
@@ -5394,7 +5516,7 @@ class TestCriticGoals13:
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
-        assert tokens < 2671, f"goals-1-3.md is ~{tokens} tokens, should be <2671"
+        assert tokens < 2689, f"goals-1-3.md is ~{tokens} tokens, should be <2689"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5991,7 +6113,7 @@ class TestReviewCycle:
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
         # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
-        assert tokens < 7508, f"review-cycle.md is ~{tokens} tokens, should be <7508"
+        assert tokens < 7712, f"review-cycle.md is ~{tokens} tokens, should be <7712"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
@@ -5999,7 +6121,8 @@ class TestReviewCycle:
         # on a coordinator roster, so growth here is paid per reviewer. The next
         # addition trims or relocates; it does not bump.
         tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
-        assert tokens < 3381, f"cross-checks.md is ~{tokens} tokens, should be <3381"
+        # RATCHETED 3405 -> 3391 (retired-claim-survives, 2026-10-22) with the reading.
+        assert tokens < 3391, f"cross-checks.md is ~{tokens} tokens, should be <3391"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).
@@ -6350,7 +6473,7 @@ class TestRigorIsStageKeyed:
     # The property, not a spelling: every phrasing under `plugin/` that names
     # thoroughness / the fuller review as the SAFE direction to fail toward.
     # `CHANGELOG.md` is excluded on purpose — the v3.2.2 section quotes the
-    # "never reviewed less than before" promise as released history, and a
+    # "never reviewed less than before" promise as released history, and a  # prawduct:allow prawduct/retired-claim-survives -- names the released history the scan excludes
     # released section is not a surface a reader is instructed by.
     THOROUGHNESS_IS_SAFE = re.compile(
         r"fails?[- ]safe to thoroughness"
@@ -6401,9 +6524,9 @@ class TestRigorIsStageKeyed:
         """A zero from this scan is only evidence once the scan has returned
         non-zero on text it should catch — the canonical fail-safe statement
         and the under-declaring sentence are the two the norm names."""
-        assert self.THOROUGHNESS_IS_SAFE.search("Every layer fails safe to thoroughness.")
+        assert self.THOROUGHNESS_IS_SAFE.search("Every layer fails safe to thoroughness.")  # prawduct:allow prawduct/retired-claim-survives -- positive control for the absence scan
         assert self.THOROUGHNESS_IS_SAFE.search("defaults to `final` (fail-safe to thoroughness)")
-        assert self.THOROUGHNESS_IS_SAFE.search("Under-declaring Type is safe (worst case: redundant Critic work)")
+        assert self.THOROUGHNESS_IS_SAFE.search("Under-declaring Type is safe (worst case: redundant Critic work)")  # prawduct:allow prawduct/retired-claim-survives -- positive control for the absence scan
         assert self.THOROUGHNESS_IS_SAFE.search("is never reviewed *less* than before")
         assert not self.THOROUGHNESS_IS_SAFE.search("a control that never fires is removed")
 

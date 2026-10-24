@@ -1,14 +1,14 @@
-"""Build-plan reference parsing + trivial-change classification for the runtime.
+"""Build-plan reference parsing + governance-protected path bounds for the runtime.
 
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 3) — the build-plan
 parsing cluster: it reads the active build plan's Status section and per-chunk
-sections (file-path refs, ``Type:`` declaration, ``Trivial because:`` rationale)
-and classifies a single file change against the ``Type: trivial`` / doc-only
-file-set bounds. Parsing + path inspection, plus read-only ``git log`` /
+sections (file-path refs, ``Type:`` declaration) and owns the
+governance-protected path bounds (``protected_path_violation``). Parsing + path
+inspection, plus read-only ``git log`` /
 ``git rev-list`` queries where "which chunk is current" cannot be answered from
 the file alone — no git mutation, no network.
 
-Depends on its lib siblings ``gitstate`` (for ``_is_metadata_path``), ``core``
+Depends on its lib siblings ``gitstate`` (git and ``.prawduct`` lookups), ``core``
 (``resolve_build_plan_path``, ``read_str_yaml_key``), ``coverage``
 (``_resolve_base_branch``) and ``plan_index`` (the canonical frontmatter ``scope:``
 reader) plus the stdlib. This module reaches the canonical resolver in ``lib.core``
@@ -16,15 +16,10 @@ directly, exactly as ``critic_mode`` and ``change_log`` do — there is one reso
 now, the hook's inline mirror of it having been retired once branch-scoped
 resolution left it with no caller and no import-light claim.
 
-**The graph is acyclic only because one edge back is lazy, and that is a
-constraint rather than a tuning knob.** ``core.resolve_branch_claim`` calls
-``_has_unfinished_chunk`` to choose among several plans claiming one branch, and
-imports this module *inside the function* to do it; this module imports ``core``
-at module scope. Hoisting core's import — the optimization applied to the
-``plan_index`` import below, on measured cost — would cycle at plugin load. The
-cleaner shape is to move the Status-roster predicate down into ``plan_index``,
-where core already reaches and nothing in ``lib`` is imported at all; until then,
-the laziness is what holds.
+**Dependencies point downward.** ``core`` never imports this module; the
+Status-roster predicate ``core.resolve_branch_claim`` uses to choose among
+several plans claiming one branch lives in ``plan_index`` (#657), which imports
+nothing in ``lib``. This module imports ``core`` at module scope.
 
 Every read of the plan — here and in every other module that reads it — is
 explicitly UTF-8, and every guarded read catches ``UnicodeDecodeError`` beside
@@ -79,78 +74,14 @@ from .coverage import _resolve_base_branch
 # binds is the structural test, not the numbers.
 
 
-def status_section_bounds(lines: list[str]) -> "tuple[int, int] | None":
-    """0-based ``[start, end)`` line indices of the ``## Status`` section BODY.
-
-    ``None`` when the plan has no Status section. The section opens after a line
-    that is exactly ``## Status`` and runs to the next ``## `` heading (a ``###``
-    chunk heading does NOT close it) or to end of document.
-
-    **Public, and the single home for the section's BOUNDS** — which is the part
-    two readers genuinely share. :func:`_iter_status_section_lines` wants the
-    body with comments skipped; ``lifecycle_repair`` wants the comment spans
-    themselves, by index, because it deletes them. Neither can reuse the other's
-    body handling, and a private bounds rule copied into both is how BLD-6Q1N's
-    five divergent Status readers started. The two agreed when the second was
-    written; that is the moment to merge them, not evidence that they will stay
-    agreed.
-    """
-    start = None
-    for index, line in enumerate(lines):
-        if line.strip() == "## Status":
-            start = index + 1
-            break
-    if start is None:
-        return None
-    end = start
-    while end < len(lines):
-        stripped = lines[end].strip()
-        if stripped.startswith("## ") and stripped != "## Status":
-            break
-        end += 1
-    return (start, end)
-
-
-def _iter_status_section_lines(content: str):
-    """Yield stripped lines inside the build plan's ``## Status`` section.
-
-    The one canonical Status-section walk (BLD-6Q1N): bounded by
-    :func:`status_section_bounds`, skipping HTML-comment spans (``<!-- ... -->``,
-    multi-line). This skeleton was previously copied in five readers across
-    ``buildplan_refs`` / ``gates`` / ``critic_mode``; all of them now fold onto
-    this generator, which is now the only Status-section *content* reader in the
-    tree — the index-based Status *rewriter* that once stood beside it went with
-    the derived view it regenerated.
-    """
-    lines = content.splitlines()
-    bounds = status_section_bounds(lines)
-    if bounds is None:
-        return
-    in_comment = False
-    for line in lines[bounds[0] : bounds[1]]:
-        stripped = line.strip()
-        # A repeated `## Status` does not close the section (see the bounds
-        # walk) and is not content either — it was skipped before this function
-        # was bounded elsewhere, and it stays skipped.
-        if stripped == "## Status":
-            continue
-        if "<!--" in stripped:
-            in_comment = True
-        if "-->" in stripped:
-            in_comment = False
-            continue
-        if in_comment:
-            continue
-        yield stripped
-
-
-def _iter_status_section_items(content: str):
-    """Yield ``(checked, text)`` for each ``- [ ]`` / ``- [x]`` Status item."""
-    for stripped in _iter_status_section_lines(content):
-        if stripped.startswith("- [ ]"):
-            yield False, stripped[5:].strip()
-        elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
-            yield True, stripped[5:].strip()
+# The Status-roster readers live in `plan_index` (#657), beside the rest of
+# what decides which plan governs, so `core` can ask them with its
+# dependencies pointing downward only. These names stay, as aliases, for the
+# modules and pins that read them through this one.
+status_section_bounds = plan_index.status_section_bounds
+_iter_status_section_lines = plan_index.iter_status_section_lines
+_iter_status_section_items = plan_index.iter_status_section_items
+_has_unfinished_chunk = plan_index.has_unfinished_chunk
 
 
 # Build-plan chunk id extraction — the two supported forms:
@@ -793,48 +724,6 @@ def _scope_of_branch_claiming_plan(
         if plan_path == claim.chosen:
             return scope
     return None
-
-
-def _has_unfinished_chunk(plan_path: Path) -> bool:
-    """True when ``plan_path``'s Status section still holds an unchecked chunk.
-
-    **Read this before tuning it: it now decides which plan GOVERNS.**
-    :func:`core.resolve_branch_claim` uses it to choose among several live plans
-    claiming one branch, so a change here moves what every gate grades. Its other
-    consumer is the session briefing's "claims a branch this repo does not have"
-    advisory, which fires only for a plan with work left, because a finished plan
-    whose merged branch is gone is the documented end state, not a finding.
-    Branch-name scope inference asks it alongside
-    :func:`_plan_changed_on_branch`, because every box is ticked by a plan's own
-    final review, which is when that inference is needed most.
-
-    **The signal is blunt: the boxes flip per chunk, so a plan reads finished
-    from the moment its last chunk is ticked** — typically before its branch
-    merges. Resolution answers that by ordering a *sole* claimant ahead of this
-    test, so a lone plan keeps governing through its own closing PR; what the
-    bluntness still costs is the tie-break among SEVERAL claimants, where a
-    just-ticked plan stops counting as open work. Repos whose checkboxes were a
-    derived view never had this: their boxes flipped at *release*, so "all
-    checked" meant shipped, which is precisely the question asked here. Retiring
-    the derived view removed that sharpness along with the false readings it
-    produced everywhere else — a deliberate trade, stated here rather than
-    discovered later. Sharpening it needs a liveness signal a plan does not carry
-    (a terminal state in frontmatter is the obvious candidate, and archival
-    introduces exactly that); ``active_build_plan`` and ``--scope`` are the
-    remedies meanwhile.
-
-    A plan with no Status items at all reads as unfinished — an unparseable plan
-    is not evidence of completion, and the caller's fallback (the pointer) is no
-    better an answer for it.
-    """
-    try:
-        content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return False
-    items = list(_iter_status_section_items(content))
-    if not items:
-        return True
-    return any(not checked for checked, _text in items)
 
 
 def _declares_scope(plan_path: Path) -> bool:
@@ -1548,7 +1437,15 @@ FIELD_VALUE_QUOTE_LIMIT = 60
 #: sentence — those three are how every composed chunk header in this repo is
 #: written. Anything else in front of the marker is a sentence *about* the
 #: field: `- **Notes:** the old reader took **Type:** anything as a value`.
-_FIELD_DECLARATION_PREFIX_RE = re.compile(r"(?:^[\s\-\*`]*|[·•|]\s*|\.\s+)$")
+#: A period after an abbreviation that never ends a sentence (`e.g.`, `i.e.`,
+#: `cf.`, `viz.`) opens nothing: `(e.g. **Type:** designer-handoff)` is prose
+#: quoting the field, and binding it would switch review off (#778). `etc.` is
+#: left out on purpose — it does end sentences, and a composed field after one
+#: must still bind.
+_FIELD_DECLARATION_PREFIX_RE = re.compile(
+    r"(?:^[\s\-\*`]*|[·•|]\s*"
+    r"|(?<!\b[eE]\.g)(?<!\b[iI]\.e)(?<!\b[cC]f)(?<!\b[vV]iz)\.\s+)$"
+)
 
 
 def iter_field_declarations(
@@ -1580,12 +1477,10 @@ def iter_field_declarations(
 # type at a declaration position is the only thing that can bind.
 _BUILD_PLAN_TYPE_RE = field_token_re("Type")
 _BUILD_PLAN_TYPE_VALUE_RE = field_value_re("Type")
-# `trivial` is in the allowed set. File-set bounds (no edit to a
-# governance-protected path — `protected_path_violation` owns the set; no
-# test deletion; no new files) + required `**Trivial because:**`
-# rationale are enforced structurally; semantic-fit is Critic Goal 3 in
-# Chunk 05. Size is unbounded — trivial is a semantic claim, not a LOC
-# metric.
+# `trivial` is in the allowed set; it changes only the Critic's protocol (Goal
+# 3 judges its `**Trivial because:**` rationale against the diff). Its stop-hook
+# file-set + rationale gate was retired (#301) — a file set enforces nothing
+# about triviality.
 _BUILD_PLAN_ALLOWED_TYPES = frozenset(
     {"code", "doc-only", "cleanup", "designer-handoff", "cumulative-final", "trivial"}
 )
@@ -1602,26 +1497,6 @@ _BUILD_PLAN_TYPE_ALIASES = {
     "hotfix": "code",
     "debt-paydown": "code",
 }
-# `**Trivial because:** <rationale>` — first line; continuation lines (no
-# list-item / heading prefix) are joined onto the rationale until the next
-# field. Empty after the colon → missing-rationale.
-_BUILD_PLAN_TRIVIAL_RATIONALE_RE = re.compile(
-    r"^[\s\-\*]*\*\*Trivial because:\*\*\s*(.*)$"
-)
-# The same field wherever it sits on its line, for the composed-header form
-# (`**Type:** trivial · **Trivial because:** it renames a constant`). Bounded
-# twice, and this field needs both. Read ONLY as a fallback, after the anchored
-# pass above has found no field at all: a mid-line marker in prose would
-# otherwise start the capture, and the capture stops at the next `- **` line —
-# so a sentence discussing the field would eat the rationale declared below it
-# and hand the gate the prose instead. And read only from a DECLARATION
-# position, so a section with no rationale at all cannot have one supplied by a
-# sentence mentioning the field — that sentence would buy `Type: trivial` its
-# bounded review, which is the whole thing the field is asked for.
-_BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE = re.compile(
-    r"\*\*Trivial because:\*\*\s*(.*)$"
-)
-
 # Git branch/ref names (`feature/backlog-service-relayout`, `origin/develop`) are
 # backticked identifiers that contain `/` but name a branch, not a file — the same
 # "contains `/`, isn't a path" family as the slash-command / URL carveouts in
@@ -2217,7 +2092,7 @@ def chunk_section_gap(chunk_id: str, section: ChunkSection) -> str | None:
       section before it either, so the section that *did* resolve runs on
       through its neighbour's body and answers with a confident, non-empty,
       wrong set — a deliverable check that verifies another chunk's files and
-      passes, a ``Type:`` or ``Trivial because:`` read off a declaration written
+      passes, a ``Type:`` read off a declaration written
       for different work.
     """
     unparsed = unparsed_chunk_heading_reason(section)
@@ -2936,135 +2811,18 @@ def _parse_build_plan_chunk_type(
     return declared, None
 
 
-def _capture_trivial_rationale(
-    section: "ChunkSection", pattern: "re.Pattern[str]"
-) -> tuple[bool, list[str]]:
-    """Read a ``**Trivial because:**`` rationale out of ``section``.
-
-    Returns ``(found, lines)`` — ``found`` says the field was present at all,
-    which is a different question from whether it carried anything, because an
-    empty field and an absent one earn the same block for different reasons.
-
-    ``pattern`` decides WHERE the field may sit: the anchored pattern reads a
-    declaration in field position, the ``_ANYWHERE_`` one reads the composed
-    header. Two passes rather than one permissive pass, so a declaration always
-    beats prose — see the ``_ANYWHERE_`` pattern's comment for what one pass
-    would eat.
-
-    Either way the match goes through :func:`iter_field_declarations`, the same
-    predicate the other two chunk fields bind through. It is what stops the
-    composed-header pass from reading a SENTENCE about the field: this rationale
-    is what buys ``Type: trivial`` its bounded review, so prose satisfying it
-    silently is worse than the missing-field block it would replace. (On the
-    anchored pattern the predicate is a no-op — a match there starts at column
-    zero — which is the point: one rule, no second spelling of it.)
-    """
-    capturing = False
-    rationale_lines: list[str] = []
-    for _line_num, line in section.lines:
-        stripped = line.strip()
-        m = next(iter_field_declarations(line, pattern), None)
-        if m:
-            capturing = True
-            first = m.group(1).strip()
-            if first:
-                rationale_lines.append(first)
-            continue
-        if capturing:
-            # Stop at the next list-item field, bolded label, or sub-heading.
-            if (
-                stripped.startswith("- **")
-                or stripped.startswith("* **")
-                or stripped.startswith("**")
-                or stripped.startswith("#")
-            ):
-                break
-            if stripped:
-                rationale_lines.append(stripped)
-    return capturing, rationale_lines
-
-
-def _parse_build_plan_chunk_trivial_rationale(
-    prawduct_dir: Path, chunk_id: str, plan_path: "Path | None" = None
-) -> tuple[str | None, str | None]:
-    """Extract the ``**Trivial because:**`` rationale from a chunk's section.
-
-    Returns ``(rationale, error)``. Empty or absent field → ``(None,
-    "missing-rationale: Type: trivial requires non-empty **Trivial
-    because:** field")``. Multi-line rationale (continuation lines without
-    a list-item / heading prefix) is joined into a single string until the
-    next field. A field in field position is read first; only when the
-    section has none is the composed-header form (``**Type:** trivial ·
-    **Trivial because:** …``) read, so a rationale the author did write
-    cannot be blocked as missing.
-
-    Section discovery is the shared ``_chunk_section_lines`` walker —
-    name-anchored on ``### Chunk <chunk_id>:`` with leading-zero tolerance;
-    fenced code blocks are skipped.
-
-    ``plan_path`` names the plan to read, defaulting to the pointer — the third
-    of the chunk-level fields to take it. The chunk id and the rationale must
-    come from the SAME plan: validating a trivial declaration against another
-    plan's same-numbered chunk either blocks on a rationale that is present, or
-    passes on one written for different work.
-    """
-    if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
-        return None, f"missing build-plan: {plan_path}"
-    try:
-        content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        return None, f"unreadable build-plan: {exc}"
-
-    # Same gate as the `Type:` reader one function up, and it earns its place
-    # here for a sharper reason: a rationale written for a LATER chunk would
-    # otherwise justify this chunk's trivial declaration, which is the one thing
-    # the field exists to stop.
-    section = _chunk_section_lines(content, chunk_id)
-    gap = chunk_section_gap(chunk_id, section)
-    if gap:
-        return None, gap
-
-    capturing, rationale_lines = _capture_trivial_rationale(
-        section, _BUILD_PLAN_TRIVIAL_RATIONALE_RE
-    )
-    if not capturing:
-        # No field in field position anywhere in the section. Before blocking,
-        # look for the composed-header form — the author may have written the
-        # rationale on the same line as the type it justifies.
-        capturing, rationale_lines = _capture_trivial_rationale(
-            section, _BUILD_PLAN_TRIVIAL_RATIONALE_ANYWHERE_RE
-        )
-
-    if not capturing:
-        return None, (
-            "missing-rationale: Type: trivial requires non-empty "
-            "**Trivial because:** field"
-        )
-    rationale = " ".join(rationale_lines).strip()
-    if not rationale:
-        return None, (
-            "missing-rationale: Type: trivial requires non-empty "
-            "**Trivial because:** field"
-        )
-    return rationale, None
-
-
-# STH-1W5N — single source of truth for the unconditional ``Type: trivial`` /
-# doc-only protected-path bounds. Each entry is ``(path, is_exact, reason_label)``:
-# a change touching ``path`` (prefix match unless ``is_exact``) is a
-# catastrophic-blast-radius edit that a trivial/doc-only chunk may never make,
-# and the violation is reported as ``"<reason_label>: <path>"``. Centralized
-# here (was inline in ``_classify_trivial_change``) so the stop-hook gate and
-# the PR-boundary gate share one provably-identical list — and so the bound set
-# is testable as data. The conditional bounds (test-file removals, newly-tracked
-# files) stay in ``_classify_trivial_change`` because they depend on the change
-# verb, not just the path.
+# STH-1W5N — single source of truth for the governance-protected path bounds.
+# Each entry is ``(path, is_exact, reason_label)``: a change touching ``path``
+# (segment match unless ``is_exact``) edits the framework's own governance, so it
+# is judgeable even when it is pure ``.md`` and may never ride a doc-only fast
+# path, and a match is reported as ``"<reason_label>: <path>"``. Kept as data so
+# every consumer of ``protected_path_violation`` shares one provably-identical
+# list and the bound set is testable as data. (It began as the ``Type: trivial``
+# file-set bound; that gate was retired, #301, and the list outlived it.)
 #   skills/       — the critic/pr/etc. SKILL definitions + bundled protocols ARE
 #                   the governance; editing one changes the framework itself.
 #   methodology/  — the build/discovery/planning/reflection guides Claude reads
-#                   as operating instructions; a "trivial" rewrite is never trivial.
+#                   as operating instructions.
 #   templates/    — the artifact templates every product's specs are generated
 #                   from; a silent change propagates to all downstream output.
 #   agents/       — a subagent's own system prompt IS its behaviour, by exactly
@@ -3078,7 +2836,7 @@ def _parse_build_plan_chunk_trivial_rationale(
 #   AGENTS.md     — the same contract for every agent host: it carries the
 #                   governance anchor, and CLAUDE.md imports it, so an unreviewed
 #                   edit here changes what every session is told (exact match).
-_TRIVIAL_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
+_GOVERNANCE_PROTECTED_PATHS: frozenset[tuple[str, bool, str]] = frozenset({
     ("skills/", False, "skill-file-edited"),
     ("methodology/", False, "methodology-edited"),
     ("templates/", False, "template-edited"),
@@ -3093,10 +2851,11 @@ def protected_path_violation(path: str) -> str | None:
     falls under a governance-protected bound (``skills/``, ``methodology/``,
     ``templates/``, ``agents/``, root ``CLAUDE.md`` or ``AGENTS.md``), else ``None``.
 
-    Shared by the ``Type: trivial`` gate (via ``_classify_trivial_change``)
-    and the PR-boundary doc-only gate (``lib/coverage.py``, PR-5K8D): fork-
-    skill prose is behavioral logic in this framework, so a ``skills/*.md``
-    change must never ride a doc-only fast path past the reviewers.
+    Read through ``coverage_algebra.is_judgeable_path`` by the session doc-only
+    classification and the PR-boundary doc-only gate (``lib/coverage.py``,
+    PR-5K8D): fork-skill prose is behavioral logic in this framework, so a
+    ``skills/*.md`` change must never ride a doc-only fast path past the
+    reviewers.
 
     **Directory bounds match the path SEGMENT, not a root anchor.** They were
     root-anchored, which silently stopped matching the moment a repo kept its
@@ -3111,69 +2870,13 @@ def protected_path_violation(path: str) -> str | None:
     session that reviews when it need not; the cost of the false negative was
     governance-protected prose shipping unreviewed. The leading ``/`` in the
     containment test keeps ``myskills/`` from matching ``skills/``."""
-    for protected, is_exact, reason_label in _TRIVIAL_PROTECTED_PATHS:
+    for protected, is_exact, reason_label in _GOVERNANCE_PROTECTED_PATHS:
         if is_exact:
             matched = path == protected
         else:
             matched = path.startswith(protected) or f"/{protected}" in path
         if matched:
             return f"{reason_label}: {path}"
-    return None
-
-
-def _classify_trivial_change(
-    *,
-    path: str,
-    src_path: str | None,
-    is_addition: bool,
-    is_deletion: bool,
-) -> str | None:
-    """Single-file path-rule check for the ``Type: trivial`` file-set
-    bounds. Returns the violation reason or ``None`` when the change
-    is eligible. Used by ``_is_trivial_fileset_eligible`` (Chunk 04 —
-    working-tree porcelain) to enforce a *declared* ``Type: trivial``
-    chunk at session-end. (The ``_pr_diff_is_trivial`` PR-boundary
-    co-consumer was retired — it used these bounds as a triviality
-    *detector* at the bundle boundary, with no link to a ``Type: trivial``
-    declaration, so multi-chunk feature work that only touched existing
-    files skipped both review gates.)
-
-    The unconditional path bounds live in the module-level
-    ``_TRIVIAL_PROTECTED_PATHS`` constant (STH-1W5N — single source of
-    truth, referenced from this one call site). The conditional bounds
-    (test-file removals, newly-tracked files) stay inline below because
-    they depend on the change verb, not just the path.
-
-    Metadata paths (``.prawduct/``, ``.claude/settings.json``, etc. —
-    see ``_is_metadata_path``) are treated as out-of-scope and return
-    ``None``. The check applies to BOTH ``path`` (rename dst / single-
-    file change) AND ``src_path`` (rename src) — without that
-    symmetry, a rename FROM a metadata path that landed somewhere
-    interesting would silently be classified, and a rename TO a
-    metadata path would be classified differently depending on which
-    gate ran (the callers previously did dst-only filtering before
-    calling this helper — v1.5.1 Chunk 04(b) consolidates).
-
-    The caller translates its status format into the boolean inputs
-    (porcelain handles 2-char codes; name-status handles single-char).
-    Path bounds are catastrophic-blast-radius classes regardless of
-    size — size is intentionally not a bound.
-    """
-    if gitstate._is_metadata_path(path):
-        return None
-    if src_path is not None and gitstate._is_metadata_path(src_path):
-        return None
-    # Unconditional path bounds — shared with the PR-boundary doc-only gate
-    # via protected_path_violation (one provably-identical list).
-    violation = protected_path_violation(path)
-    if violation is not None:
-        return violation
-    if is_deletion and path.startswith("tests/"):
-        return f"test-file-deleted: {path}"
-    if src_path is not None and src_path.startswith("tests/"):
-        return f"test-file-deleted: {src_path} (renamed out)"
-    if is_addition:
-        return f"new-file: {path}"
     return None
 
 

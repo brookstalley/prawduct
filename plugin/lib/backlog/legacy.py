@@ -129,6 +129,10 @@ class BacklogItem:
     body: str = ""
     struck: bool = False  # title wrapped in ~~…~~ (a non-canonical "done" marker)
     line_number: int = 0  # 1-indexed line of the bullet
+    # The title as the parser returned it before the 2026-08-06 boundary rule:
+    # the whole bullet line, ``**``/``~~`` stripped (:func:`_unbounded_title`).
+    # The importer reads it to recognise an issue a pre-fix run titled (#613).
+    unbounded_title: str = ""
 
     @property
     def is_legacy(self) -> bool:
@@ -248,6 +252,12 @@ class Backlog:
         return grouped
 
 
+def _unbounded_title(raw: str) -> str:
+    """The whole bullet line with ``**``/``~~`` stripped — the title before any
+    boundary is applied, and the whole of the title before 2026-08-06."""
+    return raw.replace("~~", "").replace("**", "").strip()
+
+
 def _parse_title_line(raw: str) -> tuple[str | None, str, bool, str]:
     """From a bullet's text (after ``- ``) return ``(item_id, title, struck, overflow)``.
 
@@ -267,7 +277,7 @@ def _parse_title_line(raw: str) -> tuple[str | None, str, bool, str]:
     id_match = ID_RE.search(raw)
     item_id = id_match.group(1) if id_match else None
 
-    text = raw.replace("~~", "").replace("**", "").strip()
+    text = _unbounded_title(raw)
     # The leading ``[PFX]`` marker STAYS in the title. It is part of the display
     # string every existing consumer expects, and `migrate.py` strips it itself when
     # building the issue title (the id lives in the alias there). Removing it here
@@ -372,6 +382,7 @@ def parse_backlog(content: str) -> Backlog:
                 item_id=item_id,
                 struck=struck,
                 line_number=i + 1,
+                unbounded_title=_unbounded_title(item_match.group(1)),
             )
             # Collect the body: lines until the next column-0 bullet or heading.
             # The body may itself contain a fenced code block (the item format

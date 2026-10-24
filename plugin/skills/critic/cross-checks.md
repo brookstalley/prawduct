@@ -13,7 +13,7 @@ Each chunk also declares `Type:` — a separate axis from `Critic mode:`; defini
 |---|---|---|---|---|---|---|
 | `code` (default) | Code or behavior changes | full | full | full | required | fires |
 | `doc-only` | Methodology / template / prose-only edits | prose only | requirement coverage of prose deliverables | scope discipline | skipped | fires unless session is empirically doc-only too (file-extension based) |
-| `trivial` | Small-blast-radius code change within the file-set bounds | full | full | full + **rationale-vs-diff fit** sub-check (Goal 3) | required | fires (file-set bounds + `**Trivial because:**` rationale enforced structurally) |
+| `trivial` | Code change whose low risk the author can name in `**Trivial because:**` | full | full | full + **rationale-vs-diff fit** sub-check (Goal 3) | required | fires |
 | `cleanup` | Branch hygiene, file moves, dead-code removal | structural-only (no broken refs) | requirement coverage | scope discipline; tolerate zero diff | skipped | fires |
 | `designer-handoff` | Visual / token / design-asset handoff to a human designer | skipped | skipped | skipped | skipped | **skipped** |
 | `cumulative-final` | Marker on the last chunk of a multi-chunk plan | marker only — the chunk's review is the one `/prawduct:critic cumulative` (commit first, then run it once; no separate `final`) | — | — | — | fires |
@@ -83,7 +83,7 @@ At `final`/`cumulative` (`sustainability` under a coordinator roster), rate `fil
 three bars and **name the set you covered**, so the exclusion is visible rather than silent:
 
 - **It ships** — the inaccuracy reaches consumers as a false claim (release note, `CHANGELOG.md`, a
-  published doc). *A change-log entry asserting a guard that was never built → WARNING: a reader
+  published doc). *A change record asserting a guard that was never built → WARNING: a reader
   relies on a check that does not exist.*
 - **It misleads into action** — an operator or agent following the record would do the wrong thing.
   *A measurement table assigning a probe a question it cannot answer → WARNING: the next operator
@@ -106,9 +106,9 @@ worth what clearing one costs.
 
 ### Record-Lint — the checks the machine already ran
 
-`prawduct-hook critic-begin` runs a deterministic pass over the changed **records** and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
-re-derive any of it, and do not recount anything it counted — re-deriving a machine-checked number
-is how a record defect buys a review round, which is the cost this exists to remove.
+`prawduct-hook critic-begin` runs deterministic record checks and writes the result into the dispatch manifest as `record_lint`. Read it. Do not
+re-derive any of it, and do not recount anything it counted — re-deriving one is how a record
+defect buys a review round.
 
 Severity per check:
 
@@ -122,6 +122,8 @@ Severity per check:
 | `learnings-budget-unreasoned` | A `learnings_budgets:` entry with no `reason:` | **BLOCKING** |
 | `learnings-core-raise-unapproved` | A `core.md` raise without `owner_approved:` (ignored) | **WARNING** |
 | `learnings-area-dead` | An area file whose `paths:` globs match no tracked file | **WARNING** |
+| `change-fragment` | A changed fragment fails its schema, or its `reopens:` names an unknown scope | **WARNING** |
+| `retired-claim-survives` | A `Retires:` phrase survives in a tracked file or open issue | **WARNING** |
 
 **Under the coordinator pattern, whoever holds Goal 2 raises every one of these** — including the
 `suite-total-claim` NOTE, which would otherwise sit in Goal 4. The manifest is named in Goal 2 and
@@ -129,8 +131,7 @@ only that reviewer reads it, so splitting the findings by their natural goal los
 
 **The severities above are the other three modes'.** In `verify-resolutions` only the **BLOCKING** rows
 stay findings; the WARNING and NOTE rows become observations like anything else rated below
-BLOCKING (see `review-cycle.md` "A re-review does not manufacture work" — the general rule is not suspended for this
-table).
+BLOCKING (`review-cycle.md` "A re-review does not manufacture work").
 
 **`unchecked` is not a pass: an entry inherits one step below its check's severity** — BLOCKING
 → **WARNING**, else **NOTE**. Each entry names a check that could not run, or an assumption made

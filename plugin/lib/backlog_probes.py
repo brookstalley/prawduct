@@ -1,6 +1,6 @@
 """Post-sync advisory probes for the backlog feature (requirements §8.2).
 
-Six probes registered against the shared advisory infrastructure
+Seven probes registered against the shared advisory infrastructure
 (:mod:`lib.advisory_store`). Each is a pure ``ProbeFn(state, codebase)`` that
 reads the consumer's own ``.prawduct/`` and returns at most one
 :class:`~lib.advisory_store.AdvisoryCandidate`. They never write — resolution is
@@ -370,8 +370,44 @@ def probe_migration_required(state: ProjectState, codebase: Codebase):
     ]
 
 
+def probe_archive_deferred(state: ProjectState, codebase: Codebase):
+    """Fire post-cutover when the import was run with ``--archive-scope open`` (#320).
+
+    ``open`` leaves the closed/archived items off the tracker, so after cutover —
+    when the markdown is frozen history — ``list`` and add-time dedup cannot see
+    them, and nothing else records that the choice was made. The fact is stamped by
+    hand at cutover as ``backlog_archive_scope: open`` (beside
+    ``backlog_service_repo``) rather than re-derived from the markdown, which would
+    cost network I/O in the briefing. Resolves when the key becomes ``all`` (after a
+    backfill) or is deleted. ``info``, not ``warn``: the backfill is itself a
+    migration and must not be relayed to the owner as a push."""
+    if not post_cutover(state) or state.get("backlog_archive_scope") != "open":
+        return []
+    return [
+        AdvisoryCandidate(
+            type="backlog-archive-deferred",
+            evidence=("backlog_archive_scope: open",),
+            trigger_summary=(
+                "this repo was migrated with --archive-scope open, so its closed/archived "
+                "items are not on the tracker"
+            ),
+            owner_action=(
+                "Closed and dropped items from before the migration are invisible to list and "
+                "to add-time dedup, so a previously rejected idea can be refiled without "
+                "anything saying so. If that matters, a re-run under --archive-scope all "
+                "backfills them, but it also re-syncs every item's status from the frozen "
+                "markdown and will reopen anything closed since cutover (migration-scrub "
+                "Step 3c). After a backfill set backlog_archive_scope to all; to silence this "
+                "without backfilling, dismiss it."
+            ),
+            recommended_action="/prawduct:advisory dismiss backlog-archive-deferred",
+            priority="info",
+        )
+    ]
+
+
 def register() -> None:
-    """Register the five backlog probes. Idempotent (register_probe overwrites).
+    """Register the backlog probes. Idempotent (register_probe overwrites).
 
     ``backlog-service-migration-required`` fires live. It spent several releases
     wired to a no-op while the migration path was unproven, because its
@@ -402,3 +438,4 @@ def register() -> None:
     register_probe(FEATURE, "external-backlog-detected", PROBE_VERSION, probe_external_backlog)
     register_probe(FEATURE, "legacy-section-schema", PROBE_VERSION, probe_legacy_section_schema)
     register_probe(FEATURE, "backlog-overdue-grooming", PROBE_VERSION, probe_overdue_grooming)
+    register_probe(FEATURE, "backlog-archive-deferred", PROBE_VERSION, probe_archive_deferred)

@@ -72,14 +72,16 @@ How many plans, and how big, is settled before chunking begins.
 
 Every build plan opens with **Goals** — the alignment pass's written form (`methodology/building.md` "Before You Build"), placed where a cold session reads it before any chunk. Mid-build decisions are made against it, and the boundary review judges the work by it.
 
-- **Response taken** — which of the four, and when the owner answered.
+- **Response taken** — which of the four, when the owner answered, and any ungrounded goal the plan rests on (`methodology/discovery.md` "Ground the goals under an investment").
 - **Product** — what the work is for and for whom. Cite the brief's near-term and North Star rather than restating them.
 - **Architecture** — what must hold, and what must stay possible (the `accommodate` items this work touches).
 - **Constraints**, stated and sourced, and **tradeoffs accepted** — including debt taken knowingly, each with what would make it worth revisiting. Debt that definitely must be paid also gets a backlog item; debt that may never matter does not.
 - **Decisions made mid-build** — appended while building, one line each naming the goal or prior choice that settled it; mark any the goals did not settle.
 - **Level** — High, Medium, or Low: an honest read of whether you understand what to build well enough to build it well (Principle 6). Medium or Low says what would raise it — the cheapest concrete step, not "more thinking".
 
-**Say what the owner said and what you inferred.** Mark each inference in plain words — *"Inferred: one household; no auth beyond a shared device"* — so the owner, and the boundary review, can find it. An inference is a decision made on the owner's behalf: never record one as their ruling.
+**Say what the owner said and what you inferred.** Mark each inference in plain words — *"Inferred: one household; no auth beyond a shared device"* — so the owner, and the boundary review, can find it. An inference is a decision made on the owner's behalf: never record one as their ruling. Mark a hedged owner answer *Hedged:* the same way (`methodology/discovery.md`).
+
+**Before presenting a plan, read it against the record**: the brief's open revisit triggers and scope words against what the plan does. A match is drift, announced by its tier (`methodology/discovery.md` "Drift is announced, by tier").
 
 **Chunks usually work best** as vertical slices (working, testable functionality across layers), in dependency order, each verifiable without later chunks and small enough for one Critic pass — the last is the firm limit. A thin first slice through the whole architecture proves the layers connect before you widen it.
 
@@ -156,6 +158,7 @@ error handling go missing one context at a time.
 - **Short plan** (at most 3 chunks, nothing the branch changes is a risk surface) → no per-chunk review is inferred at all: mid-chunk inference answers `deferred`, the Stop gate warns rather than blocks on a non-final chunk, and the last chunk's `cumulative` is every chunk's review. So tick each earlier chunk when it is committed: inference counts unticked boxes, and a box held for a review that never comes reads as a chunk still to build. Declaring `Critic mode:` on any chunk opts the whole plan back into per-chunk review — do it when an early chunk is a keystone you want seen before the rest is built on it.
 - **Override forward to `final`** on an early chunk that lands an architectural keystone whose coherence matters before later chunks build on it.
 - **Override forward to `cumulative`** on the last chunk of a plan that ships as a single PR — typically by declaring `Type: cumulative-final` (the chunk's review IS the one cumulative pass: commit the chunk, then run `/prawduct:critic cumulative` once — no separate `final` and no explicit `Critic mode:` needed).
+- **A chunk that ships as its own PR declares `Critic mode: cumulative`** — that PR is a boundary the short-plan deferral cannot see; once the chunk is committed, `/prawduct:critic` infers the cumulative.
 - **Trivial chunks** (typo-level edits inside a larger plan) → waive Critic via `.gates-waived`; for bounded mechanical code changes, prefer `Type: trivial` (below).
 
 **Why this layering:** the per-chunk goals catch the high-frequency failures cheaply because they scope to local changes; the final-chunk goals need the full diff — coherence is across files — so they belong at the end of the cycle.
@@ -177,15 +180,11 @@ Allowed values: `code` | `doc-only` | `cleanup` | `designer-handoff` | `cumulati
 - **`cleanup`** — branch hygiene, file moves, dead-code removal. Critic tolerates a zero diff; structural-only review.
 - **`designer-handoff`** — handing off visual / token / design-asset work to a human designer. The Critic returns "Review skipped" and the stop-hook gate also skips. The only Type that bypasses Critic enforcement entirely — use deliberately.
 - **`cumulative-final`** — marker on the last chunk of a multi-chunk plan: the chunk's own review IS the one `/prawduct:critic cumulative` against `merge-base...HEAD` (commit first, run once — cumulative is a strict superset of `final`, so no separate `final`). That review is also the `/prawduct:pr create` gate (Principle 14 at the bundle level).
-- **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small (an 80-LOC project-wide rename can be trivial; a 5-line state-machine change cannot). Two machine-enforced layers at chunk close:
-  1. **File-set bounds (hard):** no edits under `skills/`, `methodology/`, `templates/` or `agents/`; no edits to root `CLAUDE.md` or `AGENTS.md`; no test-file deletions; no new files — the catastrophic-blast-radius classes regardless of size.
-  2. **Required `**Trivial because:**` rationale (hard):** non-empty, or BLOCKING at the stop-hook. The rationale is the semantic claim Critic Goal 3 validates against the diff — strong rationale names the structural property bounding risk (`"project-wide rename of FooBar to BazQux; no behavior change"`); weak rationale describes feeling (`"small change"`) and can't be validated.
-
-  **Over-declaration is unsafe and BLOCKING**: a `Type: trivial` chunk violating either bound is treated as `code` AND the stop-hook emits a named blocker (e.g., `skill-file-edited: …`) — fix the violation or change the Type, never both quietly.
+- **`trivial`** — semantically simple change whose risk is low *because the author can name why* — not because LOC is small (an 80-LOC project-wide rename can be trivial; a 5-line state-machine change cannot). It gets the full `code` review and gates, and requires a `**Trivial because:**` rationale: the semantic claim Critic Goal 3 checks against the diff. A strong rationale names the structural property bounding risk (`"project-wide rename of FooBar to BazQux; no behavior change"`); a weak one describes feeling (`"small change"`) and can't be checked. A diff the rationale doesn't describe is BLOCKING; a missing rationale is a WARNING.
 
 **Type vs. mode orthogonality.** A `doc-only` chunk can be `Critic mode: final`; a `code` chunk can be `chunk`. Declare each on its own merits: over-declaring is unsafe per each Type's own bullet above, and under-declaring buys review work the stage norm prices as a defect, not a margin.
 
-**Don't open a LINE or a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Backticks do not escape it: a line-opening ``` `**Type:** code` ``` is a declaration and binds deliberately. To write *about* a field, keep the marker inside the sentence (`unlike a **Type:** trivial chunk`) or drop the asterisks (`Type:`).
+**Don't open a LINE or a sentence with a field marker unless you mean to declare it.** These fields are read mid-line — chunk headers compose them, and a period separates them as freely as a `·` — so a Description *starting* `**Type:** designer-handoff …` declares that type, the one that bypasses the Critic entirely. Backticks do not escape it: a line-opening ``` `**Type:** code` ``` is a declaration and binds deliberately. To write *about* a field, keep the marker inside the sentence (`unlike a **Type:** trivial chunk`, or after `e.g.`/`i.e.`) or drop the asterisks (`Type:`).
 
 ### Forward-References to Not-Yet-Created Files
 
@@ -201,7 +200,7 @@ When a chunk wraps a foreign API or SDK — anything whose surface the agent doe
 
 The mirror for the interface a product *produces* — any programmatic surface others call (network service, library/SDK, on-device/platform, or CLI). Two design decisions must be *recorded*, not left to silence: the versioning + deprecation/compatibility scheme and the error model — introducing either later is a breaking change for every consumer. The framework forces the decision, not versioning itself: "none — internal-only" is valid; a deferral must be dated with a revisit trigger.
 
-**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a WARNING for each missing decision. Discovery's `exposes_programmatic_interface` flag carries into the plan on the chunk that first builds the surface; the `api-versioning` advisory independently nudges already-built products.
+**The rule.** The chunk declares `**Exposed API:** <name>`. The decisions live in `design_decisions.api_versioning_approach` and `api_error_model_approach`, detailed in the API contract artifact (`templates/api-contract.md`). The Critic's Goal 2 emits a WARNING for each missing decision. The contract must describe the named surface by the time the chunk ships (Goal 2 warns when it does not). Discovery's `exposes_programmatic_interface` flag carries into the plan on the chunk that first builds the surface; the `api-versioning` advisory independently nudges already-built products.
 
 ### Visual Change Verification
 

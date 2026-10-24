@@ -337,7 +337,8 @@ class TestIssuesBackendCloseIsDeferred:
         skill = PR_SKILL.read_text()
         merge_flow = skill[skill.index("## Merge Flow"):]
         close_at = merge_flow.index("Close the backlog items this PR resolves")
-        delete_at = merge_flow.index("Delete remote branch")
+        # The branch-deletion step is the one `git-tidy --after-merge` call.
+        delete_at = merge_flow.index("git-tidy --after-merge")
         # The evidence-deletion step is the one Merge Flow step naming the
         # `review.pr` ledger event (the durable record that survives it), so the
         # event name anchors it rather than the step's wording.

@@ -281,6 +281,19 @@ class TestGetItem:
         assert got["status"] == "ok"
         assert got["data"]["id"] == "octo/repo#1"
 
+    def test_get_surfaces_timestamps_that_feed_the_cc2_guard(self, fake):
+        # #836 — `get` must carry the CC2 comparand; the other CC2 tests read it off the transport.
+        n = _seed_item(fake)
+        raw = fake.get_issue(OWNER, REPO, n)
+        got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{n}")["data"]
+        assert got["updated_at"] is not None and got["updated_at"] == raw["updated_at"]
+        assert got["created_at"] is not None and got["created_at"] == raw["created_at"]
+        r = core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"title": "core: renamed on a get-supplied token"},
+            expected_updated_at=got["updated_at"],
+        )
+        assert r["status"] == "ok"
+
     def test_get_missing_is_not_found(self, fake):
         got = core.get_item(fake, id_raw="octo/repo#999")
         assert got["status"] == "error"
@@ -290,6 +303,25 @@ class TestGetItem:
         got = core.get_item(fake, id_raw="not-an-id-at-all")
         assert got["status"] == "error"
         assert got["error"]["code"] == "validation"
+
+    def test_a_short_superseded_by_in_a_body_does_not_redirect(self, fake):
+        # #754: `superseded_by` is parsed out of attacker-writable body text. A
+        # short `repo#n` must not be qualified against the item's own owner and
+        # followed to a real item — `merge` only ever writes the canonical form.
+        target = _seed_item(fake, body="the real target")
+        planted = _seed_item(fake, body=f"t\n\n```prawduct\nv: 1\nsuperseded_by: {REPO}#{target}\n```\n")
+        got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{planted}")
+        assert got["status"] == "ok"
+        assert got["data"]["superseded_by"] == f"{REPO}#{target}"  # the field was read
+        assert "resolves_to" not in got["data"]
+
+    def test_a_canonical_superseded_by_in_a_body_still_redirects(self, fake):
+        # Control for the test above: the same plant, fully qualified, resolves.
+        target = _seed_item(fake, body="the real target")
+        canon = f"{OWNER}/{REPO}#{target}"
+        planted = _seed_item(fake, body=f"t\n\n```prawduct\nv: 1\nsuperseded_by: {canon}\n```\n")
+        got = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{planted}")
+        assert got["data"]["resolves_to"] == canon
 
 
 class TestGetComments:
@@ -927,6 +959,39 @@ class TestUpdateItem:
         r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "brainstorm"})
         assert r["status"] == "ok" and r["data"]["stage"] == "brainstorm"
         assert any("brainstorm" in w for w in r["warnings"])
+
+    def _stage_item(self, fake, body, stage="design"):
+        return _seed_item(fake, labels=(f"stage:{stage}",), body=body)
+
+    def test_stage_change_warns_when_body_still_describes_old_stage(self, fake):
+        # #322
+        n = self._stage_item(fake, "`stage: design` is deliberate here.")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
+        assert r["status"] == "ok"
+        assert any("describes stage `design`" in w for w in r["warnings"])
+
+    def test_stage_change_with_reconciling_body_does_not_warn(self, fake):
+        n = self._stage_item(fake, "`stage: design` is deliberate here.")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready", "body": "Ready to build."})
+        assert r["status"] == "ok"
+        assert not any("describes stage" in w for w in r["warnings"])
+
+    def test_stage_mention_of_new_stage_or_inside_block_does_not_warn(self, fake):
+        body = "Now `stage: ready`.\n\n```prawduct\nv: 1\nrefs: stage design notes\n```"
+        n = self._stage_item(fake, body)
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
+        assert not any("describes stage" in w for w in r["warnings"])
+
+    def test_update_without_a_stage_change_never_scans(self, fake):
+        n = self._stage_item(fake, "`stage: design` is deliberate here.")
+        for fields in ({"stage": "design"}, {"title": "core: a retitled item under test"}):
+            r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields=fields)
+            assert not any("describes stage" in w for w in r["warnings"])
+
+    def test_stage_change_catches_the_heading_form(self, fake):
+        n = self._stage_item(fake, "## Open questions (why this is design, not ready)\n\ntext")
+        r = core.update_item(fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"stage": "ready"})
+        assert any("describes stage `design`" in w and "line 1" in w for w in r["warnings"])
 
     def test_empty_update_is_validation(self, fake):
         n = _seed_item(fake)

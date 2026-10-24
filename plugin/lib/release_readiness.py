@@ -31,9 +31,11 @@ from __future__ import annotations
 
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import buildplan_refs
+from . import change_fragments
 from . import change_log as change_log_mod
 from . import gates
 from . import plan_index
@@ -166,7 +168,8 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
 
     Returns ``(classification, errors)`` where classification maps
     ``scope -> (disposition, blocker_id_or_None)``. Rows are markdown table
-    rows: ``| scope | ships |  |`` or ``| scope | withheld | ABC-1234 |``.
+    rows: ``| scope | ships |  |`` or ``| scope | withheld | ABC-1234 |``; a
+    blocker may also be an Issues id, ``#123`` or ``owner/repo#123`` (#1033).
 
     A row with a recognised shape but bad content (unknown disposition,
     duplicate scope, `withheld` with no blocker id) becomes an **error**: a row
@@ -212,18 +215,43 @@ def parse_classification(content: str) -> tuple[dict[str, tuple[str, str | None]
             errors.append(f"scope `{scope}`: classified twice")
             continue
         if disposition == WITHHELD:
-            match = _ITEM_ID_RE.search(blocker)
-            if not match:
+            blocker_id = _blocker_id(blocker)
+            if blocker_id is None:
                 errors.append(
                     f"scope `{scope}`: `{WITHHELD}` requires a blocker item id "
-                    "(e.g. `ABC-1234`) — a withholding with no named blocker is "
-                    "an unrecorded decision"
+                    "(e.g. `ABC-1234`, `#123` or `owner/repo#123`) — a withholding "
+                    "with no named blocker is an unrecorded decision"
                 )
                 continue
-            classification[scope] = (WITHHELD, match.group(1))
+            classification[scope] = (WITHHELD, blocker_id)
         else:
             classification[scope] = (SHIPS, None)
     return classification, errors
+
+
+def _blocker_id(cell: str) -> str | None:
+    """The blocker id a classification cell names, or ``None``.
+
+    A markdown ``PFX-XXXX`` first, as before. Otherwise the first token carrying
+    a ``#`` that the backlog service's own id parser accepts — ``#123`` or
+    ``owner/repo#123`` — so a repo whose backlog lives on Issues can name the
+    blocker it actually has, and so this module does not grow a second
+    definition of what an Issues id looks like. The parser needs a repo to accept
+    a bare ``#123``; the placeholder only lets it judge the spelling, and the id is
+    kept as written, to be resolved against the real scope by
+    :func:`_issues_blocker_liveness`. The short ``repo#123`` form needs an owner
+    and stays rejected: nothing here could say whose repo it means.
+    """
+    match = _ITEM_ID_RE.search(cell)
+    if match:
+        return match.group(1)
+    from .backlog import ids  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
+
+    for raw in cell.split():
+        token = raw.strip("`.,;:()[]")
+        if "#" in token and ids.normalize_id(token, default_repo=("owner", "repo")).ok:
+            return token
+    return None
 
 
 def _open_item_ids(backlog_content: str) -> set[str]:
@@ -251,25 +279,30 @@ def _open_item_ids(backlog_content: str) -> set[str]:
     }
 
 
-def _markdown_backlog_unavailable_reason(project_dir: Path) -> str | None:
-    """``None`` when ``.prawduct/backlog.md`` is the live backlog; else *why* not.
+def _blocker_liveness(project_dir: Path, blockers: set[str]) -> tuple[set[str], dict[str, str]]:
+    """Which withholding blockers are open, routed by the backlog that is live.
 
+    Returns ``(open_blockers, unverifiable)``, ``unverifiable`` mapping a blocker
+    to *why* its liveness could not be established. A blocker in neither is
+    closed. Raises an ``_UNREADABLE`` error when the markdown backlog is the live
+    one and cannot be read, which the caller reports as ``no-backlog``.
+
+    **Routed by backend, because only one backlog is ever the truth.**
     ``data-model.md`` § Direction: once ``backlog_service_repo`` is set the
     markdown is **frozen history**, and every item archived at cutover still
-    parses as ``status: open``. Reading it post-cutover would make
-    :func:`_open_item_ids` return the whole frozen roster, so a withholding
-    blocker that has since closed would still look open and the gate would
-    print ``releasable:`` on exactly the stale decision it exists to catch.
-    Every other ``lib/`` reader checks this scalar first; this is not an
-    exception.
+    parses as ``status: open``. Reading it post-cutover would make every
+    withholding blocker look open, so the gate would print ``releasable:`` on
+    exactly the stale decision it exists to catch. Post-cutover, liveness comes
+    from the local backlog cache (``cachequery.resolve``, the reader behind
+    ``prawduct-hook backlog cache-query resolve``) — which also resolves a legacy
+    ``PFX`` blocker through the alias the importer stamped. Pre-cutover, the
+    markdown answers for ``PFX`` ids and cannot answer for an Issues id at all.
 
-    Returns the *reason* rather than a bool because two unrelated causes land
-    here — a real cutover, and a project-state that would not load — and they
-    need different remedies. Collapsing both into False made the caller state
-    the cutover as fact, so an operator with a corrupt ``project-state.yaml``
-    was told something about their backlog backend that was not true and sent
-    to check a scalar that is unset. A wrong remedy is worse than a bare
-    failure. Both directions still fail CLOSED.
+    **Unverifiable is never closed.** A cache that will not open, an id the
+    cache does not hold, a project-state that will not load: each lands in
+    ``unverifiable`` with its own reason, because each needs a different remedy
+    and "the blocker closed, re-take the decision" is the remedy for none of
+    them. Every direction still fails CLOSED.
     """
     from . import advisory_store  # noqa: PLC0415 -- lazy: keeps this module's import DAG light
     from . import backlog_probes  # noqa: PLC0415
@@ -277,18 +310,73 @@ def _markdown_backlog_unavailable_reason(project_dir: Path) -> str | None:
     try:
         state = advisory_store.load_project_state(project_dir)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- unreadable state must fail CLOSED, and the loader's failure modes are not enumerable here
-        return (
+        reason = (
             "unreadable-project-state: cannot determine which backlog is live "
             f"(project-state did not load: {exc}), so blocker liveness is "
             "unverifiable."
         )
+        return set(), {blocker: reason for blocker in blockers}
     if backlog_probes.post_cutover(state):
-        return (
-            "cannot-verify-blockers: this repo has cut over to the GitHub Issues "
-            "backlog (`backlog_service_repo` set), so `.prawduct/backlog.md` is "
-            "frozen history and cannot say whether a blocker is still open."
+        return _issues_blocker_liveness(
+            project_dir, str(state.get("backlog_service_repo")), blockers
         )
-    return None
+
+    markdown = {blocker for blocker in blockers if _ITEM_ID_RE.fullmatch(blocker)}
+    unverifiable = {
+        blocker: (
+            "cannot-verify-blockers: this repo's live backlog is "
+            f"`{_BACKLOG_REL_PATH}` (`backlog_service_repo` unset), which cannot say "
+            f"whether the GitHub issue {blocker} is still open."
+        )
+        for blocker in blockers - markdown
+    }
+    if not markdown:
+        return set(), unverifiable
+    content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
+    return markdown & _open_item_ids(content), unverifiable
+
+
+def _issues_blocker_liveness(
+    project_dir: Path, scope: str, blockers: set[str]
+) -> tuple[set[str], dict[str, str]]:
+    """:func:`_blocker_liveness` for a repo whose backlog lives on GitHub Issues.
+
+    Read from the local cache, never the network: this gate runs in a release
+    procedure that must not depend on a live provider, and the cache already
+    owns id resolution — bare ``#N`` against its own scope, aliases, redirects.
+    A bare ``#N`` means an issue in ``scope``, the repo the cache holds."""
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from .backlog import cachequery  # noqa: PLC0415 -- lazy: only the post-cutover arm
+
+    now = datetime.now(timezone.utc)
+    default_owner = scope.split("/", 1)[0] if "/" in scope else None
+    open_blockers: set[str] = set()
+    unverifiable: dict[str, str] = {}
+    for blocker in sorted(blockers):
+        envelope = cachequery.resolve(
+            project_dir, scope=scope, id_raw=blocker, now=now, default_owner=default_owner
+        )
+        if envelope.get("status") != "ok":
+            err = envelope.get("error") or {}
+            unverifiable[blocker] = (
+                "cannot-verify-blockers: the backlog cache could not be read "
+                f"({err.get('message') or err.get('code') or 'unknown error'}), so "
+                "whether a blocker is still open is unknown — run "
+                f"`prawduct-hook backlog sync --repo {scope}`."
+            )
+            continue
+        data = envelope.get("data") or {}
+        if not data.get("resolved"):
+            unverifiable[blocker] = (
+                f"cannot-verify-blockers: the backlog cache for {scope} holds no "
+                f"item {blocker} — sync it (`prawduct-hook backlog sync --repo "
+                f"{scope}`) or correct the id."
+            )
+            continue
+        if not data.get("dead"):
+            open_blockers.add(blocker)
+    return open_blockers, unverifiable
 
 
 def normalize_version(release: str) -> str:
@@ -475,8 +563,8 @@ def _open_digest_section(lines: list[str]) -> tuple[str, list[str]] | None:
     """The topmost ``## `` section as ``(heading, body)``; ``None`` if there is none.
 
     **The open section is identified by position, not by version.** The digest
-    states its own convention — rolling notes accumulate under the top heading
-    and it is renamed to the release number at the cut — so "topmost" is what
+    states its own convention — the cut writes each fragment's consumer note
+    under the top heading and renames it to the release number — so "topmost" is what
     "the section this release is being written into" means, and it stays true
     across the rename that a version match would have to be taught about.
 
@@ -761,6 +849,7 @@ def _scan_accounting(
     pending_entries: list,
     scopes: list[str],
     unclassifiable: list,
+    fragments: int = 0,
 ) -> str:
     """The gate's denominator, as one phrase.
 
@@ -770,12 +859,87 @@ def _scan_accounting(
     Entries scanned, entries release-pending, the scopes they enumerate, and the
     ones that enumerate none — the last is the reconciliation's whole yield.
     """
+    # Fragments are named only when there are some, so a repo still on the
+    # single-file log reads exactly the line it always has.
+    fragment_part = f", {fragments} change fragment(s)" if fragments else ""
     return (
-        f"{len(entries)} change-log entries, {_tagged_count(entries)} tagged, "
-        f"{len(pending_entries)} release-pending across {len(scopes)} scope(s), "
+        f"{len(entries)} change-log entries, {_tagged_count(entries)} tagged"
+        f"{fragment_part}, "
+        f"{len(pending_entries) + fragments} release-pending across {len(scopes)} scope(s), "
         f"{len(unclassifiable)} unclassifiable"
     )
 
+
+@dataclass(frozen=True)
+class PendingSet:
+    """What is release-pending, from both shapes of the change record.
+
+    ``entries`` is every parsed legacy entry (the tag checks and the history
+    reads need all of them); ``read_error`` is set when the single-file log
+    exists in neither readable nor fragments-only form. ``refusals`` names
+    whatever makes the union untrustworthy, so a caller refuses on it before
+    reading ``scopes``.
+    """
+
+    entries: list
+    pending_entries: list
+    legacy_scopes: list[str]
+    fragment_scopes: list[str]
+    refusals: list[str]
+    read_error: str | None = None
+
+    @property
+    def scopes(self) -> list[str]:
+        """Legacy scopes first, then fragment scopes, each once."""
+        return self.legacy_scopes + [s for s in self.fragment_scopes if s not in self.legacy_scopes]
+
+
+def pending_scopes(project_dir: Path) -> PendingSet:
+    """The release-pending set: legacy log entries with no ``release=``, plus fragments.
+
+    The one owner of that union (design D6 of #1012). Every file in the fragment
+    directory is pending, because the cut removes shipped ones. Two things are
+    refused rather than resolved: a fragment that fails validation, which could
+    be missing its scope or carrying the wrong one, and a scope pending in both
+    shapes, which is a half-done migration whose two records can disagree about
+    what is shipping. A repo with a fragment directory and no single-file log is
+    a fragments-only repo, not a missing input.
+    """
+    path = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
+    read_error: str | None = None
+    try:
+        content = path.read_text(encoding="utf-8")
+    except _UNREADABLE as exc:
+        content = ""
+        if not (
+            isinstance(exc, FileNotFoundError)
+            and (project_dir / change_fragments.FRAGMENT_DIR_REL).is_dir()
+        ):
+            read_error = f"cannot read {change_log_mod.CHANGE_LOG_REL_PATH}: {exc}"
+    entries = change_log_mod.parse_change_log(content)
+    legacy_scopes = release_pending_scopes(entries)
+    files = change_fragments.load_pending(project_dir)
+    refusals = [
+        f"bad-change-fragment: {item.path.name}: {problem}"
+        for item in files
+        for problem in item.problems
+    ]
+    fragment_scopes = [item.fragment.scope for item in files if item.ok and item.fragment.scope]
+    for scope in fragment_scopes:
+        if scope in legacy_scopes:
+            refusals.append(
+                f"scope-in-both-shapes: {scope!r} is pending in "
+                f"{change_log_mod.CHANGE_LOG_REL_PATH} and in "
+                f"{change_fragments.FRAGMENT_DIR_REL}/{scope}.md; keep one record"
+            )
+    return PendingSet(
+        entries=entries,
+        pending_entries=release_pending_entries(entries),
+        legacy_scopes=legacy_scopes,
+        fragment_scopes=fragment_scopes,
+        refusals=refusals,
+        read_error=read_error,
+    )
 
 def check_releasability(project_dir: Path, release: str | None = None) -> int:
     """Phase 0 gate. Exit 0 when every release-pending scope is classified.
@@ -784,14 +948,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     state (missing change log, missing release plan) fails closed — the whole
     point is that an unclassified scope must never read as "fine".
     """
-    change_log = project_dir / change_log_mod.CHANGE_LOG_REL_PATH
-    try:
-        change_log_content = change_log.read_text(encoding="utf-8")
-    except _UNREADABLE as exc:
-        print(f"no-change-log: cannot read {change_log_mod.CHANGE_LOG_REL_PATH}: {exc}", file=sys.stderr)
+    pending_set = pending_scopes(project_dir)
+    if pending_set.read_error is not None:
+        print(f"no-change-log: {pending_set.read_error}", file=sys.stderr)
         return 1
-
-    entries = change_log_mod.parse_change_log(change_log_content)
+    entries = pending_set.entries
 
     # The tag checks run BEFORE the pending set is computed, because a malformed
     # tag is precisely what makes that set wrong. `release_pending_scopes` skips
@@ -835,10 +996,20 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # Exit 1, the value every other refusal here uses. Not 3: the change log
     # READ fine, so this is not the unreadable-subject case — it is the work
     # that is unclassifiable.
-    pending_entries = release_pending_entries(entries)
-    pending = release_pending_scopes(entries)
+    pending_entries = pending_set.pending_entries
+    legacy_pending = pending_set.legacy_scopes
+    # A fragment that fails validation, or a scope in both shapes, is refused
+    # here, before any verdict, for the reason a malformed tag is: it is exactly
+    # what would make the pending set wrong.
+    if pending_set.refusals:
+        for refusal in pending_set.refusals:
+            print(refusal, file=sys.stderr)
+        return 1
+    pending = pending_set.scopes
     unclassifiable = unclassifiable_pending_entries(entries)
-    accounting = _scan_accounting(entries, pending_entries, pending, unclassifiable)
+    accounting = _scan_accounting(
+        entries, pending_entries, pending, unclassifiable, len(pending_set.fragment_scopes)
+    )
     if unclassifiable:
         noun = "entry" if len(unclassifiable) == 1 else "entries"
         print(
@@ -890,8 +1061,11 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # so a repo whose release plan does not exist yet — the state this one is in
     # while the notes are still being written — still gets the advice while it
     # is still actionable.
+    # Only legacy-shaped scopes are asked about: a fragment carries a required
+    # consumer note, and the cut writes the digest from it, so matching its
+    # scope name against digest prose would be a fuzzy check of an exact one.
     digest_warnings, digest_note, digest_emissions = _digest_advisories(
-        project_dir, pending
+        project_dir, legacy_pending
     )
     for warning in digest_warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
@@ -963,7 +1137,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # a release that withholds nothing needs no backlog read at all.
     withheld_scopes = [s for s, (d, _) in classification.items() if d == WITHHELD]
     open_ids: set[str] = set()
-    # Blocker liveness is the ONLY sub-verdict a frozen backlog can withhold.
+    # Blocker liveness is the ONLY sub-verdict an unreadable backlog can withhold.
     # Returning here instead would report the one thing the gate could not check
     # and stay silent about the thing it exists to check — whether every
     # release-pending scope is classified at all. The runbooks tell the operator
@@ -971,16 +1145,14 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # past an unclassified scope on the way to an unrecallable publish: the
     # v3.1.2 near-miss this module was built for, re-entered through its own
     # remedy. Carry the reason as a problem and let every other check run.
-    liveness_unverifiable: str | None = None
+    unverifiable: dict[str, str] = {}
     if withheld_scopes:
-        liveness_unverifiable = _markdown_backlog_unavailable_reason(project_dir)
-    if withheld_scopes and liveness_unverifiable is None:
+        blockers = {b for s, (d, b) in classification.items() if d == WITHHELD and b}
         try:
-            backlog_content = (project_dir / _BACKLOG_REL_PATH).read_text(encoding="utf-8")
+            open_ids, unverifiable = _blocker_liveness(project_dir, blockers)
         except _UNREADABLE as exc:
             print(f"no-backlog: cannot read {_BACKLOG_REL_PATH}: {exc}", file=sys.stderr)
             return 1
-        open_ids = _open_item_ids(backlog_content)
 
     unclassified = [s for s in pending if s not in classification]
     stale_blockers: list[str] = []
@@ -1008,7 +1180,7 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
             # branch exists to fix.
             blocker_note = (
                 f"{blocker}, which is no longer open"
-                if blocker and liveness_unverifiable is None and blocker not in open_ids
+                if blocker and blocker not in unverifiable and blocker not in open_ids
                 else blocker
             )
             contradictions.append(
@@ -1016,8 +1188,9 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
                 f"already tagged release={version})"
             )
             continue
-        # The re-run exemption is `ships`-only: Phase 1 stamps `release=` on the
-        # shipping set, so those scopes correctly leave `pending`.
+        # The re-run exemption is `ships`-only: Phase 1 tags the shipping set
+        # `release=` (the cut, as it archives fragments; by hand, in a legacy
+        # log), so those scopes correctly leave `pending`.
         if scope not in pending and not (disposition == SHIPS and shipped_now):
             orphans.append(scope)
         # Unverifiable liveness is NOT a closed blocker. Claiming "not open" from
@@ -1026,17 +1199,24 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
         if (
             disposition == WITHHELD
             and blocker
-            and liveness_unverifiable is None
+            and blocker not in unverifiable
             and blocker not in open_ids
         ):
             stale_blockers.append(f"{scope} (withheld behind {blocker}, which is not open)")
 
     problems = list(errors)
-    if liveness_unverifiable is not None:
+    # One problem per distinct reason: the reasons carry different remedies (sync
+    # the cache, fix project-state, verify by hand), so merging them would hand
+    # every scope the wrong one.
+    unverified_by_reason: dict[str, list[str]] = {}
+    for scope, (disposition, blocker) in classification.items():
+        if disposition == WITHHELD and blocker in unverifiable:
+            unverified_by_reason.setdefault(unverifiable[blocker], []).append(scope)
+    for reason, scopes in unverified_by_reason.items():
         problems.append(
-            f"{liveness_unverifiable} {len(withheld_scopes)} scope(s) are withheld "
+            f"{reason} {len(scopes)} scope(s) are withheld "
             "behind blockers that must be confirmed open by hand before publishing: "
-            f"{', '.join(sorted(withheld_scopes))}. Every other check still ran — "
+            f"{', '.join(sorted(scopes))}. Every other check still ran — "
             "fix any other problem listed beside this one first."
         )
     if unclassified:

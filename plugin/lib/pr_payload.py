@@ -381,9 +381,84 @@ def _added_lines(project_dir: Path, base: str, path: Path) -> set[str] | None:
     }
 
 
+def _fragment_section(
+    project_dir: Path, scope: str | None, base: str
+) -> Section | None:
+    """The change-log section from the branch's change fragment(s), or ``None``.
+
+    A fragment (`lib/change_fragments.py`) is the one-file-per-scope record, so
+    it is found by name when the scope is known and by what the branch ADDS when
+    it is not. The whole file is carried, frontmatter included, so the reviewer
+    reads `closes:` and the consumer note beside the narrative, and the backlog
+    scan sees every id it cites. ``None`` hands the section to the single-file
+    log, which is what a repo without fragments has.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy, like `_lib`
+
+    directory = project_dir / change_fragments.FRAGMENT_DIR_REL
+    if not directory.is_dir():
+        return None
+    # A branch may add several records (several plans can share a branch), and
+    # the PR gate validates every one, so the reviewer reads every one: the
+    # scope's own fragment plus whatever else the branch adds. A trunk branch
+    # that cut its own fragment at Step 1d added an archive entry instead, and
+    # the record owner finds that too.
+    record = change_fragments.branch_change_record(project_dir, base)
+    changes = list(record.changes)
+    if scope is not None:
+        own = change_fragments.scope_change_record(project_dir, scope)
+        if own is not None and own.source == "fragment" and all(c.path != own.path for c in changes):
+            changes.insert(0, own)
+        paired_by = f"paired by scope: the record for `{scope}`, plus any other record this branch adds"
+        if record.error is not None:
+            if own is None or own.source != "fragment":
+                # Nothing to show, and "no record" would be a wrong diagnosis:
+                # the branch may have cut its fragment, which only git could say.
+                return Section("change_log", degraded=(
+                    f"the branch's change records could not be read ({record.error}), and `{scope}` "
+                    f"has no pending fragment — read {change_fragments.FRAGMENT_DIR_REL}/ and the "
+                    "change-log archive directly"
+                ))
+            paired_by += f" (the diff against {base} could not be read, so only the scope's fragment is shown: {record.error})"
+    else:
+        if record.error is not None:
+            # In a repo that records fragments the legacy log holds no pending
+            # work, so falling back to it would show the reviewer the wrong record.
+            return Section("change_log", degraded=(
+                f"no scope resolved for this branch, and its records could not be read "
+                f"({record.error}), so its fragments are unknown — read {change_fragments.FRAGMENT_DIR_REL}/ directly"
+            ))
+        paired_by = (
+            "paired by diff: no build plan claims this branch, so the records "
+            f"carried are the ones it adds against {base}"
+        )
+    if not changes:
+        return None
+    lines = [paired_by]
+    for change in changes:
+        if change.source == "fragment":
+            item = change_fragments.check_fragment_text(change.text, project_dir / change.path)
+            lines.append(f"fragment {change.path}:")
+            if item.problems:
+                lines.append("  problems: " + "; ".join(str(p) for p in item.problems))
+        else:
+            lines.append(f"archive entry in {change.path} (this branch cut its fragment at Step 1d):")
+        if change.closes:
+            # The record owner's parsed answer, written as a claim the id scan
+            # reads. Neither raw spelling reaches it: a fragment's `closes: [a/b#N]`
+            # puts a bracket between keyword and id, and an archive tag spells it
+            # `closes=a,b`, so the branch's own closure claim read as a mention.
+            lines.append(f"  closes: {', '.join(change.closes)}")
+        lines.extend(f"    {ln}" for ln in change.text.splitlines())
+    return Section("change_log", body="\n".join(lines))
+
+
 def _section_change_log(
     project_dir: Path, prawduct_dir: Path, scope: str | None, base: str
 ) -> Section:
+    fragment_section = _fragment_section(project_dir, scope, base)
+    if fragment_section is not None:
+        return fragment_section
     lib = _lib()
     path = prawduct_dir / "change-log.md"
     if not path.is_file():

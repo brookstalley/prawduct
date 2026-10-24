@@ -37,9 +37,10 @@ Confirm you are in that situation:
 **Expected:** `releasable: vX.Y.Z — N release-pending scope(s), M shipping, K withheld` where **K is
 1 or more**, followed by the withheld list.
 
-**Also valid:** `cannot-verify-blockers: …` after this repo has cut over to the GitHub Issues
-backlog. The gate cannot judge blocker liveness from a frozen `backlog.md`, so it refuses rather than
-guessing. You are still in the right document — confirm each withholding blocker is open **by hand**,
+**Also valid:** `cannot-verify-blockers: …` when a withholding blocker's liveness could not be read —
+on the GitHub Issues backlog, because the local backlog cache could not be opened or does not hold
+the id (sync it with `prawduct-hook backlog sync --repo <owner/repo>` and re-run first). The gate
+refuses rather than guessing. You are still in the right document — confirm each withholding blocker is open **by hand**,
 record that confirmation in the release plan beside the classification table, and proceed to step 1.
 
 **Blocker liveness is the only check that refusal withholds.** Every other one still ran, so any
@@ -114,6 +115,18 @@ amended 2026-07-29). Step 10 is that test.
    **Expected:** every line is either a withheld scope's work or collateral you are willing to hold.
    Write the collateral into the release plan by name — it is what makes "what is a consumer
    missing?" answerable later.
+
+   Then confirm the collateral is still pending on `develop`:
+
+   ```
+   ls .prawduct/changes/
+   ```
+
+   **Expected:** a fragment for every withheld scope and every collateral scope. Phase 1's cut
+   removed only the fragments the classification table marked `ships`.
+   **If a collateral scope has no fragment here:** the cut archived it as shipped in vX.Y.Z, and
+   this tree will not carry its code. Stop: the record and the release now disagree, and this
+   runbook has no tested remedy for it.
    **If a shipping scope's commit appears here:** that scope would ship partially. Back to step 2's
    remedy.
 
@@ -150,8 +163,10 @@ amended 2026-07-29). Step 10 is that test.
 
    - 6a. Resolve each path in that list: keep the ship set's additions, and take the **previous
      release's** side for anything the withheld work introduced. For this repo's own state files
-     (`.prawduct/backlog.md`, `.prawduct/change-log.md`), resolve so the file describes the tree it
-     ships with, not `develop`'s.
+     (`.prawduct/backlog.md`, `.prawduct/change-log-archive/`), resolve so the file describes the
+     tree it ships with, not `develop`'s. Withheld fragments in `.prawduct/changes/` do not belong
+     in the candidate: they were added at or before the cut point, so the candidate should not have
+     them.
    - 6b. Write every resolved path and its resolution into the release plan. Step 10a reads that
      list — a resolution you did not record will read there as dropped work.
 
@@ -275,8 +290,10 @@ amended 2026-07-29). Step 10 is that test.
     > nowhere else.*
 
     > ⚠️ **This is a pruned release. Open `/tmp/notes-vX.Y.Z.md` and delete every paragraph
-    > describing withheld work.** The CHANGELOG section was written against the whole cut;
-    > publishing it verbatim announces a feature that is not in the tree.
+    > describing withheld work or collateral.** The cut wrote notes only for the fragments it
+    > shipped, but the headline, and any note written into the section by hand, were written
+    > against all of `develop`. Publishing them verbatim announces a feature that is not in the
+    > tree.
 
     > *Take as long as this needs. No tag exists yet, so nothing is watching — which is the
     > point of doing the edit here. This step used to sit **after** the tag push, where the

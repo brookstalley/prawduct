@@ -75,6 +75,9 @@ SCHEMA_VERSION = 8
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "backlog-cache.sqlite3"
+# The WAL-mode sidecars beside the store. sqlite, not prawduct, decides whether they
+# survive the last close (it varies by build), so deleters and tests name them here.
+STORE_SIDECARS = (STORE_BASENAME + "-wal", STORE_BASENAME + "-shm")
 
 # How long a writer waits on another writer's lock before giving up. Long enough
 # to absorb a whole-portfolio upsert transaction (the longest write this store
@@ -571,7 +574,7 @@ def _open_configured(
 
 def _discard(path: Path) -> dict | None:
     """Delete the store and its WAL sidecars. ``None`` on success."""
-    for target in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+    for target in (path, *(path.with_name(name) for name in STORE_SIDECARS)):
         try:
             target.unlink(missing_ok=True)
         except OSError as exc:

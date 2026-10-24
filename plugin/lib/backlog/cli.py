@@ -456,7 +456,7 @@ def run(project_dir, argv: list[str], *, transport=None) -> int:
         elif op == "update":
             result = _run_update(rest, transport, project_dir)
         elif op == "comment":
-            result = _run_comment(rest, transport)
+            result = _run_comment(rest, transport, project_dir)
         elif op == "list":
             result = _run_list(rest, transport)
         elif op == "pick":
@@ -732,6 +732,7 @@ def _run_status(rest: list[str], transport, project_dir):
             default_owner=default_owner,
             default_repo=default_repo,
             absorb=absorb,
+            own_repos=_own_repos(project_dir),
         ),
     )
 
@@ -786,11 +787,12 @@ def _run_update(rest: list[str], transport, project_dir):
             default_owner=default_owner,
             default_repo=default_repo,
             absorb=absorb,
+            own_repos=_own_repos(project_dir),
         ),
     )
 
 
-def _run_comment(rest: list[str], transport):
+def _run_comment(rest: list[str], transport, project_dir):
     flags, positionals, err = _parse_flags(rest, valued={"repo", "body"})
     if err:
         return core.error("validation", err)
@@ -808,6 +810,7 @@ def _run_comment(rest: list[str], transport):
         body=flags["body"],
         default_owner=default_owner,
         default_repo=default_repo,
+        own_repos=_own_repos(project_dir),
     )
 
 
@@ -1176,6 +1179,7 @@ def _run_link(op: str, rest: list[str], transport, project_dir):
             default_owner=default_owner,
             default_repo=default_repo,
             absorb=absorb,
+            own_repos=_own_repos(project_dir),
         ),
     )
 
@@ -1345,6 +1349,7 @@ def _run_restructure_preview(rest: list[str]):
     # WARN-only body lints sit right beside these; what it could not say before is
     # which of them BLOCK.
     preflight_offenders = migrate.preflight_titles(applied["records"])
+    label_offenders = migrate.preflight_facet_labels(applied["records"])
 
     source_label = flags["from"] + (f" + {flags['archive']}" if "archive" in flags else "")
     preview = restructure.render_preview(
@@ -1371,6 +1376,7 @@ def _run_restructure_preview(rest: list[str]):
         "lint_findings": sum(len(e["lint"]) for e in entries),
         "preflight_blocking": len(preflight_offenders),
         "nonconforming_titles": preflight_offenders,
+        "nonconforming_labels": label_offenders,
         "collisions": len(collisions),
         "archive_skipped": archive_skipped,
         "total_source": len(records),  # records entering the import (post archive-scope filter)
@@ -1384,6 +1390,12 @@ def _run_restructure_preview(rest: list[str]):
             "issue standard §1 — an import of this plan would refuse before writing anything. "
             "Fix these titles in the restructure plan and re-preview; the per-item rules are in "
             "`nonconforming_titles` (and --json carries the full list)"
+        ] + warnings
+    if label_offenders:
+        warnings = [
+            f"{len(label_offenders)} of {len(records)} item(s) carry a facet value too long "
+            "for a GitHub label — an import of this plan would refuse before writing "
+            "anything; the named values are in `nonconforming_labels`"
         ] + warnings
     if archive_skipped:
         # Surface the dropped count in human mode too (not JSON-only) so an owner
@@ -1468,6 +1480,17 @@ def _is_write(op: str, rest: list[str]) -> bool:
     again the moment an op takes a mutating flag, and re-threading the argument at
     that point is how the check gets skipped instead."""
     return op in _WRITE_OPS
+
+
+def _own_repos(project_dir) -> tuple[str, ...]:
+    """The running repo's identities, for ``core``'s own-target guard (#1013).
+
+    Always a tuple, never ``None``: ``None`` is how ``core`` spells "an
+    owner-prompted caller that skips the guard", and no in-skill write is one. No
+    project directory resolves to no identity, which the guard refuses."""
+    if project_dir is None:
+        return ()
+    return upstream.resolve_self_identity(project_dir)
 
 
 def _with_mirror(project_dir, call):
@@ -1737,6 +1760,7 @@ def _render_detail_list(value: list) -> str:
 #: bookkeeping and would bury the message.
 _NAMED_DETAIL_ENTRIES = {
     "nonconforming_titles": lambda e: f"{e.get('title')!r} — {', '.join(e.get('rules') or [])}",
+    "nonconforming_labels": lambda e: f"{e.get('title')!r} — {'; '.join(e.get('messages') or [])}",
     "failed": lambda e: f"{e.get('title')!r} — {e.get('error')}",
 }
 

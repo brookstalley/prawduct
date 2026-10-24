@@ -31,6 +31,20 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 
 **Default when unsure (canonical statement):** If the mode is missing, unrecognized, or no inference rule fires, run the inner-stage review of whatever interval exists — `chunk` on a dirty tree, `cumulative` on a clean tree with a committed bundle at the boundary. `final` is never a default: it is inferred on a signal or declared. The boundary is never inferred away, and neither direction of error is safe ("Severity is stage-keyed", below).
 
+## Reviewing a proposed artifact, and invoking the Critic from automation
+
+- **There is no non-git mode, by decision.** Every mode is anchored to git. To review a proposed
+  artifact (a rule edit, a generated file), write it to a **non-ignored path in the working tree**,
+  run `chunk`, and delete the file afterwards. `chunk` sees untracked files, so nothing needs
+  committing. **Never stage it under `.prawduct/`**: that directory is gitignored and invisible to
+  the review.
+- **Model-driven invocation from a governed session is supported and stable** — an agent running
+  `/prawduct:critic` in its own governed repo is what `AGENTS.md` tells builders to do.
+- **Unattended or scheduled invocation, with no interactive session, is not ratified.** Untested
+  edges: the session-mutation guard and critic-active marker with no session (no session event
+  releases a live marker), and serialization across callers (one live review per repo). Expect
+  such a review to be counted in `review-stats` and `stats` like any build-cycle review.
+
 ## Per-Mode Behavior
 
 | Aspect | `chunk` | `final` | `cumulative` | `verify-resolutions` |
@@ -138,7 +152,7 @@ call, and it is what keeps step 3's "repeat until" from being unbounded.
 one of three dispositions, and **FILE is the narrowest, never the default**:
 
 - **ACCEPT** — won't fix. Record the disposition and its reason as a *fact* (`prawduct-hook
-  disposition … --accept`, below) and render it into the change-log entry for the work or the PR body;
+  disposition … --accept`, below) and render it into the change record for the work or the PR body;
   no backlog item. This is the **default** for anything that gates nothing and that no
   one will realistically action. Principle 2 already licenses it: *implemented or explicitly
   descoped*. An accept is the explicit descope — visible, dated, and attached to the work it came
@@ -232,7 +246,7 @@ protects nothing you shouldn't want protected.
 prawduct-hook render-dispositions [--review <id>|--scope <s>] [--json]
 ```
 
-Paste the rendered table into the change-log entry or PR body. It reports each finding's state
+Paste the rendered table into the change record or PR body. It reports each finding's state
 (`fixed`, `waived`, `accepted`, `filed`, `fixed-unreviewed`) and how many findings are still
 **undispositioned**. `fixed-unreviewed` is not `fixed`: both say the defect is gone, only one says a reviewer looked.
 

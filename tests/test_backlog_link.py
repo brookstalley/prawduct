@@ -20,7 +20,7 @@ for _p in (str(_REPO_ROOT), str(_TESTS_DIR)):
 import pytest  # noqa: E402
 
 from lib.backlog import cli, core, encode, ids  # noqa: E402
-from fakes.fake_github import FakeGitHub  # noqa: E402
+from fakes.fake_github import FakeGitHub, own_tracker  # noqa: E402
 
 OWNER, REPO = "octo", "repo"
 
@@ -221,16 +221,18 @@ class TestLinkValidation:
 
 
 class TestLinkCli:
-    def test_link_and_unlink_through_cli(self, fake, capsys):
+    def test_link_and_unlink_through_cli(self, fake, capsys, tmp_path):
         import json
 
         a = _file(fake, title="link: the a item under test")
         b = _file(fake, title="link: the b item under test")
-        code = cli.run(None, ["link", a, "--edge", "blocked-by", "--to", b, "--json"], transport=fake)
+        # Run from a checkout that IS octo/repo: link writes only to its own tracker.
+        project = own_tracker(tmp_path, f"{OWNER}/{REPO}")
+        code = cli.run(project, ["link", a, "--edge", "blocked-by", "--to", b, "--json"], transport=fake)
         env = json.loads(capsys.readouterr().out)
         assert code == 0 and env["data"]["linked"] is True
 
-        code = cli.run(None, ["unlink", a, "--edge", "blocked-by", "--to", b, "--json"], transport=fake)
+        code = cli.run(project, ["unlink", a, "--edge", "blocked-by", "--to", b, "--json"], transport=fake)
         env = json.loads(capsys.readouterr().out)
         assert code == 0 and env["data"]["linked"] is False
 

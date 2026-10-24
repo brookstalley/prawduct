@@ -102,6 +102,28 @@ the App bot's granted scope is the **privilege ceiling, not the triggerer's**. �
 capability is **withheld** from untrusted-triggered runs. (Read-only reporting under such triggers is
 fine.)
 
+**Workflow wiring the guard reads.** The adapter's guard (`lib/backlog/context.py`) takes the
+untrusted *event* set (`pull_request_target`, `issue_comment`, `issues`, `discussion*`)
+unconditionally from native Actions env, but two signals are **not** native and the workflow must
+surface them as env for the defense to be fully engaged:
+
+```yaml
+env:
+  # Fork-PR detection (a `pull_request` run). Compared against GITHUB_REPOSITORY.
+  PRAWDUCT_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+  # The result of the triggering-actor check; any of 1/true/yes/on authorizes writes
+  # under an untrusted trigger. Compute it in a prior step; do not hard-code "true".
+  PRAWDUCT_ACTOR_AUTHORIZED: ${{ steps.authz.outputs.authorized }}
+```
+
+where the `authz` step asks whether the triggerer is a collaborator with write access, e.g.
+`gh api repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_TRIGGERING_ACTOR/permission --jq '.permission'`
+returning `write` or `admin`. Unset, `PRAWDUCT_ACTOR_AUTHORIZED` leaves an untrusted-triggered write
+**withheld** (the structural default-deny). Unset, `PRAWDUCT_PR_HEAD_REPO` leaves the fork-`pull_request`
+flag **inert but safe by construction**: GitHub gives fork `pull_request` runs a read-only token, so
+this layer is defense-in-depth and the missing wiring is not an active hole — it only means the flag
+itself will not fire. Wire both where the Actions workflow is authored.
+
 ---
 
 ## 2. Authorization & access (PV1 — structural, delegated, with two carve-outs)
@@ -198,8 +220,8 @@ and forgeable by any actor with write access** to the repo. So:
   relationship*, not unattributed.
 - **The trimmed `file-upstream` block is self-asserted like every other one; its trim is a
   minimization, never a trust claim (XP2).** The outbound payload carries exactly `v:`, `found_in:`
-  and `source-key:` — no paths, no product identity, no submitter name (the submitter crosses only as
-  an input to the `source-key:` one-way digest, Data Model §5). Those three fields are body text, so a
+  and `source-key:` — no paths, no product identity, no submitter name (the `source-key:` digests only
+  the published title and body, Data Model §5). Those three fields are body text, so a
   write-capable actor upstream can forge or edit them exactly as this section already says of every
   `prawduct:` field; what stays trustworthy about a filed report is the **API identity that filed it**
   (§1). The reconciliation worth naming, because the two are easy to conflate: minimization protects

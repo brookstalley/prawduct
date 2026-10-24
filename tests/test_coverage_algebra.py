@@ -939,17 +939,24 @@ class TestReviewEligibilityIsItsOwnQuestion:
         one fails the moment they agree everywhere, which is the shape of the
         regression.
         """
+        # (path, is a review subject, is judgeable). The labels are ASSERTED:
+        # as bare comments they went stale unseen — `critic-reviewer.md` was
+        # labelled "not judgeable" long after agent prose became protected (#781).
         corpus = [
-            "plugin/agents/critic-reviewer.md",   # subject, not judgeable
-            "plugin/docs/norms.md",               # subject, not judgeable
-            "README.md",                          # subject, not judgeable
-            "docs/guide.md",                      # subject, not judgeable
-            "plugin/lib/core.py",                 # subject AND judgeable
-            "plugin/skills/critic/SKILL.md",      # subject AND judgeable
-            ".prawduct/change-log.md",            # neither
+            ("plugin/docs/principles.md", True, False),
+            ("plugin/docs/norms.md", True, False),
+            ("README.md", True, False),
+            ("docs/guide.md", True, False),
+            ("plugin/agents/critic-reviewer.md", True, True),
+            ("plugin/lib/core.py", True, True),
+            ("plugin/skills/critic/SKILL.md", True, True),
+            (".prawduct/change-log.md", False, False),
         ]
+        for path, subject, judgeable in corpus:
+            assert ca.is_review_subject(path) is subject, path
+            assert ca.is_judgeable_path(path) is judgeable, path
         disagree = [
-            p for p in corpus
+            p for p, _subject, _judgeable in corpus
             if ca.is_review_subject(p) is not (not ca.is_judgeable_path(p))
         ]
         assert disagree, (

@@ -165,8 +165,8 @@ interpreter, no root pytest config, monorepo test trees), declare it — don't w
 **`test_command:`** — the canonical suite invocation (the exact command CI runs), shlex-split and
 run from the repo root. Must contain the `{junit_xml}` literal — the hook substitutes its report
 path there. Shell operators (&&, |, FOO=1) are not supported; point the command at a script for
-compound runs. Caveat: the value is read by a YAML-comment-aware scalar reader, so a literal `#`
-anywhere in the command truncates it — wrap such invocations in a script too.
+compound runs. Caveat: the value is read by a YAML-comment-aware reader, so a `#` that starts a word
+outside quotes begins a comment — quote it (`-k "not #slow"`) or wrap the invocation in a script.
 
 ```yaml
 test_command: uv run pytest --junit-xml={junit_xml} -q
@@ -174,7 +174,7 @@ test_command: uv run pytest --junit-xml={junit_xml} -q
 
 **`test_commands:`** — the multi-environment form (backend + web + mobile): one canonical
 invocation per environment, each run under the same rules as `test_command:` (shlex-split,
-mandatory `{junit_xml}`, `#` truncates); counts aggregate across all reports into ONE evidence
+mandatory `{junit_xml}`, an unquoted ` #` begins a comment); counts aggregate across all reports into ONE evidence
 record, and any launch failure or unparseable report fails the whole record. Declare it ONLY as
 this block-sequence-of-strings shape (flow style `[a, b]` and nested mappings are refused, not
 silently ignored). Mutually exclusive with `test_command:`. Ingest path: repeat `--from-junit` once
@@ -191,6 +191,25 @@ One verifier run unions discovery across all of them.
 
 ```yaml
 tests_dirs: engine/tests server/tests
+```
+
+## suite_coupled_prefixes (opt-in)
+
+The test-evidence freshness check treats a doc or metadata change as unable to change what the
+suite says, so evidence recorded before it still reads `current`. That is wrong for files a test
+reads as data — a guard that scans `documentation/` prose goes red on a doc edit. Declare those
+paths, and a change under one makes recorded evidence stale, as a code change does.
+
+Entries are repo-relative path PREFIXES, not globs, so the trailing slash is yours to write
+(`doc/` does not match `documentation/`), and a prefix couples every file under it. Declare it ONLY
+as a block sequence of strings; a declaration the reader cannot read whole (flow style, a wrapped
+or mis-indented entry, a bare dash) couples EVERY path rather than dropping an entry, so a typo
+costs suite runs, never a false `current`. Absent or `[]` couples nothing extra.
+
+```yaml
+suite_coupled_prefixes:
+  - documentation/
+  - .prawduct/artifacts/data-model.md
 ```
 
 ## learnings_budgets (opt-in override)
@@ -269,6 +288,16 @@ reading.
 Set to `null` to disable it entirely; raise it if this repo genuinely reviews more. A budget that
 gets `--force`d past every time is a budget set wrong.
 
+## oversized_file_threshold_kb, evidence_store_threshold_mb (opt-in overrides)
+
+Size thresholds for two advisories, as positive integers. `oversized_file_threshold_kb` (default
+40, where KB is 1000 bytes) is the size above which a governance file earns the oversized-file
+nudge. `evidence_store_threshold_mb` (default 50) is the size above which the clone-shared
+evidence store earns the oversized-evidence-store advisory; at 50 MB one read of the store takes
+about half a second. Both fail soft: an absent key, or a value that is not a positive integer,
+uses the default, so a typo cannot silence a nudge or make it fire everywhere. Raise one when the
+advisory names it and the size is expected for this repo.
+
 ## api_versioning_decided (advisory resolution fact)
 
 The committed "answer store" fact the `api-versioning` sync probe consults. When the product
@@ -300,6 +329,12 @@ facts auto-resolve a teammate's advisory on next sync.
   above the field; unset it by deleting the line. An actual cutover (the backlog-service repo
   scalar, written by `scrub`) wins outright if both are set — having migrated beats declaring you
   never will.
+
+- **`backlog_archive_scope`** — set to `open` by hand at cutover (beside `backlog_service_repo`)
+  when the import ran with `--archive-scope open`, so the closed/archived items stayed off the
+  tracker. Post-cutover `list` and add-time dedup cannot see them; the `backlog-archive-deferred`
+  advisory (info) states that. Set it to `all` after a backfill, or delete it, to resolve.
+  Absent means `all` or undecided; there is no other defined value.
 
 Also read by the backlog probes:
 

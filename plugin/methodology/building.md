@@ -6,11 +6,11 @@ How deep the governance goes is determined by the work's size and type.
 
 A **session** is one Claude Code invocation. Only `startup` and `/clear` begin one; `resume`, `compact` and `fork` are continuations — the transcript survives, so they brief but reset nothing. The git baseline, reflection gate, and Critic gate all scope to the session.
 
-A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect. Multiple work cycles can happen within a single session.
+A **work cycle** is one unit of work with its own governance: understand → plan → build → verify → Critic → reflect.
 
 **Context compaction** passes no governance checkpoint, so anything that must survive — plans, decisions, rationale, chunk definitions — must be written to a file first.
 
-**`/clear` between work cycles is recommended** (not required): it resets the git baseline so the next cycle's canary only sees its own changes, clears the previous reflection, and starts fresh context.
+**`/clear` between work cycles is recommended** (not required): it resets session-scoped state, so the next cycle's canary sees only its own changes, in fresh context.
 
 **Working in a git worktree.** Run the work cycle (including `/prawduct:critic` and `/prawduct:pr`) *from the worktree*, where the gates resolve `.prawduct/` state to it. One edge: entering a worktree *mid*-cycle leaves the SessionStart markers in the primary checkout (gate readers fail safe) — launch, or `/clear`, in the worktree.
 
@@ -38,18 +38,18 @@ Classification heuristic: file count is a proxy for risk. 1-2 files = trivial/sm
 
 ## Before You Build: The Alignment Pass
 
-Before non-trivial work, judge how clear the goals already are (request, brief, backlog) against how much work and risk lie ahead, take one of four responses, and **say which in a line** — that acknowledgement is how the owner catches a misreading before it is built:
+Before non-trivial work, judge how clear and grounded the goals are (request, brief, backlog) against how much work and risk lie ahead, take one of four responses, and **say which in a line** — that acknowledgement is how the owner catches a misreading before it is built:
 
 - **Proceed** — clear by nature, however large: a bug with a repro defines its own success. Restate the target and go.
 - **Proceed, citing it** — a backlog item or spec already says what this is for, what success is, and what is out of scope. Restate its goals, name what it leaves open and what you inferred there, and go.
 - **Ask, in one batch** — a high-level goal or key architecture choice is missing. Lead with your own reading, so the owner corrects rather than authors.
 - **Hold up** — a lot of work, and you can't yet form a reading of the goals worth correcting: offer to discuss, or to use best judgment. Best judgment is a legitimate answer; proceed with your inferences written down for the boundary review to show the owner.
 
-This is the moment for questions: the owner's intent is the one thing you cannot verify, and an owner would rather answer everything now than have a long build stop for it. The written form scales with the response — a sentence to proceed, the plan's `## Goals` (`methodology/planning.md`) to ask or hold up; Plan Mode is a native vehicle (Principles 6 and 20). **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
+**Judge the goals under the work, not only the request** (`methodology/discovery.md` "Ground the goals under an investment"), and ask now: intent is the owner's to confirm, better now than mid-build. The written form scales with the response — a sentence to proceed, the plan's `## Goals` (`methodology/planning.md`) to ask or hold up; Plan Mode is a native vehicle (Principles 6 and 20). **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
 
 ### Deciding Mid-Build
 
-Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, or work out of proportion to the benefit. Prefer the durable choice to the merely reversible one. Record each decision in a line in the plan's Goals, naming what settled it; one the goals did not settle is an alignment-pass miss — mark it so for the boundary review.
+Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, work out of proportion to the benefit, or drift at fork tier (`methodology/discovery.md`). Prefer the durable choice to the merely reversible one. Record each in a line in the plan's Goals, as `methodology/planning.md` "Goals" says, marking one the goals did not settle as an alignment-pass miss.
 
 ### A Requirement Surfaced Mid-Build
 
@@ -74,13 +74,13 @@ retroactivity). Departing from a norm that already governs your change is a reco
 
 There is no "pre-existing" exception: every session starts clean. Recording a predated failure is its disposition, not an exemption. The obligation to FIX is bounded to BLOCKING — below it, a recorded accept discharges it in full.
 
-**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Flag ambiguity before building; don't guess silently. Validate that referenced files and components still exist — plans go stale. Open the `.claude/rules/learnings/` area files covering this chunk.
+**Read the spec.** Read the chunk's entry in `.prawduct/artifacts/build-plan.md` and any referenced artifacts — what this chunk delivers, its acceptance criteria, its dependencies. Validate that referenced files and components still exist — plans go stale. Open the `.claude/rules/learnings/` area files covering this chunk.
 
-**Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once. *Writing* it is not enough before you delegate: a worktree-isolated subagent reads HEAD, so an uncommitted amendment is invisible to it (see "Delegating Work to Subagents").
+**Persist plans immediately.** When scope evolves — new chunks, discovered gaps — update `build-plan.md` at once, and commit it before you delegate ("Delegating Work to Subagents").
 
 **Write tests.** Tests come first or alongside implementation, not after. If you can't write the test, you don't understand the requirement well enough to implement it.
 
-Test at the right level — **unit** (functions, logic), **integration** (component interactions, data flow, state), **end-to-end** (critical user flows, acceptance criteria). Depth proportionate to risk.
+Test at the right level — **unit** (functions, logic), **integration** (component interactions, data flow, state), **end-to-end** (critical user flows, acceptance criteria).
 
 **Implement.** Write the code that makes the tests pass, following `project-preferences.md` conventions. Prefer simplicity — the minimum abstraction the current chunk needs. Add observability alongside features, not after.
 
@@ -96,12 +96,12 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Verify.** Two layers:
 
-- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Check `test-status` first (exit 0 = already passed; don't re-run). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
+- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
 
-**Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared next session. Doc-only edits are skipped automatically.
+**Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared at `/clear` or startup. Doc-only edits are skipped automatically.
 
 **In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands. An *untrackable* wait (CI, a remote queue) blocks unless the turn, still working, closes on `DO NOT CLEAR`, which defers reflection and Critic only (`session-hygiene.md`).
 
@@ -119,7 +119,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Complete required governance at chunk boundaries, then signal — never *ask* whether to prepare a handoff; prepare it and say so.** At a chunk boundary, or when the user switches tasks, complete in order:
 
-1. **Critic** (if medium+ and not run yet) on the uncommitted chunk — resolve blocking findings. 2. **Commit** (tests passing). 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — read `.prawduct/.handoff-notes.md` before rewriting it, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append.
+1. **Critic** (if medium+ and not run yet) on the uncommitted chunk — resolve blocking findings. 2. **Commit** (tests passing). 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Update build plan Status** (mark chunks, update Context). 6. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 7. **Handoff notes** — read `.prawduct/.handoff-notes.md` before rewriting it, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append; the Stop hook flags a missing one.
 
 **A chunk boundary ends the turn only when the plan is done, the next chunk needs the user, or the work cycle has reached what one review can cover** (§ above); otherwise carry on to the next chunk after steps 1-7. When the turn does end, close it with the standing block — last, after every other word. Say `SAFE TO CLEAR` only when steps 1-7 above are done and nothing is outstanding, in flight included — that binding is what this file owes the block. A decision awaiting the user is not outstanding once step 7 records it. Its shape, trigger and failure modes are `methodology/session-hygiene.md`, and the session digest injects them into every session.
 
@@ -175,15 +175,17 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Multi-hop behavior needs multi-hop tests.** When tested behavior depends on a subsequent invocation (accumulators, coordinators, cursors, stateful retries), exercise at least one step beyond the immediate post-state.
 
+**Green is evidence only about what could have made it red.** Writing each guard test, name the input that must trip it and confirm the fixture reaches that path. Three pass forever: a fixture that cannot trigger the guard, an assertion blind to ordering, a branch on a file that exists only here.
+
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively.
 
 **Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes land in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a floor: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`.
 
-**Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so no run in a session is unrecordable and one made outside the recorder is ingested instead of repeated. Its pre/post-run hook records, beside the report, whether that invocation was narrowed — which is what stops a `-k`-scoped report being recorded as the suite's evidence. The schema and the per-ecosystem wiring: `docs/test-report-contract.md`.
+**Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so the last run is never unrecordable and one made outside the recorder is ingested instead of repeated. Its pre/post-run hook records, beside the report, whether that invocation was narrowed — which is what stops a `-k`-scoped report being recorded as the suite's evidence. The schema and the per-ecosystem wiring: `docs/test-report-contract.md`.
 
 ## The Critic
 
-After medium+ work, invoke the Critic as a separate agent. It reasons from signals through seven prioritized goals, from Nothing Is Broken to The Design Is Sound (definitions: `skills/critic/review-protocol.md`).
+The Critic reasons from signals through seven prioritized goals, from Nothing Is Broken to The Design Is Sound (definitions: `skills/critic/review-protocol.md`).
 
 In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
 
@@ -195,7 +197,7 @@ Every consolidated review appends a fact to a store shared by all worktrees of t
 
 `Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
-**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Work outside that tree (the plan, the change-log, `.prawduct/`) is safe. If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
+**The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Any tracked edit, the plan included, needs an attestation (`review-cycle.md`). If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
 **Warnings and notes gate nothing.** Every fix commit extends HEAD, which is how a passing review buys another round. Think before dismissing one anyway: the Critic catches blind spots the builder can't see.
 

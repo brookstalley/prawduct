@@ -682,6 +682,52 @@ class TestBriefingAdvisoryUsesSharedGate:
         warnings = briefing._check_previous_session_gates(repo)
         assert "Critic review not recorded" in warnings
 
+    def test_committed_changes_warn_like_the_gate(self, tmp_path, monkeypatch):
+        """The advisory reads the work span the blocking gate reads (#304), so
+        a session that committed its work is not silent here either."""
+        repo = self._plan_repo(tmp_path)
+        _commit(repo, "code.py", "x = 2\n", "c2")
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda *_a, **_k: {"status": "uncovered", "reason": "r"},
+        )
+        warnings = briefing._check_previous_session_gates(repo)
+        assert "Critic review not recorded" in warnings
+
+    def test_committed_doc_only_changes_do_not_warn(self, tmp_path, monkeypatch):
+        repo = self._plan_repo(tmp_path)
+        _commit(repo, "notes.md", "n\n", "c2")
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda *_a, **_k: {"status": "uncovered", "reason": "r"},
+        )
+        warnings = briefing._check_previous_session_gates(repo)
+        assert not any("Critic" in w for w in warnings)
+
+    def test_schema_ahead_names_the_update_remedy(self, tmp_path):
+        """#305(a): a store this plugin cannot read is not "no review"."""
+        repo = self._plan_repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        _fact(repo, _tree(repo), _captured_tree(repo), ["code.py"])
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(
+                {"schema": 99, "kind": "review", "id": "future-1", "ts": "t", "body": {}}
+            ) + "\n")
+        warnings = briefing._check_previous_session_gates(repo)
+        assert "Critic review not recorded" not in warnings
+        assert any("newer plugin" in w and "update the plugin" in w for w in warnings)
+
+    def test_an_error_verdict_names_its_reason(self, tmp_path, monkeypatch):
+        repo = self._plan_repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda *_a, **_k: {"status": "error", "reason": "no HEAD tree to compose from"},
+        )
+        warnings = briefing._check_previous_session_gates(repo)
+        assert "Critic review not recorded" not in warnings
+        assert "Critic review check failed (no HEAD tree to compose from)" in warnings
+
     def test_covered_changes_do_not_warn(self, tmp_path):
         repo = self._plan_repo(tmp_path)
         (repo / "code.py").write_text("x = 2\n")
@@ -917,3 +963,52 @@ class TestSupersededAdviceReachesTheStopHook:
         )
         for line in self._shared_lines(superseded=superseded):
             assert f"  {line}\n" in err, line
+
+
+class TestModeAdvisoryReadsTheWorkSpan:
+    """Gate 2.5 (the end-of-cycle mode advisory) is one of the Critic gate
+    family and reads the session work span Gates 2a and 2 read (R-5): a
+    session that committed its work still gets the advisory once its review
+    composes, where the porcelain-keyed guard went silent."""
+
+    _SENTINEL = "MODE-ADVISORY-SENTINEL"
+
+    def _committed_session(self, tmp_path: Path, rel: str) -> Path:
+        repo = _session_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [x] Chunk 01: a\n- [x] Chunk 02: b\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        _commit(repo, rel, "x = 2\n", "c2")
+        assert _git(repo, "status", "--porcelain", "--", rel) == ""
+        return repo
+
+    def _run_stop(self, repo: Path, monkeypatch, capsys) -> str:
+        monkeypatch.setattr(
+            gates, "session_review_verdict",
+            lambda project_dir, **_kw: {"status": "covered"},
+        )
+        monkeypatch.setattr(
+            gates, "_critic_session_satisfies_gate",
+            lambda project_dir: (False, self._SENTINEL),
+        )
+        _hook.cmd_stop(repo, {})
+        return capsys.readouterr().err
+
+    def test_committed_code_session_gets_the_advisory(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._run_stop(
+            self._committed_session(tmp_path, "code.py"), monkeypatch, capsys
+        )
+        assert f"NOTE: {self._SENTINEL}" in err
+
+    def test_committed_doc_only_session_does_not(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        err = self._run_stop(
+            self._committed_session(tmp_path, "notes.md"), monkeypatch, capsys
+        )
+        assert self._SENTINEL not in err

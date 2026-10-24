@@ -144,6 +144,15 @@ A Direction entry (or preferences row) carries these parts:
   `grandfather: <inventory ref>`).
 - **Rulings** — each boundary or precedence decision, named `[[like-this]]` and stated in full
   here. Norms accrete case law; the norm's own statement stays short.
+- **Retires** — present when an amendment retires wording: each retired phrasing as a
+  double-quoted string, with any prose around the quotes ignored —
+  `Retires: "phrase one", "phrase two" — why they went`. A `retires:` list of strings on a
+  `technical_decisions` / `design_decisions` entry in `project-state.yaml` reads the same. The
+  `retired-claim-survives` record-lint check reports every surviving copy in tracked files and
+  open backlog issues. A line that quotes one as its subject (an absence test, an argument for
+  the retirement) is acknowledged with its waiver (`docs/waivers.md`). Literal copies only: list a
+  known paraphrase as one more phrase. It is read only on a line of its own, never in the inline
+  form below.
 - **Re-affirmed** — the owner's answer to a decay finding (§ Trajectory), one line per answer:
   `Re-affirmed: <date> (owner) — <id>: <why the norm holds without it>`. It answers the
   `dead-why` advisory for every id written on it, in this entry, on `Why:` lines — spell each id
@@ -218,7 +227,8 @@ effective force of its why — is an amendment, **whether or not any code accomp
 whether the change edits, adds, or removes sentences. It requires the recorded decision. The
 amend-to-match-own-code tell (Authority Rule) is the aggravated form; the doc-only form is the
 same decision split from its code. Updating a norm's *descriptive surroundings* (examples,
-current-state notes) is ordinary documentation upkeep.
+current-state notes) is ordinary documentation upkeep. An amendment that retires wording names it
+in `Retires:` (§ Anatomy), so its survivors are found by a check rather than by the author's sweep.
 
 ### Exceptions expire
 
@@ -327,6 +337,17 @@ audit sees them.
 Probes fire **only** on the mechanical hooks named in the Session-sync row — dates, id
 literals, structural presence — never on prose interpretation. Rare and high-signal is a hard
 bar. Anything subtler belongs to the janitor's judgment or the Critic's.
+
+**Correctness never waits on an opt-in command.** `/prawduct:doctor` is a repair path, not a
+workflow step: people run it when something is visibly broken. So a mechanism whose *absence*
+produces a wrong answer lives on a surface that runs unconditionally — exactly SessionStart
+(banner, digest, `clear --session-start`, `build-index`), UserPromptSubmit, Stop and
+SubagentStop. Everything else (doctor, janitor, any skill a person must invoke) is opt-in and
+may only **repair** or **report**. The Repair row passes that test: binding is automatic
+(§ Adoption), so a product that never runs the ratification flow loses its norms' visibility,
+never their force — and a remedy line routing there must say so. Before hoisting anything
+through doctor (a default, a check, a registry write), ask what is wrong in a repo that never
+runs it; if anything, it belongs on an always-run surface.
 
 **Structural-coverage staging.** The structural-presence hooks form a three-layer chain that
 stages a product from "we don't yet know what this is" to "its norms are ratified", so a fresh

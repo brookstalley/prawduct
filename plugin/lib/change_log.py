@@ -16,8 +16,9 @@ onboarded repo's committed log is full of them::
     <!-- prawduct: chunks=00,01,02 | release=v1.3.18 | status=shipped | scope=pantry-v1 -->
 
 **Accepting is not the same as reading.** ``chunks`` and ``status`` are retired
-and inert: nothing consults either, no value of them means anything, and they are
-neither rewritten nor removed. Anything below describing them is describing what
+and inert: nothing consults either, no value of them means anything, they are
+neither rewritten nor removed, and the parser gives neither any treatment of its
+own — each is kept as the plain string any unknown key is. Anything below describing them is describing what
 a *historical* entry may contain. Keys, and who reads them:
 
 * ``scope``   — the work identifier, named for the work rather than a version. Read by the release gate to enumerate
@@ -26,11 +27,12 @@ a *historical* entry may contain. Keys, and who reads them:
 * ``release`` — the version that carried this entry. Its ABSENCE is what marks
   an entry release-pending, which is why a malformed value is an error rather
   than a curiosity (see :func:`validate_change_log_tags`).
-* ``chunks``  — comma-separated chunk IDs. **RETIRED**, with the derived views
-  that were its only reader. Which chunks an entry shipped belongs in the entry
-  BODY, where release notes and readers actually look.
+* ``chunks``  — chunk IDs. **RETIRED**, with the derived views that were its
+  only reader. It is no longer split on commas, and two tag lines setting it to
+  different values are a conflict like any other key's. Which chunks an entry
+  shipped belongs in the entry BODY, where release notes and readers look.
 * ``status``  — ``shipped`` | ``merged``. **RETIRED**, with ``chunks``: nothing
-  reads it and the commands that wrote it are inert. Release-pending is now
+  reads it and the commands that wrote it are gone. Release-pending is now
   carried by the ABSENCE of ``release=`` alone. Historical entries carrying
   either value still parse, because the parser preserves unknown keys and both
   are now among them. A tag line a change adds or edits that still carries
@@ -89,17 +91,16 @@ class ChangeLogEntry:
     # `chunks=` to answer "which chunks did this entry ship". Both keys are
     # retired and its only caller — the derived-view regenerator that flipped
     # checkboxes from that answer — is gone, so it was retired with them rather
-    # than left as a helper with no consumer. Both keys still PARSE: the parser
-    # preserves unknown keys, so historical entries carrying them round-trip and
-    # `tags["chunks"]` reads them directly if anything ever needs to.
+    # than left as a helper with no consumer. Both keys still PARSE, as plain
+    # strings: the parser preserves unknown keys, and both are now among them.
 
 
 def parse_tag_line(tag_body: str) -> dict[str, object]:
     """Parse the body of a tag line (between ``prawduct:`` and ``-->``).
 
-    Pipe-delimited ``key=value`` pairs. ``chunks`` is split on commas into a
-    list; other keys are kept as plain strings. Unknown keys are preserved as-is
-    so a future reader can pick them up without a schema bump.
+    Pipe-delimited ``key=value`` pairs, every value kept as a plain string.
+    Unknown keys are preserved as-is so a future reader can pick them up without
+    a schema bump.
 
     Kept as the dict-returning form because eight call sites want only the
     pairs. :func:`parse_tag_line_with_conflicts` is the same parse with the
@@ -132,10 +133,6 @@ def parse_tag_line_with_conflicts(
     :func:`validate_change_log_tags`, so nothing downstream consumes the value —
     but a parser that resolves one way here and the other way there is the
     inconsistency that makes a repair unpredictable.
-
-    ``chunks`` is a retired key and gets no union treatment: a same-line repeat
-    of it is reported like any other rather than concatenated, because unlike the
-    cross-line case there is no historical corpus of split rosters to preserve.
     """
     tags: dict[str, object] = {}
     conflicts: list[str] = []
@@ -148,33 +145,28 @@ def parse_tag_line_with_conflicts(
         v = v.strip()
         if not k:
             continue
-        value: object = (
-            [c.strip() for c in v.split(",") if c.strip()] if k == "chunks" else v
-        )
         if k in tags:
-            if tags[k] != value:
-                conflicts.append(f"{k}: kept {tags[k]!r}, ignored {value!r}")
+            if tags[k] != v:
+                conflicts.append(f"{k}: kept {tags[k]!r}, ignored {v!r}")
             continue  # first-wins, as across lines
-        tags[k] = value
+        tags[k] = v
     return tags, conflicts
 
 
 def _merge_tag_line(entry: ChangeLogEntry, new_tags: dict[str, object]) -> None:
     """Merge a subsequent tag line's pairs into an entry, union semantics.
 
-    ``chunks`` lists are concatenated with order-preserving dedup; a key not yet
-    present is adopted; a scalar key already present with a *different* value is
-    first-wins, the ignored value recorded in ``tag_conflicts`` so
-    :func:`validate_change_log_tags` can surface it.
+    A key not yet present is adopted; a key already present with a *different*
+    value is first-wins, the ignored value recorded in ``tag_conflicts`` so
+    :func:`validate_change_log_tags` can surface it. (``chunks`` lists were once
+    concatenated here; the key is retired and gets no treatment of its own.)
     """
     for k, v in new_tags.items():
         if k not in entry.tags:
             entry.tags[k] = v
             continue
         existing = entry.tags[k]
-        if k == "chunks" and isinstance(existing, list) and isinstance(v, list):
-            entry.tags[k] = existing + [c for c in v if c not in existing]
-        elif existing != v:
+        if existing != v:
             entry.tag_conflicts.append(f"{k}: kept {existing!r}, ignored {v!r}")
 
 
@@ -266,6 +258,38 @@ def _is_standalone_tag_line(line: str) -> bool:
         return False
     tags, _conflicts = parse_tag_line_with_conflicts(match.group(1))
     return bool(tags)
+
+
+@dataclass(frozen=True)
+class TagSection:
+    """One tag line of an entry and the prose under it, up to the next tag line."""
+
+    tags: dict[str, object]
+    #: Keys this one line set more than once (:func:`parse_tag_line_with_conflicts`).
+    conflicts: tuple[str, ...]
+    body: str
+
+
+def tag_sections(entry_text: str) -> tuple[str, list[TagSection]]:
+    """``(lead, sections)``: an entry cut at each of its standalone tag lines.
+
+    ``entry_text`` is one entry, header line first. ``lead`` is the text between
+    the header and the first tag line, and each section holds one tag line's own
+    pairs — not merged with its neighbours', unlike :func:`parse_change_log` — and
+    the stripped prose under it. An entry holding several changes, each written
+    as a tag line over its own paragraph, reads here as one section per change;
+    a duplicated tag line reads as a section with an empty body.
+    """
+    lines = entry_text.splitlines()[1:]
+    starts = [i for i, line in enumerate(lines) if _is_standalone_tag_line(line)]
+    if not starts:
+        return "\n".join(lines).strip(), []
+    sections = []
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(lines)
+        tags, conflicts = parse_tag_line_with_conflicts(TAG_LINE_RE.search(lines[start]).group(1))
+        sections.append(TagSection(tags, tuple(conflicts), "\n".join(lines[start + 1 : end]).strip()))
+    return "\n".join(lines[: starts[0]]).strip(), sections
 
 
 #: Keys a tag line being written must not carry. The parser keeps accepting them, because

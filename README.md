@@ -183,7 +183,9 @@ A: Easily done: 1) Delete `.prawduct/`, 2) remove the prawduct install reference
 
 Unit tests cover the plugin runtime, scaffolding, migration, hooks, and governance. The stats
 collector (`collector/`) has its own suite on node's built-in runner, with no dependencies.
-`prawduct-hook test-evidence record` runs both, so recording evidence needs node:
+`prawduct-hook test-evidence record` runs both, so recording evidence needs node, and
+`testament` too: the pytest suite records from the Testament pool, or from this machine when no
+pool answers (`documentation/running-tests.md`). To run the suites by hand:
 
 ```bash
 cd prawduct
@@ -228,7 +230,7 @@ my-product/
 ├── .prawduct/
 │   ├── project-state.yaml       # product definition, work tracking, build plan
 │   ├── backlog.md               # deferred work items (out-of-scope captures)
-│   ├── change-log.md            # change log
+│   ├── changes/                 # the change record: one fragment per change, shipped into change-log-archive/ at release
 │   ├── artifacts/               # specifications generated during planning
 │   │   ├── project-preferences.md  # developer preferences (language, testing, style)
 │   │   └── boundary-patterns.md    # contract surfaces between components

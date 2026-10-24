@@ -50,8 +50,8 @@ reasons. Do not re-raise one absent material change in its cited files** — one
 = older answers dropped; `unavailable` = the join failed, so you know nothing.
 
 **Record checks are already answered — read the manifest's `record_lint`.** Never
-recount it: that is how a record defect buys a review round. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING** (a declared deliverable that does not exist is a dropped requirement, so it is in the inner set); `learnings-budget-unreasoned`, `learnings-rule-too-long`, `learnings-rule-body` and `learnings-over-budget` → **BLOCKING** at the boundary, an observation here.
-`governed-by-gap`, `learnings-area-dead`, `learnings-core-raise-unapproved` → **WARNING** under Goal 2.
+recount it. Each entry carries its explanation — raise it. `chunk-ref-missing` → **BLOCKING** (a missing declared deliverable is a dropped requirement, so it is in the inner set); `learnings-budget-unreasoned`, `learnings-rule-too-long`, `learnings-rule-body` and `learnings-over-budget` → **BLOCKING** at the boundary, an observation here.
+`governed-by-gap`, `learnings-area-dead`, `learnings-core-raise-unapproved`, `change-fragment`, `retired-claim-survives` → **WARNING** under Goal 2.
 `suite-total-claim` → **NOTE**.
 **`unchecked` is not a pass: an entry inherits one step below its check's severity** (BLOCKING
 → **WARNING**, else **NOTE**), except the shapes below:
@@ -72,7 +72,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 - `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
-- Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change-log entry.
+- Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change record.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
 - **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
@@ -93,7 +93,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 - For products with `has_human_interface`: accessibility alongside features → **WARNING** if missing.
 - If `infrastructure_dependencies` is declared: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
-- **Exposed API**: chunks with `**Exposed API:** <name>` need a recorded versioning + deprecation decision (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) → **WARNING** if missing; and a recorded error-model decision (`api_error_model_approach`) → **WARNING** if missing. Presence is not adherence: where the contract's `Retention:` policy defers removal to a major, a `stable`/`deprecated` member of its Surface Inventory the diff removes or un-declares → **BLOCKING** norm departure.
+- **Exposed API**: chunks with `**Exposed API:** <name>` need recorded versioning + deprecation (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) and error-model (`api_error_model_approach`) decisions → **WARNING** each if missing. Contract presence: `<name>` must appear in the API contract artifact (Surface Inventory or a section naming it) → **WARNING** naming the surface and its artifact if not (`templates/api-contract.md` if none). Presence is not adherence: where the contract's `Retention:` policy defers removal to a major, a `stable`/`deprecated` member of its Surface Inventory the diff removes or un-declares → **BLOCKING** norm departure.
 - **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
 - **Built-but-unconsumed:** a producer nothing reads in the same change — an event, a field, a flag → **WARNING**.
 
@@ -104,7 +104,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 - Norm departures → **BLOCKING** per Normative authority above; never fix divergence by editing the artifact.
 - No extra functionality beyond what was planned → **WARNING**.
 - No broad exception handling without logging/re-raising → **WARNING**. Waiver pragmas (`prawduct:allow <scope>/<rule-id> -- reason`, legacy `prawduct:ok-broad-except`) are reviewed-but-verifiable: the reason must be present and genuine — for `broad-except`, the catch logs with context at a real boundary. "Intentional," not "exempt"; a reason-less or defect-masking waiver is a finding.
-- **Rationale-vs-diff fit (`Type: trivial` only)**: compare the `**Trivial because:**` claim against the diff. Mismatch (claim "rename" but diff adds defs) → **BLOCKING** (scope expansion). Low-information rationale ("small change") → **WARNING**.
+- **Rationale-vs-diff fit (`Type: trivial` only)**: compare the `**Trivial because:**` claim against the diff. Mismatch (claim "rename", diff adds defs) → **BLOCKING**. Missing or low-information rationale ("small change") → **WARNING**.
 
 ## Severity
 

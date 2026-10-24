@@ -361,8 +361,39 @@ class TestTheDormancyAdvisoryIsRetired:
         )
 
 
+class TestArchiveDeferredProbe:
+    """#320: `--archive-scope open` leaves the archive off the tracker; the fact is
+    stamped at cutover and surfaced as an info advisory."""
+
+    def test_fires_once_post_cutover_under_open(self, tmp_path):
+        state = ProjectState({"backlog_service_repo": "o/r", "backlog_archive_scope": "open"})
+        out = bp.probe_archive_deferred(state, _cb(tmp_path))
+        assert len(out) == 1
+        assert out[0].type == "backlog-archive-deferred"
+        assert out[0].priority == "info"
+
+    @pytest.mark.parametrize(
+        "facts",
+        [
+            {"backlog_service_repo": "o/r", "backlog_archive_scope": "all"},
+            {"backlog_service_repo": "o/r"},
+            {"backlog_archive_scope": "open"},
+        ],
+    )
+    def test_silent_when_all_absent_or_not_cut_over(self, tmp_path, facts):
+        assert bp.probe_archive_deferred(ProjectState(facts), _cb(tmp_path)) == []
+
+    def test_registered_probe_surfaces_it(self, tmp_path):
+        bp.register()
+        state = ProjectState({"backlog_service_repo": "o/r", "backlog_archive_scope": "open"})
+        cands = run_all_probes(state, make_codebase(tmp_path))
+        assert [c.type for c in cands if c.type == "backlog-archive-deferred"] == [
+            "backlog-archive-deferred"
+        ]
+
+
 class TestRegistration:
-    def test_register_adds_five_probes(self):
+    def test_register_adds_the_backlog_probes(self):
         from lib import advisory_store
         bp.register()
         keys = set(advisory_store._REGISTRY)
@@ -372,6 +403,7 @@ class TestRegistration:
             "backlog:external-backlog-detected",
             "backlog:legacy-section-schema",
             "backlog:backlog-overdue-grooming",
+            "backlog:backlog-archive-deferred",
         }
 
     def test_run_all_probes_stamps_feature_and_version(self, tmp_path):

@@ -4,6 +4,11 @@
      This file is separate from project-state.yaml to reduce merge conflicts
      when multiple branches add entries simultaneously.
 
+     A repo that records changes as fragments instead — one file per scope in
+     .prawduct/changes/, from templates/change-fragment.md — adds nothing here:
+     this file then holds shipped history only, and `prawduct-hook
+     migrate-change-log` moves any release-pending entry into a fragment.
+
      # Tagged entries
 
      This file is PROSE. Its body is what a reader — and a release note —

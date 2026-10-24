@@ -6,6 +6,8 @@ worker (preserving fixture/state isolation) while different directories
 run in parallel across workers.
 """
 
+from __future__ import annotations
+
 import json
 import os
 import sys
@@ -29,7 +31,12 @@ if str(_PLUGIN_ROOT) not in sys.path:
 
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-assign xdist_group marks by test directory.
+    """Skip `non_root` tests under root, then auto-assign xdist_group marks by test directory.
+
+    `@pytest.mark.non_root` marks a test whose fixture removes its own access (`chmod(0o000)`):
+    root walks through the mode, so the refusal the test asserts never happens (#860).
+
+    Auto-assign xdist_group marks by test directory.
 
     Tests in the same directory run serially on one worker (deterministic order).
     Different directories run in parallel across workers.
@@ -37,7 +44,10 @@ def pytest_collection_modifyitems(config, items):
     Example groups: "unit/eval", "unit/web", "integration", "root".
     """
     tests_root = Path(config.rootpath) / "tests"
+    is_root = hasattr(os, "geteuid") and os.geteuid() == 0
     for item in items:
+        if is_root and item.get_closest_marker("non_root"):
+            item.add_marker(pytest.mark.skip(reason="permission fixture does not discriminate under root"))
         if item.get_closest_marker("xdist_group"):
             continue  # Respect explicit marks
         try:
@@ -187,6 +197,27 @@ def write_scope_record(config, scope: str, why: str | None) -> Path | None:
     return target
 
 
+def venv_warning(prefix: str, executable: str, repo: Path, env: dict[str, str]) -> str | None:
+    """The loud message when pytest runs outside the repo's `.venv`, else None (#750).
+
+    Warn, not fail (decided): CI installs into its own interpreter via `pip install ".[dev]"`
+    and must keep passing, and a hard fail would also block a deliberate out-of-venv run. CI is
+    recognised by `CI`; `PRAWDUCT_ALLOW_ANY_PYTHON` is the explicit opt-out.
+    """
+    if env.get("CI") or env.get("PRAWDUCT_ALLOW_ANY_PYTHON"):
+        return None
+    venv = (repo / ".venv").resolve()
+    here = Path(prefix).resolve()
+    if here == venv or venv in here.parents:
+        return None
+    return (
+        f"WARNING: pytest is running outside the repo venv. Expected {venv}; "
+        f"running {executable} (sys.prefix {prefix}). A different interpreter can fail tests "
+        "that pass in the venv (a fresh worktree needs `uv sync --extra dev`). "
+        "Set PRAWDUCT_ALLOW_ANY_PYTHON=1 to silence."
+    )
+
+
 def pytest_configure(config):
     """Anchor the report to the project root, then claim it as incomplete.
 
@@ -206,6 +237,10 @@ def pytest_configure(config):
     beside such a report says so, rather than the PREVIOUS run's `full` verdict
     sitting there vouching for it.
     """
+    if not hasattr(config, "workerinput"):
+        warning = venv_warning(sys.prefix, sys.executable, Path(config.rootpath), dict(os.environ))
+        if warning:
+            sys.stderr.write(warning + "\n")
     xmlpath = getattr(config.option, "xmlpath", None)
     if xmlpath and not os.path.isabs(xmlpath):
         config.option.xmlpath = str(Path(config.rootpath) / xmlpath)

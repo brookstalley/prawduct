@@ -101,7 +101,7 @@ returns nothing). Specifically:
   on a config helper mid-chunk and a payment ledger at PR.
 
 **Q3 — Is it philosophy?** Yes, and it is written down. The framework's stated failure direction is
-*up*: "Every layer fails safe to thoroughness"; "under-declaring Type is safe (worst case: redundant
+*up*: "Every layer fails safe to thoroughness"; "under-declaring Type is safe (worst case: redundant <!-- prawduct:allow prawduct/retired-claim-survives -- the assessment quotes the claims it argues to retire -->
 Critic work)"; "the depth varies; the habits don't"; "a repo that declares none is never reviewed
 *less* than before". Under the ratified norm (`nonfunctional-requirements.md`: review wall-clock is
 P0; proportionality ratchets both ways), *redundant review is not the safe direction — it is a cost*.
@@ -136,7 +136,7 @@ the manifest and in `goals-1-3.md`, and give the reviewer subagent a stage + siz
 freeform bracket. Quality cost: a coverage gap found at the boundary instead of mid-chunk — same
 catch, later. Wall-clock: removes most mid-chunk fix→verify cycles.
 
-**Shift B — Flip the failure direction of the defaults.** Retire "fails safe to thoroughness" and
+**Shift B — Flip the failure direction of the defaults.** Retire "fails safe to thoroughness" and <!-- prawduct:allow prawduct/retired-claim-survives -- the assessment quotes the claims it argues to retire -->
 "under-declaring is safe" as sentences; replace with: *both directions are errors; the inner loop
 defaults cheap, the boundary defaults deep.* Concretely: unsure/planless → `chunk`, not `final`; a
 product with no `risk_surfaces:` gets a single reviewer until it declares (onboarding and doctor ask

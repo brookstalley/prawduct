@@ -194,6 +194,22 @@ class TestLazyIsolation:
             "import them inside the function that needs them"
         )
 
+    def test_core_never_reaches_up_into_buildplan_refs(self):
+        """#657: `buildplan_refs` imports `core` at module scope, so a `core`
+        edge back to it — even a lazy one — holds the graph acyclic only while
+        nobody hoists it. The Status-roster predicate `resolve_branch_claim`
+        needs lives in `plan_index`, which imports nothing in `lib`."""
+        import ast
+
+        tree = ast.parse((REPO_ROOT / "lib" / "core.py").read_text(encoding="utf-8"))
+        reached = [
+            node.lineno for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and (node.module == "buildplan_refs"
+                 or any(alias.name == "buildplan_refs" for alias in node.names))
+        ]
+        assert reached == [], f"core.py imports buildplan_refs at line(s) {reached}"
+
     def test_accessing_one_flat_name_loads_only_its_owner(self):
         # Touching a core-owned name must not import advisory_store/critic_mode/etc.
         dragged = _clean_import_probe(

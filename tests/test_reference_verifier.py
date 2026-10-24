@@ -88,7 +88,7 @@ def mini_repo(tmp_path: Path) -> Path:
 
 
 class TestEvidenceShape:
-    """The verifier always emits the six F4a fields, in any execution path."""
+    """The verifier always emits the seven F4a fields, in any execution path."""
 
     def test_default_run_prints_all_evidence_fields(self, mini_repo: Path):
         result = _run_verifier(mini_repo)
@@ -100,6 +100,7 @@ class TestEvidenceShape:
             "coverage_level",
             "tests_executed",
             "changes_referenced",
+            "changes_unreferenced",
             "changes_unjudged",
             "changes_unchecked",
         }
@@ -284,19 +285,59 @@ class TestUnjudgedClassification:
         assert "src/core.py" in evidence["changes_unjudged"]
         assert "src/core.py" not in evidence["changes_referenced"]
 
-    def test_unreferenced_python_with_symbols_is_in_neither_list(
+    def test_unreferenced_python_with_symbols_is_in_its_own_bucket(
         self, mini_repo: Path
     ):
         """A judged Python file with no test reference is the legitimate gap
-        the gate exists to catch — it must stay out of BOTH lists so
-        `verify-coverage` flags it."""
-        (mini_repo / "src" / "untested.py").write_text(
-            "def lonely_function():\n    return None\n"
+        the gate exists to catch. It stays out of ``changes_referenced`` and
+        ``changes_unjudged`` (so `verify-coverage` still flags it) and lands in
+        ``changes_unreferenced``, so the record carries the whole changed set
+        (#556)."""
+        (mini_repo / "orphan.py").write_text(
+            "def lonely_untested_fn():\n    return 1\n"
         )
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
-        assert "src/untested.py" not in evidence["changes_referenced"]
-        assert "src/untested.py" not in evidence["changes_unjudged"]
+        assert "orphan.py" in evidence["changes_unreferenced"]
+        assert "orphan.py" not in evidence["changes_referenced"]
+        assert "orphan.py" not in evidence["changes_unjudged"]
+
+    def test_the_three_buckets_partition_the_changed_set(self, mini_repo: Path):
+        """referenced, unreferenced and unjudged are pairwise disjoint and their
+        union is exactly the changed set (#556) — one file of each shape."""
+        (mini_repo / "src" / "core.py").write_text(
+            "def existing_helper():\n    return 2\n"
+        )  # referenced
+        (mini_repo / "src" / "orphan.py").write_text(
+            "def lonely_untested_fn():\n    return 1\n"
+        )  # unreferenced
+        (mini_repo / "src" / "constants.py").write_text("LIMIT = 10\n")  # symbol-less
+        (mini_repo / "notes.txt").write_text("hello\n")  # non-Python
+        (mini_repo / "gone.py").write_text("def gone():\n    return 0\n")
+        _git(mini_repo, "add", "gone.py")
+        _git(mini_repo, "commit", "-q", "-m", "add gone")
+        _git(mini_repo, "branch", "-f", "base-ref")
+        _git(mini_repo, "rm", "-q", "gone.py")  # deleted in the diff
+
+        evidence = json.loads(
+            _run_verifier(mini_repo, "--base", "base-ref").stdout
+        )
+        referenced = set(evidence["changes_referenced"])
+        unreferenced = set(evidence["changes_unreferenced"])
+        unjudged = set(evidence["changes_unjudged"])
+        changed = {
+            "src/core.py",
+            "src/orphan.py",
+            "src/constants.py",
+            "notes.txt",
+            "gone.py",
+        }
+        assert referenced == {"src/core.py"}
+        assert unreferenced == {"src/orphan.py"}
+        assert referenced | unreferenced | unjudged == changed
+        assert not referenced & unreferenced
+        assert not referenced & unjudged
+        assert not unreferenced & unjudged
 
 
 class TestUncheckedClassification:

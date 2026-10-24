@@ -1164,8 +1164,8 @@ def declares_boundary_cumulative(prawduct_dir: Path, plan) -> bool:
 
 
 #: The two answers :func:`review_owed_after` gives: a later CHUNK's review
-#: starts from the last reviewed state, while the boundary ``cumulative`` spans
-#: the branch from the merge-base. Both cover a fix committed before them, but
+#: starts from the newest committed state a review covers, while the boundary
+#: ``cumulative`` spans the branch from the merge-base. Both cover a fix committed before them, but
 #: the advice names the review that will, so the two stay distinguishable.
 OWED_LATER_CHUNK = "later-chunk"
 OWED_BOUNDARY = "boundary"
@@ -1348,12 +1348,14 @@ def extension_deferral_owed(
 
     1. **This chunk was reviewed.** The newest review on the branch
        (:func:`_newest_branch_review`) is of the CURRENT, unticked chunk — by
-       the chunk id the fact records, or, when the dispatch passed none, the
-       chunk record-lint graded (itself read from the plan's Status, so any
-       review run while this chunk was current counts). Otherwise the pending
-       work may be a whole chunk nobody has reviewed, and deferring it would
-       skip that chunk's review rather than carry a fix. A fact carrying
-       neither defers nothing.
+       the newest chunk id a dispatch supplied on the chain it stands on
+       (:func:`review_chain`), so a ``verify-resolutions`` pass with no
+       ``--chunk`` inherits the chunk review it verifies. Never a
+       Status-derived id: record-lint's graded chunk is the same first-unticked
+       reading as ``progress.current_id``, so it would match a parked chunk
+       nobody reviewed. Otherwise the pending work may be a whole chunk nobody
+       has reviewed, and deferring it would skip that chunk's review rather
+       than carry a fix. A chain carrying no chunk id defers nothing.
     2. **No open blocker on the chain it stands on**
        (:func:`_open_blocker_on_chain`). Checked on the facts, not on the
        committed history: a review of uncommitted work leaves its tree nowhere
@@ -1382,16 +1384,21 @@ def extension_deferral_owed(
     newest = _newest_branch_review(project_dir)
     if newest is None:
         return None
-    body = newest.get("body") or {}
-    reviewed_chunk = body.get("chunk") or (body.get("record_lint") or {}).get("chunk_graded")
-    if not reviewed_chunk or buildplan_refs._normalize_chunk_id(
-        str(reviewed_chunk)
-    ) != buildplan_refs._normalize_chunk_id(str(progress.current_id)):
-        return None
     from . import evidence, gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
     facts = evidence.read_facts(project_dir).get("facts") or []
     chain = review_chain(facts, newest)
+    # Only a chunk id a dispatch SUPPLIED counts, inherited along the chain so a
+    # chunk-less verify pass carries the chunk review it verifies. Never the
+    # Status-derived id record-lint grades: that is the same first-unticked
+    # reading as `progress.current_id`, so comparing them proves nothing (#911).
+    reviewed_chunk = next(
+        (c for c in ((f.get("body") or {}).get("chunk") for f in chain) if c), None
+    )
+    if not reviewed_chunk or buildplan_refs._normalize_chunk_id(
+        str(reviewed_chunk)
+    ) != buildplan_refs._normalize_chunk_id(str(progress.current_id)):
+        return None
     if _open_blocker_on_chain(facts, chain):
         return None
     owed = review_owed_after(project_dir, prawduct_dir, plan, progress, chain)
@@ -1410,7 +1417,8 @@ def extension_deferral_owed(
         return None
     return kind, (
         f"chunk {progress.current_id} was reviewed with no open blocker and {why}, and it "
-        f"starts from the last reviewed state ({frontier['commit'][:12]}) — it covers this "
+        f"starts from the newest committed state a review covers ({frontier['commit'][:12]})"
+        " — it covers this "
         "work too. Commit and carry on"
     )
 
@@ -1467,6 +1475,19 @@ LAST_CHUNK_BOUNDARY_STEP = (
 )
 
 
+#: The short-plan deferral knows one boundary, the plan's last chunk, because
+#: it assumes one PR per plan. A chunk that ships as its own PR is a boundary
+#: too, and the existing declaration already handles it (#999): any
+#: `Critic mode:` turns the deferral off, and the current chunk's declaration
+#: is what inference honours. One wording, read by the inference rationale and
+#: the Stop gate's non-final warning.
+SHORT_PLAN_OWN_PR_NOTE = (
+    "If this branch opens a PR before the plan's last chunk, that PR is a "
+    "boundary: run `/prawduct:critic cumulative`, and declare "
+    "`Critic mode: cumulative` on chunks that ship as their own PR"
+)
+
+
 def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     """What a builder on a deferring short plan does next — the ONE statement.
 
@@ -1506,7 +1527,8 @@ def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
     """
     return (
         f"short-plan deferral: no per-chunk review is owed — {deferral.reason}; "
-        f"{short_plan_next_step(deferral)}. An explicit mode (`/prawduct:critic chunk`) or a "
+        f"{short_plan_next_step(deferral)}. {SHORT_PLAN_OWN_PR_NOTE}. "
+        "An explicit mode (`/prawduct:critic chunk`) or a "
         "`Critic mode:` field on any chunk restores per-chunk review. "
         f"Grounded on {_plan_relation_note(plan)}"
     )

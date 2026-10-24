@@ -586,6 +586,7 @@ class TestConcurrentDispatchGuard:
         # The primary job still got done: dispatch is unblocked.
         assert _run_real("critic-begin", repo, "--mode", "chunk").returncode == 0
 
+    @pytest.mark.non_root
     def test_an_unreadable_partials_dir_still_clears_the_marker(self, tmp_path):
         """End-to-end, because guarding one function was not enough.
 

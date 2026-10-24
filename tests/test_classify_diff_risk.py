@@ -38,9 +38,10 @@ if str(ROOT) not in sys.path:
 from lib.risk import (  # noqa: E402
     DERIVED_DEFAULT_SURFACES,
     _boundary_pattern_paths,
-    _read_list_yaml_key,
     _surface_matches,
+    read_declared_surfaces,
 )
+from lib.core import YAML_ABSENT, YAML_DECLARED  # noqa: E402
 
 
 def _git_env(repo: Path) -> dict[str, str]:
@@ -179,21 +180,21 @@ class TestSurfaceMatching:
 
 
 class TestRiskSurfacesYamlList:
-    """`_read_list_yaml_key` distinguishes undeclared (None) from
+    """`read_declared_surfaces` distinguishes undeclared (absent) from
     declared-but-empty ([]) — the branch point of the failure asymmetry."""
 
     def test_absent_key_is_none(self, tmp_path):
         state = tmp_path / "project-state.yaml"
         state.write_text("base_branch: develop\n")
-        assert _read_list_yaml_key(state, "risk_surfaces") is None
+        assert read_declared_surfaces(state, "risk_surfaces")[0] == YAML_ABSENT
 
     def test_missing_file_is_none(self, tmp_path):
-        assert _read_list_yaml_key(tmp_path / "absent.yaml", "risk_surfaces") is None
+        assert read_declared_surfaces(tmp_path / "absent.yaml", "risk_surfaces")[0] == YAML_ABSENT
 
     def test_inline_empty_list(self, tmp_path):
         state = tmp_path / "project-state.yaml"
         state.write_text("risk_surfaces: []\n")
-        assert _read_list_yaml_key(state, "risk_surfaces") == []
+        assert read_declared_surfaces(state, "risk_surfaces") == (YAML_DECLARED, [])
 
     def test_block_list_with_comments_and_quotes(self, tmp_path):
         state = tmp_path / "project-state.yaml"
@@ -204,14 +205,14 @@ class TestRiskSurfacesYamlList:
             "  - src/api/contract.py  # the shared shape\n"
             "next_key: x\n"
         )
-        assert _read_list_yaml_key(state, "risk_surfaces") == [
-            "src/core/", "src/api/contract.py",
-        ]
+        assert read_declared_surfaces(state, "risk_surfaces") == (
+            YAML_DECLARED, ["src/core/", "src/api/contract.py"],
+        )
 
     def test_indented_same_name_key_ignored(self, tmp_path):
         state = tmp_path / "project-state.yaml"
         state.write_text("nested:\n  risk_surfaces:\n    - a/\n")
-        assert _read_list_yaml_key(state, "risk_surfaces") is None
+        assert read_declared_surfaces(state, "risk_surfaces")[0] == YAML_ABSENT
 
 
 class TestDerivedDefaults:

@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -458,6 +459,96 @@ class TestPostCutoverFailsClosed:
         )
         self._cut_over(project)
         assert release_readiness.check_releasability(project) == 0
+
+
+class TestAnIssuesBlockerCanBeNamed:
+    """#1033 — a `withheld` row may name its blocker as `#N` or `owner/repo#N`,
+    and post-cutover its liveness comes from the local backlog cache."""
+
+    SCOPE = "acme/backlog"
+
+    def _project(self, tmp_path, blocker, *, cut_over=True):
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification=f"| alpha | withheld | {blocker} |\n",
+        )
+        if cut_over:
+            _write(
+                project / ".prawduct" / "project-state.yaml",
+                f"backlog_service_repo: {self.SCOPE}\n",
+            )
+        return project
+
+    def _cache(self, project, *, close_first=False):
+        """A synced cache holding two items, #1 and #2; ``close_first`` ships #1."""
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from fakes.fake_github import FakeGitHub
+        from lib.backlog import core, sync
+
+        # The store lives under `git --git-common-dir`, so the project is a work tree.
+        subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+        fake = FakeGitHub()
+        owner, repo = self.SCOPE.split("/")
+        for title in ("release: the first item under test", "release: the second item under test"):
+            assert core.file_item(fake, owner=owner, repo=repo, title=title, body="b")["status"] == "ok"
+        if close_first:
+            assert core.set_status(fake, id_raw=f"{self.SCOPE}#1", target="shipped")["status"] == "ok"
+        assert sync.full_rebuild(fake, project_dir=project, owner=owner, repo=repo)["status"] == "ok"
+
+    @pytest.mark.parametrize("cell", ["#12", "acme/backlog#12", "`#12` (go-live)"])
+    def test_the_issues_spellings_parse(self, cell):
+        classification, errors = release_readiness.parse_classification(
+            f"## Release classification\n\n| alpha | withheld | {cell} |\n"
+        )
+        assert errors == []
+        assert classification["alpha"][0] == release_readiness.WITHHELD
+        assert classification["alpha"][1] in {"#12", "acme/backlog#12"}
+
+    @pytest.mark.parametrize("cell", ["repo#12", "12", "#twelve"])
+    def test_a_spelling_naming_no_repo_or_number_is_still_refused(self, cell):
+        _classification, errors = release_readiness.parse_classification(
+            f"## Release classification\n\n| alpha | withheld | {cell} |\n"
+        )
+        assert any("requires a blocker item id" in e for e in errors)
+
+    @pytest.mark.parametrize("blocker", ["#1", "acme/backlog#1"])
+    def test_an_open_issues_blocker_stands(self, tmp_path, capsys, blocker):
+        project = self._project(tmp_path, blocker)
+        self._cache(project)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 0
+        assert f"alpha (blocked by {blocker})" in capsys.readouterr().out
+
+    def test_a_closed_issues_blocker_is_stale(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#1")
+        self._cache(project, close_first=True)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert "alpha (withheld behind #1, which is not open)" in err
+
+    def test_an_unreadable_cache_is_unverifiable_never_releasable(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#1")  # cut over, no cache synced
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        captured = capsys.readouterr()
+        assert "cannot-verify-blockers: the backlog cache could not be read" in captured.err
+        assert "which is not open" not in captured.err
+        assert "releasable:" not in captured.out
+
+    def test_an_id_the_cache_does_not_hold_is_unverifiable(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#9")
+        self._cache(project)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        err = capsys.readouterr().err
+        assert f"the backlog cache for {self.SCOPE} holds no item #9" in err
+        assert "which is not open" not in err
+
+    def test_the_markdown_backend_accepts_the_row_and_cannot_verify_it(self, tmp_path, capsys):
+        project = self._project(tmp_path, "#1", cut_over=False)
+        assert release_readiness.check_releasability(project, "v3.2.0") == 1
+        captured = capsys.readouterr()
+        assert "requires a blocker item id" not in captured.err
+        assert "cannot say whether the GitHub issue #1 is still open" in captured.err
+        assert "releasable:" not in captured.out
 
 
 class TestIdempotentAcrossItsOwnRunbook:
@@ -1904,3 +1995,124 @@ class TestReleasePlanSurvivesArchival:
         # won, `beta` would come back unclassified and the gate would exit 1.
         assert release_readiness.check_releasability(project) == 0
         assert "unclassified" not in capsys.readouterr().err
+
+
+def _fragment(scope: str, *, note: str = "A consumer-facing note.", date: str = "2026-10-19") -> str:
+    """A valid change fragment for ``scope`` (the format `lib/change_fragments.py` owns)."""
+    return (
+        f"---\nschema: 1\ntype: fix\nscope: {scope}\ndate: {date}\ntitle: {scope} title\n---\n"
+        f"What changed.\n\n## Consumer note\n{note}\n"
+    )
+
+
+def _add_fragment(project: Path, scope: str, text: str | None = None) -> None:
+    _write(project / ".prawduct" / "changes" / f"{scope}.md", text or _fragment(scope))
+
+
+class TestFragmentsJoinThePendingSet:
+    """A pending scope recorded as a fragment counts exactly as a legacy entry does.
+
+    Wave 1 of #1012 keeps both shapes readable, so the verdict must not depend on
+    which shape a scope happens to be recorded in. Each test pairs the fragment
+    case with the legacy case it must agree with.
+    """
+
+    def test_a_fragment_scope_is_classified_like_a_legacy_one(self, tmp_path, capsys):
+        legacy = _make_project(
+            tmp_path / "legacy", entries=_entry("A", "alpha"), classification="| alpha | ships | |\n"
+        )
+        assert release_readiness.check_releasability(legacy) == 0
+        legacy_out = capsys.readouterr().out
+        fragment = _make_project(
+            tmp_path / "fragment", entries="", classification="| alpha | ships | |\n"
+        )
+        _add_fragment(fragment, "alpha")
+        assert release_readiness.check_releasability(fragment) == 0
+        fragment_out = capsys.readouterr().out
+        verdict = "1 release-pending scope(s), 1 shipping, 0 withheld"
+        assert verdict in legacy_out and verdict in fragment_out
+
+    def test_an_unclassified_fragment_scope_is_refused_by_name(self, tmp_path, capsys):
+        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
+        _add_fragment(project, "beta")
+        assert release_readiness.check_releasability(project) == 1
+        err = capsys.readouterr().err
+        assert "unclassified scope(s)" in err and "beta" in err
+
+    def test_an_invalid_fragment_refuses_before_any_verdict(self, tmp_path, capsys):
+        project = _make_project(tmp_path, entries="", classification="| alpha | ships | |\n")
+        _add_fragment(project, "alpha", _fragment("alpha").replace("type: fix", "type: bugfix"))
+        assert release_readiness.check_releasability(project) == 1
+        captured = capsys.readouterr()
+        assert "bad-change-fragment: alpha.md: bad-type" in captured.err
+        assert "releasable" not in captured.out
+
+    def test_a_scope_pending_in_both_shapes_is_refused(self, tmp_path, capsys):
+        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
+        _add_fragment(project, "alpha")
+        assert release_readiness.check_releasability(project) == 1
+        assert "scope-in-both-shapes: 'alpha'" in capsys.readouterr().err
+
+    def test_a_fragments_only_repo_needs_no_single_file_log(self, tmp_path, capsys):
+        project = _make_project(tmp_path, entries="", classification="| alpha | ships | |\n")
+        (project / ".prawduct" / "change-log.md").unlink()
+        _add_fragment(project, "alpha")
+        assert release_readiness.check_releasability(project) == 0
+        assert "1 change fragment(s)" in capsys.readouterr().out
+
+    def test_no_log_and_no_fragment_directory_is_still_a_missing_input(self, tmp_path, capsys):
+        project = _make_project(tmp_path, entries="", classification=None)
+        (project / ".prawduct" / "change-log.md").unlink()
+        assert release_readiness.check_releasability(project) == 1
+        assert "no-change-log:" in capsys.readouterr().err
+
+    def test_the_accounting_line_is_unchanged_without_fragments(self, tmp_path, capsys):
+        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
+        assert release_readiness.check_releasability(project) == 0
+        out = capsys.readouterr().out
+        assert "change fragment" not in out
+        assert "1 change-log entries, 1 tagged, 1 release-pending across 1 scope(s)" in out
+
+    def test_digest_coverage_asks_about_legacy_scopes_only(self, tmp_path, capsys):
+        # The digest names neither scope. The legacy one is warned (the control);
+        # the fragment one is not, because its note is required in the fragment.
+        project = _make_project(
+            tmp_path,
+            entries=_entry("A", "alpha"),
+            classification="| alpha | ships | |\n| beta | ships | |\n",
+            version="9.9.9",
+            digest=_digest("**Headline.**\n\nNothing named here."),
+        )
+        _add_fragment(project, "beta")
+        release_readiness.check_releasability(project)
+        warned = _warned_scopes(capsys.readouterr().err)
+        assert warned == {"alpha"}
+
+
+class TestPendingScopesIsTheOneOwner:
+    """`pending_scopes` is what every reader of the pending set calls (#1012 D6)."""
+
+    def test_the_union_lists_legacy_scopes_then_fragment_scopes_once_each(self, tmp_path):
+        project = _make_project(
+            tmp_path, entries=_entry("A", "alpha") + _entry("B", "beta"), classification=None
+        )
+        _add_fragment(project, "gamma")
+        pending = release_readiness.pending_scopes(project)
+        assert pending.legacy_scopes == ["alpha", "beta"]
+        assert pending.fragment_scopes == ["gamma"]
+        assert pending.scopes == ["alpha", "beta", "gamma"]
+        assert pending.refusals == [] and pending.read_error is None
+
+    def test_both_kinds_of_untrustworthy_union_are_refusals(self, tmp_path):
+        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification=None)
+        _add_fragment(project, "alpha")
+        _add_fragment(project, "beta", _fragment("beta").replace("schema: 1", "schema: 9"))
+        refusals = release_readiness.pending_scopes(project).refusals
+        assert any(r.startswith("bad-change-fragment: beta.md: schema-ahead") for r in refusals)
+        assert any(r.startswith("scope-in-both-shapes: 'alpha'") for r in refusals)
+
+    def test_an_unreadable_log_is_a_read_error_even_beside_fragments(self, tmp_path):
+        project = _make_project(tmp_path, entries="", classification=None)
+        (project / ".prawduct" / "change-log.md").write_bytes(b"\xff\xfe not utf-8")
+        _add_fragment(project, "alpha")
+        assert release_readiness.pending_scopes(project).read_error is not None

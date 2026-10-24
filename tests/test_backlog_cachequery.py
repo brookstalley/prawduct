@@ -1241,12 +1241,20 @@ class TestTheCacheQueryOp:
         cannot leave a trace in the tree it is reviewing."""
         _file(fake, title="cache: an item to read back", area="backlog")
         _rebuild(fake, repo_dir)
-        before = {p: p.stat().st_mtime_ns for p in repo_dir.rglob("*") if p.is_file()}
+        # A WAL reader touching a sidecar is how a WAL read works; every other file,
+        # the `.sqlite3` itself included, must be untouched.
+        def mtimes():
+            return {
+                p: p.stat().st_mtime_ns
+                for p in repo_dir.rglob("*")
+                if p.is_file() and p.name not in cache.STORE_SIDECARS
+            }
+
+        before = mtimes()
 
         assert _cq(repo_dir, "open")[0] == 0
 
-        after = {p: p.stat().st_mtime_ns for p in repo_dir.rglob("*") if p.is_file()}
-        assert after == before
+        assert mtimes() == before
 
     @pytest.mark.parametrize("spelling", ["#{number}", "{number}"])
     def test_a_bare_issue_ref_resolves_against_the_stores_own_scope(

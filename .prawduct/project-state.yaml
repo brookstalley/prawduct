@@ -37,7 +37,7 @@ backlog_service_repo: brookstalley/prawduct
 # Last full backlog grooming (stamped by /prawduct:backlog list/pick/groom).
 # Timestamp, not a count — counts are always re-derived (D14). Resolves the
 # backlog-overdue-grooming advisory.
-backlog_last_groomed_at: 2026-10-17
+backlog_last_groomed_at: 2026-10-22
 
 # Distribution model. `plugin` = this repo is governed by the Prawduct plugin
 # (v2.0.0), not file-sync. Set in Chunk 13 when the repo cut over to dogfood its
@@ -56,13 +56,19 @@ base_branch: develop
 
 # The canonical suite invocation (dogfooding the declared-command posture the
 # record on-ramp prescribes — the interpreter fallback is deprecated-by-nudge).
-# Stdlib-only repo: the hook's python3 IS the project environment. The second
-# entry is the collector's suite (`collector/`, the stats collector for #950):
-# node's built-in runner with no dependencies, so its evidence is part of the
-# same record and a red collector cannot hide behind a green plugin suite.
+# The pytest suite runs on the Testament pool (`.testament.toml`), which writes
+# the merged report as JUnit; with no coordinator it runs the same tests here.
+# The pool deselects `requires_history` and `requires_local_cache` tests
+# (runners have no git history and no backlog cache), so the third entry runs
+# exactly those here — together the three entries are the whole suite, and
+# evidence never silently covers a subset. The second entry is
+# the collector's suite (`collector/`, the stats collector for #950): node's
+# built-in runner with no dependencies, so a red collector cannot hide behind a
+# green plugin suite.
 test_commands:
-  - python3 -m pytest tests/ --junit-xml={junit_xml} -q
+  - testament run --junit-xml {junit_xml}
   - node --test --test-reporter=junit --test-reporter-destination={junit_xml} collector/test/*.test.mjs
+  - python3 -m pytest tests/ -m "requires_history or requires_local_cache" -n 0 --junit-xml={junit_xml} -q
 
 # Path prefixes whose files a NON-HERMETIC test in THIS repo reads. Absent means
 # empty, which is exactly the behaviour every repo had before the key existed.
@@ -262,7 +268,7 @@ design_decisions:
         client: "the `gh` CLI, driven as a subprocess (list-form args, never a shell)"
         scope: "two callers, neither reached unless a person acts: the backlog backend, opt-in per product (`backlog_service_repo` unset means the markdown backend), and the owner-approved `file-upstream` op, which targets the plugin's PINNED upstream repo and is therefore reachable with that scalar unset. Reachability is keyed on a person acting, never on the scalar — see `egress_boundary` below"
         credential: "`gh` owns it (`~/.config/gh`); the adapter never reads, stores, or forwards a token, and redacts token-shaped patterns from all surfaced output (SEC-1)"
-        egress_boundary: "three egress sites: lib/backlog/transport.py (TWO callers, both off unless a person acts: the opt-in backlog backend, and the owner-approved file-upstream op, which rides the same gh seam out to the plugin's PINNED upstream repo rather than to the product's own — so it is reachable with backlog_service_repo unset, which is why the site is no longer describable as just the backlog backend); lib/release_verification.py (check-released shells to gh for the Releases page, operator/CI-invoked, added 2026-08-04); and a gh pr list in cmd_stop in bin/prawduct-hook, which DOES run on the Stop hook path. lib/backlog/transport.py and lib/release_verification.py scrub secrets from foreign-CLI stderr before echoing it"
+        egress_boundary: "four egress sites: lib/backlog/transport.py (TWO callers, both off unless a person acts: the opt-in backlog backend, and the owner-approved file-upstream op, which rides the same gh seam out to the plugin's PINNED upstream repo rather than to the product's own — so it is reachable with backlog_service_repo unset, which is why the site is no longer describable as just the backlog backend); lib/release_verification.py (check-released shells to gh for the Releases page, operator/CI-invoked, added 2026-08-04); and a gh pr list in cmd_stop in bin/prawduct-hook, which DOES run on the Stop hook path. lib/backlog/transport.py and lib/release_verification.py scrub secrets from foreign-CLI stderr before echoing it; and lib/git_hygiene.py behind `prawduct-hook git-tidy` (added 2026-10-22): git fetch (with --prune for the dry run), ls-remote and push --delete to the product's OWN remote, plus gh pr list, gh pr view and gh pr edit --base (--after-merge retargets PRs stacked on the merged branch) against its own repo, carrying no product content, reached only when a person or the agent runs the command (its session-start probe is offline); it scrubs git's stderr with the same denylist before echoing it"
       - name: "prawduct stats collector (Cloudflare Worker + R2, collector/)"
         client: "the stdlib's urllib, in lib/contribution.py's _post; no gh and no third-party library"
         scope: "two callers. `contribute --send`, the opt-in stats upload: off unless the product's own `Stats contribution` row says ask or always (absent, unset, misspelled or unreadable reads as never). Added 2026-10-03 (#949, #950). And `aggregate-stats --collector`, which only reads the public bundles, carries no product content, and runs only when an operator passes the flag. Added 2026-10-04 (#262)"

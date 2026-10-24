@@ -1350,3 +1350,94 @@ class TestReviewTreeChanges:
         monkeypatch.setattr(gates, "branch_coverage_verdict", _boom)
         section = pr_payload._section_review_tree_changes(Path("."))
         assert not section.ok and "UNANSWERED" in section.degraded
+
+
+class TestChangeFragmentsInTheChangeLogSection:
+    """A branch recorded as a fragment (#1012) reaches the reviewer like an entry does."""
+
+    FRAGMENT = (
+        "---\nschema: 1\ntype: feature\nscope: widget\ndate: 2026-10-19\n"
+        "title: Widget arrives\ncloses: [brookstalley/prawduct#41]\n---\n"
+        "It does the widget thing.\n\n## Consumer note\nThe widget is here.\n"
+    )
+
+    def _with_fragment(self, tmp_path: Path, *, with_plan: bool) -> Path:
+        repo = _repo(tmp_path, with_plan=with_plan, with_change_log=False)
+        (repo / ".prawduct" / "changes").mkdir()
+        (repo / ".prawduct" / "changes" / "widget.md").write_text(self.FRAGMENT)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "record the widget")
+        return repo
+
+    @pytest.mark.parametrize("with_plan", [True, False])
+    def test_a_fragments_closes_list_reaches_the_scan_as_a_claim(self, tmp_path, with_plan):
+        # `closes: [a/b#N]` is a flow list: the bracket sits between the keyword and
+        # the id, so a scan of the raw text read the fragment's own closure claim as
+        # a mention, and R-2 was skipped on every fragment repo.
+        body = _sections(self._with_fragment(tmp_path, with_plan=with_plan))["change_log"]["body"]
+        cited = pr_payload.cited_backlog_citations("", body)
+        assert ("brookstalley/prawduct#41", True) in [(c.id, c.claims_closure) for c in cited]
+
+    def test_a_cut_archive_entrys_closes_reaches_the_scan_as_a_claim(self, tmp_path, monkeypatch):
+        # A trunk branch that cut its fragment carries an archive entry, whose tag
+        # spells the list `closes=a/b#7,BKL-6J2X`, which no claim keyword reaches either.
+        from lib import change_fragments
+        repo = self._with_fragment(tmp_path, with_plan=False)
+        entry = "## 2026-10-19: Widget arrives\n\n<!-- prawduct: type=feature | scope=widget | release=v1.0.0 | closes=a/b#7,BKL-6J2X -->\n\nWhy.\n"
+        recorded = change_fragments.RecordedChange(
+            scope="widget", closes=("a/b#7", "BKL-6J2X"), source="archive",
+            path=".prawduct/change-log-archive/2026-10.md", text=entry,
+        )
+        monkeypatch.setattr(
+            change_fragments, "branch_change_record",
+            lambda *_a, **_k: change_fragments.BranchRecord(changes=(recorded,)),
+        )
+        section = pr_payload._fragment_section(repo, None, "HEAD")
+        cited = pr_payload.cited_backlog_citations("", section.body)
+        assert {(c.id, c.claims_closure) for c in cited} >= {("a/b#7", True), ("BKL-6J2X", True)}
+
+    def test_a_scoped_branch_carries_its_fragment_whole(self, tmp_path):
+        body = _sections(self._with_fragment(tmp_path, with_plan=True))["change_log"]["body"]
+        assert "paired by scope" in body
+        assert "fragment .prawduct/changes/widget.md:" in body
+        # Frontmatter and note travel with the narrative, so `closes:` is read.
+        assert "closes: [brookstalley/prawduct#41]" in body
+        assert "The widget is here." in body
+
+    def test_an_unscoped_branch_carries_the_fragment_it_adds(self, tmp_path):
+        body = _sections(self._with_fragment(tmp_path, with_plan=False))["change_log"]["body"]
+        assert "paired by diff" in body
+        assert "fragment .prawduct/changes/widget.md:" in body
+
+    def test_a_scoped_branch_also_carries_the_other_fragments_it_adds(self, tmp_path):
+        # Several plans may share a branch and the PR gate validates every fragment
+        # the branch adds, so the reviewer must read every one, not only the scope's.
+        repo = self._with_fragment(tmp_path, with_plan=True)
+        other = self.FRAGMENT.replace("scope: widget", "scope: gadget").replace("#41", "#42")
+        (repo / ".prawduct" / "changes" / "gadget.md").write_text(other)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "record the gadget")
+        body = _sections(repo)["change_log"]["body"]
+        assert "fragment .prawduct/changes/widget.md:" in body
+        assert "fragment .prawduct/changes/gadget.md:" in body
+        assert "closes: [brookstalley/prawduct#42]" in body
+
+    def test_an_unscoped_branch_whose_diff_cannot_be_read_degrades_rather_than_showing_the_legacy_log(self, tmp_path):
+        # The legacy log holds no pending work in a fragment repo, so falling back
+        # to it would show the reviewer the wrong record as if it were this branch's.
+        repo = self._with_fragment(tmp_path, with_plan=False)
+        section = pr_payload._fragment_section(repo, None, "no-such-base")
+        assert section is not None
+        assert not section.ok and "fragments are unknown" in section.degraded
+
+    def test_a_scoped_branch_whose_diff_cannot_be_read_still_carries_its_fragment_and_says_so(self, tmp_path):
+        repo = self._with_fragment(tmp_path, with_plan=True)
+        section = pr_payload._fragment_section(repo, "widget", "no-such-base")
+        assert section is not None and section.ok
+        assert "fragment .prawduct/changes/widget.md:" in section.body
+        assert "could not be read, so only the scope's fragment is shown" in section.body
+
+    def test_without_fragments_the_legacy_entry_is_still_carried(self, tmp_path):
+        body = _sections(_repo(tmp_path))["change_log"]["body"]
+        assert "fragment " not in body
+        assert "It does the widget thing." in body

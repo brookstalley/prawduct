@@ -274,6 +274,63 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         assert "/prawduct:critic final" in reason
 
 
+def _append_foreign_review(repo: Path, mode: str, *, worktree: str, branch: str) -> None:
+    """A review fact recorded from ANOTHER worktree or branch of the same clone:
+    the store is clone-global, so it lands in this repo's store too."""
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from lib import evidence
+
+    with open(evidence.store_path(repo), "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({
+            "schema": evidence.SCHEMA_VERSION,
+            "kind": "review",
+            "id": f"rev-foreign-{worktree.strip('/')}-{branch}",
+            "ts": "2026-10-21T00:00:00Z",
+            "actor": {"session": "s", "worktree": worktree, "plugin": "x", "branch": branch},
+            "body": {"mode": mode, "findings": [], "files_reviewed": ["a.py"]},
+        }) + "\n")
+
+
+class TestSynthesisAdvisoryReadsThisSessionsReview:
+    """#305(b): the advisory keys its "latest review" to this worktree and
+    branch. Another worktree's newer review must not steer it either way."""
+
+    def test_a_newer_final_from_another_worktree_does_not_satisfy_it(self, tmp_path):
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_CHUNK)
+        _append_foreign_review(repo, _MODE_FINAL, worktree="/elsewhere", branch="main")
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok, "another worktree's final review steered this session's advisory"
+        assert "/prawduct:critic final" in reason
+
+    def test_a_newer_chunk_from_another_worktree_does_not_trip_it(self, tmp_path):
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_FINAL)
+        _append_foreign_review(repo, _MODE_CHUNK, worktree="/elsewhere", branch="main")
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
+
+    def test_a_newer_review_on_another_branch_here_does_not_steer_it(self, tmp_path):
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_FINAL)
+        _append_foreign_review(repo, _MODE_CHUNK, worktree=str(repo), branch="other")
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
+
+    def test_the_control_a_newer_review_from_here_does_steer_it(self, tmp_path):
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_FINAL)
+        _append_foreign_review(repo, _MODE_CHUNK, worktree=str(repo), branch="main")
+        ok, _reason = _critic_session_satisfies_gate(repo)
+        assert not ok
+
+
 class TestGateReadsTheBranchsPlanNotThePointer:
     """The chunk-level fields the gate acts on come from ONE plan.
 

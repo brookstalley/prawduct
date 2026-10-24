@@ -1,15 +1,16 @@
 ---
-description: Migrate this repo from committed file-sync framework files onto the prawduct plugin — one reviewable, reversible commit
+description: Migrate this repo from committed file-sync framework files onto the prawduct plugin — one reviewable, reversible commit, then an optional one moving the change record onto fragments
 argument-hint: ""
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook migrate-plugin*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Read, Glob
+allowed-tools: Bash(prawduct-hook migrate-plugin*), Bash(prawduct-hook migrate-change-log*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status:*), Bash(git diff:*), Bash(git add:*), Bash(git commit:*), Bash(git log:*), Read, Glob
 ---
 
 You are performing the **file-sync → plugin cutover** for the current repo. This is the
 graceful migration that removes the committed framework files (now provided by the plugin)
-while preserving **all** product-owned state. It is destructive but reversible — the whole
-change lands as **one commit** you can `git revert`.
+while preserving **all** product-owned state. It is destructive but reversible — the cutover
+(steps 2–6) lands as **one commit** you can `git revert`. Moving the change record onto
+fragments (step 7) is optional and a second commit, reverted on its own.
 
 The plugin governs this repo the moment it is installed; this cutover removes the
 now-redundant committed framework files so the repo commits zero framework code and stops
@@ -44,7 +45,7 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
   covers it. A repo that **already** cut over converges the same keys with
   `/prawduct:doctor` — the detection is shared, so the two never disagree about what a retired
   key is.
-- **NEVER TOUCHED**: everything else under `.prawduct/` — the rest of `project-state.yaml`,
+- **NEVER TOUCHED** by the cutover (steps 2–6; step 7's change-record move is its own commit): everything else under `.prawduct/` — the rest of `project-state.yaml`,
   any `learnings*.md` the repo still carries, `backlog.md`, `change-log.md`, `artifacts/`,
   `.critic-findings.json` — nor `.claude/rules/learnings/`, and **all** non-framework files:
   the product's own skills, `src/`, `tests/`, MCP server, configs. (Relaying a legacy learnings
@@ -78,8 +79,8 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    | Output | Status | What to do |
    |---|---|---|
    | starts `active:` (exit 0) | `active` | Continue. |
-   | starts `inactive:` (exit 1) | `inactive` | Relay the command's own output (it names the exact `claude plugin install` line) and **recommend installing before applying**. Proceed only if the operator says to, and then never report the repo as governed (step 7). |
-   | starts `NOTE:` (exit 3, or exit 0 when the check could not load) | `unknown` | Say activation **was not established**, never that it passed; carry that into the confirmation and step 7. |
+   | starts `inactive:` (exit 1) | `inactive` | Relay the command's own output (it names the exact `claude plugin install` line) and **recommend installing before applying**. Proceed only if the operator says to, and then never report the repo as governed (step 8). |
+   | starts `NOTE:` (exit 3, or exit 0 when the check could not load) | `unknown` | Say activation **was not established**, never that it passed; carry that into the confirmation and step 8. |
 
 4. **Confirm intent** with the user before mutating anything. **Name `state_keys_removed` in
    the confirmation** when it is non-empty — it is the one part of the blast radius that lands
@@ -100,7 +101,9 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
    all non-framework files are preserved. Reversible via git revert."
    ```
 
-7. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
+7. **Move the change record onto fragments** (optional; offer it, never apply it unasked), a second commit: follow `/prawduct:doctor` check #22's procedure, in `${CLAUDE_SKILL_DIR}/../../skills/doctor/SKILL.md` — the one home for how `migrate-change-log` is run, its refusals relayed and its `--default-type` chosen.
+
+8. **Tell the user** the repo now runs fully on the plugin: governance comes from the plugin's
    Stop hook + SessionStart digest, skills are `/prawduct:*`, and framework updates arrive via
    the marketplace with zero repo diff. **Only on an `active` result from step 3** — after
    `inactive` say the files migrated but the repo is ungoverned until they run the install line;

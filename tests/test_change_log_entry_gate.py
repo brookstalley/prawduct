@@ -570,3 +570,177 @@ def test_a_failed_tracked_probe_is_git_failed_not_the_weak_check(tmp_path, monke
         code = coverage.check_change_log_entry(repo)
     assert code == 1
     assert "git-failed" in err.getvalue()
+
+
+# ---------------------------------------------------------------------------
+# Fragments: the one-file-per-scope change record (#1012)
+# ---------------------------------------------------------------------------
+
+FRAGMENT_DIR = ".prawduct/changes"
+
+
+def _fragment(scope: str, **front: str) -> str:
+    keys = {"schema": "1", "type": "fix", "scope": scope, "date": "2026-10-19", "title": f"{scope} work"}
+    keys.update(front)
+    body = "\n".join(f"{k}: {v}" for k, v in keys.items())
+    return f"---\n{body}\n---\nWhat changed.\n\n## Consumer note\nnone: test fixture\n"
+
+
+def test_a_new_valid_fragment_vouches_for_code(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "fragment-present: .prawduct/changes/x.md added" in result.stdout
+
+
+def test_an_invalid_fragment_is_refused_by_code(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x", type="bugfix"), "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "fragment-invalid" in result.stderr
+    assert "x.md: bad-type" in result.stderr
+
+
+def test_editing_another_scopes_fragment_does_not_vouch(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(repo, f"{FRAGMENT_DIR}/other.md", _fragment("other"), "other scope's record")
+    _git(repo, "checkout", "-q", "feature/x")
+    _git(repo, "merge", "-q", "main")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/other.md", _fragment("other", title="reworded"), "edit")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "fragment-edited-not-added" in result.stderr
+
+
+def test_an_edit_beside_an_added_fragment_passes(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(repo, f"{FRAGMENT_DIR}/other.md", _fragment("other"), "other scope's record")
+    _git(repo, "checkout", "-q", "feature/x")
+    _git(repo, "merge", "-q", "main")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/other.md", _fragment("other", title="reworded"), "edit")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x"), "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "fragment-present: .prawduct/changes/x.md" in result.stdout
+
+
+def test_without_fragments_the_legacy_verdict_is_unchanged(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry:" in result.stderr
+    assert "fragment" not in result.stderr
+
+
+def test_an_uncommitted_fix_does_not_pass_a_broken_committed_fragment(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(repo, f"{FRAGMENT_DIR}/x.md", _fragment("x", type="bugfix"), "add fragment")
+    (repo / FRAGMENT_DIR / "x.md").write_text(_fragment("x"))  # fixed on disk only
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "x.md: bad-type" in result.stderr
+
+
+def test_a_repo_with_fragments_is_told_to_add_a_fragment(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(repo, f"{FRAGMENT_DIR}/other.md", _fragment("other"), "repo records fragments")
+    _git(repo, "checkout", "-q", "feature/x")
+    _git(repo, "merge", "-q", "main")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    result = _run_probe(repo)
+    assert result.returncode == 1
+    assert "no-entry:" in result.stderr
+    assert ".prawduct/changes/<scope>.md" in result.stderr
+    assert "change-log.md is untouched" not in result.stderr
+
+
+def test_a_legacy_entry_still_passes_in_a_repo_with_fragments(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _git(repo, "checkout", "-q", "main")
+    _commit_file(repo, f"{FRAGMENT_DIR}/other.md", _fragment("other"), "repo records fragments")
+    _git(repo, "checkout", "-q", "feature/x")
+    _git(repo, "merge", "-q", "main")
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    _commit_file(
+        repo, CHANGE_LOG,
+        "# Change Log\n\n## 2026-06-10: new work\n"
+        "<!-- prawduct: type=fix | scope=x -->\n\n"
+        "## 2026-06-01: baseline entry\n\nBody.\n",
+        "add entry",
+    )
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "entry-present" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# The fragment directory is IGNORED (repo gitignores `.prawduct/` wholesale)
+#
+# The fragment twin of the untracked-log family above: a fragment git ignores
+# never reaches a diff, so `no-entry` with "add a fragment" would be advice no
+# amount of following could clear.
+# ---------------------------------------------------------------------------
+
+
+def _ignored_fragments_repo(tmp_path: Path, fragments: dict[str, str]) -> Path:
+    repo = _make_untracked_log_repo(tmp_path, None)
+    (repo / FRAGMENT_DIR).mkdir(parents=True)
+    (repo / FRAGMENT_DIR / ".gitkeep").write_text("")
+    for name, text in fragments.items():
+        (repo / FRAGMENT_DIR / name).write_text(text)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    return repo
+
+
+def test_ignored_fragments_pass_on_the_weaker_check_and_say_so(tmp_path):
+    result = _run_probe(_ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")}))
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("fragment-present-untracked:")
+    assert "Confirm by hand" in result.stdout and "!.prawduct/changes/" in result.stdout
+
+
+def test_ignored_fragment_directory_with_no_fragment_still_fails(tmp_path):
+    result = _run_probe(_ignored_fragments_repo(tmp_path, {}))
+    assert result.returncode == 1
+    assert "no-entry: git ignores .prawduct/changes/" in result.stderr
+    assert "!.prawduct/changes/" in result.stderr
+
+
+def test_an_ignored_invalid_fragment_is_refused_by_code(tmp_path):
+    result = _run_probe(_ignored_fragments_repo(tmp_path, {"x.md": _fragment("x", type="methodology")}))
+    assert result.returncode == 1
+    assert "fragment-invalid" in result.stderr and "x.md: bad-type" in result.stderr
+
+
+def test_following_the_unignore_advice_restores_the_real_check(tmp_path):
+    repo = _ignored_fragments_repo(tmp_path, {"x.md": _fragment("x")})
+    _commit_file(repo, ".gitignore", ".prawduct/*\n!.prawduct/changes/\n", "track fragments")
+    _git(repo, "add", FRAGMENT_DIR)
+    _git(repo, "commit", "-q", "-m", "add fragment")
+    result = _run_probe(repo)
+    assert result.returncode == 0, result.stderr
+    assert "fragment-present: .prawduct/changes/x.md added" in result.stdout
+
+
+def test_a_committed_fragment_that_is_not_utf8_is_refused_not_a_traceback(tmp_path):
+    repo = _make_branched_repo(tmp_path)
+    _commit_file(repo, "app.py", "print(2)\n", "code change")
+    path = repo / FRAGMENT_DIR / "x.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_fragment("x").encode() + b"\xff\xfe\n")
+    _git(repo, "add", str(path.relative_to(repo)))
+    _git(repo, "commit", "-q", "-m", "binary-ish fragment")
+    result = _run_probe(repo)
+    assert "Traceback" not in result.stderr
+    assert result.returncode in (0, 1) and ("fragment-" in result.stdout + result.stderr)

@@ -18,7 +18,12 @@ do is *silently pass* — a check that cannot read its inputs reports itself
 requires of the compliance canary), because an unrun check and a clean one are
 otherwise indistinguishable at the output.
 
-**Cost is proportional to the diff, never the repo.** Consumers are ~20x this
+**Cost is proportional to the diff, never the repo** — with one named
+exception, ``retired-claim-survives``, whose subject is text the diff did not
+touch (``retired_claims`` states its cost). It is also the one check that reads
+beyond the record set, into every tracked file: the phrase it looks for is a
+record's own retired wording, so a hit grades the record's sweep, not the
+product's content. Consumers are ~20x this
 repo's size, so every line-scoped check reads only the lines a change *added*
 (``git diff --unified=0``) rather than re-scanning whole files. That is also why
 the tripwire below does not drown in history: ``.prawduct/change-log.md`` holds
@@ -63,7 +68,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence, learnings_files
+from . import buildplan_refs, evidence, learnings_files, retired_claims
 from .core import resolve_build_plan_path
 
 #: Every check this module can run, in manifest order. Named so a consumer can
@@ -78,6 +83,8 @@ CHECKS = (
     "learnings-rule-too-long",
     "learnings-rule-body",
     "learnings-area-dead",
+    "change-fragment",
+    "retired-claim-survives",
 )
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
@@ -305,6 +312,78 @@ def _finding(check: str, path: str, line: "int | None", detail: str) -> dict:
     return {"check": check, "path": path, "line": line, "detail": detail}
 
 
+def _known_scopes(project_dir: Path, prawduct_dir: Path) -> "set[str] | None":
+    """Every scope the change record has ever declared: archived, live and pending.
+
+    ``None`` when the change log cannot be read, because "not found" in an
+    unread history is not an answer.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy; mirrors the module's import posture
+    from . import change_log  # noqa: PLC0415 — lazy; mirrors the module's import posture
+    from . import change_log_archive  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    text = change_log_archive.load_all_text(prawduct_dir)
+    if text is None:
+        return None
+    scopes = {
+        e.tags["scope"]
+        for e in change_log.parse_change_log(text)
+        if isinstance(e.tags.get("scope"), str)
+    }
+    scopes.update(
+        item.fragment.scope
+        for item in change_fragments.load_pending(project_dir)
+        if item.fragment is not None and item.fragment.scope
+    )
+    return scopes
+
+
+def _check_fragments(
+    project_dir: Path, prawduct_dir: Path, records: list[str]
+) -> "tuple[list[dict], list[str], set[str]]":
+    """Schema problems in the fragments this change touches, plus D5's reopen target.
+
+    The schema half repeats what PR Step 1c refuses, here so a reviewer meets it
+    beside the rest of the record. The reopen half is checked only here, because
+    it needs the whole history: ``reopens:`` must name a scope the archive, the
+    live log or a pending fragment declares. A fragment the change deleted is
+    skipped, since the release cut removes shipped ones.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    prefix = change_fragments.FRAGMENT_DIR_REL + "/"
+    changed = [rel for rel in records if rel.startswith(prefix)]
+    findings: list[dict] = []
+    if not changed:
+        return findings, [], set()
+    known: "set[str] | None | bool" = False  # read once, on the first reopen
+    gaps: list[str] = []
+    for rel in changed:
+        path = project_dir / rel
+        if not path.is_file():
+            continue
+        item = change_fragments.read_fragment_file(path)
+        findings.extend(_finding("change-fragment", rel, None, str(p)) for p in item.problems)
+        reopens = item.fragment.reopens if item.fragment is not None else None
+        if not reopens:
+            continue
+        if known is False:
+            known = _known_scopes(project_dir, prawduct_dir)
+        if known is None:
+            gaps.append(f"unknown-reopen-target unchecked on {rel} — the change log is unreadable")
+        elif reopens not in known:
+            findings.append(
+                _finding(
+                    "change-fragment",
+                    rel,
+                    None,
+                    f"unknown-reopen-target: `reopens: {reopens}` names no scope the change "
+                    "record has ever declared",
+                )
+            )
+    return findings, gaps, ({"change-fragment"} if gaps else set())
+
+
 def _check_suite_totals(path: str, added: "list[tuple[int, str]]") -> list[dict]:
     """Suite-total test claims on added lines — the subtraction's tripwire.
 
@@ -383,6 +462,11 @@ def _scope_declared_in_change_log(prawduct_dir: Path, scope: "str | None") -> bo
     """
     if not scope or not scope.strip():
         return False
+    from . import change_fragments  # noqa: PLC0415 — lazy; mirrors the module's import posture
+
+    # A pending fragment declares its scope by existing, named for it.
+    if (prawduct_dir.parent / change_fragments.FRAGMENT_DIR_REL / f"{scope.strip()}.md").is_file():
+        return True
     from . import change_log_archive  # noqa: PLC0415 — lazy; mirrors the module's import posture
 
     # Archived entries count: a scope declared by an entry that has since moved to
@@ -1475,6 +1559,13 @@ def lint_records(
             continue
         findings.extend(_check_governed_by(project_dir, prawduct_dir, rel, text))
 
+    fragment_findings, fragment_gaps, fragment_no_answer = _check_fragments(
+        project_dir, prawduct_dir, records
+    )
+    findings.extend(fragment_findings)
+    unchecked.extend(fragment_gaps)
+    no_answer.update(fragment_no_answer)
+
     # Not record-scoped: the rules corpus grows on a commit that changed nothing
     # else, and these read file sizes and glob reachability rather than added
     # lines. Resolved ONCE and shared, so the two arms cannot disagree about
@@ -1483,6 +1574,9 @@ def lint_records(
     for arm_findings, arm_gaps, arm_no_answer in (
         _check_learnings_budget(project_dir, prawduct_dir, base_tree, layout),
         _check_learnings_areas(project_dir, layout),
+        # Repo-wide by nature: a retired claim's survivors are exactly the text
+        # the change did not touch (`retired_claims` states the coverage).
+        retired_claims.check(project_dir, prawduct_dir),
     ):
         findings.extend(arm_findings)
         unchecked.extend(arm_gaps)

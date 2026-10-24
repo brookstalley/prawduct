@@ -310,6 +310,30 @@ class TestRegistration:
         ]
         assert all(c.feature == "governance" for c in produced)
 
+    def test_a_raising_run_holds_every_type_it_emits(self, tmp_path, monkeypatch):
+        """R-2: the registry key is a type no candidate carries, so a raise held
+        nothing and resolved all three files' open advisories. The registration
+        declares them, and a run that could not look holds them."""
+        from lib.advisory_store import read_store, run_sync_advisories
+
+        repo = _repo(tmp_path)
+        _write(repo, ".prawduct/project-state.yaml", _FILLER)
+        _write(repo, ".prawduct/change-log.md", _FILLER)
+        osp.register()
+        run_sync_advisories(repo, now="2026-09-01T00:00:00Z", sync_version="v1")
+        before = read_store(repo)["advisories"]
+        assert sorted((a["type"], a["state"]) for a in before) == [
+            ("oversized-change-log", "active"), ("oversized-project-state", "active"),
+        ]
+
+        def _boom(_prawduct_dir):
+            raise RuntimeError("could not read the threshold")
+
+        monkeypatch.setattr(osp, "oversized_file_threshold", _boom)
+        result = run_sync_advisories(repo, now="2026-09-02T00:00:00Z", sync_version="v1")
+        assert result["newly_resolved"] == []
+        assert read_store(repo)["advisories"] == before
+
     def test_the_composition_root_registers_it(self, tmp_path):
         from lib import advisory_store
 

@@ -1,6 +1,10 @@
 # Change Log — Prawduct Framework
 
-<!-- Append new entries at the top. Each entry is a ## section.
+<!-- Shipped history only: add nothing here. A branch records its change as a new
+     fragment, .prawduct/changes/<scope>.md (plugin/templates/change-fragment.md),
+     and `prawduct-hook cut-change-log` moves shipped fragments into
+     .prawduct/change-log-archive/ at each release. The entries below shipped
+     before that and stay as written.
      Historical entries (pre-2026-03-22) are in project-state.yaml under change_log_history. -->
 
 <!-- Older entries live in .prawduct/change-log-archive/YYYY-MM.md, moved there verbatim by `prawduct-hook archive-change-log`. -->

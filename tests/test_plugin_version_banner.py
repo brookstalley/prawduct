@@ -83,8 +83,8 @@ class TestBundledData:
         string — a prerelease included.
 
         Not the release it is a prerelease of. `develop` runs on `X.Y.Z-dev.N` and
-        accumulates that cycle's notes under `## vX.Y.Z-dev.N`, which the cut renames
-        to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
+        opens `## vX.Y.Z-dev.N` with a headline; the cut writes that cycle's fragment
+        notes under it and renames it to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
         a release that has not happened, and would pass on a file carrying no notes
         for the build actually running.
         """
@@ -95,7 +95,10 @@ class TestBundledData:
     def test_gates_json_well_formed(self):
         data = json.loads(GATES_JSON.read_text())
         gates = data["gates"]
-        assert {g["id"] for g in gates} >= {"reflection", "critic", "pr", "trivial"}
+        assert {g["id"] for g in gates} >= {"reflection", "critic", "pr"}
+        # #301 retired the trivial gate; a registry entry would announce and
+        # attribute a gate that can no longer fire.
+        assert "trivial" not in {g["id"] for g in gates}
         for g in gates:
             assert g["name"] and g["since"] and g["summary"]
             parts = g["since"].split(".")
@@ -103,7 +106,7 @@ class TestBundledData:
 
     def test_parse_gates_reads_registry(self, banner):
         ids = {g["id"] for g in banner.parse_gates(ROOT)}
-        assert {"reflection", "critic", "pr", "trivial"} <= ids
+        assert {"reflection", "critic", "pr"} <= ids
 
 
 # =============================================================================

@@ -10,6 +10,75 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.7.2
+
+**Products can now record each change as its own file, so parallel branches stop colliding over `change-log.md`; `/prawduct:doctor` offers the move.** Also in this release: a `tidy-available` advisory and `git-tidy` clean up merged branches and dead worktrees only on proof nothing is lost, the alignment pass judges whether the goals under the work are grounded, record-lint reports surviving copies of a retired claim, and a 57-item backlog burndown that retires the `Type: trivial` Stop gate.
+
+**`network-git-budget`**: - `git-tidy`'s fetch, `ls-remote`, `push --delete` and `gh` calls now wait up to 60 seconds,
+  instead of 15, before counting as failed. Set `PRAWDUCT_GIT_TIMEOUT` above 60 to allow longer.
+  Setting it below 60 now shortens only local git calls.
+
+**`git-hygiene`**: - A repo with merged branches or dead worktrees sees one new advisory at session start,
+  `tidy-available`. It changes nothing until the owner approves the dry run. Dismissing it holds
+  until the set of removals changes. To turn it off, set `Branch cleanup: off` in
+  `project-preferences.md`.
+- `/prawduct:pr` merge now deletes the merged branch and its remote copy itself, and it works
+  from a linked worktree. A local branch holding commits the merge did not take is kept and named.
+- An environment branch kept level with `main`, such as `staging`, reads as merged. List it in a
+  `Long-lived branches` row, and the dry run's note says so when it sees one.
+- The online dry run fetches with `--prune` and calls `gh pr list` against the product's own
+  repo. Without `gh`, remote deletions are listed as unchecked and not performed.
+
+**`retired-claim-survives`**: - A new record-lint check, `retired-claim-survives`, reads `Retires:` phrases (`docs/norms.md`
+  § Anatomy). A repo that declares none sees only a new zero in the review fact's `record_lint`
+  counts. A repo whose norms already carry a `Retires:` line with quoted phrases gets a WARNING
+  for each surviving copy at its next boundary review. Rewrite each one, or waive a quotation
+  with `prawduct:allow prawduct/retired-claim-survives -- <reason>`.
+- When `backlog_service_repo` is set, the check also reads every open issue from the local cache.
+  A cache that was never synced, or cannot be read, reports `retired-claim-survives unchecked`
+  until `prawduct-hook backlog sync` runs.
+
+**`backlog-burndown`**: - The `Type: trivial` Stop gate is retired. `trivial` remains a chunk type the Critic reviews: a
+  rationale the diff contradicts blocks, and a missing one is a warning.
+- `stamp-merged` and `regen-views` are removed. Both had been inert no-ops and were never
+  registered in a shipped `hooks.json`, so nothing that ran them did anything. That is why this
+  removal ships outside a major release.
+- Backlog writes by id (`comment`, `update`, `status`, `link`/`unlink`) refuse a target that is not
+  this repo's own tracker (`foreign-target`), as `file` already did.
+- New advisories: a missing handoff note under an active plan (at Stop), an oversized evidence
+  store, and a deferred backlog archive. A Stop that blocks now also prints the non-blocking
+  advisories.
+- The session Critic gate now sees work the session already committed, not only uncommitted work.
+- A release plan's `withheld` row may name an Issues blocker (`#N` or `owner/repo#N`).
+- A short plan's Stop gate credits a review to a chunk only when the review was dispatched for
+  that chunk, so a Stop can now ask for a chunk review it used to waive.
+- A short `repo#N` stored in an issue body (such as `superseded_by`) no longer resolves; stored refs
+  must be fully qualified (`owner/repo#N`).
+- `import` refuses the whole set before writing when any facet label is over 50 characters, and
+  names each offender.
+- Product-code detection works by exclusion, so repos in languages that were not listed before
+  (C#, PHP, TSX and others) now get the product-code nudges.
+- The Critic warns when a chunk declares an Exposed API the contract artifact does not describe.
+- `test-evidence record` warns, naming untracked files a review cannot cover.
+- "Green is evidence" now also fires on new code that no test mentions.
+- A quoted `#` in a `test_command` or other block value no longer cuts the value short.
+
+**`goal-grounding`**: Plans now say in their Goals response line whether any goal they rest on is ungrounded, and a
+product goal you answer with a hedge ("maybe others later") is kept as an open question with a
+revisit trigger instead of being settled for you. Expect an occasional one-sentence flag before a
+plan when much rests on an audience or ownership question nobody has answered, naming what it
+costs to leave open (you can still defer it), and a one-line
+note when work moves the product away from what its brief says (more users, public exposure).
+
+**`change-log-fragments-wave-2`**: Products can now record each change as its own file in `.prawduct/changes/` instead of editing the shared `change-log.md`, so two branches no longer conflict over the change record. New products start that way. For an existing product, `/prawduct:doctor` offers the move and makes it with your approval, as one revertible commit. Entries with no type need one `--default-type` you choose, and the dry run shows every guess first. An entry that recorded several changes under one header becomes one change each, and the dry run names any that the old log never showed as pending. On a trunk-based product that tracks versions, each PR cuts its own change record into the archive as it ships. Once a product records fragments and has nothing pending in the old log, prawduct now advises *removing* the `.prawduct/change-log.md merge=union` line it used to ask you to add, because union merges can bring archived entries back. The migration refuses until `.claude/settings.json` pins prawduct v3.7.2 or later, since older readers do not see fragments. In a product that gitignores `.prawduct/`, the PR's change-record check reads the fragment from disk and asks you to confirm it by hand.
+
+**`payload-fragment-closes`**: In products that record changes as fragments, the PR reviewer now checks that every item a fragment's `closes:` list names is really closed.
+
+**`change-log-fragments`**: Prawduct records its own changes as one file per scope in `.prawduct/changes/` and ships them with a
+new release command, `cut-change-log`. Every reader still accepts the single-file
+`.prawduct/change-log.md`, so nothing changes in your repo until you choose to move it onto fragments
+(see the change-log-fragments-wave-2 note).
+
 ## v3.7.1
 
 **Before building, the agent now aligns with you on goals — all its questions in one batch, up front — and the boundary review judges the work against them.** Also in this release: opt-in anonymous stats, the governance anchor moves to `AGENTS.md`, a new `clear-reason` Stop gate, and field fixes to `backlog file`, inline norm fields and test-evidence counting.

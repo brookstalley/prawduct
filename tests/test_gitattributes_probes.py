@@ -30,7 +30,9 @@ from lib.advisory_store import (
     ProjectState,
     clear_registry,
     make_codebase,
+    read_store,
     run_all_probes,
+    run_sync_advisories,
 )
 from lib.change_log import CHANGE_LOG_REL_PATH
 
@@ -226,7 +228,7 @@ class TestProbe:
         """
         repo = _repo(tmp_path)
         monkeypatch.setattr(gitstate, "git_merge_attribute", lambda *_a, **_k: None)
-        assert _probe(repo) == []
+        assert _probe(repo) is None, "could not look is not nothing to report (#917)"
         err = capsys.readouterr().err
         assert "NOTE:" in err
         assert CHANGE_LOG_REL_PATH in err
@@ -279,6 +281,95 @@ class TestProbe:
         ]
         assert len(fired) == 1
         assert fired[0].feature == "gitattributes"
+
+
+def _fragments_repo(tmp_path: Path, *, attribute: str | None, log_body: str = "") -> Path:
+    """A repo that records changes as fragments and still carries its live log.
+
+    ``log_body`` follows the log's title, so a test can leave a legacy entry
+    release-pending (or shipped) in it.
+    """
+    repo = _repo(tmp_path, attribute=attribute)
+    (repo / CHANGE_LOG_REL_PATH).write_text(f"# Change Log\n\n{log_body}")
+    (repo / ".prawduct" / "changes").mkdir()
+    (repo / ".prawduct" / "changes" / ".gitkeep").write_text("")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "fragments")
+    return repo
+
+
+_SHIPPED = "## 2026-08-01: old\n\n<!-- prawduct: type=feature | scope=old | release=v1.0.0 -->\n\nBody.\n"
+_PENDING = "## 2026-08-02: open\n\n<!-- prawduct: type=feature | scope=open -->\n\nBody.\n"
+
+
+class TestRetireUnion:
+    """In a fragments repo the probe's advice reverses: remove the attribute."""
+
+    def test_fires_once_no_legacy_entry_is_pending(self, tmp_path):
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        out = _probe(repo)
+        assert [c.type for c in out] == ["change-log-union-merge-retire"]
+        assert gap.UNION_MERGE_LINE in out[0].owner_action
+        assert out[0].owner_action.startswith("Remove the line")
+        assert out[0].recommended_action == ""
+
+    def test_waits_while_a_legacy_entry_is_pending(self, tmp_path):
+        # A branch may still be editing that entry; union is still doing its job.
+        repo = _fragments_repo(
+            tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_PENDING + "\n" + _SHIPPED
+        )
+        assert _probe(repo) == []
+
+    def test_never_advises_adding_union_in_a_fragments_repo(self, tmp_path):
+        # The add-direction would fire here on a legacy repo (control below).
+        repo = _fragments_repo(tmp_path, attribute=None, log_body=_SHIPPED)
+        assert _probe(repo) == []
+        (tmp_path / "legacy").mkdir()
+        legacy = _repo(tmp_path / "legacy")
+        assert [c.type for c in _probe(legacy)] == ["change-log-union-merge"]
+
+    def test_following_the_advice_clears_it(self, tmp_path):
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        assert _probe(repo)
+        (repo / ".gitattributes").write_text("")
+        _git(repo, "commit", "-q", "-am", "drop union")
+        assert _probe(repo) == []
+
+    def test_inert_when_a_fragments_repo_has_no_live_log(self, tmp_path):
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        _git(repo, "rm", "-q", CHANGE_LOG_REL_PATH)
+        _git(repo, "commit", "-q", "-m", "no log")
+        assert _probe(repo) == []
+
+    def test_says_why_and_could_not_look_when_the_attribute_cannot_be_read(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # R-2: `None`, not `[]` — git could not be asked, which is not "no advice".
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        monkeypatch.setattr(gitstate, "git_merge_attribute", lambda *_a, **_k: None)
+        assert _probe(repo) is None
+        err = capsys.readouterr().err
+        assert "NOTE:" in err and "did not check" in err
+
+    def test_says_why_and_could_not_look_when_the_log_cannot_be_read(self, tmp_path, capsys):
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        (repo / CHANGE_LOG_REL_PATH).write_bytes(b"# Change Log\n\n\xff\xfe\n")
+        assert _probe(repo) is None
+        err = capsys.readouterr().err
+        assert "NOTE:" in err and "could not be read" in err
+
+    def test_an_open_retire_advisory_is_held_when_git_cannot_be_asked(self, tmp_path, monkeypatch):
+        """R-2 end to end: the retire type is not the registry key, so only the
+        registration's ``emits`` keeps its open advisory from resolving."""
+        repo = _fragments_repo(tmp_path, attribute=gap.UNION_MERGE_LINE, log_body=_SHIPPED)
+        gap.register()
+        run_sync_advisories(repo, now="2026-09-01T00:00:00Z", sync_version="v1")
+        before = read_store(repo)["advisories"]
+        assert [(a["type"], a["state"]) for a in before] == [("change-log-union-merge-retire", "active")]
+        monkeypatch.setattr(gitstate, "git_merge_attribute", lambda *_a, **_k: None)
+        result = run_sync_advisories(repo, now="2026-09-02T00:00:00Z", sync_version="v1")
+        assert result["newly_resolved"] == []
+        assert read_store(repo)["advisories"] == before
 
 
 # ---------------------------------------------------------------------------

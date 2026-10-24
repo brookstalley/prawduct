@@ -9,13 +9,15 @@
 # No lockfile: `uv.lock` is gitignored here (dependencies resolve fresh per environment, as CI's
 # `pip install ".[dev]"` does), so setup resolves the `dev` extra and the command runs `--no-sync`.
 #
-# A runner's checkout has the tree but no history, so tests marked `requires_history` are
-# selected out here; a plain `pytest` run, the evidence recorder's run and CI still run them.
+# A runner's checkout has the tree but no history and no backlog cache, so tests marked
+# `requires_history` or `requires_local_cache` are selected out here; the evidence recorder runs
+# exactly those locally (`test_commands` in `.prawduct/project-state.yaml`), and a plain `pytest`
+# run and CI still run them.
 # Release tags do reach runners ([git] below), as trees, which is all the tag-reading tests use.
 manifest_version = 2
 name = "prawduct"
 executor = "container"
-command = ["uv", "run", "--no-sync", "python", "-m", "pytest", "-m", "not requires_history"]
+command = ["uv", "run", "--no-sync", "python", "-m", "pytest", "-m", "not requires_history and not requires_local_cache"]
 default_selection = ["tests/"]
 env_inputs = ["pyproject.toml"]
 

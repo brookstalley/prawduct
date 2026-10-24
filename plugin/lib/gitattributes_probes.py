@@ -1,13 +1,20 @@
 """Post-sync advisory probe for the change-log's merge attribute.
 
-One probe: it recommends ``merge=union`` for ``.prawduct/change-log.md`` when the
-committed log has no such gitattribute. Every branch writes its entry at the TOP
-of that file, so two branches always edit the same first lines and merging an
-advanced base conflicts there every single time — in both observed forced base
-syncs on a consumer repo, prawduct's own record files were 100% of the conflicts
-and the change-log led them. Git's ``union`` merge driver keeps both sides'
-lines instead of raising a conflict, which is the shape an append-only entry log
-wants.
+One probe, two directions, decided by which change record the repo keeps.
+
+In a repo still on the single-file log, it recommends ``merge=union`` for
+``.prawduct/change-log.md`` when the committed log has no such gitattribute. Every
+branch writes its entry at the TOP of that file, so two branches always edit the
+same first lines and merging an advanced base conflicts there every single time —
+in both observed forced base syncs on a consumer repo, prawduct's own record
+files were 100% of the conflicts and the change-log led them. Git's ``union``
+merge driver keeps both sides' lines instead of raising a conflict, which is the
+shape an append-only entry log wants.
+
+In a repo that records changes as fragments (``.prawduct/changes/``), no branch
+prepends to the log, so it recommends REMOVING the attribute once no legacy entry
+is release-pending (:func:`_retire_union_candidates` says why). Everything below
+about advice, self-resolution and failing soft holds for both directions.
 
 **Advisory-only, and that is a norm, not a convenience.** The plugin writes
 nothing into a governed repo beyond its own ``.prawduct/`` state, the evidence
@@ -52,7 +59,8 @@ clone answering for itself is the honest scope.
 
 **Fail soft, never fail silent.** Three states, not two: the attribute is
 ``union``, the attribute is something else, or **git could not be asked**. The
-third is not evidence of the second, so it raises no advisory *and* — when the
+third is not evidence of the second, so it raises no advisory, returns ``None``
+(could not look — an open advisory stays open rather than resolving) *and* — when the
 log is committed, which is when the harm is live — prints a ``NOTE:`` naming
 what went unchecked. A degraded advisory path that says nothing manufactures the
 false success it exists to prevent. When git cannot be asked at all (no repo, no
@@ -67,6 +75,7 @@ from __future__ import annotations
 
 from . import gitstate
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
+from .change_fragments import FRAGMENT_DIR_REL
 from .change_log import CHANGE_LOG_REL_PATH
 from .core import log
 
@@ -99,6 +108,10 @@ def probe_change_log_union_merge(state: ProjectState, codebase: Codebase):
     """
     if not (codebase.root / CHANGE_LOG_REL_PATH).is_file():
         return []
+    if (codebase.root / FRAGMENT_DIR_REL).is_dir():
+        # A repo that records changes as fragments prepends nothing to the
+        # live log, so the reason for union is gone and only its harm is left.
+        return _retire_union_candidates(codebase)
 
     attr = gitstate.git_merge_attribute(codebase.root, CHANGE_LOG_REL_PATH)
     if attr == "union":
@@ -114,7 +127,7 @@ def probe_change_log_union_merge(state: ProjectState, codebase: Codebase):
             "which merge driver applies to it — this session did not check whether "
             "the log is protected against merge conflicts."
         )
-        return []
+        return None  # could not look — not "nothing to report" (#917)
 
     return [
         AdvisoryCandidate(
@@ -153,8 +166,72 @@ def probe_change_log_union_merge(state: ProjectState, codebase: Codebase):
     ]
 
 
+def _retire_union_candidates(codebase: Codebase) -> list | None:
+    """Advise removing ``merge=union`` from a log no branch prepends to any more.
+
+    In a fragments repo the live log holds shipped history that only the size
+    archive edits, by deleting blocks. Union merges deletions badly: a branch
+    that moved entries out and one that did not merge back into a log holding
+    them again, which is how archived entries came back with no conflict raised
+    (#857). The advice waits until no legacy entry is still release-pending,
+    because until then a branch may still be editing one, and it is advice only:
+    ``.gitattributes`` is the owner's file, here as in the opposite direction.
+    """
+    attr = gitstate.git_merge_attribute(codebase.root, CHANGE_LOG_REL_PATH)
+    if attr is None and gitstate.git_path_is_tracked(codebase.root, CHANGE_LOG_REL_PATH) is True:
+        log(
+            f"NOTE: {CHANGE_LOG_REL_PATH} is committed, but git could not be asked "
+            "which merge driver applies to it — this session did not check whether "
+            "a leftover merge=union could bring archived entries back."
+        )
+        return None  # could not look — not "nothing to report" (#917, R-2)
+    if attr != "union":
+        return []
+    from . import change_log  # noqa: PLC0415 — lazy; only a fragments repo with union set gets here
+    from . import release_readiness  # noqa: PLC0415 — lazy, for the same reason
+
+    try:
+        text = (codebase.root / CHANGE_LOG_REL_PATH).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        log(
+            f"NOTE: {CHANGE_LOG_REL_PATH} could not be read ({exc}) — this session did "
+            "not check whether its leftover merge=union is safe to remove."
+        )
+        return None  # could not look (R-2)
+    if release_readiness.release_pending_scopes(change_log.parse_change_log(text)):
+        return []
+    return [
+        AdvisoryCandidate(
+            type="change-log-union-merge-retire",
+            evidence=(
+                f"{FRAGMENT_DIR_REL}/ records this repo's changes, no {CHANGE_LOG_REL_PATH} "
+                "entry is release-pending, and git still resolves merge=union for it",
+            ),
+            trigger_summary=(
+                f"{CHANGE_LOG_REL_PATH} still has a `merge=union` gitattribute, but this "
+                "repo records changes as fragments, so no branch prepends to it any more; "
+                "union now only lets merges bring archived entries back"
+            ),
+            owner_action=(
+                f"Remove the line `{UNION_MERGE_LINE}` from `.gitattributes` and commit it. "
+                "It was there because every branch prepended to the log; fragments ended "
+                "that, and the archive moves that still edit the log are exactly what union "
+                "merges wrongly. Prawduct never writes that file itself, which is why this "
+                "one is yours."
+            ),
+            recommended_action="",
+            alternative_actions=("/prawduct:doctor",),
+            priority="info",
+        )
+    ]
+
+
 def register() -> None:
     """Register the change-log merge-attribute probe. Idempotent (register_probe overwrites)."""
     register_probe(
-        FEATURE, "change-log-union-merge", PROBE_VERSION, probe_change_log_union_merge
+        FEATURE,
+        "change-log-union-merge",
+        PROBE_VERSION,
+        probe_change_log_union_merge,
+        emits=("change-log-union-merge-retire",),
     )

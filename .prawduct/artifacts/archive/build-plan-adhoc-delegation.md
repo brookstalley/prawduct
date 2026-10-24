@@ -292,9 +292,10 @@ deferral needs a durable home and this is the non-judgeable one:
 - `plugin/lib/norm_probes.py` (~line 1044) and `tests/test_norm_probes.py` (~line 680) both still
   assert that *no* surface renders `alternative_actions`. R-9 made that false. Nothing reads either
   sentence, so the tree is correct — but a future probe author would conclude the field is dead,
-  which is the exact reasoning that produced R-9.
+  which is the exact reasoning that produced R-9. **Taken 2026-10-21 (#785).**
 - Same file: the norm-health advisory duplicates its Health Check #14 route under `show`, because
-  that route was folded into `trigger_summary` while the field was inert. Cosmetic.
+  that route was folded into `trigger_summary` while the field was inert. Cosmetic. **Taken
+  2026-10-21 (#785)** — the route is in `trigger_summary` only.
 - `tests/test_v5_methodology.py`'s cross-carrier class pins the shared `ready to build` qualifier
   but not the work-cycle-boundary exemption R-7 added, so a reword could drop the exemption
   silently.

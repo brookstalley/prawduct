@@ -1036,6 +1036,40 @@ class TestNextActionLine:
             "no longer dispatches"
         )
 
+    def test_the_closes_that_ask_for_a_fix_carry_the_blast_radius_check(self):
+        """#731: three rounds in a row each opened on a defect the previous
+        round's fix made — a fix whose dependents it never visited. The check
+        rides the two closes that tell the builder to fix, and only those."""
+        blocking = cc.next_action_line("rev-1", 1, 0, 0)
+        warnings = cc.next_action_line("rev-1", 0, 2, 1)
+        clean = cc.next_action_line("rev-1", 0, 0, 0)
+        assert gates.BLAST_RADIUS_CHECK in blocking, blocking
+        assert gates.BLAST_RADIUS_CHECK in warnings, warnings
+        assert gates.BLAST_RADIUS_CHECK not in clean, clean
+        # No fix is made now when a later review carries it.
+        from lib import critic_mode
+
+        rides = cc.next_action_line(
+            "rev-1", 0, 2, 0, rides_next_review=critic_mode.OWED_LATER_CHUNK
+        )
+        assert gates.BLAST_RADIUS_CHECK not in rides, rides
+        # Nor does the reviewer-context directive carry it.
+        assert gates.BLAST_RADIUS_CHECK not in cc._BATCH_FIX_DIRECTIVE
+
+    def test_the_blast_radius_check_names_an_act_per_shape(self):
+        text = gates.BLAST_RADIUS_CHECK
+        for act in ("grep every caller", "check the contract that governs it",
+                    "name what it no longer reaches"):
+            assert act in text, act
+
+    def test_the_blast_radius_check_has_one_home(self):
+        lib = ROOT / "lib"
+        homes = [
+            p.name for p in sorted(lib.glob("*.py"))
+            if "check each fix's dependents" in p.read_text(encoding="utf-8")
+        ]
+        assert homes == ["gates.py"], homes
+
     def test_blocking_names_one_commit_and_one_verify_pass(self):
         line = cc.next_action_line("rev-1", 2, 5, 3)
         assert "2 BLOCKING" in line
@@ -2030,13 +2064,13 @@ class TestBatchFixDirective:
 
     def test_directive_names_every_protected_path_class(self):
         """The other direction, and the one hand-maintenance missed: every bound
-        in the protected set (`buildplan_refs._TRIVIAL_PROTECTED_PATHS`, the one
+        in the protected set (`buildplan_refs._GOVERNANCE_PROTECTED_PATHS`, the one
         home) must be named, or the directive calls a protected `.md` free to
         write mid-review — which moves the tree the review is judging. Derived
         from the set, so a new member is covered the day it lands."""
         from lib import buildplan_refs
 
-        for path, _exact, _label in buildplan_refs._TRIVIAL_PROTECTED_PATHS:
+        for path, _exact, _label in buildplan_refs._GOVERNANCE_PROTECTED_PATHS:
             assert f"`{path}`" in cc._BATCH_FIX_DIRECTIVE, (
                 f"the directive does not name protected path `{path}`"
             )
@@ -4766,12 +4800,7 @@ class TestRosterKeyedToRiskSurface:
         exclusive opt-out, so the derived defaults and `boundary-patterns.md`
         paths stop matching — a one-file change to a gate-kernel path that
         escalates in an UNDECLARED repo reviews single-pass here. The volume
-        escalator is not a surface and survives the opt-out. And
-        ``has_product_risk_declaration`` still reads `[]` as *no declaration*
-        (truthiness): the roster no longer consults it, but "has this repo
-        named its surfaces" is a different question from "does this path
-        match one", and the two readers of one key are kept distinct on
-        purpose so an ask about declaring cannot be silenced by an empty list.
+        escalator is not a surface and survives the opt-out.
         """
         import sys
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "plugin"))
@@ -4781,7 +4810,6 @@ class TestRosterKeyedToRiskSurface:
         prawduct_dir.mkdir(exist_ok=True)
         (prawduct_dir / "project-state.yaml").write_text("risk_surfaces: []\n")
 
-        assert risk_mod.has_product_risk_declaration(prawduct_dir) is False
         surfaces, source = risk_mod.resolve_surfaces(prawduct_dir)
         assert surfaces == [] and source == risk_mod.SOURCE_DECLARED
 
@@ -4836,9 +4864,9 @@ class TestRosterKeyedToRiskSurface:
         repo_root = Path(__file__).resolve().parent.parent
         sys.path.insert(0, str(repo_root / "plugin"))
         from lib import risk as risk_mod
-        assert risk_mod.has_product_risk_declaration(repo_root / ".prawduct")
         surfaces, source = risk_mod.resolve_surfaces(repo_root / ".prawduct")
         assert source == risk_mod.SOURCE_DECLARED
+        assert surfaces, "declared, and non-empty — `[]` would be the opt-out"
         # Declared list must still cover the framework's own machinery, or the
         # opt-in would silently change which reviews escalate.
         for real in ("plugin/lib/gates.py", "plugin/bin/prawduct-hook",

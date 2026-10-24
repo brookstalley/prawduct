@@ -171,9 +171,15 @@ def _write_partial(prawduct: Path, role: str, *, commit: str = _MOCK_HEAD) -> No
     }))
 
 
-def _dispatched_real_repo(tmp_path: Path) -> tuple[Path, Path, dict]:
+def _dispatched_real_repo(
+    tmp_path: Path, *, commit_edit: bool = False
+) -> tuple[Path, Path, dict]:
     """A real git repo with an active plan, a session edit, and a dispatched
     review. Returns ``(repo, prawduct_dir, env)``.
+
+    ``commit_edit`` records the session base tree (as ``cmd_clear`` does) and
+    COMMITS the session's edit before dispatch, so the porcelain is clean and
+    only the session work span still holds the work.
 
     Real git rather than the mock: the dispatch manifest and the gate's own tree
     capture have to agree on real tree SHAs, so a faked HEAD makes the self-heal
@@ -189,7 +195,18 @@ def _dispatched_real_repo(tmp_path: Path) -> tuple[Path, Path, dict]:
     subprocess.run([*git, "add", "-A"], cwd=str(repo), check=True, timeout=15)
     subprocess.run([*git, "commit", "-q", "-m", "c1"], cwd=str(repo), check=True, timeout=15)
     prawduct = _active_plan_repo(repo)
+    if commit_edit:
+        base_tree = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"], cwd=str(repo),
+            capture_output=True, text=True, check=True, timeout=15,
+        ).stdout.strip()
+        (prawduct / ".session-base-tree").write_text(base_tree)
     (repo / "src" / "app.py").write_text("x = 2\n")  # the session's edit
+    if commit_edit:
+        # On a feature branch, so the committed bundle has a base to review
+        # against — a committed bundle is cumulative's scope, not chunk's.
+        subprocess.run([*git, "checkout", "-q", "-b", "feature"], cwd=str(repo), check=True, timeout=15)
+        subprocess.run([*git, "commit", "-q", "-am", "c2"], cwd=str(repo), check=True, timeout=15)
 
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
@@ -201,7 +218,8 @@ def _dispatched_real_repo(tmp_path: Path) -> tuple[Path, Path, dict]:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     begin = subprocess.run(
-        ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+        ["python3", str(HOOK), "critic-begin", "--mode",
+         "cumulative" if commit_edit else "chunk"],
         capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
     )
     assert begin.returncode == 0, begin.stderr
@@ -367,6 +385,33 @@ class TestChunk05ConsolidateOrBlock:
         assert [ev["trigger"] for ev in events if ev["event"] == "review.critic"] == [
             "session-end-backstop"
         ]
+
+    def test_committed_session_still_self_heals(self, tmp_path):
+        """The backstop fires on the session work span the composition gate
+        reads (R-5), not on porcelain: a session that COMMITTED its work with a
+        finished-but-unconsolidated review is consolidated at Stop, not blocked
+        with "no review evidence"."""
+        repo, prawduct, env = _dispatched_real_repo(tmp_path, commit_edit=True)
+        porcelain = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=str(repo),
+            capture_output=True, text=True, check=True, timeout=15,
+        ).stdout
+        assert porcelain.strip() == "", porcelain  # only the span holds the work
+        manifest = json.loads(
+            (prawduct / ".critic-partials" / "manifest.json").read_text()
+        )
+        _write_partial(prawduct, "reviewer", commit=manifest["commit_reviewed"])
+        result = subprocess.run(
+            ["python3", str(HOOK), "stop"],
+            capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
+        )
+        assert result.returncode == 0, (
+            f"a committed session's complete partials must self-heal. "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert _GENERIC_CRITIC_MSG not in result.stderr
+        assert "self-healed" in result.stderr
+        assert not (prawduct / ".critic-active").is_file()
 
     def test_incomplete_partials_block_naming_missing(self, tmp_path):
         """Marker + manifest but a missing reviewer → block naming who's missing;

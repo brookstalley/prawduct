@@ -53,12 +53,13 @@ STATUS_UNREADABLE = "unreadable"
 STATUS_UNWRITABLE = "unwritable"
 
 
-def _read_text(path: Path) -> str | None:
-    """File text, or None when it cannot be decoded as utf-8.
+def _read_text(path: Path) -> tuple[str | None, str]:
+    """``(text, "")``, or ``(None, cause)`` when the file cannot be read.
 
-    A missing file and an undecodable one are different answers and the caller
-    distinguishes them, so this returns None only for the latter; existence is
-    checked separately.
+    ``cause`` names WHICH failure — permission denied and not-utf-8 send the
+    owner to different fixes, and folding them sent a permission problem to an
+    encoding fix (#796). A missing file is a different answer again, checked
+    separately by the caller.
 
     ``newline=""`` disables universal-newline translation. Without it a CRLF
     file is read as ``\n``-only and the repair writes it back that way — the
@@ -68,9 +69,11 @@ def _read_text(path: Path) -> str | None:
     """
     try:
         with path.open("r", encoding="utf-8", newline="") as handle:
-            return handle.read()
-    except (OSError, UnicodeDecodeError):
-        return None
+            return handle.read(), ""
+    except UnicodeDecodeError as exc:
+        return None, f"not decodable utf-8 ({exc.reason} at byte {exc.start})"
+    except OSError as exc:
+        return None, exc.strerror or type(exc).__name__
 
 
 def _scaffold_line_numbers(text: str) -> list[int]:
@@ -103,13 +106,13 @@ def check(project_dir: str | Path) -> dict:
             "rows": [],
             "detail": "no project-preferences.md — nothing to inspect",
         }
-    text = _read_text(path)
+    text, cause = _read_text(path)
     if text is None:
         return {
             "status": STATUS_UNREADABLE,
             "path": str(path),
             "rows": [],
-            "detail": "project-preferences.md is not decodable utf-8 — check declined",
+            "detail": f"project-preferences.md could not be read: {cause} — check declined",
         }
     rows = _scaffold_line_numbers(text)
     if not rows:
@@ -146,13 +149,13 @@ def repair(project_dir: str | Path, *, apply: bool = False) -> dict:
     if state["status"] != STATUS_LEFTOVER:
         return {**state, "applied": False, "removed": 0}
     path = Path(state["path"])
-    text = _read_text(path)
+    text, cause = _read_text(path)
     if text is None:  # raced with an edit between check and repair
         return {
             "status": STATUS_UNREADABLE,
             "path": str(path),
             "rows": [],
-            "detail": "became undecodable between check and repair — nothing written",
+            "detail": f"could not be read between check and repair: {cause} — nothing written",
             "applied": False,
             "removed": 0,
         }

@@ -35,7 +35,7 @@ prawduct/
 │   │   ├── building.md                # The build cycle, including the Critic review cycle
 │   │   ├── reflection.md              # The learning loop
 │   │   ├── session-hygiene.md         # How a turn ends: the standing block and the forward notes
-│   │   ├── delegation.md              # What a delegate verifies, and what a brief must say
+│   │   ├── delegation.md              # When to delegate, what a delegate verifies, and what it costs
 │   │   └── session-digest.md          # SessionStart additionalContext digest
 │   ├── docs/                          # principles.md (the 26), norms.md, waivers.md, discipline.md,
 │   │                                  #   doctor-vs-janitor.md, governance-telemetry.md, runbook-authoring.md,
@@ -72,8 +72,9 @@ prawduct/
 ├── .claude/rules/learnings/          # learnings rules, loaded by the harness (core.md always; <area>.md by paths:)
 ├── .prawduct/                         # Framework's own prawduct state — it governs itself
 │   ├── project-state.yaml             # Source of truth for framework iteration
-│   ├── change-log.md                  # what shipped, per scope, with its release= tag
-│   ├── change-log-archive/            # older entries, moved verbatim by month (archive-change-log)
+│   ├── changes/                       # one fragment per release-pending scope (<scope>.md); the cut removes shipped ones
+│   ├── change-log.md                  # shipped history from before fragments, with release= tags
+│   ├── change-log-archive/            # shipped entries by month: moved verbatim (archive-change-log) or cut from fragments (cut-change-log)
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
 │   ├── runbooks/                      # operational procedures (release cut, pruned promotion)
@@ -100,8 +101,9 @@ my-product/
 ├── .prawduct/
 │   ├── project-state.yaml             # product state (classification, decisions, health_check; distribution: plugin)
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
-│   ├── change-log.md                  # change log (recent + release-pending entries)
-│   ├── change-log-archive/            # older entries by month, created once the log outgrows its threshold
+│   ├── changes/                       # the change record: one fragment per change, all release-pending
+│   ├── change-log-archive/            # shipped history by month, written by the release cut
+│   ├── change-log.md                  # repos onboarded before fragments: the legacy log, until `migrate-change-log`
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
 │   │   ├── project-preferences.md     # developer preferences (language, testing, style)

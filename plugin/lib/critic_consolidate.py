@@ -586,7 +586,8 @@ _RIDES_BOUNDARY_REVIEW_LEAD = (
 #: its own fix. The re-derivation pointer still ships, once, inside the clause
 #: that makes the claim needing re-deriving.
 _IF_YOU_FIX_SOME = (
-    " If you fix some, " + gates.FIX_ORDER + ". Dispatch exits 3 (`no review"
+    " If you fix some, " + gates.FIX_ORDER + "." + gates.BLAST_RADIUS_CHECK
+    + " Dispatch exits 3 (`no review"
     " needed`) when the fixes touch nothing judgeable, so dispatching is how you"
     " find out, and exit 3 is the answer, not a cue to retry in another mode."
     " Judge by the gate after the commit, not by output printed before it."
@@ -925,6 +926,7 @@ def next_action_line(
             " every warning and note in the same pass (fix, or accept with"
             f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`,'
             " which needs no review and moves no tree): " + gates.FIX_ORDER + "."
+            + gates.BLAST_RADIUS_CHECK
             + _RIDE_ALONG_ROUTE
             + price
         )

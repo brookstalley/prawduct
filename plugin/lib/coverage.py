@@ -3,8 +3,7 @@
 Extracted from ``bin/prawduct-hook`` (STH-9V4K, Chunk 5) — the diff-base
 resolution layer (honoring the ``base_branch:`` gitflow knob) and the coverage /
 PR fast-path inspection it feeds: which files changed against the base, whether a
-PR diff is documentation-only, and whether every commit on the branch is
-``Type: trivial`` fileset-eligible. Pure git inspection + path classification —
+PR diff is documentation-only. Pure git inspection + path classification —
 no mutation.
 
 Depends on its lib siblings ``core`` (for ``read_str_yaml_key`` — the canonical
@@ -545,8 +544,14 @@ def diagnose_base_advance_transfer(
 
         {"status": "match", "prior_fact_id", "prior_reviews", "prior_base",
          "prior_head", "files": [...], "advance_files": [...] | None}
-      | {"status": "unavailable", "reason": str}
+      | {"status": "unavailable", "reason": str, "unresolved_trees": [...]}
       | None                                    # no transferable prior span
+
+    ``unresolved_trees`` (#1002) names the tree objects a diff that could not
+    be computed was asked about — the missing input — so the remedy can say
+    what would make the check runnable rather than only that it was not. Both
+    endpoints of a failed diff are listed, since git's failure does not say
+    which side it lacked.
 
     ``advance_files`` is ``None`` — not ``[]`` — when the advance's own diff
     could not be read. It is message detail only, so an unreadable one does not
@@ -567,7 +572,11 @@ def diagnose_base_advance_transfer(
 
     branch_diff = diff_fn(base_tree, head_tree)
     if branch_diff is None:
-        return {"status": "unavailable", "reason": "branch diff unresolvable"}
+        return {
+            "status": "unavailable",
+            "reason": "branch diff unresolvable",
+            "unresolved_trees": [base_tree, head_tree],
+        }
     required = set(coverage_algebra.judgeable_files(branch_diff))
     if not required:
         # Nothing judgeable differs across the required span — that composes as
@@ -632,6 +641,10 @@ def diagnose_base_advance_transfer(
     # reads as "could not be computed" and denies, the same direction as every
     # other failure here.
     degraded: "str | None" = None
+    unresolved: list[str] = []
+
+    def _unresolved(*trees: str) -> None:
+        unresolved.extend(t for t in trees if t not in unresolved)
 
     def _survivors(candidates: list[str], anchor: str) -> list[str]:
         nonlocal degraded
@@ -645,6 +658,7 @@ def diagnose_base_advance_transfer(
             )
             if differing is None:
                 degraded = degraded or "a candidate tree could not be diffed"
+                _unresolved(candidate, anchor)
             elif not differing:
                 kept.append(candidate)
         return kept
@@ -664,6 +678,7 @@ def diagnose_base_advance_transfer(
             prior_diff = diff_fn(prior_base, prior_head)
             if prior_diff is None:
                 degraded = degraded or "a candidate span could not be diffed"
+                _unresolved(prior_base, prior_head)
                 continue
             if set(coverage_algebra.judgeable_files(prior_diff)) != required:
                 continue
@@ -695,7 +710,9 @@ def diagnose_base_advance_transfer(
                 ),
             }
 
-    return {"status": "unavailable", "reason": degraded} if degraded else None
+    if not degraded:
+        return None
+    return {"status": "unavailable", "reason": degraded, "unresolved_trees": unresolved}
 
 
 def count_branch_rounds(
@@ -1152,6 +1169,158 @@ def _entry_check_without_history(project_dir: Path) -> int:
     return 0
 
 
+def _fragment_check_without_history(project_dir: Path) -> int:
+    """The weaker fragment check available when git ignores the fragment directory.
+
+    The fragment-side twin of :func:`_entry_check_without_history`, weakened for
+    the same reason: with no committed history, "this branch ADDED a fragment"
+    cannot be asked, so this reads the fragments on disk and says which check
+    the caller got. It still fails on the states visible from disk: no fragment
+    at all, or one that does not validate.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    prefix = change_fragments.FRAGMENT_DIR_REL + "/"
+    unignore = (
+        "To restore the real check, track the directory: `.prawduct/*` plus "
+        f"`!{prefix}` — a bare `.prawduct/` cannot be negated."
+    )
+    items = change_fragments.load_pending(project_dir)
+    problems = [f"{item.path.name}: {problem}" for item in items for problem in item.problems]
+    if problems:
+        print(
+            "fragment-invalid: fix each problem and re-run:\n  " + "\n  ".join(problems),
+            file=sys.stderr,
+        )
+        return 1
+    if not items:
+        print(
+            f"no-entry: git ignores {prefix}, and the directory on disk holds no fragment. "
+            f"Add `{prefix}<scope>.md` for this work (template: `templates/change-fragment.md`) "
+            f"before opening the PR. {unignore}",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"fragment-present-untracked: git ignores {prefix}, so whether this branch added "
+        f"a fragment cannot be checked; {len(items)} valid fragment(s) on disk "
+        f"({', '.join(item.path.name for item in items[:3])}). Confirm by hand that this "
+        f"branch's work has one. {unignore}"
+    )
+    return 0
+
+
+def _cut_record_verdict(project_dir: Path, base: str, record) -> int | None:
+    """Exit 0 ``fragment-cut`` when the branch's record is an archive entry it
+    added by cutting its own fragment (a trunk PR, Step 1d), else ``None``.
+
+    The cut removes the fragment before the review, so the diff no longer holds
+    it; :func:`change_fragments.branch_change_record` is what still finds it.
+    """
+    archived = [change for change in record.changes if change.source == "archive"]
+    if record.error is not None or not archived:
+        return None
+    scopes = ", ".join(sorted({change.scope for change in archived}))
+    print(f"fragment-cut: {scopes} cut into the change-log archive in {base}...HEAD.")
+    return 0
+
+
+def _fragment_entry_verdict(
+    project_dir: Path, base: str, files: list[str], judgeable: list[str]
+) -> int | None:
+    """Step 1c's answer when the branch touches the fragment directory, else ``None``.
+
+    A fragment is the one-file-per-scope change record (`lib/change_fragments.py`
+    owns the format). A branch passes by ADDING one that validates; editing a
+    fragment it did not add vouches for nothing, for the reason editing a legacy
+    entry does not. Every changed fragment is validated, not only the added
+    ones, so an edit that breaks another scope's record is refused here rather
+    than at the release gate. ``None`` hands the branch to the legacy checks, so
+    a repo still on the single-file log sees no change.
+    """
+    from . import change_fragments  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+    prefix = change_fragments.FRAGMENT_DIR_REL + "/"
+    changed = [f for f in files if f.startswith(prefix) and f.endswith(".md")]
+    if not changed:
+        if not (project_dir / change_fragments.FRAGMENT_DIR_REL).is_dir():
+            return None
+        # A trunk branch that cut its own fragment at Step 1d has none in its
+        # diff, and its Step 1d may also have moved shipped history out of the
+        # live log, so the record is asked for before the log is looked at.
+        record = change_fragments.branch_change_record(project_dir, base)
+        if record.error is not None:
+            print(f"git-failed: {record.error}. Check the change record by hand.", file=sys.stderr)
+            return 1
+        cut = _cut_record_verdict(project_dir, base, record)
+        if cut is not None:
+            return cut
+        # A branch that adds a legacy entry instead still goes to the legacy
+        # checks, which is the dual-shape window: either record is accepted.
+        if CHANGE_LOG_REL_PATH in files:
+            return None
+        from . import gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+
+        # A fragment git would ignore can never be in the diff, so its
+        # absence here proves nothing, and a remedy saying "add one" could
+        # not clear the gate however often it was followed.
+        if gitstate.git_path_is_ignored(project_dir, f"{prefix}0000.md"):
+            return _fragment_check_without_history(project_dir)
+        sample = ", ".join(judgeable[:3])
+        print(
+            f"no-entry: branch changes code ({sample}) but adds no change record — "
+            f"add `{prefix}<scope>.md` for this work (template: "
+            "`templates/change-fragment.md`) before opening the PR.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Judged as committed, because that is what merges: a fix sitting only in
+    # the working tree must not pass for a broken committed fragment. A path the
+    # branch deleted has no HEAD version and is skipped.
+    problems = []
+    for rel in changed:
+        shown = subprocess.run(
+            ["git", "show", f"HEAD:{rel}"],
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            # A non-UTF-8 byte must reach the validator as a problem, not crash the probe.
+            errors="surrogateescape",
+            timeout=30,
+        )
+        if shown.returncode != 0:
+            continue
+        item = change_fragments.check_fragment_text(shown.stdout, project_dir / rel)
+        problems.extend(f"{item.path.name}: {problem}" for problem in item.problems)
+    if problems:
+        print(
+            "fragment-invalid: fix each problem, commit, and re-run:\n  "
+            + "\n  ".join(problems),
+            file=sys.stderr,
+        )
+        return 1
+
+    record = change_fragments.branch_change_record(project_dir, base)
+    if record.error is not None:
+        print(f"git-failed: {record.error}. Check the change record by hand.", file=sys.stderr)
+        return 1
+    added = [change.path for change in record.changes if change.source == "fragment"]
+    if not added:
+        cut = _cut_record_verdict(project_dir, base, record)
+        if cut is not None:
+            return cut
+        print(
+            f"fragment-edited-not-added: this branch edits {', '.join(changed)} but adds "
+            "no fragment of its own; editing another scope's record does not vouch for "
+            f"this branch's work. Add `{prefix}<scope>.md` for it.",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"fragment-present: {', '.join(added)} added in {base}...HEAD and valid.")
+    return 0
+
+
 def check_change_log_entry(project_dir: Path) -> int:
     """PR-boundary probe: a code-changing branch must add a change-log entry.
 
@@ -1181,6 +1350,10 @@ def check_change_log_entry(project_dir: Path) -> int:
       * the log is UNTRACKED and the copy on disk holds at least one entry
         (``entry-present-untracked`` — the weaker check of
         :func:`_entry_check_without_history`, which says so).
+
+    When the branch touches ``.prawduct/changes/``, the fragment checks of
+    :func:`_fragment_entry_verdict` answer instead: exit 0 ``fragment-present``,
+    or exit 1 ``fragment-invalid`` / ``fragment-edited-not-added``.
 
     Exit 1 otherwise, with a named reason on stderr (``no-entry``,
     ``entry-edited-not-added``, ``retired-key``, ``no-base``, ``git-failed``). Un-evaluable
@@ -1236,6 +1409,10 @@ def check_change_log_entry(project_dir: Path) -> int:
             "(docs and session metadata only) — no entry required."
         )
         return 0
+
+    fragment_verdict = _fragment_entry_verdict(project_dir, base, files, judgeable)
+    if fragment_verdict is not None:
+        return fragment_verdict
 
     if CHANGE_LOG_REL_PATH not in files:
         # A path git does not TRACK can never appear in a diff, so this silence

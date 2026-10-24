@@ -63,19 +63,16 @@ class TestParseTagLine:
         tags = change_log.parse_tag_line("release=v1.4.0 | status=shipped")
         assert tags == {"release": "v1.4.0", "status": "shipped"}
 
-    def test_chunks_split_into_list(self):
+    def test_retired_chunks_is_a_plain_string_not_a_list(self):
+        """#303 retired the parser's comma-split for `chunks=`: the key is read
+        by nothing, so it gets no treatment any unknown key does not."""
         tags = change_log.parse_tag_line("chunks=00,01,02 | status=shipped")
-        assert tags["chunks"] == ["00", "01", "02"]
+        assert tags["chunks"] == "00,01,02"
         assert tags["status"] == "shipped"
-
-    def test_single_chunk_still_a_list(self):
-        tags = change_log.parse_tag_line("chunks=05")
-        assert tags["chunks"] == ["05"]
 
     def test_extra_whitespace_tolerated(self):
-        tags = change_log.parse_tag_line("  chunks = 00 , 01  |  status = shipped  ")
-        assert tags["chunks"] == ["00", "01"]
-        assert tags["status"] == "shipped"
+        tags = change_log.parse_tag_line("  release = v1.4.0  |  status = shipped  ")
+        assert tags == {"release": "v1.4.0", "status": "shipped"}
 
     def test_unknown_keys_preserved(self):
         tags = change_log.parse_tag_line("custom=foo | release=v1.4.0")
@@ -106,7 +103,7 @@ class TestParseChangeLog:
         entries = change_log.parse_change_log(content)
         assert len(entries) == 1
         assert entries[0].title.startswith("2026-05-18:")
-        assert entries[0].tags["chunks"] == ["00", "01"]
+        assert entries[0].tags["chunks"] == "00,01"
         assert entries[0].tags["status"] == "shipped"
 
     def test_tag_line_after_blank_line(self):
@@ -120,7 +117,7 @@ class TestParseChangeLog:
             """
         )
         entries = change_log.parse_change_log(content)
-        assert entries[0].tags.get("chunks") == ["03"]
+        assert entries[0].tags.get("chunks") == "03"
 
     def test_untagged_entry_has_empty_tags(self):
         content = textwrap.dedent(
@@ -151,9 +148,9 @@ class TestParseChangeLog:
         # The retired `chunks=`/`status=` keys still PARSE — asserted on the
         # tags directly since the `shipped_chunks` property that composed them
         # went with its only caller. Historical entries must keep round-tripping.
-        assert entries[0].tags["chunks"] == ["05"]
+        assert entries[0].tags["chunks"] == "05"
         assert entries[0].tags["status"] == "shipped"
-        assert entries[1].tags["chunks"] == ["01"]
+        assert entries[1].tags["chunks"] == "01"
         assert entries[2].tags == {}
 
     def test_body_paragraph_before_tag_line_blocks_parse(self):
@@ -178,7 +175,7 @@ class TestParseChangeLog:
         parse rather than be dropped."""
         content = "## X\n<!-- prawduct: chunks=07 | status=in-progress -->\n"
         entries = change_log.parse_change_log(content)
-        assert entries[0].tags["chunks"] == ["07"]
+        assert entries[0].tags["chunks"] == "07"
         assert entries[0].tags["status"] == "in-progress"
 
 
@@ -188,50 +185,41 @@ class TestParseChangeLogMultiTagLines:
     VWS-4D8J: the historical parse settled tag-vs-no-tag at the FIRST non-blank
     line, so a second `<!-- prawduct: ... -->` line was silently ignored — at
     the v2.1.0 release the reviewer-model-tiering `chunks=02` tag nearly
-    shipped unflipped. Consecutive tag lines now merge (chunks union,
-    first-wins scalars) and the multiplicity is recorded for the validator.
+    shipped unflipped. Consecutive tag lines now merge (first-wins) and the
+    multiplicity is recorded for the validator. `chunks` was once unioned across
+    lines; #303 retired that, so it conflicts like any other key.
     """
 
-    def test_consecutive_tag_lines_union_chunks(self):
+    def test_retired_chunks_conflicts_across_lines_rather_than_unioning(self):
         content = textwrap.dedent(
             """\
             ## 2026-06-09: Reviewer model tiering
-            <!-- prawduct: chunks=01 | status=shipped | scope=tiering -->
-            <!-- prawduct: chunks=02 | status=shipped | scope=tiering -->
+            <!-- prawduct: chunks=01 | scope=tiering -->
+            <!-- prawduct: chunks=02 | scope=tiering -->
 
             Body.
             """
         )
         entries = change_log.parse_change_log(content)
-        assert entries[0].tags["chunks"] == ["01", "02"]
+        assert entries[0].tags["chunks"] == "01"
         assert entries[0].tag_line_count == 2
-        assert entries[0].tag_conflicts == []
-
-    def test_duplicate_chunk_ids_deduped_order_preserving(self):
-        content = (
-            "## X\n"
-            "<!-- prawduct: chunks=02,01 -->\n"
-            "<!-- prawduct: chunks=01,03 -->\n"
-        )
-        entries = change_log.parse_change_log(content)
-        assert entries[0].tags["chunks"] == ["02", "01", "03"]
+        assert entries[0].tag_conflicts == ["chunks: kept '01', ignored '02'"]
 
     def test_conflicting_scalar_keeps_first_and_records_conflict(self):
         content = (
             "## X\n"
-            "<!-- prawduct: chunks=01 | status=shipped -->\n"
-            "<!-- prawduct: chunks=02 | status=merged -->\n"
+            "<!-- prawduct: release=v1.0.0 | status=shipped -->\n"
+            "<!-- prawduct: release=v1.0.0 | status=merged -->\n"
         )
         entries = change_log.parse_change_log(content)
         assert entries[0].tags["status"] == "shipped"
-        assert entries[0].tags["chunks"] == ["01", "02"]
         assert entries[0].tag_conflicts == ["status: kept 'shipped', ignored 'merged'"]
 
     def test_same_scalar_value_on_both_lines_is_not_a_conflict(self):
         content = (
             "## X\n"
-            "<!-- prawduct: chunks=01 | scope=v9 -->\n"
-            "<!-- prawduct: chunks=02 | scope=v9 -->\n"
+            "<!-- prawduct: release=v1.0.0 | scope=v9 -->\n"
+            "<!-- prawduct: status=shipped | scope=v9 -->\n"
         )
         entries = change_log.parse_change_log(content)
         assert entries[0].tag_conflicts == []
@@ -250,15 +238,15 @@ class TestParseChangeLogMultiTagLines:
             """\
             ## X
 
-            <!-- prawduct: chunks=01 -->
+            <!-- prawduct: scope=a -->
 
-            <!-- prawduct: chunks=02 -->
+            <!-- prawduct: release=v1.0.0 -->
 
             Body.
             """
         )
         entries = change_log.parse_change_log(content)
-        assert entries[0].tags["chunks"] == ["01", "02"]
+        assert entries[0].tags == {"scope": "a", "release": "v1.0.0"}
         assert entries[0].tag_line_count == 2
 
     def test_tag_line_after_prose_still_not_consumed(self):
@@ -273,7 +261,7 @@ class TestParseChangeLogMultiTagLines:
             """
         )
         entries = change_log.parse_change_log(content)
-        assert entries[0].tags["chunks"] == ["01"]
+        assert entries[0].tags["chunks"] == "01"
         assert entries[0].tag_line_count == 1
 
     def test_tag_line_count_zero_for_untagged_entry(self):
@@ -289,8 +277,8 @@ class TestParseChangeLogMultiTagLines:
         )
         entries = change_log.parse_change_log(content)
         assert len(entries) == 2
-        assert entries[0].tags["chunks"] == ["01"]
-        assert entries[1].tags["chunks"] == ["02"]
+        assert entries[0].tags["chunks"] == "01"
+        assert entries[1].tags["chunks"] == "02"
 
 
 class TestValidateChangeLogTags:
@@ -381,7 +369,7 @@ class TestValidateChangeLogTags:
         entries = [
             change_log.ChangeLogEntry(title="untagged", tags={}),
             change_log.ChangeLogEntry(
-                title="release-pending", tags={"chunks": ["01"], "scope": "s"}
+                title="release-pending", tags={"chunks": "01", "scope": "s"}
             ),
         ]
         assert change_log.validate_change_log_tags(entries) == ([], [])
@@ -410,12 +398,23 @@ class TestValidateChangeLogTags:
         # cleanly — that is the multiplicity warning's business, not an error.
         entries = change_log.parse_change_log(
             "## X\n"
-            "<!-- prawduct: chunks=01 | status=shipped -->\n"
-            "<!-- prawduct: chunks=02 | status=shipped -->\n"
+            "<!-- prawduct: scope=a | status=shipped -->\n"
+            "<!-- prawduct: release=v1.0.0 | status=shipped -->\n"
         )
         errors, warnings = change_log.validate_change_log_tags(entries)
         assert errors == []
         assert len(warnings) == 1
+
+    def test_retired_chunks_disagreeing_across_lines_is_now_an_error(self):
+        # #303: `chunks` lost its cross-line union, so two lines naming
+        # different chunks are a conflict like any other key's.
+        entries = change_log.parse_change_log(
+            "## X\n"
+            "<!-- prawduct: chunks=01 | status=shipped -->\n"
+            "<!-- prawduct: chunks=02 | status=shipped -->\n"
+        )
+        errors, _warnings = change_log.validate_change_log_tags(entries)
+        assert len(errors) == 1 and "chunks: kept '01', ignored '02'" in errors[0]
 
     # --- multiple tag lines ----------------------------------------------------
 
@@ -520,9 +519,9 @@ class TestAgainstTheRealChangeLog:
         a degenerate set — which is exactly the shape the v3.2.8 placeholder
         incident produced.
 
-        **But an empty PENDING side is legitimate, and only sometimes.** Phase 1
-        step 3 of the release runbook stamps `release=` on every shipping entry,
-        so between that step and the next cycle's first change there is nothing
+        **But an empty PENDING side is legitimate, and only sometimes.** The
+        release cut archives every shipping fragment tagged `release=`, so
+        between that step and the next cycle's first change there is nothing
         left to cut — the runbook working as designed, not a broken reader. An
         earlier version asserted the pending side non-empty unconditionally and
         went red mid-release, under pressure to relax it.
@@ -557,7 +556,11 @@ class TestAgainstTheRealChangeLog:
 
         assert released, "no released entries — release= is not being read"
 
-        if pending:
+        # Pending work lives in fragments here; the live log holds shipped history.
+        from lib import release_readiness  # noqa: PLC0415
+
+        fragments = release_readiness.pending_scopes(Path(__file__).resolve().parents[1]).fragment_scopes
+        if pending or fragments:
             return
 
         version = (
@@ -794,7 +797,7 @@ class TestRetiredKeysOn:
         entries = change_log.parse_change_log(
             "## 2026-01-01: old\n\n<!-- prawduct: chunks=01,02 | status=shipped | scope=x -->\n\nbody\n"
         )
-        assert entries[0].tags["chunks"] == ["01", "02"]
+        assert entries[0].tags["chunks"] == "01,02"
         assert entries[0].tags["status"] == "shipped"
 
 
