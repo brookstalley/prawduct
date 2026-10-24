@@ -10,6 +10,10 @@ The full internal development log (with blast-radius and rationale) lives in the
 Prawduct repo's `.prawduct/change-log.md`; this file is the public digest. The
 release process keeps the two in sync (one headline per shipped release).
 
+## v3.7.3-dev
+
+**Rolling notes for the next release — nothing has shipped under this number yet.** Each change's consumer note lives in its fragment under `.prawduct/changes/` until the release, when the cut writes it here and renames this heading to its release number.
+
 ## v3.7.2
 
 **Products can now record each change as its own file, so parallel branches stop colliding over `change-log.md`; `/prawduct:doctor` offers the move.** Also in this release: a `tidy-available` advisory and `git-tidy` clean up merged branches and dead worktrees only on proof nothing is lost, the alignment pass judges whether the goals under the work are grounded, record-lint reports surviving copies of a retired claim, and a 57-item backlog burndown that retires the `Type: trivial` Stop gate.
