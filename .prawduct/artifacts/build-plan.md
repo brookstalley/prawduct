@@ -19,9 +19,9 @@ last_validated: 2026-10-24
 - `observed`: a few machine observations taken at firing time (booleans or `None` for "could not tell").
 - The catch-vs-slip **verdict is derived in `stats` at read time** from reason + observed, never stored, so the definition can be revised without losing data (the same move #951 makes).
 
-Inferred, owner may override: hooks are the wrong unit (SessionStart never refuses; one Stop hook runs many gates; most controls are not hooks), so the unit is the control.
+Confirmed by the owner 2026-10-24 (inferred until then): hooks are the wrong unit (SessionStart never refuses; one Stop hook runs many gates; most controls are not hooks), so the unit is the control.
 
-**Verdict definitions (inferred, revisable because derived):**
+**Verdict definitions (confirmed by the owner 2026-10-24; revisable because derived):**
 - `clear-reason`: the harm is a clear losing what only the turn held. `notes_present` true → *slip* (a record existed; the reason misnamed it); false → *catch*.
 - `clear-verdict`: the harm is a reader told to hold a session for nothing. `work_live` true (harness background tasks or a live Critic marker) → *slip* (the hold was right; only the disposition label was wrong); false → *catch*. An unreaped delegate is not observable, so `work_live` can under-read; that biases toward *catch*, which is the direction that keeps a gate.
 
