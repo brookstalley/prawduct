@@ -4,6 +4,7 @@ type: fix
 scope: untracked-verbatim-commit
 date: 2026-10-24
 title: a review of the working tree names the untracked files a verbatim commit must include
+closes: [brookstalley/prawduct#1003]
 ---
 A review anchored on the working tree vouches for the tree `git add -A` would build, so it includes
 untracked, non-ignored files. A clean `verify-resolutions` close then said "commit this tree verbatim".
