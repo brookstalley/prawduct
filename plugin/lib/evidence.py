@@ -51,6 +51,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -316,6 +317,8 @@ def append_guard_refusal(
     *,
     dedupe_key: "str | None" = None,
     known_facts: "list[dict] | None" = None,
+    reason: "str | None" = None,
+    observed: "dict | None" = None,
 ) -> dict:
     """Record that a pre-dispatch guard fired. One sink for the whole class.
 
@@ -372,6 +375,22 @@ def append_guard_refusal(
     not be silent either (``core.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
 
+    **``reason`` and ``observed`` say WHY it fired**, for every control alike, so
+    "is this firing a catch or a slip?" is a read rather than a transcript
+    search. ``reason`` names which of the control's checks failed, from a closed
+    set the control declares; ``observed`` holds the few facts the control could
+    see when it fired (is work running? is a note on disk?). The verdict a
+    reader draws from them is derived at read time and never stored here, so
+    its definition can change without the record losing anything. Both are
+    machine-shaped (a slug, and a flat map of slug keys to booleans, integers,
+    slugs or ``None``). That shape keeps a sentence out but not a short phrase:
+    what keeps turn text out is that producers pass declared constants and
+    observations, never the turn's words. A value of the wrong shape is DROPPED,
+    not the firing: its name goes in ``refused_fields`` and the firing still
+    counts, as ``unspecified``, because a lost count is the worse error. The
+    result carries ``refused_fields`` too, so the caller can say so. Each
+    accepted value lands in the body under its own name.
+
     **``dedupe_key`` is for a guard that fires on a POLLED path**, where the
     default one-record-per-firing shape is wrong twice over. ``critic-begin``
     runs once per dispatch, so a fresh id per firing counts dispatches; a gate
@@ -403,6 +422,26 @@ def append_guard_refusal(
         return {"status": "error", "reason": "guard name must be a non-empty string"}
     if not isinstance(body, dict):
         return {"status": "error", "reason": "fact body must be an object"}
+    refused = []
+    if reason is not None:
+        if _is_slug(reason):
+            body = {**body, "reason": reason}
+        else:
+            refused.append("reason")
+    if observed is not None:
+        if _is_observation(observed):
+            body = {**body, "observed": dict(observed)}
+        else:
+            refused.append("observed")
+    if refused:
+        body = {**body, "refused_fields": refused}
+        return {**_append_guard_fact(project_dir, guard, body, dedupe_key, known_facts),
+                "refused_fields": refused}
+    return _append_guard_fact(project_dir, guard, body, dedupe_key, known_facts)
+
+
+def _append_guard_fact(project_dir, guard, body, dedupe_key, known_facts) -> dict:
+    """:func:`append_guard_refusal`'s write, after its arguments are checked."""
     if dedupe_key is not None:
         if not isinstance(dedupe_key, str) or not dedupe_key.strip():
             return {
@@ -439,6 +478,26 @@ def append_guard_refusal(
     )
 
 
+#: A machine-shaped value: lowercase words joined by hyphens or underscores,
+#: capped in length. It keeps a sentence out, not a short phrase.
+_SLUG = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*")
+_SLUG_MAX = 48
+
+
+def _is_slug(value) -> bool:
+    return isinstance(value, str) and len(value) <= _SLUG_MAX and bool(_SLUG.fullmatch(value))
+
+
+def _is_observation(value) -> bool:
+    """A flat map of slug keys to booleans, integers, slugs or ``None``."""
+    if not isinstance(value, dict):
+        return False
+    return all(
+        _is_slug(k) and (v is None or isinstance(v, (bool, int)) or _is_slug(v))
+        for k, v in value.items()
+    )
+
+
 def append_test_run(project_dir: Path, body: dict) -> dict:
     """Record one suite run as a ``test-run`` fact. Returns
     :func:`append_fact`'s result.
@@ -464,6 +523,11 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     return append_fact(project_dir, "test-run", fact_id, body)
 
 
+#: Observation keys a clear gate records, named once so its writer (the Stop
+#: hook) and its reader (``stats``' verdict rules) cannot drift apart.
+OBSERVED_WORK_LIVE = "work_live"
+OBSERVED_NOTES_PRESENT = "notes_present"
+
 #: Prefix of the ``guard`` a Stop-hook block is recorded under; the gate id
 #: follows it. Readers select Stop blocks from other control firings by it.
 STOP_GATE_PREFIX = "stop-gate:"
@@ -474,7 +538,9 @@ STOP_GATE_PREFIX = "stop-gate:"
 TRANSFER_GRANT_GUARD = "base-advance-transfer"
 
 
-def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
+def append_stop_block(
+    project_dir: Path, gates: "list[str]", details: "dict | None" = None
+) -> "list[dict]":
     """Record one blocked Stop: a ``guard-refusal`` fact per blocking gate.
 
     A Stop gate is a control like any pre-dispatch guard, so it records through
@@ -485,6 +551,9 @@ def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
     the facts of one Stop together and ``co_gates`` names the others, so "which
     gates fire together?" needs no join. Each blocked Stop is a separate event
     (the model was sent back once per block), so there is no dedupe key.
+    ``details`` maps a gate id to the ``reason`` and ``observed`` that gate
+    reported, passed to the sink as they are; a gate absent from it records
+    neither.
 
     Returns each sink result. Callers treat a failure as soft: the block is
     correct whether or not its record lands.
@@ -503,6 +572,8 @@ def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
                     "stop": stop_id,
                     "co_gates": [g for g in gates if g != gate],
                 },
+                reason=(details or {}).get(gate, {}).get("reason"),
+                observed=(details or {}).get(gate, {}).get("observed"),
             )
         )
     return results

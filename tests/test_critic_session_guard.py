@@ -1464,6 +1464,11 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/bin/prawduct-hook", "cmd_clear", "clear_marker()"):
             "tests/test_critic_session_guard.py::TestClearGuardCLI"
             "::test_force_overrides_active_marker",
+        # Asks only, to record what a clear gate saw; it never decides whether
+        # the marker stays.
+        ("plugin/bin/prawduct-hook", "_clear_observations", "review_active()"):
+            "tests/test_stop_block_facts.py::TestAClearGateRecordsWhyItFired"
+            "::test_a_live_critic_review_is_observed_as_live",
         ("plugin/bin/prawduct-hook", "cmd_critic_begin", "write_marker()"):
             "tests/test_critic_session_guard.py::TestCriticBeginEndCLI"
             "::test_begin_writes_then_end_removes",

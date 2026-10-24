@@ -165,6 +165,29 @@ Their writers are `lib/evidence.py`'s `append_stop_block` and
 `append_session_start`. Neither is read by any gate. A failed append prints a `NOTE:` and changes
 nothing else.
 
+**Why a control fired.** Any control firing, blocking or not, may carry two
+more fields in its body, through the sink's `reason` and `observed` arguments:
+
+- `reason`: which of the control's checks failed, a slug from a closed set the
+  control declares.
+- `observed`: a flat map of the few facts the control could see when it fired,
+  each a boolean, integer, slug or `null` ("could not tell").
+
+A value of any other shape is dropped and named in the body's `refused_fields`,
+and the firing still counts, as `unspecified`. The shape keeps a sentence out,
+not a short phrase. What keeps turn text out of the shared store is that
+producers pass declared constants and observations, never the turn's words.
+Each firing records what was observed, never a judgment of it. A reader derives the
+judgment (below), so a revised definition re-reads every recorded firing. A
+control that records neither is counted as `unspecified`.
+
+The Stop gates that record a reason today:
+
+| Gate | `reason` | `observed` |
+|---|---|---|
+| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md` |
+| `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same two |
+
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
 Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt
@@ -324,9 +347,26 @@ The definitions (their one home):
   - *loops*: (session, gate) pairs where one gate blocked three or more times in
     a session. A Stop that passes records nothing, so "consecutive" cannot be
     measured.
+  - Blocks by gate and reason (`by_gate_reason`), with `unspecified` for a
+    block that recorded none.
+  - *verdicts*, for a gate with a rule (`stats.SLIP_WHEN_OBSERVED`): each block
+    is a **catch** when the harm the gate guards against was real when it
+    fired, a **slip** when the turn's words were wrong but the situation was
+    already handled, and **unclassified** when the deciding observation is
+    absent or `null`. The rules are inferences and can be revised, because they
+    are applied at read time:
+    - `clear-reason` is a slip when `notes_present`: the content had a home, and
+      the reason only failed to name it. Otherwise a clear would have lost what
+      only the turn held, which is a catch.
+    - `clear-verdict` is a slip when `work_live`: the hold was right, and only
+      the disposition label was wrong. Otherwise a reader was told to keep a
+      session open for nothing, which is a catch. An unreaped delegate is not
+      observable, so this rule leans towards catch, which is the direction
+      that keeps a gate.
 - **guard refusals**: control firings other than Stop blocks, per recorded
-  session (the same rule) and by guard. A base-advance transfer grant shares
-  their sink, but it is a pass, so it is counted under Benefit instead.
+  session (the same rule), by guard, and by guard and reason
+  (`by_guard_reason`). A base-advance transfer grant shares their sink, but it
+  is a pass, so it is counted under Benefit instead.
 
 **Benefit**
 - **findings**: per severity, raised, then what became of each one.

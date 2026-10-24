@@ -68,6 +68,18 @@ CLEAR_LABELS: tuple[str, ...] = (SAFE_TO_CLEAR, DO_NOT_CLEAR)
 #: Each owes ``SAFE TO CLEAR``; only ``RUNNING`` may close on ``DO NOT CLEAR``.
 HANDED_OVER_DISPOSITIONS: tuple[str, ...] = (YOUR_TURN, COMPLETE)
 
+
+def handed_over_reason(disposition_label: str) -> str:
+    """The reason the clear-verdict gate records for a handed-over disposition
+    it found paired with ``DO NOT CLEAR`` (``handed-over-your-turn``, ...)."""
+    return "handed-over-" + disposition_label.lower().replace(" ", "-")
+
+
+#: Every reason the clear-verdict gate can record.
+CLEAR_VERDICT_REASONS: tuple[str, ...] = tuple(
+    handed_over_reason(d) for d in HANDED_OVER_DISPOSITIONS
+)
+
 #: Every label the standing block uses, in the order the block states them.
 ALL_LABELS: tuple[str, ...] = (STATE, *DISPOSITION_LABELS, *CLEAR_LABELS)
 
@@ -152,23 +164,28 @@ def contradiction(text: str) -> str | None:
 # the end of a clause. A bare "in this turn" means "during this turn" ("nothing
 # changed in this turn") and is not a citation, so the "in" form needs a verb of
 # being in front of it. "Conversation" is deliberately absent: "nothing lives
-# only in this conversation" is a sound reason, not a self-citation.
+# only in this conversation" is a sound reason, not a self-citation. Each form
+# carries the kind the clear-reason gate records when it fires, so its firings
+# can be counted by shape without recording the turn's words.
 _SELF_CITATIONS = (
-    re.compile(
+    ("in-this-message", re.compile(
         r"(?:\b(?:is|are|lives?|sits?|stays?|exists?)|'re)(?: (?:all|only|still))? "
         r"in (?:this|the|my) (?:message|reply|response|turn)\b",
         re.I,
-    ),
-    re.compile(
+    )),
+    ("message-holds", re.compile(
         r"\b(?:this|the|my) (?:message|reply|response|turn) "
         r"(?:itself|holds|has|contains|carries|records)\b",
         re.I,
-    ),
-    re.compile(
+    )),
+    ("above-below", re.compile(
         r"(?:\b(?:is|are)|'re)(?: all)? (?:above|below)(?=\s*(?:[.;,:)]|$))|\bsee above\b",
         re.I,
-    ),
+    )),
 )
+
+#: Every kind :func:`self_citation_match` can return.
+SELF_CITATION_KINDS: tuple[str, ...] = tuple(kind for kind, _ in _SELF_CITATIONS)
 
 # A reason that also names a durable record is not resting on the turn alone
 # ("everything in this reply is also in the handoff notes").
@@ -195,7 +212,14 @@ def _clause_around(text: str, start: int, end: int) -> str:
 
 def self_citation(text: str) -> str | None:
     """The phrase by which a ``SAFE TO CLEAR`` turn gives itself as the record,
-    or ``None``.
+    or ``None`` (:func:`self_citation_match` without the kind)."""
+    match = self_citation_match(text)
+    return match[0] if match else None
+
+
+def self_citation_match(text: str) -> "tuple[str, str] | None":
+    """``(phrase, kind)`` for the self-citation a ``SAFE TO CLEAR`` turn makes,
+    or ``None``; ``kind`` is one of :data:`SELF_CITATION_KINDS`.
 
     Reads only the verdict paragraph, and only when :func:`clear_verdict` reads
     ``SAFE TO CLEAR`` there. A reason that also names a durable record (notes,
@@ -214,10 +238,10 @@ def self_citation(text: str) -> str | None:
     reason = reason[at + len(SAFE_TO_CLEAR):]
     if _DURABLE_RECORD.search(reason):
         return None
-    for pattern in _SELF_CITATIONS:
+    for kind, pattern in _SELF_CITATIONS:
         for found in pattern.finditer(reason):
             if not _DENIAL.search(_clause_around(reason, found.start(), found.end())):
-                return found.group(0)
+                return found.group(0), kind
     return None
 
 
