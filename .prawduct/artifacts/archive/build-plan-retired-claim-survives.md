@@ -72,7 +72,13 @@ governed_by:
       - "additive-first; `--json` readers tolerate unknown keys -> conforms. A new check name is an
         added key in `counts`; nothing is repurposed."
 partition: serial, because Chunk 02's dogfood sweep and replay fixtures run Chunk 01's check
+lifecycle: completed
+archived: 2026-10-24
+released_in: v3.7.2
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan — retired-claim-survives (#136)
 

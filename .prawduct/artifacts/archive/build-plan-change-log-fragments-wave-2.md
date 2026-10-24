@@ -35,7 +35,13 @@ governed_by:
       - "additive-first evolution → conforms: check-change-log-entry keeps every verdict name; new ones are added beside them"
 partition: serial — 02's migration and scaffold rely on 01's readers accepting a repo with no live log, and 03's trunk owner is read by the Step 1c path 02 changes
 last_validated: 2026-10-20
+lifecycle: completed
+archived: 2026-10-24
+released_in: v3.7.2
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan — Change-Log Fragments, Wave 2: onboarded repos (#1023)
 

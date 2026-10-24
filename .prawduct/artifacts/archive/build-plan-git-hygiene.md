@@ -75,7 +75,13 @@ governed_by:
         the long-lived set."
 partition: serial — every chunk extends plugin/lib/git_hygiene.py, so no two can run apart
 last_validated: 2026-10-22
+lifecycle: completed
+archived: 2026-10-24
+released_in: v3.7.2
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 

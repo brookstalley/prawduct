@@ -34,7 +34,13 @@ governed_by:
       - "additive-first evolution → conforms: check-change-log-entry keeps every existing verdict name and adds fragment verdicts beside them; no `--json` key is repurposed"
 partition: serial — 02 and 03 both read through 01's module, 03's cut is tested against 02's pending_scopes, and 04 migrates with all three in place
 last_validated: 2026-10-19
+lifecycle: completed
+archived: 2026-10-24
+released_in: v3.7.2
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 # Build Plan — Change-Log Fragments, Wave 1 (#1012)
 

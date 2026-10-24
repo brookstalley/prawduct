@@ -25,7 +25,13 @@ governed_by:
       - "every fact has one home → conforms: the grounding check, the hedged provenance and the drift tiers live once, in discovery.md beside intentional inference and characteristic flips; building.md, planning.md, the digest, the brief template and review-protocol point there"
 partition: serial for 01-03 — 01 and 02 share discovery.md's provenance passage and the vocabulary (grounded, hedged) that 03's counter and the review read; 04 delegated, one fresh read-only agent per replay case, because the cases are independent and each reads a different transcript
 last_validated: 2026-10-21
+lifecycle: completed
+archived: 2026-10-24
+released_in: v3.7.2
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 
