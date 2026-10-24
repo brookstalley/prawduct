@@ -12,7 +12,7 @@ A builder who committed only the tracked files recorded a tree without the stray
 from the reviewed tree to that commit deletes a judgeable path, which no edge covers, so
 `check-cumulative-critic` read `uncovered` and charged another round (#1003).
 
-`evidence.capture_tree` now returns `untracked`, the one listing every consumer reads. `critic-begin`,
+`evidence.capture_tree` now returns `untracked`, which the review data plane reads rather than asking git again. `critic-begin`,
 in any mode whose anchor is the working tree, names the judgeable untracked files before a reviewer
 runs. It says that a verbatim commit must include them (`git add -A`), and that a file which should
 not ship has to be excluded now, through `.git/info/exclude` or by deleting it, followed by
