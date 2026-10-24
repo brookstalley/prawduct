@@ -353,8 +353,8 @@ The definitions (their one home):
     is a **catch** when the harm the gate guards against was real when it
     fired, a **slip** when the turn's words were wrong but the situation was
     already handled, and **unclassified** when the deciding observation is
-    absent or `null`. The owner confirmed these rules on 2026-10-24, and they can
-    be revised because they are applied at read time:
+    absent or `null`. The rules can be revised, because they are applied at read
+    time:
     - `clear-reason` is a slip when `notes_present`: the content had a home, and
       the reason only failed to name it. Otherwise a clear would have lost what
       only the turn held, which is a catch.
