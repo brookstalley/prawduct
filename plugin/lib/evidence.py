@@ -1053,14 +1053,24 @@ def capture_tree(project_dir: Path) -> dict:
     excluded) as a tree object in the shared odb, via a TEMPORARY index.
 
     Returns ``{"status": "ok", "tree", "head_commit", "head_tree", "clean",
-    "seed"}`` or ``{"status": "error", "reason", "seed"}``. ``seed`` names how
+    "seed", "untracked"}`` or ``{"status": "error", "reason", "seed"}``. ``seed`` names how
     the temp index was filled (:func:`_seed_temp_index`) — it rides on both
     outcomes because a capture that degraded to the slow seed and a capture
     that never had a fast one to lose are the same symptom and different
     bugs. The session's real index and working tree are never touched (R1) —
     asserted by tests, verified by the D3 spike.
     ``clean`` is True when the captured tree equals ``HEAD^{tree}`` (a verbatim
-    commit of this state will carry the same tree SHA)."""
+    commit of this state will carry the same tree SHA).
+
+    ``untracked`` lists the files the capture took in that the repo's own index
+    does not track (gitignored and ``.git/info/exclude``-d files are in neither).
+    They are what "verbatim" quietly includes: ``git commit`` of the tracked files
+    alone records a tree WITHOUT them, which is not the tree a review of this
+    capture vouched for. Kept in the capture rather than dropped from it, because
+    the common case is a new source file nobody has ``git add``-ed yet, and that
+    is real work a review must see. ``None`` when the listing failed — unknown,
+    not empty. The review data plane reads it from here rather than asking git
+    again, so the list always describes the very tree this capture returned."""
     tmp_fd, tmp_name = tempfile.mkstemp(prefix="prawduct-idx-")
     os.close(tmp_fd)
     os.unlink(tmp_name)  # git wants to create the index file itself
@@ -1090,6 +1100,12 @@ def capture_tree(project_dir: Path) -> dict:
                 "reason": f"write-tree failed (seed: {seed}) — {err}",
                 "seed": seed,
             }
+        # The REAL index, not the temp one: "untracked" means what a commit of
+        # the session's own index would leave out.
+        rc, listed, _ = run_git(
+            project_dir, "ls-files", "-z", "--others", "--exclude-standard", strip=False
+        )
+        untracked = sorted(p for p in listed.split("\0") if p) if rc == 0 else None
         return {
             "status": "ok",
             "tree": tree,
@@ -1097,6 +1113,7 @@ def capture_tree(project_dir: Path) -> dict:
             "head_tree": head_tree,
             "clean": tree == head_tree,
             "seed": seed,
+            "untracked": untracked,
         }
     finally:
         # The lock as well as the index. `GIT_INDEX_FILE` moves git's index

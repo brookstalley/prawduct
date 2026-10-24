@@ -637,6 +637,25 @@ def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> boo
     return capture.get("tree") == anchor_tree
 
 
+def judgeable_untracked(capture: "dict | None") -> "list[str] | None":
+    """The untracked files in ``capture`` that a verbatim commit must carry, or
+    ``None`` when the capture could not list them.
+
+    Narrowed to the coverage gate's own predicate because that is the gate the
+    advice is about: leaving out a prose or metadata file rides a free edge, so
+    naming one would be noise; leaving out anything judgeable (an OS metadata
+    file included) opens an interval no review covers.
+    """
+    if not capture or capture.get("status") != "ok":
+        return None
+    listed = capture.get("untracked")
+    if listed is None:
+        return None
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    return [p for p in listed if coverage_algebra.is_judgeable_path(p)]
+
+
 
 #: The mechanical question, answered — not handed to the builder to go run.
 #:
@@ -667,7 +686,11 @@ def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> boo
 #: ledger once per consolidation and passes both results in, so the two
 #: carriers of this sentence cannot quote different numbers and no digit is
 #: restated in this module (``architecture.md``: every fact has one home).
-def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
+def cost_lead(
+    cost: "dict | None",
+    tree_now_covered: bool = False,
+    untracked: "list[str] | None" = None,
+) -> str:
     """The leading sentence of a zero-blocking close: what fixing costs here,
     and what that implies.
 
@@ -688,6 +711,11 @@ def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
     and the next edit opens a NEW delta needing its own pass whatever its paths
     are. Measured live on 2026-09-19 building this scope's own predecessor: the
     close said a batch of fixes was free, and it bought a full round.
+
+    ``untracked`` (:func:`judgeable_untracked` of the same capture) is read only
+    by that arm: the covered tree includes those files, so "verbatim" has to say
+    so, or a commit of the tracked files alone deletes them from the reviewed
+    tree and the gate reads ``uncovered``.
 
     Returns ``""`` when ``cost`` is absent, so a caller that did not compute it
     renders exactly the message it rendered before this existed.
@@ -716,11 +744,15 @@ def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
             if cost.get("paths")
             else "and your tree is clean, so there is nothing left to pay for"
         )
-        act = (
-            "Recommended: commit this tree verbatim and stop;"
-            if cost.get("paths")
-            else "Recommended: stop here;"
-        )
+        if not cost.get("paths"):
+            act = "Recommended: stop here;"
+        elif untracked:
+            act = (
+                "Recommended: commit this tree verbatim, including the untracked"
+                f" {name_paths(untracked)} (`git add -A`), and stop;"
+            )
+        else:
+            act = "Recommended: commit this tree verbatim and stop;"
         return (
             f"This review covers your working tree as it stands, {carry}, and"
             " the next edit after it, judgeable or not, opens a new delta that"
@@ -3366,6 +3398,33 @@ def begin_review(
                 dispatch_commit, notes,
             )
 
+    # Untracked files inside the tree this review will vouch for, named while
+    # leaving one out is still free. "Commit verbatim" is `git add -A`; a commit
+    # of the tracked files alone records a tree without them, and the interval
+    # from the reviewed tree to that commit deletes a judgeable path, which no
+    # edge covers — so excluding a stray file AFTER the review costs a round.
+    # Only where the anchor IS the working tree: a committed-HEAD anchor never
+    # contained them. Advice, so a listing that failed says so rather than
+    # reading as "none".
+    if head_tree == capture["tree"]:
+        stray = judgeable_untracked(capture)
+        if stray is None:
+            notes.append(
+                "the untracked files in the reviewed tree could not be listed — "
+                "if any are not meant to ship, exclude them before this review, "
+                "because a commit without them is a tree it did not cover"
+            )
+        elif stray:
+            notes.append(
+                f"the reviewed tree includes untracked file(s) {name_paths(stray)}, "
+                "so a verbatim commit of it must include them (`git add -A`). If "
+                "one should not ship, exclude it NOW — add it to "
+                "`.git/info/exclude` or delete it — then abandon this dispatch "
+                "(`prawduct-hook critic-end`) and re-run `critic-begin`: "
+                "excluding it after the review leaves the commit uncovered and "
+                "costs another round"
+            )
+
     if files_reviewed is None:
         files_reviewed = list(files_changed)
     # Records govern review SCOPE, not review READING — eligibility is its own
@@ -5587,8 +5646,9 @@ def consolidate(
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
-    # Two git reads per consolidation (`commit_cost`'s and `capture_tree`'s),
-    # beside the one ledger read, and both feed ONE rendered sentence for the
+    # At most two git reads per consolidation (`commit_cost`'s always, and
+    # `capture_tree`'s on a verify close, the only arm that reads it), beside
+    # the one ledger read, and both feed ONE rendered sentence for the
     # same reason the ledger read is single: the relayed NEXT-ACTION and the
     # cache record must not be able to answer the same question differently.
     # `commit_cost` asks the SAME predicate the coverage gate will charge on —
@@ -5607,11 +5667,17 @@ def consolidate(
     # the same thing — and name which pass — is not established, so the other
     # modes keep the ordinary arms they rendered before this existed. Advice
     # under-claims rather than naming a pass nobody has checked is the closer.
+    # Only the verify arm reads this capture, so only it pays for one.
+    close_capture = evidence.capture_tree(project_dir) if is_verify else None
     tree_now_covered = is_verify and tree_is_covered_by(
-        evidence.capture_tree(project_dir),
+        close_capture,
         (fact.get("body") or {}).get("head_tree"),
     )
-    cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
+    cost_sentence = cost_lead(
+        coverage.commit_cost(project_dir),
+        tree_now_covered,
+        judgeable_untracked(close_capture),
+    )
     rides_next_review = _plan_owes_a_later_review(
         project_dir, prawduct_dir, store.get("facts") or [], fact
     )

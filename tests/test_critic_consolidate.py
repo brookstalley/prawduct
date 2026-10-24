@@ -8761,3 +8761,163 @@ class TestTreeUnchangedDuringReview:
         (repo / ".prawduct" / ".critic-active").write_text("{}")  # NOT this project's
         state, detail = cc.tree_changed_since_dispatch(proj, {"dispatch_tree": before})
         assert (state, detail) == ("changed", [".prawduct/.critic-active"])
+
+
+# ---------------------------------------------------------------------------
+# Untracked files in a reviewed working tree (#1003)
+# ---------------------------------------------------------------------------
+
+
+class TestUntrackedFilesInTheReviewedTree:
+    """A review that anchors on the working tree vouches for a tree built with
+    `git add -A`, so it includes untracked files. Committing only the tracked
+    files records a tree without them: the interval from the reviewed tree to
+    that commit deletes a judgeable path, and the gate reads `uncovered`. The
+    builder must hear about it while excluding the file is still free, and the
+    "commit verbatim" advice has to say what verbatim includes.
+    """
+
+    NOTE = "the reviewed tree includes untracked file(s)"
+
+    @staticmethod
+    def _seed_and_fix(repo: Path) -> str:
+        _init_repo(repo)
+        # Session state is ignored in a real repo; without this the dispatch's
+        # own manifest and marker are untracked files that move the tree.
+        (repo / ".git" / "info" / "exclude").write_text(".prawduct/\n")
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _seed_prior_review_with_blocker(repo, head, head_tree=head_tree, head_commit=head)
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")
+        return head
+
+    @staticmethod
+    def _notes(stderr: str) -> "list[str]":
+        return [line for line in stderr.splitlines() if "untracked file(s)" in line]
+
+    def test_dispatch_names_an_untracked_stray_file(self, tmp_path):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        (repo / "stray.txt").write_text("os metadata\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        notes = self._notes(result.stderr)
+        assert len(notes) == 1, result.stderr
+        assert "untracked file(s) stray.txt," in notes[0]
+        assert "`git add -A`" in notes[0]
+        assert ".git/info/exclude" in notes[0]
+        assert "critic-end" in notes[0], "the re-dispatch remedy must be reachable"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        names = _git(repo, "ls-tree", "-r", "--name-only", manifest["head_tree"]).stdout
+        assert "stray.txt" in names.splitlines(), "the note must describe the reviewed tree"
+
+    def test_no_untracked_file_means_no_note(self, tmp_path):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert self._notes(result.stderr) == []
+
+    def test_an_excluded_file_is_neither_captured_nor_named(self, tmp_path):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        (repo / "stray.txt").write_text("os metadata\n")
+        with (repo / ".git" / "info" / "exclude").open("a") as fh:
+            fh.write("stray.txt\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert self._notes(result.stderr) == []
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        names = _git(repo, "ls-tree", "-r", "--name-only", manifest["head_tree"]).stdout
+        assert "stray.txt" not in names.splitlines()
+        assert "src/app.py" in names.splitlines()
+
+    def test_an_unlistable_set_says_so_rather_than_reading_as_none(
+        self, tmp_path, monkeypatch
+    ):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        real = evidence.capture_tree
+
+        def unlisted(project_dir):
+            return {**real(project_dir), "untracked": None}
+
+        monkeypatch.setattr(evidence, "capture_tree", unlisted)
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result["status"] == "ok", result
+        assert any(
+            "untracked files in the reviewed tree could not be listed" in n
+            for n in result["notes"]
+        ), result["notes"]
+
+    def test_a_committed_head_anchor_names_nothing(self, tmp_path):
+        """`cumulative` reviews committed HEAD, which never held the untracked
+        file — a note there would describe a tree this review did not see."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        (repo / ".prawduct").mkdir()
+        _commit_file(repo, "src/app.py", "x = 2\n", "work")
+        (repo / "stray.txt").write_text("os metadata\n")
+        result = _run_begin(repo, "--mode", "cumulative")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert self._notes(result.stderr) == []
+
+    def test_the_close_names_the_files_verbatim_includes(self, tmp_path):
+        repo = tmp_path / "r"
+        head = self._seed_and_fix(repo)
+        (repo / "stray.txt").write_text("os metadata\n")
+        begun = _run_begin(repo, "--mode", "verify-resolutions")
+        assert begun.returncode == 0, f"stderr={begun.stderr!r}"
+        # A warning, so the close still carries a fix decision — the cost lead
+        # leads only that arm; a zero-finding close has nothing to price.
+        _write_partial(repo, "reviewer", head, resolutions=[
+            {"review_id": "rev-prior-0001", "fid": "R-1", "disposition": "fixed"}
+        ], findings=[{"name": "Naming", "goal": "Nothing Is Broken",
+                      "severity": "warning", "recommendation": "Rename",
+                      "files": ["src/app.py"]}])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert (
+            "commit this tree verbatim, including the untracked stray.txt"
+            " (`git add -A`)"
+        ) in result.stdout, result.stdout
+
+
+class TestCostLeadNamesUntracked:
+    DIRTY = {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}
+
+    def test_the_covered_arm_names_untracked_files(self):
+        lead = cc.cost_lead(self.DIRTY, True, ["stray.txt"])
+        assert "including the untracked stray.txt (`git add -A`)" in lead
+
+    def test_an_empty_or_unknown_list_leaves_the_advice_unchanged(self):
+        plain = cc.cost_lead(self.DIRTY, True)
+        assert "commit this tree verbatim and stop" in plain
+        assert cc.cost_lead(self.DIRTY, True, []) == plain
+        assert cc.cost_lead(self.DIRTY, True, None) == plain
+
+    def test_only_the_covered_arm_reads_the_list(self):
+        assert cc.cost_lead(self.DIRTY, False, ["stray.txt"]) == cc.cost_lead(self.DIRTY, False)
+        clean = {"paths": [], "judgeable": [], "free": []}
+        assert "stray.txt" not in cc.cost_lead(clean, True, ["stray.txt"])
+
+    def test_a_long_list_is_capped(self):
+        # The module's shared path-list spelling, not a second one.
+        paths = [f"f{i:02d}.bin" for i in range(13)]
+        lead = cc.cost_lead(self.DIRTY, True, paths)
+        assert cc.name_paths(paths) in lead
+        assert "f12.bin" not in lead
+
+
+class TestJudgeableUntracked:
+    def test_metadata_and_prose_are_dropped(self):
+        capture = {"status": "ok", "untracked": [".prawduct/x.json", "notes.md", ".DS_Store"]}
+        assert cc.judgeable_untracked(capture) == [".DS_Store"]
+
+    def test_unknown_stays_unknown(self):
+        assert cc.judgeable_untracked({"status": "ok", "untracked": None}) is None
+        assert cc.judgeable_untracked({"status": "error"}) is None
