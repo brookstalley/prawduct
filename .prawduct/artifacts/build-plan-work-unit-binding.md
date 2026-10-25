@@ -145,7 +145,7 @@ grounding facts); Medium for § 1's `plan new` defaults for `base:` — raise by
 - [x] Chunk 03: hook callers take `Binding`
 - [x] Chunk 04: `plan new` / `plan bind`, fragment and `closed-by` scope validation
 - [x] Chunk 05: one home for the rule — prose
-- [ ] Chunk 06: integration — shims, advisory, subcommand wiring, suite, cumulative review
+- [x] Chunk 06: integration — shims, advisory, subcommand wiring, suite, cumulative review
 
 Context: Chunk 01 is the keystone and is reviewed `final` before anything builds on it. 02–05 are
 delegated in parallel; each is reviewed when it merges into this branch (the coordinator's review,
