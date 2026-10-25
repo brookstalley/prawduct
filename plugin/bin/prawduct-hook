@@ -7445,7 +7445,8 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     facts = evidence.read_facts(project_dir)
     states = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir)
     finished = plan_status.is_finished(plan_path, facts, repo_dir=project_dir, states=states)
-    built = plan_status.built_chunks(plan_path, project_dir)
+    built_report = plan_status.built_report(plan_path, project_dir)
+    built = built_report.built
     rel = _plan_rel(project_dir, plan_path)
     rows = [
         {
@@ -7461,7 +7462,8 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     ]
     if "--json" in seen:
         print(json.dumps(
-            {"plan_path": rel, "scope": scope, "finished": finished, "chunks": rows},
+            {"plan_path": rel, "scope": scope, "finished": finished, "chunks": rows,
+             "built_unavailable": built_report.unavailable},
             sort_keys=True,
         ))
         return 0
@@ -7476,7 +7478,9 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     print(f"{rel} ({scope_text}): {summary}")
     # The one renderer (`plan_status.render_table`), which the `/clear` handoff
     # and the PR payload print too.
-    for line in plan_status.render_table(states, built=built):
+    for line in plan_status.render_table(
+        states, built=built, built_unavailable=built_report.unavailable
+    ):
         print(f"  {line}")
     return 0
 

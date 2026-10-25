@@ -589,25 +589,41 @@ _COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
 _COMMIT_MARK = "@@prawduct-commit@@ "
 
 
-def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
+@dataclass(frozen=True)
+class BuiltReport:
+    """:func:`built_report`'s answer: the built chunk ids, and why git could not
+    say when it could not.
+
+    ``unavailable`` is ``None`` when the walk ran — ``built`` is then the whole
+    answer, empty meaning nothing is built — else a short cause (the plan could
+    not be read, no base ref resolves, ``git log`` failed), and ``built`` is
+    empty because nothing could be asked, not because nothing was built.
+    """
+
+    built: "set[str]"
+    unavailable: "str | None" = None
+
+
+def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
     """Chunks with work committed on the plan's branch — render-only, git-walking.
 
     A chunk is built when a commit on ``base..branch`` names it in its subject
     (:data:`_CHUNK_COMMIT_RE`'s three anchored forms and the scope filter above
     it) or touches one of its Deliverables paths. ``branch`` is the plan's ``branch:``
     when that ref resolves, else ``HEAD``; ``base`` is the plan's ``base:``
-    (``origin/<b>`` preferred), else the repo's. Returns the ids as the plan
-    prints them; ``set()`` when the plan or git cannot be read. No gate reads it.
+    (``origin/<b>`` preferred), else the repo's. A declared ``base:`` that
+    resolves to no ref is a cause, never a fallback to the repo's base: that
+    would walk a different interval and answer as though it were this one.
+    Returns the ids as the plan prints them. No gate reads it.
     """
     try:
         content = Path(plan_path).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return set()
+    except (OSError, UnicodeDecodeError) as exc:
+        return BuiltReport(set(), f"the plan cannot be read ({exc})")
     repo_dir = Path(repo_dir)
     plan = _read_plan(content)
     if not plan.chunks:
-        return set()
-    base = None
+        return BuiltReport(set())
     declared_base = _ref_token(plan_index.parse_build_plan_frontmatter_base(content))
     if declared_base:
         base = next(
@@ -615,17 +631,24 @@ def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
              if coverage._git_ref_exists(repo_dir, r)),
             None,
         )
-    if base is None:
-        base, _why = coverage.repo_base_branch(repo_dir)
-    if base is None:
-        return set()
+        if base is None:
+            return BuiltReport(
+                set(), f"the plan's `base: {declared_base}` names no ref in this clone"
+            )
+    else:
+        base, why = coverage.repo_base_branch(repo_dir)
+        if base is None:
+            return BuiltReport(set(), why or "no base branch resolves")
     head = plan.branch if plan.branch and coverage._git_ref_exists(repo_dir, plan.branch) else "HEAD"
-    rc, out, _err = evidence.run_git(
+    rc, out, err = evidence.run_git(
         repo_dir, "log", f"--format={_COMMIT_MARK}%s", "--name-only", f"{base}..{head}", "--",
         strip=False,
     )
     if rc != 0:
-        return set()
+        detail = (err or "").strip().splitlines()
+        return BuiltReport(
+            set(), f"`git log {base}..{head}` failed ({detail[0] if detail else f'exit {rc}'})"
+        )
     commits: list[tuple[str, set[str]]] = []
     for line in out.splitlines():
         if line.startswith(_COMMIT_MARK):
@@ -647,10 +670,18 @@ def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
         for m in _CHUNK_COMMIT_RE.finditer(s)
     }
     changed = set().union(*(files for _s, files in commits)) if commits else set()
-    return {
+    return BuiltReport({
         c for c in plan.chunks
         if _norm(c) in named or _touches(deliverable_paths(content, c), changed)
-    }
+    })
+
+
+def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
+    """:func:`built_report`'s ids alone — ``set()`` both when nothing is built and
+    when git could not say. A caller that prints or advises from the answer asks
+    :func:`built_report`, so the second case is named rather than read as the
+    first."""
+    return built_report(plan_path, repo_dir).built
 
 
 def gate_arms(binding: "work_unit.Binding") -> bool:
@@ -674,9 +705,15 @@ def gate_arms(binding: "work_unit.Binding") -> bool:
     if binding.state != "bound" or binding.plan_path is None:
         return False
     plan_path = Path(binding.plan_path)
-    if "archive" in plan_path.parts:
-        return False
-    return plan_path.is_file()
+    # Live is `work_unit.is_live_plan_file`'s rule, asked of the plan's own
+    # `.prawduct/artifacts/` — never an `archive` component anywhere in the
+    # absolute path, which disarmed every repo checked out under `~/archive/`
+    # (cumulative R-1). A plan with no `.prawduct` above it cannot be placed;
+    # authority fails closed, so it arms while the file exists.
+    prawduct = next((d for d in plan_path.parents if d.name == ".prawduct"), None)
+    if prawduct is None:
+        return plan_path.is_file()
+    return work_unit.is_live_plan_file(plan_path, prawduct / "artifacts")
 
 
 # ---------------------------------------------------------------------------
@@ -685,7 +722,10 @@ def gate_arms(binding: "work_unit.Binding") -> bool:
 
 
 def render_table(
-    states: "dict[str, ChunkState]", *, built: "set[str] | frozenset[str]" = frozenset()
+    states: "dict[str, ChunkState]",
+    *,
+    built: "set[str] | frozenset[str]" = frozenset(),
+    built_unavailable: "str | None" = None,
 ) -> list[str]:
     """The ``plan status`` chunk table, as lines — the one renderer.
 
@@ -695,7 +735,9 @@ def render_table(
     a chunk's ``reason`` is indented beneath its row. ``plan status``, the
     ``/clear`` handoff's progress block and the PR payload's build-plan section
     all print these lines, each under its own indent. ``[]`` for a plan with no
-    chunks.
+    chunks. ``built_unavailable`` is :class:`BuiltReport`'s cause: when set, a
+    closing ``built: unavailable (<cause>)`` line says no row's missing
+    ``built`` tag means "not built".
     """
     if not states:
         return []
@@ -720,6 +762,8 @@ def render_table(
         lines.append(f"{line}  {row[4]}".rstrip())
         if row[5]:
             lines.append(f"    {row[5]}")
+    if built_unavailable:
+        lines.append(f"built: unavailable ({built_unavailable})")
     return lines
 
 
@@ -757,7 +801,8 @@ def built_not_done_notice(project_dir: Path) -> "str | None":
     review, so that is what the notice says. It reports and never writes.
 
     ``None`` for an unbound or broken checkout (no plan is borrowed), and when
-    nothing is both open and built. It walks git, so it is printed only by the
+    nothing is both open and built. When git cannot say what is built
+    (:class:`BuiltReport`), one degraded line names the cause instead. It walks git, so it is printed only by the
     two deliberately-run surfaces — the ``/clear`` boundary and ``handoff`` —
     never by SessionStart or Stop (NF1).
     """
@@ -770,8 +815,20 @@ def built_not_done_notice(project_dir: Path) -> "str | None":
     open_ids = [k for k, s in states.items() if s.state == "open" and not s.synthetic]
     if not open_ids:
         return None
-    built = built_chunks(plan_path, project_dir)
-    flagged = [k for k in open_ids if k in built]
+    report = built_report(plan_path, project_dir)
+    if report.unavailable:
+        # Advice fails soft and names its consequence: silence here would read
+        # as "nothing committed is unreviewed", which is exactly what is unknown.
+        subject = (
+            f"whether {plan_path.name}'s open chunk has"
+            if len(open_ids) == 1
+            else f"which of {plan_path.name}'s {len(open_ids)} open chunks have"
+        )
+        return (
+            f"WARNING: {BUILT_NOT_DONE_TOKEN}: cannot tell {subject} committed work — "
+            f"{report.unavailable}; committed work no review has certified is not named here."
+        )
+    flagged = [k for k in open_ids if k in report.built]
     if not flagged:
         return None
     try:

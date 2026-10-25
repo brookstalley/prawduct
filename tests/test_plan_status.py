@@ -9,6 +9,7 @@ from the plan's branch, and that is git's answer, not a field.
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -544,6 +545,88 @@ class TestBuiltChunks:
         _commit(repo, "a.txt", "x\n", "feat(unit): scaffolding")
         _commit(repo, "b.txt", "x\n", "feat(other): land it (Chunk 01)")
         assert plan_status.built_chunks(plan, repo) == set()
+
+
+class TestBuiltReportNamesWhyGitCouldNotAnswer:
+    """Cumulative R-10: `built_chunks` answered `set()` for "nothing is built"
+    and for "git could not say" alike, so `plan status` printed every row
+    untagged and `built_not_done_notice` went silent exactly when git could not
+    answer. `built_report` keeps the two apart; advice fails soft and names its
+    consequence (`architecture.md`)."""
+
+    def _cli(self, repo: Path, *args: str) -> subprocess.CompletedProcess:
+        home = repo.parent / "_home"
+        home.mkdir(exist_ok=True)
+        return subprocess.run(
+            [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "plan", "status", *args],
+            cwd=str(repo), capture_output=True, text=True, timeout=30,
+            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
+                 "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+        )
+
+    def test_a_declared_base_that_resolves_to_no_ref_is_unavailable(self, repo):
+        plan = _plan(repo, ("01", "02"), claim=("branch: feature/unit", "base: no-such-base"))
+        _commit(repo, "src/c01.py", "x\n", "feat(unit): land it (Chunk 01)")
+        report = plan_status.built_report(plan, repo)
+        assert report.built == set()
+        assert report.unavailable and "no-such-base" in report.unavailable, report
+        assert plan_status.built_chunks(plan, repo) == set()  # the wrapper's signature holds
+
+    def test_a_repo_with_no_commits_is_unavailable(self, tmp_path):
+        bare = tmp_path / "fresh"
+        bare.mkdir()
+        _git(bare, "init", "-q", "-b", "main")
+        (bare / ".prawduct" / "artifacts").mkdir(parents=True)
+        plan = _plan(bare, ("01",), claim=())
+        report = plan_status.built_report(plan, bare)
+        assert report.built == set() and report.unavailable, report
+
+    def test_the_control_answers_with_no_reason(self, repo):
+        plan = _plan(repo, ("01", "02"))
+        _commit(repo, "src/c01.py", "x\n", "feat(unit): land it (Chunk 01)")
+        report = plan_status.built_report(plan, repo)
+        assert report == plan_status.BuiltReport({"01"}, None)
+
+    def test_render_table_prints_the_marker_only_when_unavailable(self):
+        states = {"01": plan_status.ChunkState("open")}
+        assert plan_status.render_table(states, built_unavailable="git said no")[-1] == (
+            "built: unavailable (git said no)"
+        )
+        assert not any(
+            ln.startswith("built:") for ln in plan_status.render_table(states, built={"01"})
+        )
+
+    def test_plan_status_carries_the_marker_and_the_json_field(self, repo):
+        _plan(repo, ("01", "02"), claim=("branch: feature/unit", "base: no-such-base"))
+        _commit(repo, "src/c01.py", "x\n", "feat(unit): land it (Chunk 01)")
+        text = self._cli(repo)
+        assert text.returncode == 0, text.stderr
+        assert "  built: unavailable (" in text.stdout and "no-such-base" in text.stdout
+        as_json = self._cli(repo, "--json")
+        assert as_json.returncode == 0, as_json.stderr
+        assert "no-such-base" in json.loads(as_json.stdout)["built_unavailable"]
+
+    def test_plan_status_control_has_no_marker_and_a_null_field(self, repo):
+        _plan(repo, ("01", "02"))
+        _commit(repo, "src/c01.py", "x\n", "feat(unit): land it (Chunk 01)")
+        text = self._cli(repo)
+        assert "built: unavailable" not in text.stdout and "built" in text.stdout
+        assert json.loads(self._cli(repo, "--json").stdout)["built_unavailable"] is None
+
+    def test_the_notice_degrades_to_a_named_cause_rather_than_silence(self, repo):
+        _plan(repo, ("01", "02"), claim=("branch: feature/unit", "base: no-such-base"))
+        _commit(repo, "src/c01.py", "x\n", "feat(unit): land it (Chunk 01)")
+        notice = plan_status.built_not_done_notice(repo)
+        assert notice is not None and len(notice.splitlines()) == 1, notice
+        assert notice.startswith(f"WARNING: {plan_status.BUILT_NOT_DONE_TOKEN}: ")
+        assert "no-such-base" in notice and "cannot tell" in notice
+
+    def test_the_notice_control_names_the_built_chunk(self, repo):
+        _plan(repo, ("01", "02"))
+        _commit(repo, "src/c01.py", "x\n", "feat(unit): land it (Chunk 01)")
+        notice = plan_status.built_not_done_notice(repo)
+        assert notice is not None and "  - Chunk 01: c01" in notice
+        assert "cannot tell" not in notice
 
 
 # ---------------------------------------------------------------------------
