@@ -43,6 +43,13 @@ name; a bare slug that is a known scope is accepted and stored as `scope:<slug>`
   before resolves to none, and gates keyed to the plan do not arm there.
 - `closed-by` is validated: a branch name or an unknown `scope:` value is refused where it is written.
 - A fragment whose scope near-misses a plan's is refused where it is read.
+- Base-branch resolution for the gates, `check-cumulative-critic` and the PR payload consults the
+  bound plan's `base:` first (then the repo's `base_branch:`, then the remote default): a stacked
+  branch whose plan declares `base: feature/A` reviews against `feature/A`, not the integration
+  branch. A plan declaring no `base:` resolves exactly as before.
+- `verify-chunk-refs` with a chunk named but no plan bound, or a broken binding, exits 1
+  `cannot-verify` instead of a false 0; with no chunk named on an unbound checkout it prints `ok`
+  with the reason.
 - `critic-begin` records `scope_chosen_by` as one of `binding`, `legacy-pointer`, `legacy-default`,
   `explicit-args` or `none`; `branch-name` and `not-resolved` are no longer written, and history
   that carries them still reads. A consumer filtering on `binding` alone misses every

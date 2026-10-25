@@ -339,6 +339,14 @@ Beyond tests: on this repo, with the finished `review-stats-dispositions` plan s
 `plan new smoke-test --branch feature/smoke` and confirm the same surfaces bind. In a scratch
 worktree forked from `feature/1050-work-unit-binding`, confirm the Stop hook arms no Critic gate.
 
+**Verified live, 2026-10-25 (coordinator, after the cumulative):** on this branch
+`prawduct-hook plan resolve --json` → `bound · claim · base develop`; `infer-critic-mode` → `chunk`
+(mid-plan) then `cumulative`; `plan resolve --branch develop` → `` (no plan claims the
+integration branch; the finished `review-stats-dispositions` plan at the default path is not
+served). The scratch-worktree Stop case and the unclaimed-branch mode inference are pinned by the
+red-first tests Chunks 01 and 03 added (`tests/test_work_unit.py`, the Stop-gate modules) rather
+than re-driven by hand; `plan new smoke-test` was exercised through `tests/test_plan_hook_cmd.py`.
+
 ## Governance Checkpoints
 
 **Commit & PR cadence:** 01 commits after its `final` review. Each delegate hands back a branch; the
