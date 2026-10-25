@@ -40,7 +40,17 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gates, gitstate, learnings_files, plan_index, stranded_work, work_unit
+from . import (
+    buildplan_refs,
+    evidence,
+    gates,
+    gitstate,
+    learnings_files,
+    plan_index,
+    plan_status,
+    stranded_work,
+    work_unit,
+)
 from .backlog import legacy as backlog
 from .coverage import _resolve_base_branch
 from .core import (
@@ -156,6 +166,20 @@ def _extract_dependency_names(dep_file: Path) -> list[str]:
     return []
 
 
+def _read_facts_once(project_dir: Path):
+    """A thunk reading the evidence store at most once — the staleness checks
+    ask ``plan_status`` about several plans and need the facts only when one is
+    actually asked about."""
+    cache: list[dict] = []
+
+    def facts() -> dict:
+        if not cache:
+            cache.append(evidence.read_facts(project_dir))
+        return cache[0]
+
+    return facts
+
+
 def staleness_scan(project_dir: Path) -> list[str]:
     """Lightweight content-based staleness checks. Returns list of warnings."""
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
@@ -257,14 +281,22 @@ def staleness_scan(project_dir: Path) -> list[str]:
     # governing this work, naming a branch that does not exist, resolving for
     # nobody and saying nothing. That is a typo or a branch never created, and
     # the remedy is the frontmatter — never "archive the plan".
+    # "Unfinished" is `plan_status.is_finished`'s answer, never a box count
+    # (#1051): a plan reads finished once every chunk is done or dropped by the
+    # facts, which is the reviewed state rather than the ticked one.
+    facts = _read_facts_once(project_dir)
     try:
         claims = plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
-        claims = [c for c in claims if buildplan_refs._has_unfinished_chunk(c[0])]
         # The checked-out branch demonstrably exists, so claims naming it need
         # no lookup — which is the ordinary case (you are on the branch your
-        # plan claims) and keeps a ~70 ms subprocess off the common path.
+        # plan claims) and keeps a ~70 ms subprocess off the common path. They
+        # are dropped before the finished test, which reads the facts.
         checked_out = gitstate.current_branch(project_dir)
-        unproven = [c for c in claims if c[1] != checked_out]
+        unproven = [
+            c for c in claims
+            if c[1] != checked_out
+            and not plan_status.is_finished(c[0], facts(), repo_dir=project_dir)
+        ]
         # `None` means git could not be asked — NOT that no branch exists. An
         # emptiness test on an unknown is the fail-open shape: accusing every
         # plan in a repo where git is unavailable.
@@ -288,28 +320,30 @@ def staleness_scan(project_dir: Path) -> list[str]:
     if build_plan_path is not None and build_plan_path.is_file():
         build_plan_label = work_unit.repo_rel(build_plan_path, project_dir)
         try:
-            status = buildplan_refs._parse_build_plan_status(project_dir, build_plan_path)
-            if status.get("current_chunk"):
+            states = plan_status.chunk_states(build_plan_path, facts(), repo_dir=project_dir)
+            if not plan_status.is_finished(
+                build_plan_path, facts(), repo_dir=project_dir, states=states
+            ):
                 pass  # Active work — not stale
-            elif buildplan_refs.build_plan_is_complete(status):
-                # All items checked — work complete
+            elif states:
+                # Every chunk done or dropped by the facts — work complete.
                 unmerged, unmerged_reason = _plan_work_possibly_unmerged(
                     project_dir, prawduct_dir
                 )
                 if unmerged:
                     findings.append(
-                        f"build plan: {build_plan_label} has all chunks complete but "
+                        f"build plan: {build_plan_label} has every chunk done or dropped but "
                         f"{unmerged_reason} — keep the plan live until it merges "
                         "(archiving now would orphan unshipped work)"
                     )
                 else:
                     findings.append(
-                        f"build plan: {build_plan_label} has all chunks complete — "
+                        f"build plan: {build_plan_label} has every chunk done or dropped — "
                         "if work is done, archive the plan "
                         "(`prawduct-hook archive-plan <path> --state completed`)"
                     )
             else:
-                # No Status items — check WIP as fallback for old-style repos
+                # No chunks at all — check WIP as fallback for old-style repos
                 current_branch = _get_current_branch(project_dir)
                 wip = _parse_wip(prawduct_dir, branch=current_branch)
                 if not wip.get("description"):
@@ -332,21 +366,10 @@ def staleness_scan(project_dir: Path) -> list[str]:
         except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
             pass
 
-    # 5. Completed but uncleaned build plan in state
-    if build_plan_path is None or not build_plan_path.is_file():
-        try:
-            if "\n  strategy:" in state_content:
-                strategy_match = re.search(r"\n  strategy:\s*(.+)", state_content)
-                if strategy_match:
-                    strategy_val = strategy_match.group(1).strip().strip("\"'")
-                    if strategy_val and strategy_val != "null":
-                        if not gates._has_build_plan_in_state(prawduct_dir):
-                            findings.append(
-                                "build plan: project-state.yaml has a completed build plan "
-                                "(strategy set, no active chunks) — consider resetting to defaults"
-                            )
-        except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
-            pass
+    # (The former check 5 — "project-state.yaml has a completed build plan" —
+    # read `build_plan.chunks[].status` in project-state.yaml as progress. That
+    # reading is retired (#1051 ST7): progress is the facts', so the check has
+    # no subject left.)
 
     return findings
 
@@ -497,30 +520,205 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
         return {}
 
 
+#: The ``current_chunk`` value when the plan is finished — every chunk done or
+#: dropped by ``plan_status.is_finished``.
+CURRENT_CHUNK_FINISHED = "finished"
+
+
+def _is_status_item(stripped: str) -> bool:
+    """Whether one Status line is a chunk item — asked of ``plan_index``, the
+    one home of the item rule, so no second checkbox reader lives here."""
+    return any(True for _ in plan_index.iter_status_section_items(f"## Status\n{stripped}"))
+
+
+def _chunk_heading_text(content: str, chunk_id: str) -> str:
+    """``Chunk 04: The Critic summary`` — the chunk's own heading, for display.
+
+    A chunk with no heading (an entry only an unmigrated Status roster lists)
+    is named by that roster line's text; only its words are read, never whether
+    it is ticked — progress is ``plan_status``'. ``Chunk <id>`` otherwise."""
+    target = buildplan_refs._normalize_chunk_id(chunk_id)
+    for line in content.splitlines():
+        stripped = line.strip()
+        match = buildplan_refs._CHUNK_HEADING_RE.match(stripped)
+        if match and buildplan_refs._normalize_chunk_id(match.group(1)) == target:
+            return stripped.lstrip("#").strip()
+    for _ticked, text in plan_index.iter_status_section_items(content):
+        item_id = buildplan_refs._chunk_id_from_item_text(text)
+        if item_id is not None and buildplan_refs._normalize_chunk_id(item_id) == target:
+            return text
+    return f"Chunk {chunk_id}"
+
+
+def current_chunk_text(
+    project_dir: Path,
+    plan_path: Path,
+    states: "dict[str, plan_status.ChunkState]",
+    content: "str | None" = None,
+) -> str:
+    """What ``Resume:`` and the handoff's ``**Current chunk**`` print.
+
+    ``states`` is the plan's ``plan_status.chunk_states`` answer. The first of
+    ``current_chunks``, named by its heading (``content`` is the plan's text,
+    read here when not given), or :data:`CURRENT_CHUNK_FINISHED` when
+    ``is_finished`` says so. A plan can be unfinished with nothing current —
+    all that is open is an unreadable plan or a heading the parser rejects —
+    and then the line says that, with the reason, rather than ``finished``.
+    """
+    current = plan_status.current_chunks(plan_path, None, repo_dir=project_dir, states=states)
+    if current:
+        if content is None:
+            try:
+                content = plan_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                content = ""
+        return _chunk_heading_text(content, current[0])
+    if plan_status.is_finished(plan_path, None, repo_dir=project_dir, states=states):
+        return CURRENT_CHUNK_FINISHED
+    reason = next((s.reason for s in states.values() if s.synthetic and s.reason), None)
+    return f"unfinished, no readable chunk — {reason or 'see `prawduct-hook plan status`'}"
+
+
+def _plan_work(
+    project_dir: Path, plan_path: Path, facts: "dict | None" = None
+) -> dict[str, str]:
+    """The work context a bound plan gives the briefing and the handoff.
+
+    Keys match :func:`_parse_wip`'s: ``description``, ``size``, ``type``,
+    ``governance_level``, ``context``, ``current_chunk``. The header fields
+    come from the plan's ``# Build Plan`` title and its ``**Size**:`` line;
+    ``context`` is the Status section's ``Context:`` block; ``current_chunk``
+    is :func:`current_chunk_text` over ``plan_status.chunk_states`` — never a
+    box — and is absent for a plan with no chunks. ``{}`` when the plan cannot
+    be read.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+    result: dict[str, str] = {}
+    for line in content.splitlines():
+        if line.startswith("# Build Plan"):
+            title = line.lstrip("# ").removeprefix("Build Plan").strip()
+            if title.startswith("—") or title.startswith("-"):
+                title = title.lstrip("—- ").strip()
+            # Remove trailing date in parens
+            if title.endswith(")") and "(" in title:
+                title = title[:title.rfind("(")].strip()
+            if title:
+                result["description"] = title
+            break
+    if not result.get("description"):
+        result["description"] = buildplan_refs._plan_description_fallback(plan_path, content)
+
+    for line in content.splitlines():
+        if "**Size**:" in line:
+            for segment in line.split("|"):
+                segment = segment.strip()
+                if segment.startswith("**Size**:"):
+                    result["size"] = segment.removeprefix("**Size**:").strip()
+                elif segment.startswith("**Type**:"):
+                    result["type"] = segment.removeprefix("**Type**:").strip()
+                elif segment.startswith("**Governance**:"):
+                    result["governance_level"] = segment.removeprefix("**Governance**:").strip()
+            break
+
+    # The Context BLOCK runs from the first `Context:` line to the end of the
+    # Status section, not to the end of that physical line — plans write it as
+    # several paragraphs. A chunk item after it ends the block, so a plan that
+    # interleaves them does not swallow its own checklist into the handoff.
+    context_lines: list[str] = []
+    in_context = False
+    for stripped in plan_index.iter_status_section_lines(content):
+        if _is_status_item(stripped):
+            in_context = False
+            continue
+        if not in_context and stripped.startswith("Context:"):
+            in_context = True
+            context_lines.append(stripped.removeprefix("Context:").strip())
+            continue
+        if in_context:
+            context_lines.append(stripped)
+    context = "\n".join(context_lines).strip()
+    if context:
+        result["context"] = context
+
+    if facts is None:
+        facts = evidence.read_facts(project_dir)
+    states = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir)
+    if states:
+        result["current_chunk"] = current_chunk_text(project_dir, plan_path, states, content)
+    return result
+
+
+def chunk_table_lines(
+    project_dir: Path,
+    plan_path: Path,
+    states: "dict[str, plan_status.ChunkState] | None" = None,
+) -> list[str]:
+    """The ``prawduct-hook plan status`` chunk table, as lines — the handoff's
+    progress block and the PR payload's build-plan section both print it.
+
+    The same columns the CLI prints: chunk id, state (``open`` / ``done`` /
+    ``dropped``), the certifying fact id, its date, and the tags ``imported``
+    and ``built`` (``plan_status.built_chunks`` — render-only, git-walking; no
+    gate reads it), with a chunk's ``reason`` indented beneath its row. Read
+    in-process from ``plan_status``, never by shelling out. ``[]`` for a plan
+    with no chunks.
+    """
+    if states is None:
+        states = plan_status.chunk_states(
+            plan_path, evidence.read_facts(project_dir), repo_dir=project_dir
+        )
+    if not states:
+        return []
+    built = plan_status.built_chunks(plan_path, project_dir)
+    rows = [
+        (
+            chunk_id,
+            st.state,
+            st.fact_id or "-",
+            st.date or "-",
+            ", ".join(
+                tag for tag, on in (("imported", st.imported), ("built", chunk_id in built)) if on
+            ) or "-",
+            st.reason,
+        )
+        for chunk_id, st in states.items()
+    ]
+    table = [("chunk", "state", "fact", "date", "tags", None), *rows]
+    widths = [max(len(row[i]) for row in table) for i in range(4)]
+    lines: list[str] = []
+    for row in table:
+        line = "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row[:4]))
+        lines.append(f"{line}  {row[4]}".rstrip())
+        if row[5]:
+            lines.append(f"    {row[5]}")
+    return lines
+
+
 def _get_active_work(
     project_dir: Path, binding: "work_unit.Binding | None" = None
 ) -> dict[str, str]:
-    """Get active work context, preferring build plan Status over project-state.yaml WIP.
+    """Get active work context, preferring the bound plan over project-state.yaml WIP.
 
     The plan read is the one this checkout is bound to; ``binding`` lets a
     caller that already resolved it pass it in. An unbound or broken checkout
-    reads no plan — handing ``None`` to the Status parser would read the
-    repo's active plan instead, which is exactly the borrowing a binding refuses.
+    reads no plan — reading the repo's active plan instead would be exactly the
+    borrowing a binding refuses.
 
-    A build plan whose chunks are ALL complete is not active work. Without that
-    predicate a finished plan was reported as the next session's ``**Task**``
-    forever — ``staleness_scan`` read the identical parse and correctly said
-    "all chunks complete", while this function said "in progress" from the same
-    bytes. Both now ask ``buildplan_refs.build_plan_is_complete``.
+    A FINISHED bound plan is still reported, its ``current_chunk`` reading
+    :data:`CURRENT_CHUNK_FINISHED` (#1051). It used to fall back to WIP: a
+    ticked-box plan was stamped as the next session's ``**Task**`` "in
+    progress" while ``staleness_scan`` said "all chunks complete" from the same
+    bytes. Both now read ``plan_status``, and the line says ``finished`` rather
+    than naming a chunk, so the two cannot disagree — and a plan that stays
+    live until it is archived is shown for what it is.
     """
     if binding is None:
         binding = work_unit.resolve(project_dir)
-    work = (
-        buildplan_refs._parse_build_plan_status(project_dir, binding.plan_path)
-        if binding.plan_path is not None
-        else {}
-    )
-    if work.get("description") and not buildplan_refs.build_plan_is_complete(work):
+    work = _plan_work(project_dir, binding.plan_path) if binding.plan_path is not None else {}
+    if work.get("description"):
         return work
     return _parse_wip(gitstate.get_prawduct_dir(project_dir))
 
@@ -1946,8 +2144,9 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
     if notes_state in (NOTES_ABSENT, NOTES_EMPTY) and not rescued:
         sections.extend(_no_forward_note_section(changed, commits))
 
-    # 1. Work context (prefer build plan Status, fall back to project-state.yaml WIP)
-    wip = _get_active_work(project_dir)
+    # 1. Work context (prefer the bound plan, fall back to project-state.yaml WIP)
+    binding = work_unit.resolve(project_dir)
+    wip = _get_active_work(project_dir, binding)
     if wip.get("description"):
         sections.append("## Work In Progress")
         sections.append(f"**Task**: {wip['description']}")
@@ -1964,6 +2163,13 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
             sections.append(f"**Context**: {wip['context']}")
         if wip.get("current_chunk"):
             sections.append(f"**Current chunk**: {wip['current_chunk']}")
+        if binding.plan_path is not None:
+            table = chunk_table_lines(project_dir, binding.plan_path)
+            if table:
+                sections.append("**Progress** (`prawduct-hook plan status`):")
+                sections.append("```")
+                sections.extend(table)
+                sections.append("```")
         sections.append("")
 
     # 2. Session reflection (from .session-reflected). This handoff is the ONLY
@@ -2234,16 +2440,12 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # diverge — reading the pointer here while the gate reads the binding is
     # precisely a divergence, and in the silent direction: the advisory would
     # say nothing at session start about the gate that blocks at session end.
-    # A broken binding arms it as a bound one would: authority fails closed.
+    # The arming question is `plan_status.gate_arms`, the one predicate
+    # `cmd_stop` reads too (#1051 ST2): a broken binding arms (authority fails
+    # closed), a bound one arms while its plan is live, and no tick, commit or
+    # `project-state.yaml` chunk status can disarm it.
     binding = work_unit.resolve(project_dir)
-    has_build_plan = (
-        binding.state == "broken"
-        or (
-            binding.plan_path is not None
-            and gates._has_active_build_plan_file(prawduct_dir, binding.plan_path)
-        )
-        or gates._has_build_plan_in_state(prawduct_dir)
-    )
+    has_build_plan = plan_status.gate_arms(binding)
     # Fires on the same span as cmd_stop's guard: judgeable work, committed or not.
     if has_build_plan and "critic" not in waivers:
         verdict = gates.session_review_verdict(project_dir)

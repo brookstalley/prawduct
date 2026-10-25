@@ -27,8 +27,9 @@ gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 ``_gates()``. ``_has_active_build_plan_file`` was reassigned here (it is gate
 logic, lib-clean) from the briefing region.
 
-Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
-(build-plan Status parsing, including ``_count_build_plan_chunks``),
+Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
+``plan_status`` (chunk progress, the one walker — #1051), ``work_unit`` (the
+checkout's binding),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
 ``standing_block`` (the closing block the Stop deferral and clear-verdict gate read), and ``core``
@@ -51,6 +52,7 @@ from . import (
     evidence,
     gitstate,
     learnings_files,
+    plan_status,
     standing_block,
     tree_key_memo,
     verdict_cache,
@@ -551,6 +553,12 @@ def _store_run_vouching(
     for fact in evidence.facts_of_kind(read, "test-run"):
         body = fact.get("body")
         if not isinstance(body, dict):
+            continue
+        if body.get("narrowed") is True:
+            # A scratch worktree's run of a few files (DG2) is attribution
+            # only: it neither vouches — a green 3-file run is not the suite —
+            # nor denies, which would let the newest narrowed fact overrule a
+            # real run on the same tree.
             continue
         tree = body.get("tree")
         if not isinstance(tree, str) or not tree:
@@ -1878,9 +1886,11 @@ def _merge_base_verdict(
     }
 
 
-_CRITIC_MODE_GOALS_1_3_ONLY = frozenset({
-    _CRITIC_MODE_CHUNK,
-    _CRITIC_MODE_VERIFY_RESOLUTIONS,
+#: The modes that run the end-of-cycle goals; any other latest mode on a
+#: finished plan earns the synthesis nudge.
+_CRITIC_MODE_SYNTHESIS = frozenset({
+    _CRITIC_MODE_FINAL,
+    _CRITIC_MODE_CUMULATIVE,
 })
 
 
@@ -1889,28 +1899,29 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
 
     Returns ``(True, "")`` when the gate is satisfied, ``(False, reason)``
     otherwise. The gate is advisory: it fires when a multi-chunk build plan
-    has all chunks marked ``[x]`` but the most recent Critic review ran
-    Goals 1-3 only — ``chunk`` and ``verify-resolutions`` modes both skip
+    is finished — every chunk ``done`` or ``dropped`` by
+    ``plan_status.is_finished``, never by a ticked box (#1051) — but the most
+    recent Critic review was not a ``final`` or ``cumulative`` one, so the
     end-of-cycle goals (Coherence, Design, Learnings Cross-Check, Backlog
-    Reconciliation, Framework-Specific Checks). The mode is telemetry read
-    from the latest ``review`` FACT in the evidence store (kernel-v3 chunk
-    04: no gate — even an advisory one — reads the ``.critic-findings.json``
-    cache); it steers a workflow nudge, never evidence acceptance (D4).
+    Reconciliation, Framework-Specific Checks) have not run. The mode is
+    telemetry read from the latest ``review`` FACT in the evidence store
+    (kernel-v3 chunk 04: no gate — even an advisory one — reads the
+    ``.critic-findings.json`` cache); it steers a workflow nudge, never
+    evidence acceptance (D4).
 
     Specific cases (in order):
     0. A broken work-unit binding (two live plans claim this branch) →
        unsatisfied, naming the claimants.
     1. No build plan bound, or no chunks declared → satisfied (non-chunked work).
     2. Single-chunk plan → satisfied (the one Critic run is the final).
-    3. Multi-chunk plan with incomplete chunks → satisfied (mid-cycle).
-    4. Multi-chunk plan, all chunks ``[x]``, latest review fact's mode is in
-       ``_CRITIC_MODE_GOALS_1_3_ONLY`` (chunk or verify-resolutions)
-       → unsatisfied. Run ``/prawduct:critic final`` for end-of-cycle synthesis.
-    5. Multi-chunk plan, all chunks ``[x]``, latest mode is final/cumulative
-       (or no review fact from this worktree and branch — nothing to judge)
+    3. Multi-chunk plan not finished → satisfied (mid-cycle).
+    4. Finished multi-chunk plan, latest review fact from this worktree and
+       branch is neither ``final`` nor ``cumulative`` → unsatisfied. Run
+       ``/prawduct:critic final`` for end-of-cycle synthesis.
+    5. Finished multi-chunk plan, latest mode is final/cumulative (or no
+       review fact from this worktree and branch — nothing to judge)
        → satisfied.
     """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     binding = work_unit.resolve(project_dir)
     if binding.state == "broken":
         # Authority fails closed: two plans claiming one branch is not "no
@@ -1925,12 +1936,14 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
         )
     if binding.plan_path is None:
         return True, ""
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, binding.plan_path)
-    if total == 0:
+    facts = evidence.read_facts(project_dir)
+    states = plan_status.chunk_states(binding.plan_path, facts, repo_dir=project_dir)
+    total = len(states)
+    if total <= 1:
         return True, ""
-    if total == 1:
-        return True, ""
-    if complete < total:
+    if not plan_status.is_finished(
+        binding.plan_path, facts, repo_dir=project_dir, states=states
+    ):
         return True, ""
 
     # The store is clone-global; this session's latest review is the latest one
@@ -1941,7 +1954,7 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     branch = gitstate.current_branch(project_dir)
     review_facts = [
         f
-        for f in evidence.facts_of_kind(evidence.read_facts(project_dir), "review")
+        for f in evidence.facts_of_kind(facts, "review")
         if (f.get("actor") or {}).get("worktree") == here
         and (f.get("actor") or {}).get("branch", branch) == branch
     ]
@@ -1949,9 +1962,9 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
         return True, ""
     latest_body = review_facts[-1].get("body") or {}
     mode = latest_body.get("mode", _CRITIC_MODE_FINAL)
-    if mode in _CRITIC_MODE_GOALS_1_3_ONLY:
+    if mode not in _CRITIC_MODE_SYNTHESIS:
         return False, (
-            f"All {total} chunks complete; last Critic review was "
+            f"All {total} chunks done or dropped; last Critic review was "
             f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
             "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
             "Reconciliation) before pushing. "
@@ -2091,6 +2104,7 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
         return path.as_posix()
 
 
+# Unreferenced after Chunk 04; deleted in Chunk 06.
 def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
     """Check if project-state.yaml contains an ACTIVE build plan.
 
@@ -2132,6 +2146,7 @@ def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
         return False
 
 
+# Unreferenced after Chunk 04; deleted in Chunk 06.
 def _has_active_build_plan_file(
     prawduct_dir: Path, plan_path: "Path | None" = None
 ) -> bool:

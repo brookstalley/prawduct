@@ -190,8 +190,10 @@ class TestBranchScopedPlanBriefing:
         Flow "Confirm the bookkeeping merged WITH the PR" step says to RETAIN it there until the release archives it. Firing would nag
         every session for weeks with the one remedy that flow forbids.
 
-        This is the test that fails if the `_has_unfinished_chunk` filter is
-        deleted; the sibling above passes either way, because its plan has an
+        This is the test that fails if the `plan_status.is_finished` filter is
+        deleted (it was `_has_unfinished_chunk`, a box count, before #1051; the
+        ticked box still reads as an imported `done` until the plan is
+        migrated); the sibling above passes either way, because its plan has an
         open chunk.
         """
         _init_git_repo(tmp_path, branch="work")
@@ -205,6 +207,45 @@ class TestBranchScopedPlanBriefing:
         )
         findings = briefing.staleness_scan(tmp_path)
         assert not any("not a branch in this repo" in f for f in findings), findings
+
+    def test_a_plan_finished_by_a_dropped_chunk_claiming_a_missing_branch_says_nothing(
+        self, tmp_path: Path
+    ):
+        """`is_finished` is the facts' and the declarations' answer, not the
+        boxes': the box is unticked, but the chunk is DROPPED, so the plan is
+        finished and the narrowing above holds. The missing-branch sibling with
+        the same unticked box and no `dropped:` is the control."""
+        _init_git_repo(tmp_path, branch="work")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        _plan(
+            prawduct,
+            "build-plan-merged.md",
+            "---\nartifact: build-plan\nbranch: feat/long-merged\n"
+            "dropped:\n  - 01: descoped\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: a chunk\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("not a branch in this repo" in f for f in findings), findings
+
+    def test_a_bound_plan_with_every_chunk_dropped_suggests_archiving(self, tmp_path: Path):
+        """The "all chunks complete" line reads `plan_status`: every chunk done
+        or dropped. The control is the same plan with the chunk left open —
+        active work, no line."""
+        _init_git_repo(tmp_path, branch="feat/s")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        body = (
+            "---\nartifact: build-plan\nscope: s\nbranch: feat/s\n{extra}---\n\n"
+            "## Build Chunks\n\n### Chunk 01: a chunk\n"
+        )
+        plan = _plan(prawduct, "build-plan-s.md", body.format(extra=""))
+        assert not any("done or dropped" in f for f in briefing.staleness_scan(tmp_path))
+        plan.write_text(body.format(extra="dropped:\n  - 01: descoped\n"))
+        findings = briefing.staleness_scan(tmp_path)
+        assert any(
+            "build-plan-s.md has every chunk done or dropped" in f for f in findings
+        ), findings
 
     def test_a_plan_claiming_an_existing_branch_is_not_reported(self, tmp_path: Path):
         # The paired negative, or the assertion above passes against a scan that
@@ -485,60 +526,132 @@ class TestParseAllWipBranches:
 
 
 # --------------------------------------------------------------------------- #
-# _get_active_work  (build-plan Status preferred over WIP)
+# _get_active_work  (the bound plan preferred over WIP; progress from plan_status)
 # --------------------------------------------------------------------------- #
+_TWO_CHUNK_PLAN = (
+    "---\nscope: s\n---\n\n# Build Plan — from plan (2026-10-25)\n\n"
+    "**Size**: small | **Type**: refactor\n\n"
+    "## Build Chunks\n\n### Chunk 01: First\n\n### Chunk 02: Second\n"
+)
+
+
+def _bound_to(plan: Path) -> "work_unit.Binding":
+    return work_unit.Binding("bound", "s", plan, "integration", None, "binding")
+
+
 class TestGetActiveWork:
-    def test_prefers_build_plan_status(self, tmp_path, monkeypatch):
-        # `_get_active_work` takes the PROJECT dir rather than `.prawduct/`.
-        # That signature outlived its original reason — "which chunk is current"
-        # was git-derived on repos whose checkboxes were a derived view — and is
-        # kept because the project dir is what resolves the branch's plan
-        # (BLD-7K3Q).
-        _prawduct(tmp_path)
-        monkeypatch.setattr(
-            briefing.buildplan_refs, "_parse_build_plan_status",
-            lambda d, p=None: {"description": "from plan", "current_chunk": "C1"},
-        )
-        assert briefing._get_active_work(tmp_path, _BOUND) == {
-            "description": "from plan", "current_chunk": "C1",
+    """Renegotiated for #1051: the work context is read from the bound plan
+    itself and its progress from ``plan_status`` — the earlier versions stubbed
+    ``buildplan_refs._parse_build_plan_status``, which this function no longer
+    calls, so a stub of it would now pass against any code."""
+
+    def test_prefers_the_bound_plan_and_names_its_first_open_chunk(self, tmp_path):
+        # `_get_active_work` takes the PROJECT dir rather than `.prawduct/`,
+        # because the project dir is what resolves the branch's plan (BLD-7K3Q).
+        pr = _prawduct(tmp_path)
+        plan = pr / "plan.md"
+        plan.write_text(_TWO_CHUNK_PLAN)
+        (pr / "project-state.yaml").write_text("work_in_progress:\n  description: wip work\n")
+        assert briefing._get_active_work(tmp_path, _bound_to(plan)) == {
+            "description": "from plan", "size": "small", "type": "refactor",
+            "current_chunk": "Chunk 01: First",
         }
 
-    def test_an_unbound_checkout_reads_no_plan(self, tmp_path, monkeypatch):
-        """Handing the parser `None` would read the repo's active plan — the
-        borrowing an unbound binding refuses. The bound test above is the
-        control: the same stub answers when a plan is bound."""
+    def test_the_first_open_chunk_moves_when_a_chunk_is_dropped(self, tmp_path):
+        """The control for the test above: the answer is `plan_status`', so a
+        `dropped:` declaration moves it — a reader of headings or boxes would
+        still say 01."""
         pr = _prawduct(tmp_path)
-        monkeypatch.setattr(
-            briefing.buildplan_refs, "_parse_build_plan_status",
-            lambda d, p=None: {"description": "another branch's plan"},
-        )
+        plan = pr / "plan.md"
+        plan.write_text(_TWO_CHUNK_PLAN.replace(
+            "scope: s\n", "scope: s\ndropped:\n  - 01: descoped\n"
+        ))
+        work = briefing._get_active_work(tmp_path, _bound_to(plan))
+        assert work["current_chunk"] == "Chunk 02: Second"
+
+    def test_an_unbound_checkout_reads_no_plan(self, tmp_path):
+        """Reading a plan with no binding would be the borrowing an unbound
+        binding refuses. The bound test above is the control: the same plan
+        answers when it is bound."""
+        pr = _prawduct(tmp_path)
+        (pr / "plan.md").write_text(_TWO_CHUNK_PLAN)
         (pr / "project-state.yaml").write_text("work_in_progress:\n  description: wip work\n")
         assert briefing._get_active_work(tmp_path, _UNBOUND) == {"description": "wip work"}
 
-    def test_falls_back_to_wip_when_no_plan_description(self, tmp_path, monkeypatch):
+    def test_falls_back_to_wip_when_the_plan_cannot_be_read(self, tmp_path):
         pr = _prawduct(tmp_path)
-        monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
-        (pr / "project-state.yaml").write_text(
-            "work_in_progress:\n  description: wip work\n"
-        )
-        assert briefing._get_active_work(tmp_path) == {"description": "wip work"}
-
-    def test_completed_plan_is_not_active_work(self, tmp_path, monkeypatch):
-        """A plan with every chunk done must NOT be reported as active work.
-
-        `staleness_scan` reads the same parse and says "all chunks complete";
-        this function said "in progress" from the same bytes, so the handoff
-        stamped a finished plan as the next session's **Task** (SCN-4H9T).
-        """
-        pr = _prawduct(tmp_path)
-        monkeypatch.setattr(
-            briefing.buildplan_refs, "_parse_build_plan_status",
-            lambda d, p=None: {"description": "finished plan", "_has_status_items": "true"},
-        )
         (pr / "project-state.yaml").write_text(
             "work_in_progress:\n  description: wip work\n"
         )
         assert briefing._get_active_work(tmp_path, _BOUND) == {"description": "wip work"}
+
+    def test_a_finished_plan_is_reported_as_finished(self, tmp_path):
+        """Renegotiated (#1051). This was `test_completed_plan_is_not_active_work`:
+        a ticked-box plan fell back to WIP, because the handoff stamped it as the
+        next session's **Task** "in progress" while `staleness_scan` said "all
+        chunks complete" from the same bytes (SCN-4H9T). Both now read
+        `plan_status`, and the work line says `finished` rather than naming a
+        chunk — so the two cannot disagree, which was the defect — while a plan
+        that stays live until it is archived is shown for what it is."""
+        pr = _prawduct(tmp_path)
+        plan = pr / "plan.md"
+        plan.write_text(_TWO_CHUNK_PLAN.replace(
+            "scope: s\n", "scope: s\ndropped:\n  - 01: descoped\n  - 02: descoped\n"
+        ))
+        (pr / "project-state.yaml").write_text(
+            "work_in_progress:\n  description: wip work\n"
+        )
+        work = briefing._get_active_work(tmp_path, _bound_to(plan))
+        assert work["description"] == "from plan"
+        assert work["current_chunk"] == briefing.CURRENT_CHUNK_FINISHED == "finished"
+
+    def test_an_unreadable_heading_is_not_finished(self, tmp_path):
+        """A plan whose only open entry is one `plan_status` could not read is
+        UNFINISHED with nothing current — the line names that, never `finished`."""
+        pr = _prawduct(tmp_path)
+        plan = pr / "plan.md"
+        plan.write_text(
+            "---\nscope: s\n---\n\n# Build Plan — p\n\n## Build Chunks\n\n"
+            "#### Chunk 01: too deep for the parser\n"
+        )
+        work = briefing._get_active_work(tmp_path, _bound_to(plan))
+        assert work["current_chunk"] != briefing.CURRENT_CHUNK_FINISHED
+        assert work["current_chunk"].startswith("unfinished, no readable chunk — ")
+
+
+class TestResumeLine:
+    """The briefing's `Resume:` line, end to end through `assemble_session_briefing`."""
+
+    def _repo(self, tmp_path: Path, frontmatter_extra: str = "") -> Path:
+        _init_git_repo(tmp_path, branch="feat/s")
+        plan_dir = tmp_path / ".prawduct" / "artifacts"
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "build-plan-s.md").write_text(_TWO_CHUNK_PLAN.replace(
+            "scope: s\n", f"scope: s\nbranch: feat/s\n{frontmatter_extra}"
+        ))
+        return tmp_path
+
+    def test_resume_names_the_first_open_chunk(self, tmp_path):
+        text = briefing.assemble_session_briefing(self._repo(tmp_path), [])
+        assert "\nResume: Chunk 01: First\n" in text + "\n"
+
+    def test_resume_says_finished_when_every_chunk_is_dropped(self, tmp_path):
+        repo = self._repo(tmp_path, "dropped:\n  - 01: x\n  - 02: y\n")
+        text = briefing.assemble_session_briefing(repo, [])
+        assert "\nResume: finished\n" in text + "\n"
+
+    def test_the_handoff_carries_the_plan_status_table(self, tmp_path):
+        """The handoff's progress block is `plan status`' table, read in-process
+        from `plan_status` — the same columns, one row per chunk in plan order."""
+        repo = self._repo(tmp_path, "dropped:\n  - 02: descoped\n")
+        text = briefing.render_session_handoff(repo).text
+        assert "**Current chunk**: Chunk 01: First\n" in text
+        block = text.split("**Progress** (`prawduct-hook plan status`):\n```\n", 1)[1]
+        rows = block.split("```", 1)[0].splitlines()
+        assert rows[0].split() == ["chunk", "state", "fact", "date", "tags"]
+        assert rows[1].split() == ["01", "open", "-", "-", "-"]
+        assert rows[2].split() == ["02", "dropped", "-", "-", "-"]
+        assert rows[3].strip() == "descoped", "a dropped chunk's reason is shown beneath it"
 
 
 # --------------------------------------------------------------------------- #
@@ -921,8 +1034,16 @@ class TestGenerateSessionHandoff:
 # _check_previous_session_gates  (governance warnings — delegates to siblings)
 # --------------------------------------------------------------------------- #
 class TestCheckPreviousSessionGates:
+    """Renegotiated for #1051: the arming question is `plan_status.gate_arms`,
+    the one predicate `cmd_stop` reads — run for real here, not stubbed. The
+    earlier `_patch` stubbed `_has_active_build_plan_file` (an unticked-box
+    count) and `_has_build_plan_in_state` (a project-state chunk scan), neither
+    of which the briefing reads any more; `build_plan` now chooses the binding:
+    bound to a live plan file whose every box is TICKED (which the old count
+    read as "nothing to govern"), or unbound."""
+
     def _patch(self, monkeypatch, *, judgeable=True, changed=None,
-               waivers=None, build_plan=True):
+               waivers=None, build_plan=True, tmp_path=None):
         # Both halves read the session's WORK span (the helper cmd_stop's gates
         # read), so the span is the one input: `judgeable` and the changed paths.
         if changed is None:
@@ -932,22 +1053,20 @@ class TestCheckPreviousSessionGates:
             lambda d, s=None: {"changed": changed, "judgeable": judgeable, "source": "base-tree"},
         )
         monkeypatch.setattr(briefing.gates, "_read_gates_waived", lambda d: waivers or {})
-        # Accepts the plan-path argument the briefing now passes (it resolves the
-        # BRANCH's plan, the same one the Stop gate reads, so the advisory cannot
-        # go silent where the gate blocks). The stub ignores it: what is under
-        # test is the advisory's reaction, not which file it was pointed at.
-        monkeypatch.setattr(
-            briefing.gates, "_has_active_build_plan_file",
-            lambda d, _plan_path=None: build_plan,
-        )
-        monkeypatch.setattr(briefing.work_unit, "resolve", lambda d, **_k: _BOUND)
-        monkeypatch.setattr(briefing.gates, "_has_build_plan_in_state", lambda d: False)
+        binding = _UNBOUND
+        if build_plan:
+            plan = _plan(
+                _prawduct(tmp_path), "build-plan-s.md",
+                "---\nscope: s\n---\n\n## Status\n\n- [x] Chunk 01: a\n- [x] Chunk 02: b\n",
+            )
+            binding = work_unit.Binding("bound", "s", plan, "integration", None, "binding")
+        monkeypatch.setattr(briefing.work_unit, "resolve", lambda d, **_k: binding)
         monkeypatch.setattr(
             briefing.gates, "session_review_verdict", lambda d, **_kw: {"status": "uncovered", "reason": "no facts"}
         )
 
     def test_no_changes_short_circuits(self, tmp_path, monkeypatch):
-        self._patch(monkeypatch, judgeable=False)
+        self._patch(monkeypatch, judgeable=False, build_plan=False)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
     def test_missing_reflection_warns(self, tmp_path, monkeypatch):
@@ -987,11 +1106,26 @@ class TestCheckPreviousSessionGates:
         self._patch(monkeypatch, judgeable=True, build_plan=False)
         assert "reflection not captured" in briefing._check_previous_session_gates(tmp_path)
 
-    def test_build_plan_with_code_and_no_findings_warns_critic(self, tmp_path, monkeypatch):
+    def test_a_bound_all_ticked_plan_arms_the_critic_advisory(self, tmp_path, monkeypatch):
+        """Was `test_build_plan_with_code_and_no_findings_warns_critic`, over a
+        stubbed `_has_active_build_plan_file`. A bound live plan arms the
+        advisory however many boxes are ticked — a tick cannot disarm it (ST2),
+        which the old unticked count did. The unbound case is the control."""
         pr = _prawduct(tmp_path)
         (pr / ".session-reflected").write_text(SHAPED_REFLECTION)  # silence reflection gate
-        self._patch(monkeypatch, build_plan=True)
+        self._patch(monkeypatch, build_plan=True, tmp_path=tmp_path)
         assert "Critic review not recorded" in briefing._check_previous_session_gates(tmp_path)
+        monkeypatch.setattr(briefing.work_unit, "resolve", lambda d, **_k: _UNBOUND)
+        assert briefing._check_previous_session_gates(tmp_path) == []
+
+    def test_the_advisory_and_the_stop_gate_share_one_arming_predicate(self, tmp_path, monkeypatch):
+        """The briefing asks `plan_status.gate_arms` — the function `cmd_stop`
+        asks — so stubbing it to False silences the advisory on a bound plan."""
+        pr = _prawduct(tmp_path)
+        (pr / ".session-reflected").write_text(SHAPED_REFLECTION)
+        self._patch(monkeypatch, build_plan=True, tmp_path=tmp_path)
+        monkeypatch.setattr(briefing.plan_status, "gate_arms", lambda b: False)
+        assert briefing._check_previous_session_gates(tmp_path) == []
 
     def test_a_broken_binding_arms_the_critic_advisory(self, tmp_path, monkeypatch):
         """Authority fails closed: two plans claiming the branch is not "no
@@ -1008,7 +1142,7 @@ class TestCheckPreviousSessionGates:
     def test_critic_waiver_skips_critic_gate(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
         (pr / ".session-reflected").write_text(SHAPED_REFLECTION)
-        self._patch(monkeypatch, build_plan=True, waivers={"critic": "n/a"})
+        self._patch(monkeypatch, build_plan=True, waivers={"critic": "n/a"}, tmp_path=tmp_path)
         assert briefing._check_previous_session_gates(tmp_path) == []
 
 

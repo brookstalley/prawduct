@@ -413,8 +413,7 @@ def _hook_evidence(repo: Path) -> None:
     from lib import gates
 
     # The stored mode is the gate's own vocabulary string, not the bare word —
-    # `_CRITIC_MODE_GOALS_1_3_ONLY` matches on it, so a hand-written "chunk"
-    # here would silently satisfy the gate and the test would pass for nothing.
+    # facts persist the verbose form, and `_CRITIC_MODE_SYNTHESIS` matches on it.
     result = evidence.append_fact(
         repo,
         "review",

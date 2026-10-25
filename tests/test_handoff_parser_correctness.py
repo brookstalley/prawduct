@@ -256,21 +256,18 @@ class TestSingleReadingCurrentChunk:
         assert "current_chunk" not in status
         assert buildplan_refs.build_plan_is_complete(status) is True
 
-    def test_handoff_omits_work_section_for_a_completed_plan(self, tmp_path: Path):
-        """SCN-4H9T end-to-end: a finished plan is never stamped as the next
-        session's work.
+    def test_handoff_reports_a_completed_plan_as_finished(self, tmp_path: Path):
+        """SCN-4H9T end-to-end, renegotiated by #1051 (was
+        `test_handoff_omits_work_section_for_a_completed_plan`).
 
-        The sibling above asserts the same thing about the *parse*, and that is
-        not a substitute — `generate_session_handoff` composes the parse with a
-        project-state read, and it is the composition that reaches a reader. The
-        surviving unit tests all stub a project-state WIP, so every one of them
-        passes against a writer that renders the section unconditionally.
-
-        This regression was carried by the retired `views_enabled` fixture class
-        and went down with it. It is restored deliberately rather than
-        rewritten: the checkbox is now the SINGLE reading of completeness, so
-        the composed path this pins is strictly more load-bearing than it was
-        when the assertion was first written.
+        The defect was a finished plan stamped as the next session's work "in
+        progress" while `staleness_scan` called it complete from the same bytes.
+        The handoff and the briefing now read `plan_status`, and a finished
+        plan's work section says `**Current chunk**: finished` rather than
+        naming a chunk — the two readers cannot disagree — instead of vanishing,
+        because the plan stays live until it is archived and the next session
+        should be told what it is. Asserted on the COMPOSED path
+        (`generate_session_handoff`), which is what reaches a reader.
         """
         _init_repo(tmp_path)
         _write_plan(
@@ -280,8 +277,22 @@ class TestSingleReadingCurrentChunk:
         (tmp_path / ".prawduct" / ".session-reflected").write_text("did the thing")
         briefing.generate_session_handoff(tmp_path)
         handoff = (tmp_path / ".prawduct" / ".session-handoff.md").read_text()
-        assert "## Work In Progress" not in handoff
+        assert "## Work In Progress" in handoff
+        assert "**Current chunk**: finished\n" in handoff
+        assert "**Current chunk**: Chunk" not in handoff
         assert "did the thing" in handoff
+
+    def test_handoff_names_the_open_chunk_of_an_unfinished_plan(self, tmp_path: Path):
+        """The control for the test above: the same plan with its box unticked
+        names the chunk, so `finished` is the state's answer, not a constant."""
+        _init_repo(tmp_path)
+        _write_plan(
+            tmp_path,
+            "# Build Plan — Done (2026-07-26)\n\n## Status\n\n- [ ] Chunk 01: A\n",
+        )
+        briefing.generate_session_handoff(tmp_path)
+        handoff = (tmp_path / ".prawduct" / ".session-handoff.md").read_text()
+        assert "**Current chunk**: Chunk 01: A\n" in handoff
 
     def test_an_unchecked_non_chunk_item_still_blocks_completion(self, tmp_path: Path):
         """A Status section may hold items that name no chunk (a plain to-do).
