@@ -355,6 +355,7 @@ class TestNotesWrittenAtConsolidation:
         "plugin/lib/evidence_notes.py",
         ".prawduct/artifacts/api-contract.md",
         ".prawduct/artifacts/data-model.md",
+        ".prawduct/cross-cutting-concerns.md",
     ])
     def test_every_description_of_the_note_line_states_the_scratch_tail(self, rel):
         """R-8/R-13: the rule is "the basename, or `.claude/worktrees/<name>`

@@ -19,7 +19,7 @@ partition: >-
 governed_by:
   - artifact: data-model
     dispositions:
-      - "verdicts computed from the append-only ledger, no model in a fact's write path → conforms: ingest appends code-written lines verbatim; nothing is re-derived"
+      - "verdicts computed from the append-only ledger, no model in a fact's write path → conforms: ingest appends the lines code wrote in another clone (the actor's locator fields reduced at send, nothing else touched); nothing is re-derived, and the inbound trust decision is recorded in security-model.md"
       - "facts immutable and append-only → conforms: a note is only appended to, a merge only adds lines, ingest only appends"
       - "derived views never feed a gate → conforms: no gate reads a note; gates read the store, which ingest feeds"
       - "a governance document reaches a terminal state, never deleted → inapplicable because this wave archives nothing; plan_lifecycle reads the archive stamp and writes none"
@@ -40,8 +40,13 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semver; the store independently schema-versioned → conforms: no schema bump (the envelope is unchanged); the note carries the same versioned lines"
-      - "exit codes are the contract; attributed errors → conforms: `evidence ingest` 0/1, `sync` 0/1 naming the step/2, `configure` 0/1/2, recorded in api-contract.md by Chunk 05"
+      - "exit codes are the contract; attributed errors → conforms: every `evidence` op 0 ok / 1 failure (`sync` names its step) / 2 usage through one router, recorded in api-contract.md"
       - "additive-first evolution → conforms: new subcommands, one new flag (`plan status --probe-pr`), new keys (`lifecycle`, `evidence`); nothing repurposed"
+  - artifact: security-model
+    dispositions:
+      - "untrusted governance state is data, not instructions → conforms: an ingested note line is appended as a fact and read by code that composes tree ids; no agent executes its text, and the inbound trust decision beneath the egress record says why no provenance check is made"
+      - "a destructive or irreversible operation needs owner approval at the operation level → inapplicable because nothing here deletes or rewrites; the notes ref only grows and the push rides the PR act the owner asks for"
+      - "product content leaves only through a pinned, owner-approved surface → conforms with the recorded site: the notes push goes to the product's own remote inside /prawduct:pr, the same act that pushes the branch"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall clock is P0 → conforms: one keystone final (redirected to cumulative by a clean tree), one boundary cumulative; 02–05 fold into it"
@@ -218,8 +223,8 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   tree-valid (`prawduct-hook test-status`).
 - The verify pass for the keystone's routed warnings widened to a `final`
   (`rev-20261025T182810Z-3266301c`, 31 files since the prior review): 1 blocking, 0 warning,
-  22 observations; the keystone's R-2…R-16 were confirmed not to recur and close by
-  non-recurrence (no resolution record — the cumulative spans them). R-1: `configure` wrote an
+  22 observations; the keystone's R-2…R-16 were confirmed not to recur (their dispositions name
+  the two spanning reviews). R-1: `configure` wrote an
   EXACT notes refspec, and a configured non-pattern refspec makes plain `git fetch` die on a
   remote with no notes yet, i.e. every fresh onboard — probed 2026-10-25 (exact → rc 128;
   pattern `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*` → rc 0, matches the bare name,
@@ -248,6 +253,11 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   R-9/R-15 (every description of the note line's actor fields agrees), R-14 (the session-start
   ingest NOTE reaches the agent), R-16. Accepted: R-3, R-12, R-17 (carried to the PR step),
   R-18, R-19.
+- Verify `rev-20261025T193609Z-e3f4f991` (`--chunks 03,04,05,06`, repo binary): all 14 prior
+  findings fixed, 0 findings, 3 record-lag observations closed in the records commit that
+  follows; the plan reads finished (6 chunks) and `check-cumulative-critic` is satisfied at
+  HEAD. Every disposition is on the store: `prawduct-hook render-dispositions --scope
+  evidence-transport` renders them; prose does not copy the table.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a
