@@ -255,7 +255,10 @@ class TestEligiblePlanDefers:
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == critic_mode.MODE_DEFERRED
         assert rationale.startswith("short-plan deferral:")
-        assert "commit this chunk and tick its box" in rationale
+        # Renegotiated (#1051): the next step is "commit, naming the chunk" —
+        # a committed chunk is `built` to inference, and nothing is ticked.
+        assert "commit this chunk, naming it in the subject" in rationale
+        assert "tick" not in rationale
         assert "`cumulative`" in rationale
         # The way back is named, because a deferral nobody can decline is a gate.
         assert "/prawduct:critic chunk" in rationale
@@ -522,13 +525,16 @@ class TestStopGateOnShortPlans:
         assert "deferred-boundary-review" in text
         assert "`cumulative`" in text and "/prawduct:critic chunk" in text
         assert "gate: critic-review" in text  # attributed like a block would be
-        # The next step is the ONE statement `short_plan_next_step` owns: tick at
-        # commit, naming the open boxes. What turns this red: the gate stating
-        # its own "commit it and carry on", which a builder follows by holding
-        # every box and never reaching the boundary review.
+        # The next step is the ONE statement `short_plan_next_step` owns: commit
+        # the chunk naming it, naming the open chunks. Renegotiated (#1051): it
+        # used to say "tick its box"; a committed chunk is now `built` to
+        # inference, so nothing is ticked. What turns this red: the gate stating
+        # its own "commit it and carry on", which drops the subject that makes
+        # the chunk `built` and the boundary review reachable.
         flat = " ".join(text.split())
-        assert "tick its box" in flat and "does not wait" in flat, flat
-        assert "unticked now: Chunk 01, Chunk 02, Chunk 03" in flat, flat
+        assert "naming it in the subject" in flat and "waits for none" in flat, flat
+        assert "open now: Chunk 01, Chunk 02, Chunk 03" in flat, flat
+        assert "tick" not in flat
         assert "carry on" not in flat
 
     def test_the_advisory_rides_the_block_when_another_gate_blocks(self, tmp_path: Path):
@@ -741,3 +747,129 @@ class TestOneBoundaryReviewIsEnough:
         assert gates.check_cumulative_critic(tmp_path) == 0, capsys.readouterr()
         reviews = evidence.facts_of_kind(evidence.read_facts(tmp_path), "review")
         assert [f["body"]["mode"] for f in reviews] == [_MODE_CUMULATIVE]
+
+
+# ---------------------------------------------------------------------------
+# #1051: a box-free short plan — committed chunks are `built` to inference
+# ---------------------------------------------------------------------------
+
+
+def _box_free_short_plan(tmp_path: Path, chunks: int, committed: tuple[str, ...]) -> Path:
+    """A branch CLAIMED by a ``chunks``-chunk plan with no ``## Status`` block,
+    committed on ``main`` before the branch; each id in ``committed`` lands as
+    one commit whose subject names it (``Chunk NN``). Clean tree. Session
+    state is ignored the way a real repo ignores it."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    _init_repo(tmp_path, branch="main")
+    _write(tmp_path, ".gitignore", ".prawduct/.*\n")
+    _write(tmp_path, "README.md", "x\n")
+    _write(tmp_path, ".prawduct/project-state.yaml", "base_branch: main\n")
+    lines = ["---", "artifact: build-plan", "scope: short", "branch: feature/short",
+             "base: main", "---", "", "# Build Plan", ""]
+    for i in range(1, chunks + 1):
+        lines += [f"### Chunk {i:02d}: step {i}", "", "- **Type:** code",
+                  "- **Deliverables:** stuff", ""]
+    _write(tmp_path, ".prawduct/artifacts/build-plan-short.md", "\n".join(lines) + "\n")
+    _commit(tmp_path, "initial")
+    _checkout_new_branch(tmp_path, "feature/short")
+    for cid in committed:
+        _write(tmp_path, f"src/chunk_{cid}.py", f"# chunk {cid}\n")
+        _commit(tmp_path, f"feat: land it (Chunk {cid})")
+    return tmp_path / ".prawduct"
+
+
+class TestBoxFreeShortPlanReadsBuilt:
+    """With no box to tick, a short plan's earlier chunks stay OPEN until the
+    boundary review names them, so "one chunk left" can only be seen through
+    ``plan_status.built_chunks`` — inference's reading (``read_built``), never
+    the Stop gate's."""
+
+    def test_two_of_three_committed_infers_the_boundary_cumulative(self, tmp_path):
+        _box_free_short_plan(tmp_path, 3, ("01", "02"))
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == "cumulative", why
+
+    def test_one_of_three_committed_still_defers(self, tmp_path):
+        _box_free_short_plan(tmp_path, 3, ("01",))
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == critic_mode.MODE_DEFERRED, why
+        assert why.startswith("short-plan deferral:"), why
+        assert "naming it in the subject" in why and "tick" not in why, why
+
+    def test_inference_walks_built_only_for_a_short_plan(self, tmp_path, monkeypatch):
+        """The one place inference may call ``built_chunks`` is the short-plan
+        rule, and only within ``SHORT_PLAN_MAX_CHUNKS``: a spy counts the walk
+        on a 3-chunk plan, and on a 5-chunk plan it must never run."""
+        from lib import plan_status
+
+        calls: list = []
+        real = plan_status.built_chunks
+
+        def spy(*args, **kwargs):
+            calls.append(args)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(plan_status, "built_chunks", spy)
+        _box_free_short_plan(tmp_path / "short", 3, ("01", "02"))
+        infer_mode(tmp_path / "short", None)
+        assert calls, "the short plan's last-chunk rule never asked built_chunks"
+
+        def forbidden(*_a, **_k):
+            raise AssertionError("inference walked built_chunks for a long plan")
+
+        monkeypatch.setattr(plan_status, "built_chunks", forbidden)
+        _box_free_short_plan(tmp_path / "long", 5, ("01", "02", "03", "04"))
+        infer_mode(tmp_path / "long", None)
+
+    def test_the_stop_gates_reading_never_walks_built(self, tmp_path, monkeypatch):
+        """``short_plan_deferral`` as the Stop gate calls it (no ``read_built``)
+        reads no ``built``: a spy that raises proves the walk never ran, and
+        the answer is the box/fact reading — three open, not the last chunk."""
+        from lib import plan_status
+
+        _box_free_short_plan(tmp_path, 3, ("01", "02"))
+        _write(tmp_path, "src/wip.py", "# in flight\n")
+
+        def forbidden(*_a, **_k):
+            raise AssertionError("the Stop gate's deferral walked built_chunks")
+
+        monkeypatch.setattr(plan_status, "built_chunks", forbidden)
+        d = _deferral(tmp_path)
+        assert d.defers and d.last_chunk is False, d
+
+
+class TestOneStoreReadPerInference:
+    """The fact store is read once per ``infer_mode`` call and threaded
+    (``PlanProgress.facts``). ``gates.covered_frontier`` reads it for itself
+    (gates.py), so where an answer reaches the frontier it is stubbed and the
+    count is critic_mode's own."""
+
+    def _count(self, monkeypatch) -> list:
+        calls: list = []
+        real = evidence.read_facts
+
+        def counting(project_dir):
+            calls.append(project_dir)
+            return real(project_dir)
+
+        monkeypatch.setattr(evidence, "read_facts", counting)
+        return calls
+
+    def test_a_deferring_short_plan_reads_the_store_once(self, tmp_path, monkeypatch):
+        _short_plan_branch(tmp_path)
+        calls = self._count(monkeypatch)
+        assert infer_mode(tmp_path, None)[0] == critic_mode.MODE_DEFERRED
+        assert len(calls) == 1, calls
+
+    def test_the_boundary_answer_reads_the_store_once(self, tmp_path, monkeypatch):
+        _box_free_short_plan(tmp_path, 3, ("01", "02"))
+        calls = self._count(monkeypatch)
+        assert infer_mode(tmp_path, None)[0] == "cumulative"
+        assert len(calls) == 1, calls
+
+    def test_the_mid_plan_redirect_reads_the_store_once(self, tmp_path, monkeypatch):
+        _box_free_short_plan(tmp_path, 3, ("01",))
+        monkeypatch.setattr(gates, "covered_frontier", lambda *_a, **_k: None)
+        calls = self._count(monkeypatch)
+        assert infer_mode(tmp_path, None)[0] == critic_mode.MODE_DEFERRED
+        assert len(calls) == 1, calls

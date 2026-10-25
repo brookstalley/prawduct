@@ -9324,6 +9324,49 @@ class TestTheReviewNamesItsChunks:
         assert any("no build plan resolves for this review" in n for n in result["notes"]), result["notes"]
 
 
+class TestAVerifyPassProposesTheChunksItVerifies:
+    """`verify-resolutions` resolves findings of the review it is anchored to,
+    so its proposal is that review's chunks, inherited along its chain — a
+    verify naming the same set is silent; one naming a new chunk still warns."""
+
+    _WARN = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+             "recommendation": "Tighten", "files": ["src/one.py"]}
+
+    def _reviewed(self, tmp_path: Path) -> Path:
+        repo = _st8_repo(tmp_path)
+        assert cc.begin_review(repo, "chunk", chunks=["01", "03"])["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[self._WARN])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        (repo / "src/one.py").write_text("one = 2  # the warning, fixed\n")
+        return repo
+
+    def test_omitted_flags_inherit_the_verified_reviews_chunks(self, tmp_path):
+        repo = self._reviewed(tmp_path)
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result["status"] == "ok", result
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+        assert not any(n.startswith("WARNING: declared chunk") for n in result["notes"])
+
+    def test_naming_the_same_set_is_silent(self, tmp_path):
+        repo = self._reviewed(tmp_path)
+        result = cc.begin_review(repo, "verify-resolutions", chunks=["03", "1"])
+        assert result["status"] == "ok", result
+        assert _st8_manifest(repo)["chunks"] == ["01", "03"]
+        assert not any(n.startswith("WARNING: declared chunk") for n in result["notes"]), result["notes"]
+
+    def test_naming_a_new_chunk_still_warns(self, tmp_path):
+        repo = self._reviewed(tmp_path)
+        result = cc.begin_review(repo, "verify-resolutions", chunks=["02"])
+        assert result["status"] == "ok", result
+        assert any(
+            n.startswith("WARNING: declared chunk(s) 02 are not in the proposal") and "(01, 03)" in n
+            for n in result["notes"]
+        ), result["notes"]
+
+
 class TestManifestChunkFields:
     def test_chunks_and_proposal_are_typed_lists(self):
         ok, _ = cc.validate_manifest(_manifest_dict(chunks=["01", "03"], chunks_proposed=["01"]))

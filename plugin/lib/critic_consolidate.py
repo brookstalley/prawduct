@@ -2831,12 +2831,24 @@ def _declared_chunks(
 
 
 def _proposed_chunks(
-    project_dir: Path, plan_path: "Path | None", read_store, files_changed: list, mode_token: str
+    project_dir: Path,
+    plan_path: "Path | None",
+    read_store,
+    files_changed: list,
+    mode_token: str,
+    verify_anchor: "dict | None" = None,
 ) -> list[str]:
-    """:func:`plan_status.propose_chunks` for this dispatch: ``files_changed``
-    is the interval, ``read_store`` the dispatch's one store read. ``[]`` with
-    no plan bound, or when the store cannot be read (the proposal is advice
-    beside a declaration; a store that cannot be read certifies nothing)."""
+    """The chunk set this dispatch proposes to name: ``files_changed`` is the
+    interval, ``read_store`` the dispatch's one store read. ``[]`` with no plan
+    bound, or when the store cannot be read (the proposal is advice beside a
+    declaration; a store that cannot be read certifies nothing).
+
+    ``chunk``/``final``/``cumulative``: :func:`plan_status.propose_chunks`.
+    ``verify-resolutions`` resolves findings of the review it is anchored to
+    (``verify_anchor``), so its proposal is THAT review's chunks — the newest
+    naming fact on the anchor's chain (``critic_mode.chain_named_chunks``),
+    spelled and ordered as the plan prints them. A verify pass naming the same
+    set is then silent, and one naming a new chunk still warns."""
     if plan_path is None:
         return []
     from . import plan_status  # noqa: PLC0415 — lazy; pulls the plan readers
@@ -2844,6 +2856,20 @@ def _proposed_chunks(
     store = read_store()
     if store.get("status") == "error":
         return []
+    if mode_token == "verify-resolutions":
+        if verify_anchor is None:
+            return []
+        from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        chain = critic_mode.review_chain(store.get("facts") or [], verify_anchor)
+        named = {
+            buildplan_refs._normalize_chunk_id(c) for c in critic_mode.chain_named_chunks(chain)
+        }
+        roster = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
+        return [
+            k for k, s in roster.items()
+            if not s.synthetic and buildplan_refs._normalize_chunk_id(k) in named
+        ]
     return plan_status.propose_chunks(
         Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir)
     )
@@ -2867,7 +2893,8 @@ def begin_review(
     ``chunks_proposed``, is :func:`plan_status.propose_chunks` over this
     dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
     Deliverables it touches; ``final``/``cumulative``: every open chunk;
-    ``verify-resolutions``: none). With nothing declared, the declared set IS
+    ``verify-resolutions``: the chunks the review it verifies names, inherited
+    along that review's chain). With nothing declared, the declared set IS
     the proposal. A declared id the reviewed plan does not declare is refused
     (``{"status": "error", "kind": "unknown-chunk"}``, exit 1 through the CLI's
     error path) before the tree is captured; a declared set that leaves the
@@ -3103,6 +3130,9 @@ def begin_review(
     # dispositions block was not built from. LAZY, so a dispatch that reaches
     # neither reader pays no parse.
     _store_slot: "list[dict]" = []
+    # The review a `verify-resolutions` pass is anchored to — its recorded
+    # chunks are that mode's proposal (ST8), inherited along its chain.
+    verify_anchor: "dict | None" = None
 
     def read_store() -> dict:
         if not _store_slot:
@@ -3174,6 +3204,7 @@ def begin_review(
                 refusal["kind"] = "store-unusable"
             return refusal
         prior_body = prior.get("body") or {}
+        verify_anchor = prior
         base_tree = prior_body.get("head_tree")
         if not isinstance(base_tree, str) or not base_tree:
             return {
@@ -3649,7 +3680,9 @@ def begin_review(
     # (the proposal itself when nothing was declared). Declared outside the
     # proposal is recorded as declared, and said: `chunks_proposed` sits beside
     # it on the fact, so the edit is visible on the record.
-    chunks_proposed = _proposed_chunks(project_dir, graded_plan, read_store, files_changed, mode_token)
+    chunks_proposed = _proposed_chunks(
+        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor
+    )
     if declared_chunks is None:
         declared_chunks = list(chunks_proposed)
         chunk = declared_chunks[0] if declared_chunks else None
