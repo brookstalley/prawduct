@@ -146,6 +146,20 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   for the whole suite (fail open). A narrowed fact is attribution only — skipped in that loop,
   neither vouching nor denying; a refusal would have made the newest narrowed fact deny, the wrong
   direction. Red-first test with the un-narrowed control.
+- Chunk 04 as built (delegate C, 2026-10-25, merged aadcb174), four behaviour changes accepted by
+  the coordinator: (1) a finished bound plan stays visible as active work with `Resume: finished`
+  instead of falling back to project-state WIP — ST5 implies it; it reverses SCN-4H9T, and the
+  test was renamed and inverted in the open; (2) a plan with no chunks is finished everywhere
+  (design § 3): the sweep archives it with no unbuilt stamp and the missing-branch warning stays
+  silent; a heading the parser rejects is refused and stamped; (3) `staleness_scan`'s check 5
+  ("project-state.yaml has a completed build plan") is retired — it read `chunks[].status` (ST7);
+  (4) lifecycle-repair names built-but-not-done chunks as `Chunk <id>`; an open chunk with
+  nothing built is no longer reported. `unbuilt_at_archive(plan_path, *, repo_dir, facts=None)`
+  replaces the content-taking form (one hook line in `cmd_archive_plan` followed). Carried to
+  Chunk 06: the chunk-table renderer exists twice (`briefing.chunk_table_lines` and the hook's
+  `_cmd_plan_status`) — move it into `plan_status` as the one home and call it from both;
+  `_count_build_plan_chunks`'s docstring lists three callers (the function dies in 06). Red shown
+  by swapping each owned module back to its pre-chunk version: 29 tests red, return codes read.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
