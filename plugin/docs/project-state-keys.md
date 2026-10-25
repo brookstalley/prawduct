@@ -8,17 +8,20 @@ the state file. Read it as `/prawduct:methodology project-state`.
 The sections discovery fills (classification, product definition, decisions, open questions)
 keep their guidance inline in the template, because that is where it is read.
 
-## active_build_plan (optional)
+## active_build_plan (optional, deprecated 2026-10-24)
+
+**Deprecated.** A plan binds to a checkout by declaring `branch:` in its frontmatter
+(`methodology/planning.md` "Which plan governs a checkout"); this scalar is served only when no
+live plan declares `branch:`, as the legacy route, and the `plan-unbound-legacy` advisory names
+each checkout it served. Migrate with `prawduct-hook plan bind <path> --branch <name>`. The window
+closes no earlier than two minor releases after the deprecation, and only after that advisory has
+been observed firing on no known consumer.
 
 Names the in-progress build plan when it isn't the conventional `artifacts/build-plan.md` —
 scope-named plans (`artifacts/build-plan-<scope>.md`) keep release-pending plans distinct under
 gitflow. The value is a path relative to `.prawduct/` (a repo-relative `.prawduct/...` spelling is
-tolerated). It is the FALLBACK, not the first answer: a plan that declares `branch:` in its
-frontmatter claims the branch it names, and this scalar answers for every branch no live plan
-claims — unless the plan it names declares a different `branch:`, since a plan declaring one
-governs that branch only (the build-plan template's `branch:` comment points at the full rule). It also breaks a TIE
-among several plans claiming one branch — that is its remaining job once branches carry their own
-plans. Unset → `artifacts/build-plan.md`.
+tolerated). A plan that declares `branch:` is never served by this scalar, on any branch. Unset →
+`artifacts/build-plan.md`.
 
 A pointer to a file that doesn't exist means governance sees no active plan by this route — the
 session briefing warns when resolution actually took it.
