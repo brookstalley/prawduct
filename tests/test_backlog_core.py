@@ -1284,10 +1284,13 @@ class TestUpdateBlockFields:
         body = f"human text\n\n```prawduct\n{block_lines}\n```\n"
         return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
 
+    # `closed-by` was free text here (`fix/some-branch`) until BL2 made it one of
+    # three validated forms; the round trip is the same property on a legal value,
+    # and the refusals have their own class (TestClosedByForms).
     @pytest.mark.parametrize("field,value", [
         ("refs", "documentation/x.md#section"),
         ("revisit", "2027-01-01"),
-        ("closed-by", "fix/some-branch"),
+        ("closed-by", "v3.7.2"),
     ])
     def test_each_block_field_round_trips(self, fake, field, value):
         n = self._seed_with_block(fake)
@@ -1593,11 +1596,12 @@ class TestBlockValueInjection:
         # a silently absent field.
         n = self._seed_with_block(fake)
         core.update_item(
-            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"closed-by": "fix/branch"}
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"closed-by": "scope:the-unit"},
+            scope_known=lambda slug: slug == "the-unit",
         )
         r = core.get_item(fake, id_raw=f"{OWNER}/{REPO}#{n}")
-        assert r["data"]["closed_by"] == "fix/branch"
-        assert "closed-by: fix/branch" in fake.get_issue(OWNER, REPO, n)["body"]
+        assert r["data"]["closed_by"] == "scope:the-unit"
+        assert "closed-by: scope:the-unit" in fake.get_issue(OWNER, REPO, n)["body"]
 
     def test_absent_editorial_fields_project_as_none(self, fake):
         n = self._seed_with_block(fake)
@@ -1617,6 +1621,97 @@ class TestBlockValueInjection:
         assert encode.parse_block(
             fake.get_issue(OWNER, REPO, n)["body"]
         ).fields["refs"] == "https://x.test/a#b, docs/y.md:42"
+
+
+class TestClosedByForms:
+    """BL2: `closed-by` names what shipped the item — the unit, its PR, or the
+    release — validated where it is written, never free text. Every refusal also
+    asserts the stored body did not move, because an `error` envelope over a
+    write that landed anyway is the failure that matters."""
+
+    KNOWN = {"the-unit", "release-v3.7.1"}
+
+    def _seed(self, fake):
+        fake.seed_labels(OWNER, REPO, _STATUS_LABELS)
+        body = "text\n\n```prawduct\nv: 1\nid_aliases: [BKL-0007]\n```\n"
+        return fake.create_issue(OWNER, REPO, title="t", body=body, labels=[])["number"]
+
+    def _update(self, fake, n, value, scope_known="default"):
+        known = (lambda slug: slug in self.KNOWN) if scope_known == "default" else scope_known
+        return core.update_item(
+            fake, id_raw=f"{OWNER}/{REPO}#{n}", fields={"closed-by": value}, scope_known=known
+        )
+
+    @pytest.mark.parametrize("value", [
+        "scope:the-unit",
+        "scope:release-v3.7.1",
+        "#123",
+        "123",
+        "https://github.com/octo/repo/pull/123",
+        "v3.7.2",
+        "3.7.2",
+        "v3.7.1-dev.2",
+    ])
+    def test_each_of_the_three_forms_is_stored_as_written(self, fake, value):
+        n = self._seed(fake)
+        r = self._update(fake, n, value)
+        assert r["status"] == "ok", r
+        assert encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"]).fields["closed-by"] == value
+
+    def test_a_scope_no_unit_declares_is_refused(self, fake):
+        n = self._seed(fake)
+        before = fake.get_issue(OWNER, REPO, n)["body"]
+        r = self._update(fake, n, "scope:nonexistent")
+        assert (r["status"], r["error"]["code"]) == ("error", "validation")
+        assert "names no unit" in r["error"]["message"]
+        assert fake.get_issue(OWNER, REPO, n)["body"] == before
+
+    @pytest.mark.parametrize("value", [
+        "fix/some-branch",       # the old free-text spelling: a branch, gone when deleted
+        "Chunk 04",              # names no plan
+        "nonexistent",           # a bare slug that is no unit
+        "scope:Not_A_Slug",
+        "scope:",
+        "#0",
+        "https://github.com/octo/repo/issues/123",
+    ])
+    def test_anything_else_is_refused_naming_the_three_forms(self, fake, value):
+        n = self._seed(fake)
+        before = fake.get_issue(OWNER, REPO, n)["body"]
+        r = self._update(fake, n, value)
+        assert (r["status"], r["error"]["code"]) == ("error", "validation"), r
+        message = r["error"]["message"]
+        assert "scope:<slug>" in message and "PR number or URL" in message and "release tag" in message
+        assert fake.get_issue(OWNER, REPO, n)["body"] == before
+
+    def test_a_bare_known_scope_is_stored_in_the_validated_form_and_says_so(self, fake):
+        # The spelling every instruction used before the form existed; refusing it
+        # would fail every close those instructions produce.
+        n = self._seed(fake)
+        r = self._update(fake, n, "the-unit")
+        assert r["status"] == "ok"
+        assert encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"]).fields["closed-by"] == "scope:the-unit"
+        assert any("stored as `scope:the-unit`" in w for w in r["warnings"])
+
+    @pytest.mark.parametrize("scope_known", [None, lambda slug: None], ids=["no-repo", "unreadable"])
+    def test_a_scope_that_cannot_be_checked_is_not_written_unchecked(self, fake, scope_known):
+        n = self._seed(fake)
+        before = fake.get_issue(OWNER, REPO, n)["body"]
+        r = self._update(fake, n, "scope:the-unit", scope_known=scope_known)
+        assert (r["status"], r["error"]["code"]) == ("error", "validation")
+        assert "cannot be checked" in r["error"]["message"]
+        assert fake.get_issue(OWNER, REPO, n)["body"] == before
+
+    def test_the_non_scope_forms_need_no_repo_to_check(self, fake):
+        n = self._seed(fake)
+        assert self._update(fake, n, "#123", scope_known=None)["status"] == "ok"
+
+    def test_an_empty_value_still_clears(self, fake):
+        n = self._seed(fake)
+        self._update(fake, n, "v3.7.2")
+        r = self._update(fake, n, "")
+        assert r["status"] == "ok"
+        assert "closed-by" not in encode.parse_block(fake.get_issue(OWNER, REPO, n)["body"]).fields
 
 
 class TestCommentItem:
