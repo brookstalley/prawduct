@@ -781,8 +781,8 @@ def _box_free_short_plan(tmp_path: Path, chunks: int, committed: tuple[str, ...]
 class TestBoxFreeShortPlanReadsBuilt:
     """With no box to tick, a short plan's earlier chunks stay OPEN until the
     boundary review names them, so "one chunk left" can only be seen through
-    ``plan_status.built_chunks`` — inference's reading (``read_built``), never
-    the Stop gate's."""
+    ``plan_status.built_chunks`` (``read_built``) — which may arm the Stop
+    gate's last-chunk block, never clear it."""
 
     def test_two_of_three_committed_infers_the_boundary_cumulative(self, tmp_path):
         _box_free_short_plan(tmp_path, 3, ("01", "02"))
@@ -821,28 +821,96 @@ class TestBoxFreeShortPlanReadsBuilt:
         _box_free_short_plan(tmp_path / "long", 5, ("01", "02", "03", "04"))
         infer_mode(tmp_path / "long", None)
 
-    def test_the_stop_gates_reading_never_walks_built(self, tmp_path, monkeypatch):
-        """``short_plan_deferral`` as the Stop gate calls it (no ``read_built``)
-        reads no ``built``: a spy that raises proves the walk never ran, and
-        the answer is the box/fact reading — three open, not the last chunk."""
+    # Renegotiated in the open (coordinator ruling, 2026-10-25): this class
+    # pinned "the Stop gate's reading never walks built". The ruling is that a
+    # git-derived signal may ARM a gate, never disarm one, so the gate now
+    # passes `read_built=True` and the tests below pin the DIRECTION instead.
+
+    def test_the_stop_gate_blocks_at_a_box_free_boundary(self, tmp_path):
+        """Two of three chunks committed by subject, the third in flight: the
+        Stop gate blocks for the boundary review on the uncovered tree."""
+        prawduct = _box_free_short_plan(tmp_path, 3, ("01", "02"))
+        _write(tmp_path, "src/wip.py", "# chunk 03 in flight\n")
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path)
+        assert result.returncode == 2, result.stderr
+        flat = " ".join(result.stderr.split())
+        assert "deferred to this" in flat and "no separate `final`" in flat, flat
+
+    def test_the_stop_gate_warns_mid_plan_on_a_box_free_plan(self, tmp_path):
+        """Control: one of three committed — mid-plan, so the gate warns."""
+        prawduct = _box_free_short_plan(tmp_path, 3, ("01",))
+        _write(tmp_path, "src/wip.py", "# chunk 02 in flight\n")
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path)
+        assert result.returncode == 0, result.stderr
+        assert "deferred-boundary-review" in result.stderr
+        assert _GENERIC_BLOCK not in result.stderr
+
+    def test_built_arms_the_last_chunk_the_boxes_do_not(self, tmp_path):
+        """A Status block whose boxes are all unticked (three open) and commits
+        naming 01 and 02: `built` says last chunk, the boxes say mid-plan, and
+        the gate's reading takes the arming side — it blocks."""
+        _short_plan_branch(tmp_path, committed=("01", "02"), plan_committed=True)
+        plan = work_unit.resolve(tmp_path).plan_path
+        plan.write_text(plan.read_text().replace("- [x] ", "- [ ] "))
+        _commit(tmp_path, "untick every box")
+        _write(tmp_path, "src/wip3.py", "# chunk 03 in flight\n")
+        assert critic_mode.binding_progress(tmp_path, work_unit.resolve(tmp_path)).open_count == 3
+        binding = work_unit.resolve(tmp_path)
+        progress = critic_mode.binding_progress(tmp_path, binding)
+        prawduct = tmp_path / ".prawduct"
+        assert not critic_mode.short_plan_deferral(tmp_path, prawduct, binding, progress).last_chunk
+        armed = critic_mode.short_plan_deferral(
+            tmp_path, prawduct, binding, progress, read_built=True
+        )
+        assert armed.defers and armed.last_chunk, armed
+        _arm_stop(prawduct)
+        assert _run_stop(tmp_path).returncode == 2
+
+    def test_built_never_clears_what_the_facts_closed(self, tmp_path, monkeypatch):
+        """`built` says mid-plan (no commit names a chunk), but a review fact
+        closed 01 and 02: the facts' "last chunk" stands, and the walk is not
+        even asked. And with the facts closing every chunk the plan is finished,
+        so nothing defers whatever `built` would say."""
         from lib import plan_status
 
-        _box_free_short_plan(tmp_path, 3, ("01", "02"))
-        _write(tmp_path, "src/wip.py", "# in flight\n")
+        prawduct = _box_free_short_plan(tmp_path, 3, ())
+        head = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+
+        def review(fid, chunks):
+            assert evidence.append_fact(tmp_path, "review", fid, {
+                "scope": "short", "mode": _MODE_CHUNK, "chunks": chunks,
+                "chunk": chunks[0], "head_commit": head, "dispatch_commit": head,
+                "findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0},
+            })["status"] == "appended"
+
+        review("rev-a", ["01", "02"])
+        _write(tmp_path, "src/wip3.py", "# chunk 03 in flight\n")
+        binding = work_unit.resolve(tmp_path)
+        assert plan_status.built_chunks(binding.plan_path, tmp_path) == set()
 
         def forbidden(*_a, **_k):
-            raise AssertionError("the Stop gate's deferral walked built_chunks")
+            raise AssertionError("built was asked where the facts already answered")
 
         monkeypatch.setattr(plan_status, "built_chunks", forbidden)
-        d = _deferral(tmp_path)
-        assert d.defers and d.last_chunk is False, d
+        d = critic_mode.short_plan_deferral(
+            tmp_path, prawduct, binding, critic_mode.binding_progress(tmp_path, binding),
+            read_built=True,
+        )
+        assert d.defers and d.last_chunk, d
+        review("rev-b", ["03"])
+        done = critic_mode.short_plan_deferral(
+            tmp_path, prawduct, binding, critic_mode.binding_progress(tmp_path, binding),
+            read_built=True,
+        )
+        assert not done.defers and not done.last_chunk, done
 
 
 class TestOneStoreReadPerInference:
     """The fact store is read once per ``infer_mode`` call and threaded
-    (``PlanProgress.facts``). ``gates.covered_frontier`` reads it for itself
-    (gates.py), so where an answer reaches the frontier it is stubbed and the
-    count is critic_mode's own."""
+    (``PlanProgress.facts``), into ``gates.covered_frontier`` too (``read=``),
+    so the count is the whole inference's — nothing is stubbed."""
 
     def _count(self, monkeypatch) -> list:
         calls: list = []
@@ -868,8 +936,18 @@ class TestOneStoreReadPerInference:
         assert len(calls) == 1, calls
 
     def test_the_mid_plan_redirect_reads_the_store_once(self, tmp_path, monkeypatch):
+        """This answer walks the covered frontier (the mid-plan interval owner),
+        so it pins `covered_frontier` taking the threaded read."""
         _box_free_short_plan(tmp_path, 3, ("01",))
-        monkeypatch.setattr(gates, "covered_frontier", lambda *_a, **_k: None)
+        frontier_calls: list = []
+        real_frontier = gates.covered_frontier
+
+        def frontier_spy(*args, **kwargs):
+            frontier_calls.append(kwargs.get("read"))
+            return real_frontier(*args, **kwargs)
+
+        monkeypatch.setattr(gates, "covered_frontier", frontier_spy)
         calls = self._count(monkeypatch)
         assert infer_mode(tmp_path, None)[0] == critic_mode.MODE_DEFERRED
+        assert frontier_calls and all(r is not None for r in frontier_calls), frontier_calls
         assert len(calls) == 1, calls

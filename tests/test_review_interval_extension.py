@@ -151,6 +151,21 @@ class TestModeInference:
         mode, why = infer_mode(repo, None)
         assert mode == "verify-resolutions", why
 
+    def test_a_deferred_fix_reads_the_store_once(self, tmp_path, monkeypatch):
+        """The extension path walks the covered frontier too; it takes the
+        inference's one store read (`covered_frontier(read=)`), not its own."""
+        from lib import evidence
+
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True)
+        calls: list = []
+        real = evidence.read_facts
+        monkeypatch.setattr(
+            evidence, "read_facts", lambda p: (calls.append(p), real(p))[1]
+        )
+        mode, why = infer_mode(repo, None)
+        assert mode == MODE_DEFERRED, why
+        assert len(calls) == 1, calls
+
 
 class TestAFixIsToldFromTheNextChunkByItsDeliverables:
     """#1051: a review now closes the chunks it names the moment it records, so
@@ -460,7 +475,7 @@ class TestOnlyASuppliedChunkIdIsCredited:
             f["actor"] = {"branch": "feat/work"}
         monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
         monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
-        monkeypatch.setattr(gates, "covered_frontier", lambda _p: {"commit": "abcdef1234567890"})
+        monkeypatch.setattr(gates, "covered_frontier", lambda _p, **_k: {"commit": "abcdef1234567890"})
         monkeypatch.setattr(critic_mode, "_paths_since_tree", lambda _t, _p: set())
         monkeypatch.setattr(plan_status, "propose_chunks", lambda *_a, **_k: [])
         plan = type("Binding", (), {"plan_path": Path("plan.md"), "chosen_by": "binding",

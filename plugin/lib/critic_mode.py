@@ -751,7 +751,9 @@ def _mid_plan_start(project_dir: Path, plan, progress, deferral=None) -> "dict |
         return None
     from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module lazily too
 
-    return critic_consolidate.working_tree_interval_base(project_dir, head_commit, head_tree)
+    return critic_consolidate.working_tree_interval_base(
+        project_dir, head_commit, head_tree, read=getattr(progress, "facts", None)
+    )
 
 
 def _reaches_committed_work(start: dict) -> bool:
@@ -1168,12 +1170,13 @@ class ShortPlanDeferral(NamedTuple):
     N would then owe again, two `cumulative` runs where the plan promised one.
     The facts are the same in both readings; only the plan text differs.
 
-    On inference's reading (``read_built=True``) a chunk that is ``built``
-    (:func:`plan_status.built_chunks` — committed on the branch) does not count
-    either: that IS the short plan's "committed, review deferred to the
-    boundary" state (``1050-design.md`` § 3), and with no box to tick it is the
-    only way a box-free plan's last chunk can be seen. Mode inference is advice,
-    not a gate verdict, so it may read ``built``; the Stop gate does not.
+    With ``read_built=True`` (inference and the Stop gate both pass it) a chunk
+    that is ``built`` (:func:`plan_status.built_chunks` — committed on the
+    branch) does not count either: that IS the short plan's "committed, review
+    deferred to the boundary" state (``1050-design.md`` § 3), and with no box to
+    tick it is the only way a box-free plan's last chunk can be seen. It may
+    only ARM ``last_chunk`` — make the Stop gate block for the boundary review —
+    never clear it (:func:`short_plan_deferral`).
     """
 
     defers: bool
@@ -1265,10 +1268,15 @@ def short_plan_deferral(
     once, through the single owners, and passes them in. ``facts`` is the
     caller's store read (default: the one ``progress`` carries).
 
-    ``read_built`` is INFERENCE's reading (:class:`ShortPlanDeferral`'s
-    ``last_chunk``): it asks :func:`plan_status.built_chunks` — the one place
-    inference walks git history for chunk progress, and only for a plan within
-    :data:`SHORT_PLAN_MAX_CHUNKS`. The Stop gate calls this without it.
+    ``read_built`` asks :func:`plan_status.built_chunks` for ``last_chunk`` —
+    the one place chunk progress walks git history, and only for a plan within
+    :data:`SHORT_PLAN_MAX_CHUNKS`. Inference and the Stop gate both pass it.
+    **A git-derived signal may ARM a gate, never disarm one** (coordinator
+    ruling 2026-10-25; DV3's incident was git switching gates off early): so
+    ``built`` can only turn the reading's "not the last chunk" (the gate warns,
+    deferring) into "the last chunk" (the gate blocks for the boundary review),
+    never the reverse. It is OR-ed onto the facts-and-boxes answer, it never
+    reaches ``defers``, and a chunk the facts or boxes call done stays done.
     """
     total = progress.total
     if total == 0:
@@ -1284,21 +1292,23 @@ def short_plan_deferral(
         project_dir, plan.plan_path, _facts_for(project_dir, progress, facts)
     )
     reading = committed if committed is not None else progress
-    built: "set[str]" = set()
-    if read_built and total <= SHORT_PLAN_MAX_CHUNKS:
+    # The facts-and-boxes answer first; `built` may only add to it (see above).
+    open_entries = [k for k, s in (reading.states or {}).items() if s.state == "open"]
+    last_chunk = len(open_entries) == 1
+    if not last_chunk and read_built and total <= SHORT_PLAN_MAX_CHUNKS:
         built = {
             buildplan_refs._normalize_chunk_id(c)
             for c in plan_status.built_chunks(Path(plan.plan_path), Path(project_dir))
         }
-    left = [
-        chunk_id
-        for chunk_id, s in (reading.states or {}).items()
-        if s.state == "open"
-        and (s.synthetic or buildplan_refs._normalize_chunk_id(chunk_id) not in built)
-    ]
-    # One left is the last chunk; none left while the plan is unfinished means
-    # every open chunk is already built, which is the boundary too.
-    last_chunk = len(left) == 1 or (bool(built) and not left)
+        left = [
+            chunk_id
+            for chunk_id in open_entries
+            if (reading.states[chunk_id].synthetic
+                or buildplan_refs._normalize_chunk_id(chunk_id) not in built)
+        ]
+        # One left is the last chunk; none left while the plan is unfinished
+        # means every open chunk is already built, which is the boundary too.
+        last_chunk = len(left) == 1 or (bool(built) and not left)
     return _short_plan_shape(
         project_dir, prawduct_dir, plan, total, last_chunk, progress.open_ids
     )
@@ -1687,8 +1697,8 @@ def extension_deferral_owed(
     """``(kind, reason)`` when the next review will cover this state, else ``None``.
 
     ``facts`` is the caller's ``read_facts`` result (default: the read
-    ``progress`` carries, else one read here). ``gates.covered_frontier`` still
-    reads the store for itself.
+    ``progress`` carries, else one read here), handed on to
+    ``gates.covered_frontier`` (``read=``).
 
     ``kind`` is :func:`review_owed_after`'s. Inference needs it: on a clean
     tree the boundary ``cumulative`` is not a review to defer TO, it is the
@@ -1792,7 +1802,7 @@ def extension_deferral_owed(
             "too. Commit, then run `/prawduct:critic` when the chunk is done — it infers "
             "the cumulative"
         )
-    frontier = gates.covered_frontier(project_dir)
+    frontier = gates.covered_frontier(project_dir, read=read)
     if frontier is None:
         return None
     return kind, (
