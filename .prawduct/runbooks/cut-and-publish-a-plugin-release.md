@@ -514,7 +514,8 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     — so this is where that retention ends. A pointer aimed at a plan that declares
     `branch:` is inert (that plan governs only its own branch, which is gone), so clearing it
     is tidiness; only a pointer-resolved plan's pointer actually governs, and it is cleared
-    here. Archiving is what ends retention in
+    here. `/prawduct:pr`’s Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step
+    owns that split. Archiving is what ends retention in
     both cases. Skip it and the live artifacts directory re-accumulates the pile the
     archive exists to prevent.
 
