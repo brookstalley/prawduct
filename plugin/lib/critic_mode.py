@@ -2084,7 +2084,8 @@ def _commit_is_ancestor(project_dir: Path, sha: str) -> bool:
     return proc.returncode == 0
 
 
-# `_commits_ahead_of_base` / `_committed_chunk_ids` moved to lib/buildplan_refs.py
+# `_commits_ahead_of_base` moved to lib/buildplan_refs.py; the commit-subject chunk rule
+# lives in lib/plan_status.py (`built_chunks`), the one home of chunk progress
 # (a third mover, `_git_aware_progress`, was not moved but DELETED — the
 # git-derived second reading of chunk progress is retired, so a reader following
 # this pointer would grep for a function that exists nowhere) — they answer "which chunk is current," which is
