@@ -8719,7 +8719,8 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                     "unscoped": plan["unscoped"],
                     "retired_flag": guard,
                     "plans_to_review": [
-                        {"path": str(r["path"]), "chunks": r["chunks"]} for r in stale
+                        {"path": str(r["path"]), "chunks": r["chunks"],
+                         "unavailable": r.get("unavailable")} for r in stale
                     ],
                     "outcome": outcome,
                 },
@@ -8769,9 +8770,20 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                   "covers all of them; they are ordinary file edits your version "
                   "control can undo.")
         if stale:
-            print(_built_not_done_lead(sum(len(r["chunks"]) for r in stale)))
+            named = sum(len(r["chunks"]) for r in stale)
+            unanswered = sum(1 for r in stale if r.get("unavailable"))
+            if named:
+                print(_built_not_done_lead(named))
+            if unanswered:
+                # Derived from the state, never written for one case: a plan whose
+                # built state git could not report is named with its cause, so the
+                # sweep's silence about its chunks is not read as "nothing built".
+                print(f"  Git could not say what is built for {unanswered} plan(s) — "
+                      "the chunks below are unknown, not clean:")
             for report in stale:
                 print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
+                if report.get("unavailable"):
+                    print(f"      built state unavailable: {report['unavailable']}")
                 for chunk in report["chunks"]:
                     print(f"      - {chunk}")
         # Diagnostic, and deliberately NOT on the `unreadable` channel: these

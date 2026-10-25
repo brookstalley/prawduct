@@ -541,14 +541,22 @@ def stale_status_reports(artifacts_dir: Path) -> list[dict]:
         if facts is None:
             facts = evidence.read_facts(repo_dir)
         states = plan_status.chunk_states(plan_path, facts, repo_dir=repo_dir)
-        built = plan_status.built_chunks(plan_path, repo_dir)
+        report = plan_status.built_report(plan_path, repo_dir)
+        if report.unavailable is not None:
+            # Git could not say what is built, so "nothing to name" would be a
+            # guess read as a clean answer. Name the plan with the cause instead
+            # (advice fails soft and says what it could not do — architecture.md).
+            reports.append(
+                {"path": plan_path, "chunks": [], "unavailable": report.unavailable}
+            )
+            continue
         pending = [
             f"Chunk {chunk_id}"
             for chunk_id, st in states.items()
-            if st.state == "open" and not st.synthetic and chunk_id in built
+            if st.state == "open" and not st.synthetic and chunk_id in report.built
         ]
         if pending:
-            reports.append({"path": plan_path, "chunks": pending})
+            reports.append({"path": plan_path, "chunks": pending, "unavailable": None})
     return reports
 
 

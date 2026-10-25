@@ -913,3 +913,39 @@ class TestCrlfSurvivesTheCommentStripToo:
         assert b"views_enabled" not in raw
         assert b"- [x] Chunk 01: done\r\n" in raw
         assert raw.count(b"\n") == raw.count(b"\r\n"), "a bare LF appeared in a CRLF plan"
+
+
+class TestStaleStatusReportNamesAnUnavailableBuiltState:
+    """Cumulative R-10's class, closed at its last instance (#1051 Chunk 06).
+
+    ``plan_status.built_chunks`` answers an empty set both for "nothing built" and
+    for "git could not say"; every reader of it except this one already reports
+    the cause. A lifecycle-repair run on a repo whose base ref is gone must name
+    the plan with that cause, not read as a clean sweep.
+    """
+
+    def test_a_git_failure_is_named_not_read_as_nothing_built(self, tmp_path: Path, monkeypatch) -> None:
+        from lib import plan_status
+
+        repo = _make_repo(tmp_path)
+        _write_plan(repo, "build-plan-demo.md", TestStaleStatusReport.DERIVED_WITH_UNTICKED)
+        _build_on_a_branch(repo, "02")
+        monkeypatch.setattr(
+            plan_status,
+            "built_report",
+            lambda plan_path, repo_dir: plan_status.BuiltReport(built=set(), unavailable="no base ref resolves"),
+        )
+        reports = lifecycle_repair.stale_status_reports(repo / ".prawduct" / "artifacts")
+
+        assert len(reports) == 1
+        assert reports[0]["chunks"] == []
+        assert reports[0]["unavailable"] == "no base ref resolves"
+
+    def test_the_control_names_chunks_and_no_cause_when_git_answers(self, tmp_path: Path) -> None:
+        repo = _make_repo(tmp_path)
+        _write_plan(repo, "build-plan-demo.md", TestStaleStatusReport.DERIVED_WITH_UNTICKED)
+        _build_on_a_branch(repo, "02")
+        reports = lifecycle_repair.stale_status_reports(repo / ".prawduct" / "artifacts")
+
+        assert reports[0]["chunks"] == ["Chunk 02"]
+        assert reports[0]["unavailable"] is None

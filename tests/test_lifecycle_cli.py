@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -640,3 +641,50 @@ class TestPlanBackfillCommand:
         assert _run(project, "plan-backfill", "--apply").returncode == 0
         second = _run(project, "plan-backfill", "--apply")
         assert second.returncode == 0, second.stderr
+
+
+class TestBuiltStateUnavailableIsNamedNotSilent:
+    """Cumulative R-10's class at its last reader (#1051 Chunk 06): when git cannot
+    say what is built — here a plan whose declared `base:` names no ref — the
+    report names the plan with the cause on both routes, instead of listing no
+    chunks and reading as a clean sweep."""
+
+    def _land_with_a_dead_base(self, project: Path) -> None:
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        for args in (
+            ("init", "-q", "-b", "main"),
+            ("config", "user.email", "t@example.com"),
+            ("config", "user.name", "T"),
+            ("add", "-A"),
+            ("commit", "-q", "-m", "init"),
+            ("checkout", "-q", "-b", "feat/demo"),
+            ("commit", "-q", "--allow-empty", "-m", "feat(demo): land it (Chunk 02)"),
+        ):
+            subprocess.run(["git", *args], cwd=str(project), env=env, check=True, capture_output=True)
+        for plan in (project / ".prawduct" / "artifacts").glob("build-plan-*.md"):
+            text = plan.read_text(encoding="utf-8")
+            if re.search(r"^base:.*$", text, flags=re.M):
+                text = re.sub(r"^base:.*$", "base: no-such-ref", text, count=1, flags=re.M)
+            else:
+                text = text.replace("\n---\n", "\nbase: no-such-ref\n---\n", 1)
+            plan.write_text(text, encoding="utf-8")
+
+    def test_json_carries_the_cause_and_names_no_chunk(self, tmp_path: Path) -> None:
+        project = _repo(tmp_path)
+        self._land_with_a_dead_base(project)
+        proc = _run(project, "lifecycle-repair", "--json")
+        assert proc.returncode == 0, proc.stderr
+        reviews = json.loads(proc.stdout)["plans_to_review"]
+        assert len(reviews) == 1, reviews
+        assert reviews[0]["chunks"] == []
+        assert reviews[0]["unavailable"], reviews
+
+    def test_human_route_names_the_cause_and_not_a_clean_sweep(self, tmp_path: Path) -> None:
+        project = _repo(tmp_path)
+        self._land_with_a_dead_base(project)
+        out = _run(project, "lifecycle-repair").stdout
+        flat = " ".join(out.split())
+        assert "Git could not say what is built for 1 plan(s)" in flat, out
+        assert "built state unavailable:" in out
+        assert "- Chunk 02" not in out
+        assert "this chunk has work committed" not in flat
