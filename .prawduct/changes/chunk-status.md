@@ -4,7 +4,7 @@ type: feature
 scope: chunk-status
 date: 2026-10-25
 title: chunk status derives from review facts
-closes: [brookstalley/prawduct#1051, brookstalley/prawduct#1050, brookstalley/prawduct#856]
+closes: [brookstalley/prawduct#1051, brookstalley/prawduct#856]
 ---
 
 Wave 2 of #1050. Whether a build-plan chunk is done was a hand-ticked `## Status` box, read by
@@ -57,3 +57,16 @@ facts (DG2), and the `record_lint` repo-relative path fix.
 - Template: `## Status` leaves `templates/build-plan.md`; a minted plan carries none. Prose: the
   rule lives once in `methodology/planning.md`; the digest, the template and the skills reference
   it. `work_unit.live_declarations` is public (`_live_declarations` aliased one release).
+- Briefing and handoff: a finished bound plan stays visible as active work with `Resume: finished`
+  (it no longer falls back to project-state WIP); `**Current chunk**` names the first open chunk.
+  The staleness scan's "project-state.yaml has a completed build plan" check is retired with the
+  key it read.
+- `lifecycle-repair`'s `plans_to_review` now names chunks committed on the plan's branch that no
+  review has certified (`Chunk <id>`), and names a plan whose built state git could not report with
+  the cause (`unavailable`) instead of listing nothing; an open chunk with nothing built is no
+  longer reported.
+- `record-lint` grades every chunk the review names: `chunks_graded` (list) joins `chunk_graded`,
+  which is the single id or null when several.
+- `plan_archive.unbuilt_at_archive(plan_path, *, repo_dir, facts=None)` replaces the content-taking
+  form; `unbuilt_at_archive:` is stamped from the open chunks. `plan status --json` carries
+  `built_unavailable` (null when git answered).

@@ -271,9 +271,13 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
 - Review cadence, re-settled by the coordinator 2026-10-25: 02–05's separate `chunk` review is
   folded into Chunk 06's `cumulative` (one review over 02–06 instead of two), because 06's code
   landed before the chunk review was dispatched and a cumulative is a strict superset — the
-  owner's review-run-count P0. The fact names `--chunks 02,03,04,05,06` (this wave's ST8, used on
-  itself). Consequence for the migration below: 02–05 were never ticked, so they import as nothing
-  and stay `open` until the cumulative's fact certifies them — the design working as stated.
+  owner's review-run-count P0. The dispatch declared `--chunks 02,03,04,05,06` (this wave's ST8,
+  used on itself), but the FACT carries only `chunk: 02`: its consolidation ran through the
+  installed plugin's older writer (the SubagentStop hook runs the `-live` binary — the skew every
+  dispatch NOTEs), which knows no `chunks` key. The one-release `chunk` compat did its job for 02;
+  03–05 were certified by a later forced `verify-resolutions` declaring them (below). Consequence
+  for the migration: 02–05 were never ticked, so they imported as nothing and stayed `open` until a
+  fact named them — the design working as stated, and the skew's cost paid in one extra pass.
 - **Chunk 06 verified live, 2026-10-25T14:38Z** (`plan import-status
   .prawduct/artifacts/build-plan-chunk-status.md --remove-block` preview → "would write 1
   chunk-imported fact (chunk 01); would remove the `## Status` block (lines 297–309)", exit 0;
@@ -297,7 +301,20 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   the fact names — `lint_records(chunk_ids=)`, `chunks_graded`; cross-checks.md names it inside
   its budget), R-13's `boundary-patterns.md` entry, R-16 (#856 pinned for three state-key
   spellings and added to `closes:`). Accepted on the record: R-2, R-3, R-5, R-6, R-7, R-8, R-9,
-  R-12, R-14, R-15, R-17. Verify-resolutions dispatched over the committed delta.
+  R-12, R-14, R-15, R-17. Verify `rev-20261025T151624Z-f879b70e`: R-1, R-10, R-4 verified fixed,
+  no findings. Forced verify `rev-20261025T152522Z-c402daec` (`--chunks 03,04,05 --force`, run
+  through the repo-local binary): certifies 03–05 — `plan status` → finished (6 chunks).
+- PR review (`feature--1051-chunk-status.json`, 0 blocking / 3 warning / 3 note), settled
+  2026-10-25: W1 (03–05 open at the reviewed HEAD) cured by the forced verify above and this
+  record corrected; W2 (consumer-note omissions: `Resume: finished`, staleness check 5 retired,
+  lifecycle-repair's report, `chunks_graded`, `unbuilt_at_archive`'s signature, `built_unavailable`
+  in api-contract.md) written; W3 — `closes:` drops #1050: #1052 is its open child ("Wave 3 of
+  #1050"), so the parent closes with its last child, and the design's "the other half of #1050"
+  describes scope, not issue closure — this reverses the cumulative's R-15 reading, recorded here.
+  Notes: R-11 rides the PR description; the `(cumulative R-1)` citation and the `critic_mode`
+  pointer comment are accepted as-is for this PR (a comment-only edit to a judgeable file would
+  re-dispatch the PR reviewer for no behaviour); the three one-release shims (`--chunk` alias, the
+  singular `chunk` field, `_live_declarations`) get a backlog item naming their retirement.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
