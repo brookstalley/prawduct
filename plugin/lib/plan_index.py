@@ -461,6 +461,21 @@ def _markdown_files(root: Path, *, prune_archive: bool) -> list[Path]:
     return sorted(found)
 
 
+def live_markdown_files(artifacts_dir: Path) -> list[Path]:
+    """Every ``*.md`` under ``artifacts_dir`` outside the archive, sorted — read none.
+
+    The one discoverer for a caller that must see files the readers above skip.
+    :func:`iter_scoped_plan_candidates` and :func:`branch_claiming_plans` pass
+    over a file they cannot read, which is right for a map and wrong for an
+    authority: ``work_unit.resolve`` must report an unreadable live plan as a
+    broken binding rather than resolve as if it were not there, so it takes the
+    files and classifies each itself. Same walk, same prune, no second rule.
+    """
+    if not artifacts_dir.is_dir():
+        return []
+    return _markdown_files(artifacts_dir, prune_archive=True)
+
+
 def _walk_for_scopes(
     root: Path, artifacts_dir: Path, *, prune_archive: bool
 ) -> Iterator[tuple[Path, str]]:

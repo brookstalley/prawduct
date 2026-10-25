@@ -68,6 +68,48 @@ newer one agree on the answer during the window. Revisit: delete the shims when 
 - `pr/SKILL.md` step 9's "ignore the archive advisory during the window" sentence is deleted, not
   moved: since #1049 a `branch:`-declaring plan is inactive on every other branch, so the advisory
   it told you to ignore no longer fires.
+- Chunk 01 departures from `1050-design.md` § 2, settled by the coordinator (design updated):
+  a claimant with `branch:` but no `scope:` is `bound` with `scope=None` and a `reason` naming the
+  fix — it governs its branch today and MG1 forbids silent reinterpretation; `reason` may be set
+  on `bound`; the scratch-worktree check precedes the detached-HEAD check (a scratch tree is
+  unbound whatever its HEAD); a legacy binding has `role=None`; detached HEAD is `unbound` even
+  in the legacy window (which branch's plan governs is unknowable there, and serving the pointer
+  is the misattribution class). `broken` is two or more claimants, or — after the first review's
+  R-1 — any live plan whose claim declaration cannot be read: authority fails closed, so an
+  unreadable `branch:`/`working-branches:` never reopens the legacy route. `Binding.claimants`
+  (additive, defaulted) carries the plans involved so a consumer can act on `broken` without
+  parsing prose.
+- BR3's "claims a branch that does not exist → broken" is not observable from `resolve()`, which
+  reads only the checked-out branch; it is a repo-wide check and moves to `doctor` in Wave 2
+  (#1051, noted there). Explicitly deferred, not dropped.
+- Chunk 01's acceptance "fails on develop's resolvers" is met for the shapes that were defects
+  (#208, #1007(a) silence, two claimants, working branch, scratch/detached in a legacy repo);
+  three shapes (#1049 default-path, "declaring `branch:` never served", scratch on a bound
+  branch) were already answered correctly after #1049 and the tests say so in comments rather
+  than asserting a false red. Acceptance read accordingly.
+- Chunk 03's open calls, settled by the coordinator: a detached HEAD arms no Critic gate at Stop
+  (it is `unbound`; a detached checkout is transient — mid-rebase, a bisect — and the gate re-arms
+  the moment the branch is checked out again, while the old behaviour served the pointer's plan,
+  which could be the wrong one); `verify-chunk-refs` with a chunk named but no plan bound exits 1
+  `cannot-verify` rather than a false 0 (a check that could not run must not read as a pass); the
+  ST7 `project-state.yaml` arm still arms a scratch worktree in a repo with unfinished state
+  chunks — Wave 2 deletes the arm (#1051). Chunk 03's two strict xfails (inference and the
+  critic-begin manifest resolve in `plugin/lib/`) go red when Chunk 02 lands; Chunk 06 deletes
+  the marks.
+- Chunk 04's open calls, accepted by the coordinator: the near-miss scope check lives in the
+  fragment parser (`check_fragment_text`/`read_fragment_file`/`load_pending`), so it reaches
+  record lint, the PR payload, `release_readiness` and the cut alike — one owner, and no consumer
+  repo has a `changes/` directory yet (checked 2026-10-24), so promoting CL7's advisory to a
+  refusal costs no existing release; a bare known slug in `closed-by` is accepted and stored as
+  `scope:<slug>` with a warning (tolerate the natural variant, refuse only genuine ambiguity);
+  minting also refuses a scope one spelling from an existing one, `branch == base`, and an
+  existing `--branch`; `bind` never re-points an existing claim (that stays a hand edit a reviewer
+  sees); `base:` defaults to `project-state.yaml` `base_branch:`, else the remote default per
+  `coverage._resolve_base_branch`, else `main` — git records no parent for a branch, so the plan
+  records it (design § Research).
+- Chunk 05's prose states the rule in the present tense while `plan bind`, the
+  `plan-unbound-legacy` advisory and the Stop hook's scratch-worktree behaviour land in 03 and 06.
+  One PR; at merge every sentence is true. Chunk 06's acceptance gains one check per claim.
 
 **Level:** High for § 2 (the resolver and its callers are enumerated in the requirements'
 grounding facts); Medium for § 1's `plan new` defaults for `base:` — raise by reading how
@@ -234,13 +276,32 @@ after each merge's review — this is the last plan that ticks; Wave 2 removes t
 - **Deliverables:** the shims, the deletion, the advisory, the subcommand, the bump, the fragment;
   the six Critic/PR/doctor skill-doc passages that still describe pointer-based scope derivation
   (`grep -rn active_build_plan plugin/skills` lists them) rewritten to the `Binding` rule or
-  deleted;
+  deleted; `tests/test_pr_reviewer.py::test_merge_flow_buildplan_cleanup_is_conditioned`
+  rewritten to pin the new rule (a `branch:`-declaring plan needs nothing at merge) — it pinned the
+  pointer step Chunk 05 deleted, and a prose ceiling run cannot see a repo-coupled test;
+  `buildplan_refs.unticked_committed_chunk_notice` takes the bound plan instead of resolving its
+  own; the hook's `_gate_plan_of()` collapsed onto one lib helper; Chunk 03's two xfail marks
+  deleted; `tests/test_build_plan_resolution.py`'s "inline mirror" docstring and its two
+  detached/outside-worktree pins rewritten to the new answer (`unbound`), reason in the fragment;
+  `buildplan_refs.resolve_reviewed_plan`'s `gap=None` silence on single-scope repos (#1007(a))
+  replaced by the `Binding`; the `closed-by` form (`scope:<slug>` | PR | release tag, bare slug
+  tolerated) stated once in `skills/backlog/SKILL.md` and the six other passages that still say
+  "bare scope or branch name" (`adapter-mode.md`, `pr/SKILL.md`, `critic/cross-checks.md`,
+  `templates/backlog.md`, `docs/principles.md`) pointed at it; `templates/build-plan.md`
+  frontmatter comments corrected ("several plans may declare one branch", "resolves ahead of
+  active_build_plan", "null is fine" for `scope:` are all false now) and `base:` /
+  `working-branches:` documented there, since minted plans copy those comments verbatim;
   `tests/test_core*.py` and `tests/test_buildplan_refs*.py` adjusted so the shims' tests assert
   the new answer (never weakened: a test that pinned the old fallback is rewritten to pin the
   refusal, with the reason in the fragment).
 - **Tests:** the full suite (`testament run`), recorded as the boundary run.
 - **Acceptance criteria:** `1050-requirements.md` Acceptance 1, 2, 5 and 9 hold on this branch;
-  `grep -rn "infer_scope_from_branch" plugin/` returns nothing; the suite is green.
+  `grep -rn "infer_scope_from_branch" plugin/` returns nothing; the suite is green; and every
+  present-tense claim Chunk 05's prose makes is true at HEAD: `prawduct-hook plan bind` exists,
+  the `plan-unbound-legacy` advisory is registered and fires on a pointer-only fixture, a scratch
+  worktree's Stop hook arms no Critic gate, and `prawduct-hook plan resolve` (new, read-only)
+  prints the `Binding` so a skill told to "resolve the plan the way governance does" has a command
+  to run.
 - **Type:** cumulative-final
 - **Done when:**
   1. Acceptance criteria met and the suite passes

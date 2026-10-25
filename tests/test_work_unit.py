@@ -12,7 +12,7 @@ the detached-HEAD, no-work-tree and scratch-worktree cases only exist in git.
 
 from __future__ import annotations
 
-import io
+import os
 import socket
 import subprocess
 import sys
@@ -99,6 +99,19 @@ def _plan(
     return path
 
 
+def _raw_plan(repo: Path, rel: str, extra_frontmatter: str) -> Path:
+    """A plan claiming ``feature/x`` as scope ``x``, with ``extra_frontmatter``
+    written verbatim after the claim — for shapes ``_plan`` deliberately cannot
+    spell (flow style, malformed keys)."""
+    path = repo / ".prawduct" / "artifacts" / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"---\nartifact: build-plan\nscope: x\nbranch: feature/x\n{extra_frontmatter}"
+        "---\n\n## Status\n\n- [ ] Chunk 01: a\n"
+    )
+    return path
+
+
 def _scratch_worktree(repo: Path, wid: str = "a287823214767feaa") -> Path:
     """The disposable shape Claude Code's Agent tool produces: an ``agent-<hex>``
     directory under ``.claude/worktrees`` on a ``worktree-agent-<hex>`` branch.
@@ -132,9 +145,14 @@ FINISHED = "- [x] Chunk 01: done\n- [x] Chunk 02: done\n"
 
 class TestBindingShape:
     def test_fields_in_the_order_the_design_states(self):
+        """The design's six, then ``claimants`` — added last with a default so
+        every positional construction written against the six stays valid."""
         assert [f.name for f in fields(Binding)] == [
-            "state", "scope", "plan_path", "role", "reason", "chosen_by",
+            "state", "scope", "plan_path", "role", "reason", "chosen_by", "claimants",
         ]
+
+    def test_six_positional_fields_still_construct_with_no_claimants(self):
+        assert Binding("unbound", None, None, None, "x", "none").claimants == ()
 
     def test_frozen(self):
         binding = Binding("unbound", None, None, None, "x", "none")
@@ -187,6 +205,7 @@ class TestShippedShapes:
         assert binding.state == "bound"
         assert binding.chosen_by == "legacy-default"
         assert (binding.scope, binding.plan_path, binding.role) == ("lonely", plan, None)
+        assert binding.claimants == (plan,)
         assert binding.reason.startswith(f"{work_unit.LEGACY_ADVISORY_KEY}:")
         assert f"{work_unit.BIND_COMMAND} build-plan.md --branch feat/anything" in binding.reason
 
@@ -229,7 +248,7 @@ class TestShippedShapes:
         assert (binding.scope, binding.plan_path, binding.chosen_by) == (None, None, "none")
         assert "2 live plans claim `release/2-0`" in binding.reason
         assert "build-plan-a.md" in binding.reason and "build-plan-b.md" in binding.reason
-        del b
+        assert binding.claimants == (a, b)
 
     def test_a_declared_working_branch_binds_with_role_working(self, tmp_path):
         repo = _repo(tmp_path, "feature/x-delegate")
@@ -244,12 +263,14 @@ class TestShippedShapes:
         assert _old_refs(repo).path is None
 
         binding = resolve(repo)
-        assert binding == Binding("bound", "x", plan, "working", None, "binding")
+        assert binding == Binding("bound", "x", plan, "working", None, "binding", (plan,))
 
     def test_the_integration_branch_binds_with_role_integration(self, tmp_path):
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan-x.md", scope="x", branch="feature/x", working=[])
-        assert resolve(repo) == Binding("bound", "x", plan, "integration", None, "binding")
+        assert resolve(repo) == Binding(
+            "bound", "x", plan, "integration", None, "binding", (plan,)
+        )
 
     def test_a_scratch_worktree_forked_from_a_bound_branch_is_unbound(self, tmp_path):
         """BR6: a harness scratch worktree resolves no unit — it builds, the
@@ -331,16 +352,27 @@ class TestLegacyWindow:
     def test_one_claim_anywhere_closes_the_window_for_the_whole_repo(self, tmp_path):
         """The pointer names a plan that declares no branch, but another live
         plan does declare one: this repo binds by claims, so the pointer
-        answers nothing. The old resolver still served the pointed plan."""
+        answers nothing. The old resolver still served the pointed plan.
+
+        The operator still HAS that plan, so the reason names it and the bind
+        command — "no live plan claims" alone reads as "no plan exists"."""
         repo = _repo(tmp_path, "feat/me", "active_build_plan: artifacts/old-plan.md\n")
         old_plan = _plan(repo, "old-plan.md", scope="old")
         _plan(repo, "build-plan-new.md", scope="new", branch="feature/new")
         assert _old_core(repo) == old_plan
 
         binding = resolve(repo)
-        assert binding == Binding(
-            "unbound", None, None, None, "no live plan claims `feat/me`", "none"
-        )
+        assert (binding.state, binding.plan_path, binding.chosen_by) == ("unbound", None, "none")
+        assert binding.reason.startswith("no live plan claims `feat/me` — `active_build_plan` names old-plan.md")
+        assert f"`{work_unit.BIND_COMMAND} old-plan.md --branch feat/me`" in binding.reason
+
+    def test_a_pointer_only_plan_that_is_not_pointed_at_gets_no_remedy(self, tmp_path):
+        """Control for the remedy: a branch-less plan the pointer does NOT name
+        is not the operator's plan for this branch, so the reason stays bare."""
+        repo = _repo(tmp_path, "feat/me")
+        _plan(repo, "old-plan.md", scope="old")
+        _plan(repo, "build-plan-new.md", scope="new", branch="feature/new")
+        assert resolve(repo).reason == "no live plan claims `feat/me`"
 
     def test_an_archived_claim_does_not_close_the_window(self, tmp_path):
         """Archived plans are history: the 78 archived plans in this repo that
@@ -358,12 +390,22 @@ class TestLegacyWindow:
         _plan(repo, "archive/old.md", scope="old")
         assert resolve(repo).state == "unbound"
 
-    def test_a_pointer_naming_a_missing_plan_binds_nothing(self, tmp_path):
+    def test_a_pointer_naming_a_missing_plan_binds_nothing_and_names_the_path(self, tmp_path):
         repo = _repo(tmp_path, "feat/me", "active_build_plan: artifacts/gone.md\n")
         # The old resolver returns the path and leaves "does it exist" to each
-        # of its callers; a binding answers the question once.
+        # of its callers; a binding answers the question once, and says which
+        # file the pointer resolved to and what would bind this branch.
         assert _old_core(repo) == repo / ".prawduct" / "artifacts" / "gone.md"
-        assert resolve(repo).state == "unbound"
+        binding = resolve(repo)
+        assert binding.state == "unbound"
+        assert binding.reason.startswith("no live plan claims `feat/me` — `active_build_plan` names artifacts/gone.md")
+        assert f"`{work_unit.BIND_COMMAND} <plan> --branch feat/me`" in binding.reason
+
+    def test_a_missing_conventional_file_is_the_plain_unbound(self, tmp_path):
+        """Control: no pointer and no ``build-plan.md`` is the ordinary case,
+        not a dangling declaration, so nothing is named."""
+        repo = _repo(tmp_path, "feat/me")
+        assert resolve(repo).reason == "no live plan claims `feat/me`"
 
     def test_a_non_plan_artifact_at_the_default_path_binds_nothing(self, tmp_path):
         repo = _repo(tmp_path, "feat/me")
@@ -400,7 +442,7 @@ class TestClaims:
             "bound", None, plan, "integration",
             "build-plan-x.md claims `feature/x` but declares no `scope:`, so facts "
             "about this work record no unit — add one",
-            "binding",
+            "binding", (plan,),
         )
 
     def test_a_scoped_claimant_has_nothing_to_explain(self, tmp_path):
@@ -427,7 +469,9 @@ class TestClaims:
     def test_a_plan_naming_its_own_branch_twice_is_one_claimant(self, tmp_path):
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan-x.md", scope="x", branch="feature/x", working=["feature/x"])
-        assert resolve(repo) == Binding("bound", "x", plan, "integration", None, "binding")
+        assert resolve(repo) == Binding(
+            "bound", "x", plan, "integration", None, "binding", (plan,)
+        )
 
     def test_a_working_branch_claimed_by_two_plans_is_broken(self, tmp_path):
         repo = _repo(tmp_path, "feature/shared")
@@ -435,17 +479,14 @@ class TestClaims:
         _plan(repo, "build-plan-b.md", scope="b", branch="feature/b", working=["feature/shared"])
         assert resolve(repo).state == "broken"
 
-    def test_an_unparseable_working_branches_declaration_claims_nothing(self, tmp_path):
-        """Flow style is a real declaration this reader cannot read; a partial
-        list would bind some of what was declared and silently drop the rest,
-        so it binds none. Minting validates the shape where it is written."""
+    @pytest.mark.parametrize("flow", ["[feature/x-wip, feature/x-other]", '["feature/x-wip", feature/x-other]'])
+    def test_a_flow_style_working_branches_list_binds_the_working_branch(self, tmp_path, flow):
+        """``[a, b]`` is the natural encoding of a short list and means what the
+        block form means — refusing it would be a fail-close on a model-written
+        seam, not safety."""
         repo = _repo(tmp_path, "feature/x-wip")
-        path = repo / ".prawduct" / "artifacts" / "build-plan-x.md"
-        path.write_text(
-            "---\nartifact: build-plan\nscope: x\nbranch: feature/x\n"
-            "working-branches: [feature/x-wip]\n---\n\n## Status\n\n- [ ] Chunk 01: a\n"
-        )
-        assert resolve(repo).state == "unbound"
+        path = _raw_plan(repo, "build-plan-x.md", f"working-branches: {flow}\n")
+        assert resolve(repo) == Binding("bound", "x", path, "working", None, "binding", (path,))
 
     def test_an_explicit_branch_skips_the_probe_but_not_the_scratch_test(self, tmp_path):
         """A caller that has already read the branch passes it. The scratch
@@ -465,42 +506,202 @@ class TestClaims:
 
 
 # ---------------------------------------------------------------------------
+# Authority fails closed: a plan that cannot be read is broken, not absent
+# ---------------------------------------------------------------------------
+
+
+class TestUnreadablePlanIsBroken:
+    """A binding is a verdict's input (architecture.md § Direction: authority
+    fails closed). A live plan the resolver cannot read MIGHT claim this
+    branch; skipping it resolves as though it were absent, and absence is what
+    disarms the gates — so the answer is ``broken``, naming the file."""
+
+    def test_an_unparseable_working_branches_declaration_is_broken(self, tmp_path):
+        """Shipped as fail-open: this shape resolved ``unbound`` and the
+        working branch built with no gate armed."""
+        repo = _repo(tmp_path, "feature/x-wip")
+        path = _raw_plan(repo, "build-plan-x.md", "working-branches:\n  nested: map\n")
+        binding = resolve(repo)
+        assert (binding.state, binding.plan_path, binding.chosen_by) == ("broken", None, "none")
+        assert binding.claimants == (path,)
+        assert binding.reason == (
+            "1 live plan cannot be read — build-plan-x.md (`working-branches:` is not a "
+            "list of branch names) — so whether it claims `feature/x-wip` is unknown and "
+            "no binding can be decided; repair the file"
+        )
+
+    @pytest.mark.parametrize("shape", ["branch: [feature/x, feature/y]\n", "branch:\n  name: feature/x\n"])
+    def test_a_branch_that_is_not_one_name_is_broken(self, tmp_path, shape):
+        """The scalar reader hands back ``"[feature/x, feature/y]"`` for the
+        first and ``None`` for the second; one would claim a branch nobody has,
+        the other nothing — both resolve a shape that has no meaning."""
+        repo = _repo(tmp_path, "feature/x")
+        path = repo / ".prawduct" / "artifacts" / "build-plan-x.md"
+        path.write_text(f"---\nartifact: build-plan\nscope: x\n{shape}---\n\n## Status\n\n- [ ] Chunk 01: a\n")
+        binding = resolve(repo)
+        assert binding.state == "broken"
+        assert "build-plan-x.md (`branch:` is not a single branch name)" in binding.reason
+        assert binding.claimants == (path,)
+
+    def test_unreadable_frontmatter_is_broken_and_the_pointer_is_not_served(self, tmp_path):
+        """The pointer names a live plan declaring no branch and nothing else
+        claims one — the legacy route WOULD bind it. A second plan whose
+        frontmatter never closes may hold a claim nobody can read, so the
+        route does not run: step 5 is reachable only when every live plan read
+        cleanly. The control (fix the file) shows the pointer qualifying."""
+        repo = _repo(tmp_path, "feat/me", "active_build_plan: artifacts/v2-plan.md\n")
+        _plan(repo, "v2-plan.md", scope="v2")
+        bad = repo / ".prawduct" / "artifacts" / "build-plan-x.md"
+        bad.write_text("---\nartifact: build-plan\nscope: x\nbranch: feat/me\n\n## Status\n\n- [ ] Chunk 01: a\n")
+
+        binding = resolve(repo)
+        assert (binding.state, binding.plan_path, binding.chosen_by) == ("broken", None, "none")
+        assert binding.claimants == (bad,)
+        assert binding.reason == (
+            "1 live plan cannot be read — build-plan-x.md (its frontmatter block never "
+            "closes) — so whether it claims `feat/me` is unknown and no binding can be "
+            "decided; repair the file"
+        )
+        bad.unlink()
+        assert resolve(repo).chosen_by == "legacy-pointer"
+
+    def test_unreadable_frontmatter_is_broken_even_beside_a_clean_claimant(self, tmp_path):
+        """One clean claimant plus one unreadable plan is not "bound": the
+        unreadable one may be the second claimant that makes it broken."""
+        repo = _repo(tmp_path, "feature/x")
+        _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        bad = repo / ".prawduct" / "artifacts" / "build-plan-y.md"
+        bad.write_text("---\nartifact: build-plan\nscope: y\nbranch: feature/y\n\n## Status\n")
+        assert resolve(repo).state == "broken"
+        assert resolve(repo).claimants == (bad,)
+
+    def test_a_plan_named_file_that_is_not_text_is_broken(self, tmp_path):
+        repo = _repo(tmp_path, "feature/x")
+        _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        bad = repo / ".prawduct" / "artifacts" / "build-plan-y.md"
+        bad.write_bytes(b"\xff\xfe---\nbranch: feature/x\n---\n")
+        binding = resolve(repo)
+        assert binding.state == "broken"
+        assert "build-plan-y.md (not UTF-8 text)" in binding.reason
+        assert binding.claimants == (bad,)
+
+    def test_the_file_the_pointer_names_is_plan_shaped_whatever_its_name(self, tmp_path):
+        repo = _repo(tmp_path, "feature/x", "active_build_plan: artifacts/v2-plan.md\n")
+        _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        bad = repo / ".prawduct" / "artifacts" / "v2-plan.md"
+        bad.write_bytes(b"\xff\xfe")
+        binding = resolve(repo)
+        assert binding.state == "broken"
+        assert binding.claimants == (bad,)
+
+    @pytest.mark.parametrize(
+        "name, body",
+        [
+            ("architecture.md", b"\xff\xfe not text"),
+            ("discovery-notes.md", "---\nA note that opens with a horizontal rule\n\nprose\n".encode()),
+        ],
+    )
+    def test_an_unreadable_document_that_is_not_a_plan_breaks_nothing(self, tmp_path, name, body):
+        """`artifacts/` holds the repo's other documents too (~70 here); one bad
+        byte in a note, or a note opening with a `---` rule, must not fail
+        every checkout closed. Only a file that could hold a claim — named
+        like a plan, named by the pointer, or at the conventional path — does."""
+        repo = _repo(tmp_path, "feature/x")
+        plan = _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        (repo / ".prawduct" / "artifacts" / name).write_bytes(body)
+        binding = resolve(repo)
+        assert (binding.state, binding.plan_path) == ("bound", plan)
+
+    def test_two_unreadable_plans_are_both_named(self, tmp_path):
+        repo = _repo(tmp_path, "feature/x")
+        a = _raw_plan(repo, "build-plan-a.md", "working-branches: nope\n")
+        b = _raw_plan(repo, "build-plan-b.md", "working-branches:\n  - \n")
+        binding = resolve(repo)
+        assert binding.state == "broken"
+        assert binding.reason.startswith("2 live plans cannot be read — build-plan-a.md (")
+        assert binding.claimants == (a, b)
+
+    def test_a_file_with_no_frontmatter_at_all_declares_nothing(self, tmp_path):
+        """Control: absence is not malformation. A note with no block claims
+        nothing and breaks nothing; the legacy default may still serve it."""
+        repo = _repo(tmp_path, "feat/me")
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        plan.write_text("# Build plan\n\n## Status\n\n- [ ] Chunk 01: a\n")
+        (repo / ".prawduct" / "artifacts" / "notes.md").write_text("just prose\n")
+        binding = resolve(repo)
+        assert (binding.state, binding.chosen_by, binding.plan_path) == ("bound", "legacy-default", plan)
+
+    def test_an_archived_unreadable_plan_breaks_nothing(self, tmp_path):
+        repo = _repo(tmp_path, "feature/x")
+        plan = _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        (repo / ".prawduct" / "artifacts" / "archive").mkdir()
+        (repo / ".prawduct" / "artifacts" / "archive" / "old.md").write_bytes(b"\xff\xfe")
+        assert resolve(repo).plan_path == plan
+
+
+class TestProbeFailures:
+    def test_a_failed_git_probe_is_unbound_and_serves_no_plan(self, tmp_path, monkeypatch):
+        """``current_branch`` answers ``None`` for a detached HEAD AND for git
+        failing outright; with no common dir either, the checkout is outside
+        any work tree. Either way no branch exists to be claimed, and the plan
+        that would bind the branch is not served."""
+        repo = _repo(tmp_path, "feature/x")
+        _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        assert resolve(repo).state == "bound"  # control: the probe is what changes the answer
+        monkeypatch.setattr(work_unit.gitstate, "current_branch", lambda _d: None)
+        monkeypatch.setattr(work_unit.gitstate, "git_common_dir", lambda _d: None)
+        binding = resolve(repo)
+        assert binding == Binding(
+            "unbound", None, None, None,
+            "not inside a git work tree, so no branch can be claimed", "none",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Cost: no network, the archive never read
 # ---------------------------------------------------------------------------
 
 
 class TestCost:
     @pytest.mark.parametrize("window", ["closed", "open"])
-    def test_the_archive_directory_is_never_read(self, tmp_path, monkeypatch, window):
+    def test_the_archive_directory_is_never_walked(self, tmp_path, monkeypatch, window):
         """BP9/NF1: the walk runs at every session boundary. An archived plan
         claiming this very branch, and a pointer naming an archived plan, must
-        both cost no read — pruned at directory level, not filtered after.
+        both cost nothing — pruned at directory level, not filtered after.
+
+        The requirement is about the WALK, so the instrument is the directory
+        listing (``os.walk`` lists through ``os.scandir``), not the file opens
+        that usually accompany it: a walker that descends the archive and
+        discards what it found opens nothing and still pays for every plan the
+        repo has ever completed.
 
         Both window states, because they take different routes to "unbound":
         with a live claim in the repo the pointer is never consulted, and with
-        none the legacy step must refuse the archived file BEFORE opening it."""
+        none the legacy step must refuse the archived file before touching it."""
         repo = _repo(tmp_path, "feature/x", "active_build_plan: artifacts/archive/old.md\n")
         _plan(repo, "archive/old.md", scope="old")
         _plan(repo, "archive/build-plan-x.md", scope="x", branch="feature/x")
         _plan(repo, "plans/x/archive/build-plan-x.md", scope="x2", branch="feature/x")
-        live = _plan(
-            repo, "build-plan-live.md", scope="live",
+        _plan(
+            repo, "plans/x/build-plan-live.md", scope="live",
             branch="feature/live" if window == "closed" else None,
         )
-        opened: list[str] = []
-        real_open = io.open
+        artifacts = repo / ".prawduct" / "artifacts"
+        listed: list[Path] = []
+        real_scandir = os.scandir
 
-        def recording_open(file, *args, **kwargs):
-            opened.append(str(file))
-            return real_open(file, *args, **kwargs)
+        def recording_scandir(path=".", *args, **kwargs):
+            listed.append(Path(path))
+            return real_scandir(path, *args, **kwargs)
 
-        monkeypatch.setattr(io, "open", recording_open)
-        monkeypatch.setattr("builtins.open", recording_open)
+        monkeypatch.setattr(os, "scandir", recording_scandir)
         binding = resolve(repo)
         assert binding.state == "unbound"
-        # The instrument saw the live plan, so a clean archive is a finding.
-        assert str(live) in opened
-        assert [p for p in opened if "/archive/" in p] == []
+        # The instrument saw the walk reach the nested live plan's directory, so
+        # a clean archive is a finding about pruning, not about a walk that
+        # never ran.
+        assert artifacts / "plans" / "x" in listed
+        assert [p for p in listed if "archive" in p.parts] == []
 
     def test_no_network(self, tmp_path, monkeypatch):
         def refuse(*_args, **_kwargs):

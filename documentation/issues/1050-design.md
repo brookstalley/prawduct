@@ -107,25 +107,33 @@ New module `plugin/lib/work_unit.py`:
 @dataclass(frozen=True)
 class Binding:
     state: Literal["bound", "unbound", "broken"]
-    scope: str | None          # bound only
+    scope: str | None          # may be None when bound: a claimant declaring no scope, or legacy
     plan_path: Path | None     # bound only
-    role: Literal["integration", "working"] | None   # which branch kind the checkout is
-    reason: str | None         # broken / unbound explanation, one sentence, for the briefing
+    role: Literal["integration", "working"] | None   # None for a legacy binding
+    reason: str | None         # one sentence for the briefing; set on unbound/broken, and on
+                               # bound when something needs saying (e.g. "declares no scope:")
     chosen_by: Literal["binding", "legacy-pointer", "legacy-default", "none"]
+    claimants: tuple[Path, ...] = ()   # the plans involved; lets a consumer act on broken
 
 def resolve(project_dir, *, branch=None) -> Binding
 ```
 
-Algorithm, in full:
+Algorithm, in full (as built in Chunk 01 and settled after its review):
 
-1. If HEAD is detached, the checkout is outside a work tree, or the worktree is the harness
-   scratch kind (`gitstate.is_ephemeral_worktree`) → `unbound`, reason names the case (BR3, BR6).
+1. If the worktree is the harness scratch kind (`gitstate.is_ephemeral_worktree`), HEAD is
+   detached, or the checkout is outside a work tree → `unbound`, reason names the case (BR3,
+   BR6). Detached HEAD is `unbound` even inside the legacy window: which branch's plan governs is
+   unknowable there, and serving a pointer is the misattribution class itself.
 2. Claimants = live plans (`plan_index.iter_scoped_plan_candidates`, archive pruned) whose
    `branch:` equals the current branch (role `integration`) or whose `working-branches:` contains
-   it (role `working`).
-3. One claimant → `bound`, `chosen_by: binding`. Zero → step 4. Two or more → `broken`, reason
-   lists the claimants (this can arise only from merging two claiming branches; `plan new`
-   refuses the second claim on one branch).
+   it (role `working`). **Authority fails closed:** a live plan whose claim declaration cannot be
+   read (unparseable frontmatter, a non-string `branch:`, an unparseable `working-branches:`) →
+   `broken`, naming the file; the legacy route below is reachable only when every live plan read
+   cleanly. The flow-style list `working-branches: [a, b]` is accepted as the natural variant.
+3. One claimant → `bound`, `chosen_by: binding`; a claimant declaring no `scope:` binds with
+   `scope=None` and a `reason` naming the fix (it governs its branch today; MG1). Zero → step 4.
+   Two or more → `broken`, `claimants` lists them (this can arise only from merging two claiming
+   branches; `plan new` refuses the second claim on one branch).
 4. **Legacy window only** (MG3): if no live plan in the repo declares `branch:` at all, and the
    `active_build_plan` pointer or `artifacts/build-plan.md` names a live plan that itself declares
    no `branch:`, resolve it with `chosen_by: legacy-pointer|legacy-default` and raise the
