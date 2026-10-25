@@ -243,7 +243,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
     # in `assemble_session_briefing`. Reported there and not here because it is
     # context for the whole session rather than a staleness finding, and saying
     # it twice in one briefing is how a reader learns to skip both.
-    build_plan_path: Path = resolve_build_plan_path(prawduct_dir)
+    build_plan_path: Path | None = resolve_build_plan_path(prawduct_dir)
 
     # 4b. A plan with work left, claiming a branch this repo does not have —
     # advice, fails soft.
@@ -287,8 +287,11 @@ def staleness_scan(project_dir: Path) -> list[str]:
     except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
         pass
 
-    build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
-    if build_plan_path.is_file():
+    # `None`: the only candidate plan claims another branch, so nothing governs
+    # this one — its staleness is that branch's to report, and a finished plan
+    # retained for its release must not nag every other branch to archive it.
+    if build_plan_path is not None and build_plan_path.is_file():
+        build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
         try:
             status = buildplan_refs._parse_build_plan_status(project_dir)
             if status.get("current_chunk"):
@@ -335,7 +338,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
             pass
 
     # 5. Completed but uncleaned build plan in state
-    if not build_plan_path.is_file():
+    if build_plan_path is None or not build_plan_path.is_file():
         try:
             if "\n  strategy:" in state_content:
                 strategy_match = re.search(r"\n  strategy:\s*(.+)", state_content)

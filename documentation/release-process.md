@@ -328,9 +328,10 @@ same set in executable running order, and is the document to work from when actu
   that scope resolves to no plan file — work shipping with nothing describing it. **The PLAN is
   retained until the release**; what happens to the `active_build_plan` pointer depends on how
   the plan resolves, and `/prawduct:pr`’s
-  Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` has its pointer cleared at the merge (its
-  branch is gone, so it resolves for nobody and reads live-but-inactive), while a
-  pointer-resolved plan keeps it, because clearing that one is what makes governance blind. The
+  Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` needs nothing at the merge (it
+  governs only its own branch, which is gone, so it reads live-but-inactive wherever the pointer
+  aims), while a pointer-resolved plan keeps the pointer, because clearing that one is what makes
+  governance blind. The
   gate reads the plan by scope either way, which is why it does not depend on the pointer.
 - **Shipped** — an entry in `.prawduct/change-log-archive/` tagged `release=vX.Y.Z`. Step 3's
   cut writes it and removes the fragment in the same run, and that is the whole transition.

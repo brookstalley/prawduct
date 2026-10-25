@@ -452,6 +452,47 @@ class TestBranchScopedResolution:
         live = _plan(prawduct, "plan.md", branch="feat/x")
         assert resolve_build_plan_path(prawduct) == live
 
+    def test_a_default_plan_claiming_another_branch_governs_nothing_here(
+        self, tmp_path: Path
+    ):
+        """The defect this rule closes: a finished plan retained live at the
+        conventional path for its release kept governing every branch no plan
+        claimed — its gates armed, reviews and ledger events attributed to its
+        scope — and clearing the pointer could not end it."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan.md", branch="feature/finished", chunks="- [x] Chunk 01: a\n")
+        assert resolve_build_plan_path(prawduct) is None
+
+    def test_a_pointed_plan_claiming_another_branch_governs_nothing_here(
+        self, tmp_path: Path
+    ):
+        repo = _branch_repo(
+            tmp_path, "fix/unrelated", "active_build_plan: artifacts/build-plan-other.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan-other.md", branch="feature/other")
+        assert resolve_build_plan_path(prawduct) is None
+
+    def test_a_fallback_plan_declaring_no_branch_still_governs(self, tmp_path: Path):
+        """The control: only a DECLARED other branch refuses. A plan that claims
+        nothing is the pointer-only repo, which must resolve as before."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        prawduct = repo / ".prawduct"
+        plan = _plan(prawduct, "build-plan.md")
+        assert resolve_build_plan_path(prawduct) == plan
+
+    def test_detached_head_keeps_a_fallback_that_claims_a_branch(self, tmp_path: Path):
+        """No branch is checked out, so there is nothing for the claim to
+        contradict — the fallback answers as it did before the rule."""
+        repo = _branch_repo(tmp_path, "feature/finished")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "other.md", branch="feature/elsewhere")
+        plan = _plan(prawduct, "build-plan.md", branch="feature/somewhere")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _git(repo, "checkout", "-q", "--detach", head)
+        assert resolve_build_plan_path(prawduct) == plan
+
     def test_detached_head_falls_through_to_the_scalar(self, tmp_path: Path):
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"

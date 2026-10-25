@@ -346,7 +346,7 @@ def _count_build_plan_chunks(
     """
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
+    if plan_path is None or not plan_path.is_file():
         return 0, 0
     try:
         content = plan_path.read_text(encoding="utf-8")
@@ -810,7 +810,9 @@ def unresolved_scope_cause(
       no ``scope:``, so the claim has no scope to hand back.
     - ``body-branch`` — a plan names this branch on a ``branch:`` line below its
       frontmatter, where :func:`plan_index.branch_claiming_plans` never looks.
-    - ``pointer-claims-other`` — the active plan claims a different branch.
+    - ``pointer-claims-other`` — the fallback plan (the pointer, else the
+      conventional ``build-plan.md``) claims a different branch, so it does not
+      govern this one (:func:`core.resolve_build_plan_path`).
     - ``no-claim`` — a live plan this branch created or edited does not claim
       it. That edit is the evidence the branch has a plan at all; a branch that
       touched no plan is doing plan-less work (a chore, a small fix), where
@@ -857,7 +859,10 @@ def unresolved_scope_cause(
             f"the top of the file{missing_scope}",
         )
 
-    pointer = resolve_build_plan_path(prawduct_dir)
+    # The fallback candidate itself, not the resolver's answer: the resolver
+    # refuses a fallback plan that claims another branch (it answers None),
+    # which is exactly the case this diagnosis names.
+    pointer = core.fallback_plan_path(prawduct_dir)
     if pointer.is_file():
         try:
             other = plan_index.parse_build_plan_frontmatter_branch(
@@ -938,7 +943,7 @@ def resolve_reviewed_plan(
         return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, SOURCE_SCOPE_NAMED, None)
 
     pointer = resolve_build_plan_path(prawduct_dir)
-    if not pointer.is_file():
+    if pointer is None or not pointer.is_file():
         return ReviewedPlan(None, None, None, "none", None)
     rel = _repo_rel(prawduct_dir, pointer)
     # The assumption is only worth reporting where it could be WRONG and the
@@ -1005,7 +1010,7 @@ def resolve_chunk_progress(
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
+    if plan_path is None or not plan_path.is_file():
         return ChunkProgress(0, 0, None, "", False)
     try:
         content = plan_path.read_text(encoding="utf-8")
@@ -1146,7 +1151,7 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
+    if plan_path is None or not plan_path.is_file():
         return None
     try:
         content = plan_path.read_text(encoding="utf-8")
@@ -1223,7 +1228,7 @@ def _parse_build_plan_status(
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
+    if plan_path is None or not plan_path.is_file():
         return {}
     try:
         content = plan_path.read_text(encoding="utf-8")
@@ -2604,6 +2609,9 @@ def _parse_build_plan_chunk_refs(
     result: dict = {"file_paths": [], "error": None}
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        result["error"] = "missing build-plan: no build plan governs this branch"
+        return result
     if not plan_path.is_file():
         result["error"] = f"missing build-plan: {plan_path}"
         return result
@@ -2745,6 +2753,8 @@ def _parse_build_plan_chunk_type(
     """
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        return None, "missing build-plan: no build plan governs this branch"
     if not plan_path.is_file():
         return None, f"missing build-plan: {plan_path}"
     try:

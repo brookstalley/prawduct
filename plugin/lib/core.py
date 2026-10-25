@@ -941,7 +941,19 @@ def describe_branch_claim(claim: BranchClaim, artifacts_dir: Path) -> str:
     )
 
 
-def resolve_build_plan_path(prawduct_dir: Path) -> Path:
+def fallback_plan_path(prawduct_dir: Path) -> Path:
+    """The plan the fallback routes name: the ``active_build_plan`` pointer, else
+    the conventional ``artifacts/build-plan.md``. May not exist.
+
+    The raw candidate, before :func:`resolve_build_plan_path` asks whether it may
+    govern this branch — exposed so a diagnosis of *why* nothing resolved
+    (``buildplan_refs.unresolved_scope_cause``) reads the same file the resolver
+    refused, rather than re-spelling the two routes.
+    """
+    return pointer_plan_path(prawduct_dir) or prawduct_dir / DEFAULT_BUILD_PLAN_REL
+
+
+def resolve_build_plan_path(prawduct_dir: Path) -> Path | None:
     """Resolve the active build-plan path. Branch-scoped first, pointer second.
 
     Precedence:
@@ -960,16 +972,43 @@ def resolve_build_plan_path(prawduct_dir: Path) -> Path:
        scope (``artifacts/v1.6.0-foo-plan.md``).
     3. **The conventional** ``artifacts/build-plan.md``.
 
+    **A plan declaring ``branch:`` governs that branch and no other** — so steps
+    2 and 3 never answer with a plan whose ``branch:`` names a different branch
+    than the one checked out, and the result is ``None``: no plan governs this
+    branch. Without that rule a finished plan, retained live on gitflow until
+    its release, went back into force on every branch no plan claimed: its gates
+    armed, and reviews and ledger events attributed to its scope. Clearing the
+    pointer did not end it when the plan sat at the conventional path. On a
+    detached HEAD or outside a work tree there is no branch to compare, so the
+    fallback stands as before.
+
     A repo whose plans declare no ``branch:`` therefore resolves exactly as it
     did before step 1 existed — opting in is per plan, and nothing migrates.
 
-    The returned path may not exist; callers treat a missing plan as "no active
-    build plan."
+    The returned path may not exist; callers treat a missing plan, like
+    ``None``, as "no active build plan."
     """
     claim = resolve_branch_claim(prawduct_dir)
     if claim is not None:
         return claim.chosen
-    return pointer_plan_path(prawduct_dir) or prawduct_dir / DEFAULT_BUILD_PLAN_REL
+    fallback = fallback_plan_path(prawduct_dir)
+    from . import plan_index  # noqa: PLC0415 — lazy: core's top level stays stdlib-only
+
+    try:
+        declared = plan_index.parse_build_plan_frontmatter_branch(
+            fallback.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError):
+        return fallback  # missing or unreadable: each caller already says so
+    if declared is None:
+        return fallback
+
+    from . import gitstate  # noqa: PLC0415 — same reason; also a git subprocess
+
+    branch = gitstate.current_branch(prawduct_dir.parent)
+    if branch and branch != declared:
+        return None
+    return fallback
 
 
 def extract_block(content: str) -> tuple[str | None, str, str]:
