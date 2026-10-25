@@ -149,7 +149,7 @@ in place of one; the prefixes below are the exceptions.
 - **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
   check ran (`chunk_graded` non-null), but one half of "whose deliverables" was inferred — the
   **chunk** inferred from build-plan Status (which names the first UNCHECKED chunk, so possibly the next one),
-  or the **plan** from a legacy-window fallback because the dispatch carried no scope. The
+  or the **plan** from the `active_build_plan` pointer or conventional path, absent a scope. The
   line names which fired. Either means **no answer about this diff**, not clean; a branch that builds
   no chunk has no `--chunk` to supply.
 - **Every other entry takes the inherited severity above** — BLOCKING → WARNING, else NOTE — and

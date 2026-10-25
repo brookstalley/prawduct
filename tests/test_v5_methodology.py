@@ -977,7 +977,11 @@ LAST_MEASURED_TOKENS = {
     # +204 on 2026-10-21 (#95), DECLARED: the integrator section (stage-and-`chunk` pattern, the
     # `.prawduct/` gitignore trap, in-session vs unattended invocation). No review mode loads this
     # file (see test_critic_skill_metadata), so no reviewer route pays it; it serves integrators.
-    "skills/critic/review-cycle.md": 7711,
+    # -10 on 2026-10-25 (#1050 work-unit binding): the ledger `scope` sentence now says scope
+    # is taken from the checkout's binding (`plan resolve`), or null when unbound; paid in place
+    # by cutting the restated don't-pick-a-plan reason, which `SKILL.md` step 4 owns, to a
+    # pointer. The ceiling lowered with it. A READING.
+    "skills/critic/review-cycle.md": 7701,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1121,7 +1125,10 @@ LAST_MEASURED_TOKENS = {
     # -9 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -12 on 2026-09-28 (opus-55-w3b), C-20: the coordinator bullet points at coordinator.md instead of restating it; the ceiling lowered with it.
-    "skills/critic/SKILL.md": 3139,
+    # -27 on 2026-10-25 (#1050 work-unit binding): step 4's `--scope` derivation names the binding
+    # (`prawduct-hook plan resolve`) in place of the branch-name match and the retired
+    # `active_build_plan` pointer argument; the ceiling lowered with it. A READING.
+    "skills/critic/SKILL.md": 3112,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -5804,7 +5811,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3140, f"SKILL.md is ~{tokens} tokens, should be <3140"
+        # RATCHETED 3140 -> 3113 (#1050 work-unit binding, 2026-10-25) with the reading.
+        assert tokens < 3113, f"SKILL.md is ~{tokens} tokens, should be <3113"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6130,7 +6138,8 @@ class TestReviewCycle:
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
         # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
-        assert tokens < 7712, f"review-cycle.md is ~{tokens} tokens, should be <7712"
+        # RATCHETED 7712 -> 7702 (#1050 work-unit binding, 2026-10-25) with the reading.
+        assert tokens < 7702, f"review-cycle.md is ~{tokens} tokens, should be <7702"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

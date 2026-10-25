@@ -4,7 +4,7 @@ A repo whose plans predate claims still binds through the ``active_build_plan``
 pointer or the conventional ``artifacts/build-plan.md`` — ``work_unit.resolve``
 serves such a plan with ``chosen_by`` naming the route, and only while no live
 plan in the repo declares a ``branch:``. That window is temporary: it closes the
-moment any plan claims a branch, and it is removed outright in a later release.
+moment any plan claims a branch, and a later release retires the window itself.
 A repo still inside it when it closes would find its gates disarmed, so the
 binding says so every session through this advisory, which names the one
 command that ends the window for that plan.
