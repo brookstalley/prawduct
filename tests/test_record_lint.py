@@ -1218,7 +1218,11 @@ class TestVerifyRecordsCLI:
     def test_it_derives_the_same_scope_the_dispatch_would(self, tmp_path):
         """The by-hand form exists to pre-answer the record checks. Grading a
         different plan than `critic-begin` will makes it answer a different
-        question — confidently, and in the shape of the real answer."""
+        question — confidently, and in the shape of the real answer.
+
+        Both take the checkout's binding: `build-plan-mine.md` claims `fix/mine`
+        with `branch:`, so that plan is graded while the pointer names the other
+        (#1050 — the claim, not the branch NAME, is what binds)."""
         repo = _make_repo(tmp_path, name="scopeparity")
         artifacts = repo / ".prawduct" / "artifacts"
         (artifacts / "build-plan-pointed.md").write_text(
@@ -1227,7 +1231,7 @@ class TestVerifyRecordsCLI:
             "### Chunk 01: pointed\n\n- **Deliverables:** `code.py`\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: mine\n\n"
             "### Chunk 01: mine\n\n- **Deliverables:** `code.py`\n"
         )

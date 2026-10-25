@@ -984,3 +984,90 @@ def _seeded(tmp_path: Path) -> Path:
     primary = tmp_path / "primary"
     _init_repo(primary)
     return primary
+
+
+# ---------------------------------------------------------------------------
+# The Stop gate's binding in a scratch worktree (#648, #1050 BR6)
+# ---------------------------------------------------------------------------
+
+_POINTED_PLAN = (
+    "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+    "# Build Plan\n\n## Status\n- [ ] Chunk 01: In flight\n\n"
+    "### Chunk 01: In flight\n**Type:** code\n\nBody.\n"
+)
+
+
+def _pointer_plan_repo(tmp_path: Path) -> Path:
+    """A repo whose plan governs through the `active_build_plan` POINTER and
+    declares no `branch:` — the legacy window, where a durable checkout of any
+    branch is bound to it. Its one chunk is unticked, so a bound checkout with
+    code changes and no review owes the Critic gate."""
+    primary = tmp_path / "primary"
+    _init_repo(primary)
+    prawduct = primary / ".prawduct"
+    (prawduct / "artifacts").mkdir(exist_ok=True)
+    (prawduct / "artifacts" / "build-plan-pointed.md").write_text(_POINTED_PLAN)
+    (prawduct / "project-state.yaml").write_text(
+        "product_name: Test\nactive_build_plan: artifacts/build-plan-pointed.md\n"
+    )
+    # Session files stay out of the porcelain span, as onboarding arranges.
+    (primary / ".gitignore").write_text(".prawduct/.*\n")
+    _git(primary, "add", "-A")
+    _git(primary, "commit", "-m", "plan", "--quiet")
+    return primary
+
+
+def _stop_with_code_changes(wt: Path, tmp_path: Path) -> subprocess.CompletedProcess:
+    """Run `stop` in ``wt`` after an uncommitted code change, reflection
+    pre-satisfied so the only gate a block can come from is the Critic's. A
+    fake `gh` shadows the real one: the PR gate's probe must not reach a
+    network from a test."""
+    from conftest import SHAPED_REFLECTION  # noqa: PLC0415 — test-local import
+
+    (wt / "src").mkdir(exist_ok=True)
+    (wt / "src" / "app.py").write_text("print('work')\n")
+    (wt / ".prawduct" / ".session-reflected").write_text(SHAPED_REFLECTION)
+    fake_bin = tmp_path / "_fake_bin"
+    fake_bin.mkdir(exist_ok=True)
+    gh = fake_bin / "gh"
+    gh.write_text("#!/bin/bash\necho '[]'\nexit 0\n")
+    gh.chmod(0o755)
+    env = _hook_env(wt, {"PATH": f"{fake_bin}:{os.environ.get('PATH', '')}"})
+    return subprocess.run(
+        [sys.executable, str(HOOK), "stop"],
+        cwd=str(wt), capture_output=True, text=True, input="{}", env=env, timeout=60,
+    )
+
+
+class TestScratchWorktreeArmsNoCriticGate:
+    """A harness scratch worktree is unbound by construction (#1050 BR6).
+
+    #648's trap: forked from a repo whose plan governs through the pointer, a
+    scratch tree resolved that plan, armed the Critic gate on its unticked
+    chunk, and could satisfy it by no route — `critic-begin` is refused there,
+    by design, because the coordinator reviews the merged work. The binding
+    answers `unbound` for the scratch tree, so the gate never arms.
+    """
+
+    def test_a_scratch_worktree_arms_no_critic_gate(self, tmp_path):
+        primary = _pointer_plan_repo(tmp_path)
+        wt = _agent_worktree(primary)
+        result = _stop_with_code_changes(wt, tmp_path)
+        assert "CRITIC" not in result.stderr, (
+            "a scratch worktree owes no review, so the Critic gate must not arm "
+            f"against the pointer's plan. stderr={result.stderr!r}"
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_the_control_a_named_branch_worktree_still_owes_the_review(self, tmp_path):
+        """Same repo, same fork point, same change — but the agent-path tree
+        holds a REAL branch, which the legacy window binds to the pointer's
+        plan. The gate fires, so the scratch case's silence is the binding's
+        doing and not a fixture that never reached the gate."""
+        primary = _pointer_plan_repo(tmp_path)
+        wt = _agent_worktree_on_named_branch(primary)
+        result = _stop_with_code_changes(wt, tmp_path)
+        assert result.returncode == 2, (
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "CRITIC REVIEW" in result.stderr

@@ -1677,6 +1677,51 @@ class TestInferCriticModeSubcommand:
         assert mode == "final"
         assert rationale == "explicit-args"
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "#1050 Chunk 02: inference resolves its plan inside "
+            "lib/critic_mode.infer_mode, which this hook entry only wraps. "
+            "Strict, so it turns red the moment the lib takes the Binding — "
+            "delete this mark then."
+        ),
+    )
+    def test_a_branch_no_plan_claims_infers_from_no_plan(self, tmp_path: Path):
+        """#208's shape: the branch's NAME matches another plan's scope.
+
+        `fix/alpha` is claimed by no plan, and `build-plan-beta.md` claims a
+        branch, so the legacy window is closed and the checkout is unbound. The
+        name-matched `alpha` plan's current chunk declares `Critic mode: final`;
+        reading it here grades this work as that plan's chunk. Unbound answers
+        from no plan at all.
+        """
+        _init_repo(tmp_path)
+        _write(
+            tmp_path, ".prawduct/artifacts/build-plan-alpha.md",
+            "---\nartifact: build-plan\nscope: alpha\n---\n\n"
+            "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: alpha work\n\n"
+            "### Chunk 01: alpha work\n\n- **Type:** code\n"
+            "- **Critic mode:** final\n- **Deliverables:** stuff\n",
+        )
+        _write(
+            tmp_path, ".prawduct/artifacts/build-plan-beta.md",
+            "---\nartifact: build-plan\nscope: beta\nbranch: feat/beta\n---\n\n"
+            "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: beta work\n",
+        )
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "plans")
+        _checkout_new_branch(tmp_path, "fix/alpha")
+        _write(tmp_path, "src/app.py", "print('work')\n")
+
+        result = self._run_subcommand(tmp_path)
+        assert result.returncode == 0, result.stderr
+        mode, rationale = result.stdout.strip().split("|", 1)
+        assert "plan-override" not in rationale, (
+            f"an unclaimed branch inherited another plan's chunk: {result.stdout!r}"
+        )
+        assert rationale.startswith("rule-4 chunk: no active build plan"), result.stdout
+        assert mode == "chunk"
+
 
 # ---------------------------------------------------------------------------
 # Schema validator — mode_chosen_by field

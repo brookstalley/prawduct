@@ -515,6 +515,36 @@ class TestBranchScopedResolution:
         _git(repo, "checkout", "-q", "-b", "feature/finished")
         assert governs not in (_bpr._parse_build_plan_chunk_refs(prawduct, "01")["error"] or "")
 
+    def test_verify_chunk_refs_with_no_chunk_named_says_no_plan_governs(
+        self, tmp_path: Path
+    ):
+        """The inference path on an unbound checkout: nothing to verify, said in
+        words with the binding's reason — not another plan's current chunk."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        _plan(repo / ".prawduct", "build-plan.md", branch="feature/finished")
+        proc = subprocess.run(
+            [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs"],
+            cwd=str(repo), capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "no plan governs this checkout" in proc.stdout
+        assert "no live plan claims `fix/unrelated`" in proc.stdout
+
+    def test_verify_chunk_refs_on_a_broken_binding_cannot_verify(self, tmp_path: Path):
+        """Two claimants: neither may be chosen, so the check does not run and
+        says why (exit 1, the can't-evaluate signal) rather than grading one."""
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan-a.md", branch="feat/x")
+        _plan(prawduct, "build-plan-b.md", branch="feat/x")
+        proc = subprocess.run(
+            [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs", "01"],
+            cwd=str(repo), capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 1
+        assert "cannot-verify: the plan binding is broken" in proc.stderr
+        assert "2 live plans claim `feat/x`" in proc.stderr
+
     def test_detached_head_falls_through_to_the_scalar(self, tmp_path: Path):
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
