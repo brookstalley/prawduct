@@ -26,7 +26,9 @@ whose chunk list names the chunk (``chunks`` when present, else ``[chunk]``
 when ``chunk`` is set, else nothing), whose blocking findings are zero or all
 resolved by a passing ``resolution`` fact (``dispositions.census`` owns that
 rule), and whose anchor commit is reachable from the plan's ``branch:`` or a
-declared ``working-branches:`` entry. Mode labels do not matter. A
+declared ``working-branches:`` entry — or, once every one of those is on no
+local or remote ref (the merge deleted them), from the plan's base, which is
+where their commits went (:class:`_Reachability`, #1065). Mode labels do not matter. A
 ``chunk-imported`` fact (``{scope, chunk, source: "status-box", imported_at}``,
 written by the MG2 migration) is ``done`` too, tagged ``imported``. Until a plan
 is migrated, each ticked ``## Status`` box reads exactly as such a fact would —
@@ -52,7 +54,10 @@ false, but they are not chunk ids, so :func:`current_chunks` and
 history and makes no network call: its only subprocess is one ``git merge-base
 --is-ancestor`` per distinct anchor, run only for a fact that would otherwise
 certify a chunk still open, memoized per call — so a store holding no such fact
-costs no subprocess at all. Pinned by call in ``tests/test_plan_status.py``.
+costs no subprocess at all. Only an anchor that probe refuses pays more: one
+``for-each-ref`` per call to place the claimed branches, and one further probe
+per anchor against a remote tracking ref or the base. Pinned by call in
+``tests/test_plan_status.py``.
 That is also why precedence follows cost: an import (fact or box) answers
 first, then ``dropped:``, and a review fact only for a chunk those leave open —
 so a chunk both ticked and reviewed reads ``done, imported`` with no fact cited.
@@ -314,22 +319,115 @@ def _blocking_clear(store: dict, review_ids: list[str]) -> dict[str, str | None]
     return verdicts
 
 
+def _resolve_base(repo_dir: Path, content: str) -> tuple[str | None, str | None]:
+    """``(base ref, cause)`` for the plan whose frontmatter is in ``content``:
+    the plan's ``base:`` (``origin/<b>`` preferred over ``<b>``), else the
+    repo's integration base. A declared ``base:`` that resolves to no ref is a
+    cause, never a fallback to the repo's base, which would answer for a
+    different interval as though it were this one. Exactly one of the two is
+    ``None``."""
+    declared_base = _ref_token(plan_index.parse_build_plan_frontmatter_base(content))
+    if declared_base:
+        base = next(
+            (r for r in (f"origin/{declared_base}", declared_base)
+             if coverage._git_ref_exists(repo_dir, r)),
+            None,
+        )
+        if base is None:
+            return None, f"the plan's `base: {declared_base}` names no ref in this clone"
+        return base, None
+    base, why = coverage.repo_base_branch(repo_dir)
+    if base is None:
+        return None, why or "no base branch resolves"
+    return base, None
+
+
+@dataclass(frozen=True)
+class _Placement:
+    """Where a plan's claimed branches are, asked once per :func:`chunk_states`
+    call and only after a probe by name refused (:class:`_Reachability`)."""
+
+    remote_refs: tuple[str, ...]  # tracking refs of claimed branches present only on a remote
+    gone: bool  # no claimed branch is on any local or remote ref
+    base: str | None  # the base a gone plan's commits are placed on, when it resolves
+    base_cause: str | None  # why no base resolves, for the reason a chunk left open prints
+
+
 class _Reachability:
-    """``merge-base --is-ancestor`` against the plan's branches, memoized."""
+    """Whether an anchor is in the history of the plan's branches, memoized per
+    anchor. Answers ``None`` when it is, else the reason it is not.
 
-    def __init__(self, repo_dir: Path, branches: tuple[str, ...]):
+    The claimed branches are probed by name first, so the common path costs one
+    ``merge-base --is-ancestor`` per anchor and nothing else (NF1). Only when
+    every name refuses is git asked, once per call, where those branches are:
+    a branch present only on a remote is probed by its tracking ref, and a plan
+    whose claimed branches are all gone is probed against its base — which is
+    where a merged branch's commits went once ``/prawduct:pr`` deleted it, and
+    the case that read every chunk of a merged plan as open (#1065). On the
+    base path a review anchored at its own ``base_commit`` certifies nothing:
+    that commit was on the base before the review ran, so finding it there
+    says nothing about a merge (the rule ``plan_lifecycle`` applies to the same
+    question).
+    """
+
+    def __init__(self, repo_dir: Path, plan: _Plan, content: str):
         self._repo_dir = repo_dir
-        self._branches = branches
+        self._plan = plan
+        self._content = content
         self._memo: dict[str, bool] = {}
+        self._placement: _Placement | None = None
 
-    def __call__(self, anchor: str) -> bool:
+    def _probe(self, anchor: str, target: str) -> bool:
+        return (
+            evidence.run_git(self._repo_dir, "merge-base", "--is-ancestor", anchor, target)[0]
+            == 0
+        )
+
+    def placement(self) -> _Placement:
+        if self._placement is None:
+            refs = gitstate.branch_refs(self._repo_dir, self._plan.branches)
+            if refs is None:
+                # Git could not say where the branches are: not evidence they are
+                # gone (``gitstate.local_branches``), so no fallback is taken.
+                self._placement = _Placement((), False, None, None)
+            elif not refs:
+                base, cause = _resolve_base(self._repo_dir, self._content)
+                self._placement = _Placement((), True, base, cause)
+            else:
+                remote = tuple(r for r in sorted(refs) if not r.startswith("refs/heads/"))
+                self._placement = _Placement(remote, False, None, None)
+        return self._placement
+
+    def __call__(self, anchor: str, fork_point: object = None) -> str | None:
+        names = " or ".join(f"`{b}`" for b in self._plan.branches)
         if anchor not in self._memo:
-            self._memo[anchor] = any(
-                evidence.run_git(self._repo_dir, "merge-base", "--is-ancestor", anchor, b)[0]
-                == 0
-                for b in self._branches
+            self._memo[anchor] = any(self._probe(anchor, b) for b in self._plan.branches)
+        if self._memo[anchor]:
+            return None
+        where = self.placement()
+        if where.remote_refs:
+            key = f"remote:{anchor}"
+            if key not in self._memo:
+                self._memo[key] = any(self._probe(anchor, r) for r in where.remote_refs)
+            return None if self._memo[key] else f"its commit is not on {names}"
+        if not where.gone:
+            return f"its commit is not on {names}"
+        if where.base is None:
+            return f"{names} is on no local or remote branch, and {where.base_cause}"
+        if anchor == fork_point:
+            return (
+                f"its commit is the review's own base commit, which `{where.base}` held "
+                "before the review ran"
             )
-        return self._memo[anchor]
+        key = f"base:{anchor}"
+        if key not in self._memo:
+            self._memo[key] = self._probe(anchor, where.base)
+        if self._memo[key]:
+            return None
+        return (
+            f"its commit is not on `{where.base}` ({names} is on no local or remote "
+            "branch, so the base it merged into is asked)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +508,7 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             if named:
                 candidates.append((fact, body, named))
         verdicts = _blocking_clear(store, [f["id"] for f, _b, _n in candidates])
-        reachable = _Reachability(Path(repo_dir), plan.branches)
+        reachable = _Reachability(Path(repo_dir), plan, content)
         for fact, body, named in candidates:
             targets = [n for n in named if still_open(n)]
             if not targets:
@@ -430,11 +528,8 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                 why = "the plan declares no `branch:` its commit could be on"
             elif not gitstate.is_object_id(anchor):
                 why = "it records no commit to place"
-            elif not reachable(anchor):
-                where = " or ".join(f"`{b}`" for b in plan.branches)
-                why = f"its commit is not on {where}"
             else:
-                why = None
+                why = reachable(anchor, body.get("base_commit"))
             if why is not None:
                 for n in targets:
                     note(n, f"review {fact['id']} names it, but {why}")
@@ -630,21 +725,9 @@ def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
     plan = _read_plan(content)
     if not plan.chunks:
         return BuiltReport(set())
-    declared_base = _ref_token(plan_index.parse_build_plan_frontmatter_base(content))
-    if declared_base:
-        base = next(
-            (r for r in (f"origin/{declared_base}", declared_base)
-             if coverage._git_ref_exists(repo_dir, r)),
-            None,
-        )
-        if base is None:
-            return BuiltReport(
-                set(), f"the plan's `base: {declared_base}` names no ref in this clone"
-            )
-    else:
-        base, why = coverage.repo_base_branch(repo_dir)
-        if base is None:
-            return BuiltReport(set(), why or "no base branch resolves")
+    base, cause = _resolve_base(repo_dir, content)
+    if base is None:
+        return BuiltReport(set(), cause)
     head = plan.branch if plan.branch and coverage._git_ref_exists(repo_dir, plan.branch) else "HEAD"
     rc, out, err = evidence.run_git(
         repo_dir, "log", f"--format={_COMMIT_MARK}%s", "--name-only", f"{base}..{head}", "--",

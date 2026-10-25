@@ -339,19 +339,9 @@ def _exact_refs(out: str) -> dict[str, str]:
 
 
 def _names(ref: str, branch: str) -> bool:
-    """Whether ``ref`` is exactly ``branch``, local or on one remote.
-
-    ``for-each-ref`` patterns also match by prefix up to a slash
-    (``refs/heads/feature`` lists ``refs/heads/feature/x``), so every listed
-    ref is checked for the exact name here.
-    """
-    if ref == f"refs/heads/{branch}":
-        return True
-    prefix = "refs/remotes/"
-    if not ref.startswith(prefix) or not ref.endswith(f"/{branch}"):
-        return False
-    remote = ref[len(prefix) : -len(branch) - 1]
-    return bool(remote) and "/" not in remote
+    """Whether ``ref`` is exactly ``branch``, local or on one remote — the rule
+    :func:`gitstate.ref_is_branch` owns, shared with the chunk-state probe."""
+    return gitstate.ref_is_branch(ref, branch)
 
 
 def _contained_in(repo_dir: Path, commit: str, base_refs: list[str]) -> str | None | bool:

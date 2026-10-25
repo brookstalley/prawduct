@@ -604,6 +604,45 @@ def local_branches(project_dir: Path) -> set[str] | None:
         return None
 
 
+def ref_is_branch(ref: str, branch: str) -> bool:
+    """Whether the full ref name ``ref`` is exactly ``branch``, local or on one
+    remote: ``refs/heads/<branch>`` or ``refs/remotes/<remote>/<branch>``.
+
+    ``for-each-ref`` patterns also match by prefix up to a slash
+    (``refs/heads/feature`` lists ``refs/heads/feature/x``), so every ref a
+    pattern lists is checked for the exact name here. One rule, shared by the
+    plan lifecycle observer and the chunk-state probe (#1065), so a branch
+    present to one is present to the other."""
+    if ref == f"refs/heads/{branch}":
+        return True
+    prefix = "refs/remotes/"
+    if not ref.startswith(prefix) or not ref.endswith(f"/{branch}"):
+        return False
+    remote = ref[len(prefix) : -len(branch) - 1]
+    return bool(remote) and "/" not in remote
+
+
+def branch_refs(project_dir: Path, branches: "tuple[str, ...]") -> "dict[str, str] | None":
+    """``full ref name → object id`` for every local or single-remote ref that is
+    exactly one of ``branches`` (:func:`ref_is_branch`), or ``None`` when git
+    could not be asked — which, as for :func:`local_branches`, is not evidence
+    that the branches are missing."""
+    if not branches:
+        return {}
+    patterns = [p for b in branches for p in (f"refs/heads/{b}", f"refs/remotes/*/{b}")]
+    code, out, _err = _git_text(
+        project_dir, "for-each-ref", "--format=%(objectname) %(refname)", *patterns
+    )
+    if code != 0:
+        return None
+    refs: dict[str, str] = {}
+    for line in out.splitlines():
+        sha, _sp, ref = line.strip().partition(" ")
+        if is_object_id(sha) and any(ref_is_branch(ref, b) for b in branches):
+            refs[ref] = sha
+    return refs
+
+
 def _git_text(project_dir: Path, *args: str) -> tuple[int, str, str]:
     """``(returncode, stdout, stderr)`` from one git call, all stripped.
 
