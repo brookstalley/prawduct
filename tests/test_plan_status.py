@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib import evidence, plan_status  # noqa: E402
+from lib import evidence, gitstate, plan_status  # noqa: E402
 
 TS = "2026-10-25T10:00:00Z"
 
@@ -283,6 +283,40 @@ class TestDoneFromReviewFacts:
         state = plan_status.chunk_states(plan, _facts(_review("R2", stray, chunks=["01"])), repo_dir=repo)["01"]
         assert state.state == "open"
         assert state.reason == "review R2 names it, but its commit is not on `feature/unit`"
+
+    def test_a_prefix_sibling_of_the_gone_branch_does_not_count_as_present(self, repo, monkeypatch):
+        """`for-each-ref refs/heads/feature/unit` also lists `feature/unit/spike`;
+        the exact-name filter is what keeps that sibling from reading as the
+        claimed branch, which would skip the base and leave the merged plan open."""
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "feature/unit")
+        _git(repo, "branch", "-D", "feature/unit")
+        _git(repo, "branch", "feature/unit/spike", "main")
+        _git(repo, "update-ref", "refs/remotes/origin/feature/unit/spike", head)
+        plan = _plan(repo, ("01",))
+        fact = _facts(_review("R1", head, chunks=["01"]))
+        assert gitstate.branch_refs(repo, ("feature/unit",)) == {}
+        assert _states(plan, fact, repo) == {"01": "done"}
+        # Positive control for the instrument: without the filter the sibling is
+        # listed as present and the base is never asked.
+        monkeypatch.setattr(gitstate, "ref_is_branch", lambda _ref, _branch: True)
+        assert gitstate.branch_refs(repo, ("feature/unit",)) != {}
+        state = plan_status.chunk_states(plan, fact, repo_dir=repo)["01"]
+        assert (state.state, state.reason) == ("open", "review R1 names it, but its commit is not on `feature/unit`")
+
+    def test_git_unable_to_list_the_branches_takes_no_fallback(self, repo, monkeypatch):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "feature/unit")
+        _git(repo, "branch", "-D", "feature/unit")
+        plan = _plan(repo, ("01",))
+        fact = _facts(_review("R1", head, chunks=["01"]))
+        assert _states(plan, fact, repo) == {"01": "done"}
+        monkeypatch.setattr(gitstate, "branch_refs", lambda _repo, _branches: None)
+        state = plan_status.chunk_states(plan, fact, repo_dir=repo)["01"]
+        assert state.state == "open"
+        assert state.reason == "review R1 names it, but its commit is not on `feature/unit`"
 
     def test_a_gone_branch_whose_base_resolves_nowhere_says_so(self, repo):
         head = _commit(repo, "src/c01.py", "x\n", "work")

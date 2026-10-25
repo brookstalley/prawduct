@@ -26,9 +26,9 @@ whose chunk list names the chunk (``chunks`` when present, else ``[chunk]``
 when ``chunk`` is set, else nothing), whose blocking findings are zero or all
 resolved by a passing ``resolution`` fact (``dispositions.census`` owns that
 rule), and whose anchor commit is reachable from the plan's ``branch:`` or a
-declared ``working-branches:`` entry — or, once every one of those is on no
-local or remote ref (the merge deleted them), from the plan's base, which is
-where their commits went (:class:`_Reachability`, #1065). Mode labels do not matter. A
+declared ``working-branches:`` entry — or, once every one of those is gone
+from every local and remote ref (the merge took them), from the plan's base,
+which is where their commits went (:class:`_Reachability`, #1065). Mode labels do not matter. A
 ``chunk-imported`` fact (``{scope, chunk, source: "status-box", imported_at}``,
 written by the MG2 migration) is ``done`` too, tagged ``imported``. Until a plan
 is migrated, each ticked ``## Status`` box reads exactly as such a fact would —
