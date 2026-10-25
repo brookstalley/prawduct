@@ -768,7 +768,11 @@ class TestRule3Final:
     """Final wins for end-of-plan (N-1 chunks [x] + current uncommitted)
     OR non-chunked medium+ work (no plan + ≥5 changed files)."""
 
-    def test_wins_when_last_unchecked_chunk_in_progress(self, tmp_path: Path):
+    def test_wins_when_last_open_chunk_in_progress(self, tmp_path: Path):
+        """Renamed in the open (#1051): rule 3 reads the last OPEN chunk from
+        ``plan_status`` — a ticked box is an in-memory import there, so three
+        ticked boxes still leave Chunk 4 the last one — and its rationale says
+        "open", because a box-free plan has nothing unchecked to name."""
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
@@ -789,7 +793,7 @@ class TestRule3Final:
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
         assert rationale.startswith("rule-3 final:")
-        assert "last unchecked chunk" in rationale
+        assert "last open chunk (4)" in rationale
 
     def test_does_not_fire_when_multiple_chunks_unchecked(self, tmp_path: Path):
         """Mid-build-plan (>1 unchecked) → chunk wins."""
@@ -893,7 +897,7 @@ class TestRule3Final:
     def test_reads_scope_named_plan_via_active_build_plan_pointer(self, tmp_path: Path):
         """v1.6.0 Chunk 06: with `active_build_plan:` set and no build-plan.md,
         inference reads the scope-named plan's chunk count. The N-1-done +
-        uncommitted scenario fires rule-3 ("last unchecked chunk"); without the
+        uncommitted scenario fires rule-3 ("last open chunk"); without the
         pointer, the absent plan would instead fall through to rule-4."""
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
@@ -915,7 +919,7 @@ class TestRule3Final:
 
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "final"
-        assert "last unchecked chunk" in rationale
+        assert "last open chunk (4)" in rationale
 
 
 # ---------------------------------------------------------------------------
@@ -2014,6 +2018,152 @@ class TestBranchProgressCRT7B4M:
             "develop's pre-fork (Chunk 03) commit leaked past the base "
             f"resolution into base..HEAD: {notice!r}"
         )
+
+
+def _fact_plan_branch(
+    tmp_path: Path,
+    n_chunks: int,
+    *,
+    certified: tuple = (),
+    status: "dict[str, bool] | None" = None,
+    chunk_modes: "dict[str, str] | None" = None,
+    extra_heading: str = "",
+    uncommitted: bool = True,
+) -> Path:
+    """A feature branch whose plan CLAIMS it (``branch: feature/x``), with chunk
+    progress carried by REVIEW FACTS, not boxes: ``certified`` chunks are named
+    by one zero-blocking review fact anchored at a commit on the branch. A
+    ``## Status`` block is written only when ``status`` is given (id → ticked).
+    Returns the plan path."""
+    _init_repo(tmp_path, branch="main")
+    _write(tmp_path, "README.md", "x\n")
+    _commit(tmp_path, "initial")
+    ids = [f"{i:02d}" for i in range(1, n_chunks + 1)]
+    lines = [
+        "---", "artifact: build-plan", "scope: cs", "branch: feature/x", "base: main",
+        "---", "", "# Build Plan", "",
+    ]
+    if status is not None:
+        lines += ["## Status", ""]
+        lines += [f"- [{'x' if status.get(c) else ' '}] Chunk {c}: step {c}" for c in ids]
+        lines.append("")
+    lines += ["## Build Chunks", ""]
+    for c in ids:
+        lines += [f"### Chunk {c}: step {c}", "", "- **Type:** code"]
+        if (chunk_modes or {}).get(c):
+            lines.append(f"- **Critic mode:** {chunk_modes[c]}")
+        lines += ["- **Deliverables:** stuff", ""]
+    if extra_heading:
+        lines += [extra_heading, ""]
+    plan = _write(tmp_path, ".prawduct/artifacts/build-plan-cs.md", "\n".join(lines) + "\n")
+    _write(tmp_path, ".prawduct/project-state.yaml", "base_branch: main\n")
+    _checkout_new_branch(tmp_path, "feature/x")
+    head = _commit(tmp_path, "plan: write the build plan")
+    if certified:
+        from lib import evidence
+
+        result = evidence.append_fact(tmp_path, "review", "rev-cert-1", {
+            "scope": "cs", "mode": "chunk (lighter pass, not ready for push)",
+            "chunks": list(certified), "chunks_proposed": list(certified),
+            "chunk": certified[0], "head_commit": head, "dispatch_commit": head,
+            "findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0},
+        })
+        assert result["status"] == "appended", result
+    if uncommitted:
+        _write(tmp_path, "src/wip.py", "# work in progress\n")
+    return plan
+
+
+class TestProgressIsReadFromChunkStates:
+    """#1051: inference reads ``plan_status.current_chunks`` / ``chunk_states``
+    (through ``binding_progress``), so a chunk is done when a review fact names
+    and certifies it — no box is ticked anywhere in these fixtures. The
+    TestBranchProgressCRT7B4M property, ported: the CURRENT chunk is the first
+    open one, read from the facts. Plans have four or more chunks so the
+    short-plan deferral (at most three) cannot pre-empt what is tested."""
+
+    def test_two_open_chunks_infer_chunk(self, tmp_path):
+        _fact_plan_branch(tmp_path, 4, certified=("01", "02"))
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == "chunk", why
+        assert why.startswith("rule-4 chunk"), why
+
+    def test_one_open_chunk_infers_final(self, tmp_path):
+        _fact_plan_branch(tmp_path, 4, certified=("01", "02", "03"))
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == "final", why
+        assert "last open chunk (04)" in why, why
+
+    def test_control_without_the_fact_the_same_plan_is_mid_plan(self, tmp_path):
+        """The control that makes the two above about the FACT: same plan and
+        tree, no review fact, four chunks open — `chunk`, not `final`."""
+        _fact_plan_branch(tmp_path, 4)
+        assert infer_mode(tmp_path, None)[0] == "chunk"
+
+    def test_the_current_chunk_override_is_read_off_the_first_open_chunk(self, tmp_path):
+        """Chunk 01 declares `final` and is done (by its fact); Chunk 03 declares
+        `cumulative` and is current. The override in force is 03's."""
+        _fact_plan_branch(
+            tmp_path, 5, certified=("01", "02"),
+            chunk_modes={"01": "final", "03": "cumulative"},
+        )
+        assert infer_mode(tmp_path, None) == ("cumulative", "plan-override: cumulative")
+
+    def test_a_fact_off_the_branch_completes_nothing(self, tmp_path):
+        """A review anchored at a commit the plan's branch does not contain
+        certifies nothing, so chunks stay open and inference stays mid-plan."""
+        _fact_plan_branch(tmp_path, 4)
+        _git(tmp_path, "checkout", "--quiet", "-b", "elsewhere")
+        _write(tmp_path, "src/other.py", "y\n")
+        stray = _commit(tmp_path, "elsewhere")
+        _git(tmp_path, "checkout", "--quiet", "feature/x")
+        from lib import evidence
+
+        evidence.append_fact(tmp_path, "review", "rev-stray", {
+            "scope": "cs", "mode": "chunk", "chunks": ["01", "02", "03"],
+            "chunk": "01", "head_commit": stray, "dispatch_commit": stray,
+            "findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0},
+        })
+        _write(tmp_path, "src/wip.py", "# work in progress\n")
+        assert infer_mode(tmp_path, None)[0] == "chunk"
+
+    def test_every_box_ticked_no_facts_reads_finished(self, tmp_path):
+        """An unmigrated plan: every ``## Status`` box ticked, NO review fact.
+        ``chunk_states`` reads the boxes as imports in memory, so the plan is
+        finished — nothing open, no current chunk, no final rule — and nothing
+        was written to the store to make it so."""
+        from lib import evidence
+
+        plan = _fact_plan_branch(
+            tmp_path, 4, status={c: True for c in ("01", "02", "03", "04")}
+        )
+        store = evidence.store_path(tmp_path)
+        before = store.read_bytes() if store is not None and store.is_file() else None
+        progress = critic_mode.binding_progress(tmp_path, work_unit.resolve(tmp_path))
+        assert progress.finished and progress.open_ids == () and progress.current_id is None
+        assert all(s.imported for s in progress.states.values())
+        mode, why = infer_mode(tmp_path, None)
+        assert mode == "chunk" and "rule-3" not in why, why
+        after = store.read_bytes() if store is not None and store.is_file() else None
+        assert before == after
+        assert plan.is_file()
+
+    def test_an_unreadable_heading_keeps_the_plan_unfinished(self, tmp_path):
+        """A synthetic ``?L<n>`` entry (a chunk heading the parser rejects) is not
+        a chunk id, so it is never current — but it keeps the plan unfinished
+        and counts as open, so one real open chunk beside it is NOT the last
+        chunk. Inference escalates on the unparseable plan (rule 0) rather than
+        reading it as the boundary-adjacent `final` of rule 3."""
+        _fact_plan_branch(
+            tmp_path, 4, certified=("01", "02", "03"), extra_heading="#### Chunk 5x: oops"
+        )
+        progress = critic_mode.binding_progress(tmp_path, work_unit.resolve(tmp_path))
+        assert progress.open_ids == ("04",), progress
+        assert progress.unreadable_open and not progress.finished
+        assert progress.open_count == 2
+        assert critic_mode._rule_final_fires(tmp_path, progress) == ""
+        mode, why = infer_mode(tmp_path, None)
+        assert why.startswith("rule-0 final (plan unreadable)"), why
 
 
 # (TestChainAnchorParity removed — kernel-v3 chunk 04 deleted the PR gate's

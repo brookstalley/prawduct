@@ -44,16 +44,24 @@ BLOCKING = {"name": "Broken", "goal": "Nothing Is Broken",
 MID, END = 0, 4
 
 
-def _plan(ticked: int, last_type: "str | None" = None) -> str:
+def _plan(
+    ticked: int, last_type: "str | None" = None, deliverables: "dict[int, str] | None" = None
+) -> str:
     """Five chunks, ``ticked`` of them done. ``last_type`` declares the LAST
-    chunk's ``Type:`` (``cumulative-final`` makes its review the boundary one)."""
+    chunk's ``Type:`` (``cumulative-final`` makes its review the boundary one).
+    A chunk delivers prose (``part N``, no path) unless ``deliverables`` maps
+    its number to a backticked path."""
     rows = "".join(
         f"- [{'x' if n <= ticked else ' '}] Chunk {n}: part {n}\n" for n in range(1, 6)
     )
     sections = "".join(
         f"\n### Chunk {n}: part {n}\n\n"
         + (f"**Type:** {last_type}\n\n" if last_type and n == 5 else "")
-        + f"- **Delivers:** part {n}\n"
+        + (
+            f"- **Delivers:** `{deliverables[n]}`\n"
+            if deliverables and n in deliverables
+            else f"- **Delivers:** part {n}\n"
+        )
         for n in range(1, 6)
     )
     return (
@@ -70,7 +78,7 @@ def _commit_all(repo: Path, msg: str) -> str:
 
 def _scenario(
     tmp_path: Path, ticked: int, findings: list, *, commit_fix: bool, commit_reviewed: bool = True,
-    last_type: "str | None" = None,
+    last_type: "str | None" = None, deliverables: "dict[int, str] | None" = None,
 ) -> tuple[Path, str]:
     """The current chunk reviewed with ``findings``, committed verbatim (unless
     ``commit_reviewed`` is False: the fix then goes straight onto the reviewed,
@@ -80,7 +88,10 @@ def _scenario(
     _init_repo(repo)
     _commit_file(repo, "src/app.py", "x = 1\n", "init")
     _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
-    _commit_file(repo, ".prawduct/artifacts/build-plan-work.md", _plan(ticked, last_type), "plan")
+    _commit_file(
+        repo, ".prawduct/artifacts/build-plan-work.md",
+        _plan(ticked, last_type, deliverables), "plan",
+    )
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     (repo / "src/app.py").write_text("x = 2\n")
     begin = _run_begin(repo, "--mode", "chunk", "--chunk", str(ticked + 1))
@@ -139,6 +150,60 @@ class TestModeInference:
         repo, _ = _scenario(tmp_path, MID, [BLOCKING], commit_fix=False)
         mode, why = infer_mode(repo, None)
         assert mode == "verify-resolutions", why
+
+
+class TestAFixIsToldFromTheNextChunkByItsDeliverables:
+    """#1051: a review now closes the chunks it names the moment it records, so
+    no unticked box says "still fixing this chunk". Condition (1a) asks the
+    observable instead: does the work since the reviewed tree touch an OPEN
+    chunk's Deliverables? Here chunk 1 was reviewed (WARNING) and certified."""
+
+    def test_work_on_an_open_chunks_deliverable_is_not_deferred(self, tmp_path):
+        """The control: chunk 2 delivers `src/two.py`, and that file is in the
+        work in flight — it is chunk 2's build, not a fix, so its review is owed
+        now and nothing defers."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={2: "src/two.py"})
+        (repo / "src/two.py").write_text("y = 1  # chunk 2's own work\n")
+        mode, why = infer_mode(repo, None)
+        assert mode != MODE_DEFERRED, why
+        assert critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        ) is None
+
+    def test_the_fix_alone_beside_a_declared_deliverable_is_deferred(self, tmp_path):
+        """Same plan, the fix only: no open chunk's Deliverables are touched,
+        so the deferral stands — the pair shows the Deliverables test is what
+        decides."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=False,
+                            deliverables={2: "src/two.py"})
+        mode, why = infer_mode(repo, None)
+        assert mode == MODE_DEFERRED, why
+        assert "chunk 1 was reviewed" in why, why
+
+    def test_a_chunk_with_no_path_deliverables_reads_as_a_fix_and_loses_nothing(self, tmp_path):
+        """The accepted fail-open, with its DIRECTION asserted. No chunk here
+        declares a path-shaped Deliverable, so chunk 2's own work (`src/two.py`)
+        reads as a fix and defers. What makes that safe is that the next
+        `chunk` review starts at the covered frontier and spans everything
+        since — the fix AND the work — so nothing is left uncovered."""
+        repo, _ = _scenario(tmp_path, MID, [WARNING], commit_fix=True)
+        reviewed = _git(repo, "rev-parse", "HEAD~1").stdout.strip()
+        (repo / "src/two.py").write_text("y = 1  # chunk 2's own work\n")
+        # The Stop gate's predicate (inference answers `chunk` here anyway: the
+        # new file is outside the prior review, so rule 1 does not fire).
+        owed = critic_mode.extension_deferral_owed(
+            repo, repo / ".prawduct", work_unit.resolve(repo),
+            critic_mode.binding_progress(repo, work_unit.resolve(repo)),
+        )
+        assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+        begin = _run_begin(repo, "--mode", "chunk", "--chunk", "2")
+        assert begin.returncode == 0, begin.stderr
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["base_commit"] == reviewed, manifest["base_commit"]
+        assert manifest["base_extended_from"] is not None
+        assert {"src/app.py", "src/two.py"} <= set(manifest["files_changed"]), manifest
 
 
 class TestStopGate:
@@ -387,38 +452,112 @@ class TestOnlyASuppliedChunkIdIsCredited:
     review chain — never record-lint's Status-derived graded chunk, which is
     the same first-unticked reading as ``progress.current_id`` (#911)."""
 
-    def _owed(self, monkeypatch, facts: list, current_id: str, complete: int):
-        from lib import evidence, gates
+    def _owed(self, monkeypatch, facts: list, states: dict, *, legacy: bool = False):
+        """``states`` maps id → ``ChunkState``: the answer ``plan_status`` gave.
+        The work since the newest review is stubbed to touch no Deliverables."""
+        from lib import evidence, gates, plan_status
         for f in facts:
             f["actor"] = {"branch": "feat/work"}
         monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
         monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
         monkeypatch.setattr(gates, "covered_frontier", lambda _p: {"commit": "abcdef1234567890"})
-        plan = type("Binding", (), {"plan_path": Path("plan.md"), "chosen_by": "binding"})
-        progress = type("P", (), {"total": 5, "complete": complete, "current_id": current_id})
+        monkeypatch.setattr(critic_mode, "_paths_since_tree", lambda _t, _p: set())
+        monkeypatch.setattr(plan_status, "propose_chunks", lambda *_a, **_k: [])
+        plan = type("Binding", (), {"plan_path": Path("plan.md"), "chosen_by": "binding",
+                                    "is_legacy": legacy})
+        open_ids = tuple(k for k, s in states.items() if s.state == "open")
+        progress = critic_mode.PlanProgress(
+            total=len(states), complete=len(states) - len(open_ids),
+            current_id=open_ids[0] if open_ids else None, open_ids=open_ids,
+            states=states, finished=not open_ids,
+        )
         return critic_mode.extension_deferral_owed(Path("."), Path(".prawduct"), plan, progress)
 
     def test_a_chunkless_verify_is_not_credited_to_a_parked_chunk(self, monkeypatch):
         """Status `[ ] 01` (parked), `[x] 02`, `[x] 03`, `[ ] 04`, `[ ] 05`: the
         newest review is a verify pass with no `--chunk`, so record-lint graded
-        the parked 01 — and so does current_id. No dispatch said 01."""
+        the parked 01 — and so does current_id. No dispatch said 01, on a
+        claimed plan or a legacy one."""
+        from lib.plan_status import ChunkState
         verify = {"kind": "review", "id": "r1", "body": {
             "base_tree": "t0", "head_tree": "t1", "findings": [],
             "mode": "verify-resolutions (delta review, prior findings only)",
             "record_lint": {"chunk_graded": "01"}}}
-        assert self._owed(monkeypatch, [verify], "01", 2) is None
+        states = {"01": ChunkState("open"), "02": ChunkState("done", imported=True),
+                  "03": ChunkState("done", imported=True), "04": ChunkState("open"),
+                  "05": ChunkState("open")}
+        assert self._owed(monkeypatch, [verify], states) is None
+        assert self._owed(monkeypatch, [verify], states, legacy=True) is None
 
     def test_a_chunkless_verify_inherits_the_chunk_review_it_verifies(self, monkeypatch):
+        """Ported to `chunk_states` (#1051): the chunk review r1 certified 04
+        (its fact is the one ``chunk_states`` cites), the verify pass names no
+        chunk and inherits 04 along the chain, and 05 is the later chunk whose
+        review covers the fix."""
+        from lib.plan_status import ChunkState
         chunk = {"kind": "review", "id": "r1", "body": {
             "base_tree": "t0", "head_tree": "t1", "findings": [], "mode": "chunk",
             "chunk": "04"}}
         verify = {"kind": "review", "id": "r2", "body": {
             "base_tree": "t1", "head_tree": "t2", "findings": [],
             "mode": "verify-resolutions (delta review, prior findings only)"}}
-        owed = self._owed(monkeypatch, [chunk, verify], "04", 3)
+        states = {c: ChunkState("done", imported=True) for c in ("01", "02", "03")}
+        states["04"] = ChunkState("done", fact_id="r1")
+        states["05"] = ChunkState("open")
+        owed = self._owed(monkeypatch, [chunk, verify], states)
         assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+        assert owed[1].startswith("chunk 04 was reviewed"), owed
         assert "starts from the newest committed state a review covers (abcdef123456)" in owed[1]
         assert "last reviewed state" not in owed[1]
+
+    def test_a_reviewed_chunk_certified_by_its_box_defers_nothing(self, monkeypatch):
+        """The chain names 04, but ``chunk_states`` answers 04 from a ticked box
+        (an import), not from a fact on the chain: a box ticked after its review
+        is the builder saying they moved on, so the work in flight may be the
+        next chunk. No deferral — the control for the test above."""
+        from lib.plan_status import ChunkState
+        chunk = {"kind": "review", "id": "r1", "body": {
+            "base_tree": "t0", "head_tree": "t1", "findings": [], "mode": "chunk",
+            "chunk": "04"}}
+        states = {c: ChunkState("done", imported=True) for c in ("01", "02", "03", "04")}
+        states["05"] = ChunkState("open")
+        assert self._owed(monkeypatch, [chunk], states) is None
+
+    def test_an_earlier_chunk_review_on_the_chain_does_not_widen_the_set(self, monkeypatch):
+        """The reviewed set is the NEWEST naming fact's, not the chain's union:
+        r1 reviewed 03 (since ticked, so it reads as an import), r2 reviewed 04
+        from r1's tree and certified it. The work in flight answers to 04, which
+        r2 closed; a union would read 03's box as "moved on" and defer nothing."""
+        from lib.plan_status import ChunkState
+        chunk3 = {"kind": "review", "id": "r1", "body": {
+            "base_tree": "t0", "head_tree": "t1", "findings": [], "mode": "chunk",
+            "chunk": "03"}}
+        chunk4 = {"kind": "review", "id": "r2", "body": {
+            "base_tree": "t1", "head_tree": "t2", "findings": [], "mode": "chunk",
+            "chunks": ["04"], "chunk": "04"}}
+        states = {c: ChunkState("done", imported=True) for c in ("01", "02", "03")}
+        states["04"] = ChunkState("done", fact_id="r2")
+        states["05"] = ChunkState("open")
+        owed = self._owed(monkeypatch, [chunk3, chunk4], states)
+        assert owed is not None and owed[1].startswith("chunk 04 was reviewed"), owed
+
+    def test_a_legacy_plan_keeps_the_open_current_chunk_reading(self, monkeypatch):
+        """A legacy-window plan declares no `branch:`, so review facts certify
+        nothing and the reviewed chunk stays open: there the reading before
+        #1051 stands — the newest named chunk is the current one, and two or
+        more open chunks owe a later review. A claimed plan in the same state
+        (the chunk named but open, so not certified by the chain) defers
+        nothing."""
+        from lib.plan_status import ChunkState
+        chunk = {"kind": "review", "id": "r1", "body": {
+            "base_tree": "t0", "head_tree": "t1", "findings": [], "mode": "chunk",
+            "chunk": "04"}}
+        states = {c: ChunkState("done", imported=True) for c in ("01", "02", "03")}
+        states["04"] = ChunkState("open")
+        states["05"] = ChunkState("open")
+        owed = self._owed(monkeypatch, [chunk], states, legacy=True)
+        assert owed is not None and owed[0] == critic_mode.OWED_LATER_CHUNK, owed
+        assert self._owed(monkeypatch, [chunk], states) is None
 
 
 CUMULATIVE_FINAL = "cumulative-final"
@@ -437,10 +576,25 @@ class TestBoundaryReviewOwed:
         progress = critic_mode.binding_progress(repo, plan)
         return critic_mode.review_owed_after(repo, prawduct, plan, progress, chain)
 
+    def _newest_chain(self, repo: Path) -> list:
+        from lib import evidence
+
+        facts = evidence.read_facts(repo).get("facts") or []
+        return critic_mode.review_chain(facts, critic_mode._newest_branch_review(repo))
+
     def test_a_cumulative_final_last_chunk_owes_the_boundary_review(self, tmp_path):
+        """Renegotiated in the open (#1051): the chunk review of 05 now
+        CERTIFIES 05 (a review fact closes the chunks it names), so the plan
+        reads finished and "one box left" no longer carries the question. What
+        is owed is read off the chain that closed it — the review just recorded
+        — and with every chunk closed by that chain and the last one
+        `Type: cumulative-final`, the boundary `cumulative` is still owed.
+        Asked with an EMPTY chain, nothing shows the chunk closed by a review,
+        and a finished plan owes nothing: the reading before #1051, kept."""
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False, last_type=CUMULATIVE_FINAL)
-        owed = self._owed(repo, [])
+        owed = self._owed(repo, self._newest_chain(repo))
         assert owed is not None and owed[0] == critic_mode.OWED_BOUNDARY, owed
+        assert self._owed(repo, []) is None
 
     def test_a_plain_last_chunk_owes_nothing(self, tmp_path):
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=False)
@@ -554,16 +708,39 @@ class TestBoundaryReviewOwed:
         # And inference no longer defers the chunk to a cumulative that has
         # already run: a later edit is reviewed, not sent to a second one.
         (repo / "src/later.py").write_text("z = 1  # an edit after the boundary review\n")
-        # Rule 3 is reached and answers `final` (not rule 4 falling through),
-        # so it is the post-cumulative check that withholds the deferral.
+        # Renegotiated in the open (#1051): the cumulative names chunk 05 and
+        # certifies it (the chunk review before it already had), so the plan is
+        # FINISHED and rule 3 — "one chunk left" — is no longer reached; rule 4
+        # answers `chunk`. The property kept is the one this test exists for:
+        # the later edit is reviewed, never deferred to a second cumulative.
+        # The post-cumulative check itself is pinned directly in
+        # `test_a_cumulative_on_the_chain_discharges_the_boundary` below.
         mode, why = infer_mode(repo, None)
-        assert mode == "final", why
-        assert why.startswith("rule-3 final"), why
+        assert mode == "chunk", why
+        assert why.startswith("rule-4 chunk"), why
         # And the Stop gate's message agrees: it no longer says "then cumulative".
         _arm_stop(repo / ".prawduct")
         result = _run_stop(repo)
         assert result.returncode == 2, result.stderr
         assert "last chunk is `Type: cumulative-final`" not in result.stderr
+
+    def test_a_cumulative_on_the_chain_discharges_the_boundary(self, monkeypatch):
+        """`boundary_cumulative_still_owed` with exactly one chunk open and a
+        cumulative-final last chunk: owed until a `cumulative` stands on the
+        newest review's chain, and not after. Both directions, one fixture."""
+        from lib import evidence
+        monkeypatch.setattr(critic_mode, "declares_boundary_cumulative", lambda _p, _b: True)
+        progress = critic_mode.PlanProgress(5, 4, "05", ("05",), {}, False)
+        chunk = {"kind": "review", "id": "r1", "body": {"mode": "chunk", "head_tree": "t1"}}
+        cumulative = {"kind": "review", "id": "r2",
+                      "body": {"mode": "cumulative (bundle review, ready for merge)",
+                               "base_tree": "t1", "head_tree": "t2"}}
+        for facts, owed in (([chunk], True), ([chunk, cumulative], False)):
+            monkeypatch.setattr(critic_mode, "_newest_branch_review", lambda _p, f=facts: f[-1])
+            monkeypatch.setattr(evidence, "read_facts", lambda _p, f=facts: {"status": "ok", "facts": f})
+            assert critic_mode.boundary_cumulative_still_owed(
+                Path("."), Path(".prawduct"), object(), progress
+            ) is owed, facts
 
 
 class TestShortPlanBoundaryOwed:
