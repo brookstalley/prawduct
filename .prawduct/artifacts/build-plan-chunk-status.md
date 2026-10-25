@@ -119,6 +119,15 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   any plan path passed in, so an archived plan renders its boxes as history. `KNOWN_KINDS` is
   untouched here (Chunk 02 adds the kind; 01's fixtures write store lines directly). Red was shown
   by a 28-mutant sweep with one intended survivor, return codes asserted.
+- Chunk 01 verified live, 2026-10-25 (delegate's worktree at b12e072d, re-run by the coordinator
+  at c29024a9 with identical output): `python3 plugin/bin/prawduct-hook plan status
+  .prawduct/artifacts/build-plan-chunk-status.md` → exit 0, `6 of 6 open`, rows 01–06 all
+  `open`, `imported` on none, `built` on 06 alone (the plan commit created 06's deliverable, the
+  fragment stub — the rule working as stated). Acceptance met. Chunk 01's `final` review
+  `rev-20261025T125704Z-02fa9efd`: 0 blocking, 0 warning, 3 record notes, 17 observations —
+  ten fixed on the delegate's branch (O-1/O-11 silent `dropped:` rejection, O-7 sentinel keys
+  reaching `current_chunks`, O-2, O-3, O-4, O-8, O-10, O-15, O-16), three answered by this record
+  (O-5/O-14 this line, O-12 the signature block above), four accepted with reasons on the record.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
@@ -165,7 +174,7 @@ before Chunk 02 is briefed; if it blocks, the kind is added in a schema bump, no
      on the branch. 06's import converts these boxes to `chunk-imported` facts and removes this
      block — that conversion is the chunk's live verification. -->
 
-- [ ] Chunk 01: `plan_status` — the one walker, and `plan status` renders it
+- [x] Chunk 01: `plan_status` — the one walker, and `plan status` renders it
 - [ ] Chunk 02: review facts name their chunks (ST8); inference reads `current_chunks`
 - [ ] Chunk 03: hook — gate arms on binding (ST2/ST7), doctor import (MG2), BR3 check, DG2 admission
 - [ ] Chunk 04: lib readers take `plan_status`; the `repo_rel` fix
@@ -183,13 +192,21 @@ Chunk 02 writes it):
 - New kind `chunk-imported`: body `{scope, chunk, source: "status-box", imported_at}`.
   Observational for coverage (it spans no trees); `chunk_states` counts it as `done`, tagged
   `imported`.
-- `plan_status` signature (final after Chunk 01's review; a field added later re-briefs four
-  delegates):
+- `plan_status` signature (final — Chunk 01 reviewed 2026-10-25; this block is what 02–05 are
+  briefed from, and a field added later re-briefs four delegates):
   `chunk_states(plan_path, facts, *, repo_dir) -> dict[str, ChunkState]` where `ChunkState` has
-  `state` (`open|done|dropped`), `fact_id`, `date`, `imported: bool`, `reason` (dropped) ;
-  `is_finished(...) -> bool`; `current_chunks(...) -> list[str]`;
-  `built_chunks(plan_path, repo_dir) -> set[str]` (render-only, git-walking, separate);
-  `propose_chunks(plan_path, facts, diff_paths, mode) -> list[str]`.
+  `state` (`open|done|dropped`), `fact_id`, `date`, `imported: bool`, `reason` (the `dropped:`
+  reason, or on an `open` chunk why something that looked like an answer was not one — an
+  unreadable `dropped:` entry, a fact whose anchor is not in the branch's history);
+  `is_finished(...) -> bool`; `current_chunks(...) -> list[str]` (open chunks in plan order —
+  never the `?`/`?L<n>` sentinel keys an unreadable plan or heading produces, which surface only
+  through `chunk_states`); `built_chunks(plan_path, repo_dir) -> set[str]` (render-only,
+  git-walking, separate); `propose_chunks(plan_path, facts, diff_paths, mode, *, repo_dir=None)
+  -> list[str]`; `fact_chunks(body) -> list[str]` (the one home of the reader rule above — Chunk
+  02 reuses it, never re-derives it); `deliverable_paths(content, chunk_id)`; constants
+  `UNREADABLE_PLAN`, `DROPPED_KEY`, `IMPORTED_KIND`. `chunk_states` walks no git history and
+  never calls `built_chunks`; its only subprocess is a memoized `merge-base --is-ancestor`, run
+  only for a fact that would otherwise certify an open chunk.
 
 ### Chunk 01: `plan_status` — the one walker, and `plan status` renders it
 
@@ -220,7 +237,8 @@ Chunk 02 writes it):
   `plan status --json` key set, and the human table on a fixture plan.
 - **Tests:** the module above, plus `tests/test_plan_hook_cmd.py` gains the `plan status` cases.
 - **Acceptance criteria:** every listed shape has a red-first test; `chunk_states` makes no git
-  call and no network call (NF1; assert by spy, not by timing); `is_finished` is the only
+  walk and no network call, and no subprocess at all when no fact would certify an open chunk
+  (NF1; assert by spy, by call, not by timing); `is_finished` is the only
   function answering "finished" in the module; `plan status` on this repo's own live plan prints
   six `open` rows with `imported` on none.
 - **Critic mode:** final

@@ -562,3 +562,24 @@ def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
         c for c in plan.chunks
         if _norm(c) in named or _touches(deliverable_paths(content, c), changed)
     }
+
+
+def gate_arms(binding: "work_unit.Binding") -> bool:
+    """Whether the Stop hook's Critic and reflection gates arm for this checkout (ST2).
+
+    The one predicate both the Stop hook and the briefing's previous-session
+    check read, so the two never disagree. It is binding-derived and reads no
+    chunk progress: a ``broken`` binding arms (authority fails closed — it blocks
+    what ``bound`` would have blocked); a ``bound`` binding arms while its plan
+    is live, i.e. the claimed plan file exists and is not under ``archive/``;
+    ``unbound`` never arms. A tick, a commit or an edit before the review cannot
+    disarm it; only archiving the plan (or the branch losing its claim) does.
+    """
+    if binding.state == "broken":
+        return True
+    if binding.state != "bound" or binding.plan_path is None:
+        return False
+    plan_path = Path(binding.plan_path)
+    if "archive" in plan_path.parts:
+        return False
+    return plan_path.is_file()
