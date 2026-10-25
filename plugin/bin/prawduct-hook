@@ -7033,12 +7033,25 @@ def _plan_mint():
     return plan_mint
 
 
+def _plan_status():
+    """Lazy-import the chunk-status query (lib/plan_status) — the one walker of
+    a plan's progress. Same lazy idiom as _plan_mint()."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import plan_status  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return plan_status
+
+
 _PLAN_HELP = (
     "usage: prawduct-hook plan new [<scope>] [--branch B] [--base BASE] [--title T] "
     "[--kind K] [--working]\n"
     "         (<scope> omitted: suggested from the branch being claimed, and printed)\n"
     "       prawduct-hook plan bind <path> --branch B\n"
-    "       prawduct-hook plan resolve [--json]"
+    "       prawduct-hook plan resolve [--json]\n"
+    "       prawduct-hook plan status [<path>] [--json]\n"
+    "         (<path> omitted: the plan this checkout is bound to)"
 )
 
 #: The ``plan resolve`` exit when the binding is ``broken``. The CLI query row
@@ -7159,6 +7172,112 @@ def _cmd_plan_resolve(project_dir: Path, argv: list[str]) -> int:
     return exit_code
 
 
+#: The ``plan status`` exit when no plan resolves (the checkout is unbound or
+#: broken and no path was given): the CLI query row of the error model — the
+#: answer is the failing one. A path that names no build plan is a usage error.
+PLAN_STATUS_NO_PLAN_EXIT = 1
+
+
+def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
+    """Print a plan's chunk table — read-only, the rendering of ``plan_status``.
+
+    ``<path>`` (repo-relative or absolute) names the plan; omitted, the plan the
+    checkout is bound to (``work_unit.resolve``). Each row: chunk id, state
+    (``open``/``done``/``dropped``), the certifying fact id, its date, and the
+    tags ``imported`` (a box, migrated or read in memory) and ``built`` (work
+    committed on the branch — render-only, ``plan_status.built_chunks``).
+    ``--json``: ``plan_path``, ``scope``, ``finished`` and ``chunks`` (a list of
+    ``{id, state, fact_id, date, imported, built, reason}``) as one object.
+
+    Exit 0 answered; :data:`PLAN_STATUS_NO_PLAN_EXIT` when no path is given and
+    no plan is bound (the reason on stderr); 2 for a usage error or a path that
+    is not a build plan.
+    """
+    parsed = _parse_plan_args("status", argv, frozenset(), frozenset({"--json"}))
+    if isinstance(parsed, int):
+        return parsed
+    positionals, _values, seen = parsed
+    if len(positionals) > 1:
+        print(f"plan status: unexpected argument {positionals[1]!r}\n{_PLAN_HELP}", file=sys.stderr)
+        return 2
+    plan_status = _plan_status()
+    from lib import evidence, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+
+    if positionals:
+        plan_path = Path(positionals[0])
+        if not plan_path.is_absolute():
+            plan_path = project_dir / plan_path
+        try:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"plan status: cannot read {positionals[0]} ({exc})\n{_PLAN_HELP}", file=sys.stderr)
+            return 2
+        if not plan_index.is_build_plan(content):
+            print(f"plan status: {positionals[0]} is not a build plan\n{_PLAN_HELP}", file=sys.stderr)
+            return 2
+        _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
+    else:
+        binding = _work_unit().resolve(project_dir)
+        if binding.state != "bound" or binding.plan_path is None:
+            print(
+                f"plan status: {binding.state}: no plan resolves for this checkout"
+                f"{' — ' + binding.reason if binding.reason else ''}; name one",
+                file=sys.stderr,
+            )
+            return PLAN_STATUS_NO_PLAN_EXIT
+        plan_path, scope = binding.plan_path, binding.scope
+    facts = evidence.read_facts(project_dir)
+    states = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir)
+    finished = plan_status.is_finished(plan_path, facts, repo_dir=project_dir)
+    built = plan_status.built_chunks(plan_path, project_dir)
+    rel = _plan_rel(project_dir, plan_path)
+    rows = [
+        {
+            "id": chunk_id,
+            "state": s.state,
+            "fact_id": s.fact_id,
+            "date": s.date,
+            "imported": s.imported,
+            "built": chunk_id in built,
+            "reason": s.reason,
+        }
+        for chunk_id, s in states.items()
+    ]
+    if "--json" in seen:
+        print(json.dumps(
+            {"plan_path": rel, "scope": scope, "finished": finished, "chunks": rows},
+            sort_keys=True,
+        ))
+        return 0
+    open_count = sum(1 for r in rows if r["state"] == "open")
+    scope_text = f"scope `{scope}`" if scope else "no scope"
+    if not rows:
+        summary = "no chunks — finished"
+    elif finished:
+        summary = f"finished ({len(rows)} chunk{'s' if len(rows) != 1 else ''})"
+    else:
+        summary = f"{open_count} of {len(rows)} open"
+    print(f"{rel} ({scope_text}): {summary}")
+    if not rows:
+        return 0
+    table = [("chunk", "state", "fact", "date", "tags")] + [
+        (
+            r["id"], r["state"], r["fact_id"] or "-", r["date"] or "-",
+            ", ".join(t for t in ("imported", "built") if r[t]) or "-",
+        )
+        for r in rows
+    ]
+    widths = [max(len(row[i]) for row in table) for i in range(4)]
+    for index, row in enumerate(table):
+        line = "  " + "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row[:4]))
+        line += "  " + row[4]
+        print(line.rstrip())
+        reason = rows[index - 1]["reason"] if index else None
+        if reason:
+            print(f"      {reason}")
+    return 0
+
+
 def _cmd_plan_new(project_dir: Path, argv: list[str]) -> int:
     """Mint a unit (``plan_mint.new``), or join a working branch to one (``--working``).
 
@@ -7277,16 +7396,19 @@ def _cmd_plan_bind(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_plan(project_dir: Path, argv: list[str]) -> int:
-    """``plan new|bind|resolve`` — a work unit's identity and its binding.
+    """``plan new|bind|resolve|status`` — a work unit's identity, its binding,
+    and its chunk table.
 
-    ``resolve`` is a read (allowed in a harness scratch worktree); ``new`` and
-    ``bind`` write a plan (and ``new`` a change fragment), so the ephemeral
-    guard refuses them there — a claim minted in a scratch tree governs
-    nothing and is discarded with it.
+    ``resolve`` and ``status`` are reads (allowed in a harness scratch
+    worktree); ``new`` and ``bind`` write a plan (and ``new`` a change
+    fragment), so the ephemeral guard refuses them there — a claim minted in a
+    scratch tree governs nothing and is discarded with it.
     """
     op = argv[0] if argv else None
     if op == "resolve":
         return _cmd_plan_resolve(project_dir, argv[1:])
+    if op == "status":
+        return _cmd_plan_status(project_dir, argv[1:])
     if op == "new":
         return _cmd_plan_new(project_dir, argv[1:])
     if op == "bind":
@@ -9013,7 +9135,7 @@ _USAGE = (
     "build-index [deprecated, inert]|user-prompt-submit [deprecated, inert]|"
     "infer-critic-mode [args]|"
     "plan {new <scope> [--branch B] [--base BASE] [--title T] [--kind K] [--working]|"
-    "bind <path> --branch B|resolve [--json]}|"
+    "bind <path> --branch B|resolve [--json]|status [<path>] [--json]}|"
     "resolve-base|version|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} [--owner-ruling <text>]|"
@@ -9449,9 +9571,10 @@ _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
 # Commands whose first positional argument selects a read or a write.
 _EPHEMERAL_READ_ONLY_OPS = {
     "advisory": frozenset({"list", "show"}),
-    # `resolve` prints the binding and writes nothing; it must work here, where
-    # a delegate asks why its tree is unbound. `new` and `bind` write a plan.
-    "plan": frozenset({"resolve"}),
+    # `resolve` prints the binding and `status` a plan's chunk table; both write
+    # nothing and must work here, where a delegate asks why its tree is unbound
+    # or what its plan's chunks are. `new` and `bind` write a plan.
+    "plan": frozenset({"resolve", "status"}),
     # `show` is `get`'s alias — `lib/backlog/cli.py` dispatches `op in ("get",
     # "show")` to one handler — and omitting it refused a pure read with a
     # message asserting a discarded write, which is the false refusal this
