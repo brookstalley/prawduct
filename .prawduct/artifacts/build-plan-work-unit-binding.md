@@ -130,9 +130,9 @@ grounding facts); Medium for § 1's `plan new` defaults for `base:` — raise by
 ## Status
 
 - [x] Chunk 01: `work_unit.resolve` — one owner, three answers, four red-first shapes
-- [ ] Chunk 02: lib callers take `Binding`
-- [ ] Chunk 03: hook callers take `Binding`
-- [ ] Chunk 04: `plan new` / `plan bind`, fragment and `closed-by` scope validation
+- [x] Chunk 02: lib callers take `Binding`
+- [x] Chunk 03: hook callers take `Binding`
+- [x] Chunk 04: `plan new` / `plan bind`, fragment and `closed-by` scope validation
 - [x] Chunk 05: one home for the rule — prose
 - [ ] Chunk 06: integration — shims, advisory, subcommand wiring, suite, cumulative review
 
@@ -298,8 +298,8 @@ after each merge's review — this is the last plan that ticks; Wave 2 removes t
   `buildplan_refs.resolve_reviewed_plan`'s `gap=None` silence on single-scope repos (#1007(a))
   replaced by the `Binding`; the `closed-by` form (`scope:<slug>` | PR | release tag, bare slug
   tolerated) stated once in `skills/backlog/SKILL.md` and the six other passages that still say
-  "bare scope or branch name" (`adapter-mode.md`, `pr/SKILL.md`, `critic/cross-checks.md`,
-  `templates/backlog.md`, `docs/principles.md`) pointed at it; `templates/build-plan.md`
+  "bare scope or branch name" (`skills/backlog/adapter-mode.md`, `skills/pr/SKILL.md`,
+  `skills/critic/cross-checks.md`, `templates/backlog.md`, `docs/principles.md`) pointed at it; `templates/build-plan.md`
   frontmatter comments corrected ("several plans may declare one branch", "resolves ahead of
   active_build_plan", "null is fine" for `scope:` are all false now) and `base:` /
   `working-branches:` documented there, since minted plans copy those comments verbatim;
