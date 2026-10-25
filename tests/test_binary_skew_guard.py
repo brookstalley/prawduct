@@ -364,10 +364,43 @@ class TestHarnessInvokedHooksNeverRefuse:
                 "the hook note must name the remedy that IS available: loading "
                 "this checkout's plugin for the session"
             )
-            assert "critic-begin" in note, (
-                "and say the agent-invoked writes are guarded, which is why the "
-                "skew is safe to note once rather than on every turn"
-            )
+            hook = _hook_module()
+            for command in sorted(hook._DATA_PLANE_COMMANDS):
+                assert f"`{command}`" in note, (
+                    f"the note says which writes are guarded; `{command}` refuses "
+                    "on a foreign binary and must be named"
+                )
+            for command, ops in hook._DATA_PLANE_WRITE_OPS.items():
+                for op in ops:
+                    assert f"`{command} {op}`" in note
+            for command in sorted(hook._HARNESS_INVOKED_COMMANDS):
+                assert f"`{command}`" in note, (
+                    f"`{command}` is a hook, so it writes with the installed "
+                    "plugin unguarded; a note naming only the guarded writes "
+                    "reads as if no foreign code can write, while SubagentStop "
+                    "consolidates the agent's own reviews"
+                )
+            assert "unguarded" in note
+
+    def test_lib_skew_under_session_start_gets_the_agent_note(self, tmp_path):
+        """A hook runs its own plugin's script AND lib, so a lib-only skew under
+        `--session-start` is someone running the repo script by hand. The hook
+        wording ("hooks always run the installed plugin") would contradict the
+        lib wording in the same line, so that caller gets the ordinary note,
+        on stderr, naming LIB."""
+        repo = _make_framework_checkout(tmp_path / "fw")
+        local = _install_binary_at(repo / "plugin")
+        _install_binary_at(tmp_path / "installed")
+        result = _run(
+            repo, "clear", "--session-start", "--brief-only",
+            binary=local, plugin_root=str(tmp_path / "installed"),
+        )
+        # The fixture's "installed" plugin has no lib/, so `clear` itself fails
+        # after the guard; the guard's verdict is what this test is about.
+        assert "BLOCKED: refusing `clear`" not in result.stderr
+        assert _SKEW_MARKER not in result.stdout
+        assert _SKEW_MARKER in result.stderr and "importing lib/ from" in result.stderr
+        assert "Hooks always run the installed plugin" not in result.stderr
 
     def test_agent_invoked_clear_gets_the_agent_note(self, tmp_path):
         """The carve-out keys on `--session-start`, not on the verb: an agent

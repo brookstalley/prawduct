@@ -10104,9 +10104,8 @@ _HARNESS_INVOKED_COMMANDS = frozenset({
 # (`cmd_clear`'s briefing rides it too); stderr at exit 0 is only logged. Keyed
 # on the flag, not the verb: an agent may run `clear` itself, and that caller
 # can act on the ordinary agent-side note. Stop and SubagentStop stay quiet:
-# they used to repeat the agent-side note, whose remedy (re-run with
-# $CLAUDE_PLUGIN_ROOT unset) no hook can apply, on every turn — a channel
-# produced and never consumed, seen as a stop-hook storm.
+# they fire every turn, and the agent-side note's remedy (re-run with
+# $CLAUDE_PLUGIN_ROOT unset) is one no hook can apply.
 # `tests/test_binary_skew_guard.py` pins this to what every hooks.json
 # SessionStart entry runs, and to nothing the other events run.
 _SKEW_REPORTING_HOOK = ("clear", "--session-start")
@@ -10702,12 +10701,13 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
 def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None" = None) -> int:
     """0 to proceed; 1 when a data-plane write must refuse.
 
-    Emits on stderr for every agent-invoked command — the failure this closes
-    was defined by its silence, so a quiet pass would reproduce it one severity
-    down. Harness-invoked hooks are the exception: the skew is a property of the
-    session, so SessionStart (`_SKEW_REPORTING_HOOK`) says it once, in hook terms
-    and on stdout, and Stop/SubagentStop stay silent rather than repeat it every
-    turn.
+    Emits on stderr for every command but the harness's — the failure this
+    closes was defined by its silence, so a quiet pass would reproduce it one
+    severity down. The skew is a property of the session, so SessionStart
+    (`_SKEW_REPORTING_HOOK`) says it once, in hook terms and on stdout, and the
+    `stop`/`subagent-stop` verbs stay silent whoever invokes them, rather than
+    repeat it every turn. A lib-only skew under `--session-start` is not a hook
+    (a hook runs its own plugin's script and lib), so it gets the ordinary note.
     """
     skew = _binary_skew(project_dir)
     kind = "binary"
@@ -10725,17 +10725,27 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
              "($CLAUDE_PLUGIN_ROOT)"
     )
     reporter, flag = _SKEW_REPORTING_HOOK
-    if command == reporter and flag in (argv or []):
+    if kind == "binary" and command == reporter and flag in (argv or []):
         # SessionStart: report once per session, with the remedies a session
-        # actually has, on the channel that reaches the agent.
+        # actually has, on the channel that reaches the agent. Both rosters are
+        # rendered from the sets the guard decides by, so the note cannot claim
+        # a write is guarded that is not, or omit a hook that writes unguarded.
+        hooks = ", ".join(f"`{c}`" for c in sorted(_HARNESS_INVOKED_COMMANDS))
+        guarded = ", ".join(
+            [f"`{c}`" for c in sorted(_DATA_PLANE_COMMANDS)]
+            + [f"`{c} {op}`" for c, ops in sorted(_DATA_PLANE_WRITE_OPS.items())
+               for op in sorted(ops)]
+        )
         print(
-            f"NOTE: {SKEW_MARKER}: this session's hooks are {what}, not the "
-            f"plugin this repo carries ({repo_plugin}). Hooks always run the "
-            "installed plugin, so this is expected while you work on the "
-            "framework. Agent-invoked governance writes (`critic-begin`, "
-            "`critic-consolidate`, `disposition`, …) are guarded: on a foreign "
-            f"binary they refuse and name `python3 {local}`. To load this "
-            "checkout's plugin for a session, start it with "
+            f"NOTE: {SKEW_MARKER}: this session's hooks are running {running}, "
+            f"not the plugin this repo carries ({repo_plugin}). Hooks always run "
+            "the installed plugin, so this is expected while you work on the "
+            f"framework, and the hooks ({hooks}) write governance state with that "
+            "plugin's code, unguarded: `subagent-stop` consolidates a "
+            "three-reviewer Critic review and `stop` can record an abandoned "
+            f"one. Commands you run yourself are guarded: {guarded} refuse on a "
+            f"foreign binary and name `python3 {local}`. To have this checkout's "
+            "code do the hooks' writes too, start the session with "
             f"`claude --plugin-dir {repo_plugin}`. Said once per session start; "
             "Stop and SubagentStop do not repeat it."
         )
