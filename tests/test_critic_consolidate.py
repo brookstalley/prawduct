@@ -4294,6 +4294,64 @@ class TestResolutionFacts:
 
 
 # ---------------------------------------------------------------------------
+# Integration: each appended fact goes onto the notes transport (#1052)
+# ---------------------------------------------------------------------------
+
+
+_NOTES_REF = "refs/notes/prawduct"
+
+
+def _note_lines(repo: Path, commit: str) -> list[str]:
+    proc = subprocess.run(
+        ["git", "notes", "--ref", _NOTES_REF, "show", commit],
+        cwd=str(repo), capture_output=True, text=True, env=_git_env(repo), timeout=10,
+    )
+    return [ln for ln in proc.stdout.splitlines() if ln.strip()] if proc.returncode == 0 else []
+
+
+class TestFactsAttachAsNotes:
+    def test_a_review_and_its_resolution_are_attached_as_appended(self, tmp_path):
+        """The two write sites: the review fact, then the resolution fact,
+        each carried as the exact store line onto the verifying round's anchor
+        (`dispatch_commit` here — the manifests record `head_commit: null`)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        prior_id = _seed_prior_review_with_blocker(repo, c1)
+        assert _note_lines(repo, c1) == _store_lines(repo), "the prior review's note"
+
+        c2 = _commit_file(repo, "src/app.py", "x = 2\n", "fix")
+        _set_marker(repo)
+        _write_manifest(repo, c2, id="rev-verify-0002", mode=VERIFY_MODE, roster=["reviewer"])
+        _write_partial(repo, "reviewer", c2, resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        lines = _store_lines(repo)
+        assert len(lines) == 3
+        assert _note_lines(repo, c2) == lines[1:], "the verify review, then its resolution"
+        assert _note_lines(repo, c1) == lines[:1]
+        assert "NOTE" not in result.stderr
+
+    def test_a_note_that_cannot_be_written_never_fails_consolidation(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        # A ref UNDER the notes ref's name makes git refuse to create it.
+        _git(repo, "update-ref", f"{_NOTES_REF}/blocker", "HEAD")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert [f["id"] for f in _store_facts(repo, "review")] == [FAKE_REVIEW_ID]
+        assert (repo / FINDINGS_REL).is_file()
+        assert "git note was not written" in result.stderr
+        assert _note_lines(repo, head) == []
+
+
+# ---------------------------------------------------------------------------
 # Integration: the span verdict rides the clean verify close
 # ---------------------------------------------------------------------------
 

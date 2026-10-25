@@ -6326,9 +6326,11 @@ def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
 
 def cmd_evidence(project_dir: Path, argv: list[str]) -> int:
     """Inspect the kernel-v3 evidence store (kernel-evidence-store ch.01).
-    Thin wrapper — body lives in ``lib.evidence.evidence_cmd``. Read-only
-    (status/list); the writers are the review lifecycle commands, never the
-    agent by hand."""
+    Thin wrapper — body lives in ``lib.evidence.evidence_cmd``. ``status`` and
+    ``list`` read. ``ingest`` appends facts other clones wrote, read verbatim
+    from ``refs/notes/prawduct`` (``lib.evidence_notes``), so it is classified
+    as a data-plane write by both pre-dispatch guards. Facts themselves are
+    written by the review lifecycle commands, never the agent by hand."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
@@ -7814,6 +7816,16 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
     block = "absent" if remove and span is None else ("kept" if not remove else None)
 
     written: list[dict] = []
+    # Each fact also goes onto the notes transport, anchored on the HEAD it was
+    # written at: the block-removal commit that follows is that commit's child,
+    # so the anchor stays on the branch. A note that cannot be written leaves
+    # the fact in this clone's store — said on stderr, never a refusal.
+    from lib import evidence_notes  # noqa: PLC0415 — lazy; sys.path seeded above
+
+    import_anchor = None
+    if apply and to_write:
+        rc, out, _err = evidence.run_git(project_dir, "rev-parse", "HEAD")
+        import_anchor = out if rc == 0 else None
     if apply:
         for cid in to_write:
             now = datetime.now(timezone.utc)
@@ -7833,6 +7845,14 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
                     + ("; the `## Status` block was NOT removed" if remove else "")
                 )
                 return _plan_refuse("import-status", "fact-append-failed", detail, as_json)
+            noted = evidence_notes.attach(project_dir, appended.get("envelope") or {}, import_anchor)
+            if noted.get("status") != "attached":
+                print(
+                    f"NOTE: plan import-status: chunk {cid}'s fact is recorded, but its git "
+                    f"note was not written ({noted.get('reason')}) — it stays in this "
+                    "clone's store and does not travel to other clones.",
+                    file=sys.stderr,
+                )
             written.append({"chunk": cid, "fact_id": appended.get("id", fact_id)})
     if remove and span is not None:
         heading, end = span
@@ -9819,7 +9839,7 @@ _USAGE = (
     "plan {new <scope> [--branch B] [--base BASE] [--title T] [--kind K] [--working]|"
     "bind <path> --branch B|resolve [--json]|status [<path>] [--json]}|"
     "resolve-base|version|print-install-reference|"
-    "evidence {status|list [--kind <k>] [-n <count>]}|advisory <subcmd> [args]|"
+    "evidence {status|list [--kind <k>] [-n <count>]|ingest [--all] [--json]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
@@ -10044,6 +10064,21 @@ _DATA_PLANE_COMMANDS = frozenset({
     "ledger-append",
 })
 
+# Commands whose first positional selects a data-plane write; the rest of the
+# command's ops are reads and stay advisory. `evidence ingest` appends facts
+# read from the notes transport to the store every gate composes over.
+_DATA_PLANE_OPS = {
+    "evidence": frozenset({"ingest"}),
+}
+
+
+def _is_data_plane_write(command: str, argv: "list[str]") -> bool:
+    """Whether this invocation is a governance write the skew guard refuses."""
+    if command in _DATA_PLANE_COMMANDS:
+        return True
+    ops = _DATA_PLANE_OPS.get(command)
+    return ops is not None and _first_positional(argv) in ops
+
 
 def _repo_plugin_dir(project_dir: Path) -> "Path | None":
     """The prawduct plugin directory THIS repo carries, or None if it carries none.
@@ -10194,7 +10229,6 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "classify-diff-risk",
     "cost-of-commit",
     "coverage-status",
-    "evidence",
     "handoff",
     "infer-critic-mode",
     "jurisdiction",
@@ -10397,6 +10431,11 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         # and so cannot strand — and skips the per-worktree record, which would.
         # The command refuses the sources that would write nothing.
         return False
+    if command == "evidence":
+        # `status` (also the bare form) and `list` read the store. `ingest`
+        # appends to it, and is not admitted from here: the session that owns
+        # the clone ingests at its own start, so nothing is lost by refusing.
+        return _first_positional(argv) not in (None, "status", "list")
     if command == "plan" and _first_positional(argv) == "import-status":
         # A preview by default; `--apply` appends `chunk-imported` facts and
         # rewrites the plan's `## Status` section when the block flag is given —
@@ -10539,7 +10578,7 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
     return 1
 
 
-def _check_binary_skew(command: str, project_dir: Path) -> int:
+def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None" = None) -> int:
     """0 to proceed; 1 when a data-plane write must refuse.
 
     Emits on stderr either way — the failure this closes was defined by its
@@ -10566,7 +10605,7 @@ def _check_binary_skew(command: str, project_dir: Path) -> int:
         "(Versions are NOT the test — a checkout is routinely ahead of its own "
         "manifest, so identical versions prove nothing about the code.)"
     )
-    if command in _DATA_PLANE_COMMANDS and command not in _HARNESS_INVOKED_COMMANDS:
+    if _is_data_plane_write(command, argv or []) and command not in _HARNESS_INVOKED_COMMANDS:
         print(
             f"BLOCKED: refusing `{command}` — {detail} A governance write on a "
             "foreign binary is how a review silently persists nothing.",
@@ -10723,7 +10762,7 @@ def _dispatch() -> int:
 
     # Before dispatch, so it covers every command — including `subagent-stop`,
     # the path a fix touching only `critic-begin` would miss (#227).
-    if _check_binary_skew(command, project_dir) != 0:
+    if _check_binary_skew(command, project_dir, sys.argv[2:]) != 0:
         return 1
 
     # Same reason, same site: a per-command fix would miss whichever write
