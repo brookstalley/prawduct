@@ -739,7 +739,11 @@ class TestOneRenderer:
                  "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
-        cli = [ln[2:] for ln in proc.stdout.splitlines()[1:]]
+        # The table follows the summary and the lifecycle line (#1052); the
+        # lifecycle is the CLI's alone — the handoff and payload show chunks.
+        lines = proc.stdout.splitlines()
+        assert lines[1].startswith("lifecycle: "), lines
+        cli = [ln[2:] for ln in lines[2:]]
 
         # The handoff's fenced progress block.
         text = briefing.render_session_handoff(repo).text

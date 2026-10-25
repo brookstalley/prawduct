@@ -265,3 +265,102 @@ class TestHasProductCodePrune:
         assert not any(Path(w).name == "node_modules" for w in walked), (
             "node_modules must be pruned from the walk, not enumerated"
         )
+
+
+# =============================================================================
+# D4 — session start's notes ingest costs one git call when there are no notes
+# =============================================================================
+
+
+NOTES_PROBE = ("git", "for-each-ref", "--format=%(refname)", "refs/notes/")
+
+
+def _governed_branch_repo(tmp_path: Path, monkeypatch) -> Path:
+    """A governed repo on `feature/unit`, one commit beyond `main`."""
+    repo = _init_repo(tmp_path, monkeypatch)
+    for key in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"):
+        monkeypatch.setenv(key, "/dev/null")
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.email=t@t.com", "-c", "user.name=t", *args], cwd=repo, check=True,
+        )
+
+    git("checkout", "-q", "-b", "main")
+    (repo / ".gitignore").write_text(".prawduct/\n")
+    git("add", ".gitignore")
+    git("commit", "-qm", "seed")
+    git("checkout", "-q", "-b", "feature/unit")
+    (repo / "a.txt").write_text("a\n")
+    git("add", "a.txt")
+    git("commit", "-qm", "work")
+    (repo / ".prawduct" / "artifacts").mkdir(parents=True)
+    (repo / ".prawduct" / "project-state.yaml").write_text("backlog_format_version: 2\n")
+    (repo / ".prawduct" / "artifacts" / "project-preferences.md").write_text("- **Language**: Python\n")
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    return repo.resolve()
+
+
+def _session_start_calls(hook, repo: Path, monkeypatch) -> "tuple[list[tuple], list[tuple]]":
+    """``(every git argv a boundary session start ran, the ones its ingest step ran)``.
+
+    The spy sits on ``subprocess.run`` itself, which every in-process git call
+    (the hook's own and ``lib``'s ``evidence.run_git``) goes through, so the
+    ingest step is measured inside a whole boundary run, not in isolation."""
+    seen: list[tuple] = []
+    inside: list[tuple] = []
+    state = {"in_ingest": False, "reached": False}
+    real_run = subprocess.run
+
+    def counting_run(cmd, *args, **kwargs):
+        if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == "git":
+            seen.append(tuple(cmd))
+            if state["in_ingest"]:
+                inside.append(tuple(cmd))
+        return real_run(cmd, *args, **kwargs)
+
+    real_step = hook._session_start_ingest
+
+    def marked_step(project_dir):
+        state["in_ingest"], state["reached"] = True, True
+        try:
+            return real_step(project_dir)
+        finally:
+            state["in_ingest"] = False
+
+    monkeypatch.setattr(subprocess, "run", counting_run)
+    monkeypatch.setattr(hook, "_session_start_ingest", marked_step)
+    assert hook.cmd_clear(repo, ["--session-start"]) == 0
+    assert state["reached"], "session start never reached its ingest step"
+    return seen, inside
+
+
+class TestSessionStartIngestCost:
+    def test_no_notes_ref_adds_exactly_one_git_call(self, tmp_path, monkeypatch, capsys):
+        """NF1: a clone that has never received a note pays one call for the
+        transport at session start — the notes ref roster, one
+        ``for-each-ref`` over ``refs/notes/`` (the local ref and every fetched
+        tracking ref) — and nothing more over today's count. Pinned as the
+        step's own calls during a whole boundary run, and as that call
+        appearing once across the boundary."""
+        repo = _governed_branch_repo(tmp_path, monkeypatch)
+        hook = _load_hook()
+        seen, inside = _session_start_calls(hook, repo, monkeypatch)
+        assert inside == [NOTES_PROBE]
+        assert seen.count(NOTES_PROBE) == 1
+
+    def test_control_a_notes_ref_costs_more_so_the_spy_sees_the_step(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Positive control: with a note present the step reads it, so a spy
+        blind to the step's calls fails here rather than passing above."""
+        repo = _governed_branch_repo(tmp_path, monkeypatch)
+        subprocess.run(
+            ["git", "-c", "user.email=t@t.com", "-c", "user.name=t",
+             "notes", "--ref", "prawduct", "add", "-m", "{}", "HEAD"],
+            cwd=repo, check=True,
+        )
+        hook = _load_hook()
+        _seen, inside = _session_start_calls(hook, repo, monkeypatch)
+        assert inside[0] == NOTES_PROBE
+        assert len(inside) > 1, inside

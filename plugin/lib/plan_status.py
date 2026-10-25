@@ -67,7 +67,10 @@ from typing import TYPE_CHECKING, Literal
 
 from . import buildplan_refs, core, coverage, dispositions, evidence, gitstate, plan_index, work_unit
 
-if TYPE_CHECKING:  # plan_lifecycle imports this module; the type is for readers only
+if TYPE_CHECKING:
+    # For readers only: a runtime import would close a cycle, because
+    # plan_lifecycle imports release_readiness, which imports gates, which
+    # imports this module.
     from . import plan_lifecycle
 
 State = Literal["open", "done", "dropped"]
@@ -272,8 +275,6 @@ def fact_chunks(body: dict) -> list[str]:
     if isinstance(chunk, (str, int)) and str(chunk).strip():
         return [str(chunk)]
     return []
-
-
 
 
 def _date(value: object) -> str | None:

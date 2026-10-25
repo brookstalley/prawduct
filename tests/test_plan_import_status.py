@@ -125,7 +125,13 @@ class TestPreviewAndApply:
             assert set(fact["body"]) == {"scope", "chunk", "source", "imported_at"}
             assert fact["body"]["scope"] == "unit" and fact["body"]["source"] == "status-box"
         assert (repo / REL).read_bytes() == plan_before
-        assert "`## Status` block kept" in out
+        kept = [line for line in out.splitlines() if "`## Status` block kept" in line]
+        assert len(kept) == 1, out
+        # The imports travel on the notes ref now (#1052), so removing the block
+        # is the advice, not a caveat the owner accepts.
+        assert "pass --remove-block to remove it" in kept[0]
+        assert "refs/notes/prawduct" in kept[0]
+        assert "until #1052" not in out and "per-clone" not in out
         # The answer moved, it did not change: same states, now citing facts.
         after = plan_status.chunk_states(repo / REL, evidence.read_facts(repo), repo_dir=repo)
         assert {k: s.state for k, s in after.items()} == {k: s.state for k, s in before.items()}
@@ -152,6 +158,29 @@ class TestPreviewAndApply:
             ("01", "would-write"), ("03", "would-write"),
         ]
         assert payload["block"] == {"action": "kept", "lines": None}
+
+
+class TestNoteOutcomes:
+    """Each written fact is attached as a note; the NOTE on stderr says when
+    one does not travel. `attach` is idempotent, so a note that already holds
+    the line (`present`) travels and is not a NOTE; `skipped` (no anchor) and
+    `error` wrote nothing and are."""
+
+    @pytest.mark.parametrize(
+        "status, noted", [("attached", False), ("present", False), ("skipped", True), ("error", True)]
+    )
+    def test_only_a_note_that_was_not_written_is_a_note(
+        self, tmp_path, capsys, monkeypatch, status, noted
+    ):
+        from lib import evidence_notes
+
+        monkeypatch.setattr(
+            evidence_notes, "attach", lambda *_a, **_k: {"status": status, "reason": "stubbed"}
+        )
+        repo = _repo(tmp_path, _HEAD + _STATUS + _TAIL)
+        rc, _out, err = _run(repo, capsys, REL, "--apply")
+        assert rc == 0
+        assert ("its git note was not written" in err) is noted, err
 
 
 class TestRemoveBlock:

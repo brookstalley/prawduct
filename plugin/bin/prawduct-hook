@@ -1219,6 +1219,36 @@ def _record_session_start(project_dir: Path) -> None:
         )
 
 
+def _session_start_ingest(project_dir: Path) -> None:
+    """Append the review facts other clones sent on this branch's commits
+    (``refs/notes/prawduct``, bounded to ``merge_base..HEAD``) to the store, so
+    this clone's verdicts compose over the same facts as theirs.
+
+    One line on stdout, only when something was appended. Advice: any failure
+    is a NOTE and session start goes on; the store is then read as it stands.
+    A disposable agent worktree skips it — the store is clone-wide, and the
+    main checkout's own boundary ingests for every worktree of the clone. A
+    clone with no notes ref pays one ``git for-each-ref``.
+    """
+    try:
+        if _gitstate().is_ephemeral_worktree(project_dir) is not None:
+            return
+        from lib import evidence_notes  # noqa: PLC0415 — lazy keeps top-level cheap
+        result = evidence_notes.ingest(project_dir, bound=True)
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- ingesting is advice; it must never fail session start
+        result = {"status": "error", "appended": 0, "reason": f"{type(exc).__name__}: {exc}"}
+    appended = result.get("appended") or 0
+    if appended > 0:
+        print(f"{appended} evidence fact(s) ingested from refs/notes/prawduct")
+    if result.get("status") != "ok":
+        print(
+            f"NOTE: evidence ingest at session start failed ({result.get('reason') or 'unknown'}) "
+            "— the briefing reads this clone's store without the other clones' notes; "
+            "`prawduct-hook evidence ingest` retries it",
+            file=sys.stderr,
+        )
+
+
 def _record_stop_block(project_dir: Path, blockers: list) -> None:
     """Append one fact per gate that blocked this Stop, so a gate's firing rate
     is a query rather than a transcript search. A blocker that carries no gate
@@ -1952,6 +1982,9 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     if not brief_only:
         _boundary_capture_git_anchors(project_dir, prawduct_dir)
         _record_session_start(project_dir)
+        # Before the briefing below reads the store, so the verdicts it shows
+        # count the reviews other clones sent on this branch's commits.
+        _session_start_ingest(project_dir)
     elif not (prawduct_dir / ".session-base-tree").is_file():
         # The continuation path never writes an anchor — correct, because stamping
         # a resume-time clock onto a session that began earlier narrows the very
@@ -6325,15 +6358,34 @@ def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
 
 
 def cmd_evidence(project_dir: Path, argv: list[str]) -> int:
-    """Inspect the kernel-v3 evidence store (kernel-evidence-store ch.01).
-    Thin wrapper — body lives in ``lib.evidence.evidence_cmd``. ``status`` and
-    ``list`` read. ``ingest`` appends facts other clones wrote, read verbatim
-    from ``refs/notes/prawduct`` (``lib.evidence_notes``), so it is classified
-    as a data-plane write by both pre-dispatch guards. Facts themselves are
-    written by the review lifecycle commands, never the agent by hand."""
+    """Inspect the kernel-v3 evidence store and move its facts between clones.
+    Thin wrapper. ``status`` and ``list`` read (``lib.evidence.evidence_cmd``).
+    ``ingest`` appends facts other clones wrote, read verbatim from
+    ``refs/notes/prawduct`` (``lib.evidence_notes``). ``sync [--no-push]
+    [--json]`` fetches, merges, ingests and pushes that ref, and ``configure
+    [--apply] [--json]`` sets the clone's notes refspec and rewrite ref
+    (``lib.evidence_sync``: exit 0 ok, 1 a failure naming its step, 2 usage).
+    All three are writes to both pre-dispatch guards (``_EVIDENCE_READ_OPS``).
+    Facts themselves are written by the review lifecycle commands, never the
+    agent by hand."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
+    op = argv[0] if argv else None
+    if op in ("sync", "configure"):
+        try:
+            from lib import evidence_sync  # noqa: PLC0415 — lazy; only these two ops reach it
+            run = getattr(evidence_sync, f"cmd_evidence_{op}")
+        except (ImportError, AttributeError) as exc:
+            # A writer: a lib that cannot run it fails closed rather than
+            # reading as a sync that ran.
+            print(
+                f"evidence {op} unavailable (the plugin lib/ at {lib_root} does not "
+                f"provide it: {exc}) — nothing was fetched, pushed or configured",
+                file=sys.stderr,
+            )
+            return 1
+        return run(project_dir, argv[1:])
     from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
 
     return evidence.evidence_cmd(project_dir, argv)
@@ -7265,7 +7317,7 @@ _PLAN_HELP = (
     "         (<scope> omitted: suggested from the branch being claimed, and printed)\n"
     "       prawduct-hook plan bind <path> --branch B\n"
     "       prawduct-hook plan resolve [--json]\n"
-    "       prawduct-hook plan status [<path>] [--json]\n"
+    "       prawduct-hook plan status [<path>] [--json] [--probe-pr]\n"
     "         (<path> omitted: the plan this checkout is bound to)\n"
     "       prawduct-hook plan import-status <path> [--apply] [--remove-block] [--json]\n"
     "         (ticked Status boxes -> chunk-imported facts; a preview without --apply)\n"
@@ -7404,14 +7456,20 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     (``open``/``done``/``dropped``), the certifying fact id, its date, and the
     tags ``imported`` (a box, migrated or read in memory) and ``built`` (work
     committed on the branch — render-only, ``plan_status.built_chunks``).
-    ``--json``: ``plan_path``, ``scope``, ``finished`` and ``chunks`` (a list of
-    ``{id, state, fact_id, date, imported, built, reason}``) as one object.
+    A ``lifecycle: <state>[ <release>] — <reason>`` line follows the summary:
+    ``plan_lifecycle.observe``'s answer, read off the archive stamp, the change
+    record and git, offline unless ``--probe-pr`` lets it ask ``gh`` whether a
+    pull request from the plan's branch merged.
+    ``--json``: ``plan_path``, ``scope``, ``finished``, ``chunks`` (a list of
+    ``{id, state, fact_id, date, imported, built, reason}``),
+    ``built_unavailable`` and ``lifecycle`` (``{state, reason, released_in,
+    probed}``) as one object.
 
     Exit 0 answered; :data:`PLAN_STATUS_NO_PLAN_EXIT` when no path is given and
     no plan is bound (the reason on stderr); 2 for a usage error or a path that
     is not a build plan.
     """
-    parsed = _parse_plan_args("status", argv, frozenset(), frozenset({"--json"}))
+    parsed = _parse_plan_args("status", argv, frozenset(), frozenset({"--json", "--probe-pr"}))
     if isinstance(parsed, int):
         return parsed
     positionals, _values, seen = parsed
@@ -7419,7 +7477,7 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
         print(f"plan status: unexpected argument {positionals[1]!r}\n{_PLAN_HELP}", file=sys.stderr)
         return 2
     plan_status = _plan_status()
-    from lib import evidence, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+    from lib import evidence, plan_index, plan_lifecycle  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
 
     if positionals:
         plan_path = Path(positionals[0])
@@ -7449,6 +7507,10 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     finished = plan_status.is_finished(plan_path, facts, repo_dir=project_dir, states=states)
     built_report = plan_status.built_report(plan_path, project_dir)
     built = built_report.built
+    # Observed, never stored; `gh` is asked only under `--probe-pr`.
+    lifecycle = plan_lifecycle.observe(
+        plan_path, repo_dir=project_dir, facts=facts, probe_pr="--probe-pr" in seen
+    )
     rel = _plan_rel(project_dir, plan_path)
     rows = [
         {
@@ -7463,9 +7525,12 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
         for chunk_id, s in states.items()
     ]
     if "--json" in seen:
+        import dataclasses  # noqa: PLC0415 — only the JSON form serialises the lifecycle
+
         print(json.dumps(
             {"plan_path": rel, "scope": scope, "finished": finished, "chunks": rows,
-             "built_unavailable": built_report.unavailable},
+             "built_unavailable": built_report.unavailable,
+             "lifecycle": dataclasses.asdict(lifecycle)},
             sort_keys=True,
         ))
         return 0
@@ -7478,6 +7543,7 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     else:
         summary = f"{open_count} of {len(rows)} open"
     print(f"{rel} ({scope_text}): {summary}")
+    print(plan_status.render_lifecycle(lifecycle))
     # The one renderer (`plan_status.render_table`), which the `/clear` handoff
     # and the PR payload print too.
     for line in plan_status.render_table(
@@ -7732,9 +7798,13 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
     nothing. ``--remove-block`` deletes exactly the ``## Status`` section —
     heading to the next ``## `` heading — with the file's line endings kept,
     and only after every fact is written: a block removed with a fact missing
-    would turn a done chunk open. It is opt-in because facts are per-clone
-    until #1052; another clone reading the plan without the block (and without
-    this clone's facts) answers "all open". Refusals (exit 1, ``refused:
+    would turn a done chunk open. Each fact is also attached as a note on the
+    HEAD it was written at, so it travels to other clones on
+    ``refs/notes/prawduct`` (pushed by ``/prawduct:pr``; another clone takes
+    it in with ``evidence sync``, or at session start on this branch);
+    removing the block is therefore the advice the kept-block line gives. The flag stays opt-in — a flag removal is not additive — and
+    a fact whose note could not be written is named in a NOTE, since that one
+    stays in this clone. Refusals (exit 1, ``refused:
     <code>``): ``archived-plan``, ``no-scope``, ``store-unreadable``,
     ``status-block-ambiguous``, ``status-block-undelimited``,
     ``status-block-trailing-comment``, ``fact-append-failed``,
@@ -7846,7 +7916,10 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
                 )
                 return _plan_refuse("import-status", "fact-append-failed", detail, as_json)
             noted = evidence_notes.attach(project_dir, appended.get("envelope") or {}, import_anchor)
-            if noted.get("status") != "attached":
+            # `present`: the note already holds the line (attach is idempotent),
+            # so the fact travels. `skipped` here means HEAD did not resolve to
+            # an anchor — no note was written, which the NOTE must say.
+            if noted.get("status") not in ("attached", "present"):
                 print(
                     f"NOTE: plan import-status: chunk {cid}'s fact is recorded, but its git "
                     f"note was not written ({noted.get('reason')}) — it stays in this "
@@ -7905,9 +7978,11 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
     elif block == "absent":
         print("  no `## Status` block to remove")
     else:
-        print("  `## Status` block kept (pass --remove-block to remove it; facts are "
-              "per-clone until #1052, so another clone without them reads the "
-              "plan's chunks from the block)")
+        print("  `## Status` block kept — pass --remove-block to remove it: each fact "
+              "also rides refs/notes/prawduct, which /prawduct:pr pushes and another "
+              "clone takes in (`evidence sync`, or session start on this branch), so "
+              "the block is no longer the only record there (a NOTE above names any "
+              "fact whose note was not written)")
     return 0
 
 
@@ -7938,31 +8013,6 @@ def _remote_branch_names(project_dir: Path) -> "set[str] | None":
     return names
 
 
-def _release_pending_records(project_dir: Path) -> "dict[str, str]":
-    """scope -> ``"fragment"`` or ``"change-log entry"`` for every scope whose
-    change record is still pending release, by ``release_readiness.pending_scopes``
-    (the one owner of that union). A set it cannot read, or refuses as
-    untrustworthy, says so on stderr. A missing branch then stays a miss:
-    an exemption that cannot be shown does not exempt."""
-    _plan_status()  # seeds sys.path
-    from lib import release_readiness  # noqa: PLC0415 — lazy; only a missing branch pays for it
-
-    pending = release_readiness.pending_scopes(project_dir)
-    if pending.read_error is not None or pending.refusals:
-        why = pending.read_error or "; ".join(pending.refusals)
-        print(
-            f"plan check-claims: the release-pending change records could not be "
-            f"trusted ({why}); a missing branch is reported as missing",
-            file=sys.stderr,
-        )
-        if pending.read_error is not None:
-            return {}
-    records = {scope: "change-log entry" for scope in pending.legacy_scopes}
-    for scope in pending.fragment_scopes:
-        records.setdefault(scope, "fragment")
-    return records
-
-
 def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
     """``plan check-claims [--json]`` — BR3: every claim names a real branch.
 
@@ -7973,15 +8023,20 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
     Each claim has one of three outcomes:
 
     - ``exists`` — the branch is there; nothing is printed for it.
-    - ``release-pending`` — the branch is gone, but the plan's scope still has a
-      pending change record (a fragment, or an untagged change-log entry in a
-      single-file-log repo; ``release_readiness.pending_scopes`` owns that set).
+    - ``release-pending`` — the branch is gone, and the plan is observed
+      merged and unreleased (``plan_lifecycle.observe``, the one derivation
+      ``plan status`` prints too: a review anchored in the base's history, the
+      integration branch merged, or a pending change record for the scope).
       That is gitflow retention working (D-BR5): a merged child's plan rides
       along inert until the release. One line, ``<plan>: <field> claims
-      <branch>, which no longer exists; its <record> is pending release —
-      archive at the release``, and it does not fail the check.
-    - ``missing`` — gone with no pending record: ``<plan>: <field> <branch> does
-      not exist``.
+      <branch>, which no longer exists; merged-unreleased (<reason>) — archive
+      at the release``, and it does not fail the check.
+    - ``missing`` — gone, and the plan is not observed merged and unreleased:
+      ``<plan>: <field> <branch> does not exist``. The claim is judged by its
+      PLAN's lifecycle, so a ``working-branches:`` entry that is gone while
+      the integration branch is still in progress is missing. Why each plan
+      with a miss is not release-pending — its lifecycle state and reason —
+      is one line on stderr.
 
     A plan whose claim cannot be read is a line too; an unreadable claim is not
     a resolving one.
@@ -8013,7 +8068,9 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return PLAN_CHECK_CLAIMS_UNREADABLE_EXIT
-    pending: "dict[str, str] | None" = None  # scope -> the record holding it, read on a first miss
+    plan_lifecycle = None
+    facts = None  # the store, read once on the first miss and shared by every plan
+    observed: dict = {}  # plan path -> its lifecycle, observed on its first miss
     claims = []
     for decl in sorted(declarations, key=lambda d: str(d.path)):
         named = ([("branch", decl.branch)] if decl.branch else []) + [
@@ -8021,24 +8078,37 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
         ]
         for field, branch in named:
             where = "local" if branch in local else "remote" if branch in remote else None
-            record = None
+            retained = False
             if where is None:
-                if pending is None:
-                    pending = _release_pending_records(project_dir)
-                record = pending.get(decl.scope) if decl.scope else None
+                if plan_lifecycle is None:
+                    _plan_status()  # seeds sys.path
+                    from lib import evidence, plan_lifecycle  # noqa: PLC0415 — lazy; only a miss pays for it
+
+                    facts = evidence.read_facts(project_dir)
+                if decl.path not in observed:
+                    observed[decl.path] = plan_lifecycle.observe(
+                        decl.path, repo_dir=project_dir, facts=facts
+                    )
+                retained = observed[decl.path].state == plan_lifecycle.MERGED_UNRELEASED
             claims.append({
                 "plan": _plan_rel(project_dir, decl.path), "field": field,
                 "branch": branch, "where": where,
-                "outcome": "exists" if where else "release-pending" if record else "missing",
-                **({"_record": record} if record else {}),
+                "outcome": "exists" if where else "release-pending" if retained else "missing",
             })
+    for path, lifecycle in observed.items():
+        if lifecycle.state != plan_lifecycle.MERGED_UNRELEASED:
+            print(
+                f"plan check-claims: {_plan_rel(project_dir, path)} is not release-pending "
+                f"({lifecycle.state}: {lifecycle.reason})",
+                file=sys.stderr,
+            )
+    reasons = {_plan_rel(project_dir, path): lc.reason for path, lc in observed.items()}
     faults = [
         {"plan": _plan_rel(project_dir, u.path), "reason": u.what}
         for u in sorted(unreadable, key=lambda u: str(u.path))
     ]
     misses = [c for c in claims if c["outcome"] == "missing"]
     retained = [c for c in claims if c["outcome"] == "release-pending"]
-    records = {id(c): c.pop("_record") for c in retained}
     ok = not misses and not faults
     if "--json" in seen:
         print(json.dumps({"ok": ok, "claims": claims, "unreadable": faults}, sort_keys=True))
@@ -8048,7 +8118,7 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
         for c in retained:
             print(
                 f"{c['plan']}: {c['field']} claims {c['branch']}, which no longer exists; "
-                f"its {records[id(c)]} is pending release — archive at the release"
+                f"{plan_lifecycle.MERGED_UNRELEASED} ({reasons[c['plan']]}) — archive at the release"
             )
         for f in faults:
             print(f"{f['plan']}: claim unreadable — {f['reason']}")
@@ -10064,11 +10134,18 @@ _DATA_PLANE_COMMANDS = frozenset({
     "ledger-append",
 })
 
-# Commands whose first positional selects a data-plane write; the rest of the
-# command's ops are reads and stay advisory. `evidence ingest` appends facts
-# read from the notes transport to the store every gate composes over.
-_DATA_PLANE_OPS = {
-    "evidence": frozenset({"ingest"}),
+# `evidence`'s read ops; `None` is the bare form, which is `status`. Every other
+# op writes: `ingest` appends other clones' facts to the store every gate
+# composes over, `sync` merges and pushes `refs/notes/prawduct`, `configure`
+# writes `.git/config`. BOTH pre-dispatch guards read this one set — the skew
+# guard below and the ephemeral guard's `_EPHEMERAL_READ_ONLY_OPS` — so an op
+# added to the command is a write on both sides until it is listed here.
+_EVIDENCE_READ_OPS = frozenset({None, "status", "list"})
+
+# Commands whose first positional selects a read or a data-plane write, by
+# their READ set: an op outside it is a write and refuses on a foreign binary.
+_DATA_PLANE_READ_OPS = {
+    "evidence": _EVIDENCE_READ_OPS,
 }
 
 
@@ -10076,8 +10153,8 @@ def _is_data_plane_write(command: str, argv: "list[str]") -> bool:
     """Whether this invocation is a governance write the skew guard refuses."""
     if command in _DATA_PLANE_COMMANDS:
         return True
-    ops = _DATA_PLANE_OPS.get(command)
-    return ops is not None and _first_positional(argv) in ops
+    reads = _DATA_PLANE_READ_OPS.get(command)
+    return reads is not None and _first_positional(argv) not in reads
 
 
 def _repo_plugin_dir(project_dir: Path) -> "Path | None":
@@ -10294,6 +10371,14 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # in `_ephemeral_command_writes`, not by this table. `new` and `bind` write
     # a plan.
     "plan": frozenset({"resolve", "status", "check-claims"}),
+    # The one `evidence` read set the skew guard also reads. Its writes are
+    # refused here on a narrower ground than this guard's usual one: none of
+    # them can strand — the store, the notes ref and `.git/config` belong to
+    # the clone and outlive this tree. They are refused so a scratch tree
+    # never races the main checkout, whose session start ingests and whose
+    # `/prawduct:pr` syncs for every worktree of the clone; nothing is lost by
+    # leaving them to it. `_ephemeral_refusal_reason` says so to the caller.
+    "evidence": _EVIDENCE_READ_OPS,
     # `show` is `get`'s alias — `lib/backlog/cli.py` dispatches `op in ("get",
     # "show")` to one handler — and omitting it refused a pure read with a
     # message asserting a discarded write, which is the false refusal this
@@ -10360,7 +10445,12 @@ def _first_positional(argv: list[str]) -> str | None:
 
 
 def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) -> bool:
-    """Whether ``command`` would mutate state that dies with this worktree.
+    """Whether this guard refuses ``command`` from a disposable worktree.
+
+    Mostly that is "would mutate state that dies with this worktree". The one
+    other ground is `evidence`'s writes, which land in the clone and outlive
+    the tree but are left to the main checkout (`_EPHEMERAL_READ_ONLY_OPS`
+    says why, and `_ephemeral_refusal_reason` tells the caller).
 
     Fail-closed: anything not positively known to be read-only is a write.
     """
@@ -10431,11 +10521,6 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         # and so cannot strand — and skips the per-worktree record, which would.
         # The command refuses the sources that would write nothing.
         return False
-    if command == "evidence":
-        # `status` (also the bare form) and `list` read the store. `ingest`
-        # appends to it, and is not admitted from here: the session that owns
-        # the clone ingests at its own start, so nothing is lost by refusing.
-        return _first_positional(argv) not in (None, "status", "list")
     if command == "plan" and _first_positional(argv) == "import-status":
         # A preview by default; `--apply` appends `chunk-imported` facts and
         # rewrites the plan's `## Status` section when the block flag is given —
@@ -10492,6 +10577,30 @@ def _print_ephemeral_notice(kind: str | None, project_dir: Path) -> None:
         "in the dispatching session are NOT visible. Where a file and your "
         "prompt disagree, your prompt is newer.",
         file=sys.stderr,
+    )
+
+
+def _ephemeral_refusal_reason(command: str) -> str:
+    """Why the ephemeral guard refuses ``command`` — one sentence per ground.
+
+    A write into this tree's ``.prawduct/`` strands at merge; an ``evidence``
+    write does not (the store, the notes ref and ``.git/config`` are the
+    clone's), so telling its caller the write "is discarded" would be false
+    and would teach it to distrust a store that keeps what it is given.
+    """
+    if command == "evidence":
+        return (
+            "This op writes the clone's own evidence store, notes ref or "
+            ".git/config, which outlive this tree; it is refused so a scratch "
+            "tree never races the main checkout, whose session start ingests "
+            "and whose /prawduct:pr syncs for every worktree of the clone."
+        )
+    return (
+        "Only your code commit is merged back, so a write to .prawduct/ here "
+        "is discarded when it merges and you would be told it succeeded. (A "
+        "review or disposition would instead persist to the clone-shared "
+        "evidence store against a tree no branch carries — kept, but covering "
+        "nothing.)"
     )
 
 
@@ -10564,11 +10673,8 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
 
     print(
         f"BLOCKED: refusing `{command}` — this is an ephemeral {kind} worktree "
-        f"({project_dir}). Only your code commit is merged back, so a write to "
-        ".prawduct/ here is discarded when it merges and you would be told it "
-        "succeeded. (A review or disposition would instead persist to the "
-        "clone-shared evidence store against a tree no branch carries — kept, "
-        "but covering nothing.) Report this in your final message and let the "
+        f"({project_dir}). {_ephemeral_refusal_reason(command)} Report this in "
+        "your final message and let the "
         "dispatching session record it; Critic reviews and governance records "
         "stay with the dispatcher (`test-evidence record` is admitted here: it "
         "writes one narrowed test-run fact to the shared store and nothing in "
