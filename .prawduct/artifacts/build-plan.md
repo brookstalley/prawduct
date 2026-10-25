@@ -40,7 +40,7 @@ one exported `stats.acted_on`, which both reports call.
 
 ## Status
 
-- [ ] Chunk 01: review-stats joins the evidence store; one acted-on rule shared with `stats`
+- [x] Chunk 01: review-stats joins the evidence store; one acted-on rule shared with `stats`
 
 Context: Single chunk. Done when: `tests/test_review_stats.py` and `tests/test_stats.py` pass,
 `plugin/docs/governance-telemetry.md` § review-stats documents the block and schema 9, a change
