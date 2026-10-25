@@ -128,6 +128,38 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   ten fixed on the delegate's branch (O-1/O-11 silent `dropped:` rejection, O-7 sentinel keys
   reaching `current_chunks`, O-2, O-3, O-4, O-8, O-10, O-15, O-16), three answered by this record
   (O-5/O-14 this line, O-12 the signature block above), four accepted with reasons on the record.
+- Chunk 02's open call, settled by the coordinator 2026-10-25 (delegate A): the #167 extension
+  deferral's trigger was "the reviewed chunk is still the first UNTICKED one" — under fact-derived
+  status a clean review certifies the chunk at once, so that trigger is dead on every plan that
+  declares `branch:`. Settled for the observable form over the stored one (hook-surface.md): the
+  deferral fires when every chunk the review chain names was certified by a fact ON the chain (not
+  an import or box) AND the pending, uncovered work touches no open chunk's Deliverables
+  (`propose_chunks` in `chunk` mode over the uncovered paths is empty). Fail-open named: a chunk
+  declaring no path-shaped Deliverables lets new-chunk work read as a fix — the cost is a wider
+  interval at the next review, never lost coverage (the later review starts at the frontier).
+  Rejected: the literal port (kills #167 on bound plans, one verify-resolutions round per mid-plan
+  warning fix — against review-run count, the owner's P0). `later_review_owed` on the extension
+  path becomes ">=1 open after the reviewed set"; `_mid_plan_start` keeps ">=2 open".
+- Chunk 03's seam, found by delegate B before integration and closed in Chunk 04 (delegate C):
+  `gates._store_run_vouching` treats every `test-run` fact with a tree as a candidate, so a DG2
+  narrowed fact whose tree matched after the coordinator's merge would have vouched a 3-file run
+  for the whole suite (fail open). A narrowed fact is attribution only — skipped in that loop,
+  neither vouching nor denying; a refusal would have made the newest narrowed fact deny, the wrong
+  direction. Red-first test with the un-narrowed control.
+- Chunk 04 as built (delegate C, 2026-10-25, merged aadcb174), four behaviour changes accepted by
+  the coordinator: (1) a finished bound plan stays visible as active work with `Resume: finished`
+  instead of falling back to project-state WIP — ST5 implies it; it reverses SCN-4H9T, and the
+  test was renamed and inverted in the open; (2) a plan with no chunks is finished everywhere
+  (design § 3): the sweep archives it with no unbuilt stamp and the missing-branch warning stays
+  silent; a heading the parser rejects is refused and stamped; (3) `staleness_scan`'s check 5
+  ("project-state.yaml has a completed build plan") is retired — it read `chunks[].status` (ST7);
+  (4) lifecycle-repair names built-but-not-done chunks as `Chunk <id>`; an open chunk with
+  nothing built is no longer reported. `unbuilt_at_archive(plan_path, *, repo_dir, facts=None)`
+  replaces the content-taking form (one hook line in `cmd_archive_plan` followed). Carried to
+  Chunk 06: the chunk-table renderer exists twice (`briefing.chunk_table_lines` and the hook's
+  `_cmd_plan_status`) — move it into `plan_status` as the one home and call it from both;
+  `_count_build_plan_chunks`'s docstring lists three callers (the function dies in 06). Red shown
+  by swapping each owned module back to its pre-chunk version: 29 tests red, return codes read.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read

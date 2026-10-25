@@ -14,9 +14,28 @@ The behaviours under test, in the order they matter:
 
 from __future__ import annotations
 
+import os
+import subprocess
 from pathlib import Path
 
 from lib import lifecycle_repair
+
+
+def _git(repo: Path, *args: str) -> None:
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    subprocess.run(["git", *args], cwd=str(repo), env=env, check=True, capture_output=True)
+
+
+def _build_on_a_branch(repo: Path, chunk: str, scope: str = "demo") -> None:
+    """Make ``repo`` a git repo whose feature branch has a commit landing
+    ``Chunk <chunk>`` — what ``plan_status.built_chunks`` reads as built."""
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "T")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "init")
+    _git(repo, "checkout", "-q", "-b", f"feat/{scope}")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", f"feat({scope}): land it (Chunk {chunk})")
 
 STATE_WITH_BOTH = """\
 project: demo
@@ -369,6 +388,7 @@ class TestStaleStatusReportsSeeUnscopedPlans:
         )
         path = repo / ".prawduct" / "artifacts" / "build-plan-mystery.md"
         path.write_text(plan, encoding="utf-8")
+        _build_on_a_branch(repo, "01")
 
         # `ARTIFACTS_REL` already carries the `.prawduct/` segment — the same
         # form the CLI uses. Joining it under `.prawduct/` again yields a
@@ -378,7 +398,7 @@ class TestStaleStatusReportsSeeUnscopedPlans:
             repo / lifecycle_repair.ARTIFACTS_REL
         )
         assert [Path(r["path"]).name for r in reports] == ["build-plan-mystery.md"]
-        assert reports[0]["chunks"] == ["Chunk 01: unfinished"]
+        assert reports[0]["chunks"] == ["Chunk 01"]
 
         # ...and the repair must be able to ACT on what the report names: a plan
         # reported as carrying the retired note, with no edit computed for it,
@@ -411,7 +431,14 @@ class TestRetiredFlagGuard:
 
 
 class TestStaleStatusReport:
-    """FL3 — report only, and only for plans that stay live."""
+    """FL3 — report only, and only for plans that stay live.
+
+    Renegotiated by #1051: a chunk's state is `plan_status.chunk_states`' answer
+    from the facts, so the report names the chunks BUILT on the branch (work
+    committed, `plan_status.built_chunks`) that are still OPEN — committed work
+    no review has certified. It used to name unticked boxes; an unticked chunk
+    with nothing built is ordinary future work and is no longer named.
+    """
 
     DERIVED_WITH_UNTICKED = """\
 ---
@@ -429,13 +456,23 @@ scope: demo
 ## Build Chunks
 """
 
-    def test_names_the_plan_and_the_unticked_chunks(self, tmp_path: Path) -> None:
+    def test_names_the_plan_and_its_built_but_not_done_chunks(self, tmp_path: Path) -> None:
         repo = _make_repo(tmp_path)
         _write_plan(repo, "build-plan-demo.md", self.DERIVED_WITH_UNTICKED)
+        _build_on_a_branch(repo, "02")
         reports = lifecycle_repair.stale_status_reports(repo / ".prawduct" / "artifacts")
 
         assert len(reports) == 1
-        assert reports[0]["chunks"] == ["Chunk 02: in flight"]
+        assert reports[0]["chunks"] == ["Chunk 02"]
+
+    def test_an_open_chunk_with_nothing_built_is_not_named(self, tmp_path: Path) -> None:
+        """The control: the same plan, its branch landing a DIFFERENT chunk.
+        Chunk 02 is still open, but nothing was committed for it, so there is
+        nothing for a human to settle."""
+        repo = _make_repo(tmp_path)
+        _write_plan(repo, "build-plan-demo.md", self.DERIVED_WITH_UNTICKED)
+        _build_on_a_branch(repo, "01")
+        assert lifecycle_repair.stale_status_reports(repo / ".prawduct" / "artifacts") == []
 
     def test_writes_nothing(self, tmp_path: Path) -> None:
         """The prohibition is the requirement, so it is asserted on the bytes."""
@@ -447,12 +484,15 @@ scope: demo
         assert plan_path.read_bytes() == before
 
     def test_silent_when_every_box_is_ticked(self, tmp_path: Path) -> None:
+        """A ticked box reads as an imported `done` until the plan is migrated
+        (#1051 MG1), so a built, ticked chunk is not open and is not named."""
         repo = _make_repo(tmp_path)
         _write_plan(
             repo,
             "build-plan-demo.md",
             self.DERIVED_WITH_UNTICKED.replace("- [ ] Chunk 02", "- [x] Chunk 02"),
         )
+        _build_on_a_branch(repo, "02")
         assert lifecycle_repair.stale_status_reports(repo / ".prawduct" / "artifacts") == []
 
     def test_silent_for_a_plan_that_never_carried_the_instruction(self, tmp_path: Path) -> None:

@@ -1261,25 +1261,19 @@ class TestCountChunksCallerEnumeration:
             "reader can see who must pass `plan_path` and who does not."
         )
 
-    def test_the_docstring_claims_the_right_number_of_callers(self):
+    def test_one_caller_is_left_and_it_is_unreferenced(self):
+        """Renegotiated by #1051 Chunk 04 (was "the docstring claims three").
+        `record_lint._check_chunk_refs` and `_critic_session_satisfies_gate` now
+        read `plan_status`, so the one call left is the body of
+        `gates._has_active_build_plan_file`, which nothing calls any more and
+        Chunk 06 deletes with this function. The docstring's three-caller list is
+        stale from here until then (it lives in `buildplan_refs`, outside Chunk
+        04's files); this pins the TREE, so a reader reintroducing a call reddens."""
         callers = self._call_sites()
         callers.pop("lib.buildplan_refs", None)
-        total = sum(callers.values())
-        assert total == 3, (
-            f"{total} call sites across {sorted(callers)}; the docstring enumerates three. "
-            "A new caller must be added to that list with whether it passes `plan_path` — "
-            "the argument exists because resolving twice can answer about two plans."
-        )
-
-    def test_the_two_callers_documented_as_passing_a_plan_actually_do(self):
-        # The half a prose enumeration cannot be trusted with. Read from source
-        # rather than asserted from memory: `_has_active_build_plan_file` and
-        # `record_lint._check_chunk_refs` each hand the resolved plan through,
-        # and this reddens if either stops.
+        assert callers == {"lib.gates": 1}, callers
         gates_src = (LIB_DIR / "gates.py").read_text(encoding="utf-8")
-        lint_src = (LIB_DIR / "record_lint.py").read_text(encoding="utf-8")
         assert f"{self.CALL}prawduct_dir, plan_path)" in gates_src
-        assert self.CALL in lint_src and "plan.path" in lint_src
 
     def test_the_third_caller_is_the_one_the_docstring_flags(self):
         # `_critic_session_satisfies_gate` resolves its own plan. #541's fix is
