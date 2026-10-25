@@ -1,10 +1,10 @@
-"""``prawduct-hook plan new|bind|resolve`` — the CLI over ``lib.plan_mint`` and
-``lib.work_unit`` (#1050 Chunk 06).
+"""``prawduct-hook plan new|bind|resolve|status`` — the CLI over ``lib.plan_mint``,
+``lib.work_unit`` and ``lib.plan_status``.
 
 Driven through the real binary: the subject is what the operator's command does
-— its exit code on each binding state, its refusal conventions, and the
-ephemeral-worktree guard's verdict (``resolve`` is a read, ``new``/``bind`` are
-writes). ``lib.plan_mint``'s own refusals are pinned in ``test_plan_mint.py``;
+— its exit code on each binding state, its refusal conventions, the chunk table
+``status`` renders, and the ephemeral-worktree guard's verdict (``resolve`` and
+``status`` are reads, ``new``/``bind`` are writes). ``lib.plan_mint``'s own refusals are pinned in ``test_plan_mint.py``;
 these pin that each reaches the CLI as a stable ``refused: <code>:`` at exit 1.
 """
 
@@ -242,6 +242,28 @@ class TestStatus:
         lines = proc.stdout.splitlines()
         assert lines[0] == ".prawduct/artifacts/build-plan-unit.md (scope `unit`): 1 of 3 open"
         assert lines[3] == "  02     open     -     -     -"
+
+    @pytest.mark.parametrize(
+        "chunks, summary",
+        [
+            ((), "no chunks — finished"),
+            (("01",), "finished (1 chunk)"),
+        ],
+    )
+    def test_the_summary_line_for_no_chunks_and_one(self, tmp_path, chunks, summary):
+        repo = _repo(tmp_path)
+        path = repo / ".prawduct" / "artifacts" / "build-plan-unit.md"
+        body = "".join(f"### Chunk {c}: c\n\n" for c in chunks)
+        roster = "".join(f"- [x] Chunk {c}: c\n" for c in chunks)
+        path.write_text(
+            "---\nartifact: build-plan\nscope: unit\nbranch: feature/unit\n---\n\n"
+            f"## Status\n\n{roster}\n## Build Chunks\n\n{body}"
+        )
+        proc = _run(repo, "status")
+        assert proc.returncode == 0, proc.stderr
+        lines = proc.stdout.splitlines()
+        assert lines[0] == f".prawduct/artifacts/build-plan-unit.md (scope `unit`): {summary}"
+        assert len(lines) == (1 if not chunks else 2 + len(chunks))
 
     def test_unbound_with_no_path_exits_1_with_the_reason(self, tmp_path):
         repo = _repo(tmp_path, "chore/bump")

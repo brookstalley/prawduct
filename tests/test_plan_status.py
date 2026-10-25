@@ -75,10 +75,9 @@ def _plan(
     status: "dict[str, bool] | None" = None,
     deliverables: "dict[str, str] | None" = None,
     body: str = "",
+    claim: tuple[str, ...] = ("branch: feature/unit", "base: main"),
 ) -> Path:
-    lines = [
-        "---", "artifact: build-plan", "scope: unit", "branch: feature/unit", "base: main",
-    ]
+    lines = ["---", "artifact: build-plan", "scope: unit", *claim]
     if extra_frontmatter:
         lines.append(extra_frontmatter.rstrip("\n"))
     lines += ["---", "", "# Build Plan", ""]
@@ -255,15 +254,35 @@ class TestDoneFromReviewFacts:
         plan = _plan(repo, ("01",))
         assert _states(plan, _facts(_review("R1", head, chunks=["01"], scope="other")), repo) == {"01": "open"}
 
-    def test_the_earliest_certifying_fact_is_the_one_cited(self, repo):
+    def test_the_first_certifying_fact_in_store_order_is_cited_whatever_its_ts(self, repo):
+        """Store (append) order decides, not the writer's clock: the second
+        fact in the store carries the EARLIER `ts`, and the first is cited."""
         head = _commit(repo, "src/c01.py", "x\n", "work")
         plan = _plan(repo, ("01",))
         facts = _facts(
-            _review("R1", head, chunks=["01"], ts="2026-10-20T00:00:00Z"),
-            _review("R2", head, chunks=["01"], ts="2026-10-24T00:00:00Z"),
+            _review("R1", head, chunks=["01"], ts="2026-10-24T00:00:00Z"),
+            _review("R2", head, chunks=["01"], ts="2026-10-20T00:00:00Z"),
         )
         state = plan_status.chunk_states(plan, facts, repo_dir=repo)["01"]
-        assert (state.fact_id, state.date) == ("R1", "2026-10-20")
+        assert (state.fact_id, state.date) == ("R1", "2026-10-24")
+
+    def test_a_plan_declaring_no_branch_is_certified_by_no_review_and_says_so(self, repo):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo, ("01", "02"), claim=(), status={"01": False, "02": True})
+        states = plan_status.chunk_states(plan, _facts(_review("R1", head, chunks=["01"])), repo_dir=repo)
+        assert states["01"] == plan_status.ChunkState(
+            "open", reason="review R1 names it, but the plan declares no `branch:` its commit could be on"
+        )
+        assert states["02"].state == "done"  # an import still answers
+
+    def test_a_review_recording_no_commit_says_so(self, repo):
+        _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo, ("01",))
+        review = _review("R1", None, chunks=["01"])
+        review["body"]["dispatch_commit"] = None
+        assert plan_status.chunk_states(plan, _facts(review), repo_dir=repo)["01"].reason == (
+            "review R1 names it, but it records no commit to place"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -316,20 +335,34 @@ class TestImportedAndDropped:
         assert plan_status.is_finished(declared, fact, repo_dir=repo)
 
     @pytest.mark.parametrize(
-        "declaration",
+        "declaration, cause",
         [
-            "dropped:\n  - 02",               # no reason
-            "dropped:\n  - '02:'",            # empty reason
-            "dropped: [02]",                  # flow form: not the documented one
-            "dropped:\n  - 02: ok\n  -",      # a bare dash poisons the whole block
-            "dropped:\n  - {id: 02, reason: x}",  # mapping form: not the documented one
+            ("dropped:\n  - 02", "entry for 02 gives no reason"),
+            ("dropped:\n  - '02:'", "entry for 02 gives no reason"),
+            # The shapes the sequence reader refuses whole: flow, bare dash.
+            ("dropped: [02]", "declared in a shape this reader does not parse"),
+            ("dropped:\n  - 02: ok\n  -", "declared in a shape this reader does not parse"),
+            # An item whose id is no id: the mapping form, prose.
+            ("dropped:\n  - {id: 02, reason: x}", "names no chunk id"),
+            ("dropped:\n  - the second one: x", "names no chunk id"),
+            ("dropped:\n  - 09: not in this plan", "names 09, which is not a chunk of this plan"),
         ],
     )
-    def test_an_unreadable_dropped_entry_leaves_the_chunk_open(self, repo, declaration):
+    def test_an_unreadable_dropped_entry_leaves_the_chunk_open_and_says_why(
+        self, repo, declaration, cause
+    ):
         plan = _plan(repo, ("01", "02"), extra_frontmatter=declaration)
         states = plan_status.chunk_states(plan, _facts(), repo_dir=repo)
         assert states["02"].state == "open"
+        assert cause in (states["02"].reason or ""), states["02"]
         assert not plan_status.is_finished(plan, _facts(), repo_dir=repo)
+
+    @pytest.mark.parametrize("written", ["Chunk 02", "2", "'02'"])
+    def test_a_dropped_id_is_read_as_the_plan_prints_it(self, repo, written):
+        plan = _plan(repo, ("01", "02"), extra_frontmatter=f"dropped:\n  - {written}: cut")
+        states = plan_status.chunk_states(plan, _facts(), repo_dir=repo)
+        assert states["02"] == plan_status.ChunkState("dropped", reason="cut")
+        assert states["01"] == plan_status.ChunkState("open")
 
     def test_a_reasonless_entry_says_why_it_dropped_nothing(self, repo):
         plan = _plan(repo, ("01", "02"), extra_frontmatter="dropped:\n  - 02")
@@ -341,19 +374,39 @@ class TestImportedAndDropped:
         assert plan_status.is_finished(plan, _facts(), repo_dir=repo)
         assert plan_status.current_chunks(plan, _facts(), repo_dir=repo) == []
 
-    def test_an_unreadable_plan_is_not_finished(self, repo):
+    def test_an_unreadable_plan_is_not_finished_and_has_no_current_chunk(self, repo):
         missing = repo / ".prawduct" / "artifacts" / "build-plan-gone.md"
         states = plan_status.chunk_states(missing, _facts(), repo_dir=repo)
         assert list(states) == [plan_status.UNREADABLE_PLAN]
+        assert states[plan_status.UNREADABLE_PLAN].synthetic
         assert not plan_status.is_finished(missing, _facts(), repo_dir=repo)
+        assert plan_status.current_chunks(missing, _facts(), repo_dir=repo) == []
+        assert plan_status.propose_chunks(missing, _facts(), [], "final", repo_dir=repo) == []
 
     def test_an_unparseable_chunk_heading_is_an_open_chunk_not_an_absence(self, repo):
         """A plan whose only heading the parser rejects must not read as 'no chunks'."""
-        plan = _plan(repo, (), body="#### Chunk 01: too deep\n")
+        plan = _plan(repo, ("01",), body="#### Chunk 02: too deep\n")
         states = plan_status.chunk_states(plan, _facts(), repo_dir=repo)
-        assert [s.state for s in states.values()] == ["open"]
-        assert "unparseable-chunk-heading" in next(iter(states.values())).reason
+        assert [(s.state, s.synthetic) for s in states.values()] == [("open", False), ("open", True)]
+        synthetic = [k for k, s in states.items() if s.synthetic]
+        assert synthetic[0].startswith("?L")
+        assert "unparseable-chunk-heading" in states[synthetic[0]].reason
         assert not plan_status.is_finished(plan, _facts(), repo_dir=repo)
+        # Not a chunk id: never handed out as one (a fact's `chunks` comes from these).
+        assert plan_status.current_chunks(plan, _facts(), repo_dir=repo) == ["01"]
+        for mode in ("final", "cumulative"):
+            assert plan_status.propose_chunks(plan, _facts(), [], mode, repo_dir=repo) == ["01"]
+
+    def test_held_states_answer_without_a_second_walk(self, repo, monkeypatch):
+        plan = _plan(repo, ("01",), status={"01": True})
+        states = plan_status.chunk_states(plan, _facts(), repo_dir=repo)
+
+        def no_walk(*_a, **_kw):
+            raise AssertionError("walked again")
+
+        monkeypatch.setattr(plan_status, "chunk_states", no_walk)
+        assert plan_status.is_finished(plan, _facts(), repo_dir=repo, states=states)
+        assert plan_status.current_chunks(plan, _facts(), repo_dir=repo, states=states) == []
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +525,20 @@ class TestBuiltChunks:
         _commit(repo, "src/c03.py", "x\n", "unlabelled work")
         assert plan_status.built_chunks(plan, repo) == {"02", "03"}
 
+    def test_with_no_base_or_branch_declared_it_walks_the_repo_base_to_head(self, repo):
+        plan = _plan(repo, ("01", "02"), claim=())
+        _commit(repo, "notes.txt", "x\n", "feat(unit): Chunk 02 — the second")
+        assert plan_status.built_chunks(plan, repo) == {"02"}
+
+    def test_an_option_shaped_branch_never_reaches_git(self, repo, monkeypatch):
+        plan = _plan(repo, ("01", "02"), claim=("branch: --output=/tmp/x", "base: --all"))
+        _commit(repo, "src/c01.py", "x\n", "work")
+        built_chunks = plan_status.built_chunks  # the spy stubs the module name
+        spy = _Spy(monkeypatch)
+        assert built_chunks(plan, repo) == {"01"}  # walked from HEAD
+        assert spy.calls, "the walk ran"
+        assert not [c for c in spy.calls if any(a.startswith("--output") or a == "--all" for a in c)]
+
     def test_a_scoped_branch_ignores_a_foreign_plans_chunk_subject(self, repo):
         plan = _plan(repo, ("01", "02"))
         _commit(repo, "a.txt", "x\n", "feat(unit): scaffolding")
@@ -485,8 +552,17 @@ class TestBuiltChunks:
 
 
 def test_every_build_plan_in_this_repo_reads_without_an_unreadable_or_unparsed_key():
-    """The parser reads every real plan this repo has: none answers the
-    unreadable sentinel or an unparsed-heading key, and the walk saw plans."""
+    """The parser reads every real plan this repo has: none answers a synthetic
+    entry (the unreadable sentinel or an unparsed heading), and the walk saw
+    plans.
+
+    **Repo-coupled on purpose** (tests.md: a predicate that classifies real
+    artifacts reads one). Plans are records, so a doc-only plan edit can red
+    this while the test-status fast path still calls the last green current: a
+    red here is the guard firing on a heading the parser cannot read — fix the
+    heading it names. Ticking boxes or landing facts cannot red it: only which
+    keys exist is asserted, never a state.
+    """
     from lib import plan_index
 
     repo_root = ROOT.parent
@@ -498,8 +574,8 @@ def test_every_build_plan_in_this_repo_reads_without_an_unreadable_or_unparsed_k
     assert len(plans) >= 10, f"walked {len(plans)} plans — the corpus was not reached"
     bad = {}
     for p in plans:
-        keys = list(plan_status.chunk_states(p, _facts(), repo_dir=repo_root))
-        odd = [k for k in keys if k == plan_status.UNREADABLE_PLAN or k.startswith("?L")]
+        states = plan_status.chunk_states(p, _facts(), repo_dir=repo_root)
+        odd = [s.reason for s in states.values() if s.synthetic]
         if odd:
             bad[p.relative_to(repo_root).as_posix()] = odd
     assert not bad, bad

@@ -7228,7 +7228,7 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
         plan_path, scope = binding.plan_path, binding.scope
     facts = evidence.read_facts(project_dir)
     states = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir)
-    finished = plan_status.is_finished(plan_path, facts, repo_dir=project_dir)
+    finished = plan_status.is_finished(plan_path, facts, repo_dir=project_dir, states=states)
     built = plan_status.built_chunks(plan_path, project_dir)
     rel = _plan_rel(project_dir, plan_path)
     rows = [
