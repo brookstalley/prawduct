@@ -1,7 +1,8 @@
 # Issue #1050 — work units: one identity binds plan, branch, fragment and backlog item; chunk status stops being hand-ticked: Requirements
 
-`status: draft · stage: requirements · area: governance · added: 2026-10-25 · source: owner
-session · issue: https://github.com/brookstalley/prawduct/issues/1050`
+`status: draft · stage: design · area: governance · added: 2026-10-25 · amended: 2026-10-24 (owner
+rulings D1–D6, BR5/BR6 amended, ST8/EV1–EV2/DG1–DG2 added) · source: owner session · issue:
+https://github.com/brookstalley/prawduct/issues/1050 · design: 1050-design.md`
 
 Related: #1007 (two readers of "which plan is this review of"; shape (b) fixed by #1049, shape (a)
 open), #843 (a finished branch that never got a PR), #834 (derive the change record at merge),
@@ -202,13 +203,19 @@ and the DV3 amendment is decision D1.
 - **BR4** Every review, ledger event and gate decision records the unit it was about, taken from
   BR1's answer, or records "none". No consumer substitutes a fallback of its own. (This is the
   defect class #1049 closed for one route.)
-- **BR5** Several work units may share a branch, and one work unit may span the branches it
-  actually needs. When several units share a checkout, which one is active is stated, as the
-  precedence in `planning.md:56` does today, and never silent. Whether a unit may span several
-  branches (stacked or follow-up PRs) is decision D4.
-- **BR6** Detached HEADs, linked worktrees, delegate worktrees and a checkout outside git resolve
-  predictably and say which case they are in. A delegate's worktree resolves the same unit as its
-  dispatcher when it works on that unit.
+- **BR5** *(amended 2026-10-24, owner)* At most one live plan **claims** the checked-out branch.
+  Any number of plans may be *present* on it — a merged child's plan rides along inert until its
+  release — and presence binds nothing. Two live claimants is a broken binding (BR3), reported,
+  never resolved by precedence. A unit has one integration branch and may declare working
+  branches that merge into it (D4); it never spans two integration branches. *Superseded:* the
+  precedence list at `planning.md:56` and "several plans per branch is ordinary".
+- **BR6** *(amended 2026-10-24, owner)* Detached HEADs, linked worktrees, delegate worktrees and a
+  checkout outside git resolve predictably and say which case they are in. A harness scratch
+  worktree (`gitstate.is_ephemeral_worktree`) is **unbound by construction**: it resolves no unit,
+  owes no review and writes no review fact; its work is attributed when the coordinator merges
+  and reviews it. A *named* branch worked in a worktree binds through its unit's declaration
+  (`branch:` or `working-branches:`), the same as any checkout. This is #648's
+  durable/disposable line made the binding rule.
 
 ### Chunk status
 
@@ -231,6 +238,33 @@ and the DV3 amendment is decision D1.
   owner. A plan with no chunks answers the same way everywhere (today it answers four ways).
 - **ST7** The legacy `project-state.yaml` `build_plan.chunks[].status` reading stops being a
   second input to the gates, or is migrated.
+- **ST8** *(added 2026-10-24)* A review fact names the **set** of chunks it certifies, declared
+  at dispatch and confirmed by the coordinator; the framework proposes the set from the reviewed
+  diff and the chunks' deliverables. Parallel delegation lands several chunks per review, and a
+  singular chunk chosen by "first unticked" misnames what was reviewed.
+
+### Evidence
+
+- **EV1** *(added 2026-10-24)* Review and resolution facts are keyed by the trees they cover, as
+  today, so a consumer that squash- or rebase-merges loses no verdict a branch-time gate reached.
+  Squash and rebase are not forbidden; where history is rewritten, only history-derived lifecycle
+  degrades, and it falls back to the PR record.
+- **EV2** *(added 2026-10-24)* The facts a gate reads travel with the branch: a second clone or
+  machine reconstructs the same verdict from the same facts (the data-model norm's stated why,
+  which today holds only across worktrees of one clone because the store is `.git`-local).
+  Transport is a git-native ref pushed with the branch, never a network service (NF1,
+  `architecture.md` local-first).
+
+### Delegation
+
+- **DG1** *(added 2026-10-24)* The delegation protocol's division — delegates build and prove
+  their own change under a ceiling; the coordinator integrates, reviews and governs — is
+  unchanged and becomes structural through BR6: no refusal list is needed for a checkout that
+  is bound to nothing.
+- **DG2** *(added 2026-10-24)* A delegate's narrowed test run is recorded as evidence the
+  coordinator can see, attributed to the tree it ran on and marked as narrowed. The ephemeral
+  guard's rationale (a `.prawduct/` write strands at merge) does not reach the shared store, so
+  refusing the fact half of `test-evidence record` discards evidence for no reason.
 
 ### Lifecycle
 
@@ -299,42 +333,46 @@ and the DV3 amendment is decision D1.
    and passes identically after the migration command.
 7. The session digest and the build-plan template are shorter than today, and the tick-timing
    instructions are gone from them.
+8. A coordinator merges two delegate branches carrying chunks 01 and 03, runs one review naming
+   both, and both read as done while 02 stays open — without a hand edit.
+9. A scratch delegate worktree on a bound branch's fork resolves no unit and arms no gate; a named
+   working branch declared by the plan resolves the unit with role `working`.
 
-## Open decisions (owner)
+## Decisions (ruled 2026-10-24, owner, design session)
 
-Ordered by what rests on them.
+Recorded here and in `1050-design.md` § Rulings so the DV3 amendment is not its own only witness.
+The design doc carries each ruling's reasoning; this list is the record.
 
-- **D1 Amend DV3: chunk status comes from governance events, not hand ticks?** Recommended yes:
-  the review and reflection facts already exist and are written by code, which answers DV3's
-  objection to git directly. The cost is that status becomes only as reliable as review
-  attribution, which is why BR1-BR4 must land first. The alternative is to keep hand ticks and
-  only simplify when to tick (less change, and the confusion stays).
-- **D2 Retire the `active_build_plan` pointer and the conventional `build-plan.md` default?**
-  Recommended: retire both for repos whose plans declare a binding, and keep them read-only for
-  legacy repos through a deprecation window (MG3).
-- **D3 Retire branch-name→scope inference?** Recommended yes: it is the one route that admits
-  guessing, and BR2's recorded binding makes it unnecessary. Possibly keep it as a suggestion at
-  plan creation.
-- **D4 May one work unit span several branches** (stacked PRs, a follow-up fix branch)? This is
-  needed if one plan's chunks ship as separate PRs, which `Critic mode: cumulative` per chunk
-  already allows (#999).
-- **D5 What creates the identity?** The plan (today's `scope:`), the backlog item (its issue
-  number), or the branch? *Inferred:* the plan scope, because fragments, review facts and
-  release tags already key on it. But not all work has a plan, and not all work starts from an
-  item.
-- **D6 Is the reflection part of "chunk done"?** DV3 names both the review and the reflection. The
-  reflection is recorded per session today, not per chunk.
+- **D1 — yes.** DV3 is amended: chunk status derives from the review and resolution facts written
+  at the governance event, never from git and never from a hand edit. DV3's why ("a commit marks
+  the end of coding, not governance") is preserved; only the carrier changes. The Stop gate's
+  verdict was already evidence-derived, so the change reaches arming and chunk selection only.
+- **D2 — retire both**, read-only through a deprecation window (MG3) for repos with no plan
+  declaring a binding.
+- **D3 — retire**; a suggestion at minting only.
+- **D4 — yes, bounded**: one integration branch per unit, plus declared working branches that
+  merge into it. A follow-up fix is a new unit.
+- **D5 — the plan mints the identity** (its `scope:`); the branch binds it; everything else
+  references it. Issue numbers are `closes:` references.
+- **D6 — no.** Reflection stays a session-end gate.
+- **Squash/rebase are not forbidden** (EV1). Merge-only enforcement is a `doctor` offer.
 
-## Research for design (verify, don't recall)
+## Research for design — findings (2026-10-24)
 
-- How issue trackers and stacked-PR tools bind one unit of work to branches and PRs (GitHub's
-  linked issues and closing keywords and their default-branch limit, already documented in the PR
-  skill; Graphite/ghstack-style stacks), for D4.
-- The evidence store's review-fact attribution today: how often `scope_chosen_by` is
-  `not-resolved` or `branch-name` across this repo's 1,242 review facts. That measures how far
-  ST1 has to move attribution before it can be trusted.
-- Which consumer repos run pointer-only plans, and how many live plans carry unticked boxes, to
-  size MG1-MG3.
+- **Attribution today.** 1,247 review facts in this repo's store: `scope_chosen_by` =
+  `branch-name` 618, `not-resolved` 234 (scope null), `explicit-args` 46, absent (pre-field)
+  349. About 19% of attributed-era reviews could not say what they reviewed, and the ledger then
+  borrowed a scope for them. Re-derive: iterate `kind == "review"` facts in
+  `<git-common-dir>/prawduct/evidence.jsonl` and count `body.scope_chosen_by`.
+- **The store is clone-local.** `evidence.store_path` is `<git-common-dir>/prawduct/evidence.jsonl`;
+  the ledger is gitignored per worktree. Neither is pushed. This is EV2's origin.
+- **Consumer repos running pointer-only plans** (live plan, no `branch:`, `active_build_plan`
+  set): faidh, metallm, discodon (kairo worktree). hallucinote has a live plan with neither
+  `scope:` nor `branch:`. Sizes MG1–MG3 at three repos plus one unbound plan.
+- **Stacked-PR binding.** GitHub binds PR↔branch natively, retargets a PR whose base branch is
+  merged and deleted, and fires closing keywords only on the default branch (already in the PR
+  skill). Merge-commit history carries a stack without rewriting; the base of a branch is the one
+  relation git does not persist, so the plan records `base:`.
 
 ## Scope-out
 
