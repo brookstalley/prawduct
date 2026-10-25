@@ -117,11 +117,11 @@ grounding facts); Medium for § 1's `plan new` defaults for `base:` — raise by
 
 ## Status
 
-- [ ] Chunk 01: `work_unit.resolve` — one owner, three answers, four red-first shapes
+- [x] Chunk 01: `work_unit.resolve` — one owner, three answers, four red-first shapes
 - [ ] Chunk 02: lib callers take `Binding`
 - [ ] Chunk 03: hook callers take `Binding`
 - [ ] Chunk 04: `plan new` / `plan bind`, fragment and `closed-by` scope validation
-- [ ] Chunk 05: one home for the rule — prose
+- [x] Chunk 05: one home for the rule — prose
 - [ ] Chunk 06: integration — shims, advisory, subcommand wiring, suite, cumulative review
 
 Context: Chunk 01 is the keystone and is reviewed `final` before anything builds on it. 02–05 are
