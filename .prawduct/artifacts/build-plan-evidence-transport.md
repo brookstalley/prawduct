@@ -1,0 +1,440 @@
+---
+artifact: build-plan
+version: 2
+scope: evidence-transport
+branch: feature/1052-evidence-transport
+base: develop
+working-branches: []
+partition: >-
+  01 and 04 start together, isolated worktrees, disjoint files — 01 (delegate K): new
+  plugin/lib/evidence_notes.py, evidence.py's envelope append, critic_consolidate.py's note
+  hook-in, the hook's `evidence ingest` and the chunk-imported writer's hook-in; 04 (delegate C):
+  new plugin/lib/plan_lifecycle.py and plan_status.py's rendering. 01 is reviewed `final` before
+  02 and 03 are briefed against its signature. Then 02 (delegate A: plugin/lib/evidence_sync.py,
+  `evidence sync|configure` in the hook, the egress records), 03 (delegate B: cmd_clear's ingest
+  step, the PR/doctor/onboard skills, `plan status` lifecycle wiring from 04's signature) and 05
+  (delegate D: prose — methodology, docs, artifacts, the fragment) in isolated worktrees. The
+  hook binary is B's in 02–05 (A hands its two subcommands to B as functions in evidence_sync.py
+  and B registers them). The coordinator owns integration, 06 and every governance act.
+governed_by:
+  - .prawduct/artifacts/data-model.md
+  - .prawduct/artifacts/architecture.md
+  - .prawduct/artifacts/api-contract.md
+  - .prawduct/artifacts/nonfunctional-requirements.md
+depends_on:
+  - documentation/issues/1050-requirements.md
+  - documentation/issues/1050-design.md
+  - .prawduct/artifacts/build-plan-chunk-status.md
+last_validated: 2026-10-25
+---
+
+## Goals
+
+**Response taken:** Proceed, citing #1052 (`stage: design`, child of #1050) and
+`documentation/issues/1050-design.md` § 4 and § 5 (requirements EV1, EV2, LC1, LC2, NF1). Waves
+1 and 2 merged to develop on 2026-10-25, which this wave requires. Delegation for the #1050 waves
+was approved by the owner on 2026-10-24 (handoff), so no approval ask is made. Two inferences
+below depart from the design's letter and are marked for veto.
+
+**Product:** A second clone of a governed repo — a teammate's machine, CI, a fresh checkout after
+a disk wipe — reaches the same coverage verdict for a branch as the clone that ran the reviews,
+from the same facts. Today the evidence store lives inside `.git` and is never pushed, so every
+other clone sees zero coverage, and since Wave 2 derives chunk status from those facts that gap
+is load-bearing. A plan's lifecycle (in progress, merged and awaiting release, released,
+superseded) is reported from what git and the change record already show, stored nowhere. This
+closes #1052 and, as its last child, #1050.
+
+**Architecture:** The transport is a git-native ref, `refs/notes/prawduct`, carrying the store's
+own line format so a note *is* store lines on a commit and ingestion is `append` with
+dedup — nothing new to parse, nothing re-derived (`data-model.md`: facts immutable; `architecture.md`:
+the git object database is the substrate). Verdicts keep composing by tree id from the store;
+the note's commit is a locator only, so squash and rebase lose no branch-time verdict (EV1).
+Network happens only where a person acts — `/prawduct:pr create|update` already pushes the
+branch, and the notes ride that same act through one hook command; session start and every gate
+stay offline (NF1, local-first). Authority fails closed: a note that cannot be read ingests
+nothing and says so; a tree another clone does not hold reads as a gap there, never as covered.
+Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json` keys
+(`lifecycle`), one new flag on `plan status`; nothing repurposed.
+
+**Constraints and tradeoffs accepted:**
+- *Facts carry tree ids, not trees.* A `chunk`/`final` review of a dirty tree records a
+  `head_tree` no commit holds; the note transports the fact, and a second clone that lacks the
+  tree sees the interval as a gap (`evidence.missing_objects` already names it, as it does after
+  a rebase today). The boundary `cumulative` and every committed-delta `verify-resolutions`
+  record committed trees, which the branch push carries — so the PR gate's verdict is identical
+  across clones. *Inferred, owner can veto:* the design summary's "carrying the reviewed trees"
+  is met by the ids; pushing uncommitted trees would need refs to orphan commits and is
+  scope-out. Revisit if a consumer needs a mid-chunk review visible in CI.
+- *`--github-status` is cut from this wave.* `architecture.md`'s local-first norm says no review
+  verdict crosses the network on any surface, and a `prawduct/critic` commit status is exactly
+  that verdict leaving through `gh`. Admitting it is an owner ruling on a norm, not a build
+  decision; filed as a backlog item in Chunk 06 with the ruling it needs. Nothing else in § 4
+  depends on it.
+- *Lifecycle is offline first.* `plan status` derives lifecycle from local refs, review-fact
+  anchors and the change record; the `gh pr list` fallback the design names for squash/rebase
+  consumers runs only behind an explicit `--probe-pr` flag, never from the briefing or a hook
+  (NF1; the Stop hook's one network probe is already a known cost). "Released" is answered by the
+  change record (`plan_backfill.shipped_scopes`, the release cut's own output) rather than by tag
+  containment — the record is the release's home and needs no tag walk. *Inferred:* tags are a
+  cross-check the owner may want later; not built.
+- *`chunk-imported` facts travel too.* The design transports only the verdict kinds; the Wave 2
+  caveat in `doctor` check #23 ("facts live in this clone until #1052") exists because an import
+  in clone X is invisible in clone Y, and that stays true unless the imported facts ride the ref.
+  An import is anchored on the HEAD at import time (its block-removal commit is that commit's
+  child, so the anchor stays reachable). *Inferred, owner can veto.* The `--remove-block` flag's
+  retirement stays with #1055 (a flag removal is not additive).
+- *Notes merge by `cat_sort_uniq`, not `union`.* Both are correct under id-dedup; `cat_sort_uniq`
+  also drops the blank separator lines `notes append` inserts (probed 2026-10-25, git 2.54) and
+  never conflicts. Method, not goal (`architecture.md`: prescribed method is advice).
+- *The fetch target is a tracking ref.* `refs/notes/origin/prawduct` receives the remote's notes;
+  the local `refs/notes/prawduct` is merged from it and pushed. Fetching straight into the local
+  ref would need `+` and would overwrite notes not yet pushed (probed: an unmerged push is
+  rejected non-fast-forward, which is the safety the tracking ref preserves).
+- *`.git/config` writes* (`remote.<r>.fetch` refspec, `notes.rewriteRef`) are the clone's own
+  state, the same class as the store (inside `.git`, never committed), written only by
+  `evidence configure --apply`, which `doctor` offers and `onboard` runs. Recorded under the
+  "writes nothing except" norm below for veto.
+- *Scope not taken:* `.critic-findings.json` survives (Q1): `verify-resolutions` finds its prior
+  review through that cache, so a verify dispatched in a second clone has no anchor — filed as a
+  follow-up in Chunk 06, not built here. Tag containment, orphan-tree transport, enforcing
+  merge-only, and #1055's shim retirements are out.
+
+**Decisions made mid-build:** (appended while building)
+
+**Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
+sites, the PR skill's push step and session start's boundary region are enumerated from a
+2026-10-25 inventory with line anchors, and git's notes behaviour was probed). Medium for § 5: the
+rule for a merged plan whose branch is gone under squash is net new (`unknown` without
+`--probe-pr`), and whether consumers accept "released" from the change record alone is an
+inference — the cheapest raise is the owner reading the Lifecycle rule in Chunk 04 before C is
+briefed, so it is stated there in full.
+
+### Norm reconciliation (`governed_by`)
+
+- `data-model.md` "verdicts from the append-only ledger, no model in a fact's write path" —
+  **conforms**; ingestion appends code-written lines verbatim; nothing is edited or re-derived.
+- `data-model.md` "facts immutable and append-only" — **conforms**; a note is only ever appended
+  to, a merge only ever adds lines, and ingest only appends.
+- `data-model.md` "derived views never feed a gate" — **conforms**; no gate reads a note; gates
+  read the store, which ingest feeds.
+- `data-model.md` "newer schema → loud block, never dropped" — **conforms**; an ingested line with
+  `schema` ahead is appended verbatim so the existing `schema_ahead` block fires here too.
+- `data-model.md` "two stores, two lifetimes" — **conforms**; transported facts are shared
+  answers; the store stays per clone and gitignored; nothing per-clone enters the ref.
+- `architecture.md` local-first, three network surfaces — **conforms, with a recorded site**:
+  the notes push/fetch reaches only the product's own remote, inside `/prawduct:pr`, where the
+  branch push already happens — the git-tidy precedent (2026-10-22) — and is added to
+  `egress_boundary` as a site, not a surface. The commit status is **not** admitted (cut; owner
+  ruling needed).
+- `architecture.md` "writes nothing into a governed repo except…" — **conforms, read as the store's
+  class, recorded for veto**: `refs/notes/prawduct` and two `.git/config` keys live inside
+  `.git`, never in the work tree; written by `evidence configure --apply` only.
+- `architecture.md` "authority fails closed; advice fails soft" — **conforms**; unreadable notes
+  ingest nothing and report; a missing tree is a gap; session-start ingest failing is a NOTE,
+  never a block.
+- `architecture.md` "every fact has one home" — **conforms**; `plan_lifecycle` is the one
+  derivation of lifecycle and `check-claims`' release-pending outcome moves onto it.
+- `api-contract.md` store schema-versioned, additive-first, exit codes the contract —
+  **conforms**; no schema bump (the envelope is unchanged), new subcommands and keys only, each
+  with documented exit codes recorded in Chunk 05.
+- `nonfunctional-requirements.md` review wall clock P0 — **conforms**; one keystone `final`, one
+  `cumulative`; 02–05 fold into the cumulative.
+
+## Build Chunks
+
+Shapes every chunk reads or writes (fixed here so no delegate guesses them):
+
+- **Note body:** the store's envelope lines, one JSON object per line, exactly the bytes the
+  store holds. Readers tolerate blank lines and whitespace. The note hangs on the fact's
+  **anchor**: `body.head_commit or body.dispatch_commit` for a `review`; the `verified_by`
+  review's anchor for a `resolution`; the HEAD at write time for a `chunk-imported`.
+  `TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported"})`.
+- **Refs:** local `NOTES_REF = "refs/notes/prawduct"`; tracking
+  `NOTES_TRACKING_REF = "refs/notes/origin/prawduct"` (the remote name substituted from
+  `gitstate.push_remote`); refspec `+refs/notes/prawduct:refs/notes/<remote>/prawduct`; config
+  `notes.rewriteRef = refs/notes/prawduct`.
+- **`evidence_notes` signature** (Chunk 01, reviewed before 02/03 are briefed):
+  `attach(project_dir, envelope: dict, anchor: str) -> dict` (`{"status": "attached"|"skipped"|"error", "reason"}`;
+  skipped when the kind is not transported or the anchor is not an object id);
+  `ingest(project_dir, *, bound: bool = True, known=None) -> dict`
+  (`{"status": "ok"|"error", "appended": int, "seen": int, "commits": int, "reason"}`; bounded
+  means commits in `merge_base..HEAD` from `coverage.resolve_merge_base_tree`, unbounded walks
+  every note; `known` is a `read_facts` result to dedupe against, read once when omitted);
+  `evidence.append_envelope(project_dir, envelope) -> dict` (verbatim append of a foreign
+  envelope: requires `kind`, `id`, int `schema`, dict `body`; refuses nothing else).
+- **`plan_lifecycle` signature** (Chunk 04, B wires it in 03):
+  `observe(plan_path, *, repo_dir, facts=None, probe_pr=False) -> Lifecycle` with
+  `state: Literal["in-progress", "merged-unreleased", "released", "superseded", "unknown"]`,
+  `reason: str` (what was observed, one sentence), `released_in: str | None`,
+  `probed: bool`.
+- **`evidence_sync` signature** (Chunk 02): `sync(project_dir, *, push: bool = True) -> dict`
+  (`{"status": "ok"|"error", "step": "fetch"|"merge"|"ingest"|"push"|None, "pushed": bool,
+  "ingested": int, "reason"}`); `configure(project_dir, *, apply: bool) -> dict`
+  (`{"status": "ok"|"error", "changes": [..], "applied": bool, "reason"}`).
+
+### Chunk 01: notes written at consolidation, read back by `evidence ingest`
+
+- **Description:** New module `plugin/lib/evidence_notes.py` as the signature above. `attach`
+  runs `git notes --ref prawduct append -F <tmpfile> <anchor>` through `evidence.run_git` with
+  the envelope serialised exactly as the store line. `ingest` lists notes once
+  (`git notes --ref prawduct list`), intersects with the bounded commit set (`git rev-list
+  merge_base..HEAD`, one call; none when unbounded), reads every matching note blob in one
+  `git cat-file --batch`, parses lines, drops `(kind, id)` pairs already in the store, and appends
+  the rest through `append_envelope`. No notes ref → `{"status": "ok", "appended": 0}` with
+  **zero further subprocesses** after the one `rev-parse -q --verify refs/notes/prawduct`.
+  Hook-ins: `critic_consolidate.consolidate` calls `attach` after each successful `review` and
+  `resolution` append (the two write sites at `critic_consolidate.py` ≈5874 and ≈5896 — a
+  failed attach is a NOTE on stderr, never a failed consolidation); the hook's `chunk-imported`
+  writer (`prawduct-hook` ≈7827) attaches on HEAD. New `prawduct-hook evidence ingest [--all]
+  [--json]` (read-only ops table entry so it runs anywhere) prints appended/seen/commits.
+- **Depends on:** none
+- **Artifacts consumed:** `1050-design.md` § 4; `plugin/lib/evidence.py` (`append_fact`,
+  `read_facts`'s `(kind, id)` dedup, `run_git`, `missing_objects`); `plugin/lib/critic_consolidate.py`
+  write sites; `plugin/lib/coverage.py` `resolve_merge_base_tree`; `plugin/lib/gitstate.py`
+  `is_object_id`; `tests/test_plan_status.py`'s `repo` fixture and `tests/test_git_hygiene.py`'s
+  `clone` fixture (bare origin) as the shapes to copy.
+- **Deliverables:** new `plugin/lib/evidence_notes.py`; `append_envelope` and `TRANSPORTED_KINDS`
+  in `plugin/lib/evidence.py`; the two `attach` calls in `plugin/lib/critic_consolidate.py`; the
+  import writer's `attach` and `evidence ingest` in `plugin/bin/prawduct-hook`;
+  new `tests/test_evidence_notes.py` covering, red first: a review fact appended at consolidation
+  leaves one note on its anchor holding the identical line; a resolution's note lands on its
+  `verified_by` review's anchor; a dirty-tree review (`head_commit` null) anchors on
+  `dispatch_commit`; a `session-start` fact attaches nothing; a store wiped and re-ingested from
+  notes yields the same `(kind, id)` set and an identical `coverage_verdict` for a committed
+  interval; ingest twice appends nothing the second time; a note on a commit outside
+  `merge_base..HEAD` is ignored when bounded and read with `--all`; a blank-separated note body
+  ingests every record; a schema-ahead line is appended verbatim and `read_facts` files it under
+  `schema_ahead`; a malformed line is skipped with its count in `reason` and the rest ingested;
+  no notes ref costs exactly one subprocess (spy, by call); a bare-origin round trip — clone A
+  consolidates and pushes `refs/notes/prawduct`, clone B fetches and ingests — reaches the same
+  verdict for the committed interval.
+- **Tests:** the module above; `tests/test_critic_consolidate.py` gains the attach-on-append case
+  and the attach-fails-softly case.
+- **Acceptance criteria:** every listed shape has a red-first test; `attach` and `ingest` make no
+  network call (spy on `socket` and on `run_git`'s argv for `fetch|push|ls-remote|pull`);
+  `critic_consolidate`'s store append succeeds whether or not the note does; on this repo
+  `python3 plugin/bin/prawduct-hook evidence ingest` exits 0 and appends 0 (no ref yet).
+- **Critic mode:** final
+  <!-- Keystone: 02 and 03 build on this signature and on the note body shape. -->
+- **Done when:**
+  1. Acceptance criteria met and the owned test modules pass (the delegate's ceiling)
+  2. Handed back; the coordinator merges and runs `/prawduct:critic` — blocking findings resolved
+  3. Committed — then 02 and 03 are briefed against the signature above
+
+### Chunk 02: `evidence sync` and `evidence configure`
+
+- **Description:** New module `plugin/lib/evidence_sync.py`. `sync`: `git fetch <remote>
+  +refs/notes/prawduct:refs/notes/<remote>/prawduct` (a missing remote ref is not an error — a
+  first push has nothing to fetch), `git notes --ref prawduct merge -s cat_sort_uniq
+  <remote>/prawduct` when the tracking ref exists, `evidence_notes.ingest` (bounded), then
+  `git push <remote> refs/notes/prawduct` unless `push=False`; a rejected push, a stuck
+  `NOTES_MERGE_REF` from an earlier failure, or git failing are reported with the failing `step`
+  and git's stderr scrubbed through `git_hygiene`'s denylist, nothing retried. `configure`: adds
+  the fetch refspec to `remote.<remote>.fetch` if absent and sets `notes.rewriteRef`; preview by
+  default, `--apply` writes; no remote → `ok` with the reason and nothing to do. Both are
+  reached only when a person or the agent runs the command — the same class as `git-tidy`'s
+  fetch and push — and the egress record says so: `project-state.yaml` `egress_boundary` gains
+  the site, `security-model.md`'s egress enumeration gains the matching line. The two hook
+  subcommands are *functions* here (`cmd_evidence_sync(project_dir, args)`,
+  `cmd_evidence_configure(project_dir, args)` returning an exit code); B registers them in the
+  hook in Chunk 03 (exit 0 ok, 1 a reported failure naming the step, 2 usage).
+- **Depends on:** Chunk 01
+- **Artifacts consumed:** `1050-design.md` § 4 "Transport"; `plugin/lib/git_hygiene.py`
+  (`_git_write`, the stderr scrub, `_gh_timeout`'s network budget);
+  `plugin/lib/evidence.py` `run_git` (`NETWORK_TIMEOUT_FLOOR` applies to fetch/push);
+  `plugin/lib/gitstate.py` `push_remote`; `tests/test_git_hygiene_merge.py`'s second-clone setup.
+- **Deliverables:** new `plugin/lib/evidence_sync.py`; the `egress_boundary` line in
+  `.prawduct/project-state.yaml` and the enumeration line in `.prawduct/artifacts/security-model.md`;
+  new `tests/test_evidence_sync.py` covering, red first: first sync with no remote notes pushes
+  and reports `pushed`; two clones appending different notes on the same commit both sync and
+  each ends with both records, once; a clone behind the remote fetches, merges, ingests and its
+  store gains the other clone's facts; `push=False` pushes nothing; a remote that rejects the push
+  reports `step: push` and the local ref is intact; a stuck merge state reports `step: merge`;
+  `configure` preview writes nothing, `--apply` writes both keys, a second `--apply` changes
+  nothing, and a repo with no remote reports that; after `configure --apply`, a plain
+  `git fetch` carries the notes (probed 2026-10-25).
+- **Tests:** as above.
+- **Acceptance criteria:** every network call goes through `run_git` (spy on argv; the timeout
+  floor applies); no `gh` call anywhere in the module; the egress record names the site in both
+  homes; the Critic's infrastructure-coherence check finds the record.
+- **Done when:**
+  1. Acceptance criteria met and the owned test modules pass
+  2. Handed back; merged and reviewed with 03–05 in Chunk 06's cumulative
+  3. Committed
+
+### Chunk 03: hook and skills — session-start ingest, PR push, doctor and onboard, lifecycle wiring
+
+- **Description:** In `plugin/bin/prawduct-hook`: `cmd_clear`'s boundary region (beside
+  `_record_session_start`, boundary only, never `--brief-only`) calls `evidence_notes.ingest`
+  bounded, failing soft with a NOTE and printing one line only when something was appended
+  (`N review facts ingested from refs/notes/prawduct`); registers `evidence sync` and
+  `evidence configure` from Chunk 02 (`_reject_unknown_args`, the data-plane/read-only tables as
+  each command's writes require); `plan status` prints a `lifecycle:` line from
+  `plan_lifecycle.observe` and `--json` gains `lifecycle: {state, reason, released_in, probed}`,
+  with a new `--probe-pr` flag passed through; `plan check-claims`' release-pending outcome
+  reads `observe(...).state == "merged-unreleased"` instead of its private
+  `_release_pending_records` (deleted). Skills: `pr/SKILL.md` Create step 5 and Update step 1
+  run `prawduct-hook evidence sync` after the branch push and before `check-branch-pushed` (a
+  failure is reported, never blocks the PR — coverage is the PR gate, transport is not), with the
+  `allowed-tools` grant; `doctor/SKILL.md` gains check #25 (notes transport unconfigured →
+  offer `evidence configure --apply`) and rewrites #23's caveat (imports now travel; the offer
+  passes `--remove-block`); `onboard/SKILL.md` runs `evidence configure --apply` after its commit
+  when a remote exists.
+- **Depends on:** Chunks 01, 02 (signatures); 04's signature (fixed above, wired here)
+- **Artifacts consumed:** `1050-design.md` § 4 "Transport", § 5; `plugin/bin/prawduct-hook`
+  (`cmd_clear` ≈1950, `_cmd_plan_status`, `_cmd_plan_check_claims`, `_release_pending_records`,
+  the ops tables); `plugin/skills/pr/SKILL.md`; `plugin/skills/doctor/SKILL.md`;
+  `plugin/skills/onboard/SKILL.md`; `plugin/lib/briefing.py` `_spawn_cache_warm` (the prior art
+  for paying nothing at session start — ingest is synchronous because the briefing reads the
+  store next, and bounded so the cost is the branch's commits).
+- **Deliverables:** the changes above; `tests/test_hook_cli_regressions.py` or
+  a new `tests/test_session_start_ingest.py` covering: boundary start ingests and prints the count,
+  `--brief-only` ingests nothing, no notes ref costs one subprocess beyond today's (extend
+  `tests/test_hot_path_git_batching.py`'s count), an unreadable note is a NOTE and the briefing
+  still renders; `tests/test_plan_hook_cmd.py` gains the lifecycle line and `--json` key and
+  `--probe-pr` pass-through; `tests/test_plan_check_claims.py` renegotiated onto `observe`;
+  skill-prose tests that pin the PR skill's step order (push → sync → check-branch-pushed) and
+  the doctor check numbering.
+- **Tests:** as above.
+- **Acceptance criteria:** `grep -n '_release_pending_records' plugin/` returns nothing; session
+  start in a repo with no notes ref adds exactly one git call to today's count (pinned);
+  `/prawduct:pr`'s prose names `evidence sync` once in each flow; on this branch `plan status`
+  prints `lifecycle: in-progress`.
+- **Done when:**
+  1. Acceptance criteria met and the owned test modules pass
+  2. Handed back; merged and reviewed with 02, 04, 05 in Chunk 06's cumulative
+  3. Committed
+
+### Chunk 04: lifecycle observed — `plan_lifecycle.observe`
+
+- **Description:** New module `plugin/lib/plan_lifecycle.py`, the one derivation of LC1, as the
+  signature above. Rule, in precedence order, each step naming what it observed in `reason`:
+  (1) an archived plan → its `lifecycle:` stamp (`superseded` or, for `completed`, `released`
+  with `released_in`); (2) the scope is in `plan_backfill.shipped_scopes` over
+  `change_log_archive.load_all_text` → `released`, `released_in` from the tag; (3) the plan's
+  `branch:` exists locally or as `<remote>/<branch>` and its tip is **not** an ancestor of the
+  declared `base:` (`merge-base --is-ancestor`, one call) → `in-progress`; (4) the tip is an
+  ancestor → `merged-unreleased`; (5) the branch is gone: the newest review fact for the scope
+  whose anchor is an ancestor of `base` → `merged-unreleased` (merge-commit flow); else the
+  scope's fragment is pending (`release_readiness.pending_scopes`) → `merged-unreleased` with
+  `reason` saying it is inferred from the deleted branch and the pending fragment (the Wave 2
+  `check-claims` rule, now one home); (6) otherwise `unknown` naming what was missing — and with
+  `probe_pr=True`, step (6) first asks `git_hygiene.merged_pr_for` (made public) and answers
+  `merged-unreleased` on a merged PR. `plan_status.render_table` gains nothing; a new
+  `plan_status.render_lifecycle(lifecycle) -> str` renders the line B prints. Cost: at most two
+  git calls (one `rev-parse` for the branch, one `--is-ancestor`), plus one `--is-ancestor` per
+  fact probed in step (5), newest first, stopping at the first hit; no network unless `probe_pr`.
+- **Depends on:** none (reads Wave 2's modules; nothing from 01–03)
+- **Artifacts consumed:** `1050-design.md` § 5; `plugin/lib/plan_archive.py` (stamps);
+  `plugin/lib/plan_backfill.py` `shipped_scopes`; `plugin/lib/change_log_archive.py`;
+  `plugin/lib/release_readiness.py` `pending_scopes`; `plugin/lib/plan_status.py` (`_Reachability`,
+  the anchor rule); `plugin/lib/git_hygiene.py` `_merged_pr_for` and `tests/test_git_hygiene_merge.py`'s
+  `fake_gh`/`serve_merged`; `plugin/lib/work_unit.py` (`base`, `branch` from the plan's
+  declarations).
+- **Deliverables:** new `plugin/lib/plan_lifecycle.py`; `render_lifecycle` in
+  `plugin/lib/plan_status.py`; `merged_pr_for` public in `plugin/lib/git_hygiene.py`;
+  new `tests/test_plan_lifecycle.py` covering, red first: a live plan on an unmerged branch →
+  `in-progress`; merged with `--no-ff` and the branch kept → `merged-unreleased`; branch deleted
+  after a merge commit, a review fact anchored on the branch → `merged-unreleased` by anchor;
+  branch deleted, no fact, fragment pending → `merged-unreleased` by inference, reason says so;
+  squash-merged and branch deleted, no fragment → `unknown`, and with `probe_pr` against the
+  fake `gh` → `merged-unreleased` with `probed: true`; scope shipped in the archive log →
+  `released` with `released_in`, even when the branch still exists; an archived plan →
+  `superseded`/`released` from the stamp with no git call (spy); no network without `probe_pr`
+  (spy); the two-call cost bound for the in-progress case (spy, by call).
+- **Tests:** as above; `tests/test_plan_status.py` gains `render_lifecycle`'s one fixture.
+- **Acceptance criteria:** `observe` is the only function in `plugin/` returning a lifecycle
+  state (grep for the five literals outside this module and `plan_archive`'s stamps); every
+  state's `reason` names an observation, never a stored field other than the archive stamp;
+  on this repo `observe` over `build-plan-chunk-status.md` answers `merged-unreleased` by anchor
+  (its facts are in develop's history) and over `build-plan-work-unit-binding.md` likewise.
+- **Done when:**
+  1. Acceptance criteria met and the owned test modules pass
+  2. Handed back; merged and reviewed with 02, 03, 05 in Chunk 06's cumulative
+  3. Committed
+
+### Chunk 05: prose — what the store's reach now is
+
+- **Description:** Every shipped surface that says the store is clone-local and never leaves
+  the clone now says what is true: shared by every worktree of a clone, and its verdict kinds
+  travel with the branch on `refs/notes/prawduct` when `/prawduct:pr` pushes (ingested at session
+  start; `evidence ingest|sync|configure`). Sites from the 2026-10-25 inventory:
+  `methodology/building.md` (evidence model paragraph), `skills/critic/review-cycle.md` § evidence
+  model, `skills/critic/SKILL.md`, `skills/pr/SKILL.md`'s coverage sentence, `docs/governance-telemetry.md`,
+  `docs/project-state-keys.md`, `docs/test-report-contract.md`, `methodology/session-hygiene.md`,
+  `skills/migrate/SKILL.md`, `documentation/project-structure.md`, `documentation/MIGRATION.md`,
+  and `evidence.append_guard_refusal`'s "neither store answers a cross-CLONE question"
+  docstring. Artifacts: `architecture.md`'s descriptive store rows (≈211–217, 255–257) and a
+  `[DECISION]` record beneath the local-first norm naming the new egress site and the cut commit
+  status; `data-model.md`'s description of the store's reach; `api-contract.md` § Operations
+  gains `evidence ingest|sync|configure`, `plan status --probe-pr`, the `lifecycle` key and the
+  exit codes Chunks 02/03 documented; `.prawduct/cross-cutting-concerns.md` gains the new
+  storage surface's row (how security, observability and error handling land on the notes ref —
+  or why not); `build-plan-chunk-status.md`'s consumer-facing "until #1052" sentences are left
+  as history (it is a retained, merged plan), but `.prawduct/changes/chunk-status.md`'s
+  consumer note, still pending release, is amended to say transport ships in the same release.
+  This wave's fragment `.prawduct/changes/evidence-transport.md` gets its narrative, `closes:
+  [1052, 1050]`, and a consumer note that tells an operator the three commands, that a fresh
+  clone needs one `evidence sync` (or a configured refspec) before coverage appears, and that
+  mid-chunk reviews of uncommitted trees stay clone-local.
+- **Depends on:** Chunks 01, 02, 04 (names and exit codes); runs in parallel with 03 on
+  disjoint files (03 owns `plugin/skills/pr/SKILL.md`, `plugin/skills/doctor/SKILL.md` and
+  `plugin/skills/onboard/SKILL.md`; 05 owns everything else)
+- **Artifacts consumed:** the inventory's § 14 list (above); `plugin/skills/critic/review-cycle.md`;
+  `.prawduct/artifacts/api-contract.md`; the budget tests (`tests/test_plugin_methodology_digest.py`
+  and the token-footprint pins) — a trim lands under its ceiling, lower the ceiling in the same
+  commit.
+- **Deliverables:** the edits above; the fragment complete (`change_fragments.validate` clean);
+  tests that read prose (`tests/test_*prose*`, the budget tests) green; a grep for `never pushed`,
+  `clone-local`, `this clone's evidence store` and `until #1052` across `plugin/` and
+  `documentation/` returning only history (CHANGELOG, archived plans, `documentation/issues/`).
+- **Tests:** the prose and budget tests; `python3 plugin/bin/prawduct-hook` fragment validation.
+- **Type:** doc-only
+- **Acceptance criteria:** the grep above; every budget test green with ceilings lowered where a
+  trim landed; `api-contract.md` names every new subcommand, flag, key and exit code 02/03 record.
+- **Done when:**
+  1. Acceptance criteria met and the prose/budget tests pass
+  2. Handed back; merged and reviewed with 02–04 in Chunk 06's cumulative
+  3. Committed
+
+### Chunk 06: integration, live verification and the boundary review
+
+- **Description:** The coordinator integrates 02–05, runs the declared suite, and verifies the
+  acceptance in `#1052` live: a fresh `git clone` of this repo into the scratchpad, `evidence
+  sync` (push from this clone first), then `check-cumulative-critic` in the clone reports the
+  same verdict as here for this branch. Files two backlog items: `critic-consolidate
+  --github-status` with the owner ruling it needs on the local-first norm; Q1 (a
+  `verify-resolutions` anchor that does not depend on `.critic-findings.json`, so a verify can
+  run in a second clone). Confirms the egress record in both homes and `/prawduct:doctor`'s
+  numbering. Then commits and runs the one `/prawduct:critic cumulative`; #1052 and #1050 close
+  with the fragment's `closes:` at the PR.
+- **Depends on:** Chunks 01–05
+- **Artifacts consumed:** this plan's Goals; `documentation/issues/1050-design.md` § 9 (the
+  "notes round-trip" and "squash leaves `evidence status` able to list its facts" pins — both
+  land in 01/04's tests, verified present here).
+- **Deliverables:** the integrated branch; the live verification recorded in this plan's
+  Decisions block with the commands run; the two backlog items; `prawduct-hook test-evidence
+  record` over the integrated tree.
+- **Tests:** the whole declared suite (`test_commands:` in `project-state.yaml`).
+- **Acceptance criteria:** the live round trip reaches the same verdict in the clone; the suite
+  is green and recorded; the cumulative's blocking findings are zero after one verify round.
+- **Type:** cumulative-final
+- **Done when:**
+  1. Acceptance criteria met and the suite recorded green
+  2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
+
+## Early Feedback Milestone
+
+**Milestone chunk:** 01
+**What the user can do:** consolidate a review here, open a second clone of this repo, fetch the
+notes ref and run `prawduct-hook evidence ingest`, and see the review's facts in `evidence list`.
+
+## Governance Checkpoints
+
+**Commit & PR cadence:** 01 commits after its `final`; 02–05 land as delegate merges and are
+reviewed once in 06's `cumulative`, which is the `/prawduct:pr create` gate. One PR for the wave.
+
+- After Chunk 01: the note-body shape and `ingest`'s dedup are what every later chunk trusts —
+  the `final` is where a wrong shape is cheapest to change.
+- After Chunk 06 (cumulative): the live cross-clone round trip on this repo, and the egress record
+  checked against both homes before the PR.
