@@ -9909,7 +9909,7 @@ _USAGE = (
     "plan {new <scope> [--branch B] [--base BASE] [--title T] [--kind K] [--working]|"
     "bind <path> --branch B|resolve [--json]|status [<path>] [--json]}|"
     "resolve-base|version|print-install-reference|"
-    "evidence {status|list [--kind <k>] [-n <count>]|ingest [--all] [--json]}|advisory <subcmd> [args]|"
+    "evidence {status|list [--kind <k>] [-n <count>]|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
     "coverage-status [--json]|coverage-scaffold [--apply] [--json]|"
@@ -10141,6 +10141,18 @@ _DATA_PLANE_COMMANDS = frozenset({
 # guard below and the ephemeral guard's `_EPHEMERAL_READ_ONLY_OPS` — so an op
 # added to the command is a write on both sides until it is listed here.
 _EVIDENCE_READ_OPS = frozenset({None, "status", "list"})
+
+# The command's write ops, listed so a reader outside the dispatcher (the grant
+# sweep in tests/test_skill_command_grants.py) can enumerate what a prefix grant
+# would admit. The guards never read this set — an op is a write by NOT being in
+# `_EVIDENCE_READ_OPS` — so the test also pins that this roster plus the read set
+# is exactly what `cmd_evidence`'s usage line offers.
+_EVIDENCE_WRITE_OPS = frozenset({"ingest", "sync", "configure"})
+
+#: Per-command write rosters for readers that need the words, not the rule.
+_DATA_PLANE_WRITE_OPS = {
+    "evidence": _EVIDENCE_WRITE_OPS,
+}
 
 # Commands whose first positional selects a read or a data-plane write, by
 # their READ set: an op outside it is a write and refuses on a foreign binary.

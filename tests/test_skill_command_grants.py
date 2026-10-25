@@ -943,7 +943,7 @@ def test_no_stale_bundled_exemptions() -> None:
 # it reviews" forbids. Nothing failed, because nothing asked.
 #
 # The write set is QUERIED from the hook — `_DATA_PLANE_COMMANDS` and
-# `_DATA_PLANE_OPS`, the tables the skew guard refuses from — and each entry is
+# `_DATA_PLANE_WRITE_OPS` (the per-command roster beside the READ sets the skew guard refuses by) — and each entry is
 # checked against `_is_data_plane_write`, the predicate that returns the guard's
 # verdict, so an op added to the guard joins this sweep with no edit here. A
 # file that legitimately runs a write names that op in full
@@ -978,11 +978,31 @@ def _hook_module():
     return module
 
 
+def _ops_offered(command: str) -> set[str]:
+    """The ops ``command``'s usage line offers, from the hook's own usage text
+    (``<command> {a|b [flags]|c}``): the roster a person is shown, so a write op
+    missing from it is unreachable and one missing from the rosters is unswept."""
+    text = _HOOK.read_text(encoding="utf-8")
+    # The usage line is the one `<command> {a|b|...}` with alternatives in it.
+    match = re.search(r"\b" + re.escape(command) + r" \{([^}]*\|[^}]*)\}", text)
+    assert match, f"no usage line `{command} {{...}}` in the hook"
+    return {alt.strip().split()[0] for alt in match.group(1).split("|") if alt.strip()}
+
+
 def _data_plane_writes() -> list[str]:
     """Every data-plane write invocation, as the words after the binary."""
     hook = _hook_module()
     words = [(command,) for command in hook._DATA_PLANE_COMMANDS]
-    words += [(command, op) for command, ops in hook._DATA_PLANE_OPS.items() for op in ops]
+    words += [(command, op) for command, ops in hook._DATA_PLANE_WRITE_OPS.items() for op in ops]
+    for command, writes in hook._DATA_PLANE_WRITE_OPS.items():
+        reads = hook._DATA_PLANE_READ_OPS[command]
+        assert not (writes & reads), f"`{command}` lists an op as both a read and a write"
+        offered = _ops_offered(command)
+        assert offered == (reads - {None}) | writes, (
+            f"`{command}`'s usage line offers {sorted(offered)} but the read and write "
+            f"rosters cover {sorted((reads - {None}) | writes)} — an op the guards treat "
+            f"as a write by omission must be listed here, or the sweep cannot name it"
+        )
     for entry in words:
         assert hook._is_data_plane_write(entry[0], list(entry[1:])), (
             f"`{' '.join(entry)}` is in the hook's data-plane tables but "
