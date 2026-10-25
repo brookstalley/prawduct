@@ -2300,8 +2300,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         # Name the subject the deliverable check graded. A review whose record
         # names one plan while its lint graded another is the failure this
         # dispatch line makes visible at the moment it can still be corrected.
+        # Every chunk graded (`chunks_graded`, the set the fact names); the
+        # single `chunk_graded` only for a lint older than the list.
+        graded = ", ".join(lint.get("chunks_graded") or []) or lint.get("chunk_graded")
         print(
-            f"PRAWDUCT: record-lint graded chunk {lint.get('chunk_graded')} of "
+            f"PRAWDUCT: record-lint graded chunk {graded} of "
             f"{subject} (scope {manifest.get('scope') or '(none)'}, "
             f"{manifest.get('scope_chosen_by')})."
         )

@@ -1545,11 +1545,21 @@ def lint_records(
     head_tree: str,
     chunk_id: "str | None" = None,
     scope: "str | None" = None,
+    *,
+    chunk_ids: "list[str] | None" = None,
 ) -> dict:
     """Run every check over the record subset of ``paths``.
 
-    Returns ``{"records", "chunk_graded", "plan_graded", "findings",
-    "unchecked", "counts"}``. ``findings`` is advisory — it never gates.
+    Returns ``{"records", "chunk_graded", "chunks_graded", "plan_graded",
+    "findings", "unchecked", "counts"}``. ``findings`` is advisory — it never gates.
+
+    ``chunk_ids`` is the set the review's fact names (``critic_consolidate``'s
+    ``chunks``, ST8 #1051): every one of them is graded, so the deliverables
+    checked are the chunks the fact will certify, not only the first.
+    ``chunks_graded`` lists each chunk graded; ``chunk_graded`` stays a single
+    id (the first) and is ``None`` unless EVERY requested chunk was graded, so
+    it and the ``chunk-ref-missing`` count stay null together. Without
+    ``chunk_ids`` the single ``chunk_id`` is graded as before.
     ``unchecked`` names each check that could not run and why, so an unrun check
     is never mistaken for a clean one; ``chunk_graded`` and ``plan_graded`` name
     whose deliverables were checked, so a zero count is never mistaken for an
@@ -1576,12 +1586,25 @@ def lint_records(
     # Chunk deliverables are checked whether or not a RECORD changed — a
     # code-only diff still has a reviewed chunk whose declared outputs must
     # exist by review time.
-    chunk_findings, chunk_gap, chunk_graded, plan_graded = _check_chunk_refs(
-        project_dir, prawduct_dir, chunk_id, scope
-    )
-    findings.extend(chunk_findings)
-    if chunk_gap:
-        unchecked.append(chunk_gap)
+    requested = [c for c in (chunk_ids or []) if c] or [chunk_id]
+    chunks_graded: list[str] = []
+    chunk_graded: "str | None" = None
+    plan_graded: "str | None" = None
+    all_graded = True
+    for wanted in requested:
+        chunk_findings, chunk_gap, graded, plan = _check_chunk_refs(
+            project_dir, prawduct_dir, wanted, scope
+        )
+        findings.extend(chunk_findings)
+        if chunk_gap:
+            unchecked.append(chunk_gap)
+        if graded is None:
+            all_graded = False
+        elif graded not in chunks_graded:
+            chunks_graded.append(graded)
+        plan_graded = plan_graded or plan
+    if all_graded and chunks_graded:
+        chunk_graded = chunks_graded[0]
     if chunk_graded is None:
         # Agrees with `chunk_graded` by construction: `cross-checks.md` already
         # reads a null subject as "nothing was checked at all", and the counter
@@ -1639,6 +1662,7 @@ def lint_records(
     return {
         "records": records,
         "chunk_graded": chunk_graded,
+        "chunks_graded": chunks_graded,
         "plan_graded": plan_graded,
         "findings": findings,
         "unchecked": unchecked,
@@ -1654,6 +1678,8 @@ def lint_records_safe(
     head_tree: str,
     chunk_id: "str | None" = None,
     scope: "str | None" = None,
+    *,
+    chunk_ids: "list[str] | None" = None,
 ) -> dict:
     """:func:`lint_records`, but a crash degrades to a reported ``unchecked``
     instead of taking the caller down with it.
@@ -1673,7 +1699,8 @@ def lint_records_safe(
     """
     try:
         return lint_records(
-            project_dir, prawduct_dir, paths, base_tree, head_tree, chunk_id, scope
+            project_dir, prawduct_dir, paths, base_tree, head_tree, chunk_id, scope,
+            chunk_ids=chunk_ids,
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never abort review dispatch; reported as unchecked, never swallowed
         return {
@@ -1683,6 +1710,7 @@ def lint_records_safe(
             # would pair a named subject with zero counts — the shape a clean
             # result has.
             "chunk_graded": None,
+            "chunks_graded": [],
             "plan_graded": None,
             "findings": [],
             # The `chunk-ref-missing unchecked` prefix is load-bearing:
