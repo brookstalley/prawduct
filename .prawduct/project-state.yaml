@@ -621,9 +621,10 @@ build_state:
 # on every branch with no plan of its own — including develop — where governance
 # then advised archiving a plan the gitflow RETAIN rule says to keep until the
 # release. That advisory had no correct action, which is the state a
-# branch-declaring plan exists to avoid; the /prawduct:pr Merge Flow's "Confirm
-# the bookkeeping merged WITH the PR" step now says to clear the pointer for
-# this case. The plan is untouched: still live, still findable, archived by
+# branch-declaring plan exists to avoid. Since 2026-10-25
+# (branch-claimed-plan-no-fallback) a plan declaring `branch:` governs only that
+# branch, so a pointer left aimed at one is inert and there is no pointer step
+# at its merge. The plan is untouched: still live, still findable, archived by
 # scope at the release.
 active_build_plan: null
 
