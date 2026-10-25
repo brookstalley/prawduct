@@ -228,6 +228,25 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   line carries the worktree's basename and no session, never the absolute path), O-17/O-8 (status
   counts note commits not yet pushed), O-19, O-3/O-6, O-4/O-13, O-20/O-21. Accepted on the
   record: O-1, O-5, O-9, O-10, O-11, O-12, O-14, O-15, O-18, O-22.
+- Backlog filed from Chunk 06 (through the skill, 2026-10-25): #1056 (`--github-status` needs an
+  owner ruling on the local-first norm), #1057 (Q1: a `verify-resolutions` anchor that does not
+  depend on `.critic-findings.json`, linked related to #334), #1058 (`stats`/`contribute`
+  double-count ingested reviews).
+- Suite over d1ef94ca green, tree-valid. Cumulative `rev-20261025T190407Z-e86edd5b` (chunks
+  02–06 declared; the `-live` consolidator wrote `chunk: 02` only, so 03–06 are certified by the
+  verify pass that follows, run through the repo binary): 0 blocking, 7 warning, 12 note. Every
+  warning fixed in one round (owner: warnings are effectively blocking): R-1 the inbound trust
+  decision recorded in `security-model.md` beneath the egress site (builder-drafted, for veto);
+  R-4 the legacy-refspec compatibility path deleted (no released version wrote the exact form);
+  R-5 doctor #25 and onboard run `configure`'s own preview; R-6 one router for every `evidence`
+  op with one exit convention (0 ok / 1 failure / 2 usage) — `ingest`/`list` bad flags move from
+  1 to 2, recorded in api-contract.md; R-7 one public notes-ref reader, `ref_present` folded;
+  R-10 `evidence status` counts note commits never pushed when no tracking ref exists; R-11 the
+  keystone's R-2…R-16 now carry dispositions naming the two spanning reviews that verified
+  them. Notes fixed with them: R-2/R-8/R-13 (`sent_envelope` asks gitstate's scratch predicate),
+  R-9/R-15 (every description of the note line's actor fields agrees), R-14 (the session-start
+  ingest NOTE reaches the agent), R-16. Accepted: R-3, R-12, R-17 (carried to the PR step),
+  R-18, R-19.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a

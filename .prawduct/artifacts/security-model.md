@@ -93,6 +93,18 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   though never the writer's machine path or session: the note line carries the worktree's name only —
   but only to the remote the branch already goes to, and only inside `/prawduct:pr create|update`
   or when a person or the agent runs it (never from a hook; no `gh`).
+  **Inbound (2026-10-25, builder-drafted, for the owner's veto):** the same site is the one
+  place governance content ENTERS a clone — `evidence ingest` (and session start) appends any
+  well-formed line found on a fetched `refs/notes/<remote>/prawduct` to the store the coverage
+  gates read. `[DECISION: trust the product's own remote for inbound facts at the level it is
+  already trusted for code — no signature or provenance check at ingest | whoever can push
+  that ref can push the branch it annotates, so a forged fact buys nothing a forged commit does
+  not; a fact still names tree ids the gate composes by diff, so a line that claims coverage of
+  trees the clone cannot diff is a gap, not a pass; a schema-ahead line blocks loudly rather than
+  being read; and the alternative (signed notes, or an allowlist of writer identities) is a
+  credential the governance runtime does not hold | user can veto/override — a product whose
+  remote admits pushers it does not trust for governance should run with the refspec
+  unconfigured and ingest only what `evidence sync` fetches on a person's act]`
   The first two, git-tidy and `evidence sync` scrub credentials out of foreign-CLI stderr before
   echoing or serialising it; the Stop-hook call does not echo stderr at all; the two collector
   sites carry no credential and refuse redirects.
