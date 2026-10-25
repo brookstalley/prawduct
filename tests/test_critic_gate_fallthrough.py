@@ -43,25 +43,27 @@ _CODE_DIFF = " M src/app.py"
 
 
 def _write_mock_git(
-    mock_bin: Path, *, status: str, branch: str = "main", symbolic_ref: str = ""
+    mock_bin: Path, *, status: str, branch: str = "main", symbolic_ref: str = "main"
 ) -> None:
     """A mock git for the stop path.
 
     ``symbolic_ref`` answers ``git symbolic-ref --short HEAD``, which is what
-    ``gitstate.current_branch`` reads — a different probe from ``branch
-    --show-current`` above it. Empty (the default) means the probe fails, so
-    branch-derived scope inference finds nothing and the pointer stands: exactly
-    the state every pre-existing fixture here is in.
+    ``gitstate.current_branch`` — and so ``work_unit.resolve`` — reads; a
+    different probe from ``branch --show-current`` above it. The default is
+    ``main``, so a fixture whose plans declare no ``branch:`` sits in the legacy
+    window and its conventional plan governs. Empty means the probe fails: a
+    detached HEAD, which is unbound and arms no plan gate. Every other
+    ``symbolic-ref`` (``origin/HEAD``) fails, as it always has here.
     """
     mock_bin.mkdir(parents=True, exist_ok=True)
     status_file = mock_bin / "_status"
     status_file.write_text(status)
     git = mock_bin / "git"
     symref = (
-        f'if [[ "$1" == "symbolic-ref" ]]; then echo "{symbolic_ref}"; exit 0; fi\n'
+        f'if [[ "$1" == "symbolic-ref" && "${{@: -1}}" == "HEAD" ]]; then echo "{symbolic_ref}"; exit 0; fi\n'
         if symbolic_ref
-        else 'if [[ "$1" == "symbolic-ref" ]]; then exit 1; fi\n'
-    )
+        else ""
+    ) + 'if [[ "$1" == "symbolic-ref" ]]; then exit 1; fi\n'
     # f-strings throughout: `+`-concatenating a pre-formatted fragment into a
     # `%`-formatted literal silently applies `%` to the LAST literal only.
     git.write_text(
@@ -82,7 +84,7 @@ def _write_mock_git(
 
 
 def _run_stop(
-    project_dir: Path, *, status: str, symbolic_ref: str = ""
+    project_dir: Path, *, status: str, symbolic_ref: str = "main"
 ) -> subprocess.CompletedProcess:
     """Invoke `bin/prawduct-hook stop` as Claude Code would, with a mock git on
     PATH and the plugin/project roots wired. mock_bin + HOME live OUTSIDE
@@ -357,9 +359,12 @@ class TestGateReadsTheBranchsPlanNotThePointer:
     `active_build_plan` answers "which plan is in progress in this repo". On a
     repo running several plans across worktrees that is not "which plan is this
     branch building" — and the gate's Type-driven carveouts were being decided
-    by a chunk of a plan the session never touched. Both fields now resolve from
-    the branch's plan when the branch names one; when it names nothing (every
-    other fixture in this file) the pointer stands, unchanged.
+    by a chunk of a plan the session never touched. Both fields come from the
+    checkout's binding (`work_unit.resolve`): the plan whose `branch:` claims
+    this branch. A branch no plan claims borrows none — not the pointer's, not a
+    name-matched one (#1050 BR3) — unless the repo is in the legacy window,
+    where no plan claims anything and the conventional plan governs (every
+    other fixture in this file).
     """
 
     def _two_plan_repo(self, tmp_path: Path, *, branch_type: str, pointer_type: str):
@@ -372,8 +377,10 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: Pointed\n\n"
             f"### Chunk 01: Pointed\n**Type:** {pointer_type}\n\nBody.\n"
         )
+        # This branch's plan — it CLAIMS `fix/mine`. A name match alone binds
+        # nothing any more; the claim is what makes it the branch's plan.
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: Mine\n\n"
             f"### Chunk 01: Mine\n**Type:** {branch_type}\n\nBody.\n"
         )
@@ -415,18 +422,70 @@ class TestGateReadsTheBranchsPlanNotThePointer:
         )
         assert "CRITIC" in result.stderr
 
-    def test_an_unmatched_branch_still_uses_the_pointer(self, tmp_path):
-        """The fallback, pinned: no declared scope matches, nothing changes."""
+    def test_an_unclaimed_branch_borrows_no_plan(self, tmp_path):
+        """Renegotiated for #1050 (it was `..._still_uses_the_pointer`).
+
+        The old contract was the fallback: a branch no scope matched read the
+        pointer's plan. That fallback is the defect class — it looks right while
+        being wrong — so it is gone. Here a plan in the repo claims `fix/mine`,
+        which closes the legacy window, so `fix/unrelated-name` is UNBOUND: no
+        plan governs it and the Critic gate does not arm. The pointer's plan is
+        `code`, so the old reading blocks; seeing exit 0 needs the binding.
+        """
         self._two_plan_repo(
-            tmp_path, branch_type="code", pointer_type="designer-handoff"
+            tmp_path, branch_type="designer-handoff", pointer_type="code"
         )
         result = _run_stop(
             tmp_path, status=_CODE_DIFF, symbolic_ref="fix/unrelated-name"
         )
         assert result.returncode == 0, (
-            "no branch match → the pointer's designer-handoff decides, exactly as "
-            f"before. stdout={result.stdout!r} stderr={result.stderr!r}"
+            "no plan claims this branch, so none governs it and no Critic gate "
+            f"arms. stdout={result.stdout!r} stderr={result.stderr!r}"
         )
+        assert "CRITIC" not in result.stderr
+        assert "designer-handoff" not in result.stderr, (
+            "the claimed plan's carveout must not be what let this through"
+        )
+
+    def test_a_broken_binding_fails_closed_and_says_why(self, tmp_path):
+        """Two live plans claiming one branch is a BROKEN binding (BR5): no plan
+        can be chosen, so none may be chosen by precedence — and authority fails
+        closed. The gate arms as a bound plan's would, no claimant's carveout
+        applies (both declare `designer-handoff` here, so honouring either one
+        would let this through), and the block names the reason."""
+        self._two_plan_repo(
+            tmp_path, branch_type="designer-handoff", pointer_type="designer-handoff"
+        )
+        pointed = tmp_path / ".prawduct" / "artifacts" / "build-plan.md"
+        pointed.write_text(
+            pointed.read_text().replace("scope: pointed\n", "scope: pointed\nbranch: fix/mine\n")
+        )
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="fix/mine")
+        assert result.returncode == 2, (
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        # The note is wrapped to the block's width; compare its words.
+        block = " ".join(result.stderr[result.stderr.index("CRITIC REVIEW"):].split())
+        assert "plan binding for this checkout is broken" in block
+        assert "2 live plans claim `fix/mine`" in block
+
+    def test_the_legacy_window_still_serves_the_conventional_plan(self, tmp_path):
+        """The other half of the fallback's demotion (MG3): while NO plan in the
+        repo declares `branch:`, the conventional plan still governs every
+        branch — so a pre-claims repo keeps its gate until it binds."""
+        self._two_plan_repo(
+            tmp_path, branch_type="designer-handoff", pointer_type="code"
+        )
+        mine = tmp_path / ".prawduct" / "artifacts" / "build-plan-mine.md"
+        mine.write_text(mine.read_text().replace("branch: fix/mine\n", ""))
+        result = _run_stop(
+            tmp_path, status=_CODE_DIFF, symbolic_ref="fix/unrelated-name"
+        )
+        assert result.returncode == 2, (
+            "no claims anywhere → the conventional plan (`code`) governs and the "
+            f"Critic gate fires. stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "CRITIC" in result.stderr
 
     def test_whether_the_gate_runs_follows_the_branchs_plan_too(self, tmp_path):
         """The gate's WHETHER must read the same plan as its WHAT.
@@ -460,7 +519,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "### Chunk 01: shipped\n**Type:** code\n\nBody.\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: in progress\n\n"
             "### Chunk 01: in progress\n**Type:** code\n\nBody.\n"
         )

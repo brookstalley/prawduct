@@ -110,6 +110,43 @@ def _buildplan_refs():
     return buildplan_refs
 
 
+def _work_unit():
+    """Lazy-import the work-unit binding (lib/work_unit) — the one owner of
+    "which plan governs this checkout". Every hook caller that needs a plan
+    takes its ``Binding`` rather than walking ``artifacts/`` itself
+    (1050-requirements BR1)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import work_unit  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return work_unit
+
+
+def _gate_plan_of(binding, prawduct_dir: Path):
+    """The ``buildplan_refs.ReviewedPlan`` the Stop gate's plan readers take,
+    built from ``binding`` — or ``None`` when the binding names no plan.
+
+    ``None`` for ``unbound`` (no plan governs; nothing is borrowed, BR3) and for
+    ``broken`` (several claimants, none of which may be chosen by precedence,
+    BR5). The ``critic_mode`` predicates still take the ``ReviewedPlan`` shape,
+    so this adapts rather than re-resolves: ``source`` is scope-named only for a
+    claim that declares a scope, and a legacy-window binding is the "active
+    plan" it always was, its ``reason`` carried as the ``gap``.
+    """
+    if binding.state != "bound" or binding.plan_path is None:
+        return None
+    bpr = _buildplan_refs()
+    named = binding.chosen_by == "binding" and binding.scope is not None
+    return bpr.ReviewedPlan(
+        binding.plan_path,
+        bpr._repo_rel(prawduct_dir, binding.plan_path),
+        binding.scope,
+        bpr.SOURCE_SCOPE_NAMED if named else bpr.SOURCE_ACTIVE_PLAN,
+        None if named else binding.reason,
+    )
+
+
 def _critic_mode():
     """Lazy-import the mode-inference module (lib/critic_mode). The Stop gate
     asks it ONE question — the short-plan deferral predicate — so the gate and
@@ -142,7 +179,11 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, plan):
     ``None`` on ANY failure — an import error, an unreadable plan, a git
     failure — and the caller treats ``None`` as "does not defer": the deferral
     relaxes a gate, so a predicate that could not run must not relax it.
+    ``None`` too when ``plan`` is ``None`` — an unbound or broken binding has no
+    plan to defer, and reading progress with no path would read some other plan.
     """
+    if plan is None:
+        return None
     try:
         progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
         return _critic_mode().short_plan_deferral(project_dir, prawduct_dir, plan, progress)
@@ -165,8 +206,11 @@ def _extension_deferral(project_dir: Path, prawduct_dir: Path, plan):
     ``critic_mode.extension_deferral``'s reason when this session's uncovered
     work will be covered by a review the plan still owes — which starts at the
     last reviewed state and so spans it — else ``None``. Fails closed exactly
-    as :func:`_short_plan_deferral` does, for the same reason: it relaxes a gate.
+    as :func:`_short_plan_deferral` does, for the same reason: it relaxes a gate,
+    and ``None`` for no ``plan`` the same way.
     """
+    if plan is None:
+        return None
     try:
         progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
         return _critic_mode().extension_deferral(project_dir, prawduct_dir, plan, progress)
@@ -189,8 +233,11 @@ def _cumulative_final_last_chunk(project_dir: Path, prawduct_dir: Path, plan) ->
     cumulative stands inference asks for a ``final`` or a verify pass, and a
     message still saying "then cumulative" would buy a second full one.
     Changes only the block message, never whether the gate blocks, so ``False``
-    on any failure leaves the message it would have printed anyway.
+    on any failure — or with no ``plan`` — leaves the message it would have
+    printed anyway.
     """
+    if plan is None:
+        return False
     try:
         progress = _buildplan_refs().resolve_chunk_progress(project_dir, plan.path)
         return progress.total - progress.complete == 1 and _critic_mode().boundary_cumulative_still_owed(
@@ -678,9 +725,10 @@ def _clear_observations(prawduct_dir: Path, work_in_flight: bool) -> dict:
 # test (same discipline as the GITIGNORE_ENTRIES / _SESSION_GITIGNORED_PATHS
 # mirror).
 #
-# The build-plan RESOLVER that stood beside it is gone. It mirrored
-# `core.resolve_build_plan_path` and lost its last caller when `staleness_scan`
-# moved into `lib/briefing.py` and was rewritten onto the canonical one — after
+# The build-plan RESOLVER that stood beside it is gone; "which plan governs"
+# has one owner, `lib/work_unit.resolve`, and no inline copy. The mirror lost
+# its last caller when `staleness_scan` moved into `lib/briefing.py` and was
+# rewritten onto the canonical resolver — after
 # which the only thing invoking it was its own parity test, and the import-light
 # claim was void, since the session-start path reaches it through `lib.briefing`
 # and pays for `core` anyway. Branch-scoped resolution needs a directory walk and
@@ -2930,18 +2978,40 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Determine if there's an active build plan (used by both gates).
     # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
     #
-    # Resolved from the BRANCH's plan, the same one the Type-driven carveouts
-    # below read. Asking "is there governed work" of the pointer while asking
-    # "what does that work declare" of the branch is one question answered from
-    # two places — the defect class this bundle exists to close, at the gate that
-    # decides whether the others run at all. Falls back to the pointer whenever
-    # the branch names no declared scope, so repos whose branch names differ from
-    # their scopes are unaffected.
-    gate_plan_obj = _buildplan_refs().resolve_branch_plan(project_dir, prawduct_dir)
-    gate_plan = gate_plan_obj.path
+    # WHICH plan is the checkout's binding (`work_unit.resolve`, the one owner —
+    # 1050-requirements BR1), read once here; the Type-driven carveouts and the
+    # deferrals below read the same plan. Its three answers:
+    #   • bound   → that plan's boxes decide (on that plan only).
+    #   • unbound → no plan governs, and none is borrowed (BR3): no file arm. A
+    #     harness scratch worktree is unbound by construction (BR6), so it arms
+    #     no Critic gate: the coordinator's review covers the work once merged,
+    #     and a gate here no route could satisfy is #648's trap.
+    #   • broken  → two live plans claim this branch. Authority fails closed:
+    #     treated as a plan that owes review, and the block names the reason.
+    binding = _work_unit().resolve(project_dir)
+    gate_plan_obj = _gate_plan_of(binding, prawduct_dir)
+    gate_plan = gate_plan_obj.path if gate_plan_obj is not None else None
     has_build_plan = (
-        _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
+        binding.state == "broken"
+        or (
+            gate_plan is not None
+            and _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
+        )
+        # The legacy `project-state.yaml` `build_plan.chunks[].status` reading
+        # survives this wave on purpose: ST7 (retiring it as a second gate
+        # input, or migrating it) is Wave 2's, and dropping it here would
+        # disarm the repos whose only plan record it still is.
         or _gates()._has_build_plan_in_state(prawduct_dir)
+    )
+    # Said in the Critic block when the binding is what armed it, so a builder
+    # blocked by a broken binding learns the remedy is the plans, not a review.
+    broken_binding_note = (
+        _wrap_gate_prose(
+            f"The plan binding for this checkout is broken: {binding.reason}. "
+            "No plan can be chosen, so the gate fails closed until one claim remains."
+        )
+        if binding.state == "broken"
+        else ""
     )
 
     # Gate 1: Reflection
@@ -3363,15 +3433,12 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # owner ruling (#301) — a file set enforces nothing about triviality, and the
     # Critic's Goal 3 rationale-vs-diff check is what judges the declaration.)
     designer_handoff_skip = False
-    if (has_changes or critic_has_work) and has_build_plan:
-        # Resolve WHICH plan once, then read both chunk-level fields from it:
-        # the current chunk id and its `Type:`.
-        # `active_build_plan` names the plan in progress in this repo; on a repo
-        # running several plans across worktrees that is not the plan this
-        # branch is building, and the gate's Type-driven carveouts would be
-        # decided by a chunk of a plan the session never touched. Falls back to
-        # the pointer whenever the branch names no declared scope, so a repo
-        # whose branch names differ from its scopes is unaffected.
+    if (has_changes or critic_has_work) and has_build_plan and gate_plan is not None:
+        # Both chunk-level fields — the current chunk id and its `Type:` — come
+        # from the binding's plan, resolved once above. Never from another
+        # plan: with no bound plan (a broken binding, or only the legacy state
+        # arm) there is no chunk to read a carveout from, so none applies —
+        # the readers' own default would be a plan this checkout never claimed.
         _bpr = _buildplan_refs()  # `gate_plan` resolved once, above
         current_chunk_id = _bpr._current_chunk_id_from_status(project_dir, gate_plan)
         if current_chunk_id is not None:
@@ -3734,6 +3801,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW: no composed review coverage spans this session's\n"
                     f"  changes{span}: {detail}\n"
+                    + broken_binding_note
                     + last_chunk_note +
                     "  If you have completed a chunk, run `/prawduct:critic` now. It runs as an\n"
                     "  independent agent and records a review fact the gates compose over.\n"
@@ -5331,6 +5399,12 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     ref is missing, or the gate cannot be evaluated. stderr lists each
     missing ref so the Critic can quote it in findings.
 
+    The plan is the checkout's binding (``work_unit.resolve``), never another
+    plan's: with no plan bound and no chunk named there is nothing to verify
+    (exit 0, the reason printed); a chunk named with no plan bound — or a broken
+    binding, either way — cannot be verified (exit 1), because grading that id
+    against some other plan is the misattribution BR4 forbids.
+
     With no ``chunk_id``, resolves the current chunk via
     ``buildplan_refs._current_chunk_id_from_status`` — the first unchecked
     ``- [ ]`` item. That reading is only as good as the ticking, so this path
@@ -5342,6 +5416,27 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     prawduct_dir = get_prawduct_dir(project_dir)
     if chunk_id is None:
         chunk_id = os.environ.get("PRAWDUCT_VERIFY_CHUNK_ID")
+    binding = _work_unit().resolve(project_dir)
+    plan_path = binding.plan_path if binding.state == "bound" else None
+    if plan_path is None:
+        if binding.state == "unbound" and chunk_id is None:
+            print(f"ok: no plan governs this checkout ({binding.reason}); nothing to verify")
+            return 0
+        # The two cases read differently because their remedies differ: an
+        # unbound checkout has no plan to grade a named chunk against, a broken
+        # one has several and may pick none.
+        why = (
+            f"no build plan governs this branch ({binding.reason})"
+            if binding.state == "unbound"
+            else f"the plan binding is broken ({binding.reason})"
+        )
+        subject = f"chunk {chunk_id}" if chunk_id is not None else "the current chunk"
+        print(
+            f"cannot-verify: {why}, so {subject} has no plan to be read from; "
+            "Goal-2 deliverable check did not run",
+            file=sys.stderr,
+        )
+        return 1
     if chunk_id is None:
         # One canonical current-chunk resolution (shared with the stop hook and
         # the Critic helper); it accepts every Status-item form the body-heading
@@ -5353,12 +5448,12 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
         if notice:
             print(notice, file=sys.stderr)
-        chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir)
+        chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir, plan_path)
         if chunk_id is None:
             print("ok: no current chunk in Status; nothing to verify")
             return 0
 
-    refs = _buildplan_refs()._parse_build_plan_chunk_refs(prawduct_dir, chunk_id)
+    refs = _buildplan_refs()._parse_build_plan_chunk_refs(prawduct_dir, chunk_id, plan_path)
     if refs["error"]:
         # The Goal-2 deliverable check could not RUN (plan or chunk section not
         # located) — a distinct signal from "a named deliverable is missing"
@@ -5406,13 +5501,13 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     finished one, the moment a box is ticked.
 
     ``--scope`` names which PLAN those deliverables are declared in. Without it
-    the scope is derived exactly as ``critic-begin`` derives it — from the branch
-    name, matched against the scopes build plans declare — falling back to the
-    ``active_build_plan`` pointer only when that matches nothing. Deriving it the
-    same way is the point: this form exists so a builder can answer the record
-    checks *before* dispatch instead of paying a review round to be told, and one
-    that grades a different plan than the dispatch will is answering a different
-    question, confidently.
+    the scope is the checkout's binding (``work_unit.resolve``) — the scope of
+    the one live plan claiming this branch, or none when no plan claims it or
+    the binding is broken. That is the answer ``critic-begin`` records too, and
+    taking the same one is the point: this form exists so a builder can answer
+    the record checks *before* dispatch instead of paying a review round to be
+    told, and one that grades a different plan than the dispatch will is
+    answering a different question, confidently.
 
     **Advice, not authority — so exit 0 on findings.** Record-lint reports to
     the builder; the review gates keep composing over facts, and a lint finding
@@ -5500,11 +5595,11 @@ def cmd_verify_records(project_dir: Path, argv: list[str]) -> int:
     record_lint = _record_lint()
     scope = opts.get("scope")
     if not scope:
-        # The same derivation `critic-begin` uses, so the by-hand answer and the
-        # dispatched one are about the same plan.
-        from lib import buildplan_refs  # noqa: PLC0415 — lazy; plan readers
-
-        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
+        # The checkout's binding, the answer `critic-begin` records, so the
+        # by-hand answer and the dispatched one are about the same plan. An
+        # unbound or broken binding has no scope to pass.
+        binding = _work_unit().resolve(project_dir)
+        scope = binding.scope if binding.state == "bound" else None
     result = record_lint.lint_records_safe(
         project_dir, prawduct_dir, changed, base_tree, head_tree,
         opts.get("chunk"), scope,
