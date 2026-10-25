@@ -203,7 +203,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # tightening the chunk-ref-missing parenthesis. Ceiling lowered with it.
     # -27 on 2026-10-24 (work-unit binding): the Critic skill's scope-derivation passage now states the
     # binding rule in fewer words than the branch-name/pointer rule it replaced. Ceiling lowered with it.
-    "single-pass-inner": 5796,
+    # -13 on 2026-10-25 (chunk-status, owner ruling D1): the Critic skill's step 4 names its
+    # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
+    # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
+    # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
+    "single-pass-inner": 5783,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -251,7 +255,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # name, both paid in place (cross-checks -10, goals-1-3 -3). Ceiling lowered with it.
     # -27 on 2026-10-24 (work-unit binding): the Critic skill's scope-derivation passage now states the
     # binding rule in fewer words than the branch-name/pointer rule it replaced. Ceiling lowered with it.
-    "single-pass-full": 11536,
+    # -21 on 2026-10-25 (chunk-status, owner ruling D1): the Critic skill's step 4 names its
+    # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
+    # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
+    # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
+    "single-pass-full": 11515,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -332,7 +340,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
     # -10 on 2026-10-22 (retired-claim-survives): the new check's cross-checks row and its goals-1-3.md
     # name, both paid in place (cross-checks -10, goals-1-3 -3). Ceiling lowered with it.
-    "dispatched-reviewer": 10994,
+    # -4 on 2026-10-25 (chunk-status, owner ruling D1): the Critic skill's step 4 names its
+    # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
+    # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
+    # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
+    "dispatched-reviewer": 10990,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -356,14 +368,18 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # name, both paid in place (cross-checks -10, goals-1-3 -3). Ceiling lowered with it.
     # -27 on 2026-10-24 (work-unit binding): the Critic skill's scope-derivation passage now states the
     # binding rule in fewer words than the branch-name/pointer rule it replaced. Ceiling lowered with it.
-    "coordinator-fork": 12130,
+    # -21 on 2026-10-25 (chunk-status, owner ruling D1): the Critic skill's step 4 names its
+    # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
+    # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
+    # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
+    "coordinator-fork": 12109,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5797,
-    "single-pass-full": 11537,
-    "dispatched-reviewer": 10995,
-    "coordinator-fork": 12131,
+    "single-pass-inner": 5784,
+    "single-pass-full": 11516,
+    "dispatched-reviewer": 10991,
+    "coordinator-fork": 12110,
 }
 
 

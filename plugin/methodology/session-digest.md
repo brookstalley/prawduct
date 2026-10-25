@@ -27,9 +27,8 @@ coding without it is the most common governance failure.
   long-lived spec carries its *why* inline — never a chunk number that renumbers or a count copied
   from a nearby line. Bookkeeping that records the work is exempt, and a pointer to a plan resolves
   (completed plans are archived).
-- **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
-  reader believes them. Tick after the chunk's review — a short plan's earlier chunks at commit: the LAST tick
-  disarms the Critic gate.
+- **`prawduct-hook plan status` shows each chunk's state**, derived from review facts and
+  never hand-edited (`/prawduct:methodology planning` "Chunk state").
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).

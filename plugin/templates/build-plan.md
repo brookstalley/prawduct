@@ -27,6 +27,12 @@ scope: pantry-v1
 # (e.g. a delegate's long-lived branch), so work there is still attributed to this unit.
 # Each must not be claimed by another plan.
 # working-branches: []
+# dropped: chunks this plan will not build, one `- <id>: <reason>` line each — the
+# reason is required, and an unquoted ` #` in it starts a YAML comment. What makes a
+# chunk done is methodology/planning.md "Chunk state"; `prawduct-hook plan status`
+# prints every chunk's state.
+# dropped:
+#   - 03: cut — the owner chose manual entry (2026-07-10)
 depends_on:
   - artifact: product-brief
   - artifact: data-model
@@ -55,7 +61,7 @@ last_validated: 2026-07-03
 #   lifecycle: completed | superseded · archived: YYYY-MM-DD · released_in: vX.Y.Z
 #     (not release:, which a release plan uses for the release it governs)
 #   superseded_by: <what replaced it, or why it stopped>   (superseded only)
-#   unbuilt_at_archive: <unticked chunks>   (absent means clean)
+#   unbuilt_at_archive: <chunks still open>   (absent means clean)
 #   maintained: false
 ---
 
@@ -78,27 +84,6 @@ last_validated: 2026-07-03
 **Decisions made mid-build:** Chunk 02 — store sections as rows, not an enum: the North Star's shared recipes need per-household sections. *(Appended while building; one line each, naming what settled it.)*
 
 **Level:** High — problem, success, and scope confirmed with the owner; no fast-moving dependencies.
-
-## Status
-
-<!-- The cross-session handoff, and the ONLY reading of chunk progress. The boxes are
-     yours to tick: mark `[x]` by hand when a chunk's "Done when" steps are all
-     satisfied — built, reviewed, committed (a short plan's earlier chunks at commit:
-     methodology/planning.md); never merged or released — nothing derives them, so an unticked box is read everywhere as work
-     still open. Keep Context current. Context runs from `Context:` to the end of this
-     section, so it may be several paragraphs — the handoff carries it whole. Keep it
-     LAST: a chunk checkbox after it closes the block, and anything below that is
-     dropped from the handoff.
-
-     Ticking the LAST box disarms the Stop hook's Critic gate, so review before you
-     tick it. A built-but-unticked chunk is caught by an advisory only if commit
-     subjects name a numeric chunk id as (Chunk 02), right after the colon, or
-     "close Chunk 02"; other positions read as a mention. -->
-
-- [ ] Chunk 01: Walking skeleton — list page backed by SQLite
-- [ ] Chunk 02: Add and check off items, grouped by store section
-- [ ] Chunk 03: Barcode lookup via OpenFoodFacts
-Context: Plan approved 2026-07-03; nothing built yet. Next: Chunk 01.
 
 ## Scaffolding
 
@@ -170,7 +155,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
-  3. Committed and chunk marked `[x]` in Status
+  3. Committed
 
 ### Chunk 02: Add and check off items, grouped by store section
 
@@ -187,7 +172,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 - **Done when:**
   1. Acceptance criteria met and tests pass
   2. `/prawduct:critic` run and blocking findings resolved
-  3. Committed and chunk marked `[x]` in Status
+  3. Committed
 
 ### Chunk 03: Barcode lookup via OpenFoodFacts
 
@@ -207,7 +192,6 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
   0. verify-api — probe the live API for two barcodes; capture the actual response shape in `.prawduct/artifacts/api-notes-off.md`
   1. Acceptance criteria met and tests pass
   2. Committed, then `/prawduct:critic cumulative` run and blocking findings resolved
-  3. Chunk marked `[x]` in Status
 
 <!-- Rarely-used optional fields, shown once for syntax:
 - **Type:** trivial
@@ -225,7 +209,7 @@ Routes never touch SQLite directly — persistence goes through `store.py`. Temp
 
 ## Governance Checkpoints
 
-**Commit & PR cadence:** commit per chunk after its Critic review passes (per-chunk commit is what scopes `chunk`-mode reviews). A short plan ticks and reviews differently — see methodology/planning.md "Critic Mode Per Chunk"; this plan is not one, because Chunk 02 declares a `Critic mode:`. If chunks merge as separate PRs, each such chunk declares `Critic mode: cumulative` (its own PR is a boundary). The last chunk commits first, and its `cumulative` review makes the branch PR-ready — `/prawduct:pr create` is gated on it and runs when the user asks for a PR.
+**Commit & PR cadence:** commit per chunk after its Critic review passes (per-chunk commit is what scopes `chunk`-mode reviews). A short plan reviews differently — see methodology/planning.md "Critic Mode Per Chunk"; this plan is not one, because Chunk 02 declares a `Critic mode:`. If chunks merge as separate PRs, each such chunk declares `Critic mode: cumulative` (its own PR is a boundary). The last chunk commits first, and its `cumulative` review makes the branch PR-ready — `/prawduct:pr create` is gated on it and runs when the user asks for a PR.
 
 - After chunk 01: confirm the architecture (routes → store → SQLite) before widening.
 - After chunk 03 (cumulative): full-bundle review; verify the offline fallback has real coverage.
