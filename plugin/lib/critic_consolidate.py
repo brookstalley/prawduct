@@ -3650,15 +3650,37 @@ def begin_review(
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
 
+    # ST8: the code-derived proposal from THIS interval, then the declared set
+    # (the proposal itself when nothing was declared). Declared outside the
+    # proposal is recorded as declared, and said: `chunks_proposed` sits beside
+    # it on the fact, so the edit is visible on the record. Resolved BEFORE
+    # record-lint, so the deliverables it grades are the chunks the fact names.
+    chunks_proposed = _proposed_chunks(
+        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor
+    )
+    if declared_chunks is None:
+        declared_chunks = list(chunks_proposed)
+        chunk = declared_chunks[0] if declared_chunks else None
+    else:
+        outside = [c for c in declared_chunks if c not in chunks_proposed]
+        if outside:
+            notes.append(
+                f"WARNING: declared chunk(s) {', '.join(outside)} are not in the proposal "
+                f"for this {mode_token} interval ({', '.join(chunks_proposed) or 'none'}); "
+                "recorded as declared, with the proposal beside them on the fact"
+            )
+
     # Machine-verified record checks, computed HERE so the reviewers are told
     # the answers rather than re-deriving them (record-class findings were 57%
     # of one day's review output on 2026-07-29, and none of them needed
     # judgment). Advisory: the result rides the manifest for the builder, and
     # nothing downstream gates on it. A lint that cannot run reports itself
-    # ``unchecked`` rather than empty — see ``record_lint``.
+    # ``unchecked`` rather than empty — see ``record_lint``. It grades every
+    # chunk the fact will name (`chunk_ids`), not only the first.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope,
+        chunk_ids=list(declared_chunks),
     )
 
     # Answers already given about findings in these files, so a fresh review can
@@ -3681,25 +3703,6 @@ def begin_review(
         # shape; the two DEGRADED store states are returned rather than raised,
         # so `prior_dispositions` answers those itself, in the same words.
         priors = dispositions._unavailable(f"{type(exc).__name__}: {exc}")
-
-    # ST8: the code-derived proposal from THIS interval, then the declared set
-    # (the proposal itself when nothing was declared). Declared outside the
-    # proposal is recorded as declared, and said: `chunks_proposed` sits beside
-    # it on the fact, so the edit is visible on the record.
-    chunks_proposed = _proposed_chunks(
-        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor
-    )
-    if declared_chunks is None:
-        declared_chunks = list(chunks_proposed)
-        chunk = declared_chunks[0] if declared_chunks else None
-    else:
-        outside = [c for c in declared_chunks if c not in chunks_proposed]
-        if outside:
-            notes.append(
-                f"WARNING: declared chunk(s) {', '.join(outside)} are not in the proposal "
-                f"for this {mode_token} interval ({', '.join(chunks_proposed) or 'none'}); "
-                "recorded as declared, with the proposal beside them on the fact"
-            )
 
     manifest = {
         "id": review_id,

@@ -1164,6 +1164,8 @@ class TestUncheckedReporting:
         assert result == {
             "records": [],
             "chunk_graded": None,
+            # Added in the open (#1051): every chunk graded, listed — none here.
+            "chunks_graded": [],
             "plan_graded": None,
             "findings": [],
             "unchecked": [],

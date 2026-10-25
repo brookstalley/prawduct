@@ -6253,8 +6253,11 @@ class TestRecordLintInManifest:
     def test_manifest_carries_a_record_lint_block(self, tmp_path):
         _repo, manifest, _res = self._dispatch(tmp_path)
         lint = manifest["record_lint"]
+        # `chunks_graded` added in the open (#1051): record-lint grades every
+        # chunk the review fact names, and lists them; `chunk_graded` stays.
         assert set(lint) == {
-            "records", "chunk_graded", "plan_graded", "findings", "unchecked", "counts",
+            "records", "chunk_graded", "chunks_graded", "plan_graded", "findings",
+            "unchecked", "counts",
         }
         # Every check is present with an explicit tally, so a zero is visibly a
         # zero rather than a key a consumer has to interpret — and a check that
@@ -9322,6 +9325,36 @@ class TestTheReviewNamesItsChunks:
         manifest = _st8_manifest(repo)
         assert (manifest["chunks"], manifest["chunk"]) == ([], None)
         assert any("no build plan resolves for this review" in n for n in result["notes"]), result["notes"]
+
+
+class TestRecordLintGradesTheChunksTheFactNames:
+    """Record-lint runs AFTER the chunk set is resolved, so the deliverables it
+    grades are the chunks the review fact will certify — every one of them, not
+    the plan's first open chunk."""
+
+    def _repo_touching_two_and_three(self, tmp_path: Path) -> Path:
+        repo = _st8_repo(tmp_path)
+        (repo / "src/one.py").write_text("one = 0\n")  # back to committed
+        (repo / "src/two.py").write_text("two = 1\n")
+        return repo
+
+    def test_no_declared_chunks_grades_the_whole_proposal(self, tmp_path):
+        repo = self._repo_touching_two_and_three(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, result.stderr
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == ["02", "03"]
+        lint = manifest["record_lint"]
+        assert lint["chunks_graded"] == ["02", "03"], lint
+        assert lint["chunk_graded"] == "02"
+        assert "record-lint graded chunk 02, 03 of" in result.stdout
+
+    def test_an_explicit_chunk_grades_that_chunk(self, tmp_path):
+        repo = self._repo_touching_two_and_three(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "03")
+        assert result.returncode == 0, result.stderr
+        lint = _st8_manifest(repo)["record_lint"]
+        assert (lint["chunks_graded"], lint["chunk_graded"]) == (["03"], "03"), lint
 
 
 class TestAVerifyPassProposesTheChunksItVerifies:
