@@ -274,14 +274,6 @@ def fact_chunks(body: dict) -> list[str]:
     return []
 
 
-def review_anchor(body: dict) -> object:
-    """The commit a review fact is anchored on: ``head_commit``, else — for a
-    dirty-tree review, which records none — ``dispatch_commit``.
-
-    Returned unvalidated; a caller putting it in a git argv passes it through
-    ``gitstate.is_object_id`` first.
-    """
-    return body.get("head_commit") or body.get("dispatch_commit")
 
 
 def _date(value: object) -> str | None:
@@ -432,7 +424,7 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             # review certifies once its dispatch commit is in the branch's
             # history; that the reviewed TREE was committed is the Stop gate's
             # coverage verdict to carry, not this function's.
-            anchor = review_anchor(body)
+            anchor = evidence.review_anchor(body)
             if not plan.branches:
                 why = "the plan declares no `branch:` its commit could be on"
             elif not gitstate.is_object_id(anchor):

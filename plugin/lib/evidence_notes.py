@@ -40,13 +40,6 @@ NOTES_REF = "refs/notes/prawduct"
 _USAGE = "Usage: prawduct-hook evidence ingest [--all] [--json]"
 
 
-def review_anchor(body: object) -> "str | None":
-    """The commit a review fact's note hangs on: ``head_commit``, else the
-    ``dispatch_commit`` a dirty-tree review records instead."""
-    if not isinstance(body, dict):
-        return None
-    anchor = body.get("head_commit") or body.get("dispatch_commit")
-    return anchor if isinstance(anchor, str) and anchor else None
 
 
 def attach(project_dir: Path, envelope: dict, anchor: str) -> dict:

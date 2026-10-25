@@ -116,6 +116,24 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   what is observed) and "authority fails closed". Carried to Chunk 02 (A): `plan status
   --probe-pr` reaches `git_hygiene.merged_pr_for`'s `gh pr list`, so the `egress_boundary` entry
   for that site names both callers.
+- Chunk 01 as built (delegate K, 2026-10-25, merged 2ab29b00), accepted: `evidence ingest` is a
+  data-plane write and is refused from a scratch worktree (the brief's call; the plan's "runs
+  anywhere" entry is withdrawn — the store is clone-wide and the main checkout's session start
+  ingests); the bound includes the merge base itself (a branch's first dirty-tree review anchors
+  on the commit it was cut from — excluding it drops every branch's first round; pinned);
+  ingest takes only `TRANSPORTED_KINDS` from schema-supported lines and every schema-ahead line
+  whatever its kind, deduping against `facts` and `schema_ahead` both; `evidence.envelope_line`
+  is the one owner of the line format and `append_fact` returns the envelope it wrote; the note
+  is fed on stdin (`-F -`); at consolidation only an attach `error` prints a NOTE, the import
+  writer NOTEs anything but `attached`. Known and accepted: `git notes append` accepts a
+  well-formed id the clone does not hold, so `attach` relies on consolidation anchors being real
+  commits; a clone with no committer identity cannot write notes and gets a NOTE. Integration
+  (coordinator): both delegates wrote a `review_anchor` — the one home is now
+  `evidence.review_anchor`, and `plan_status`, `plan_lifecycle`, `evidence_notes`,
+  `critic_consolidate` (two sites) and `coverage.count_branch_rounds` read it. Carried to 03 (B):
+  `plan import-status`'s docstring and output still say "per-clone until #1052"; the ephemeral
+  refusal wording ("discarded") is inaccurate for a store write. Carried to 05 (D): the Critic
+  skill's `Bash(prawduct-hook evidence*)` grant now covers a write — narrow it to `status`/`list`.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a

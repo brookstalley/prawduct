@@ -409,7 +409,7 @@ def _anchors_newest_first(store: dict, scope: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     for _i, fact in reviews:
         body = fact.get("body") or {}
-        anchor = plan_status.review_anchor(body)
+        anchor = evidence.review_anchor(body)
         if not gitstate.is_object_id(anchor) or anchor == body.get("base_commit"):
             continue
         if anchor not in seen:

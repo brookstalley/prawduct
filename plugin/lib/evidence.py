@@ -132,6 +132,21 @@ OBSERVATIONAL_KINDS = frozenset(
 #: stays in that clone's store.
 TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported"})
 
+def review_anchor(body: object) -> "str | None":
+    """The commit a review fact is anchored on: ``head_commit``, else — for a
+    dirty-tree review, which records none — ``dispatch_commit``.
+
+    The one home of that rule: the note a fact travels on hangs here, and
+    chunk status, lifecycle and the verify anchor all ask the same question.
+    ``None`` when the body is not a dict or carries neither; a caller putting
+    the answer in a git argv still passes it through ``gitstate.is_object_id``.
+    """
+    if not isinstance(body, dict):
+        return None
+    anchor = body.get("head_commit") or body.get("dispatch_commit")
+    return anchor if isinstance(anchor, str) and anchor else None
+
+
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
 

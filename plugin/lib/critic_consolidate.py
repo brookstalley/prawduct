@@ -2233,10 +2233,8 @@ def _prior_review_fact(
         if fact.get("id") != fact_id:
             continue
         body = fact.get("body") or {}
-        # A dirty-tree review records no `head_commit`; its `dispatch_commit` is
-        # the commit it was dispatched from, and that is the anchor to place.
-        anchor = body.get("head_commit") or body.get("dispatch_commit")
-        if isinstance(anchor, str) and anchor.strip():
+        anchor = evidence.review_anchor(body)
+        if anchor:
             from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
 
             if not critic_mode._commit_is_ancestor(project_dir, anchor):
@@ -5901,12 +5899,12 @@ def consolidate(
                 file=sys.stderr,
             )
             return 1
-        review_anchor = evidence_notes.review_anchor(body)
+        review_anchor = evidence.review_anchor(body)
         _attach_note(project_dir, result, review_anchor)
     else:
         review_anchor = next(
             (
-                evidence_notes.review_anchor(f.get("body"))
+                evidence.review_anchor(f.get("body"))
                 for f in evidence.facts_of_kind(store, "review")
                 if f.get("id") == review_id
             ),
