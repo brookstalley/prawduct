@@ -172,12 +172,32 @@ class TestLifecycleRepairCommand:
             assert set(edit) == {"path", "kind", "reason", "detail"}
             assert edit["reason"]
 
-    def test_json_plans_to_review_names_the_unticked_chunk(self, tmp_path: Path) -> None:
-        payload = json.loads(_run(_repo(tmp_path), "lifecycle-repair", "--json").stdout)
-        reviews = payload["plans_to_review"]
+    def test_json_plans_to_review_names_the_built_but_not_done_chunk(
+        self, tmp_path: Path
+    ) -> None:
+        """Renegotiated by #1051 (was `..._names_the_unticked_chunk`): the report
+        names chunks committed on the branch that no review has certified
+        (`plan_status`), so the fixture lands Chunk 02 on a feature branch. The
+        key name is the doctor contract this file pins; it is unchanged."""
+        project = _repo(tmp_path)
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        for args in (
+            ("init", "-q", "-b", "main"),
+            ("config", "user.email", "t@example.com"),
+            ("config", "user.name", "T"),
+            ("add", "-A"),
+            ("commit", "-q", "-m", "init"),
+            ("checkout", "-q", "-b", "feat/demo"),
+            ("commit", "-q", "--allow-empty", "-m", "feat(demo): land it (Chunk 02)"),
+        ):
+            subprocess.run(["git", *args], cwd=str(project), env=env, check=True,
+                           capture_output=True)
+        proc = _run(project, "lifecycle-repair", "--json")
+        assert proc.returncode == 0, proc.stderr
+        reviews = json.loads(proc.stdout)["plans_to_review"]
 
         assert len(reviews) == 1
-        assert reviews[0]["chunks"] == ["Chunk 02: pending"]
+        assert reviews[0]["chunks"] == ["Chunk 02"]
 
 
 class TestUnreadableFilesChangeTheVerdict:

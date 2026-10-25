@@ -5987,7 +5987,7 @@ def cmd_archive_plan(project_dir: Path, args: list[str] | None = None) -> int:
             date=date,
             release=release,
             superseded_by=superseded_by,
-            unbuilt=plan_archive.unbuilt_at_archive(plan_content),
+            unbuilt=plan_archive.unbuilt_at_archive(plan_path, repo_dir=project_dir),
         )
         print(f"would archive: {plan_path} -> {destination}")
         for key, value in fields.items():

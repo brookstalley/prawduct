@@ -296,6 +296,94 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         assert "/prawduct:critic final" in reason
 
 
+def _fact_finished_plan_repo(tmp_path: Path) -> "tuple[Path, str]":
+    """A committed two-chunk plan with NO boxes ticked — `## Status` lists both
+    unticked — whose chunks are finished only by the facts: a clean `chunk`
+    review naming both, anchored at HEAD on the plan's `branch:`. Returns the
+    repo and HEAD. A box count reads this plan as unfinished; `plan_status`
+    reads it as finished — the case that tells the two readers apart."""
+    import os
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from lib import evidence
+
+    repo = tmp_path / "repo"
+    artifacts = repo / ".prawduct" / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "build-plan-s.md").write_text(
+        "---\nartifact: build-plan\nscope: s\nbranch: main\n---\n\n"
+        "## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 02: B\n\n"
+        "## Build Chunks\n\n### Chunk 01: A\n\n### Chunk 02: B\n"
+    )
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    for args in (
+        ("init", "-q", "-b", "main"),
+        ("config", "user.email", "t@example.com"),
+        ("config", "user.name", "T"),
+        ("add", "-A"),
+        ("commit", "-q", "-m", "plan"),
+    ):
+        subprocess.run(["git", *args], cwd=str(repo), env=env, check=True, timeout=15,
+                       capture_output=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(repo), capture_output=True, text=True,
+        check=True, timeout=15,
+    ).stdout.strip()
+    appended = evidence.append_fact(repo, "review", "rev-chunks-1", {
+        "mode": _MODE_CHUNK, "scope": "s", "chunks": ["01", "02"], "chunk": "01",
+        "counts": {"blocking": 0}, "head_commit": head, "findings": [],
+    })
+    assert appended["status"] == "appended", appended
+    return repo, head
+
+
+class TestSynthesisAdvisoryReadsPlanStatus:
+    """#1051 Chunk 04: the nudge fires when `plan_status.is_finished` — every
+    chunk done or dropped by the FACTS — and the latest review from here is not
+    `final`/`cumulative`. A ticked box no longer decides "finished"."""
+
+    def test_a_fact_finished_plan_whose_latest_review_is_chunk_trips_it(self, tmp_path):
+        """Red against the box count: both boxes are unticked, so the old
+        reading said "mid-cycle" and stayed quiet."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo, _head = _fact_finished_plan_repo(tmp_path)
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok, "a finished plan closed by `chunk` reviews must nudge a final"
+        assert "All 2 chunks done or dropped" in reason
+        assert "/prawduct:critic final" in reason
+
+    def test_a_cumulative_after_it_satisfies_it(self, tmp_path):
+        """The control: the same plan, plus a later `cumulative` from here."""
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from lib import evidence
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo, head = _fact_finished_plan_repo(tmp_path)
+        evidence.append_fact(repo, "review", "rev-cumulative-1", {
+            "mode": _MODE_CUMULATIVE, "scope": "s", "chunks": [], "counts": {"blocking": 0},
+            "head_commit": head, "findings": [],
+        })
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
+
+    def test_an_open_chunk_keeps_it_quiet(self, tmp_path):
+        """Mid-cycle: a plan whose chunk 02 no fact certifies is not finished,
+        so a `chunk` review is the expected latest mode and nothing nudges."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo, _head = _fact_finished_plan_repo(tmp_path)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-s.md"
+        plan.write_text(plan.read_text().replace(
+            "### Chunk 02: B\n", "### Chunk 02: B\n\n### Chunk 03: C\n"
+        ))
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
+
+
 def _append_foreign_review(repo: Path, mode: str, *, worktree: str, branch: str) -> None:
     """A review fact recorded from ANOTHER worktree or branch of the same clone:
     the store is clone-global, so it lands in this repo's store too."""
