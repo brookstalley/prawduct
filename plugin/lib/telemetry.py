@@ -9,6 +9,9 @@ finding-level attribution (requirement 2's first cut), and per-``scope``
 rollups (the seam requirement 3's phase events will join later), and a
 per-``stage`` rollup (``inner`` / ``boundary``, read from the record
 ``critic-begin`` stamped — the yield query behind the stage-keyed rigor norm).
+Every grouping also reports what the builder did with its blocking and warning
+findings, joined from the evidence store by the rule ``stats`` uses — the
+severity label alone says what a reviewer flagged, not what came of it.
 
 v1 reports on ``review.*`` event kinds only; other kinds are skipped WITH A
 COUNT (forward-compat: a future ``build.chunk`` producer must not crash or
@@ -57,7 +60,11 @@ from .timewindow import in_window, is_usable_bound
 #: Bumped to 8 when `consolidated_by` joined: which path consolidated each Critic
 #: review, so a dead `SubagentStop` hook reads as a zero instead of hiding behind
 #: the paths that cover for it.
-REPORT_SCHEMA_VERSION = 8
+#: Bumped to 9 when a `dispositions` header and a per-block `dispositions`
+#: joined: what the builder did with each blocking/warning finding, read from
+#: the evidence store, beside `actionable_rate`, which says only what the
+#: reviewer labelled.
+REPORT_SCHEMA_VERSION = 9
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -336,6 +343,9 @@ def _extract_row(event: dict) -> dict:
     # mapping this reader would then own a second copy of.
     stage = event["review"].get("stage")
     trigger = event.get("trigger")
+    # The evidence-store review id, which disposition and resolution facts
+    # target. A `review.pr` event carries none, so it can never join.
+    fact_id = event["review"].get("fact_id")
     return {
         "role": role if isinstance(role, str) else None,
         "model": _canonical_model(model),
@@ -345,6 +355,7 @@ def _extract_row(event: dict) -> dict:
         # nothing about which path consolidated it.
         "trigger": trigger if trigger in CONSOLIDATION_TRIGGERS else None,
         "scope": scope if isinstance(scope, str) else None,
+        "fact_id": fact_id if isinstance(fact_id, str) and fact_id else None,
         "duration": duration,
         # The measured interval where there is one, else None — never a fallback
         # to the estimate, because the whole point is that the two are counted
@@ -368,10 +379,50 @@ def _population(values: list) -> dict:
     }
 
 
-def _group_stats(rows: list[dict]) -> dict:
+def _disposition_block(rows: list[dict], joins: dict) -> dict:
+    """What the builder did with the blocking and warning findings of the
+    reviews in ``rows`` that reached the evidence store.
+
+    ``joins`` is the pure-data result of the one store read (see
+    :func:`aggregate_review_stats`). A review joins when its ``fact_id`` is a
+    review the store holds; every other review is counted, never dropped, so a
+    rate over the joined subset always states the subset. Outcome names and
+    the rate are ``stats``'s, so the two reports agree about every finding.
+    """
+    if joins.get("status") != "available":
+        return {"status": "unavailable", "reason": joins.get("reason")}
+    from . import stats  # noqa: PLC0415 — lazy, as the module's other cross-lib imports are
+
+    outcomes = joins["outcomes"]
+    by_outcome = {o: 0 for o in stats.OUTCOMES}
+    joined = 0
+    for r in rows:
+        per_finding = outcomes.get(r["fact_id"]) if r["fact_id"] else None
+        if per_finding is None:
+            continue
+        joined += 1
+        for f in r["findings"]:
+            if f.get("severity") not in _ACTIONABLE:
+                continue
+            fid = f.get("fid")
+            # A finding with no id cannot be looked up; `stats` counts it as
+            # `other` too, rather than inventing an outcome for it.
+            by_outcome[per_finding.get(fid, "other") if isinstance(fid, str) else "other"] += 1
+    _acted, answered, rate = stats.acted_on(by_outcome)
+    return {
+        "status": "available",
+        "joined_reviews": joined,
+        "unjoined_reviews": len(rows) - joined,
+        "by_outcome": by_outcome,
+        "answered": answered,
+        "acted_on_rate": rate,
+    }
+
+
+def _group_stats(rows: list[dict], joins: dict) -> dict:
     """The stat block every grouping (overall / role×model×mode / scope)
     shares: review count, duration totals, findings by severity,
-    actionable rate, findings-per-review."""
+    actionable rate, what became of the findings, findings-per-review."""
     durations = [r["duration"] for r in rows if r["duration"] is not None]
     by_severity = {sev: 0 for sev in (*_SEVERITIES, "other")}
     actionable_reviews = 0
@@ -438,6 +489,7 @@ def _group_stats(rows: list[dict]) -> dict:
         "remedies": remedies,
         "findings_per_review": round(total_findings / n, 2) if n else 0.0,
         "actionable_rate": round(actionable_reviews / n, 3) if n else 0.0,
+        "dispositions": _disposition_block(rows, joins),
         "observations": sum(recording),
         "reviews_recording_observations": len(recording),
     }
@@ -642,14 +694,23 @@ def _consolidated_by(rows: list[dict]) -> dict:
 
 
 def aggregate_review_stats(
-    events: list[dict], skipped: dict, learning: "dict | None" = None
+    events: list[dict],
+    skipped: dict,
+    learning: "dict | None" = None,
+    dispositions: "dict | None" = None,
 ) -> dict:
     """The report body (everything below the ``project``/``generated_at``
     header the CLI adds) — pure, deterministic, fully derived from its inputs.
 
     ``learning`` is the tally :func:`_read_events` counted on the same pass;
     omitted, the block renders as zeros, which is the honest reading for a
-    ledger holding no learning events."""
+    ledger holding no learning events.
+
+    ``dispositions`` is what :func:`_read_dispositions` made of the evidence
+    store: ``{"status": "available", "as_of", "outcomes": {fact_id: {fid:
+    outcome}}}``, or ``{"status": "unavailable", "reason"}``. Omitted, the join
+    is unavailable, never a 0%."""
+    joins = dispositions or {"status": "unavailable", "reason": "the evidence store was not read"}
     rows = [_extract_row(e) for e in events]
 
     by_rmm: dict[tuple, list[dict]] = {}
@@ -663,17 +724,25 @@ def aggregate_review_stats(
     top_files, files_attributed_total = _top_files(rows)
     return {
         "schema_version": REPORT_SCHEMA_VERSION,
+        # Whether the per-block outcome figures could be read, and as of when:
+        # the window selects reviews, but what became of their findings is
+        # read from the store as it stands now.
+        "dispositions": (
+            {"status": "available", "as_of": joins.get("as_of")}
+            if joins.get("status") == "available"
+            else {"status": "unavailable", "reason": joins.get("reason")}
+        ),
         "events_total": len(rows),
         "skipped": dict(skipped),
-        "overall": _group_stats(rows),
+        "overall": _group_stats(rows, joins),
         "by_role_model_mode": [
-            {"role": role, "model": model, "mode": mode, **_group_stats(group)}
+            {"role": role, "model": model, "mode": mode, **_group_stats(group, joins)}
             for (role, model, mode), group in sorted(
                 by_rmm.items(), key=lambda kv: (kv[0][0] or "", kv[0][1] or "", kv[0][2])
             )
         ],
         "by_scope": [
-            {"scope": scope, **_group_stats(group)}
+            {"scope": scope, **_group_stats(group, joins)}
             for scope, group in sorted(by_scope.items(), key=lambda kv: kv[0] or "")
         ],
         # The yield query the stage-keyed rigor norm was drawn to answer: what
@@ -681,7 +750,7 @@ def aggregate_review_stats(
         # first in their own order, the unrecorded bucket last — an event
         # written before the field existed is "not measured", never a stage.
         "by_stage": [
-            {"stage": stage, **_group_stats(group)}
+            {"stage": stage, **_group_stats(group, joins)}
             for stage, group in sorted(
                 by_stage.items(),
                 key=lambda kv: _STAGES.index(kv[0]) if kv[0] in _STAGES else len(_STAGES),
@@ -721,6 +790,25 @@ def _fmt_population(label: str, population: dict) -> str:
     )
 
 
+def _fmt_dispositions(block: dict) -> str:
+    """What the builder did, for the human line. The reason a join is
+    unavailable is printed once, in the header, not on every grouping.
+
+    Undispositioned findings are in neither half of the rate, so the line
+    names them: a high rate over few answers reads as a verdict on findings
+    nobody has answered yet."""
+    if block.get("status") != "available":
+        return "dispositions unavailable"
+    joined = f"{block['joined_reviews']} of {block['joined_reviews'] + block['unjoined_reviews']} reviews joined"
+    open_ = block["by_outcome"]["undispositioned"]
+    if block["acted_on_rate"] is None:
+        return f"acted on n/a (0 answered blocking/warning findings, {open_} undispositioned; {joined})"
+    return (
+        f"acted on {round(block['acted_on_rate'] * 100)}% of {block['answered']} "
+        f"answered blocking/warning findings, {open_} undispositioned ({joined})"
+    )
+
+
 def _fmt_stats(stats: dict) -> str:
     """One stat block as a human line fragment (shared by every grouping)."""
     f = stats["findings"]
@@ -741,12 +829,17 @@ def _fmt_stats(stats: dict) -> str:
     #
     # The estimate shown is the population with NO clock, so the two figures
     # cover disjoint reviews and never describe the same round twice.
+    #
+    # The yield half leads with what the builder DID, and names the older
+    # figure for what it is: the share of reviews a reviewer labelled
+    # blocking/warning, which says nothing about whether anyone acted on it.
     return (
         f"{stats['reviews']} review(s) | "
         f"{_fmt_population('duration clocked', meas)}; "
         f"{_fmt_population('unclocked, self-reported estimate', self_rep)} | "
         f"B/W/N/other {f['blocking']}/{f['warning']}/{f['note']}/{f['other']} | "
-        f"actionable {pct}% | {stats['findings_per_review']} findings/review | "
+        f"{_fmt_dispositions(stats['dispositions'])} | severity-actionable {pct}% | "
+        f"{stats['findings_per_review']} findings/review | "
         f"{observations}"
     )
 
@@ -764,6 +857,12 @@ def _window_line(window: dict) -> list[str]:
         return []
     span = f"{since or 'the beginning'} .. {until or 'now'}"
     return [f"WINDOW: {span} — this is a SLICE, not the whole corpus"]
+
+
+def _dispositions_line(header: dict) -> str:
+    if header.get("status") == "available":
+        return f"dispositions: as of {header['as_of']} (read now; the window selects reviews, not outcomes)"
+    return f"dispositions: unavailable — {header.get('reason')}"
 
 
 def _fmt_remedies(remedies: dict) -> str:
@@ -800,6 +899,7 @@ def _render_human(report: dict, ledger_rel: str) -> str:
         f"{sk['corrupt_lines']} corrupt line(s), {sk['unknown_kinds']} unknown kind(s), "
         f"{sk['invalid_payloads']} invalid payload(s)",
         *_window_line(report.get("window") or {}),
+        _dispositions_line(report["dispositions"]),
         "",
         f"overall: {_fmt_stats(report['overall'])}",
         f"remedies: {_fmt_remedies(report['overall']['remedies'])}",
@@ -844,6 +944,38 @@ def _render_human(report: dict, ledger_rel: str) -> str:
         "written rule(s) no review has cited"
     )]
     return "\n".join(lines)
+
+
+def _read_dispositions(project_dir: Path, events: list[dict]) -> dict:
+    """One read of the evidence store, turned into the pure data
+    :func:`aggregate_review_stats` joins on: per review the store holds, the
+    outcome of each of that event's findings, by ``stats.finding_outcome``.
+
+    A store that is missing, unreadable or outside git is ``unavailable`` with
+    its reason. Its severity figures do not depend on it, and a rate over
+    nothing would read as a 0%.
+    """
+    from . import evidence, stats  # noqa: PLC0415 — lazy, as the module's other cross-lib imports are
+
+    as_of = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    read = evidence.read_facts(project_dir)
+    if read["status"] == "error":
+        return {"status": "unavailable", "reason": read.get("reason") or "evidence store unreadable"}
+    if read["status"] == "empty":
+        return {"status": "unavailable", "reason": "no evidence store in this clone yet"}
+    stored = {f.get("id") for f in read["facts"] if f.get("kind") == "review"}
+    outcome = stats.finding_outcome({"facts": read["facts"]})
+    outcomes: dict[str, dict] = {}
+    for event in events:
+        fact_id = event["review"].get("fact_id")
+        if not isinstance(fact_id, str) or fact_id not in stored:
+            continue
+        per_finding = outcomes.setdefault(fact_id, {})
+        for finding in event["review"]["findings"]:
+            fid = finding.get("fid") if isinstance(finding, dict) else None
+            if isinstance(fid, str):
+                per_finding[fid] = outcome((fact_id, fid))
+    return {"status": "available", "as_of": as_of, "outcomes": outcomes}
 
 
 def review_stats(project_dir: Path, argv: list[str]) -> int:
@@ -898,7 +1030,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
         learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
 
-    report = aggregate_review_stats(events, skipped, learning)
+    report = aggregate_review_stats(events, skipped, learning, _read_dispositions(project_dir, events))
     # Header fields the pure aggregation can't know — added once, here, so the
     # JSON and human renderings always agree.
     report = {
@@ -909,6 +1041,7 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         # the same shape, and a consumer that cannot tell them apart will
         # compare one against the other.
         "window": {"since": since, "until": until},
+        "dispositions": report.pop("dispositions"),
         **report,
     }
 

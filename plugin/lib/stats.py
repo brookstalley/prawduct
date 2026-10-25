@@ -51,7 +51,8 @@ _OUTCOME_OF_STATE = {
     dispositions.STATE_WAIVED: "waived",
     dispositions.STATE_OPEN: "undispositioned",
 }
-_OUTCOMES = (*_OUTCOME_OF_STATE.values(), "other")
+#: Public: ``review-stats`` reports the same names, in this order.
+OUTCOMES = (*_OUTCOME_OF_STATE.values(), "other")
 #: Outcomes that say the defect is gone. ``fixed_unreviewed`` counts: it is a
 #: fix nobody re-reviewed, not a fix that did not happen.
 _FIXED = ("fixed", "fixed_unreviewed")
@@ -122,6 +123,17 @@ def _population(values: list) -> dict:
 
 def _rate(numerator, denominator):
     return round(numerator / denominator, 3) if denominator else None
+
+
+def acted_on(counts) -> "tuple[int, int, float | None]":
+    """``(acted, answered, rate)`` over outcome counts keyed by this report's
+    outcome names. The one definition of the rate, which ``review-stats``
+    reports per grouping as well: two reports reading one store must not
+    disagree about what "acted on" means. ``undispositioned`` and ``other``
+    are in neither count."""
+    acted = sum(counts.get(o, 0) for o in _FIXED) + counts.get("filed", 0)
+    answered = acted + counts.get("accepted", 0) + counts.get("waived", 0)
+    return acted, answered, _rate(acted, answered)
 
 
 def finding_outcome(store: dict):
@@ -311,15 +323,14 @@ def _finish(b: dict) -> dict:
     stops = list(dict.fromkeys(b["stops"]))  # one entry per blocked Stop
     findings = {}
     for severity, c in b["findings"].items():
-        acted = sum(c[o] for o in _FIXED) + c["filed"]
-        answered = acted + c["accepted"] + c["waived"]
+        _acted, answered, rate = acted_on(c)
         findings[severity] = {
             "raised": c["raised"],
-            **{o: c[o] for o in _OUTCOMES},
+            **{o: c[o] for o in OUTCOMES},
             # The rate's denominator, exported so a reader that floors on it
             # (the contribution report) uses this count rather than its own.
             "answered": answered,
-            "acted_on_rate": _rate(acted, answered),
+            "acted_on_rate": rate,
         }
     loops = sum(
         1

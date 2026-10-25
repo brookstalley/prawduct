@@ -1,57 +1,75 @@
 ---
 artifact: build-plan
 version: 2
-scope: refusal-reasons
-branch: feature/1044-refusal-reasons
-partition: serial — one chunk; the sink, its first producer and its reader share one shape
-last_validated: 2026-10-24
+scope: review-stats-dispositions
+branch: feature/941-review-stats-dispositions
+partition: serial — one chunk; the join, the shared rate helper and the reader share one shape
+last_validated: 2026-10-25
 ---
 
 ## Goals
 
-**Response taken:** Proceed, citing #1044 — the owner confirmed it 2026-10-24 and asked that the design generalize beyond the Stop hook.
+**Response taken:** Proceed, citing #941 (`stage:ready`; the owner chose Option A in the issue
+body, which supersedes `documentation/issues/941-design.md` where they differ).
 
-**Product:** Make "does this control earn its cost?" answerable on evidence. #1044 asks it of `clear-verdict` and `clear-reason`, which caused 5 of 8 Stop blocks on plugin 3.7 (`prawduct-hook stats`, 2026-10-24). A quarter-long data clock starts only when this lands.
+**Product:** `review-stats` groups reviews by role × model × mode, scope and stage, but its only
+yield figure is `actionable_rate`: what a reviewer *labelled*. This adds what the builder *did*
+with each blocking/warning finding, from the evidence store's disposition and resolution facts,
+by the rule `stats` and `render-dispositions` already use. It also says how many reviews it could
+join, so a rate over a subset is never read as a rate over the whole.
 
-**Architecture:** The general pattern already exists. The owner's 2026-09-30 ruling put every control firing through one sink, `evidence.append_guard_refusal`, with families told apart by a `guard` prefix (#563 widens its producers). What no producer records is *why* it fired. So the generalization is a class-level addition to the sink, not a Stop-hook telemetry system:
+**Architecture:** `review_stats()` reads the store once and turns it into a pure-data outcome map
+`{fact_id: {fid: outcome}}` through `stats.finding_outcome`. `aggregate_review_stats` stays pure
+and takes that map as an argument. The acted/answered arithmetic moves out of `stats._finish` into
+one exported `stats.acted_on`, which both reports call.
 
-- `reason`: a short slug from a closed set the control declares — never turn text.
-- `observed`: a few machine observations taken at firing time (booleans or `None` for "could not tell").
-- The catch-vs-slip **verdict is derived in `stats` at read time** from reason + observed, never stored, so the definition can be revised without losing data (the same move #951 makes).
-
-Confirmed by the owner 2026-10-24 (inferred until then): hooks are the wrong unit (SessionStart never refuses; one Stop hook runs many gates; most controls are not hooks), so the unit is the control.
-
-**Verdict definitions (confirmed by the owner 2026-10-24; revisable because derived):**
-- `clear-reason`: the harm is a clear losing what only the turn held. `notes_present` true → *slip* (a record existed; the reason misnamed it); false → *catch*.
-- `clear-verdict`: the harm is a reader told to hold a session for nothing. `work_live` true (harness background tasks or a live Critic marker) → *slip* (the hold was right; only the disposition label was wrong); false → *catch*. An unreaped delegate is not observable, so `work_live` can under-read; that biases toward *catch*, which is the direction that keeps a gate.
-
-**Constraints:** Recording stays advice: it never changes an exit code, and a failed append prints a `NOTE:`. No turn text leaves the hook. `contribution.py` reads named `stats.aggregate` keys, so added keys must not move any it reads.
-
-**Tradeoffs accepted:** Only the two clear gates get reasons now; other gates record `reason` absent, reported as `unspecified`. #908 (reflection gate) adopts the same field when it is built.
-
-**Decisions made mid-build:**
-- 2026-10-24, the owner: telemetry is not only about blocking. Session start should record which advisories it offered, among other things. So `reason`/`observed` are specified for *any* control firing, blocking or not, and nothing in the sink or in `stats`' reason counting is refusal-specific. Non-blocking firings close the loop through an **outcome** (an offered advisory later resolved or dismissed), not a catch/slip verdict. Advisory exposure (one fact per advisory per session it is offered in, deduped on advisory id + session) is recorded on #563 as its probe producer's design, not built here: session start is a hot path and earns its own review. *(Alignment-pass miss: the first Goals line read #1044 as Stop-only.)*
-
-**Level:** High — the issue's acceptance is explicit; the shape follows an existing owner ruling.
+**Inferences (not settled by the issue; mine):**
+- The status lives in two places. A top-level `dispositions` header carries
+  `{status, as_of}` or `{status, reason}`, and every stat block carries a `dispositions` block
+  with the same `status`. `as_of` is the moment of the store read.
+- A store that is `empty` (no file yet) counts as unavailable, the same as no git or an
+  unreadable file. The issue lists "absent" among the unavailable cases.
+- A finding in a joined review that has no `fid` counts as `other`, which matches `stats`.
+- The human line puts the outcome first in the yield part of the fragment. The old
+  `actionable N%` text becomes `severity-actionable N%`, and the reason it is unavailable is
+  printed once in the header, not on every line.
+- The human line also names the undispositioned count. On this repo's real store (2026-10-25)
+  the rate is 93% of 1,884 answered, and 360 findings are unanswered. A rate printed without
+  them reads as a verdict on findings nobody has answered yet. The issue keeps them visible in
+  `by_outcome`; this keeps them visible on the line people read.
 
 ## Status
 
-- [x] Chunk 01: Reason + observations on control firings; clear gates as first producer; `stats` reports by reason and derived verdict
+- [ ] Chunk 01: review-stats joins the evidence store; one acted-on rule shared with `stats`
 
-Context: Single chunk. Done when: tests pass (`tests/test_stop_block_facts.py`, `tests/test_stats.py`, `tests/test_stop_verdict_defer.py`), `plugin/docs/governance-telemetry.md` documents the fields and verdict rules, a change fragment exists, and `/prawduct:critic` passes.
+Context: Single chunk. Done when: `tests/test_review_stats.py` and `tests/test_stats.py` pass,
+`plugin/docs/governance-telemetry.md` § review-stats documents the block and schema 9, a change
+fragment exists, the develop `-dev.2` bump rides this branch, and `/prawduct:critic` passes.
 
-## Chunk 01: Reason + observations on control firings
+## Chunk 01: review-stats joins the evidence store
 
 **Delivers:**
-1. `evidence.append_guard_refusal(..., reason=None, observed=None)`: validated (slug reason; flat dict of bool/None/int/slug observations) and written into the body as `reason` / `observed`. An invalid value is refused like an invalid guard name.
-2. `evidence.append_stop_block(project_dir, gates, details=None)`: `details` maps gate id → `{reason, observed}`.
-3. `standing_block`: self-citation patterns carry a kind (`in-this-message`, `message-holds`, `above-below`); `self_citation_match` returns phrase + kind; `self_citation` is unchanged. `gates.turn_self_citation` exposes it.
-4. `prawduct-hook` Stop: `_GateMessage` carries `reason` / `observed`; `clear-verdict` records `handed-over-your-turn` | `handed-over-complete`; `clear-reason` records the citation kind; both observe `work_live` and `notes_present`. `_record_stop_block` passes them through.
-5. `stats`: `stop_blocks.by_gate_reason` and `stop_blocks.verdicts` (catch / slip / unclassified per gate), `guard_refusals.by_guard_reason`; human report prints the per-gate reason line; `REPORT_SCHEMA_VERSION` 1 → 2.
-6. `plugin/docs/governance-telemetry.md`: the fields, the closed reason sets, the verdict rules and that they are derived.
+1. `stats.acted_on(counts) -> (acted, answered, rate)`; `stats._finish` calls it.
+2. `telemetry._extract_row` returns `fact_id` (str or None); findings keep their `fid`.
+3. `telemetry.aggregate_review_stats(..., dispositions=None)`: per-group `dispositions` block
+   (`status`, `joined_reviews`, `unjoined_reviews`, `by_outcome` over `stats._OUTCOMES`,
+   `answered`, `acted_on_rate`) over blocking+warning findings of joined reviews, or
+   `{status: unavailable, reason}`. A top-level `dispositions` header.
+4. `telemetry.review_stats`: one `evidence.read_facts`, lazy imports, builds the outcome map.
+5. Human line: `acted on N% of M answered blocking/warning findings, U undispositioned (J of R
+   reviews joined) | severity-actionable P%`; the header line states `as_of` or the reason it is
+   unavailable.
+6. `REPORT_SCHEMA_VERSION` 8 → 9; the doc's § review-stats and `--json` contract updated.
+7. Version bump to 3.7.3-dev.2 (four files); change fragment.
 
-**Acceptance:**
-- A blocked clear-verdict Stop's fact carries its reason and observations; a clear-reason Stop's carries the citation kind.
-- No fact body contains the turn's text (the matched phrase is not recorded).
-- `stats` reports refusals by reason per gate and a derived verdict; a gate with no reason reports `unspecified`.
-- Recording failure still keeps the block and says so.
+**Acceptance:** the issue's list, verbatim:
+- Red first: a `fixed` twin and an `accept` twin both give `actionable_rate` 1.0, but
+  `acted_on_rate` 1.0 vs 0.0 (fails on develop).
+- For one fixture, `review-stats` and `stats` give the same outcome tally per finding.
+- An event with no `fact_id`, or one whose `fact_id` is missing from the store, is counted in
+  `unjoined_reviews`, and rates are computed over the rest only.
+- A missing or unreadable store gives `status: unavailable` with a reason, and the severity
+  fields are byte-identical to a run with the join disabled.
+- An event outside `--since/--until` is in neither the numerator nor the denominator.
+- `stats` output is unchanged after the helper extraction (existing tests pass unedited).
+- Schema 9 and the doc agree.
