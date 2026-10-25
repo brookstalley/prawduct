@@ -166,7 +166,12 @@ def _short_plan_deferral(project_dir: Path, prawduct_dir: Path, binding):
             return None
         cm = _critic_mode()
         progress = cm.binding_progress(project_dir, binding)
-        return cm.short_plan_deferral(project_dir, prawduct_dir, binding, progress)
+        # `read_built`: committed chunks (`plan_status.built_chunks`) may ARM the
+        # last-chunk block on a box-free plan; `short_plan_deferral` lets `built`
+        # only turn "warn" into "block", never the reverse.
+        return cm.short_plan_deferral(
+            project_dir, prawduct_dir, binding, progress, read_built=True
+        )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a gate relaxation that cannot be evaluated must not relax the gate
         # Fail closed AND say so: a crashed predicate otherwise reads exactly
         # like an ineligible plan, and the builder runs the round the owner

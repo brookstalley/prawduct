@@ -2635,8 +2635,14 @@ def working_tree_interval_base(
     head_commit: str,
     head_tree: str,
     why: "list[str] | None" = None,
+    *,
+    read: "dict | None" = None,
 ) -> dict:
     """Where a ``chunk``/``final`` review's interval starts — the one owner.
+
+    ``read`` is the caller's ``evidence.read_facts`` result, passed through to
+    ``gates.covered_frontier`` so a caller that already read the store (mode
+    inference) does not read it again.
 
     Returns ``{"origin", "commit", "tree", "absent"}``; ``origin`` is one of the
     ``BASE_AT_*`` constants above, and ``absent`` is the ``gates.FRONTIER_ABSENT_*``
@@ -2671,7 +2677,7 @@ def working_tree_interval_base(
 
     frontier_why: list[str] = []
     absent: list[str] = []
-    frontier = gates.covered_frontier(project_dir, frontier_why, absent)
+    frontier = gates.covered_frontier(project_dir, frontier_why, absent, read=read)
     if why is not None:
         why.extend(frontier_why)
     absent_code = absent[0] if absent else None

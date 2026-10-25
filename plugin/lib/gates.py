@@ -1575,8 +1575,14 @@ def covered_frontier(
     project_dir: Path,
     why: "list[str] | None" = None,
     absent: "list[str] | None" = None,
+    *,
+    read: "dict | None" = None,
 ) -> "dict | None":
     """The newest commit on this branch whose tree a REVIEW already covers.
+
+    ``read`` is the caller's ``evidence.read_facts`` result when it holds one
+    (mode inference reads the store once per call and threads it); otherwise
+    the store is read here.
 
     Walks HEAD's first-parent history back toward the merge-base and returns
     ``{"commit", "tree"}`` for the first commit whose tree composition reaches
@@ -1624,7 +1630,8 @@ def covered_frontier(
         if absent is not None:
             absent.append(code)
 
-    read = evidence.read_facts(project_dir)
+    if read is None:
+        read = evidence.read_facts(project_dir)
     precheck = _store_precheck(read)
     if precheck is not None:
         _unreadable(f"the evidence store could not be read ({precheck[1]})")
