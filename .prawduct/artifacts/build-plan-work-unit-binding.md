@@ -341,7 +341,7 @@ worktree forked from `feature/1050-work-unit-binding`, confirm the Stop hook arm
 
 **Verified live, 2026-10-25 (coordinator, after the cumulative):** on this branch
 `prawduct-hook plan resolve --json` → `bound · claim · base develop`; `infer-critic-mode` → `chunk`
-(mid-plan) then `cumulative`; `plan resolve --branch develop` → `` (no plan claims the
+(mid-plan) then `cumulative`; `work_unit.resolve(repo, branch="develop")` → `ImportError: attempted relative import with no known parent package` (no plan claims the
 integration branch; the finished `review-stats-dispositions` plan at the default path is not
 served). The scratch-worktree Stop case and the unclaimed-branch mode inference are pinned by the
 red-first tests Chunks 01 and 03 added (`tests/test_work_unit.py`, the Stop-gate modules) rather
