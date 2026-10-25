@@ -189,6 +189,28 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   narrowed `evidence status|list` grants carry no instruction in the Critic's files (kept; ~12
   tokens per run — a later trim if nothing ever uses them); `test-evidence record` is absent from
   the hook's data-plane tables so R-16's sweep does not cover it (observation, not changed here).
+- Chunk 03 as built (delegate B, 2026-10-25, merged 0e3a447a), accepted: the session-start line
+  says "evidence fact(s)" (resolutions and imports travel too); doctor #25 is a recommendation,
+  not a conformance check (`/prawduct:pr` syncs either way); the import writer NOTEs on
+  `not in ("attached", "present")` (a `skipped` there means HEAD gave no anchor); R-6's
+  TYPE_CHECKING guard in `plan_status` is kept with its comment corrected — the premise that the
+  dead import alone justified it was wrong (`plan_lifecycle → release_readiness → gates →
+  plan_status` is a real top-level path, traced by AST), the dead import itself is gone;
+  `check-claims` prints each non-release-pending miss as `not release-pending (<state>: <reason>)`
+  and a `working-branches:` entry missing while the integration branch is in progress is now
+  `missing`; doctor's numbering keeps the retired #13 gap. Session start on a foreign binary now
+  writes the store (ingest) under the standing harness-invoked exemption.
+- **Chunk 06 live verification, 2026-10-25** (`tools/evidence-roundtrip.sh <repo>
+  feature/1052-evidence-transport <scratch>`, nothing leaves the machine): clone X with this
+  repo's store copied in — `evidence status` → "no refs/notes/prawduct … none of the store's
+  transported facts is on a note"; `evidence sync` → `reconciled: 1, pushed: true` (the keystone
+  review the `-live` consolidator never noted, attached by reconcile); clone Y from the mirror,
+  empty store — `check-cumulative-critic` → uncovered, "no review round recorded"; `evidence sync`
+  → `ingested: 1`; `check-cumulative-critic` → the same verdict X prints, word for word ("1 review
+  round since the merge-base", uncovered at the moved HEAD); `evidence list` shows
+  `rev-20261025T173802Z-7a0e5c49`. Acceptance met. `plan status` on this branch prints
+  `lifecycle: in-progress`; `check-claims` names all three retained plans `merged-unreleased` by
+  anchor, exit 0.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a
