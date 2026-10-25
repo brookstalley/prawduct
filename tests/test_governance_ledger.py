@@ -217,6 +217,31 @@ class TestLedgerAppendScopeFallback:
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "my-feature"
 
+    def test_a_plan_claiming_another_branch_lends_no_scope(self, tmp_path):
+        """The observed misattribution: a finished plan at the conventional path,
+        retained for its release, named the scope of a review on an unrelated
+        branch because the fallback resolved it there."""
+        repo = tmp_path / "repo"
+        _init_repo(repo)
+        _commit_file(repo, "app.py", "print(1)\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: finished\nbranch: feature/finished\n---\n\n"
+            "## Status\n- [x] Chunk 01: A\n"
+        )
+        (repo / ".prawduct" / "project-state.yaml").write_text("active_build_plan: null\n")
+        _git(repo, "checkout", "-q", "-b", "fix/unrelated")
+        _write_findings(repo)
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
+        assert r.returncode == 0, r.stderr
+        assert _ledger_events(repo)[0]["scope"] is None
+        # The control: on the branch the plan claims, it supplies its scope.
+        _git(repo, "checkout", "-q", "-b", "feature/finished")
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
+        assert r.returncode == 0, r.stderr
+        assert _ledger_events(repo)[-1]["scope"] == "finished"
+
     def test_no_plan_means_null_scope(self, tmp_path):
         repo = tmp_path / "repo"
         _init_repo(repo)

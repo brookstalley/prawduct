@@ -128,7 +128,7 @@ def _scope_from_plan(prawduct_dir: Path) -> str | None:
     """Fallback scope: the active build plan's frontmatter ``scope:`` value,
     else the ``build-plan-<scope>.md`` filename convention, else ``None``."""
     plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
+    if plan_path is None or not plan_path.is_file():
         return None
     try:
         # Explicit UTF-8, and `UnicodeDecodeError` (a `ValueError`) caught

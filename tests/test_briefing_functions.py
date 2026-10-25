@@ -124,12 +124,13 @@ class TestBranchScopedPlanBriefing:
             tmp_path, findings
         )
 
-    def test_the_same_plan_still_nags_when_the_pointer_names_it(self, tmp_path: Path):
-        """The control, and the pointer-resolved case the rule keeps.
-
-        Without it the assertion above passes on any repo where the advisory is
-        broken rather than on one where the pointer was cleared.
-        """
+    def test_the_pointer_left_on_a_branch_declaring_plan_is_now_inert(
+        self, tmp_path: Path
+    ):
+        """A plan declaring ``branch:`` governs that branch and no other, so a
+        pointer left aimed at it after the merge no longer puts it back in force
+        on ``develop`` — the advisory whose only correct action was to ignore it
+        cannot fire, whether or not the pointer was cleared."""
         _init_git_repo(tmp_path, branch="develop")
         prawduct = _prawduct(tmp_path)
         (prawduct / "project-state.yaml").write_text(
@@ -140,6 +141,23 @@ class TestBranchScopedPlanBriefing:
             "build-plan-shipped.md",
             "---\nartifact: build-plan\nbranch: feat/long-merged\n---\n\n"
             "## Status\n\n- [x] Chunk 01: shipped\n",
+        )
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("archive the plan" in f for f in findings), findings
+
+    def test_a_pointer_only_plan_still_nags(self, tmp_path: Path):
+        """The control, and the pointer-resolved case the rule keeps: a plan
+        declaring no branch is governed by the pointer as before. Without it the
+        assertions above pass on any repo where the advisory is broken."""
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-shipped.md\n"
+        )
+        _plan(
+            prawduct,
+            "build-plan-shipped.md",
+            "---\nartifact: build-plan\n---\n\n## Status\n\n- [x] Chunk 01: shipped\n",
         )
         findings = briefing.staleness_scan(tmp_path)
         assert any("archive the plan" in f for f in findings), findings

@@ -1357,7 +1357,11 @@ LAST_MEASURED_TOKENS = {
     # over-declaration blocker left with the retired file-set gate; the Critic's rationale check
     # is stated in one sentence instead. A READING.
     # +3 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
-    "methodology/planning.md": 5859,
+    # +31 on 2026-10-25 (branch-claimed-plan-no-fallback): the precedence paragraph states that
+    # a plan declaring `branch:` governs that branch only (neither fallback resolves it
+    # elsewhere), and the retention sentence drops its pointer step, citing that rule rather
+    # than restating it. A READING.
+    "methodology/planning.md": 5890,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

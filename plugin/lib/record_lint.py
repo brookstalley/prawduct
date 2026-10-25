@@ -1692,6 +1692,8 @@ def _plans_to_check(prawduct_dir: Path, records: list[str]) -> list[str]:
     )
     if governing_changed:
         active = resolve_build_plan_path(prawduct_dir)
+        if active is None:
+            return plans
         try:
             rel_active = str(active.relative_to(prawduct_dir.parent))
         except ValueError:

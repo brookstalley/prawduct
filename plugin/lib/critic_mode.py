@@ -1751,7 +1751,7 @@ def _critic_mode_for_chunk(
     # file.
     if plan_path is None:
         plan_path = resolve_build_plan_path(prawduct_dir)
-    if not plan_path.is_file():
+    if plan_path is None or not plan_path.is_file():
         # No plan at all is not an unreadable plan: rule 4 already grounds its
         # choice on the plan's absence and says so, so there is nothing here that
         # inference does not already know.
