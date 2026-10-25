@@ -151,9 +151,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
 - **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating),
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
-- **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
-  overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted — see
-  § Error Model), `critic-consolidate`
+- **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
+  `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
+  — see § Error Model; `--chunks` names the build-plan chunks the review certifies — a comma list,
+  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
+  alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
+  does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
+  usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note),
+  `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
   the ledger append after it still consumes the mark), `critic-end`, `critic-discard` (archive-then-remove a
@@ -180,6 +185,13 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
   checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
 - **Test evidence** — `test-evidence record` (mutating), `test-status` (freshness), `validate-evidence`.
+  From a harness scratch worktree, `test-evidence record` is admitted through the ephemeral guard
+  into the shared store only: it appends the `test-run` fact with `narrowed: true` and `ceiling`
+  (the paths/args run) and writes no per-worktree `.test-evidence.json`; `--no-rerun` and
+  `--from-counts` there exit 2, since neither records a fact. A narrowed fact is attribution only —
+  the freshness fallback neither vouches nor denies by it. `test-status` prints its verdict line
+  first, then one line per scratch worktree's newest narrowed run (at most 10); its exit code is
+  unchanged.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **Stranded work** — `worktrees [--json]` (read-only): every worktree with its inferred liveness
@@ -319,6 +331,24 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   deliverables) and `reason` says why an entry that looked like an answer was not one (an
   unreadable `dropped:` line, a fact whose anchor is not in the branch's history). Keys are added,
   never repurposed; `state` values are a closed set that grows additively.
+  `plan import-status <path> [--apply] [--remove-block] [--json]` (mutating with `--apply`) is the
+  MG2 migration: for each chunk `chunk_states` reads as done-by-tick with no fact yet, it appends
+  one `chunk-imported` fact, code-written from the box; `--remove-block` then rewrites the plan
+  without its `## Status` section — opt-in until #1052 ships transport, because facts are per-clone
+  until then. Facts are written first and the block edited only after all succeed; every block
+  refusal precedes any write. Exit 0 for a preview or a successful write; 1 `refused: <code>` for
+  `archived-plan`, `no-scope`, `store-unreadable`, `status-block-ambiguous`,
+  `status-block-undelimited`, `status-block-trailing-comment`, `fact-append-failed`,
+  `plan-write-failed`; 2 usage or a path that is not a build plan. The preview is allowed inside a
+  scratch worktree; `--apply` is a governance write and is refused there.
+  `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
+  `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per
+  claim, each reported distinctly and carried in `--json` as `outcome`: `exists`; `release-pending`
+  (the branch is gone and the plan's scope has a pending change record — a fragment, or an untagged
+  change-log entry, read through `release_readiness.pending_scopes` — the gitflow retention policy
+  working, relayed as "archive at the release", never a defect); `missing` (gone with no pending
+  record, or a record that fails validation). Exit 0 when nothing is `missing`, 1 when anything is,
+  3 when git cannot list branches, 2 usage.
   `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
   bounded: past the repo's oversized threshold it moves entries verbatim into
   `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,
