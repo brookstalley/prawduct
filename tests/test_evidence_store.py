@@ -196,6 +196,49 @@ class TestEnvelope:
         assert len(read["facts"]) == 2
         assert [f["id"] for f in evidence.facts_of_kind(read, "review")] == ["r-1"]
 
+    def test_chunk_imported_appends_and_reads_back(self, tmp_path):
+        """#1051's MG2 kind: written through the one writer, read back by kind,
+        and named by the one constant its reader (`plan_status`) filters on."""
+        from lib import plan_status
+
+        repo = _make_repo(tmp_path)
+        body = {"scope": "s", "chunk": "01", "source": "status-box",
+                "imported_at": "2026-10-25T00:00:00Z"}
+        result = evidence.append_fact(repo, plan_status.IMPORTED_KIND, "imp-1", body)
+        assert result["status"] == "appended", result
+        read = evidence.read_facts(repo)
+        (fact,) = evidence.facts_of_kind(read, "chunk-imported")
+        assert (fact["id"], fact["body"]) == ("imp-1", body)
+
+    def test_chunk_imported_is_outside_the_coverage_fingerprint(self, tmp_path):
+        """Observational: it spans no trees, so appending one leaves the
+        coverage verdict's memo key where it was; a review moves it (control)."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {})
+        before = evidence.read_facts(repo)["coverage_fingerprint"]
+        evidence.append_fact(repo, "chunk-imported", "imp-1", {"scope": "s", "chunk": "01"})
+        assert evidence.read_facts(repo)["coverage_fingerprint"] == before
+        evidence.append_fact(repo, "review", "r-2", {})
+        assert evidence.read_facts(repo)["coverage_fingerprint"] != before
+
+    def test_an_older_reader_lets_chunk_imported_coexist(self, tmp_path, monkeypatch):
+        """Level item (2): a reader whose KNOWN_KINDS predates the kind (the
+        `-live` plugin beside this repo-local one) keeps the line — same
+        schema, so not `schema_ahead`, no block — and it satisfies no other
+        kind's filter."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {})
+        evidence.append_fact(repo, "chunk-imported", "imp-1", {"scope": "s", "chunk": "01"})
+        monkeypatch.setattr(evidence, "KNOWN_KINDS", evidence.KNOWN_KINDS - {"chunk-imported"})
+        monkeypatch.setattr(
+            evidence, "OBSERVATIONAL_KINDS", evidence.OBSERVATIONAL_KINDS - {"chunk-imported"}
+        )
+        read = evidence.read_facts(repo)
+        assert read["status"] == "ok", read
+        assert read["schema_ahead"] == []
+        assert {f["id"] for f in read["facts"]} == {"r-1", "imp-1"}
+        assert [f["id"] for f in evidence.facts_of_kind(read, "review")] == ["r-1"]
+
     def test_concurrent_appends_stay_whole(self, tmp_path):
         repo = _make_repo(tmp_path)
         # Pre-create the store so threads race only on the append write.

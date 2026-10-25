@@ -216,22 +216,32 @@ class TestSingleReadingCurrentChunk:
         redirect the owner and require `infer_mode`'s answer to move with it.
         Chunk 04 declares `**Critic mode:** final`; Chunk 02 declares none, so
         the plan-override appears only when 04 is the resolved chunk.
+
+        Ported to the owner #1051 made it (`plan_status.current_chunks`, read by
+        `critic_mode.binding_progress`): the redirect is applied THERE, and the
+        Status reader this test used to redirect is shown not to be consulted.
         """
         repo = _live_repo(tmp_path)
         mode, rationale = critic_mode.infer_mode(repo)
         assert (mode, rationale) == ("final", "plan-override: final")
 
+        # The old owner, redirected, moves nothing: inference no longer asks it.
         redirected = buildplan_refs.resolve_chunk_progress(repo)._replace(
             current_id="02", current_text="Chunk 02: Parser correctness"
         )
+        with monkeypatch.context() as m:
+            m.setattr(
+                buildplan_refs, "resolve_chunk_progress",
+                lambda _d, _plan_path=None: redirected,
+            )
+            assert critic_mode.infer_mode(repo) == ("final", "plan-override: final")
+
         monkeypatch.setattr(
-            critic_mode.buildplan_refs,
-            "resolve_chunk_progress",
-            # Accepts the plan-path argument `infer_mode` now passes (it resolves
-            # this branch's plan rather than trusting the pointer). The stub
-            # ignores it: what is under test is that the ANSWER comes from the
-            # owner, not which file the owner was pointed at.
-            lambda _d, _plan_path=None: redirected,
+            critic_mode.plan_status,
+            "current_chunks",
+            # The stub ignores the plan it is asked about: what is under test is
+            # that the ANSWER comes from the owner, not which file it was given.
+            lambda *_a, **_k: ["02", "04"],
         )
         assert critic_mode.infer_mode(repo)[1] != "plan-override: final", (
             "infer_mode ignored the resolver — it is re-deriving which chunk is "

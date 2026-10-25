@@ -95,15 +95,33 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # resume) — the denominator that turns a count of Stop-hook blocks or guard
 # firings into a per-session rate (:func:`append_session_start`). No gate reads
 # it.
+#
+# ``chunk-imported`` records one ``## Status`` box the MG2 migration converted
+# (``{scope, chunk, source: "status-box", imported_at}``), so a ticked box
+# keeps answering "done" after the block is removed. Its one reader is
+# ``plan_status.chunk_states`` (``plan_status.IMPORTED_KIND``); it spans no
+# trees, so the coverage verdict never sees it. Added as a kind, not a schema
+# bump: an older reader keeps an unknown kind in the digest and lets it coexist,
+# never satisfy a gate (build-plan-chunk-status.md, Level item 2).
 KNOWN_KINDS = frozenset(
-    {"review", "resolution", "disposition", "guard-refusal", "test-run", "session-start"}
+    {
+        "review",
+        "resolution",
+        "disposition",
+        "guard-refusal",
+        "test-run",
+        "session-start",
+        "chunk-imported",
+    }
 )
 
 #: Kinds the coverage verdict never reads, so their lines are left out of
 #: ``coverage_fingerprint`` (:func:`read_facts`). Membership is a claim about
 #: ``coverage_algebra.coverage_verdict``'s inputs — review edges and the
 #: resolution index — and a kind joins only if that function cannot see it.
-OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run", "session-start"})
+OBSERVATIONAL_KINDS = frozenset(
+    {"guard-refusal", "test-run", "session-start", "chunk-imported"}
+)
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
