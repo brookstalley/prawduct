@@ -2,8 +2,9 @@
 schema: 1
 type: fix
 scope: skew-note-harness-hooks
-date: 2026-10-20
+date: 2026-10-25
 title: The plugin-binary-skew note fires once per session, not on every Stop
+closes: [brookstalley/prawduct#1059]
 ---
 In a framework checkout, every harness hook runs the installed plugin, so the binary-skew guard
 noted a foreign binary on SessionStart, on every Stop and on every Critic SubagentStop — and the
