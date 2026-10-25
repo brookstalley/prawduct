@@ -702,6 +702,24 @@ class TestOneRenderer:
         assert lines[4] == "    descoped for the fixture"
         assert plan_status.render_table({}) == []
 
+    def test_render_lifecycle_prints_state_release_and_reason(self):
+        """The ``lifecycle:`` line ``plan status`` prints under the table: the
+        release tag follows the state only when there is one."""
+        from lib import plan_lifecycle
+
+        in_progress = plan_lifecycle.Lifecycle(
+            "in-progress", "`b` exists locally and its tip is not in `develop`'s history"
+        )
+        released = plan_lifecycle.Lifecycle(
+            "released", "the change record ships scope `u` in v1.4.0", "v1.4.0"
+        )
+        assert plan_status.render_lifecycle(in_progress) == (
+            "lifecycle: in-progress — `b` exists locally and its tip is not in `develop`'s history"
+        )
+        assert plan_status.render_lifecycle(released) == (
+            "lifecycle: released v1.4.0 — the change record ships scope `u` in v1.4.0"
+        )
+
     def test_plan_status_the_handoff_and_the_pr_payload_print_identical_rows(self, repo):
         import json
 
