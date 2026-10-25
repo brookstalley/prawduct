@@ -859,24 +859,17 @@ def unresolved_scope_cause(
             f"the top of the file{missing_scope}",
         )
 
-    # The fallback candidate itself, not the resolver's answer: the resolver
-    # refuses a fallback plan that claims another branch (it answers None),
-    # which is exactly the case this diagnosis names.
-    pointer = core.fallback_plan_path(prawduct_dir)
-    if pointer.is_file():
-        try:
-            other = plan_index.parse_build_plan_frontmatter_branch(
-                pointer.read_text(encoding="utf-8")
-            )
-        except (OSError, UnicodeDecodeError):
-            other = None  # advice degrades to the generic cause, never to an error
-        if other and other != branch:
-            return (
-                "pointer-claims-other",
-                f"the active plan {rel(pointer)} claims branch {other!r}, not "
-                f"{branch!r} — correct its `branch:` if this is its work, or pass "
-                "`--scope`",
-            )
+    # The resolver's own refusal predicate, so this explains exactly the plan
+    # `core.resolve_build_plan_path` refused rather than re-deriving it.
+    foreign = core.foreign_fallback_claim(prawduct_dir)
+    if foreign is not None:
+        refused, other = foreign
+        return (
+            "pointer-claims-other",
+            f"the fallback plan {rel(refused)} claims branch {other!r}, not "
+            f"{branch!r}, so it does not govern this branch — correct its "
+            "`branch:` if this is its work, or pass `--scope`",
+        )
 
     changed = _changed_on_branch(project_dir, artifacts_dir) or set()
     edited = [p for p in plan_index.iter_live_plan_files(artifacts_dir) if p.resolve() in changed]

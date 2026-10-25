@@ -991,6 +991,22 @@ def resolve_build_plan_path(prawduct_dir: Path) -> Path | None:
     claim = resolve_branch_claim(prawduct_dir)
     if claim is not None:
         return claim.chosen
+    if foreign_fallback_claim(prawduct_dir) is not None:
+        return None
+    return fallback_plan_path(prawduct_dir)
+
+
+def foreign_fallback_claim(prawduct_dir: Path) -> tuple[Path, str] | None:
+    """``(plan, its branch)`` when the fallback plan declares a branch other than
+    the one checked out — the refusal :func:`resolve_build_plan_path` applies —
+    else ``None``.
+
+    The one statement of that predicate: the resolver refuses on it, and
+    ``buildplan_refs.unresolved_scope_cause`` explains a scope-less review by it,
+    so the two cannot disagree about which plan was refused. ``None`` too when
+    the plan is missing, unreadable or claims nothing, and on a detached HEAD or
+    outside a work tree, where there is no branch for a claim to contradict.
+    """
     fallback = fallback_plan_path(prawduct_dir)
     from . import plan_index  # noqa: PLC0415 — lazy: core's top level stays stdlib-only
 
@@ -999,16 +1015,16 @@ def resolve_build_plan_path(prawduct_dir: Path) -> Path | None:
             fallback.read_text(encoding="utf-8")
         )
     except (OSError, UnicodeDecodeError):
-        return fallback  # missing or unreadable: each caller already says so
+        return None  # missing or unreadable: each caller already says so
     if declared is None:
-        return fallback
+        return None
 
     from . import gitstate  # noqa: PLC0415 — same reason; also a git subprocess
 
     branch = gitstate.current_branch(prawduct_dir.parent)
     if branch and branch != declared:
-        return None
-    return fallback
+        return fallback, declared
+    return None
 
 
 def extract_block(content: str) -> tuple[str | None, str, str]:

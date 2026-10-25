@@ -493,6 +493,28 @@ class TestBranchScopedResolution:
         _git(repo, "checkout", "-q", "--detach", head)
         assert resolve_build_plan_path(prawduct) == plan
 
+    def test_chunk_readers_say_no_plan_governs_rather_than_naming_a_file(
+        self, tmp_path: Path
+    ):
+        """Both chunk readers report the refusal in words: the plan FILE exists,
+        so "missing build-plan: <its path>" would send the reader to a file that
+        is right there. Pinned at the CLI too, where the Critic meets it."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan.md", branch="feature/finished")
+        governs = "no build plan governs this branch"
+        assert governs in _bpr._parse_build_plan_chunk_refs(prawduct, "01")["error"]
+        assert governs in _bpr._parse_build_plan_chunk_type(prawduct, "01")[1]
+        proc = subprocess.run(
+            [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs", "01"],
+            cwd=str(repo), capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 1
+        assert governs in proc.stderr
+        # The control: on the branch the plan claims, the same call reads it.
+        _git(repo, "checkout", "-q", "-b", "feature/finished")
+        assert governs not in (_bpr._parse_build_plan_chunk_refs(prawduct, "01")["error"] or "")
+
     def test_detached_head_falls_through_to_the_scalar(self, tmp_path: Path):
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
@@ -986,9 +1008,11 @@ class TestActiveBuildPlanChunkHeadingsParse:
     """
 
     def test_active_plan_status_chunks_have_parseable_headings(self):
-        plan_path = resolve_build_plan_path(_ROOT / ".prawduct")
-        if not plan_path.is_file():
-            pytest.skip(f"no active build plan resolved at {plan_path}")
+        # The repo's own `.prawduct/`: `_ROOT` is `plugin/`, and resolving under
+        # it found no plan in any state, so this guard skipped unconditionally.
+        plan_path = resolve_build_plan_path(_ROOT.parent / ".prawduct")
+        if plan_path is None or not plan_path.is_file():
+            pytest.skip(f"no build plan governs this checkout ({plan_path})")
         content = plan_path.read_text()
         status_ids = _status_chunk_ids(content)
         if not status_ids:

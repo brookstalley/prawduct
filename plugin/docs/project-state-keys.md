@@ -15,7 +15,8 @@ scope-named plans (`artifacts/build-plan-<scope>.md`) keep release-pending plans
 gitflow. The value is a path relative to `.prawduct/` (a repo-relative `.prawduct/...` spelling is
 tolerated). It is the FALLBACK, not the first answer: a plan that declares `branch:` in its
 frontmatter claims the branch it names, and this scalar answers for every branch no live plan
-claims (the build-plan template's `branch:` comment points at the full rule). It also breaks a TIE
+claims — unless the plan it names declares a different `branch:`, since a plan declaring one
+governs that branch only (the build-plan template's `branch:` comment points at the full rule). It also breaks a TIE
 among several plans claiming one branch — that is its remaining job once branches carry their own
 plans. Unset → `artifacts/build-plan.md`.
 
