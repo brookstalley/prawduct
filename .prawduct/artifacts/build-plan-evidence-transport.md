@@ -163,6 +163,32 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   `plan import-status`'s docstring and output still say "per-clone until #1052"; the ephemeral
   refusal wording ("discarded") is inaccurate for a store write. Carried to 05 (D): the Critic
   skill's `Bash(prawduct-hook evidence*)` grant now covers a write — narrow it to `status`/`list`.
+- Chunk 02 as built (delegate A, 2026-10-25, merged 082fa0ab), accepted: reconcile and the
+  unsent-facts count live in `evidence_notes` (one predicate for `evidence status` and `sync`);
+  `attach` takes `str | None` and skips `None`; sync runs git with `LC_ALL=C` and
+  `GIT_TERMINAL_PROMPT=0` (detectable "couldn't find remote ref"; a credential prompt fails
+  instead of waiting out the floor); git does not refuse a new notes merge over an unfinished
+  one (probed), so the stuck-merge check is ours via `rev-parse --git-path`; `configure` uses
+  `config --add` so a foreign `notes.rewriteRef` survives; a `chunk-imported` fact records no
+  anchor, so reconcile counts it as this branch's by `actor.branch` and re-attaches on HEAD; the
+  egress record states that notes carry product content (finding text, paths) to the product's
+  own remote. The disposition tool refuses `--fixed` on judgeable paths, so R-3/R-8/R-9/R-10/R-11
+  are recorded by the verify pass at Chunk 06, not at merge.
+- Chunk 05 as built (delegate D, 2026-10-25, merged 33585bd6), accepted: six budget ceilings
+  raised, none lowered, each declared in its test with the reason (`review-cycle.md` +68 tokens,
+  which no review mode loads; the Critic skill and its three payloads +12, the narrowed grant
+  line); a second `[DECISION]` record beneath the "writes nothing into a governed repo" norm for
+  the notes ref and the two config keys; R-16's instrument `tests/test_skill_command_grants.py`
+  reads the hook's data-plane tables and sweeps every skill and agent grant, one reasoned exemption
+  (janitor's `python3 *`, human-invoked). Corrections the coordinator made from D's seams: ingest
+  reads the fetched tracking ref too (97cb5fb8 — "refspec plus fetch is not enough" was true and
+  is now false; three sentences re-said); Chunk 02's acceptance clause "the Critic's
+  infrastructure-coherence check finds the record" names a check no Critic file carries — struck,
+  the record's two homes are the acceptance. Carried to 06: `stats`/`contribute` now count
+  ingested reviews, so two contributing clones double-count at the collector (backlog item); the
+  narrowed `evidence status|list` grants carry no instruction in the Critic's files (kept; ~12
+  tokens per run — a later trim if nothing ever uses them); `test-evidence record` is absent from
+  the hook's data-plane tables so R-16's sweep does not cover it (observation, not changed here).
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a
@@ -304,7 +330,7 @@ Shapes every chunk reads or writes (fixed here so no delegate guesses them):
 - **Tests:** as above.
 - **Acceptance criteria:** every network call goes through `run_git` (spy on argv; the timeout
   floor applies); no `gh` call anywhere in the module; the egress record names the site in both
-  homes; the Critic's infrastructure-coherence check finds the record.
+  homes (`project-state.yaml` `egress_boundary` and `security-model.md`).
 - **Done when:**
   1. Acceptance criteria met and the owned test modules pass
   2. Handed back; merged and reviewed with 03–05 in Chunk 06's cumulative
