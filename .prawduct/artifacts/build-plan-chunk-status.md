@@ -376,7 +376,7 @@ Chunk 02 writes it):
 - **Depends on:** Chunk 01 (the command name and table it documents)
 - **Artifacts consumed:** `1050-design.md` § 3 "Rendering", § 7 first bullet, § 8; the inventory's
   file list; `plugin/methodology/*.md`, `plugin/templates/build-plan.md`, `plugin/skills/**`,
-  `plugin/hooks/session-digest.md`, `.prawduct/artifacts/data-model.md`,
+  `plugin/methodology/session-digest.md`, `.prawduct/artifacts/data-model.md`,
   `.prawduct/cross-cutting-concerns.md`.
 - **Deliverables:** the edits above; the tests that READ the owned files, found by
   `grep -ln <each owned file> tests/` before the first edit (Wave 1's lesson: known today —
@@ -387,7 +387,7 @@ Chunk 02 writes it):
   a new pin that `planning.md` carries the rule and `building.md`, the digest and the template
   reference it without restating.
 - **Tests:** as above.
-- **Acceptance criteria:** `grep -rn 'tick\|\[x\]\|Status box\|disarm' plugin/methodology plugin/skills plugin/templates plugin/hooks/session-digest.md` returns only the one rule and
+- **Acceptance criteria:** `grep -rn 'tick\|\[x\]\|Status box\|disarm' plugin/methodology plugin/skills plugin/templates plugin/methodology/session-digest.md` returns only the one rule and
   references to it, plus the import-status migration text; digest and template token counts are
   lower than the recorded before-values (NF3) and the tests pin the new values.
 - **Type:** doc-only
