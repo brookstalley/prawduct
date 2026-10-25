@@ -61,8 +61,8 @@ no-subject — …` is **NOTE**: the scope is real (the change-log declares it) 
 to grade.
 `chunk-ref-missing
 graded chunk … of <plan>: …` is an **assumption, not a failure** — it ran, but half of "whose deliverables" was guessed — the chunk
-inferred from build-plan Status, or the plan from the `active_build_plan` pointer or conventional path — the line names
-which → **NOTE**. Blocking it is a false blocker no `--chunk` can clear.
+inferred as the plan's first open chunk, or the plan from the `active_build_plan` pointer or conventional path — the line names
+which → **NOTE**. Blocking it is a false blocker no `--chunks` can clear.
 State every entry. `chunk_graded`/`plan_graded` name the subject.
 `null` there, or in any `counts` entry, means **no answer** — not a zero.
 
