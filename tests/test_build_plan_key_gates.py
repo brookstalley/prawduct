@@ -11,9 +11,9 @@ runs, so any spelling of "the key is gone" must leave both at full strength. The
 spellings are the key absent, present with a null value, present with no value,
 and `active_build_plan` nulled.
 
-NOT pinned: a repo whose ONLY plan source is the state key's active chunks. There
-removing the key removes the plan, and whether that should stay silent or be
-announced is undecided (the issue offers both), so no test asserts either.
+The other half was decided by #1051 (ST7): the state key's chunks are no longer
+a gate input at all, so a repo whose ONLY plan source is that key arms nothing —
+pinned in `test_critic_gate_fallthrough.py::TestTheGateArmsOnTheBinding`.
 """
 from __future__ import annotations
 
