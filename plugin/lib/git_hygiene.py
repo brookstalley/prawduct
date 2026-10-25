@@ -275,9 +275,16 @@ def _branches_in_use(project_dir: Path) -> tuple[set[str] | None, dict[str, int]
     return names, numbers
 
 
-def _merged_pr_for(project_dir: Path, branch: str, sha: str) -> int | None | bool:
-    """The number of a merged pull request from this repo whose head was exactly
-    ``sha``; False when there is none; None when gh could not be asked."""
+def merged_pr_for(project_dir: Path, branch: str, sha: str | None = None) -> int | None | bool:
+    """The number of a merged pull request from this repo whose head was
+    ``branch`` — and, when ``sha`` is given, whose head commit was exactly
+    ``sha``; False when there is none; None when gh could not be asked.
+
+    ``sha`` is omitted by a caller whose branch is already gone and so has no
+    tip to compare (``plan_lifecycle``'s squash/rebase probe): the merged
+    request's head name is then the whole proof. Branch deletion passes it,
+    because deleting on a name match alone would delete a reused name's new work.
+    Asked through the network — only from a deliberately run surface."""
     prs = _gh_json(
         project_dir, "pr", "list", "--state", "merged", "--head", branch,
         "--json", "number,headRefOid,isCrossRepository", "--limit", "20",
@@ -285,7 +292,11 @@ def _merged_pr_for(project_dir: Path, branch: str, sha: str) -> int | None | boo
     if prs is None:
         return None
     for pr in prs:
-        if isinstance(pr, dict) and pr.get("headRefOid") == sha and pr.get("isCrossRepository") is False:
+        if (
+            isinstance(pr, dict)
+            and (sha is None or pr.get("headRefOid") == sha)
+            and pr.get("isCrossRepository") is False
+        ):
             return pr.get("number")
     return False
 
@@ -517,7 +528,7 @@ def _prove_by_merged_pr(project_dir: Path, result: Plan, unproven: list[tuple[st
     ]
     candidates.sort(key=lambda c: track.get(f"refs/heads/{c[0]}", (False, 0.0))[1])
     for name, sha in candidates[:MAX_PR_PROOFS]:
-        number = _merged_pr_for(project_dir, name, sha)
+        number = merged_pr_for(project_dir, name, sha)
         if number is None:
             result.problems.append(
                 f"could not ask whether {name}'s pull request merged (is `gh` installed and signed in?)"
