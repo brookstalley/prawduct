@@ -1165,9 +1165,9 @@ class TestBuiltNotDoneNoticeNarrowing:
         project = self._repo(tmp_path, status="- [x] Chunk 01: a chunk\n")
 
         def no_walk(*_a, **_k):
-            raise AssertionError("built_chunks walked git for a plan with nothing open")
+            raise AssertionError("built_report walked git for a plan with nothing open")
 
-        monkeypatch.setattr(_plan_status, "built_chunks", no_walk)
+        monkeypatch.setattr(_plan_status, "built_report", no_walk)
         assert _plan_status.built_not_done_notice(project) is None
 
     def test_an_open_chunk_does_walk_git(self, tmp_path: Path, monkeypatch):
@@ -1175,7 +1175,10 @@ class TestBuiltNotDoneNoticeNarrowing:
         # the stub's silence there is the cheap exit, not an unreached stub.
         project = self._repo(tmp_path, status="- [ ] Chunk 01: a chunk\n")
         calls = []
-        monkeypatch.setattr(_plan_status, "built_chunks", lambda *a, **k: calls.append(a) or set())
+        monkeypatch.setattr(
+            _plan_status, "built_report",
+            lambda *a, **k: calls.append(a) or _plan_status.BuiltReport(set()),
+        )
         assert _plan_status.built_not_done_notice(project) is None
         assert len(calls) == 1
 

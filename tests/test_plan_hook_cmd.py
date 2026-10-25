@@ -206,7 +206,9 @@ class TestStatus:
         proc = _run(repo, "status", "--json")
         assert proc.returncode == 0, proc.stderr
         data = json.loads(proc.stdout)
-        assert set(data) == {"plan_path", "scope", "finished", "chunks"}
+        # `built_unavailable` joined in cumulative R-10: null when git answered.
+        assert set(data) == {"plan_path", "scope", "finished", "chunks", "built_unavailable"}
+        assert data["built_unavailable"] is None
         assert (data["plan_path"], data["scope"], data["finished"]) == (
             ".prawduct/artifacts/build-plan-unit.md", "unit", True,
         )

@@ -383,9 +383,10 @@ def _section_build_plan(project_dir: Path, binding) -> Section:
         open_count = sum(1 for st in states.values() if st.state == "open")
         summary = "finished" if finished else f"{open_count} of {len(states)} open"
         lines.append(f"## Chunk status (plan status; derived from facts): {summary}")
+        report = plan_status.built_report(binding.plan_path, project_dir)
         lines.extend(
             f"  {ln}" for ln in plan_status.render_table(
-                states, built=plan_status.built_chunks(binding.plan_path, project_dir)
+                states, built=report.built, built_unavailable=report.unavailable
             )
         )
     else:

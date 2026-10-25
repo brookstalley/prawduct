@@ -350,7 +350,7 @@ def _legacy(prawduct_dir: Path, artifacts_dir: Path, branch: str) -> Binding:
     # A missing conventional file is the ordinary unbound; a pointer naming
     # nothing it may serve is a declaration nobody honours, and says so.
     unserved: Case = "pointer-dangling" if pointer is not None else "no-claim"
-    if not _is_live_plan_file(plan_path, artifacts_dir):
+    if not is_live_plan_file(plan_path, artifacts_dir):
         return _unbound(unserved, _dangling_pointer_reason(prawduct_dir, pointer, branch))
     try:
         content = plan_path.read_text(encoding="utf-8")
@@ -561,8 +561,13 @@ def _flow_sequence(value: str) -> tuple[str, ...] | None:
     return tuple(items)
 
 
-def _is_live_plan_file(path: Path, artifacts_dir: Path) -> bool:
-    """Under ``artifacts/``, outside every ``archive`` component, and a file."""
+def is_live_plan_file(path: Path, artifacts_dir: Path) -> bool:
+    """Under ``artifacts/``, outside every ``archive`` component, and a file.
+
+    The ``archive`` test is on the path RELATIVE to ``artifacts_dir``: a repo
+    that happens to sit under a directory named ``archive`` archives nothing.
+    The one home of "is this plan live" — ``plan_status.gate_arms`` asks it too.
+    """
     try:
         rel = path.resolve().relative_to(artifacts_dir.resolve())
     except ValueError:

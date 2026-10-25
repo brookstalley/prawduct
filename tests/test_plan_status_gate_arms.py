@@ -5,7 +5,10 @@ plan with every box ticked disarmed. Here arming is binding-derived and box-blin
 """
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from lib import plan_status, work_unit
 
@@ -60,3 +63,60 @@ def test_bound_to_an_archived_plan_does_not_arm(tmp_path):
 
 def test_bound_to_a_missing_plan_file_does_not_arm(tmp_path):
     assert plan_status.gate_arms(_binding("bound", tmp_path / "nope.md")) is False
+
+
+def test_a_repo_rooted_under_an_archive_directory_still_arms(tmp_path):
+    """Cumulative R-1: the archive test read the WHOLE absolute path, so a checkout at
+    `~/archive/<repo>` read every bound live plan as archived and the Stop gates never
+    armed. Only an `archive` component BELOW the repo's `artifacts/` archives a plan."""
+    root = tmp_path / "archive" / "repo"
+    plan = _live_plan(root, ticked=False)
+    assert "archive" in plan.resolve().parts  # the fixture reaches the defect's shape
+    assert plan_status.gate_arms(_binding("bound", plan)) is True
+
+
+def test_under_an_archive_root_an_archived_plan_still_does_not_arm(tmp_path):
+    # The control: the same placement, the plan under `artifacts/archive/`.
+    p = tmp_path / "archive" / "repo" / ".prawduct" / "artifacts" / "archive" / "build-plan-s.md"
+    p.parent.mkdir(parents=True)
+    p.write_text("---\nartifact: build-plan\nscope: s\n---\n", encoding="utf-8")
+    assert plan_status.gate_arms(_binding("bound", p)) is False
+
+
+# #856 — "pin that a build_plan key edit cannot switch off two gates"
+_STATE_SPELLINGS = {
+    "key_absent": "product:\n  name: demo\n",
+    "key_null": "product:\n  name: demo\nbuild_plan: null\n",
+    "chunks_all_complete": (
+        "product:\n  name: demo\nbuild_plan:\n  strategy: s\n  chunks:\n"
+        "    - id: 1\n      status: complete\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("spelling", sorted(_STATE_SPELLINGS))
+def test_a_build_plan_key_edit_cannot_disarm_a_bound_live_plan(tmp_path, spelling):
+    """#856, at the predicate both gates read. With a bound live plan, no spelling
+    of "project-state.yaml's `build_plan:` is gone or finished" — absent, null, or
+    every chunk `status: complete` — may disarm: `gate_arms` reads the binding, never
+    the state key, so the Critic and reflection gates keep full strength.
+
+    The hook-level twin (both gates, through `cmd_stop`, five spellings) is
+    `tests/test_build_plan_key_gates.py`; the inverse — an unbound checkout whose
+    state lists an unfinished chunk arms nothing — is
+    `test_critic_gate_fallthrough.py::TestTheGateArmsOnTheBinding::test_unfinished_state_chunks_on_an_unbound_branch_arm_nothing`.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for args in (
+        ("init", "-q", "-b", "feature/s"),
+        ("config", "user.email", "t@example.com"),
+        ("config", "user.name", "T"),
+    ):
+        subprocess.run(["git", *args], cwd=str(repo), check=True, capture_output=True)
+    _live_plan(repo, ticked=False)
+    (repo / ".prawduct" / "project-state.yaml").write_text(_STATE_SPELLINGS[spelling])
+    binding = work_unit.resolve(repo)
+    assert binding.state == "bound", binding  # the subject is reached
+    assert plan_status.gate_arms(binding) is True
+

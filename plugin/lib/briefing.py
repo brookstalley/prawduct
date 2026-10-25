@@ -2080,9 +2080,12 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
             states = plan_status.chunk_states(
                 binding.plan_path, evidence.read_facts(project_dir), repo_dir=project_dir
             )
+            report = (
+                plan_status.built_report(binding.plan_path, project_dir)
+                if states else plan_status.BuiltReport(set())
+            )
             table = plan_status.render_table(
-                states,
-                built=plan_status.built_chunks(binding.plan_path, project_dir) if states else frozenset(),
+                states, built=report.built, built_unavailable=report.unavailable
             )
             if table:
                 sections.append("**Progress** (`prawduct-hook plan status`):")
