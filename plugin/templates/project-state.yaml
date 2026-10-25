@@ -223,6 +223,8 @@ build_state:
 # The in-progress build plan, when it isn't artifacts/build-plan.md (a plan's
 # own `branch:` frontmatter outranks this). Path relative to `.prawduct/`.
 # active_build_plan: artifacts/build-plan-my-scope.md
+#   DEPRECATED — a plan binds its branch by declaring `branch:` in its own frontmatter; this pointer
+#   is read only while no live plan in the repo declares one (`prawduct-hook plan bind` migrates).
 
 # The branch feature work integrates onto. Set it on a gitflow repo.
 # base_branch: develop
