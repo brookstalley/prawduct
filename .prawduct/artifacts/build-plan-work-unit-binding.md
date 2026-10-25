@@ -107,6 +107,18 @@ newer one agree on the answer during the window. Revisit: delete the shims when 
   sees); `base:` defaults to `project-state.yaml` `base_branch:`, else the remote default per
   `coverage._resolve_base_branch`, else `main` — git records no parent for a branch, so the plan
   records it (design § Research).
+- Chunk 02's open calls, settled by the coordinator: the `critic_mode` helpers take the `Binding`
+  (the hook passes it through; Chunk 03's `_gate_plan_of()` converter goes in 06a); an unbound
+  checkout grades nothing in record lint and adds no `unchecked` line (a line there fires on every
+  chore review), a broken one does; `learning.fired` events carry the review's scope; the flat
+  `lib.resolve_build_plan_path` export is gone (no caller). Reversed: `scope_unresolved_cause`
+  stays a short code — api-contract.md is additive-first, and a field that held a code must not
+  start holding a sentence; the sentence goes in a new `scope_reason` (06a).
+- Review cadence, settled by the coordinator: 02, 03 and 04 cannot each be reviewed green on
+  their own (02 changed `critic_mode`'s signatures; 03's hook still feeds the old object — nine
+  Stop-gate tests are red until 06a closes the seam), so they are reviewed together with 06a in
+  one `chunk` pass once green, and the PR's `cumulative` follows. Two rounds instead of four; the
+  fact will name one chunk because today's field is singular (ST8 is Wave 2).
 - Chunk 05's prose states the rule in the present tense while `plan bind`, the
   `plan-unbound-legacy` advisory and the Stop hook's scratch-worktree behaviour land in 03 and 06.
   One PR; at merge every sentence is true. Chunk 06's acceptance gains one check per claim.
