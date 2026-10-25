@@ -108,7 +108,7 @@ An absent file is the empty store.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start` today; `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start`, `chunk-imported` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
@@ -117,7 +117,11 @@ An absent file is the empty store.
 - **Review fact `body`** — the tree interval reviewed (`base_tree`/`head_tree` and their commits),
   `mode`, `stage` (`inner` | `boundary`, derived once at dispatch from the mode's interval; null on a
   fact consolidated from a manifest written before the field), `roster` (roles + models),
-  `files_reviewed`/`files_changed`, `findings[]` (each with a
+  `files_reviewed`/`files_changed`, `chunks[]` (the build-plan chunks this review **certifies**, in
+  plan order — declared at dispatch with `critic-begin --chunks`, or exactly the code-derived
+  proposal when omitted; ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
+  declaration so an edit to it is visible on the record, never silent), `chunk` (`chunks[0]` or
+  null — kept one release for readers of the singular field), `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
@@ -195,6 +199,20 @@ An absent file is the empty store.
   shared by the facts of one Stop, and `co_gates` (the others that blocked it). A blocker carrying no
   gate id records as `unattributed`. A deferred gate records nothing, since it did not block. Written
   by `evidence.append_stop_block`.
+- **Chunk-imported fact `body`** — that a build-plan chunk's completion was **imported from a
+  legacy `## Status` tick** rather than evidenced by a review (MG2 of #1050; owner ruling D1,
+  2026-10-24). Carries `scope` (the unit), `chunk` (the id as the plan spells it), `source`
+  (`status-box` — the only value today) and `imported_at`. Written by `prawduct-hook plan
+  import-status --apply`, code-reading the box with no judgment in the path; `plan_status.
+  chunk_states` counts it as `done` and tags it `imported` in every rendering, so history is not
+  rewritten and no gate loses its answer at cutover. Until a plan's block is imported, the same
+  reader derives the identical answer from the boxes in memory and writes nothing. **This kind is
+  observational for coverage** — it spans no trees and contributes neither node nor edge to
+  composition — but it is **authoritative for chunk completion**, which is a plan-progress answer,
+  not a coverage verdict. **Droppability:** it sits on no coverage path and targets no other fact,
+  yet dropping one un-completes a chunk and re-arms the plan it belongs to as unfinished, so it is
+  droppable only once the plan it names is archived — the archive renders its own history and
+  reads no facts. Nothing drops one yet (no compaction).
 - **Session-start fact `body`** — empty: the envelope (`ts`, `actor.session`, `actor.plugin`) is the
   record. One per session boundary (startup or `/clear`; a resume, compact or fork is a continuation
   and records none), written by `evidence.append_session_start` from `cmd_clear`. It is the

@@ -10387,9 +10387,9 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         # The command refuses the sources that would write nothing.
         return False
     if command == "plan" and _first_positional(argv) == "import-status":
-        # A preview by default; `--apply` appends `chunk-imported` facts and,
-        # with `--remove-block`, edits the plan — both governance writes made
-        # against a tree that is discarded.
+        # A preview by default; `--apply` appends `chunk-imported` facts and
+        # rewrites the plan's `## Status` section when the block flag is given —
+        # both governance writes made against a tree that is discarded.
         return "--apply" in argv
 
     read_only_ops = _EPHEMERAL_READ_ONLY_OPS.get(command)

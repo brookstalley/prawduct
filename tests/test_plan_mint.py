@@ -147,7 +147,11 @@ class TestNewMintsWhatTheReadersAccept:
         # body is what an author copying the template by hand would get.
         assert not any(line.startswith("scope: pantry") for line in fm)
         assert plan_index.is_build_plan(text)
-        assert "## Status" in text and "## Build Chunks" in text
+        # Chunk status derives from review facts (#1051): the template carries no
+        # `## Status` block any more, so a minted plan must not either — a block
+        # here would be hand-authored state the readers import as legacy ticks.
+        assert "## Build Chunks" in text
+        assert "## Status" not in text
 
     def test_the_fragment_stub_shares_the_identity_and_is_refused_only_for_what_is_unwritten(
         self, tmp_path
