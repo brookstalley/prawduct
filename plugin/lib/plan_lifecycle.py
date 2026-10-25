@@ -13,15 +13,22 @@ The rule, in precedence order, each step's ``reason`` naming what it observed:
    ``superseded``, or ``released`` for ``completed`` with the stamp's
    ``released_in``. No git call.
 2. Its scope is shipped in the change record (``plan_backfill.shipped_scopes``
-   over the live log and its archive): ``released``, with the tag. No git call.
+   over the live log and its archive) and no record for it is pending
+   (``release_readiness.pending_scopes``; a newer fragment is work the release
+   did not carry): ``released``, with the tag. No git call.
 3. Its ``branch:`` exists, locally or as ``<remote>/<branch>``, and its tip is
    not contained in its base: ``in-progress``.
-4. The tip is contained in the base: ``merged-unreleased``.
+4. The tip is contained in the base: ``merged-unreleased`` — except a tip that
+   IS a base tip. That branch has no commits of its own (cut and not yet
+   committed to, or fast-forward-merged), so it is ``merged-unreleased`` only
+   when step 5's review rule certifies it, else ``in-progress``.
 5. The branch is gone: the newest review fact for the scope whose anchor the
    base contains → ``merged-unreleased`` (a merge-commit merge keeps the
-   reviewed commits in the base's history); else a pending change record for the
-   scope (``release_readiness.pending_scopes``) → ``merged-unreleased``, inferred
-   from the deleted branch and the pending record.
+   reviewed commits in the base's history). An anchor equal to the fact's own
+   ``base_commit`` is not counted: it is where the reviewed interval began,
+   already on the base. Else a pending change record for the scope →
+   ``merged-unreleased``, inferred from the deleted branch and the pending
+   record.
 6. Otherwise ``unknown``. With ``probe_pr=True``, ``gh`` is asked first whether a
    pull request from the branch merged (``git_hygiene.merged_pr_for``) — the one
    route for a squash or rebase merge, whose reviewed commits the base never
@@ -41,10 +48,11 @@ yield ``unknown`` (or let a later step answer) with the reason saying which.
 
 **Cost (NF1).** Steps 1–2 read files only. Steps 3–4 cost two git calls with a
 declared base: one ``for-each-ref`` resolving the branch and base refs together,
-one ``for-each-ref --contains`` asking whether any base ref holds the tip. Step 5
-costs one ``--contains`` per distinct anchor, newest fact first, stopping at the
-first hit. A plan with no ``base:`` adds what ``coverage.repo_base_branch``
-costs. No network call unless ``probe_pr`` — pinned by spy in
+one ``for-each-ref --contains`` asking whether any base ref holds the tip (a tip
+equal to a base tip skips it). Step 5's review rule, and step 4's for a tip at
+a base tip, costs one ``--contains`` per distinct anchor, newest fact first,
+stopping at the first hit. A plan with no ``base:`` adds what
+``coverage.repo_base_branch`` costs. No network call unless ``probe_pr`` — pinned by spy in
 ``tests/test_plan_lifecycle.py``.
 """
 
@@ -127,10 +135,17 @@ def observe(
 
     _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
     prawduct_dir = gitstate.get_prawduct_dir(repo_dir)
+    # The pending change records, read once (files only): step 2 asks whether a
+    # newer record withholds a shipped scope, step 5 whether one is waiting.
+    pending = release_readiness.pending_scopes(repo_dir) if scope else None
+    pending_listed = (
+        pending is not None and pending.read_error is None and scope in pending.scopes
+    )
 
-    # (2) Shipped in the change record.
+    # (2) Shipped in the change record — unless a newer record for the scope is
+    # pending, which is work the shipped release did not carry.
     record_note = ""
-    if scope:
+    if scope and not pending_listed:
         text = change_log_archive.load_all_text(prawduct_dir)
         if text is None:
             record_note = "; the change log could not be read, so whether it shipped is unread"
@@ -140,7 +155,7 @@ def observe(
                 return Lifecycle(
                     RELEASED,
                     f"the change record ships scope `{scope}` in {tag}, with no later "
-                    "unreleased entry for it",
+                    "unreleased entry or pending fragment for it",
                     released_in=tag,
                 )
 
@@ -154,8 +169,24 @@ def observe(
 
     declared_base = _ref_token(plan_index.parse_build_plan_frontmatter_base(content))
     patterns = [f"refs/heads/{branch}", f"refs/remotes/*/{branch}"]
+    fallback: list[str] = []
+    base_missing: str | None = None
     if declared_base:
         patterns += [f"refs/heads/{declared_base}", f"refs/remotes/*/{declared_base}"]
+        base_label = f"`{declared_base}`"
+    else:
+        base_ref, why = coverage.repo_base_branch(repo_dir)
+        if base_ref and not base_ref.startswith("HEAD"):
+            # `origin/develop` or `develop`: whichever full name exists answers.
+            fallback = [f"refs/heads/{base_ref}", f"refs/remotes/{base_ref}"]
+            patterns += fallback
+            base_label = f"`{base_ref}`"
+        else:
+            base_label = "its base"
+            base_missing = (
+                "the plan declares no `base:` and the repo's integration base did not "
+                f"resolve ({why if not base_ref else 'only a HEAD-relative fallback'})"
+            )
     code, out, err = evidence.run_git(
         repo_dir, "for-each-ref", "--format=%(objectname) %(refname)", *patterns
     )
@@ -165,22 +196,17 @@ def observe(
         )
     refs = _exact_refs(out)
     branch_refs = {r: sha for r, sha in refs.items() if _names(r, branch)}
-    if declared_base:
-        base_refs = sorted(r for r in refs if _names(r, declared_base))
-        base_label = f"`{declared_base}`"
-        base_missing = None if base_refs else f"its base `{declared_base}` is on no local or remote branch"
-    else:
-        base_ref, why = coverage.repo_base_branch(repo_dir)
-        if base_ref and not base_ref.startswith("HEAD"):
-            # `origin/develop` or `develop`: whichever full name exists answers.
-            base_refs = [f"refs/heads/{base_ref}", f"refs/remotes/{base_ref}"]
-            base_label, base_missing = f"`{base_ref}`", None
-        else:
-            base_refs, base_label = [], "its base"
-            base_missing = (
-                "the plan declares no `base:` and the repo's integration base did not "
-                f"resolve ({why if not base_ref else 'only a HEAD-relative fallback'})"
-            )
+    base_shas = {
+        r: sha for r, sha in sorted(refs.items())
+        if (r in fallback if not declared_base else _names(r, declared_base))
+    }
+    base_refs = list(base_shas)
+    if declared_base and not base_refs:
+        base_missing = f"its base `{declared_base}` is on no local or remote branch"
+
+    def certified() -> "tuple[str, str, str] | None":
+        store = facts if isinstance(facts, dict) else evidence.read_facts(repo_dir)
+        return _merge_evidence(repo_dir, store, scope, base_refs) if scope else None
 
     # (3)/(4) The branch exists: is its tip in the base?
     tip = branch_refs.get(f"refs/heads/{branch}") or next(
@@ -190,6 +216,27 @@ def observe(
         where = "locally" if f"refs/heads/{branch}" in branch_refs else "on a remote"
         if base_missing:
             return Lifecycle(UNKNOWN, f"`{branch}` exists {where}, but {base_missing}")
+        level = next((r for r, sha in base_shas.items() if sha == tip), None)
+        if level is not None:
+            # The tip IS a base tip: a branch cut and not yet committed to, or
+            # one fast-forward-merged. Git calls both "contained"; only a review
+            # of a commit of the branch's own tells them apart.
+            flat = f"`{branch}` exists {where} and has no commits beyond `{_short(level)}`"
+            hit = certified()
+            if hit is not None:
+                fact_id, anchor, contained = hit
+                return Lifecycle(
+                    MERGED_UNRELEASED,
+                    f"{flat}, and review {fact_id}'s commit {anchor[:12]} is in "
+                    f"`{contained}`'s history",
+                )
+            return Lifecycle(
+                IN_PROGRESS,
+                flat + (
+                    f", and no review fact for scope `{scope}` has a commit of its own in "
+                    f"`{_short(level)}`'s history" if scope else ""
+                ),
+            )
         contained = _contained_in(repo_dir, tip, base_refs)
         if contained is None:
             return Lifecycle(
@@ -208,22 +255,20 @@ def observe(
 
     # (5) The branch is gone. A review the scope recorded, anchored in the base.
     gone = f"`{branch}` is on no local or remote branch"
-    if scope and not base_missing:
-        store = facts if isinstance(facts, dict) else evidence.read_facts(repo_dir)
-        for fact_id, anchor in _anchors_newest_first(store, scope):
-            contained = _contained_in(repo_dir, anchor, base_refs)
-            if contained:
-                return Lifecycle(
-                    MERGED_UNRELEASED,
-                    f"{gone}, and review {fact_id}'s commit {anchor[:12]} is in "
-                    f"`{contained}`'s history",
-                )
+    if not base_missing:
+        hit = certified()
+        if hit is not None:
+            fact_id, anchor, contained = hit
+            return Lifecycle(
+                MERGED_UNRELEASED,
+                f"{gone}, and review {fact_id}'s commit {anchor[:12]} is in "
+                f"`{contained}`'s history",
+            )
 
     # A pending change record for the scope: the branch was merged and deleted
     # and the release has not cut its record yet (gitflow retention).
     pending_note = ""
-    if scope:
-        pending = release_readiness.pending_scopes(repo_dir)
+    if pending is not None:
         if pending.read_error is not None:
             pending_note = f"; the pending change records could not be read ({pending.read_error})"
         else:
@@ -329,9 +374,32 @@ def _contained_in(repo_dir: Path, commit: str, base_refs: list[str]) -> str | No
     return False
 
 
+def _short(ref: str) -> str:
+    return ref.removeprefix("refs/heads/").removeprefix("refs/remotes/")
+
+
+def _merge_evidence(
+    repo_dir: Path, store: dict, scope: str, base_refs: list[str]
+) -> "tuple[str, str, str] | None":
+    """``(fact id, anchor, base ref)`` for the newest review fact of ``scope``
+    whose anchor the base holds, or ``None``. One ``--contains`` per distinct
+    anchor, newest first, stopping at the first hit."""
+    for fact_id, anchor in _anchors_newest_first(store, scope):
+        contained = _contained_in(repo_dir, anchor, base_refs)
+        if contained:
+            return fact_id, anchor, contained
+    return None
+
+
 def _anchors_newest_first(store: dict, scope: str) -> list[tuple[str, str]]:
-    """``(fact id, anchor)`` for each review fact of ``scope`` with a placeable
-    anchor, newest first (by ``ts``, then store order), one per distinct anchor."""
+    """``(fact id, anchor)`` for each review fact of ``scope`` whose anchor can
+    say the branch merged, newest first (by ``ts``, then store order), one per
+    distinct anchor.
+
+    An anchor equal to the fact's own ``base_commit`` cannot: it is where the
+    reviewed interval began — the fork point for a review dispatched on a branch
+    before its first commit — and was on the base before the review ran.
+    """
     reviews = [
         (i, f) for i, f in enumerate(evidence.facts_of_kind(store, "review"))
         if isinstance(f.get("id"), str) and (f.get("body") or {}).get("scope") == scope
@@ -340,8 +408,11 @@ def _anchors_newest_first(store: dict, scope: str) -> list[tuple[str, str]]:
     seen: set[str] = set()
     out: list[tuple[str, str]] = []
     for _i, fact in reviews:
-        anchor = plan_status.review_anchor(fact.get("body") or {})
-        if gitstate.is_object_id(anchor) and anchor not in seen:
+        body = fact.get("body") or {}
+        anchor = plan_status.review_anchor(body)
+        if not gitstate.is_object_id(anchor) or anchor == body.get("base_commit"):
+            continue
+        if anchor not in seen:
             seen.add(anchor)
             out.append((fact["id"], anchor))
     return out

@@ -122,13 +122,14 @@ def _delete(repo: Path, branch: str = BRANCH) -> None:
 
 
 def _review(fact_id: str, anchor: "str | None", *, scope: str = "unit",
-            dispatch_commit: "str | None" = None, ts: str = TS) -> dict:
+            dispatch_commit: "str | None" = None, base_commit: "str | None" = None,
+            ts: str = TS) -> dict:
     return {
         "schema": 1, "kind": "review", "id": fact_id, "ts": ts, "actor": {},
         "body": {
             "scope": scope, "mode": "chunk", "chunk": "01", "head_commit": anchor,
-            "dispatch_commit": dispatch_commit or anchor, "findings": [],
-            "counts": {"blocking": 0, "warning": 0, "note": 0},
+            "dispatch_commit": dispatch_commit or anchor, "base_commit": base_commit,
+            "findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0},
         },
     }
 
@@ -397,6 +398,78 @@ class TestBranchGone:
             f"`{BRANCH}` is on no local or remote branch; no review fact for scope `unit` "
             "has its commit in `develop`'s history, and no change record for it is pending"
         )
+
+
+# ---------------------------------------------------------------------------
+# What is not evidence of a merge
+# ---------------------------------------------------------------------------
+
+
+class TestNotEvidenceOfAMerge:
+    def test_a_fork_point_anchor_is_not_a_merge(self, repo):
+        """A dirty-tree review dispatched on a fresh branch, before any commit,
+        is anchored on the fork point — its own ``base_commit``, on ``develop``
+        before the review ran. The branch deleted unmerged, nothing pending:
+        ``unknown``. Control: the same shape anchored on a real branch commit
+        that merged answers ``merged-unreleased``."""
+        fork = _git(repo, "rev-parse", "develop")
+        _git(repo, "branch", BRANCH, "develop")
+        _git(repo, "push", "-q", "origin", BRANCH)
+        _delete(repo)
+        fresh = _review("R-fresh", None, dispatch_commit=fork, base_commit=fork)
+        lc = _observe(_plan(repo), repo, facts=_facts(fresh))
+        assert lc.state == "unknown", lc
+
+        sha = _feature(repo)
+        _merge_no_ff(repo)
+        _delete(repo)
+        real = _review("R-real", sha, base_commit=fork, ts="2026-10-26T00:00:00Z")
+        lc = _observe(_plan(repo), repo, facts=_facts(fresh, real))
+        assert lc.state == "merged-unreleased", lc
+        assert "review R-real's commit" in lc.reason
+
+    def test_a_branch_with_no_commits_of_its_own_is_in_progress(self, repo):
+        """A freshly cut branch's tip IS its base's tip, which git calls
+        contained; it has no commits of its own, so it is not a merge."""
+        _git(repo, "branch", BRANCH, "develop")
+        lc = _observe(_plan(repo), repo)
+        assert lc.state == "in-progress", lc
+        assert lc.reason == (
+            f"`{BRANCH}` exists locally and has no commits beyond `develop`, and no review "
+            "fact for scope `unit` has a commit of its own in `develop`'s history"
+        )
+
+    def test_a_fast_forward_merge_is_certified_by_a_review_of_its_commits(self, repo):
+        """Control for the rule above: fast-forward-merged after real work, the
+        tip again equals the base tip, and a review anchored on one of the
+        branch's commits is what says it merged."""
+        fork = _git(repo, "rev-parse", "develop")
+        sha = _feature(repo)
+        _git(repo, "merge", "-q", "--ff-only", BRANCH)
+        _git(repo, "push", "-q", "origin", "develop")
+        assert _git(repo, "rev-parse", "develop") == sha, "fast-forwarded"
+        lc = _observe(_plan(repo), repo, facts=_facts(_review("R1", sha, base_commit=fork)))
+        assert lc.state == "merged-unreleased", lc
+        assert lc.reason == (
+            f"`{BRANCH}` exists locally and has no commits beyond `develop`, and review R1's "
+            f"commit {sha[:12]} is in `develop`'s history"
+        )
+
+    def test_a_shipped_scope_with_a_pending_fragment_is_not_released(self, repo, monkeypatch):
+        """The archive log ships scope ``unit``, and a newer fragment for it is
+        pending: the later steps answer, not ``released``. Control: without
+        the fragment the same log answers ``released``, with no git call."""
+        _feature(repo)  # unmerged: the later steps say in-progress
+        archive = repo / ".prawduct" / "change-log-archive"
+        archive.mkdir()
+        (archive / "2026-09.md").write_text(_SHIPPED)
+        plan = _plan(repo)
+        spy = _Spy(monkeypatch)
+        assert _observe(plan, repo).state == "released"
+        assert spy.git() == [], "the pending-set read costs no git call"
+        _fragment(repo)
+        lc = _observe(plan, repo)
+        assert (lc.state, lc.released_in) == ("in-progress", None), lc
 
 
 # ---------------------------------------------------------------------------
