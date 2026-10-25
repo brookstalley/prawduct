@@ -222,6 +222,15 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   `verify-resolutions` naming a chunk always warned (settled: that mode's proposal is the anchored
   review's recorded `chunks`); Stop read the store up to twice more (settled: one `read_facts`
   per `infer_mode`, threaded).
+- Chunk 06's open call, settled by the coordinator 2026-10-25: `unticked_committed_chunk_notice`
+  still had two live hook callers (the /clear boundary and `cmd_handoff`), and Chunk 04 delivered
+  the "built but not done" successor only inside lifecycle-repair's report. Settled per § 3
+  "Rendering": both sites are re-homed onto a `plan_status`-derived notice for the bound plan
+  (open, non-synthetic chunks ∩ `built_chunks`; token `built-not-done`; "built, not done — run the
+  Critic"), then the old function, `UNTICKED_CHUNK_TOKEN` and `_committed_chunk_ids` are deleted.
+  Rejected: retiring the notice with nothing at /clear (a reader loses the one nudge that catches a
+  committed, unreviewed chunk), and excluding it from the walker pin (the pin would then exempt
+  the very reader it exists to catch).
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
