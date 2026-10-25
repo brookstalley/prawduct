@@ -246,7 +246,14 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   direction, fail-closed), so the hook's `_short_plan_deferral` passes `read_built=True` and
   `short_plan_deferral` is written so `built` can only turn "deferred" into "last chunk", never
   the reverse, asserted by test in both directions. `gates.covered_frontier` gains a `read=`
-  parameter so the one-read pin needs no stub. Final mini-round in flight.
+  parameter so the one-read pin needs no stub. Done (merged 9f6053e7): `short_plan_deferral`
+  decides "last chunk" from facts and boxes first and asks `built_chunks` only when that answer is
+  "not the last chunk", so `built` can only turn warn into block; pinned both ways (boxes mid-plan
+  + commits naming 01/02 → Stop blocks; facts closing 01/02 → `built_chunks` never asked, raising
+  spy). `TestBoxFreeShortPlanReadsBuilt` holds the two box-free Stop cases (two of three committed
+  by subject → exit 2; one → exit 0). `covered_frontier` and `working_tree_interval_base` take
+  `read=`. Six of seven mutants killed; the intended survivor (extension path dropping `read=`
+  against the one-read class) is killed by its own new pin.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
