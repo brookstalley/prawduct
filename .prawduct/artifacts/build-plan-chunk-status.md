@@ -282,8 +282,8 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   built`, 02–06 `open` tagged `built`; `grep -c '^## Status'` → 0; `work_unit.resolve` → `bound
   chunk-status`, `gate_arms` → True with no box anywhere; `infer-critic-mode` → `chunk` (mid-plan,
   five open — the cumulative is passed explicitly, as the plan always intended for 06). The suite
-  recorded 10,432 passed / 0 failed / 17 skipped over the 01–05 tree (2026-10-25T14:37Z); the
-  06 tree's run is recorded before the cumulative.
+  recorded green over the 01–05 tree (2026-10-25T14:37Z) and again over the 06 tree before the
+  cumulative (`prawduct-hook test-status` holds the counts; prose does not copy them).
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
@@ -613,12 +613,13 @@ from its output, not the command (hook-surface.md).
 
 ## Governance Checkpoints
 
-**Commit & PR cadence:** 01 is built by one delegate in an isolated worktree, merged, reviewed
-`final`, committed. 02–05 are briefed together with the signature and fact shape above, each in an
-isolated worktree running only its own test modules; the coordinator merges all four, closes seams,
-and reviews them in one `chunk` pass naming `--chunks 02,03,04,05` (this wave's own ST8, used as
-soon as 02 lands it — the fact names four chunks). 06 commits first, then its `cumulative` is the
-PR gate. One PR, to `develop`, via `/prawduct:pr`.
+**Commit & PR cadence (as re-settled 2026-10-25; see Decisions):** 01 is built by one delegate in
+an isolated worktree, merged, reviewed `final`, committed. 02–05 are briefed together with the
+signature and fact shape above, each in an isolated worktree running only its own test modules; the
+coordinator merges all four and closes seams. 06's code lands next, and the one `cumulative` over
+02–06, naming `--chunks 02,03,04,05,06` (this wave's own ST8, used on itself), is both their review
+and the PR gate — the separate `chunk` pass over 02–05 was folded into it because 06 landed first.
+One PR, to `develop`, via `/prawduct:pr`.
 
 - After Chunk 01: the `plan_status` signature and the fact shape are final before any delegate is
   briefed. Read Level items (1) and (2) before briefing B and A respectively; record the answers.

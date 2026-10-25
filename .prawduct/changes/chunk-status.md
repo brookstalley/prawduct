@@ -4,7 +4,7 @@ type: feature
 scope: chunk-status
 date: 2026-10-25
 title: chunk status derives from review facts
-closes: [brookstalley/prawduct#1051, brookstalley/prawduct#1050]
+closes: [brookstalley/prawduct#1051, brookstalley/prawduct#1050, brookstalley/prawduct#856]
 ---
 
 Wave 2 of #1050. Whether a build-plan chunk is done was a hand-ticked `## Status` box, read by
