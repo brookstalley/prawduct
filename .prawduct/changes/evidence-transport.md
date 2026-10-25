@@ -36,6 +36,9 @@ and, as its last child, #1050.
   clone's `.git/config`, so a plain `git fetch` brings
   the remote's notes into a tracking ref that the next session start or `evidence ingest` reads, and an amend or rebase keeps them; `/prawduct:doctor` offers it and
   `/prawduct:onboard` runs it. Exit codes are in `api-contract.md`.
+- A shallow or single-branch clone (CI's default checkout) has no merge base, so a bounded ingest
+  reads nothing and session start says nothing: run `evidence ingest --all` there, or fetch the base
+  branch first.
 - A fresh clone has an empty store: it shows a branch's coverage after one `evidence sync` run, or after
   `evidence configure --apply` plus a `git fetch` and a session start, with
   that branch checked out.

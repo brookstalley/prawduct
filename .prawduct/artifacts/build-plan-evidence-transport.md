@@ -256,8 +256,24 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
 - Verify `rev-20261025T193609Z-e3f4f991` (`--chunks 03,04,05,06`, repo binary): all 14 prior
   findings fixed, 0 findings, 3 record-lag observations closed in the records commit that
   follows; the plan reads finished (6 chunks) and `check-cumulative-critic` is satisfied at
-  HEAD. Every disposition is on the store: `prawduct-hook render-dispositions --scope
-  evidence-transport` renders them; prose does not copy the table.
+  HEAD. `prawduct-hook render-dispositions --scope evidence-transport` renders every
+  disposition; prose does not copy the table. One finding has none and cannot: the final's R-1
+  (blocking) was fixed in d4cd1321 and verified by the spanning cumulative, but the tool refuses
+  ACCEPT on a blocking finding and FIXED on a judgeable path, and a `verify-resolutions` anchors
+  only on the newest review — a blocking finding cleared by a later spanning review has no record
+  path (filed as a backlog item; coverage is unaffected, the cumulative spans it).
+- Independent review (owner-requested, Fable, 2026-10-25, read-only, unanchored on the
+  coordinator's reasoning): sound and ready for the PR; all five owner items confirmed, the
+  inbound-trust decision confirmed WITH a rewrite of its rationale (a forged fact can buy a passing
+  gate, which a forged commit cannot — the true claim is that the gate was never adversarially
+  secure and notes widen nothing; and the override clause named a non-mitigation, since `sync`
+  ingests the same lines) — rewritten in `security-model.md`. Its ranked findings: the R-1 record
+  (above); the rationale (done); notes-ref growth of one commit per fact (batch per anchor at
+  consolidation); shallow clones ingest nothing silently at session start (consumer note gains the
+  sentence; the session-start print is polish); the missing-identity failure is probed but
+  untested; two record claims without a pin (the § 9 squash pin; verdict equality after a
+  `cat_sort_uniq` merge, which sorts a resolution before its review); the per-resolution store
+  re-read. The code items are filed as one post-release polish item; none changes a verdict.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a

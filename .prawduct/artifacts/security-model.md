@@ -98,14 +98,17 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   place governance content ENTERS a clone — `evidence ingest` (and session start) appends any
   well-formed line found on a fetched `refs/notes/<remote>/prawduct` to the store the coverage
   gates read. `[DECISION: trust the product's own remote for inbound facts at the level it is
-  already trusted for code — no signature or provenance check at ingest | whoever can push
-  that ref can push the branch it annotates, so a forged fact buys nothing a forged commit does
-  not; a fact still names tree ids the gate composes by diff, so a line that claims coverage of
-  trees the clone cannot diff is a gap, not a pass; a schema-ahead line blocks loudly rather than
-  being read; and the alternative (signed notes, or an allowlist of writer identities) is a
+  already trusted for code — no signature or provenance check at ingest | the Critic gate
+  was never adversarially secure: anyone with push access can run `critic-consolidate` over
+  fabricated partials in their own clone and push the branch, so a forged note line widens
+  NOTHING about who can affect a verdict — the trust boundary is "who can push to this remote",
+  the same boundary code already has; what the mechanics add is bounded (a line naming trees the
+  clone cannot diff is a gap, not a pass; a schema-ahead line blocks loudly rather than being
+  read); and the alternative (signed notes, or an allowlist of writer identities) is a
   credential the governance runtime does not hold | user can veto/override — a product whose
-  remote admits pushers it does not trust for governance should run with the refspec
-  unconfigured and ingest only what `evidence sync` fetches on a person's act]`
+  remote admits pushers it does not trust for governance has no filtered ingest to fall back on:
+  it must leave the refspec unconfigured AND not run `evidence sync` (which ingests the same
+  unchecked lines), and then its coverage stays per clone, as before this change]`
   The first two, git-tidy and `evidence sync` scrub credentials out of foreign-CLI stderr before
   echoing or serialising it; the Stop-hook call does not echo stderr at all; the two collector
   sites carry no credential and refuse redirects.
