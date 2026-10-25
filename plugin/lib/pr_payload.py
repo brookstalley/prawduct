@@ -338,10 +338,10 @@ def _section_build_plan(project_dir: Path, binding) -> Section:
     asking twice would walk ``artifacts/`` twice inside the command whose whole
     purpose is latency — and could let the two sections answer differently.
 
-    The chunk rows are ``plan_status.chunk_states`` rendered as the
-    ``plan status`` table (id, state, certifying fact, date, ``imported`` /
-    ``built`` tags), never a scan of the plan's boxes (#1051): what the reviewer
-    grades is the answer the gates read.
+    The chunk rows are ``plan_status.chunk_states`` rendered by
+    ``plan_status.render_table`` — the ``plan status`` table (id, state,
+    certifying fact, date, ``imported`` / ``built`` tags) — never a scan of the
+    plan's boxes (#1051): what the reviewer grades is the answer the gates read.
     """
     if binding.plan_path is None:
         # Unbound is ordinary and broken is not, but both leave the chunk
@@ -353,7 +353,7 @@ def _section_build_plan(project_dir: Path, binding) -> Section:
             "chunk-status checks have no subject; say so rather than reading "
             "them as finished"
         ))
-    from . import briefing, evidence, plan_status, work_unit  # noqa: PLC0415 — lazy, like `_lib`
+    from . import evidence, plan_status, work_unit  # noqa: PLC0415 — lazy, like `_lib`
 
     rel = work_unit.repo_rel(binding.plan_path, project_dir)
     if not binding.plan_path.is_file():
@@ -384,8 +384,8 @@ def _section_build_plan(project_dir: Path, binding) -> Section:
         summary = "finished" if finished else f"{open_count} of {len(states)} open"
         lines.append(f"## Chunk status (plan status; derived from facts): {summary}")
         lines.extend(
-            f"  {ln}" for ln in briefing.chunk_table_lines(
-                project_dir, binding.plan_path, states
+            f"  {ln}" for ln in plan_status.render_table(
+                states, built=plan_status.built_chunks(binding.plan_path, project_dir)
             )
         )
     else:

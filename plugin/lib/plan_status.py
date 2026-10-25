@@ -2,11 +2,11 @@
 
 "Is chunk N done" and "is this plan finished" are to have one answer each,
 derived from the facts the Critic already writes, never from a hand-ticked box
-or a commit (``1050-design.md`` § 3). This module computes it; moving every
-consumer onto it, deleting the box readers they use today and extending the
-status-walker pin in ``tests/test_handoff_parser_correctness.py`` to it is the
-rest of ``.prawduct/artifacts/build-plan-chunk-status.md``. Until that lands,
-older readers of the same question still exist beside this one.
+or a commit (``1050-design.md`` § 3). This module computes it, and it is the
+only module outside ``plan_index`` (the Status section's bounds and walk) and
+the hook's ``plan import-status`` writer that reads a ``## Status`` box —
+``tests/test_handoff_parser_correctness.py::TestOneCurrentChunkImplementation``
+pins that over every ``lib`` module and the hook.
 
 - :func:`chunk_states` — each chunk's state, ``open``, ``done`` or ``dropped``;
 - :func:`is_finished` — every chunk ``done`` or ``dropped`` (the only function
@@ -15,7 +15,11 @@ older readers of the same question still exist beside this one.
   (the fail-closed entries below are left out; see :attr:`ChunkState.synthetic`);
 - :func:`built_chunks` — a RENDERING convenience, the one git-walking function
   here; no gate reads it and :func:`chunk_states` never calls it;
-- :func:`propose_chunks` — the chunk set a review dispatch proposes (ST8).
+- :func:`propose_chunks` — the chunk set a review dispatch proposes (ST8);
+- :func:`render_table` — the ``plan status`` table, the one renderer the CLI,
+  the ``/clear`` handoff and the PR payload print;
+- :func:`built_not_done_notice` — the bound plan's chunks that are built and
+  not done, for the two deliberately-run surfaces that print it.
 
 **done** is a ``review`` fact whose body ``scope`` is this plan's ``scope:``,
 whose chunk list names the chunk (``chunks`` when present, else ``[chunk]``
@@ -569,9 +573,11 @@ def _repo_of(plan_path: Path) -> Path:
     return plan_path.resolve().parent
 
 
-# Copied from `buildplan_refs._committed_chunk_ids`' rule (Chunk 06 deletes the
-# original): a subject CARRIES a chunk in one of three anchored forms, and a
-# plan whose scope some commit carries counts only its scoped commits.
+# A subject CARRIES a chunk in one of three anchored forms — never a mention
+# anywhere in it ("…carried to Chunk 04" is prose), and digits-and-dots only, so
+# "close Chunk work" names no id. A plan whose scope some commit carries counts
+# only its scoped commits; when none carries it (scope tags are a convention, and
+# drift), every subject counts. This is the rule's one home.
 _CHUNK_COMMIT_RE = re.compile(
     r"\(Chunk\s+(\d+(?:\.\d+)*)\)"
     r"|:\s*Chunk\s+(\d+(?:\.\d+)*)\b"
@@ -587,8 +593,8 @@ def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
     """Chunks with work committed on the plan's branch — render-only, git-walking.
 
     A chunk is built when a commit on ``base..branch`` names it in its subject
-    (``_committed_chunk_ids``' three anchored forms and its scope filter) or
-    touches one of its Deliverables paths. ``branch`` is the plan's ``branch:``
+    (:data:`_CHUNK_COMMIT_RE`'s three anchored forms and the scope filter above
+    it) or touches one of its Deliverables paths. ``branch`` is the plan's ``branch:``
     when that ref resolves, else ``HEAD``; ``base`` is the plan's ``base:``
     (``origin/<b>`` preferred), else the repo's. Returns the ids as the plan
     prints them; ``set()`` when the plan or git cannot be read. No gate reads it.
@@ -657,6 +663,11 @@ def gate_arms(binding: "work_unit.Binding") -> bool:
     is live, i.e. the claimed plan file exists and is not under ``archive/``;
     ``unbound`` never arms. A tick, a commit or an edit before the review cannot
     disarm it; only archiving the plan (or the branch losing its claim) does.
+
+    So nothing commit-derived may feed it — not :func:`built_chunks`, not
+    :func:`built_not_done_notice`. A chunk's last commit lands BEFORE its review
+    and its reflection; a gate reading commits once switched the blocking gates
+    off for the whole complete-but-unmerged window, silently.
     """
     if binding.state == "broken":
         return True
@@ -666,3 +677,112 @@ def gate_arms(binding: "work_unit.Binding") -> bool:
     if "archive" in plan_path.parts:
         return False
     return plan_path.is_file()
+
+
+# ---------------------------------------------------------------------------
+# Rendering: the chunk table, a chunk's title, the built-but-not-done notice
+# ---------------------------------------------------------------------------
+
+
+def render_table(
+    states: "dict[str, ChunkState]", *, built: "set[str] | frozenset[str]" = frozenset()
+) -> list[str]:
+    """The ``plan status`` chunk table, as lines — the one renderer.
+
+    Columns: chunk id, state, the certifying fact id, its date, and the tags
+    ``imported`` and ``built`` (``built`` is :func:`built_chunks`' answer, passed
+    in because it walks git and only the caller knows whether to pay for it);
+    a chunk's ``reason`` is indented beneath its row. ``plan status``, the
+    ``/clear`` handoff's progress block and the PR payload's build-plan section
+    all print these lines, each under its own indent. ``[]`` for a plan with no
+    chunks.
+    """
+    if not states:
+        return []
+    rows = [
+        (
+            chunk_id,
+            st.state,
+            st.fact_id or "-",
+            st.date or "-",
+            ", ".join(
+                tag for tag, on in (("imported", st.imported), ("built", chunk_id in built)) if on
+            ) or "-",
+            st.reason,
+        )
+        for chunk_id, st in states.items()
+    ]
+    table = [("chunk", "state", "fact", "date", "tags", None), *rows]
+    widths = [max(len(row[i]) for row in table) for i in range(4)]
+    lines: list[str] = []
+    for row in table:
+        line = "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row[:4]))
+        lines.append(f"{line}  {row[4]}".rstrip())
+        if row[5]:
+            lines.append(f"    {row[5]}")
+    return lines
+
+
+def chunk_title(content: str, chunk_id: str) -> str:
+    """``Chunk 04: The Critic summary`` — the chunk's own heading, for display.
+
+    A chunk with no heading (an entry only an unmigrated Status roster lists)
+    is named by that roster line's text; only its words are read, never whether
+    it is ticked. ``Chunk <id>`` otherwise.
+    """
+    target = _norm(chunk_id)
+    for line in content.splitlines():
+        stripped = line.strip()
+        match = buildplan_refs._CHUNK_HEADING_RE.match(stripped)
+        if match and _norm(match.group(1)) == target:
+            return stripped.lstrip("#").strip()
+    for _ticked, text in plan_index.iter_status_section_items(content):
+        item_id = buildplan_refs._chunk_id_from_item_text(text)
+        if item_id is not None and _norm(item_id) == target:
+            return text
+    return f"Chunk {chunk_id}"
+
+
+#: Opens every :func:`built_not_done_notice`, so its firings can be counted when
+#: deciding whether it still earns its place. Do not reword it.
+BUILT_NOT_DONE_TOKEN = "built-not-done"
+
+
+def built_not_done_notice(project_dir: Path) -> "str | None":
+    """Name the bound plan's chunks that are built and not done, or ``None``.
+
+    A chunk is named when :func:`chunk_states` reads it ``open`` (a real chunk,
+    not a synthetic entry) and :func:`built_chunks` sees work for it on the
+    plan's branch: committed work no review has certified. The remedy is a
+    review, so that is what the notice says. It reports and never writes.
+
+    ``None`` for an unbound or broken checkout (no plan is borrowed), and when
+    nothing is both open and built. It walks git, so it is printed only by the
+    two deliberately-run surfaces — the ``/clear`` boundary and ``handoff`` —
+    never by SessionStart or Stop (NF1).
+    """
+    project_dir = Path(project_dir)
+    binding = work_unit.resolve(project_dir)
+    if binding.state != "bound" or binding.plan_path is None:
+        return None
+    plan_path = Path(binding.plan_path)
+    states = chunk_states(plan_path, evidence.read_facts(project_dir), repo_dir=project_dir)
+    open_ids = [k for k, s in states.items() if s.state == "open" and not s.synthetic]
+    if not open_ids:
+        return None
+    built = built_chunks(plan_path, project_dir)
+    flagged = [k for k in open_ids if k in built]
+    if not flagged:
+        return None
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        content = ""
+    count, verb = ("1 chunk", "has") if len(flagged) == 1 else (f"{len(flagged)} chunks", "have")
+    subject = (
+        f"{count} of {plan_path.name} {verb} work committed on the plan's branch "
+        "that no review has certified"
+    )
+    lines = [f"WARNING: {BUILT_NOT_DONE_TOKEN}: {subject} — built, not done — run the Critic."]
+    lines.extend(f"  - {chunk_title(content, k)}" for k in flagged)
+    return "\n".join(lines)

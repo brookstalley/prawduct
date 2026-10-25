@@ -66,13 +66,11 @@ def _session_did_work(monkeypatch, *, files: int = 3, commits: int = 2) -> None:
         "_git_session_commits",
         lambda d: [f"abc{i:03d} did a thing" for i in range(commits)],
     )
-    monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
 
 
 def _session_did_nothing(monkeypatch) -> None:
     monkeypatch.setattr(briefing.gitstate, "_get_session_changed_files", lambda d: [])
     monkeypatch.setattr(briefing, "_git_session_commits", lambda d: [])
-    monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
 
 
 # =============================================================================

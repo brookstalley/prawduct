@@ -1327,22 +1327,6 @@ class TestRule4ChunkDefault:
         )
         assert "# Live" in plan.path.read_text()
 
-    def test_has_unfinished_chunk_edge_readings(self, tmp_path: Path):
-        """The two readings the docstring promises, pinned so they stay true.
-
-        A plan with no Status section reads unfinished — an unparseable plan is
-        not evidence of completion. An unreadable one reads finished, because a
-        file we cannot open is not something to attribute a review to.
-        """
-        plan = tmp_path / "p.md"
-        plan.write_text("# Plan\n\nNo Status section at all.\n")
-        assert buildplan_refs._has_unfinished_chunk(plan) is True
-
-        plan.write_text("# Plan\n\n## Status\n\n- [x] Chunk 01: done\n")
-        assert buildplan_refs._has_unfinished_chunk(plan) is False
-
-        assert buildplan_refs._has_unfinished_chunk(tmp_path / "absent.md") is False
-
     def test_an_unconfirmable_legacy_binding_is_named_as_an_assumption(self, tmp_path: Path):
         """A plan bound through the legacy window — a repo whose plans declare
         no branch — cannot be shown related OR unrelated to this branch, so it
@@ -1991,8 +1975,8 @@ class TestBranchProgressCRT7B4M:
         # The old main-first resolver would scan main..HEAD and pick it up.
         #
         # Mode inference no longer reads commits at all, so the subject moved:
-        # the base-resolution guard now belongs to the unticked-chunk tripwire,
-        # which is the remaining consumer of `base..HEAD` chunk refs. Asserted
+        # the base-resolution guard now belongs to `plan_status.built_chunks`,
+        # the remaining consumer of `base..HEAD` chunk refs (#1051). Asserted
         # there, because asserting it through `infer_mode` would be vacuous —
         # an all-unticked plan infers from box 01 whatever git says.
         _init_repo(tmp_path, branch="main")
@@ -2012,11 +1996,13 @@ class TestBranchProgressCRT7B4M:
         _commit(tmp_path, "feat: do it (Chunk 01)")
         _write(tmp_path, "src/wip.py", "# wip\n")  # chunk 02 in progress
 
-        notice = buildplan_refs.unticked_committed_chunk_notice(tmp_path)
-        assert notice is not None and "Chunk 01" in notice
-        assert "Chunk 03" not in notice, (
+        from lib import plan_status  # noqa: PLC0415 — this test's subject only
+
+        built = plan_status.built_chunks(work_unit.resolve(tmp_path).plan_path, tmp_path)
+        assert "01" in built
+        assert "03" not in built, (
             "develop's pre-fork (Chunk 03) commit leaked past the base "
-            f"resolution into base..HEAD: {notice!r}"
+            f"resolution into base..HEAD: {built!r}"
         )
 
 
@@ -2830,12 +2816,14 @@ def test_every_critic_mode_line_in_this_repo_is_honoured_or_reported():
     # admitted (`lost` empty by construction) and no line it refused (`noisy`
     # empty by construction). What the contract is about is what the chunk's
     # read RETURNS: a mode, or the value it reports, and from which line.
+    from lib import plan_index  # noqa: PLC0415 — the roster walk's owner (#1051)
+
     graded = quiet = 0
     for plan in plans:
         content = plan.read_text(encoding="utf-8")
         roster = (
             buildplan_refs._chunk_id_from_item_text(text)
-            for _checked, text in buildplan_refs._iter_status_section_items(content)
+            for _checked, text in plan_index.iter_status_section_items(content)
         )
         for chunk_id in filter(None, roster):
             section = buildplan_refs._chunk_section_lines(content, chunk_id)

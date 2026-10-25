@@ -44,6 +44,8 @@ DEFAULT_BUILD_PLAN_REL = _mod.DEFAULT_BUILD_PLAN_REL
 # thin wrapper).
 from lib import buildplan_refs as _bpr  # noqa: E402
 from lib import plan_index as _plan_index  # noqa: E402
+from lib import evidence as _evidence  # noqa: E402
+from lib import plan_status as _plan_status  # noqa: E402
 
 # The hook, loaded via SourceFileLoader (extensionless shebang script), for the
 # pins that ask what it does NOT carry.
@@ -941,7 +943,7 @@ class TestChunkLineForms:
         """The end-to-end shape of the original defect, now single-sided: the id
         must come out of a real Status line including its `- [ ] ` prefix."""
         line = "- [ ] **Chunk 03** — the adapter"
-        items = list(_bpr._iter_status_section_items(f"## Status\n\n{line}\n"))
+        items = list(_plan_index.iter_status_section_items(f"## Status\n\n{line}\n"))
         assert items == [(False, "**Chunk 03** — the adapter")]
         assert _bpr._chunk_id_from_item_text(items[0][1]) == "03"
 
@@ -1102,8 +1104,8 @@ def _project_with_chunk(tmp_path: Path, chunk_body: str) -> tuple[Path, Path]:
 def _project_with_status_and_chunk(
     tmp_path: Path, status: str, chunk_body: str
 ) -> tuple[Path, Path]:
-    """Like `_project_with_chunk` but with a real `## Status` roster, so
-    `resolve_chunk_progress` has something to read."""
+    """Like `_project_with_chunk` but with a real `## Status` roster, which
+    `plan_status.chunk_states` reads as done (in memory) for a ticked box."""
     project = tmp_path / "proj"
     prawduct = project / ".prawduct"
     (prawduct / "artifacts").mkdir(parents=True)
@@ -1119,26 +1121,23 @@ def _project_with_status_and_chunk(
     return project, prawduct
 
 
-class TestUntickedChunkNoticeNarrowing:
-    """The tripwire's silence conditions, in a NON-git tree.
+class TestBuiltNotDoneNoticeNarrowing:
+    """The built-but-not-done notice's silence conditions (#1051; it replaced
+    the unticked-committed-chunk tripwire, whose silences this class pinned).
 
-    This class replaces one that pinned the opposite notice: when the retired
-    git-derived reading bailed, the checkbox reading taking over was the one
-    known to be wrong, and nothing said so. The checkbox reading is now simply
-    correct, so that notice has no subject. What remains worth pinning is the
-    narrowing — the successor control must stay quiet unless it has something to
-    say, since a control that fires on every session stops being read
-    (`nonfunctional-requirements.md` § Direction).
-
-    Deliberately non-git fixtures: they exercise the paths where the tripwire has
-    no evidence at all. Its POSITIVE behaviour needs real commits and is pinned
-    in `test_handoff_parser_correctness.py` against real `git init` repos.
+    A control that fires on every session stops being read
+    (`nonfunctional-requirements.md` § Direction), so it must stay quiet unless
+    it has something to say — and say nothing before paying for a git walk it
+    does not need. Its POSITIVE behaviour, and both call sites, are pinned in
+    `test_handoff_parser_correctness.py::TestBuiltNotDoneNotice`.
     """
 
-    def _repo(self, tmp_path: Path, *, status: str) -> Path:
+    def _repo(self, tmp_path: Path, *, status: str, work_tree: bool = True) -> Path:
         project = tmp_path / "proj"
         prawduct = project / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)
+        if work_tree:
+            _work_tree(project)
         (prawduct / "project-state.yaml").write_text("base_branch: main\n")
         (prawduct / "artifacts" / "build-plan.md").write_text(
             "---\nartifact: build-plan\n---\n\n"
@@ -1148,34 +1147,42 @@ class TestUntickedChunkNoticeNarrowing:
         return project
 
     def test_silent_outside_a_git_work_tree(self, tmp_path: Path):
-        # No git, so no commits to compare the boxes against. Silence is the
-        # honest answer; a claim here would be manufactured from nothing.
-        project = self._repo(tmp_path, status="- [ ] Chunk 01: a chunk\n")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
+        # No work tree, so no branch binds a plan and none is borrowed.
+        project = self._repo(tmp_path, status="- [ ] Chunk 01: a chunk\n", work_tree=False)
+        assert _plan_status.built_not_done_notice(project) is None
 
     def test_silent_when_there_is_no_plan(self, tmp_path: Path):
         project = tmp_path / "proj"
         (project / ".prawduct" / "artifacts").mkdir(parents=True)
-        (project / ".prawduct" / "project-state.yaml").write_text("base_branch: main\n")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
+        _work_tree(project)
+        assert _plan_status.built_not_done_notice(project) is None
 
-    def test_silent_when_the_plan_has_no_status_roster(self, tmp_path: Path):
-        # "plan read, nothing to compare" must be distinguishable from "no plan".
-        project = self._repo(tmp_path, status="")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
-
-    def test_silent_when_every_box_is_ticked(self, tmp_path: Path):
-        # Nothing unticked means nothing to report, before git is consulted at
-        # all — the cheap exit that keeps this off the cost budget.
+    def test_silent_when_nothing_is_open_and_git_is_never_walked(
+        self, tmp_path: Path, monkeypatch
+    ):
+        # Nothing open means nothing to report, before `built_chunks` runs —
+        # the cheap exit that keeps the walk off the boundary's budget.
         project = self._repo(tmp_path, status="- [x] Chunk 01: a chunk\n")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
+
+        def no_walk(*_a, **_k):
+            raise AssertionError("built_chunks walked git for a plan with nothing open")
+
+        monkeypatch.setattr(_plan_status, "built_chunks", no_walk)
+        assert _plan_status.built_not_done_notice(project) is None
+
+    def test_an_open_chunk_does_walk_git(self, tmp_path: Path, monkeypatch):
+        # The control for the test above: with a chunk open the walk runs, so
+        # the stub's silence there is the cheap exit, not an unreached stub.
+        project = self._repo(tmp_path, status="- [ ] Chunk 01: a chunk\n")
+        calls = []
+        monkeypatch.setattr(_plan_status, "built_chunks", lambda *a, **k: calls.append(a) or set())
+        assert _plan_status.built_not_done_notice(project) is None
+        assert len(calls) == 1
 
     def test_the_token_is_stable_and_greppable(self):
-        # The proportionality norm: a control whose findings are printed and
-        # forgotten can never be retired on evidence, so the token is a stable
-        # literal rather than a reworded sentence. This control is NEW, so it
-        # owes that evidence from the start.
-        assert _bpr.UNTICKED_CHUNK_TOKEN == "unticked-committed-chunk"
+        # A control whose findings are printed and forgotten can never be
+        # retired on evidence, so the token is a fixed literal, pinned absolute.
+        assert _plan_status.BUILT_NOT_DONE_TOKEN == "built-not-done"
 
 
 class TestChunkRefWaiver:
@@ -1270,6 +1277,46 @@ class TestNewQualifierExpiry:
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
 
+    def _scoped_project(self, tmp_path: Path) -> tuple[Path, Path]:
+        project = tmp_path / "proj"
+        prawduct = project / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        _work_tree(project)
+        (prawduct / "project-state.yaml").write_text("")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: expiry\n---\n\n"
+            "## Build Chunks\n\n### Chunk 01: a chunk\n\n- creates new `lib/created.py`\n"
+            "\n## Next Section\n"
+        )
+        return project, prawduct
+
+    def test_a_fact_certified_chunk_expires_its_exemption(self, tmp_path: Path):
+        """#1051: done is `plan_status.chunk_states`' answer, read from the
+        fact store — no box involved. The control is the same plan before the
+        fact lands."""
+        project, prawduct = self._scoped_project(tmp_path)
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+        appended = _evidence.append_fact(project, "chunk-imported", "chunk-imported-x", {
+            "scope": "expiry", "chunk": "01", "source": "status-box",
+            "imported_at": "2026-10-25T00:00:00Z",
+        })
+        assert appended.get("status") == "appended", appended
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
+
+    def test_facts_the_caller_holds_are_the_ones_read(self, tmp_path: Path):
+        """`facts=` is honoured instead of the store: an empty store on disk,
+        and the done answer comes from what the caller passed."""
+        _project, prawduct = self._scoped_project(tmp_path)
+        facts = {"status": "ok", "facts": [{
+            "schema": 1, "kind": "chunk-imported", "id": "chunk-imported-y",
+            "ts": "2026-10-25T00:00:00Z", "actor": {},
+            "body": {"scope": "expiry", "chunk": "01", "source": "status-box",
+                     "imported_at": "2026-10-25T00:00:00Z"},
+        }]}
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01", facts=facts)
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
+
     def test_uncertain_completion_fails_toward_the_exemption(self, tmp_path: Path):
         # No `## Status` roster at all — nothing to reason about, so nothing
         # expires. A false missing-ref fires on every review of an open chunk;
@@ -1329,16 +1376,24 @@ class TestNewQualifierExpiry:
     # route back. The non-contiguous case itself is still covered — by the
     # checkbox test directly above, which is where it now belongs.
 
-    def test_unparseable_roster_entry_fails_toward_the_exemption(
+    def test_a_non_chunk_roster_entry_does_not_withhold_a_done_chunks_expiry(
         self, tmp_path: Path
     ):
+        """Renegotiated by #1051 Chunk 06 (was
+        `test_unparseable_roster_entry_fails_toward_the_exemption`, which
+        asserted the exemption was KEPT). The old reader reasoned by roster
+        POSITION, so one entry naming no chunk made every placement unsafe and
+        it answered "cannot tell". Done is now `plan_status.chunk_states`' answer
+        per chunk id, which a non-chunk entry cannot shift: chunk 01 is done, so
+        its `new` exemption expires. What still fails toward the exemption — a
+        plan that cannot be read, a rejected heading — reads `open` there."""
         _project, prawduct = _project_with_status_and_chunk(
             tmp_path,
             "- [x] Chunk 01: a chunk\n- [x] not a chunk line at all\n",
             "- creates new `lib/created.py`\n",
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
-        assert refs["file_paths"] == []
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
 
     def test_completed_chunk_still_exempts_a_file_that_now_exists(
         self, tmp_path: Path

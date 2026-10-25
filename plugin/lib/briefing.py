@@ -525,31 +525,6 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
 CURRENT_CHUNK_FINISHED = "finished"
 
 
-def _is_status_item(stripped: str) -> bool:
-    """Whether one Status line is a chunk item — asked of ``plan_index``, the
-    one home of the item rule, so no second checkbox reader lives here."""
-    return any(True for _ in plan_index.iter_status_section_items(f"## Status\n{stripped}"))
-
-
-def _chunk_heading_text(content: str, chunk_id: str) -> str:
-    """``Chunk 04: The Critic summary`` — the chunk's own heading, for display.
-
-    A chunk with no heading (an entry only an unmigrated Status roster lists)
-    is named by that roster line's text; only its words are read, never whether
-    it is ticked — progress is ``plan_status``'. ``Chunk <id>`` otherwise."""
-    target = buildplan_refs._normalize_chunk_id(chunk_id)
-    for line in content.splitlines():
-        stripped = line.strip()
-        match = buildplan_refs._CHUNK_HEADING_RE.match(stripped)
-        if match and buildplan_refs._normalize_chunk_id(match.group(1)) == target:
-            return stripped.lstrip("#").strip()
-    for _ticked, text in plan_index.iter_status_section_items(content):
-        item_id = buildplan_refs._chunk_id_from_item_text(text)
-        if item_id is not None and buildplan_refs._normalize_chunk_id(item_id) == target:
-            return text
-    return f"Chunk {chunk_id}"
-
-
 def current_chunk_text(
     project_dir: Path,
     plan_path: Path,
@@ -572,7 +547,7 @@ def current_chunk_text(
                 content = plan_path.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 content = ""
-        return _chunk_heading_text(content, current[0])
+        return plan_status.chunk_title(content, current[0])
     if plan_status.is_finished(plan_path, None, repo_dir=project_dir, states=states):
         return CURRENT_CHUNK_FINISHED
     reason = next((s.reason for s in states.values() if s.synthetic and s.reason), None)
@@ -623,23 +598,7 @@ def _plan_work(
                     result["governance_level"] = segment.removeprefix("**Governance**:").strip()
             break
 
-    # The Context BLOCK runs from the first `Context:` line to the end of the
-    # Status section, not to the end of that physical line — plans write it as
-    # several paragraphs. A chunk item after it ends the block, so a plan that
-    # interleaves them does not swallow its own checklist into the handoff.
-    context_lines: list[str] = []
-    in_context = False
-    for stripped in plan_index.iter_status_section_lines(content):
-        if _is_status_item(stripped):
-            in_context = False
-            continue
-        if not in_context and stripped.startswith("Context:"):
-            in_context = True
-            context_lines.append(stripped.removeprefix("Context:").strip())
-            continue
-        if in_context:
-            context_lines.append(stripped)
-    context = "\n".join(context_lines).strip()
+    context = plan_index.status_context(content)
     if context:
         result["context"] = context
 
@@ -649,52 +608,6 @@ def _plan_work(
     if states:
         result["current_chunk"] = current_chunk_text(project_dir, plan_path, states, content)
     return result
-
-
-def chunk_table_lines(
-    project_dir: Path,
-    plan_path: Path,
-    states: "dict[str, plan_status.ChunkState] | None" = None,
-) -> list[str]:
-    """The ``prawduct-hook plan status`` chunk table, as lines — the handoff's
-    progress block and the PR payload's build-plan section both print it.
-
-    The same columns the CLI prints: chunk id, state (``open`` / ``done`` /
-    ``dropped``), the certifying fact id, its date, and the tags ``imported``
-    and ``built`` (``plan_status.built_chunks`` — render-only, git-walking; no
-    gate reads it), with a chunk's ``reason`` indented beneath its row. Read
-    in-process from ``plan_status``, never by shelling out. ``[]`` for a plan
-    with no chunks.
-    """
-    if states is None:
-        states = plan_status.chunk_states(
-            plan_path, evidence.read_facts(project_dir), repo_dir=project_dir
-        )
-    if not states:
-        return []
-    built = plan_status.built_chunks(plan_path, project_dir)
-    rows = [
-        (
-            chunk_id,
-            st.state,
-            st.fact_id or "-",
-            st.date or "-",
-            ", ".join(
-                tag for tag, on in (("imported", st.imported), ("built", chunk_id in built)) if on
-            ) or "-",
-            st.reason,
-        )
-        for chunk_id, st in states.items()
-    ]
-    table = [("chunk", "state", "fact", "date", "tags", None), *rows]
-    widths = [max(len(row[i]) for row in table) for i in range(4)]
-    lines: list[str] = []
-    for row in table:
-        line = "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row[:4]))
-        lines.append(f"{line}  {row[4]}".rstrip())
-        if row[5]:
-            lines.append(f"    {row[5]}")
-    return lines
 
 
 def _get_active_work(
@@ -2164,7 +2077,13 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
         if wip.get("current_chunk"):
             sections.append(f"**Current chunk**: {wip['current_chunk']}")
         if binding.plan_path is not None:
-            table = chunk_table_lines(project_dir, binding.plan_path)
+            states = plan_status.chunk_states(
+                binding.plan_path, evidence.read_facts(project_dir), repo_dir=project_dir
+            )
+            table = plan_status.render_table(
+                states,
+                built=plan_status.built_chunks(binding.plan_path, project_dir) if states else frozenset(),
+            )
             if table:
                 sections.append("**Progress** (`prawduct-hook plan status`):")
                 sections.append("```")

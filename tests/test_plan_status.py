@@ -579,3 +579,79 @@ def test_every_build_plan_in_this_repo_reads_without_an_unreadable_or_unparsed_k
         if odd:
             bad[p.relative_to(repo_root).as_posix()] = odd
     assert not bad, bad
+
+
+# ---------------------------------------------------------------------------
+# render_table — the one renderer, printed identically at three surfaces
+# ---------------------------------------------------------------------------
+
+
+class TestOneRenderer:
+    """`plan status`, the `/clear` handoff and the PR payload print one table
+    (#1051 Chunk 06 moved the renderer here from `briefing.chunk_table_lines`
+    and the hook's `_cmd_plan_status`, which each had a copy)."""
+
+    def _fixture(self, repo: Path) -> Path:
+        """Every row shape: imported (a ticked box), built (a commit naming
+        it), dropped with its reason beneath, and plain open."""
+        plan = _plan(
+            repo, ("01", "02", "03", "04"),
+            status={"01": True, "02": False, "03": False, "04": False},
+            extra_frontmatter="dropped:\n  - 03: descoped for the fixture",
+        )
+        _commit(repo, "src/c02.py", "x\n", "feat(unit): land it (Chunk 02)")
+        return plan
+
+    def test_render_table_shapes_every_row(self, repo):
+        plan = self._fixture(repo)
+        lines = plan_status.render_table(
+            plan_status.chunk_states(plan, _facts(), repo_dir=repo),
+            built=plan_status.built_chunks(plan, repo),
+        )
+        assert [ln.split() for ln in lines] == [
+            ["chunk", "state", "fact", "date", "tags"],
+            ["01", "done", "-", "-", "imported"],
+            ["02", "open", "-", "-", "built"],
+            ["03", "dropped", "-", "-", "-"],
+            ["descoped", "for", "the", "fixture"],
+            ["04", "open", "-", "-", "-"],
+        ]
+        assert lines[4] == "    descoped for the fixture"
+        assert plan_status.render_table({}) == []
+
+    def test_plan_status_the_handoff_and_the_pr_payload_print_identical_rows(self, repo):
+        import json
+
+        from lib import briefing, pr_payload, work_unit
+
+        self._fixture(repo)
+        binding = work_unit.resolve(repo)
+        assert binding.state == "bound", binding
+
+        # `plan status` (the CLI), each line under its two-space indent.
+        home = repo.parent / "_home"
+        home.mkdir(exist_ok=True)
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "plan", "status"],
+            cwd=str(repo), capture_output=True, text=True, timeout=30,
+            env={**os.environ, "HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
+                 "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+        )
+        assert proc.returncode == 0, proc.stdout + proc.stderr
+        cli = [ln[2:] for ln in proc.stdout.splitlines()[1:]]
+
+        # The handoff's fenced progress block.
+        text = briefing.render_session_handoff(repo).text
+        block = text.split("**Progress** (`prawduct-hook plan status`):\n```\n", 1)[1]
+        handoff = block.split("```", 1)[0].splitlines()
+
+        # The PR payload's build-plan section, under its two-space indent.
+        body = pr_payload._section_build_plan(repo, binding).body
+        after = body.split("## Chunk status (plan status; derived from facts):", 1)[1]
+        payload = [ln[2:] for ln in after.splitlines()[1:]]
+
+        assert len(cli) == 6 and cli[2].split()[-1] == "built", cli  # every row shape reached
+        assert cli == handoff == payload, json.dumps(
+            {"cli": cli, "handoff": handoff, "payload": payload}, indent=1
+        )
+

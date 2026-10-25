@@ -24,8 +24,7 @@ scope subsets, the ledger fallback) are deleted by design, not preserved.
 ``cmd_stop`` itself STAYS in the hook (it is the deliberately-inline hot-path
 gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 *attribution* machinery shared with ``cmd_clear``); it calls these helpers via
-``_gates()``. ``_has_active_build_plan_file`` was reassigned here (it is gate
-logic, lib-clean) from the briefing region.
+``_gates()``. Whether those gates arm is ``plan_status.gate_arms`` (#1051).
 
 Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
 ``plan_status`` (chunk progress, the one walker — #1051), ``work_unit`` (the
@@ -2102,86 +2101,6 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
         return path.relative_to(project_dir).as_posix()
     except ValueError:
         return path.as_posix()
-
-
-# Unreferenced after Chunk 04; deleted in Chunk 06.
-def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
-    """Check if project-state.yaml contains an ACTIVE build plan.
-
-    Uses string matching rather than YAML parsing for speed and zero dependencies.
-    Returns True only when chunks exist with non-complete status. Returns False for:
-    - chunks: [] (empty plan, template default)
-    - All chunks with status: complete (finished plan)
-    - No build_plan section at all
-    """
-    state_path = prawduct_dir / "project-state.yaml"
-    if not state_path.is_file():
-        return False
-    try:
-        content = state_path.read_text()
-        if not (content.startswith("build_plan:") or "\nbuild_plan:" in content):
-            return False
-        if not ("\n  chunks:" in content or content.startswith("  chunks:")):
-            return False
-
-        # Scan chunks section for non-complete status entries
-        in_chunks = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("chunks:"):
-                in_chunks = True
-                if "[]" in stripped:
-                    return False  # Empty array
-                continue
-            if in_chunks:
-                # Exit chunks on line at same or lesser indent (not blank/comment)
-                if line and not line.startswith("    ") and stripped and not stripped.startswith("#"):
-                    break
-                if stripped.startswith("status:"):
-                    status_val = stripped.split(":", 1)[1].strip().strip("\"'")
-                    if status_val != "complete":
-                        return True
-        return False
-    except Exception:  # prawduct:allow prawduct/broad-except -- build plan check must not crash gate check
-        return False
-
-
-# Unreferenced after Chunk 04; deleted in Chunk 06.
-def _has_active_build_plan_file(
-    prawduct_dir: Path, plan_path: "Path | None" = None
-) -> bool:
-    """Return True if the build plan has at least one incomplete chunk.
-
-    ``plan_path`` names the plan to read, defaulting to this repo's active
-    build plan. The Stop hook and the SessionStart advisory both pass the BRANCH's
-    plan, so the gate's "should I run" and its "what does the chunk declare"
-    cannot answer about different files.
-
-    A completed plan (all [x]) or a missing file both return False — only an
-    in-progress plan with remaining work triggers governance gates.
-
-    Deliberately the **checkbox** reading, and never a commit-derived one.
-    The two answer different questions: commits answer "which chunk is in
-    flight", which is right for reporting; this gate asks "is there still
-    governed work", and **a chunk's last commit lands BEFORE its Critic pass and
-    its reflection.** Routing this through a git signal once made the blocking
-    reflection and Critic gates switch themselves off the moment the final chunk
-    was committed — through the whole complete-but-unmerged window, which is
-    exactly when the PR-fix and finding-resolution sessions happen. It failed
-    silently, because a gate that stops firing looks identical to a gate with
-    nothing to say.
-
-    The git-derived progress reading that caused it is gone, so that exact route
-    back in is closed. **The rule is not.** A commit-derived chunk signal still
-    exists for reporting — ``buildplan_refs.unticked_committed_chunk_notice``,
-    which flags a finished-but-unticked chunk — and it is the obvious thing for a
-    future editor to reach for here. It must not be: it reports precisely the
-    state (work committed, box not yet ticked) in which this gate must still say
-    "governed", and consuming it here would reproduce the incident with a
-    different callee.
-    """
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
-    return total > 0 and complete < total
 
 
 def test_status(project_dir: Path) -> int:
