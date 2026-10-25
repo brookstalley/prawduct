@@ -71,6 +71,108 @@ _NONE_RE = re.compile(r"none:(.*)", re.IGNORECASE)
 # `date.fromisoformat` accepts compact and week forms from Python 3.11 on, so the
 # shape is pinned first: the archive header is always `YYYY-MM-DD`.
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+# What separates the words of a scope when two spellings are compared. Wider than
+# the slug rule on purpose: a plan's `scope:` is not slug-checked, so `_`, case
+# and whitespace are exactly how a plan comes to spell its unit differently.
+_SCOPE_WORD_SPLIT_RE = re.compile(r"[-_.\s]+")
+
+
+def is_scope(value: str) -> bool:
+    """Whether ``value`` is a legal scope — the one slug rule, for every writer of one.
+
+    The plan minter and the backlog's ``closed-by: scope:<slug>`` ask this rather
+    than restating the pattern, so a scope legal in one place is legal in all.
+    """
+    return bool(_SCOPE_RE.fullmatch(value))
+
+
+def _scope_words(scope: str) -> list[str]:
+    return [word for word in _SCOPE_WORD_SPLIT_RE.split(scope.casefold()) if word]
+
+
+def scope_near_match(a: str, b: str) -> bool:
+    """Whether two different scopes are one unit's identity spelled two ways (WU1).
+
+    Near means one of:
+
+    * the same words — differing only in case or in which separator (``-``,
+      ``_``, ``.``, whitespace) joins them: ``work_unit_binding`` and
+      ``work-unit-binding``, ``release-v3.7.1`` and ``release-v3-7-1``;
+    * the same words with one INTERIOR word dropped or added:
+      ``work-binding`` and ``work-unit-binding``.
+
+    A word added at either END is not near, and that bound is measured rather
+    than chosen: a follow-up is a new unit (D4), and it is named by extending its
+    parent — ``goal-grounding-discovery`` after ``goal-grounding``,
+    ``fix-norm-lifecycle``, the template's own ``<scope>-reopen-1``. This repo's
+    history holds two such trailing follow-ups and no interior near-miss, so an
+    any-position rule would refuse the ordinary naming and catch nothing more.
+    Identical strings are not near: they are the same scope.
+    """
+    if a == b:
+        return False
+    words_a, words_b = _scope_words(a), _scope_words(b)
+    if words_a == words_b:
+        return True
+    shorter, longer = sorted((words_a, words_b), key=len)
+    if len(longer) - len(shorter) != 1:
+        return False
+    # Interior only: index 0 and the last index are the ends a follow-up extends.
+    return any(longer[:i] + longer[i + 1 :] == shorter for i in range(1, len(longer) - 1))
+
+
+def plan_scopes_for(root: Path) -> dict[str, Path]:
+    """Every plan ``scope:`` in the repo at ``root``, live then archived, to its file.
+
+    Through ``plan_index``, which owns what a plan is and where the archive is;
+    the live plan wins a scope the archive also holds. Read once per batch of
+    fragments, because the archive only grows.
+    """
+    return plan_index.build_scope_to_plan_map(
+        root / ".prawduct" / "artifacts", include_archived=True
+    )
+
+
+def _root_of(path: Path) -> Path | None:
+    """The repo root a fragment at ``path`` belongs to, or ``None`` when it is not
+    under ``.prawduct/changes/`` — a fixture, or text with nowhere to look."""
+    parts = Path(FRAGMENT_DIR_REL).parts
+    if len(path.parts) <= len(parts) or path.parent.parts[-len(parts):] != parts:
+        return None
+    return path.parents[len(parts)]
+
+
+def scope_problems(scope: str, plan_scopes: dict[str, Path], root: Path | None = None) -> list[Problem]:
+    """WU2 for a fragment: its scope names a plan, or no plan spells it differently.
+
+    A plan-less small fix is legal — the fragment is then the unit's only
+    declaration — so "no plan has this scope" is not a problem. What is refused
+    is the CL7 shape at the writer: a plan exists whose scope is this one spelled
+    another way, so the record and the plan would name one unit twice and
+    release would pair neither. The fix may belong to either file — a plan's
+    ``scope:`` is not slug-checked, so it can be the one spelled off the rule.
+    """
+    if scope in plan_scopes:
+        return []
+    artifacts = root / ".prawduct" / "artifacts" if root is not None else None
+    problems = []
+    for near in sorted(s for s in plan_scopes if scope_near_match(scope, s)):
+        where = (
+            plan_index.display_path(plan_scopes[near], artifacts)
+            if artifacts is not None
+            else plan_scopes[near].name
+        )
+        problems.append(
+            Problem(
+                "scope-misspells-plan",
+                f"`scope: {scope}` is not a plan's scope, but {where} declares "
+                f"`scope: {near}` — one unit has one spelling; rename this fragment "
+                "(file and `scope:`) to the plan's, or fix the plan's `scope:` if it "
+                "is the one off the slug rule. If this really is a different unit, "
+                "name it so it does not differ from that plan's by one word or a separator",
+            )
+        )
+    return problems
 
 
 @dataclass(frozen=True)
@@ -281,8 +383,19 @@ def _closes_problems(values: tuple[str, ...]) -> list[Problem]:
     return problems
 
 
-def validate_fragment(fragment: Fragment) -> list[Problem]:
-    """Every schema problem in ``fragment``, in a stable order. Empty means valid."""
+def validate_fragment(
+    fragment: Fragment,
+    *,
+    plan_scopes: dict[str, Path] | None = None,
+    root: Path | None = None,
+) -> list[Problem]:
+    """Every problem in ``fragment``, in a stable order. Empty means valid.
+
+    ``plan_scopes`` (from :func:`plan_scopes_for`) adds the WU2 check against the
+    repo's plans; without it only the fragment's own text is judged. The
+    path-aware readers below pass it whenever the fragment sits in a repo, so a
+    caller validating a file never has to remember to ask.
+    """
     problems: list[Problem] = []
     keys = fragment.keys
 
@@ -341,6 +454,8 @@ def validate_fragment(fragment: Fragment) -> list[Problem]:
                     f"`scope: {scope}` must equal the filename stem {fragment.filename_stem!r}",
                 )
             )
+        if plan_scopes is not None and _SCOPE_RE.fullmatch(scope):
+            problems.extend(scope_problems(scope, plan_scopes, root))
 
     when = fragment.date
     if when:
@@ -398,38 +513,54 @@ def validate_fragment(fragment: Fragment) -> list[Problem]:
     return problems
 
 
-def check_fragment_text(text: str, path: Path) -> FragmentFile:
+def check_fragment_text(
+    text: str, path: Path, *, plan_scopes: dict[str, Path] | None = None
+) -> FragmentFile:
     """Parse and validate fragment ``text`` that belongs at ``path``.
 
     For callers that read the text from somewhere other than the working tree,
-    such as a commit; :func:`read_fragment_file` is the disk form.
+    such as a commit; :func:`read_fragment_file` is the disk form. When ``path``
+    is under a repo's ``.prawduct/changes/``, that repo's plans are what the
+    scope is checked against — the PR gate passes a commit's text and the path it
+    lives at, and the path alone has to be enough. The plans are read from the
+    working tree, which is where the writer the check exists for is standing.
     """
     try:
         fragment = parse_fragment(text, filename=path.name)
     except FragmentError as exc:
         return FragmentFile(path, None, (exc.problem,))
-    return FragmentFile(path, fragment, tuple(validate_fragment(fragment)))
+    root = _root_of(path)
+    if plan_scopes is None and root is not None:
+        plan_scopes = plan_scopes_for(root)
+    return FragmentFile(
+        path, fragment, tuple(validate_fragment(fragment, plan_scopes=plan_scopes, root=root))
+    )
 
 
-def read_fragment_file(path: Path) -> FragmentFile:
+def read_fragment_file(
+    path: Path, *, plan_scopes: dict[str, Path] | None = None
+) -> FragmentFile:
     """Read and validate one fragment file; never raises for a bad fragment."""
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         return FragmentFile(path, None, (Problem("unreadable", str(exc)),))
-    return check_fragment_text(text, path)
+    return check_fragment_text(text, path, plan_scopes=plan_scopes)
 
 
 def load_pending(root: Path) -> list[FragmentFile]:
     """Every fragment file under ``root``, sorted by filename. Each one is pending.
 
     Only ``*.md`` files are fragments, so a ``.gitkeep`` that holds the directory
-    open is not one. A missing directory is an empty pending set.
+    open is not one. A missing directory is an empty pending set. The plans the
+    scopes are checked against are read once for the whole set.
     """
     directory = root / FRAGMENT_DIR_REL
     if not directory.is_dir():
         return []
-    return [read_fragment_file(path) for path in sorted(directory.glob("*.md"))]
+    paths = sorted(directory.glob("*.md"))
+    plan_scopes = plan_scopes_for(root) if paths else None
+    return [read_fragment_file(path, plan_scopes=plan_scopes) for path in paths]
 
 
 def render_entry(fragment: Fragment, *, release: str | None = None) -> str:

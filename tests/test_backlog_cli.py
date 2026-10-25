@@ -743,10 +743,13 @@ class TestBlockFieldFlagsCli:
         owner, repo = owner_repo.split("/")
         return fake.get_issue(owner, repo, int(number))["body"]
 
+    # `--closed-by` took free text (`fix/some-branch`) until BL2; the wiring this
+    # pins is unchanged, on a legal value. Its scope form is pinned below, through
+    # the CLI, because the repo's scope set is built only there.
     @pytest.mark.parametrize("flag,value", [
         ("--refs", "documentation/x.md"),
         ("--revisit", "2027-01-01"),
-        ("--closed-by", "fix/some-branch"),
+        ("--closed-by", "v3.7.2"),
     ])
     def test_each_valued_block_flag_parses_and_writes(self, capsys, flag, value):
         fake = FakeGitHub()
@@ -754,6 +757,37 @@ class TestBlockFieldFlagsCli:
         code, out, err = _run(["update", item_id, flag, value, "--json"], fake, capsys)
         assert code == 0
         assert f"{flag[2:]}: {value}" in self._body_of(fake, item_id)
+
+    @pytest.mark.parametrize("declared_by", ["plan", "archived-plan", "fragment"])
+    def test_closed_by_scope_is_checked_against_the_running_repo(self, capsys, declared_by):
+        # Nothing injected: the CLI must build the scope set from its own project
+        # directory, or every `scope:` write would be refused as uncheckable.
+        root = Path(_PROJECT_DIR)
+        if declared_by == "fragment":
+            path = root / ".prawduct" / "changes" / "the-unit.md"
+        else:
+            sub = "archive/" if declared_by == "archived-plan" else ""
+            path = root / ".prawduct" / "artifacts" / f"{sub}build-plan-the-unit.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("---\nartifact: build-plan\nscope: the-unit\n---\n")
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        code, out, err = _run(["update", item_id, "--closed-by", "scope:the-unit", "--json"], fake, capsys)
+        assert code == 0, out
+        assert "closed-by: scope:the-unit" in self._body_of(fake, item_id)
+
+    def test_closed_by_scope_naming_no_unit_is_refused(self, capsys):
+        fake = FakeGitHub()
+        item_id = _file(fake, capsys)
+        before = self._body_of(fake, item_id)
+        code, out, err = _run(
+            ["update", item_id, "--closed-by", "scope:nonexistent", "--json"], fake, capsys
+        )
+        assert code == 2
+        payload = json.loads(out)
+        assert payload["error"]["code"] == "validation"
+        assert "names no unit" in payload["error"]["message"]
+        assert self._body_of(fake, item_id) == before
 
     def test_file_refs_flag_parses(self, capsys):
         fake = FakeGitHub()
