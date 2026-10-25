@@ -74,7 +74,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, gates, gitstate, ledger
+from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -5562,6 +5562,28 @@ def tree_changed_since_dispatch(
     return ("changed", paths) if paths else ("unchanged", [])
 
 
+def _attach_note(project_dir: Path, appended: dict, anchor: "str | None") -> None:
+    """Put a just-appended fact on the notes transport (``evidence_notes``).
+
+    Advice, never authority: the fact is already in this clone's store, which
+    is what every gate here reads, so a note that cannot be written costs only
+    its reach to other clones. That is said on stderr and consolidation goes
+    on. A ``skipped`` attach (a kind that stays local, an anchor that is no
+    commit id) is silent — nothing failed."""
+    envelope = appended.get("envelope")
+    if not isinstance(envelope, dict):
+        return
+    outcome = evidence_notes.attach(project_dir, envelope, anchor)
+    if outcome.get("status") == "error":
+        print(
+            f"NOTE: critic-consolidate: {envelope.get('kind')} fact "
+            f"{envelope.get('id')!r} is recorded, but its git note was not "
+            f"written ({outcome.get('reason')}) — the fact stays in this clone's "
+            "store and does not travel to other clones.",
+            file=sys.stderr,
+        )
+
+
 def _is_session_file(path: str, prefix: str) -> bool:
     """Whether a repo-relative ``path`` is one of ``GITIGNORE_ENTRIES``, read
     with gitignore's own anchoring: an entry containing a ``/`` before its end
@@ -5879,6 +5901,17 @@ def consolidate(
                 file=sys.stderr,
             )
             return 1
+        review_anchor = evidence_notes.review_anchor(body)
+        _attach_note(project_dir, result, review_anchor)
+    else:
+        review_anchor = next(
+            (
+                evidence_notes.review_anchor(f.get("body"))
+                for f in evidence.facts_of_kind(store, "review")
+                if f.get("id") == review_id
+            ),
+            None,
+        )
 
     # Resolution facts (D5) — deterministic ids so a retry appends nothing new.
     appended_resolutions = 0
@@ -5901,6 +5934,9 @@ def consolidate(
                 file=sys.stderr,
             )
             return 1
+        # A resolution rides on the note of the review that verified it, so the
+        # fix's verdict travels with the round that judged it.
+        _attach_note(project_dir, result, review_anchor)
         appended_resolutions += 1
 
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
