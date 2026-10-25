@@ -64,6 +64,9 @@ for all four readers; the runtime file no longer argues it.
 
 from __future__ import annotations
 
+import functools
+import importlib.machinery
+import importlib.util
 import re
 from pathlib import Path
 
@@ -926,3 +929,163 @@ def test_no_stale_bundled_exemptions() -> None:
         if command not in joined and not any(j.split(" ")[0] == command for j in joined):
             stale.append((rel, command, f"no longer mentioned ({reason})"))
     assert not stale, f"stale _BUNDLED_NOT_GRANTED rows: {stale}"
+
+
+# --- No prefix grant reaches a data-plane write --------------------------------
+#
+# The rules above guard UNDER-permission (an instructed command with no grant)
+# and the Critic's pytest ban guards one OVER-permission. This is the other
+# over-permission: a grant is a literal prefix, so a grant written for a READ
+# silently admits every op whose name extends it. `Bash(prawduct-hook evidence*)`
+# was granted to the Critic skill for `evidence status|list`, and the day
+# `evidence ingest` shipped it admitted a store write from the reviewer side —
+# which `architecture.md`'s "an independent reviewer never mutates the session
+# it reviews" forbids. Nothing failed, because nothing asked.
+#
+# The write set is QUERIED from the hook — `_DATA_PLANE_COMMANDS` and
+# `_DATA_PLANE_OPS`, the tables the skew guard refuses from — and each entry is
+# checked against `_is_data_plane_write`, the predicate that returns the guard's
+# verdict, so an op added to the guard joins this sweep with no edit here. A
+# file that legitimately runs a write names that op in full
+# (`Bash(prawduct-hook critic-begin*)`); what fails is a grant whose prefix is
+# SHORTER than the op it admits.
+
+_HOOK = SKILLS_DIR.parent / "bin" / "prawduct-hook"
+
+#: Both spellings a grant may admit the hook by (see `_BARE_GRANT_RE` above).
+_HOOK_SPELLINGS = ("prawduct-hook ", "python3 plugin/bin/prawduct-hook ")
+
+#: Grants allowed to reach a write without naming it, each with its reason.
+#: Keyed by (file relative to plugin/, the pattern inside `Bash(...)`).
+_WRITE_REACH_EXEMPT = {
+    ("skills/janitor/SKILL.md", "python3 *"): (
+        "an interpreter grant the janitor needs to drive the product's own "
+        "toolchain; it reaches only the self-hosted spelling, only in a checkout "
+        "carrying the plugin, and the skill is human-invoked only "
+        "(`disable-model-invocation: true` — its frontmatter states why)"
+    ),
+}
+
+
+@functools.lru_cache(maxsize=1)
+def _hook_module():
+    """The extensionless hook, imported so its op tables can be read. Its module
+    name is not ``__main__``, so the CLI does not run."""
+    loader = importlib.machinery.SourceFileLoader("prawduct_hook_grants", str(_HOOK))
+    spec = importlib.util.spec_from_loader("prawduct_hook_grants", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def _data_plane_writes() -> list[str]:
+    """Every data-plane write invocation, as the words after the binary."""
+    hook = _hook_module()
+    words = [(command,) for command in hook._DATA_PLANE_COMMANDS]
+    words += [(command, op) for command, ops in hook._DATA_PLANE_OPS.items() for op in ops]
+    for entry in words:
+        assert hook._is_data_plane_write(entry[0], list(entry[1:])), (
+            f"`{' '.join(entry)}` is in the hook's data-plane tables but "
+            f"`_is_data_plane_write` does not refuse it — the sweep below would "
+            f"guard a set the guard itself does not use"
+        )
+    return sorted(" ".join(entry) for entry in words)
+
+
+def _write_reaching_grants(tools: list[str], write: str) -> list[str]:
+    """The `Bash(...)` patterns in ``tools`` that admit ``write`` without naming it.
+
+    A starred pattern admits any command beginning with what precedes the star;
+    it NAMES the op when that prefix runs at least to the op's last character.
+    A starless pattern admits only its own text, so it can reach a write only by
+    spelling it out — which is naming it.
+    """
+    reaching = []
+    for tool in tools:
+        if not (tool.startswith("Bash(") and tool.endswith(")")):
+            continue
+        pattern = tool[len("Bash("):-1]
+        if not pattern.endswith("*"):
+            continue
+        prefix = pattern[:-1]
+        for spelling in _HOOK_SPELLINGS:
+            command = spelling + write
+            if command.startswith(prefix) and not prefix.startswith(command):
+                reaching.append(pattern)
+                break
+    return reaching
+
+
+def _grant_holders() -> list[tuple[str, list[str]]]:
+    """Every skill and agent definition carrying a tool list, with that list."""
+    holders = []
+    for path in _skill_files():
+        grant = _frontmatter_grant(path.read_text(encoding="utf-8"))
+        if grant is not None:
+            holders.append((f"skills/{path.parent.name}/SKILL.md", grant))
+    for path in _agent_files():
+        grant = _agent_grant(path.read_text(encoding="utf-8"))
+        if grant is not None:
+            holders.append((f"agents/{path.name}", grant))
+    return [(rel, [t.strip() for t in grant.split(",") if t.strip()]) for rel, grant in holders]
+
+
+def test_the_write_set_is_queried_and_holds_the_store_write() -> None:
+    """Assert the subject was reached: an empty set, or one missing the write
+    that motivated this sweep, would leave every grant reading clean."""
+    writes = _data_plane_writes()
+    assert "evidence ingest" in writes, writes
+    assert "critic-consolidate" in writes, writes
+    assert "evidence status" not in writes and "evidence list" not in writes, writes
+
+
+def test_a_short_prefix_reaches_a_write_and_a_named_op_does_not() -> None:
+    """The checker itself, on the grant that motivated it and its narrowings."""
+    assert _write_reaching_grants(["Bash(prawduct-hook evidence*)"], "evidence ingest") == [
+        "prawduct-hook evidence*"
+    ]
+    assert _write_reaching_grants(
+        ["Bash(python3 plugin/bin/prawduct-hook evidence *)"], "evidence ingest"
+    ) == ["python3 plugin/bin/prawduct-hook evidence *"]
+    assert _write_reaching_grants(["Bash(prawduct-hook critic-*)"], "critic-begin")
+    for narrowed in (
+        "Bash(prawduct-hook evidence status*)",
+        "Bash(prawduct-hook evidence list*)",
+        "Bash(prawduct-hook evidence list)",
+        "Bash(prawduct-hook critic-begin*)",
+        "Bash(prawduct-hook critic-consolidate)",
+        "Bash(prawduct-hook evidence ingest*)",
+    ):
+        assert not _write_reaching_grants([narrowed], "evidence ingest"), narrowed
+        assert not _write_reaching_grants([narrowed], "critic-begin"), narrowed
+
+
+def test_the_grant_sweep_has_subjects() -> None:
+    names = {rel for rel, _ in _grant_holders()}
+    assert "skills/critic/SKILL.md" in names and "agents/pr-reviewer.md" in names, names
+
+
+def test_no_prefix_grant_reaches_a_data_plane_write() -> None:
+    writes = _data_plane_writes()
+    offending = []
+    for rel, tools in _grant_holders():
+        for write in writes:
+            for pattern in _write_reaching_grants(tools, write):
+                if (rel, pattern) not in _WRITE_REACH_EXEMPT:
+                    offending.append(f"{rel}: Bash({pattern}) admits `{write}`")
+    assert not offending, (
+        "a prefix grant admits a data-plane write it does not name — narrow it to "
+        "the ops the file runs, or, where it runs the write, grant that op in full:\n  "
+        + "\n  ".join(sorted(set(offending)))
+    )
+
+
+def test_no_stale_write_reach_exemptions() -> None:
+    writes = _data_plane_writes()
+    holders = dict(_grant_holders())
+    stale = []
+    for (rel, pattern), _reason in _WRITE_REACH_EXEMPT.items():
+        tools = holders.get(rel, [])
+        if not any(pattern in _write_reaching_grants(tools, w) for w in writes):
+            stale.append((rel, pattern))
+    assert not stale, f"stale _WRITE_REACH_EXEMPT rows (the grant no longer reaches a write): {stale}"

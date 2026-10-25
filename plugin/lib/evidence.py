@@ -453,8 +453,9 @@ def append_guard_refusal(
        class and names this sink; a second path for the same class is the thing
        it forbids.
 
-    **Neither store answers a cross-CLONE question** — this one lives inside
-    ``.git`` and is never committed, exactly like the ledger. The axis this
+    **A refusal stays in the clone that recorded it** — this store lives inside
+    ``.git`` and is never committed, and ``guard-refusal`` is not among the
+    kinds the notes transport carries (``TRANSPORTED_KINDS``). The axis this
     ruling turns on is cross-*worktree* durability plus an existing reader, not
     cross-clone reach, and a yield question spanning clones still needs an
     exporter nobody has built.

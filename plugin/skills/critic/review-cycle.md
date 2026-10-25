@@ -97,6 +97,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 - A rebase or amend changes the tree → a gap composition cannot close (the transfer below closes one case). A squash-merge preserves the tree, so squashed PRs stay covered.
 - A **selective commit** (only part of the reviewed state) produces a tree nobody reviewed — a gap. `/prawduct:critic verify-resolutions` reviews that delta and closes it.
 - Blocking findings don't die with re-runs: they stay on the path until a `verify-resolutions` pass appends resolution facts for them.
+- Review and resolution facts reach other clones as notes on `refs/notes/prawduct`, pushed by `/prawduct:pr` (`evidence sync`) and ingested at session start. A clone lacking a fact's tree reads that interval as a gap, so only reviews of committed trees — the PR gate's `cumulative` among them — count in every clone.
 
 ### Cumulative mode and the PR gate
 

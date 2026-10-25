@@ -148,7 +148,7 @@ in `docs/governance-telemetry.md`.
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
 
-- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating),
+- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary, which also ingests the branch's notes and prints `N review facts ingested from refs/notes/prawduct` when N > 0 — `--brief-only` skips both, mutating),
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
@@ -164,7 +164,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the ledger append after it still consumes the mark), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
-  inverse), `evidence status|list`, `ledger-append`
+  inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
+  their commit` — what `evidence sync` re-attaches, for the branch's commits, before it pushes), `ledger-append`
   (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
   as well as `review.pr`, and writes the optional `dispatched_at` envelope key when one is present;
   `--trigger subagent-stop|explicit|session-end-backstop` is required for `review.critic` and
@@ -192,6 +193,28 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the freshness fallback neither vouches nor denies by it. `test-status` prints its verdict line
   first, then one line per scratch worktree's newest narrowed run (at most 10); its exit code is
   unchanged.
+- **Evidence transport** — `review`, `resolution` and `chunk-imported` facts travel between clones
+  as their store lines in notes on `refs/notes/prawduct` (`data-model.md` § Evidence Store).
+  `evidence ingest [--all] [--json]` (mutating) appends the note lines the store lacks, bounded to
+  the branch's commits from the merge base, or every note with `--all`; it prints how many records
+  it appended of how many it saw on how many commits, and a skipped class (malformed lines, kinds
+  not transported) is counted in `reason`. Exit 0 when the ingest ran, appending nothing included;
+  1 on an error or an unknown argument. A data-plane write: refused (exit 1) from a scratch
+  worktree, so a disposable tree never races the main checkout's ingest, and by a foreign binary; session start
+  runs it bounded at a session boundary. `evidence sync [--no-push] [--json]` (mutating; network)
+  fetches the remote's notes into the tracking ref `refs/notes/<remote>/prawduct`, merges them into
+  `refs/notes/prawduct` with `cat_sort_uniq`, re-attaches any transported fact in the bound whose
+  note is missing, ingests, and pushes the ref unless `--no-push`; a missing remote ref is not an
+  error. Exit 0 ok; 1 a reported failure naming the failing `step` (`fetch`, `merge`, `ingest`,
+  `push`), git's stderr scrubbed of credentials and nothing retried; 2 usage.
+  `/prawduct:pr create|update` runs it after the branch push, and a failure there is reported
+  without blocking the PR. `evidence configure [--apply] [--json]` previews, and with `--apply`
+  writes, the clone's two keys: the fetch refspec `+refs/notes/prawduct:refs/notes/<remote>/prawduct`
+  in `remote.<remote>.fetch` (so a plain `git fetch` brings the remote's notes into the tracking
+  ref; `evidence sync` merges and ingests them) and
+  `notes.rewriteRef=refs/notes/prawduct` (so amend and rebase carry them); a repo with no remote
+  reports so and changes nothing. Exit 0 ok; 1 a failure; 2 usage. `/prawduct:doctor` offers it
+  and `/prawduct:onboard` runs it.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **Stranded work** — `worktrees [--json]` (read-only): every worktree with its inferred liveness
@@ -320,7 +343,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   null; base-branch resolution for the gates and the PR payload consults it first). Additive-first binds here as everywhere: `chosen_by` values are added, never
   repurposed, and readers of historical review facts still meet the retired `branch-name` and
   `not-resolved`.
-  `plan status [<path>] [--json]` is the read-only rendering of chunk progress — the one view of
+  `plan status [<path>] [--json] [--probe-pr]` is the read-only rendering of chunk progress — the one view of
   `plan_status.chunk_states` (the sole walker of a plan's chunk states; no gate reads this view).
   `<path>` defaults to the bound plan. Exit 0 with the table; 1 when no plan resolves (an unbound
   checkout and no path given — one reason line); 2 on a path that is not a plan. Allowed inside a
@@ -331,13 +354,21 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   built, reason}`; `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
   `## Status` tick read in memory, `built` is render-only (a commit naming the chunk or touching its
   deliverables) and `reason` says why an entry that looked like an answer was not one (an
-  unreadable `dropped:` line, a fact whose anchor is not in the branch's history). Keys are added,
-  never repurposed; `state` values are a closed set that grows additively.
+  unreadable `dropped:` line, a fact whose anchor is not in the branch's history). It also
+  prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
+  `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,
+  `merged-unreleased`, `released`, `superseded`, `unknown`, observed from git, the review facts'
+  anchors, the change record and the archive stamp (`plan_lifecycle.observe`, the one derivation;
+  nothing is stored). `--probe-pr` lets an `unknown` answer ask `gh pr list` for a merged PR on the
+  plan's branch (`probed: true`) — the one network call here, never made by a hook or the
+  briefing. Keys are added, never repurposed; both `state` enums are closed sets that grow
+  additively.
   `plan import-status <path> [--apply] [--remove-block] [--json]` (mutating with `--apply`) is the
   MG2 migration: for each chunk `chunk_states` reads as done-by-tick with no fact yet, it appends
   one `chunk-imported` fact, code-written from the box; `--remove-block` then rewrites the plan
-  without its `## Status` section — opt-in until #1052 ships transport, because facts are per-clone
-  until then. Facts are written first and the block edited only after all succeed; every block
+  without its `## Status` section — opt-in, because the imported facts reach another clone only once
+  their notes are pushed (`evidence sync`) and ingested there; until then that clone reads a plan
+  with no block as every chunk open. Facts are written first and the block edited only after all succeed; every block
   refusal precedes any write. Exit 0 for a preview or a successful write; 1 `refused: <code>` for
   `archived-plan`, `no-scope`, `store-unreadable`, `status-block-ambiguous`,
   `status-block-undelimited`, `status-block-trailing-comment`, `fact-append-failed`,
