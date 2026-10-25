@@ -308,6 +308,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   null; base-branch resolution for the gates and the PR payload consults it first). Additive-first binds here as everywhere: `chosen_by` values are added, never
   repurposed, and readers of historical review facts still meet the retired `branch-name` and
   `not-resolved`.
+  `plan status [<path>] [--json]` is the read-only rendering of chunk progress — the one view of
+  `plan_status.chunk_states` (the sole walker of a plan's chunk states; no gate reads this view).
+  `<path>` defaults to the bound plan. Exit 0 with the table; 1 when no plan resolves (an unbound
+  checkout and no path given — one reason line); 2 on a path that is not a plan. Allowed inside a
+  scratch worktree. `--json` carries `plan_path` (repo-relative), `scope`, `finished` (bool) and
+  `chunks`, a list in plan order of `{id, state (open|done|dropped), fact_id, date, imported,
+  built, reason}`; `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
+  `## Status` tick read in memory, `built` is render-only (a commit naming the chunk or touching its
+  deliverables) and `reason` says why an entry that looked like an answer was not one (an
+  unreadable `dropped:` line, a fact whose anchor is not in the branch's history). Keys are added,
+  never repurposed; `state` values are a closed set that grows additively.
   `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
   bounded: past the repo's oversized threshold it moves entries verbatim into
   `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,

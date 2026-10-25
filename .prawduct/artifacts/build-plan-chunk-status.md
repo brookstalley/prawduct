@@ -91,6 +91,34 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   dispatch, outside the command. DG2 is therefore: admit `test-evidence record` through the guard
   from a scratch tree, and inside the command skip the JSON write and append the fact with
   `narrowed: true` and the ceiling. One guarded branch; no fork of the command. Settled by § 7.
+- Chunk 01's open call, settled by the coordinator 2026-10-25: the plan's NF1 wording "no git
+  call" conflicted with § 3's reachability rule. Resolution: `chunk_states` makes no git WALK
+  (no log/diff/rev-list, never calls `built_chunks`); it runs at most one memoized
+  `merge-base --is-ancestor` per fact that would otherwise certify an open chunk, and zero
+  subprocesses when no such fact exists — the NF1 test asserts that by call. The anchor is
+  `head_commit or dispatch_commit` (a dirty-tree review records `head_commit` null, per
+  `critic_consolidate`), so a pre-commit chunk review certifies once its dispatch commit is in the
+  branch's history; that the reviewed TREE was committed is carried by the Stop gate's coverage
+  verdict, which `chunk_states` does not duplicate. Settled by the Architecture goal (one home per
+  fact; coverage owns tree identity).
+- Chunk 01 as built (delegate, 2026-10-25), accepted by the coordinator: precedence follows cost —
+  `chunk-imported` fact, then a ticked box, then `dropped:`, then review facts for chunks still
+  open (so a chunk both ticked and reviewed reads `done, imported`, citing no fact; the probe runs
+  only where it can change the answer). `dropped:` is a block sequence of `- <id>: <reason>`;
+  the reason is required, and a flow list, a mapping item, a bare dash or an empty reason leaves
+  the chunk `open` with the cause in `reason` (fail closed; an unquoted ` #` in a reason is a YAML
+  comment — the template legend says so). Fail-closed shapes the literal "no chunks is finished"
+  would miss: an unreadable plan returns one open entry keyed `?`; a chunk heading the parser
+  rejects is an open chunk keyed `?L<line>`; a plan declaring no `branch:` is certified by imports
+  and `dropped:` only, never by review facts (no history to anchor to). Additive signature
+  surfaces for 02–05: `fact_chunks(body)` (the one home of the `chunks`/`chunk` reader rule),
+  `deliverable_paths(content, chunk_id)`, `propose_chunks(..., *, repo_dir=None)`, constants
+  `UNREADABLE_PLAN`, `DROPPED_KEY`, `IMPORTED_KIND`; `ChunkState.reason` is set on `open` too. A
+  Deliverables directory token matches files beneath it only at two or more path segments (a bare
+  `.prawduct/` in prose had claimed every governance write as Chunk 03's). Box import applies to
+  any plan path passed in, so an archived plan renders its boxes as history. `KNOWN_KINDS` is
+  untouched here (Chunk 02 adds the kind; 01's fixtures write store lines directly). Red was shown
+  by a 28-mutant sweep with one intended survivor, return codes asserted.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
