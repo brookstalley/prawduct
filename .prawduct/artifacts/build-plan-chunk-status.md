@@ -284,6 +284,20 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   five open — the cumulative is passed explicitly, as the plan always intended for 06). The suite
   recorded green over the 01–05 tree (2026-10-25T14:37Z) and again over the 06 tree before the
   cumulative (`prawduct-hook test-status` holds the counts; prose does not copy them).
+- Cumulative `rev-20261025T144236Z-a2673d56` (0 blocking / 3 warning / 14 note), settled
+  2026-10-25: every warning fixed in one round (owner: warnings are effectively blocking) — R-1
+  `gate_arms` now asks `work_unit.is_live_plan_file` (public; relative to the plan's own
+  `artifacts/`, so a repo rooted under a directory named `archive` arms — red-first); R-10
+  `built_report` → `BuiltReport(built, unavailable)` with `built_chunks` wrapping it unchanged,
+  `render_table`/`--json` (`built_unavailable`) and `built_not_done_notice` naming the cause, and a
+  declared `base:` naming no ref is now a cause rather than a silent fallback to the repo's base;
+  the class closed at its last reader, `lifecycle_repair.stale_status_reports` (JSON gains
+  `unavailable`, the human route a derived lead), by the coordinator; R-11 is the owner's
+  confirm-or-veto and rides the PR description. Notes fixed: R-4 (record-lint grades the chunks
+  the fact names — `lint_records(chunk_ids=)`, `chunks_graded`; cross-checks.md names it inside
+  its budget), R-13's `boundary-patterns.md` entry, R-16 (#856 pinned for three state-key
+  spellings and added to `closes:`). Accepted on the record: R-2, R-3, R-5, R-6, R-7, R-8, R-9,
+  R-12, R-14, R-15, R-17. Verify-resolutions dispatched over the committed delta.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
