@@ -237,7 +237,7 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   that the Stop gate's reading never walks it); `short_plan_next_step` says "commit this chunk,
   naming it in the subject", never "tick"; `verify-resolutions`' proposal is the anchored
   review's chunks (`critic_mode.chain_named_chunks`); `infer_mode` reads facts once and carries
-  them (`PlanProgress.facts`; three tests pin one `read_facts`). A's first "4335 passed" used a
+  them (`PlanProgress.facts`; three tests pin one `read_facts`). A's first ceiling run used a
   malformed file list; the real 39-file ceiling ran green on the second round apart from the
   data-model spec already fixed on the branch. Gap it opened, settled by the coordinator: without
   boxes the Stop gate's short-plan last-chunk check never engaged, so a short plan warned at its
