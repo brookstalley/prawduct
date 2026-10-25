@@ -28,6 +28,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from lib import buildplan_refs, core, coverage_algebra, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
+from lib import plan_mint, work_unit  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -1128,46 +1129,58 @@ class TestRule4ChunkDefault:
         mode, rationale = infer_mode(tmp_path, None)
         assert (mode, rationale) == ("final", "plan-override: final")
 
-    def test_a_finished_live_plan_still_matches_until_it_is_archived(self, tmp_path: Path):
-        """Archiving retires a plan; ticking its last box does not.
+    # `buildplan_refs.infer_scope_from_branch` stood here, with nine tests pinning
+    # its rules: a branch NAME (whole, or last segment) matched against a declared
+    # `scope:`, narrowed by liveness, and a plan's `branch:` consulted first. #1050
+    # deleted it — a name is not a claim (#208), and its liveness narrowing was a
+    # guess made safe, not a binding. Its one surviving use is a suggestion offered
+    # to a person when minting (`plan_mint.suggest_scope`, pinned in
+    # tests/test_plan_mint.py). The cases below keep each shape the old tests
+    # covered and pin the binding's answer for it (`work_unit.resolve`): what
+    # declared `branch:` gave the old rule is the whole rule now, and every case
+    # that rested on a name match binds nothing.
 
-        Boxes are ticked per chunk after each review, so every box is ticked by
-        the plan's own end-of-plan `cumulative`. Rejecting an all-checked plan
-        (the earlier contract, when boxes flipped only at release) turned the
-        scope off for exactly that review, and it went uncounted by the round
-        budget. The paired half: the same plan moved under `archive/` stops
-        matching, which is what keeps long-shipped plans from being targets.
-        """
+    @staticmethod
+    def _repo_on(tmp_path: Path, branch: str) -> Path:
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _commit(tmp_path, "initial")
-        _checkout_new_branch(tmp_path, "fix/shipped")
+        _checkout_new_branch(tmp_path, branch)
+        (tmp_path / ".prawduct" / "artifacts").mkdir(parents=True, exist_ok=True)
+        return tmp_path / ".prawduct" / "artifacts"
 
-        artifacts = tmp_path / ".prawduct" / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
+    def test_a_finished_claimant_binds_until_it_is_archived(self, tmp_path: Path):
+        """Archiving retires a plan; ticking its last box does not. Every box is
+        ticked by the plan's own end-of-plan `cumulative`, so a finished plan
+        that claims the branch still binds it; moved under `archive/` it claims
+        nothing. (Was the name-matched `test_a_finished_live_plan_still_matches_
+        until_it_is_archived`; the plan now claims its branch, the only route.)"""
+        artifacts = self._repo_on(tmp_path, "fix/shipped")
         plan = artifacts / "build-plan-shipped.md"
         plan.write_text(
-            "---\nartifact: build-plan\nscope: shipped\n---\n\n"
+            "---\nartifact: build-plan\nscope: shipped\nbranch: fix/shipped\n---\n\n"
             "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: also done\n"
         )
-        prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "shipped", (
-            "a plan at its final review has every box ticked and is still the work"
-        )
+        binding = work_unit.resolve(tmp_path)
+        assert (binding.state, binding.scope) == ("bound", "shipped")
 
         archive = artifacts / "archive"
         archive.mkdir()
         plan.rename(archive / plan.name)
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
+        binding = work_unit.resolve(tmp_path)
+        assert (binding.state, binding.scope) == ("unbound", None), (
             "an archived plan is history, not a live target"
         )
 
-    def test_a_merged_finished_plan_does_not_capture_a_follow_up_branch(self, tmp_path: Path):
-        """On gitflow a merged plan stays live until the release. A later branch
-        reusing its exact name must not be graded against it — this answer feeds
-        the gates, not only review attribution — so a finished plan matches only
-        when this branch edited it. Editing it (the plan's own branch writing its
-        ticks) is the control that makes the first assertion about liveness."""
+    def test_a_name_match_never_binds_whether_or_not_the_branch_edited_the_plan(
+        self, tmp_path: Path
+    ):
+        """Was `test_a_merged_finished_plan_does_not_capture_a_follow_up_branch`,
+        whose control was that EDITING the plan made the name match count. The
+        follow-up half still holds; the control is inverted on purpose: an edit
+        is evidence the branch touched the plan, not a claim, and grading a
+        branch against a plan it merely shares a name with is #208. A claim
+        elsewhere closes the legacy window, so neither half binds."""
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
         _write(
@@ -1176,13 +1189,16 @@ class TestRule4ChunkDefault:
             "---\nartifact: build-plan\nscope: shipped\n---\n\n"
             "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n",
         )
+        _write(
+            tmp_path,
+            ".prawduct/artifacts/build-plan-other.md",
+            "---\nartifact: build-plan\nscope: other\nbranch: feat/other\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: open\n",
+        )
         _commit(tmp_path, "initial, with the merged finished plan")
         _checkout_new_branch(tmp_path, "fix/shipped")
         _write(tmp_path, "src/new.py", "# follow-up work\n")
-        prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None, (
-            "a finished plan this branch never touched is not what it is building"
-        )
+        assert work_unit.resolve(tmp_path).scope is None
 
         _write(
             tmp_path,
@@ -1191,141 +1207,100 @@ class TestRule4ChunkDefault:
             "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: done\n",
         )
         _commit(tmp_path, "tick chunk 02")
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "shipped"
+        binding = work_unit.resolve(tmp_path)
+        assert (binding.state, binding.scope) == ("unbound", None)
 
-    def test_a_declared_branch_resolves_a_scope_no_name_rule_could(self, tmp_path: Path):
-        """The observed miss this closes, in its real shape.
+    def test_a_declared_branch_binds_a_scope_no_name_rule_could(self, tmp_path: Path):
+        """The observed miss, in its real shape: `feat/tactical-efficiency-pass`
+        matches the scope `tactical-efficiency` under no name rule, so every
+        dispatch from it once recorded no scope. The plan's `branch:` is a
+        statement, not a guess, so it binds.
 
-        `feat/tactical-efficiency-pass` matches the scope `tactical-efficiency`
-        under neither candidate rule (whole name, last segment), so every
-        dispatch from such a branch resolved NO scope — the ledger row said
-        `(none)` and every scope-filtered consumer stayed inert. The plan's own
-        `branch:` declaration is a statement, not a guess, so it answers.
-        """
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        _checkout_new_branch(tmp_path, "feat/tactical-efficiency-pass")
-
-        artifacts = tmp_path / ".prawduct" / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
+        The paired negative: strip the declaration and nothing binds — and the
+        name yields only a SUGGESTION for a person to confirm, which is not the
+        plan's scope and is applied by nothing."""
+        artifacts = self._repo_on(tmp_path, "feat/tactical-efficiency-pass")
         (artifacts / "build-plan-te.md").write_text(
             "---\nartifact: build-plan\nscope: tactical-efficiency\n"
             "branch: feat/tactical-efficiency-pass\n---\n\n"
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
         )
-        prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == (
-            "tactical-efficiency"
-        )
+        assert work_unit.resolve(tmp_path).scope == "tactical-efficiency"
 
-        # The paired negative: strip the declaration and the name rules are back
-        # in charge, which is exactly what could not resolve this branch.
         (artifacts / "build-plan-te.md").write_text(
             "---\nartifact: build-plan\nscope: tactical-efficiency\n---\n\n"
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
         )
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+        assert work_unit.resolve(tmp_path).scope is None
+        assert plan_mint.suggest_scope("feat/tactical-efficiency-pass") == "tactical-efficiency-pass"
 
     def test_a_declared_branch_beats_a_name_match_on_another_plan(self, tmp_path: Path):
-        """Precedence, where the two routes disagree — otherwise the ordering is
-        untested and either arrangement passes."""
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        _checkout_new_branch(tmp_path, "fix/guessable")
-
-        artifacts = tmp_path / ".prawduct" / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
+        """The two routes disagreeing: the name-matched plan is not a claimant,
+        so the declaring plan binds alone rather than winning a precedence."""
+        artifacts = self._repo_on(tmp_path, "fix/guessable")
         (artifacts / "build-plan-guessable.md").write_text(
             "---\nartifact: build-plan\nscope: guessable\n---\n\n"
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
         )
-        (artifacts / "build-plan-declared.md").write_text(
+        declared = artifacts / "build-plan-declared.md"
+        declared.write_text(
             "---\nartifact: build-plan\nscope: declared\nbranch: fix/guessable\n---\n\n"
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
         )
-        prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "declared"
+        binding = work_unit.resolve(tmp_path)
+        assert (binding.scope, binding.claimants) == ("declared", (declared.resolve(),))
 
     def test_a_finished_declared_plan_still_claims_its_branch(self, tmp_path: Path):
-        """The liveness narrowing does NOT apply to a declaration.
-
-        It exists to keep a *guess* from attributing work to a plan that shipped
-        long ago. A plan that names this branch is not guessing, and the window
-        the narrowing opens — every box ticked, branch not yet merged — is
-        exactly when the `cumulative` review and the last gate run happen.
-        """
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        _checkout_new_branch(tmp_path, "feat/all-done")
-
-        artifacts = tmp_path / ".prawduct" / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
+        """No liveness narrowing applies to a claim: the window it would open —
+        every box ticked, branch not yet merged — is exactly when the
+        `cumulative` review and the last gate run happen."""
+        artifacts = self._repo_on(tmp_path, "feat/all-done")
         (artifacts / "build-plan-done.md").write_text(
             "---\nartifact: build-plan\nscope: done\nbranch: feat/all-done\n---\n\n"
             "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [x] Chunk 02: done\n"
         )
-        prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "done"
+        assert work_unit.resolve(tmp_path).scope == "done"
 
-    def test_two_plans_claiming_one_branch_infer_the_resolved_one(self, tmp_path: Path):
-        """Inference asks the same resolver the gates ask.
-
-        Declining on the second claimant looked conservative and was not: the
-        gates would grade a plan while the dispatch recorded no scope at all, so
-        the review and its ledger row would describe different work.
-        """
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        _checkout_new_branch(tmp_path, "feat/contested")
-
-        artifacts = tmp_path / ".prawduct" / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
+    def test_two_plans_claiming_one_branch_bind_neither(self, tmp_path: Path):
+        """Was `test_two_plans_claiming_one_branch_infer_the_resolved_one`, which
+        pinned the open-chunks tie-break so the dispatch's scope and the gates'
+        plan agreed. They still agree — on nothing: two claimants are `broken`
+        (BR5), so no scope is recorded and no plan is graded, and the reason
+        names both for the author to repair."""
+        artifacts = self._repo_on(tmp_path, "feat/contested")
         for name, boxes in (("a", "- [x] Chunk 01: done"), ("b", "- [ ] Chunk 01: current")):
             (artifacts / f"build-plan-{name}.md").write_text(
                 f"---\nartifact: build-plan\nscope: {name}\nbranch: feat/contested\n---\n\n"
                 f"# Plan\n\n## Status\n\n{boxes}\n"
             )
-        prawduct = tmp_path / ".prawduct"
-        # `b` is the claimant with chunks left, so it is what resolution picks —
-        # and the scope must name that same plan, not the other one and not None.
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) == "b"
-        assert core.resolve_build_plan_path(prawduct).name == "build-plan-b.md"
+        binding = work_unit.resolve(tmp_path)
+        assert (binding.state, binding.scope, binding.plan_path) == ("broken", None, None)
+        assert "build-plan-a.md" in binding.reason and "build-plan-b.md" in binding.reason
+        assert core.resolve_build_plan_path(tmp_path / ".prawduct") is None
 
-    def test_a_declared_plan_with_no_scope_infers_nothing(self, tmp_path: Path):
+    def test_a_declared_plan_with_no_scope_binds_with_none(self, tmp_path: Path):
         """A branch claim is not a scope. Inventing one would tag a change-log
-        entry and a ledger row with a string no plan declares."""
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        _checkout_new_branch(tmp_path, "feat/scopeless")
-
-        artifacts = tmp_path / ".prawduct" / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
+        entry and a ledger row with a string no plan declares — so the plan
+        binds (it governs its branch) with no scope, and says so."""
+        artifacts = self._repo_on(tmp_path, "feat/scopeless")
         (artifacts / "build-plan-scopeless.md").write_text(
             "---\nartifact: build-plan\nbranch: feat/scopeless\n---\n\n"
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: current\n"
         )
-        prawduct = tmp_path / ".prawduct"
-        assert buildplan_refs.infer_scope_from_branch(tmp_path, prawduct) is None
+        binding = work_unit.resolve(tmp_path)
+        assert (binding.state, binding.scope) == ("bound", None)
+        assert "declares no `scope:`" in binding.reason
 
     def test_archived_plans_do_not_shadow_their_live_siblings(self, tmp_path: Path):
         """Discovery went recursive; `archive/` had to stop being discoverable.
 
         The scan is `sorted()` and first-wins, and `artifacts/archive/x.md` sorts
         BEFORE `artifacts/x.md` — so an archived copy would win the scope and
-        regenerate the retired plan instead of the live one. Every record check
-        already honours the archive convention; discovery did not.
+        grade the retired plan instead of the live one. Asked through the route
+        that still maps a scope to a plan: a dispatch naming `--scope` (the
+        branch-name inference that used to reach this map is gone).
         """
-        _init_repo(tmp_path)
-        _write(tmp_path, "README.md", "x\n")
-        _commit(tmp_path, "initial")
-        _checkout_new_branch(tmp_path, "fix/shadowed")
-
-        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts = self._repo_on(tmp_path, "fix/shadowed")
         (artifacts / "archive").mkdir(parents=True, exist_ok=True)
         # Same scope, both files. The archived one sorts first.
         (artifacts / "archive" / "build-plan-shadowed.md").write_text(
@@ -1337,7 +1312,7 @@ class TestRule4ChunkDefault:
             "# Live\n\n## Status\n\n- [ ] Chunk 01: live work\n"
         )
 
-        plan = buildplan_refs.resolve_branch_plan(tmp_path, tmp_path / ".prawduct")
+        plan = buildplan_refs.resolve_reviewed_plan(tmp_path, tmp_path / ".prawduct", "shadowed")
         assert plan.scope == "shadowed"
         assert plan.path.name == "build-plan-shadowed.md"
         # By PARENT, not by substring: `tmp_path` embeds the test's own name,
@@ -1346,7 +1321,6 @@ class TestRule4ChunkDefault:
         assert plan.path.parent.name == "artifacts", (
             f"an archived plan shadowed its live sibling: {plan.path}"
         )
-        assert plan.path.read_text().startswith("---\nartifact: build-plan")
         assert "# Live" in plan.path.read_text()
 
     def test_has_unfinished_chunk_edge_readings(self, tmp_path: Path):
@@ -1709,15 +1683,6 @@ class TestInferCriticModeSubcommand:
         assert mode == "final"
         assert rationale == "explicit-args"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "#1050 Chunk 02: inference resolves its plan inside "
-            "lib/critic_mode.infer_mode, which this hook entry only wraps. "
-            "Strict, so it turns red the moment the lib takes the Binding — "
-            "delete this mark then."
-        ),
-    )
     def test_a_branch_no_plan_claims_infers_from_no_plan(self, tmp_path: Path):
         """#208's shape: the branch's NAME matches another plan's scope.
 

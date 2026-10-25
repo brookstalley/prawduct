@@ -159,6 +159,9 @@ class TestIterStatusSection:
 
 class TestCountAndIds:
     def test_count_build_plan_chunks(self, tmp_path: Path):
+        # A work tree: with no plan named, the count reads the work-unit
+        # binding's plan, and outside one nothing binds (#1050).
+        _init_repo(tmp_path)
         prawduct = tmp_path / ".prawduct"
         _write_plan(prawduct, PLAN)
         assert _count_build_plan_chunks(prawduct) == (3, 2)
@@ -287,7 +290,9 @@ class TestChunkIdFromItemText:
         # Takes the PROJECT dir, not `.prawduct/`. Resolving "current" was once
         # git-aware, which is where the signature came from; it now reads the
         # checkboxes alone, and the project dir is what locates the plan
-        # (BLD-7K3Q).
+        # (BLD-7K3Q). A work tree, because the plan it locates is the work-unit
+        # binding's, and outside one nothing binds (#1050).
+        _init_repo(tmp_path)
         _write_plan(tmp_path / ".prawduct", PLAN_H2)
         assert _current_chunk_id_from_status(tmp_path) == "1"
 

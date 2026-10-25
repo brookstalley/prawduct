@@ -9,17 +9,16 @@ inspection, plus read-only ``git log`` /
 the file alone — no git mutation, no network.
 
 Depends on its lib siblings ``gitstate`` (git and ``.prawduct`` lookups), ``core``
-(``resolve_build_plan_path``, ``read_str_yaml_key``), ``coverage``
-(``_resolve_base_branch``) and ``plan_index`` (the canonical frontmatter ``scope:``
-reader) plus the stdlib. This module reaches the canonical resolver in ``lib.core``
-directly, exactly as ``critic_mode`` and ``change_log`` do — there is one resolver
-now, the hook's inline mirror of it having been retired once branch-scoped
-resolution left it with no caller and no import-light claim.
+(``read_str_yaml_key``), ``work_unit`` (which plan governs this checkout),
+``coverage`` (``_resolve_base_branch``) and ``plan_index`` (the canonical
+frontmatter ``scope:`` reader) plus the stdlib. A reader here that is asked
+about "the active plan" (``plan_path=None``) asks ``work_unit.resolve`` and reads
+the bound plan, or none — there is one resolver, and no reader walks a route of
+its own.
 
-**Dependencies point downward.** ``core`` never imports this module; the
-Status-roster predicate ``core.resolve_branch_claim`` uses to choose among
-several plans claiming one branch lives in ``plan_index`` (#657), which imports
-nothing in ``lib``. This module imports ``core`` at module scope.
+**Dependencies point downward.** ``core`` never imports this module, and
+``work_unit`` imports only ``core``, ``gitstate`` and ``plan_index``, so this
+module imports it at module scope at no extra cost.
 
 Every read of the plan — here and in every other module that reads it — is
 explicitly UTF-8, and every guarded read catches ``UnicodeDecodeError`` beside
@@ -48,8 +47,8 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
-from . import core, gitstate, plan_index, waivers
-from .core import read_str_yaml_key, resolve_build_plan_path
+from . import core, gitstate, plan_index, waivers, work_unit
+from .core import read_str_yaml_key
 from .coverage import _resolve_base_branch
 
 # `plan_index` is imported at MODULE scope, deliberately, where its predecessor
@@ -72,6 +71,19 @@ from .coverage import _resolve_base_branch
 # and therefore drifts the moment it is written down. These are IMPORT costs — a
 # property of this code, identical in every checkout of a given version — and what
 # binds is the structural test, not the numbers.
+
+
+def _bound_plan_path(project_dir: Path) -> "Path | None":
+    """The plan the checkout's work-unit binding names, or ``None``.
+
+    What every reader here means by "the active plan" when its caller passes
+    ``plan_path=None``. ``None`` for an unbound checkout (no plan is borrowed)
+    and for a broken one (no claimant is chosen by precedence) — so a caller
+    holding ``binding.plan_path`` may pass it straight through, ``None``
+    included, and be answered about the same plan, never another route's.
+    """
+    binding = work_unit.resolve(project_dir)
+    return binding.plan_path if binding.state == "bound" else None
 
 
 # The Status-roster readers live in `plan_index` (#657), beside the rest of
@@ -316,9 +328,9 @@ def _count_build_plan_chunks(
 ) -> tuple[int, int]:
     """Count chunks in the active build plan's Status section.
 
-    Resolves this repo's active build plan (``core.resolve_build_plan_path``,
-    which owns what "active" means), so scope-named plans are counted too —
-    unless ``plan_path`` names one. **A caller that has already resolved which
+    With no ``plan_path``, reads the plan the checkout's work-unit binding names
+    (``work_unit.resolve``, which owns what "active" means), and none when it
+    names none. **A caller that has already resolved which
     plan is in scope must pass it**, so that "is there governed work" and "what
     does it declare" read one file; resolving again here can answer about a
     different plan than the caller is holding.
@@ -339,13 +351,13 @@ def _count_build_plan_chunks(
 
     - ``lib.gates._has_active_build_plan_file`` — passes ``plan_path``.
     - ``lib.record_lint._check_chunk_refs`` — passes ``plan.path``.
-    - ``lib.gates._critic_session_satisfies_gate`` — passes the plan the
-      checkout is bound to (``work_unit.resolve``). It used to resolve its own, so
-      on a branch whose scope named a plan it and its sibling one screen up could disagree
-      about how many chunks exist; #541 closed that.
+    - ``lib.gates._critic_session_satisfies_gate`` — passes the bound plan
+      (``binding.plan_path``). It used to resolve its own, so on a branch whose
+      scope named a plan it and its sibling one screen up could disagree about
+      how many chunks exist; #541 closed that.
     """
     if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
+        plan_path = _bound_plan_path(prawduct_dir.parent)
     if plan_path is None or not plan_path.is_file():
         return 0, 0
     try:
@@ -555,10 +567,11 @@ class ChunkProgress(NamedTuple):
 #: reviewer grades chunk refs against a possibly-unrelated plan with nothing
 #: saying so.
 #:
-#: ``SOURCE_ACTIVE_PLAN`` deliberately does not name a ROUTE. Which one produced
-#: the path is ``core.resolve_build_plan_path``'s business — the branch-claiming
-#: plan first, the ``active_build_plan`` pointer after — and this module does not
-#: choose between them, so it must not claim to know which answered.
+#: ``SOURCE_ACTIVE_PLAN`` is the work-unit binding's legacy window (the
+#: ``active_build_plan`` pointer or the conventional path, in a repo where no plan
+#: claims a branch): a plan the binding served without a claim to show it is this
+#: branch's. Which of the two routes answered is the binding's ``chosen_by``, and
+#: the ``gap`` carries its reason.
 SOURCE_SCOPE_NAMED = "scope-named"
 SOURCE_ACTIVE_PLAN = "active-plan"
 
@@ -588,142 +601,32 @@ class ReviewedPlan(NamedTuple):
 def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
     """``{frontmatter scope: plan path}`` over this repo's artifacts directory.
 
-    **Three paths ask this**: review dispatch, every session END (the Stop hook
-    resolves its gate plan from the branch BEFORE deciding whether a plan is
-    active, so the scan runs whenever the hook runs — not only where a plan and
-    changes both exist), and every session START (the briefing's advisory reads
-    the same plan so it cannot diverge from the gate). The cost sits on a hot
-    path, which is why the callee is now :mod:`lib.plan_index` — a module that
-    answers only this question — rather than the module that also carried the
-    change-log parser and had to be imported lazily to keep its weight off these
-    three paths. See this module's header for the measurement and the structural
-    test that holds it.
+    Asked by :func:`resolve_reviewed_plan` when a dispatch names a scope, and by
+    :func:`unresolved_scope_cause` when explaining why none resolved — not by
+    "which plan governs this checkout", which is ``work_unit.resolve``'s walk.
 
     **Nothing memoizes the scan across calls.** The recursive walk of
-    ``artifacts/`` and its per-file frontmatter parse happen every time.
-    :func:`resolve_branch_plan` builds the map ONCE and hands it to both halves,
-    so a resolution is one walk — an earlier version wrote the composite longhand
-    at each caller and paid two. What bounds the walk as plans accumulate is
-    :mod:`lib.plan_index` pruning the archive at directory level, so a repo's
-    completed plans are not re-read twice a session forever.
+    ``artifacts/`` and its per-file frontmatter parse happen every time; a
+    caller asking twice passes the map it built (``known=``). What bounds the
+    walk as plans accumulate is :mod:`lib.plan_index` pruning the archive at
+    directory level.
     """
     return plan_index.build_scope_to_plan_map(prawduct_dir / "artifacts")
 
 
 def resolve_branch_plan(project_dir: Path, prawduct_dir: Path) -> ReviewedPlan:
-    """**The** answer to "which plan is this branch building" — infer the scope
-    from the branch, then resolve the plan it names.
+    """The checkout's work-unit binding, as a :class:`ReviewedPlan`.
 
-    The one entry point for that composite. Written out longhand it is
-    ``resolve_reviewed_plan(pd, prd, infer_scope_from_branch(pd, prd))``, which
-    appeared at every caller and scanned ``artifacts/`` **twice** per resolution
-    — once to match the branch name, once to resolve the match. Building the map
-    here and handing it to both halves makes it one scan, and gives the composite
-    a name so the next consumer asks rather than re-assembles. A repeated
-    two-call composite is how two callers end up answering the same question
-    differently, which is the defect class this module's plan resolution exists
-    to close.
+    **A shim, kept for one release** (``build-plan-work-unit-binding.md``
+    Tradeoffs) so a consumer on an older plugin and one on this version agree
+    during the legacy window; nothing in ``lib/`` or the hook calls it. It is
+    exactly :func:`resolve_reviewed_plan` with no scope. Its old body inferred a
+    scope from the branch NAME and resolved the plan that declared it, which
+    graded a fix branch against whichever plan's scope it happened to match
+    (#208); a name is not a claim, and the one surviving use of name inference
+    is a suggestion offered to a person (``plan_mint.suggest_scope``).
     """
-    known = _scope_plan_map(prawduct_dir)
-    scope = infer_scope_from_branch(project_dir, prawduct_dir, known=known)
-    return resolve_reviewed_plan(project_dir, prawduct_dir, scope, known=known)
-
-
-def infer_scope_from_branch(
-    project_dir: Path, prawduct_dir: Path, known: "dict[str, Path] | None" = None
-) -> str | None:
-    """The scope this branch is building, or ``None`` when it cannot be shown.
-
-    **A plan's own ``branch:`` declaration is consulted first**, and it is the
-    only route that is not an inference: the plan states which branch it governs,
-    so its ``scope:`` is the answer with nothing left to guess. Neither narrowing
-    below applies to it — they exist to make a *guess* safe, and there is no
-    guess. This is what closes the common miss, where a branch is named for the
-    work rather than for the scope tag: ``feat/tactical-efficiency-pass`` matches
-    the scope ``tactical-efficiency`` under no name rule, so before plans could
-    declare a branch, every dispatch from such a branch resolved no scope at all.
-
-    Failing that, a **match against declared data, never a guess**: the branch
-    name's last segment (and the whole name, for branches without a prefix) is
-    accepted only when some build plan under ``artifacts/`` declares it as a
-    frontmatter ``scope:``. ``fix/backlog-burndown`` → ``backlog-burndown``
-    because ``build-plan-backlog-burndown.md`` says so; ``develop`` → ``None``
-    because nothing declares it.
-
-    ``known`` is a prebuilt scope→plan map — pass it to share one walk of
-    ``artifacts/`` with a caller that also resolves the plan (:func:`resolve_branch_plan`).
-
-    One narrowing, and the honest statement of what remains:
-
-    - A branch matching no declared scope infers nothing, leaving every caller
-      on the behaviour it had before.
-    - A matched plan must be **live on this branch**: archived plans are never
-      in the map, and a plan whose Status is entirely ticked matches only if
-      this branch changed the plan file since it left the base branch. Boxes
-      are ticked per chunk, after each review (a short plan's deferred chunks
-      at commit), so every box is ticked by the plan's own end-of-plan
-      ``cumulative`` — rejecting on ticks alone turned
-      the scope off for exactly that review. But on gitflow a merged plan stays
-      live until the release, and a follow-up branch reusing its exact name
-      must not be graded against it: *this* answer feeds every
-      :func:`resolve_branch_plan` caller, the gates included, not only review
-      attribution. The plan's own branch edited the plan (it wrote the ticks);
-      a follow-up that merely shares the name did not.
-
-    **What is still possible, stated plainly:** a branch whose name matches an
-    *unfinished* plan it is not actually building, or a finished one it
-    happened to edit, will be attributed to that plan. A name is the only
-    signal. The remedy that reaches every caller is a frontmatter ``branch:``
-    on the plan being built, which is consulted first; ``--scope`` reaches
-    review dispatch only. This is narrower than "can only add, never
-    redirect," which is true of the no-match case only.
-    """
-    branch = gitstate.current_branch(project_dir)
-    if not branch:
-        return None  # detached HEAD — nothing to read a scope from
-    if known is None:
-        known = _scope_plan_map(prawduct_dir)
-    declared = _scope_of_branch_claiming_plan(prawduct_dir, branch, known)
-    if declared is not None:
-        return declared
-    candidates = [branch]
-    if "/" in branch:
-        candidates.append(branch.rsplit("/", 1)[1])
-    for candidate in candidates:
-        plan_path = known.get(candidate)
-        if plan_path is not None and (
-            _has_unfinished_chunk(plan_path)
-            or _plan_changed_on_branch(project_dir, plan_path)
-        ):
-            return candidate
-    return None
-
-
-def _scope_of_branch_claiming_plan(
-    prawduct_dir: Path, branch: str, known: dict[str, Path]
-) -> str | None:
-    """The declared ``scope:`` of the live plan declaring ``branch: <branch>``.
-
-    ``known`` is the scope→plan map already built by the caller, so the scope is
-    read back out of it rather than re-parsed: a plan that declares a branch but
-    no scope has no scope to return, and inventing one would tag a change-log
-    entry and a ledger row with a string no plan declares.
-
-    **Several plans may claim one branch, and this asks the same resolver the
-    gates ask** (``core.resolve_branch_claim``) rather than declining on the
-    second claimant. Declining looked conservative and was not: the ledger scope
-    a dispatch records would then name nothing while every gate graded a plan,
-    so the review and the record it leaves would describe different work — the
-    precise failure that made ``critic-begin`` write scope ``(none)`` before
-    branch declarations existed.
-    """
-    claim = core.resolve_branch_claim(prawduct_dir)
-    if claim is None or claim.branch != branch:
-        return None
-    for scope, plan_path in known.items():
-        if plan_path == claim.chosen:
-            return scope
-    return None
+    return resolve_reviewed_plan(project_dir, prawduct_dir, None)
 
 
 def _declares_scope(plan_path: Path) -> bool:
@@ -776,25 +679,10 @@ def _changed_on_branch(project_dir: Path, pathspec: Path) -> "set[Path] | None":
     return {(project_dir / n).resolve() for n in names if n.strip()}
 
 
-def _plan_changed_on_branch(project_dir: Path, plan_path: Path) -> bool:
-    """True when this branch created or edited ``plan_path`` since it left the base.
-
-    The liveness signal for a finished plan: the branch that built it wrote its
-    ticks, so the file differs from the merge-base (or is not yet tracked). A
-    later branch that only shares the plan's name leaves it untouched. Observed
-    from git rather than stored on the plan, so there is nothing to forget.
-
-    ``False`` whenever it cannot be shown, which falls back to rejecting the
-    finished plan, the older behaviour.
-    """
-    changed = _changed_on_branch(project_dir, plan_path)
-    return bool(changed) and plan_path.resolve() in changed
-
-
 def unresolved_scope_cause(
     project_dir: Path, prawduct_dir: Path
 ) -> "tuple[str, str] | None":
-    """Why :func:`infer_scope_from_branch` found no scope here: ``(code, sentence)``.
+    """Why an unbound checkout's review found no scope here: ``(code, sentence)``.
 
     Advice for the dispatcher of a review whose scope did not resolve — the
     review then records no scope, and every control keyed on one (the round
@@ -812,12 +700,14 @@ def unresolved_scope_cause(
       frontmatter, where :func:`plan_index.branch_claiming_plans` never looks.
     - ``pointer-claims-other`` — the fallback plan (the pointer, else the
       conventional ``build-plan.md``) claims a different branch, so it does not
-      govern this one (:func:`core.resolve_build_plan_path`).
+      govern this one (``work_unit.resolve`` never serves a plan that declares
+      some branch to another).
     - ``no-claim`` — a live plan this branch created or edited does not claim
       it. That edit is the evidence the branch has a plan at all; a branch that
       touched no plan is doing plan-less work (a chore, a small fix), where
       "add ``branch:`` to your plan" is advice with nothing to act on, so it
-      gets ``None`` rather than a note on every review.
+      gets ``None`` rather than a note on every review. A branch binds by its
+      plan's claim alone — its name is never matched against a ``scope:``.
 
     Call it only when resolution has already failed; it re-derives nothing the
     resolver decided and would name a cause for a scope that did resolve.
@@ -859,8 +749,8 @@ def unresolved_scope_cause(
             f"the top of the file{missing_scope}",
         )
 
-    # The resolver's own refusal predicate, so this explains exactly the plan
-    # `core.resolve_build_plan_path` refused rather than re-deriving it.
+    # One statement of "the fallback claims another branch", shared with
+    # nothing that resolves — the refusal itself is `work_unit.resolve`'s.
     foreign = core.foreign_fallback_claim(prawduct_dir)
     if foreign is not None:
         refused, other = foreign
@@ -878,9 +768,9 @@ def unresolved_scope_cause(
     return (
         "no-claim",
         f"{rel(edited[0])} was edited on this branch but no live plan declares "
-        f"`branch: {branch}` in its frontmatter and no plan's `scope:` matches the "
-        "branch name — if that is this work's plan, add the line to its "
-        "frontmatter; otherwise pass `--scope`",
+        f"`branch: {branch}` in its frontmatter — if that is this work's plan, "
+        f"bind it (`{work_unit.BIND_COMMAND} <plan> --branch {branch}`); "
+        "otherwise pass `--scope`",
     )
 
 
@@ -890,35 +780,27 @@ def resolve_reviewed_plan(
     scope: "str | None",
     known: "dict[str, Path] | None" = None,
 ) -> ReviewedPlan:
-    """Resolve the build plan a review is about, preferring the reviewed SCOPE's
-    plan over this repo's active build plan.
+    """Resolve the build plan a review is about: the reviewed SCOPE's plan when
+    the dispatch names one, else the checkout's work-unit binding.
 
-    Active-plan resolution (``core.resolve_build_plan_path``) answers "which plan
-    is in progress in this repo," which is not the same question as "which plan
-    is this review of" — and on a repo running several plans across worktrees the
-    two legitimately differ. That answer is then *correct* and still the wrong one
-    here, which is why this resolves around it rather than asking anyone to
-    repoint anything.
+    ``known`` is a prebuilt scope→plan map, so a caller that already walked
+    ``artifacts/`` pays no second walk. Omitted, it builds its own.
 
-    ``known`` is a prebuilt scope→plan map, so a caller resolving both halves
-    pays one walk of ``artifacts/`` rather than two — see
-    :func:`resolve_branch_plan`, which is the reason it exists. Omitted, it
-    builds its own.
+    Outcomes:
 
-    Three outcomes:
-
-    - **scope names a plan** → that plan, ``gap=None``. How the repo's active
-      plan would have resolved is not the subject and needs no comment; ``rel``
-      names the file that was graded.
+    - **scope names a plan** → that plan, ``gap=None``; ``rel`` names the file
+      that was graded.
     - **scope names no plan** → ``path=None`` and a ``gap``. Falling back here is
       precisely the silent grade of an unrelated plan, so the caller must report
       instead of answering.
-    - **no scope** → the repo's active plan, with a ``gap`` stating the
-      assumption. Which route produced it is :func:`core.resolve_build_plan_path`'s
-      business — the branch-claiming plan first, the ``active_build_plan``
-      pointer after — so the ``source`` label and the gap say "active plan"
-      rather than naming a route this function did not choose. A plan-less repo
-      yields ``path=None`` and no gap: that is an absence, not a failure.
+    - **no scope** → the binding (``work_unit.resolve``). A plan that claims
+      this branch is ``SOURCE_SCOPE_NAMED`` with ``gap=None`` — the claim is
+      the grounding — unless it declares no ``scope:``, which the gap says. A
+      legacy-window plan is ``SOURCE_ACTIVE_PLAN`` and the gap carries the
+      binding's reason, on every repo: it was once silent where only one plan
+      declared a scope (#1007(a)), which left a fallback answer looking exactly
+      like a grounded one. An unbound or broken checkout is ``path=None`` with
+      the binding's reason as the gap — no plan is borrowed and none is chosen.
     """
     if scope and scope.strip():
         scope = scope.strip()
@@ -935,33 +817,16 @@ def resolve_reviewed_plan(
             )
         return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, SOURCE_SCOPE_NAMED, None)
 
-    pointer = resolve_build_plan_path(prawduct_dir)
-    if pointer is None or not pointer.is_file():
-        return ReviewedPlan(None, None, None, "none", None)
-    rel = _repo_rel(prawduct_dir, pointer)
-    # The assumption is only worth reporting where it could be WRONG and the
-    # reader has a remedy: two or more plans declaring scopes means the pointer
-    # picked one of several, and `--scope` would have said which. Below that
-    # there is nothing to have chosen differently, and a note fires on every
-    # review of every such repo — which is how a channel stops being read
-    # (`nonfunctional-requirements.md` § Direction: a control that fires
-    # repeatedly with no yield is removed by default).
-    ambiguous = len(known if known is not None else _scope_plan_map(prawduct_dir)) > 1
+    binding = work_unit.resolve(project_dir)
+    if binding.state != "bound" or binding.plan_path is None:
+        return ReviewedPlan(None, None, None, "none", binding.reason)
+    claimed = binding.chosen_by == "binding"
     return ReviewedPlan(
-        pointer,
-        rel,
-        None,
-        SOURCE_ACTIVE_PLAN,
-        (
-            f"graded {rel}, resolved as this repo's active plan because the "
-            "dispatch carried no scope — which need not be the plan this branch "
-            "is building, and this repo declares several. Naming the pointer here "
-            "would be a guess: resolution takes the branch-claiming plan first "
-            "and the active_build_plan pointer only after, and reaching this line "
-            "means no plan claimed the branch"
-        )
-        if ambiguous
-        else None,
+        binding.plan_path,
+        _repo_rel(prawduct_dir, binding.plan_path),
+        binding.scope,
+        SOURCE_SCOPE_NAMED if claimed and binding.scope is not None else SOURCE_ACTIVE_PLAN,
+        binding.reason,
     )
 
 
@@ -994,15 +859,13 @@ def resolve_chunk_progress(
     rather than walking Status for itself, which is what
     ``TestOneCurrentChunkImplementation`` pins.
 
-    ``plan_path`` overrides which plan is read. It defaults to this repo's
-    active build plan, so every existing caller is unchanged; mode inference
-    passes the branch's own plan when :func:`resolve_reviewed_plan` found one,
-    so "which chunk is current" and "which plan the record names" cannot answer
-    about two different files.
+    ``plan_path`` overrides which plan is read. It defaults to the plan the
+    checkout's work-unit binding names, and to none when it names none — never
+    another route's plan, so a caller passing ``binding.plan_path`` through is
+    answered about the same file whether or not it is ``None``.
     """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
+        plan_path = _bound_plan_path(project_dir)
     if plan_path is None or not plan_path.is_file():
         return ChunkProgress(0, 0, None, "", False)
     try:
@@ -1087,7 +950,9 @@ def _chunk_sort_key(chunk_id: str) -> tuple[int, ...]:
     return tuple(int(part) for part in chunk_id.split("."))
 
 
-def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
+def unticked_committed_chunk_notice(
+    project_dir: Path, plan_path: "Path | None" = None
+) -> str | None:
     """A notice when a chunk's work is committed but its Status box is empty.
 
     **The tripwire that replaces the second reading** (DV7). With the checkbox as
@@ -1142,8 +1007,8 @@ def unticked_committed_chunk_notice(project_dir: Path) -> str | None:
     the truth was *never in the path* — and the retirement-on-evidence argument
     this control offers would have been made from a control nothing ran.
     """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    plan_path = resolve_build_plan_path(prawduct_dir)
+    if plan_path is None:
+        plan_path = _bound_plan_path(project_dir)
     if plan_path is None or not plan_path.is_file():
         return None
     try:
@@ -1215,12 +1080,12 @@ def _parse_build_plan_status(
     description, size, type, current_chunk, context, governance_level.
     Returns empty dict if no build plan or no Status section.
 
-    ``plan_path`` overrides which plan is read, defaulting to this repo's
-    active build plan (see :func:`resolve_chunk_progress`).
+    ``plan_path`` overrides which plan is read, defaulting to the bound plan
+    (see :func:`resolve_chunk_progress`).
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
+        plan_path = _bound_plan_path(project_dir)
     if plan_path is None or not plan_path.is_file():
         return {}
     try:
@@ -2601,7 +2466,7 @@ def _parse_build_plan_chunk_refs(
     """
     result: dict = {"file_paths": [], "error": None}
     if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
+        plan_path = _bound_plan_path(prawduct_dir.parent)
     if plan_path is None:
         result["error"] = "missing build-plan: no build plan governs this branch"
         return result
@@ -2745,7 +2610,7 @@ def _parse_build_plan_chunk_type(
     fenced code blocks are skipped.
     """
     if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
+        plan_path = _bound_plan_path(prawduct_dir.parent)
     if plan_path is None:
         return None, "missing build-plan: no build plan governs this branch"
     if not plan_path.is_file():

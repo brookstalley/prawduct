@@ -858,15 +858,20 @@ def assemble_session_briefing(
         work_desc = f"{work_desc} (unbound: {binding.reason})"
     lines.append(f"Project: {project_name} | Branch: {current_branch} | Work: {work_desc}")
 
-    # The binding's own trouble, said once at the top. A broken binding (two
-    # live plans claiming this branch) governs by neither; a claimant with no
-    # `scope:` records no unit on any fact about its work; a legacy-window
-    # binding governs through a route that is being retired, and its reason
-    # carries the advisory key and the `plan bind` remedy. All three are the
-    # author's to repair, and the session is where the author is reading.
+    # The binding's own trouble, said once. A broken binding (two live plans
+    # claiming this branch) governs by neither; a claimant with no `scope:`
+    # records no unit on any fact about its work. Both are the author's to
+    # repair, and the session is where the author is reading. A legacy-window
+    # binding's reason is the `plan-unbound-legacy` advisory's text
+    # (`work_unit_probes`), rendered with the advisories below — printing it
+    # here too would say the same sentence twice in one briefing.
     if binding.state == "broken":
         lines.append(f"⚠ work-unit binding is broken: {binding.reason}")
-    elif binding.state == "bound" and binding.reason:
+    elif (
+        binding.state == "bound"
+        and binding.reason
+        and binding.chosen_by not in ("legacy-pointer", "legacy-default")
+    ):
         lines.append(f"⚠ build plan: {binding.reason}")
 
     # Dangling build-plan pointer guard (STH-5P2W). A SET pointer that resolves

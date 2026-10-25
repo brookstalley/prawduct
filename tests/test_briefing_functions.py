@@ -269,20 +269,38 @@ class TestBranchScopedPlanBriefing:
 
     def test_a_legacy_binding_names_its_route_and_the_remedy(self, tmp_path: Path):
         """A plan governing through the legacy window says so where the author
-        reads: the advisory key and the `plan bind` command. A claimed plan in
-        the same shape is the control — it has nothing to say."""
+        reads: the advisory key and the `plan bind` command. Since Chunk 06 that
+        sentence is the `plan-unbound-legacy` advisory's text and renders in the
+        advisory block (pinned in tests/test_work_unit_probes.py), so the
+        binding line no longer repeats it — before the sync there is no line
+        here at all. A claimed plan in the same shape is the control — it has
+        nothing to say either way."""
+        from lib import probe_families
+        from lib.advisory_store import clear_registry, run_sync_advisories
+
         _init_git_repo(tmp_path, branch="work")
         prawduct = _prawduct(tmp_path)
         (prawduct / "project-state.yaml").write_text("")
         _plan(prawduct, "build-plan.md", "## Status\n\n- [ ] Chunk 01: open\n")
         text = briefing.assemble_session_briefing(tmp_path, [])
-        line = next(ln for ln in text.splitlines() if ln.startswith("⚠ build plan:"))
-        assert work_unit.LEGACY_ADVISORY_KEY in line
+        assert not any(ln.startswith("⚠ build plan:") for ln in text.splitlines())
+
+        def synced_briefing() -> str:
+            clear_registry()
+            try:
+                probe_families.register_all()
+                run_sync_advisories(tmp_path)
+                return briefing.assemble_session_briefing(tmp_path, [])
+            finally:
+                clear_registry()
+
+        text = synced_briefing()
+        line = next(ln for ln in text.splitlines() if work_unit.LEGACY_ADVISORY_KEY in ln)
+        assert line.lstrip().startswith("• [work-unit]")
         assert work_unit.BIND_COMMAND in line
 
         _plan(prawduct, "build-plan.md", "---\nbranch: work\n---\n\n## Status\n\n- [ ] Chunk 01: open\n")
-        text = briefing.assemble_session_briefing(tmp_path, [])
-        assert work_unit.LEGACY_ADVISORY_KEY not in text
+        assert work_unit.LEGACY_ADVISORY_KEY not in synced_briefing()
 
     def test_an_unbound_checkout_says_why_beside_the_work(self, tmp_path: Path):
         """Unbound is normal, so it qualifies the Work field rather than raising

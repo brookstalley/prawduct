@@ -1353,8 +1353,6 @@ class TestEveryCheckCarriesASeverity:
         sys.path.insert(0, str(root / "plugin"))
         from lib import record_lint
 
-        from lib import buildplan_refs
-
         # Both shapes must still be what the code emits, or the anchors below
         # are pinning prose against a contract that moved. The assumption shape
         # has two causes — an inferred chunk and an inferred plan — assembled
@@ -1364,7 +1362,10 @@ class TestEveryCheckCarriesASeverity:
         assert "chunk-ref-missing unchecked — " in emitter_src
         assert "chunk-ref-missing graded chunk " in emitter_src
         assert "inferred from build-plan Status" in emitter_src
-        assert "active_build_plan pointer" in Path(buildplan_refs.__file__).read_text()
+        # The plan half's caveat moved from `buildplan_refs.resolve_reviewed_plan`
+        # into `record_lint` itself when the scope-less path took the work-unit
+        # binding (#1050) — the emitter is where the string is pinned.
+        assert "the active_build_plan pointer" in emitter_src
 
         for rel in ("plugin/skills/critic/cross-checks.md",
                     "plugin/skills/critic/goals-1-3.md"):
@@ -1406,9 +1407,10 @@ class TestFrontmatterBreak:
     """A machine-read header that no machine can read.
 
     This repo's own build plan carried an unterminated double-quoted scalar for
-    two commits and every reader passed it, because `record_lint`,
-    `resolve_branch_plan` and `verify-chunk-refs` all match line patterns rather
-    than parsing. That is the same failure shape as `governed_by:` citing a file
+    two commits and every reader passed it, because `record_lint`, the
+    branch-plan resolver of the day and `verify-chunk-refs` all matched line
+    patterns rather than parsing (the work-unit binding that replaced the
+    resolver refuses an unclosed block — `work_unit._frontmatter_unterminated`). That is the same failure shape as `governed_by:` citing a file
     nobody can open, which is why the finding is that check: the header presents
     as *more* governed than an absent one.
     """

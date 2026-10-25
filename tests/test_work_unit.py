@@ -127,11 +127,20 @@ def _scratch_worktree(repo: Path, wid: str = "a287823214767feaa") -> Path:
     return dest.resolve()
 
 
-def _old_core(repo: Path) -> Path | None:
+def _shim_core(repo: Path) -> Path | None:
+    """``core.resolve_build_plan_path`` — the old resolver, a shim over
+    :func:`resolve` since Chunk 06.
+
+    Chunk 01 wrote each shipped shape below red-first: it asserted the OLD
+    resolvers' answer here (the defect), then the binding's. Once both became
+    shims those assertions would pin a retired rule, so each is rewritten to
+    pin what the shim answers now — the binding's plan, or ``None`` — and the
+    comment beside it records what the old resolver did."""
     return core.resolve_build_plan_path(repo / ".prawduct")
 
 
-def _old_refs(repo: Path) -> buildplan_refs.ReviewedPlan:
+def _shim_refs(repo: Path) -> buildplan_refs.ReviewedPlan:
+    """``buildplan_refs.resolve_branch_plan`` — the shim over :func:`resolve`."""
     return buildplan_refs.resolve_branch_plan(repo, repo / ".prawduct")
 
 
@@ -176,12 +185,11 @@ class TestShippedShapes:
             repo, "build-plan.md", scope="review-stats-dispositions",
             branch="feature/941-review-stats-dispositions", chunks=FINISHED,
         )
-        # Post-#1049 both old resolvers already refuse this plan: the core
-        # resolver's foreign-claim rule and, through it, the branch-plan
-        # resolver. The route that wrote the ledger event was
-        # `ledger._scope_from_plan`, which is Chunk 02's to delete.
-        assert _old_core(repo) is None
-        assert _old_refs(repo).path is None
+        # Post-#1049 both old resolvers already refused this plan. The route
+        # that wrote the ledger event was `ledger._scope_from_plan`, which
+        # Chunk 02 deleted; a ledger event records the fact's scope or null.
+        assert _shim_core(repo) is None
+        assert _shim_refs(repo).path is None
 
         binding = resolve(repo)
         assert binding == Binding(
@@ -196,10 +204,12 @@ class TestShippedShapes:
         and the binding says which route answered and how to end the window."""
         repo = _repo(tmp_path, "feat/anything")
         plan = _plan(repo, "build-plan.md", scope="lonely")
-        assert _old_core(repo) == plan
-        old = _old_refs(repo)
-        assert old.path == plan
-        assert old.gap is None  # nothing said a fallback answered
+        assert _shim_core(repo) == plan
+        shim = _shim_refs(repo)
+        assert shim.path == plan
+        # The old resolver said nothing here (gap None): a fallback answer read
+        # exactly like a grounded one. The shim carries the binding's reason.
+        assert shim.gap is not None and shim.gap.startswith(f"{work_unit.LEGACY_ADVISORY_KEY}:")
 
         binding = resolve(repo)
         assert binding.state == "bound"
@@ -212,7 +222,7 @@ class TestShippedShapes:
     def test_1007a_the_pointer_route_is_named_as_such(self, tmp_path):
         repo = _repo(tmp_path, "feat/anything", "active_build_plan: artifacts/v2-plan.md\n")
         plan = _plan(repo, "v2-plan.md", scope="v2")
-        assert _old_core(repo) == plan
+        assert _shim_core(repo) == plan
 
         binding = resolve(repo)
         assert (binding.state, binding.chosen_by) == ("bound", "legacy-pointer")
@@ -225,10 +235,11 @@ class TestShippedShapes:
         a claim."""
         repo = _repo(tmp_path, "fix/telemetry")
         other = _plan(repo, "build-plan-telemetry.md", scope="telemetry", branch="feature/telemetry")
-        # The old branch-plan resolver infers `telemetry` from the branch name
-        # and answers the plan another branch is building.
-        assert _old_refs(repo).path == other
-        assert _old_refs(repo).scope == "telemetry"
+        # The old branch-plan resolver inferred `telemetry` from the branch
+        # name and answered `other`, the plan another branch is building. The
+        # shim answers no plan and no scope.
+        assert other.is_file()
+        assert (_shim_refs(repo).path, _shim_refs(repo).scope) == (None, None)
 
         binding = resolve(repo)
         assert binding.state == "unbound"
@@ -239,9 +250,9 @@ class TestShippedShapes:
         repo = _repo(tmp_path, "release/2-0")
         a = _plan(repo, "build-plan-a.md", scope="a", branch="release/2-0")
         b = _plan(repo, "build-plan-b.md", scope="b", branch="release/2-0", chunks=FINISHED)
-        # The old resolver picks one by precedence (here: the claimant with
-        # open chunks) and the other plan governs nothing, silently.
-        assert _old_core(repo) == a
+        # The old resolver picked `a` by precedence (the claimant with open
+        # chunks) and `b` governed nothing, silently. The shim serves neither.
+        assert _shim_core(repo) is None
 
         binding = resolve(repo)
         assert binding.state == "broken"
@@ -256,11 +267,11 @@ class TestShippedShapes:
             repo, "build-plan-x.md", scope="x", branch="feature/x",
             working=["feature/x-delegate", "feature/x-other"],
         )
-        # Neither old resolver knows working branches: core answers the
-        # conventional path, which does not exist, and the branch-plan
-        # resolver answers no plan at all.
-        assert _old_core(repo) != plan
-        assert _old_refs(repo).path is None
+        # Neither old resolver knew working branches (core answered the
+        # conventional path, which did not exist; the branch-plan resolver no
+        # plan at all). The shims now answer the unit's plan.
+        assert _shim_core(repo) == plan
+        assert _shim_refs(repo).path == plan
 
         binding = resolve(repo)
         assert binding == Binding("bound", "x", plan, "working", None, "binding", (plan,))
@@ -274,15 +285,15 @@ class TestShippedShapes:
 
     def test_a_scratch_worktree_forked_from_a_bound_branch_is_unbound(self, tmp_path):
         """BR6: a harness scratch worktree resolves no unit — it builds, the
-        coordinator governs. The old resolvers happen to answer "no plan" here
-        because the plan declares a branch; they cannot say WHY, which is what
-        the Stop hook needs to arm no gate (#648)."""
+        coordinator governs. The old resolvers happened to answer "no plan" here
+        because the plan declares a branch; they could not say WHY, which is
+        what the Stop hook needs to arm no gate (#648)."""
         repo = _repo(tmp_path, "feature/x")
         _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
         assert resolve(repo).state == "bound"
         scratch = _scratch_worktree(repo)
-        assert _old_core(scratch) != resolve(repo).plan_path
-        assert _old_refs(scratch).path is None
+        assert _shim_core(scratch) is None
+        assert _shim_refs(scratch).path is None
 
         binding = resolve(scratch)
         assert binding.state == "unbound"
@@ -290,27 +301,29 @@ class TestShippedShapes:
 
     def test_a_scratch_worktree_in_a_legacy_window_repo_is_still_unbound(self, tmp_path):
         """The red half of the scratch shape: inside the legacy window the old
-        resolvers serve the conventional plan to the scratch tree, so a
-        delegate's Stop armed the coordinator's gate."""
+        resolvers served the conventional plan to the scratch tree, so a
+        delegate's Stop armed the coordinator's gate. The shims serve none."""
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan.md", scope="lonely")
         scratch = _scratch_worktree(repo)
-        assert _old_core(scratch) == scratch / ".prawduct" / "artifacts" / "build-plan.md"
-        assert _old_refs(scratch).path is not None
+        assert (scratch / ".prawduct" / "artifacts" / "build-plan.md").is_file()
+        assert _shim_core(scratch) is None
+        assert _shim_refs(scratch).path is None
 
         assert resolve(scratch).state == "unbound"
         assert resolve(repo).plan_path == plan  # the primary still binds
 
     def test_detached_head_is_unbound_and_says_so(self, tmp_path):
         """BR3/BR6: a detached HEAD has no branch to be claimed. The old
-        resolver fell through to the pointer here (pinned by
-        ``test_build_plan_resolution.test_detached_head_falls_through_to_the_scalar``),
-        which Chunk 06 rewrites when it becomes a shim."""
+        resolver fell through to the pointer here; Chunk 06 rewrote that pin
+        (``test_build_plan_resolution.test_detached_head_does_not_fall_through_to_the_scalar``)
+        when the resolver became a shim."""
         repo = _repo(tmp_path, "feat/x")
         plan = _plan(repo, "build-plan.md", scope="lonely")
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
         _git(repo, "checkout", "-q", "--detach", head)
-        assert _old_core(repo) == plan
+        assert plan.is_file()
+        assert _shim_core(repo) is None  # the old resolver answered `plan`
 
         binding = resolve(repo)
         assert binding.state == "unbound"
@@ -321,7 +334,8 @@ class TestShippedShapes:
         (project / ".prawduct" / "artifacts").mkdir(parents=True)
         (project / ".prawduct" / "project-state.yaml").write_text("")
         plan = _plan(project, "build-plan.md", scope="lonely")
-        assert _old_core(project) == plan
+        assert plan.is_file()
+        assert _shim_core(project) is None  # the old resolver answered `plan`
 
         binding = resolve(project)
         assert binding.state == "unbound"
@@ -339,14 +353,14 @@ class TestLegacyWindow:
         _plan(repo, "other-plan.md", scope="other", branch="feature/other")
         # Already refused by the old core resolver since #1049 (the one route
         # that fix closed); `resolve()` makes it the whole rule.
-        assert _old_core(repo) is None
+        assert _shim_core(repo) is None
 
         assert resolve(repo).state == "unbound"
 
     def test_a_plan_declaring_a_branch_is_never_served_by_the_default(self, tmp_path):
         repo = _repo(tmp_path, "feat/me")
         _plan(repo, "build-plan.md", scope="other", branch="feature/other")
-        assert _old_core(repo) is None
+        assert _shim_core(repo) is None
         assert resolve(repo).state == "unbound"
 
     def test_one_claim_anywhere_closes_the_window_for_the_whole_repo(self, tmp_path):
@@ -359,7 +373,8 @@ class TestLegacyWindow:
         repo = _repo(tmp_path, "feat/me", "active_build_plan: artifacts/old-plan.md\n")
         old_plan = _plan(repo, "old-plan.md", scope="old")
         _plan(repo, "build-plan-new.md", scope="new", branch="feature/new")
-        assert _old_core(repo) == old_plan
+        assert old_plan.is_file()
+        assert _shim_core(repo) is None  # the old resolver served `old_plan`
 
         binding = resolve(repo)
         assert (binding.state, binding.plan_path, binding.chosen_by) == ("unbound", None, "none")
@@ -392,10 +407,10 @@ class TestLegacyWindow:
 
     def test_a_pointer_naming_a_missing_plan_binds_nothing_and_names_the_path(self, tmp_path):
         repo = _repo(tmp_path, "feat/me", "active_build_plan: artifacts/gone.md\n")
-        # The old resolver returns the path and leaves "does it exist" to each
+        # The old resolver returned the path and left "does it exist" to each
         # of its callers; a binding answers the question once, and says which
         # file the pointer resolved to and what would bind this branch.
-        assert _old_core(repo) == repo / ".prawduct" / "artifacts" / "gone.md"
+        assert _shim_core(repo) is None
         binding = resolve(repo)
         assert binding.state == "unbound"
         assert binding.reason.startswith("no live plan claims `feat/me` — `active_build_plan` names artifacts/gone.md")
@@ -435,7 +450,7 @@ class TestClaims:
         `broken` would change what its gates do; `unbound` would disarm them."""
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan-x.md", scope=None, branch="feature/x")
-        assert _old_core(repo) == plan
+        assert _shim_core(repo) == plan
 
         binding = resolve(repo)
         assert binding == Binding(

@@ -56,9 +56,14 @@ def _documented(name: str) -> bool:
     bullet list and in the per-operation prose. The phrase test (a `--json` followed by
     "keys" / "adds" / "carries" / "shape" ...) is what stops a bare mention of `--json` beside the
     name from counting.
+
+    The name must end where the token does: a bare prefix match let `plan`
+    count as documented by `plan-backfill`'s paragraph, so a subcommand whose
+    name begins another's was covered by nothing.
     """
+    named = re.compile(rf"`{re.escape(name)}(?![\w-])")
     for para in re.split(r"\n\s*\n", CONTRACT):
-        if f"`{name}" in para and _KEY_PHRASE.search(para):
+        if named.search(para) and _KEY_PHRASE.search(para):
             return True
     return False
 
