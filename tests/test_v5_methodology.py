@@ -1413,7 +1413,10 @@ LAST_MEASURED_TOKENS = {
     # tick-at-commit instruction gives way to the boundary review naming its chunks. A
     # RAISE, on-demand class, and the home the other surfaces now point at instead of
     # restating: the digest, template and PR skill shed more than this costs.
-    "methodology/planning.md": 5796,
+    # +15 on 2026-10-25 (merged-plan-chunk-state, #1065): the chunk-state sentence names where
+    # a review's commit is placed once the merge has deleted the branch (its base). A RAISE:
+    # the rule's one home gains the clause; nothing elsewhere restates it.
+    "methodology/planning.md": 5811,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

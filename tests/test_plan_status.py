@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib import evidence, plan_status  # noqa: E402
+from lib import evidence, gitstate, plan_status  # noqa: E402
 
 TS = "2026-10-25T10:00:00Z"
 
@@ -226,6 +226,106 @@ class TestDoneFromReviewFacts:
         assert _states(_plan(repo, ("01",)), fact, repo) == {"01": "open"}
         plan = _plan(repo, ("01",), extra_frontmatter="working-branches:\n  - feature/unit-delegate")
         assert _states(plan, fact, repo) == {"01": "done"}
+
+    def test_a_merged_plans_deleted_branch_is_probed_through_its_base(self, repo):
+        """#1065: after the PR merge deletes the claimed branch, the review's
+        commit is in the base, and the chunk reads done — not open with
+        "its commit is not on `feature/unit`"."""
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo, ("01",))
+        fact = _facts(_review("R1", head, chunks=["01"]))
+        assert _states(plan, fact, repo) == {"01": "done"}
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "feature/unit")
+        _git(repo, "branch", "-D", "feature/unit")
+        state = plan_status.chunk_states(plan, fact, repo_dir=repo)["01"]
+        assert (state.state, state.fact_id) == ("done", "R1")
+        assert plan_status.is_finished(plan, fact, repo_dir=repo)
+
+    def test_an_abandoned_branch_leaves_the_chunk_open_naming_the_base_and_the_gone_branch(self, repo):
+        stray = _commit(repo, "src/c01.py", "x\n", "never merged")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "branch", "-D", "feature/unit")
+        plan = _plan(repo, ("01",))
+        state = plan_status.chunk_states(plan, _facts(_review("R1", stray, chunks=["01"])), repo_dir=repo)["01"]
+        assert state.state == "open"
+        assert "not on `main`" in state.reason
+        assert "`feature/unit` is on no local or remote branch" in state.reason
+
+    def test_a_fork_point_anchor_certifies_nothing_through_the_base(self, repo):
+        """A review dispatched before the branch's first commit anchors at the
+        fork point, which the base held before the review ran — the rule
+        plan_lifecycle applies to the merge question."""
+        fork = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "branch", "-D", "feature/unit")
+        plan = _plan(repo, ("01",))
+        review = _review("R1", None, chunks=["01"], dispatch_commit=fork)
+        review["body"]["base_commit"] = fork
+        state = plan_status.chunk_states(plan, _facts(review), repo_dir=repo)["01"]
+        assert state.state == "open"
+        assert "review's own base commit" in state.reason
+        # Control: the same anchor with a different base_commit is placed on main.
+        review["body"]["base_commit"] = "0" * 40
+        assert _states(plan, _facts(review), repo) == {"01": "done"}
+
+    def test_a_branch_present_only_on_a_remote_is_probed_by_its_tracking_ref(self, repo):
+        head = _commit(repo, "src/c01.py", "x\n", "pushed, not merged")
+        _git(repo, "update-ref", "refs/remotes/origin/feature/unit", head)
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "branch", "-D", "feature/unit")
+        plan = _plan(repo, ("01",))
+        assert _states(plan, _facts(_review("R1", head, chunks=["01"])), repo) == {"01": "done"}
+        # A commit on neither the tracking ref nor anywhere else stays open, and
+        # the base is NOT asked while the branch exists somewhere.
+        _git(repo, "checkout", "-q", "-b", "side", "main")
+        stray = _commit(repo, "src/stray.py", "x\n", "elsewhere")
+        state = plan_status.chunk_states(plan, _facts(_review("R2", stray, chunks=["01"])), repo_dir=repo)["01"]
+        assert state.state == "open"
+        assert state.reason == "review R2 names it, but its commit is not on `feature/unit`"
+
+    def test_a_prefix_sibling_of_the_gone_branch_does_not_count_as_present(self, repo, monkeypatch):
+        """`for-each-ref refs/heads/feature/unit` also lists `feature/unit/spike`;
+        the exact-name filter is what keeps that sibling from reading as the
+        claimed branch, which would skip the base and leave the merged plan open."""
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "feature/unit")
+        _git(repo, "branch", "-D", "feature/unit")
+        _git(repo, "branch", "feature/unit/spike", "main")
+        _git(repo, "update-ref", "refs/remotes/origin/feature/unit/spike", head)
+        plan = _plan(repo, ("01",))
+        fact = _facts(_review("R1", head, chunks=["01"]))
+        assert gitstate.branch_refs(repo, ("feature/unit",)) == {}
+        assert _states(plan, fact, repo) == {"01": "done"}
+        # Positive control for the instrument: without the filter the sibling is
+        # listed as present and the base is never asked.
+        monkeypatch.setattr(gitstate, "ref_is_branch", lambda _ref, _branch: True)
+        assert gitstate.branch_refs(repo, ("feature/unit",)) != {}
+        state = plan_status.chunk_states(plan, fact, repo_dir=repo)["01"]
+        assert (state.state, state.reason) == ("open", "review R1 names it, but its commit is not on `feature/unit`")
+
+    def test_git_unable_to_list_the_branches_takes_no_fallback(self, repo, monkeypatch):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "feature/unit")
+        _git(repo, "branch", "-D", "feature/unit")
+        plan = _plan(repo, ("01",))
+        fact = _facts(_review("R1", head, chunks=["01"]))
+        assert _states(plan, fact, repo) == {"01": "done"}
+        monkeypatch.setattr(gitstate, "branch_refs", lambda _repo, _branches: None)
+        state = plan_status.chunk_states(plan, fact, repo_dir=repo)["01"]
+        assert state.state == "open"
+        assert state.reason == "review R1 names it, but its commit is not on `feature/unit`"
+
+    def test_a_gone_branch_whose_base_resolves_nowhere_says_so(self, repo):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "branch", "-D", "feature/unit")
+        plan = _plan(repo, ("01",), claim=("branch: feature/unit", "base: nowhere"))
+        state = plan_status.chunk_states(plan, _facts(_review("R1", head, chunks=["01"])), repo_dir=repo)["01"]
+        assert state.state == "open"
+        assert "`feature/unit` is on no local or remote branch, and the plan's `base: nowhere` names no ref" in state.reason
 
     def test_a_dirty_tree_review_anchors_at_its_dispatch_commit(self, repo):
         head = _commit(repo, "src/c01.py", "x\n", "work")
@@ -463,6 +563,22 @@ class TestNoGitWalk:
         spy = _Spy(monkeypatch)
         assert _states(plan, facts, repo) == {"01": "done", "02": "done", "03": "open"}
         assert spy.calls == [["git", "merge-base", "--is-ancestor", head, "feature/unit"]]
+
+    def test_a_gone_branch_costs_one_ref_lookup_and_one_base_probe_per_anchor(self, repo, monkeypatch):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo)
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge", "feature/unit")
+        _git(repo, "branch", "-D", "feature/unit")
+        facts = _facts(_review("R1", head, chunks=["01"]), _review("R2", head, chunks=["02"]))
+        spy = _Spy(monkeypatch)
+        assert _states(plan, facts, repo) == {"01": "done", "02": "done", "03": "open"}
+        probes = [c for c in spy.calls if c[:2] == ["git", "merge-base"]]
+        assert probes == [
+            ["git", "merge-base", "--is-ancestor", head, "feature/unit"],
+            ["git", "merge-base", "--is-ancestor", head, "main"],
+        ]
+        assert sum(1 for c in spy.calls if c[:2] == ["git", "for-each-ref"]) == 1
 
     def test_the_spy_sees_built_chunks_git_walk(self, repo, monkeypatch):
         """Positive control: the instrument catches a walk when one happens."""
