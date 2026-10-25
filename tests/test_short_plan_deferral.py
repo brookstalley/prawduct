@@ -560,6 +560,21 @@ class TestStopGateOnShortPlans:
             window = "\n".join(lines[max(0, i - 12):i])
             assert "_deliver_stop_advisories(stop_advisories" in window, lines[i - 3:i + 1]
 
+    def test_every_box_ticked_still_arms_the_gate(self, tmp_path: Path):
+        """Renegotiated for #1051 (ST2): ticking the last box used to DISARM
+        the Critic gate, since `has_build_plan` counted unticked boxes and a
+        fully ticked plan read as no plan. So all three chunks landed and
+        ticked with unreviewed work over them stopped silently, and the boundary
+        review this file says the plan owes was owed to nobody. The gate now
+        arms on the binding, so the same state blocks, naming no deferral:
+        nothing is left to defer to."""
+        prawduct = _short_plan_branch(tmp_path, committed=("01", "02", "03"))
+        _arm_stop(prawduct)
+        result = _run_stop(tmp_path)
+        assert result.returncode == 2, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert _GENERIC_BLOCK in result.stderr
+        assert "deferred-boundary-review" not in result.stderr
+
     def test_four_chunk_plan_still_blocks(self, tmp_path: Path):
         prawduct = _short_plan_branch(tmp_path, chunks=4)
         _arm_stop(prawduct)

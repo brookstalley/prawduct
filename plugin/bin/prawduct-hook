@@ -1999,8 +1999,16 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     bare `clear` — the form a reviewer subagent can issue — refuses to run.
 
     Usage: critic-begin --mode <chunk|final|cumulative|verify-resolutions>
-           [--chosen-by <rationale>] [--chunk <id>] [--scope <s>] [--tier <t>]
-           [--force]
+           [--chosen-by <rationale>] [--chunks <id>[,<id>...]]... [--scope <s>]
+           [--tier <t>] [--force]
+
+    `--chunks` names the chunks this review covers (ST8): a comma list, and
+    repeatable — the lists join in the order given, a repeated id kept once.
+    `--chunk <id>` is its one-element alias, kept for one release; the two mix.
+    The joined list reaches `begin_review` as `chunks=[...]`; with neither flag
+    nothing is passed, and the consolidator's default (no chunks named) holds.
+    An empty element (`--chunks 01,,03`) is refused rather than dropped, since
+    a review naming fewer chunks than its caller meant completes fewer.
 
     `--mode` is REQUIRED — a bare invocation means a stale cached skill is
     driving a newer hook (version skew), and refusing at dispatch with the
@@ -2030,11 +2038,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     flags = {
         "--mode": "mode_token",
         "--chosen-by": "chosen_by",
-        "--chunk": "chunk",
         "--scope": "scope",
         "--tier": "tier",
     }
     opts: dict[str, object] = {}
+    chunks: list[str] = []
     i = 0
     while i < len(argv):
         arg = argv[i]
@@ -2044,14 +2052,28 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             opts["force"] = True
             i += 1
             continue
-        if arg not in flags:
+        if arg not in flags and arg not in ("--chunks", "--chunk"):
             print(f"critic-begin: unknown argument {arg!r}", file=sys.stderr)
             return 1
         if i + 1 >= len(argv):
             print(f"critic-begin: {arg} requires a value", file=sys.stderr)
             return 1
-        opts[flags[arg]] = argv[i + 1]
+        value = argv[i + 1]
         i += 2
+        if arg in ("--chunks", "--chunk"):
+            parts = [part.strip() for part in value.split(",")] if arg == "--chunks" else [value.strip()]
+            if not all(parts):
+                print(
+                    f"critic-begin: {arg} {value!r} names an empty chunk id — "
+                    "give each id once, comma-separated (--chunks 01,03)",
+                    file=sys.stderr,
+                )
+                return 1
+            chunks.extend(part for part in parts if part not in chunks)
+            continue
+        opts[flags[arg]] = value
+    if chunks:
+        opts["chunks"] = chunks
     if "mode_token" not in opts:
         print(
             "critic-begin: --mode is required (this plugin's review dispatch "
@@ -2961,34 +2983,29 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         else "this repo's learnings rules files"
     )
 
-    # Determine if there's an active build plan (used by both gates).
-    # "Active" means incomplete chunks remain — a completed plan (all [x]) does not count.
+    # Whether a build plan governs this checkout (used by both gates): the one
+    # arming predicate, `plan_status.gate_arms`, which the briefing's
+    # previous-session check also reads so the two never disagree (ST2). It is
+    # binding-derived and reads no chunk progress — a tick, a commit or a
+    # finished plan does not disarm it; after the boundary review HEAD's tree is
+    # the reviewed tree, so a finished plan passes every Stop on coverage alone.
     #
     # WHICH plan is the checkout's binding (`work_unit.resolve`, the one owner —
     # 1050-requirements BR1), read once here; the Type-driven carveouts and the
     # deferrals below read the same plan. Its three answers:
-    #   • bound   → that plan's boxes decide (on that plan only).
-    #   • unbound → no plan governs, and none is borrowed (BR3): no file arm. A
-    #     harness scratch worktree is unbound by construction (BR6), so it arms
-    #     no Critic gate: the coordinator's review covers the work once merged,
-    #     and a gate here no route could satisfy is #648's trap.
+    #   • bound   → armed while that plan is live (not archived).
+    #   • unbound → no plan governs, and none is borrowed (BR3). A harness
+    #     scratch worktree is unbound by construction (BR6), so it arms no
+    #     Critic gate: the coordinator's review covers the work once merged,
+    #     and a gate here no route could satisfy is #648's trap. A
+    #     `project-state.yaml` `build_plan.chunks` list arms nothing either
+    #     (ST7): a record no binding names is not a plan this checkout builds.
     #   • broken  → two live plans claim this branch, or a live plan cannot be
     #     read. Authority fails closed:
     #     treated as a plan that owes review, and the block names the reason.
     binding = _work_unit().resolve(project_dir)
     gate_plan = binding.plan_path if binding.state == "bound" else None
-    has_build_plan = (
-        binding.state == "broken"
-        or (
-            gate_plan is not None
-            and _gates()._has_active_build_plan_file(prawduct_dir, gate_plan)
-        )
-        # The legacy `project-state.yaml` `build_plan.chunks[].status` reading
-        # survives this wave on purpose: ST7 (retiring it as a second gate
-        # input, or migrating it) is Wave 2's, and dropping it here would
-        # disarm the repos whose only plan record it still is.
-        or _gates()._has_build_plan_in_state(prawduct_dir)
-    )
+    has_build_plan = _plan_status().gate_arms(binding)
     # Said in the Critic block when the binding is what armed it, so a builder
     # blocked by a broken binding learns the remedy is the plans, not a review.
     broken_binding_note = (
@@ -3422,11 +3439,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     if (has_changes or critic_has_work) and has_build_plan and gate_plan is not None:
         # Both chunk-level fields — the current chunk id and its `Type:` — come
         # from the binding's plan, resolved once above. Never from another
-        # plan: with no bound plan (a broken binding, or only the legacy state
-        # arm) there is no chunk to read a carveout from, so none applies —
-        # the readers' own default would be a plan this checkout never claimed.
+        # plan: with no bound plan (a broken binding) there is no chunk to read
+        # a carveout from, so none applies — the readers' own default would be
+        # a plan this checkout never claimed. The current chunk is the first
+        # OPEN one by `plan_status.current_chunks`, the one walker of chunk
+        # progress; none open (finished, or only an unreadable entry open)
+        # grades no chunk, so no carveout applies and the gate stays as armed.
         _bpr = _buildplan_refs()  # `gate_plan` resolved once, above
-        current_chunk_id = _bpr._current_chunk_id_from_status(project_dir, gate_plan)
+        _ps = _plan_status()
+        from lib import evidence as _ev_for_chunks  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+
+        _open_chunks = _ps.current_chunks(
+            gate_plan, _ev_for_chunks.read_facts(project_dir), repo_dir=project_dir
+        )
+        current_chunk_id = _open_chunks[0] if _open_chunks else None
         if current_chunk_id is not None:
             chunk_type, type_error = _bpr._parse_build_plan_chunk_type(
                 prawduct_dir, current_chunk_id, gate_plan
@@ -4300,6 +4326,88 @@ def _junit_case_id(case) -> str:
     return f"{classname}::{name}" if classname else name
 
 
+def _scratch_worktree_kind(project_dir: Path) -> "str | None":
+    """The harness scratch-worktree kind of ``project_dir``, or ``None``.
+
+    The ephemeral guard's own question (``gitstate.is_ephemeral_worktree``),
+    asked again inside the one command it admits on a narrower promise. An
+    install too broken to import ``lib`` reads as not-scratch, which is the
+    guard's own fail-open posture for that case."""
+    try:
+        return _gitstate().is_ephemeral_worktree(project_dir)
+    except ImportError:
+        return None
+
+
+def _record_narrowed_run(
+    project_dir: Path,
+    scratch_kind: str,
+    record: dict,
+    evidence_tree: "str | None",
+    *,
+    source: str,
+    degraded_reason: "str | None",
+    run_returncodes: list[int],
+) -> int:
+    """DG2: record a scratch worktree's run into the shared store only.
+
+    Appends one ``test-run`` fact with ``narrowed: true`` and ``ceiling`` (the
+    command run, so the delegate's test paths and args) and writes nothing in
+    this tree. A run whose tree could not be pinned has no fact to give — the
+    store indexes runs by tree — so it says it recorded nothing rather than
+    "recorded". Exit status mirrors the suite, as ``record``'s does.
+    """
+    passed, failed, skipped = record["passed"], record["failed"], record["skipped"]
+    counts = f"{passed} passed, {failed} failed, {skipped} skipped in {record['duration_seconds']}s"
+    suite_rc = (
+        (0 if all(rc == 0 for rc in run_returncodes) else 1)
+        if run_returncodes
+        else (0 if failed == 0 else 1)
+    )
+    if not evidence_tree:
+        print(
+            f"not recorded: {counts} — the tree this run met could not be pinned, so "
+            f"there is no test-run fact to append, and in this ephemeral {scratch_kind} "
+            "worktree that fact is the only write. Re-run once edits stop.",
+            file=sys.stderr,
+        )
+        return suite_rc
+    from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+    run_fact = {
+        "tree": evidence_tree,
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "duration_seconds": record["duration_seconds"],
+        "source": source,
+        "narrowed": True,
+        "ceiling": record["command"],
+    }
+    rc, head_sha, _ = _evidence_mod.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+    if rc == 0 and head_sha.strip():
+        run_fact["head"] = head_sha.strip()
+    if degraded_reason:
+        run_fact["degraded"] = degraded_reason
+    appended = _evidence_mod.append_test_run(project_dir, run_fact)
+    if appended.get("status") != "appended":
+        print(
+            f"not recorded: {counts} — the narrowed test-run fact could not be "
+            f"appended ({appended.get('reason', 'unknown')}), and in this ephemeral "
+            f"{scratch_kind} worktree it is the only write. Report the run's counts "
+            "and ceiling in your final message instead.",
+            file=sys.stderr,
+        )
+        return suite_rc if suite_rc else 1
+    print(
+        f"recorded (narrowed, shared store only): {counts} ({record['timestamp']})\n"
+        f"  ceiling: {record['command']}\n"
+        f"  fact {appended.get('id')} — this ephemeral {scratch_kind} worktree's "
+        ".test-evidence.json was NOT written; the coordinator's `test-status` lists "
+        "this run by tree, and it vouches for no suite."
+    )
+    return suite_rc
+
+
 def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     """Run the suite and WRITE ``.prawduct/.test-evidence.json`` (TST-6V2N).
 
@@ -4432,6 +4540,16 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
       forwarded to the F4a overlay as repeated ``--tests-dir`` so one verifier
       run covers a monorepo's components.
 
+    **From a harness scratch worktree (DG2)** the run is recorded into the
+    clone-shared evidence store only: the per-worktree ``.test-evidence.json``
+    is NOT written (it would be discarded with the tree, and the coordinator
+    would be told it succeeded), and the ``test-run`` fact carries
+    ``narrowed: true`` plus ``ceiling`` — the command the delegate ran, so its
+    test paths and args. A narrowed run is attribution, not suite evidence: the
+    coordinator's ``test-status`` lists it by tree, and the freshness readers
+    skip it. ``--no-rerun`` and ``--from-counts`` are refused there (exit 2):
+    neither records a fact, so from a scratch tree they would write nothing.
+
     With NEITHER command knob declared, the fallback runs ``sys.executable -m
     pytest`` — the hook's interpreter, which cannot import a venv-isolated
     product's packages. The fallback therefore nudges toward declaring a
@@ -4541,6 +4659,21 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         print(
             "error: " + " and ".join(_sources) + " are mutually exclusive — "
             "choose one evidence source.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # DG2: from a harness scratch worktree the shared-store fact is the ONLY
+    # write (the ephemeral guard admits `record` on that promise), so a source
+    # that records no fact would write nothing and still print "recorded".
+    scratch_kind = _scratch_worktree_kind(project_dir)
+    if scratch_kind is not None and (no_rerun or from_counts is not None):
+        source = "--no-rerun/--restamp" if no_rerun else "--from-counts"
+        print(
+            f"error: {source} records no test-run fact, and in this ephemeral "
+            f"{scratch_kind} worktree that fact is the only thing `record` writes "
+            "(the per-worktree .test-evidence.json would be discarded with the "
+            "tree). Run the suite, or ingest its report with --from-junit.",
             file=sys.stderr,
         )
         return 2
@@ -5221,6 +5354,14 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # than writing a false, so every record written before the field existed
         # keeps exactly the behavior it had.
         record["degraded"] = degraded_reason
+    if scratch_kind is not None:
+        return _record_narrowed_run(
+            project_dir, scratch_kind, record, evidence_tree,
+            source="from-junit" if from_junits else "run",
+            degraded_reason=degraded_reason,
+            run_returncodes=run_returncodes,
+        )
+
     # Atomic write — the freshness gate must never observe a half-written file.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     tmp = evidence_path.with_name(evidence_path.name + ".tmp")
@@ -5372,9 +5513,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 # retired — a file set enforces nothing about triviality.)
 
 
-# _current_chunk_id_from_status + _verify_chunk_refs moved to
-# lib/buildplan_refs.py (STH-9V4K ch.3); cmd_verify_chunk_refs below delegates
-# via _buildplan_refs().
+# _verify_chunk_refs moved to lib/buildplan_refs.py (STH-9V4K ch.3);
+# cmd_verify_chunk_refs below delegates via _buildplan_refs(), and takes its
+# current chunk from plan_status (#1051).
 
 
 def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
@@ -5391,13 +5532,15 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
     binding, either way — cannot be verified (exit 1), because grading that id
     against some other plan is the misattribution BR4 forbids.
 
-    With no ``chunk_id``, resolves the current chunk via
-    ``buildplan_refs._current_chunk_id_from_status`` — the first unchecked
-    ``- [ ]`` item. That reading is only as good as the ticking, so this path
-    first reports any chunk whose box is empty while commits on the branch name
-    it: grading Chunk 01 for a whole branch is the BLD-7K3Q failure, and an
-    unticked finished chunk is now the way back into it. If there is no current
-    chunk (all complete or no Status section), exits 0 — nothing to verify.
+    With no ``chunk_id``, resolves the current chunk as the first OPEN chunk
+    by ``plan_status.current_chunks`` — the one walker of chunk progress, read
+    from the review facts, never a box. When several chunks are open (a short
+    plan's chunks committed before their boundary review, say) it says which
+    one it grades and names the rest, because grading Chunk 01 for a whole
+    branch is the BLD-7K3Q failure and the remedy is to name the chunk. With
+    no open chunk, exits 0 — nothing to verify. That is not "finished": a plan
+    whose only open entry is an unreadable plan or heading has no current chunk
+    either, and this check grades none.
     """
     prawduct_dir = get_prawduct_dir(project_dir)
     if chunk_id is None:
@@ -5424,20 +5567,26 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
         )
         return 1
     if chunk_id is None:
-        # One canonical current-chunk resolution (shared with the stop hook and
-        # the Critic helper); it accepts every Status-item form the body-heading
-        # matcher accepts, which is the pairing `lib/buildplan_refs.py` keeps.
-        # Announce a chunk that looks finished-but-unticked BEFORE grading on
-        # the checkbox reading. Only on the inference path — an explicit
-        # chunk_id does not consume that reading, so warning there would be
-        # noise about something the caller already overrode.
-        notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir, plan_path)
-        if notice:
-            print(notice, file=sys.stderr)
-        chunk_id = _buildplan_refs()._current_chunk_id_from_status(project_dir, plan_path)
-        if chunk_id is None:
-            print("ok: no current chunk in Status; nothing to verify")
+        # One canonical current-chunk resolution, shared with the Stop hook's
+        # `Type:` carveout: the first open chunk by `plan_status`.
+        plan_status = _plan_status()
+        from lib import evidence  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+
+        open_chunks = plan_status.current_chunks(
+            plan_path, evidence.read_facts(project_dir), repo_dir=project_dir
+        )
+        if not open_chunks:
+            print("ok: no open chunk in this plan; nothing to verify")
             return 0
+        chunk_id = open_chunks[0]
+        if len(open_chunks) > 1:
+            # Only on the inference path — an explicit chunk_id already chose.
+            print(
+                f"note: {len(open_chunks)} chunks are open "
+                f"({', '.join(open_chunks)}); grading the first, {chunk_id} — "
+                "name a chunk id to grade another",
+                file=sys.stderr,
+            )
 
     refs = _buildplan_refs()._parse_build_plan_chunk_refs(prawduct_dir, chunk_id, plan_path)
     if refs["error"]:
@@ -5453,7 +5602,7 @@ def cmd_verify_chunk_refs(project_dir: Path, chunk_id: str | None) -> int:
             f"cannot-verify: {refs['error']}; Goal-2 deliverable check did not run "
             "(recognized heading forms: '### Chunk NN: Name', "
             "'## Chunk N (ID) — Name', '### **Chunk N** — Name', a dotted id "
-            "'### Chunk 1.2:', and a leading '[ ]' checkbox)",
+            "'### Chunk 1.2:', and a leading checkbox)",
             file=sys.stderr,
         )
         return 1
@@ -6065,13 +6214,69 @@ def cmd_check_released(project_dir: Path, args: list[str] | None = None) -> int:
     )
 
 
+#: How many worktrees' narrowed runs `test-status` lists, newest first. The
+#: store keeps every delegate's run forever; the coordinator asking is about
+#: the delegates it just ran.
+_NARROWED_RUNS_SHOWN = 10
+
+
+def _narrowed_run_lines(project_dir: Path) -> list[str]:
+    """One line per scratch worktree that recorded a narrowed run (DG2): the
+    tree, when, the counts and the ceiling — that worktree's NEWEST run, newest
+    worktree first, at most :data:`_NARROWED_RUNS_SHOWN`. Empty when there are
+    none or the store cannot be read (the verdict line above already says what
+    the gate thinks; this list is attribution and fails soft)."""
+    from lib import evidence  # noqa: PLC0415 — lazy; _gates() seeded sys.path
+
+    read = evidence.read_facts(project_dir)
+    if read.get("status") == "error":
+        return [f"delegate runs: not listed ({read.get('reason') or 'evidence store unreadable'})"]
+    newest: dict[str, dict] = {}
+    runs: dict[str, int] = {}
+    for fact in evidence.facts_of_kind(read, "test-run"):
+        body = fact.get("body")
+        if not isinstance(body, dict) or body.get("narrowed") is not True:
+            continue
+        actor = fact.get("actor") if isinstance(fact.get("actor"), dict) else {}
+        tree = actor.get("worktree") if isinstance(actor.get("worktree"), str) else "(unknown tree)"
+        newest[tree] = fact  # store order is append order: the last is newest
+        runs[tree] = runs.get(tree, 0) + 1
+    if not newest:
+        return []
+    ordered = sorted(newest.items(), key=lambda kv: str(kv[1].get("ts") or ""), reverse=True)
+    lines = [
+        "delegate runs (narrowed — each covers its ceiling only, never the suite):"
+    ]
+    for tree, fact in ordered[:_NARROWED_RUNS_SHOWN]:
+        body = fact["body"]
+        counts = " ".join(
+            f"{body.get(k) if isinstance(body.get(k), int) else '?'} {k}"
+            for k in ("passed", "failed", "skipped")
+        )
+        more = f" (newest of {runs[tree]})" if runs[tree] > 1 else ""
+        ceiling = body.get("ceiling") if isinstance(body.get("ceiling"), str) else "(not recorded)"
+        flag = " DEGRADED" if isinstance(body.get("degraded"), str) and body["degraded"] else ""
+        lines.append(f"  {tree} {fact.get('ts') or '(no time)'}{more}: {counts}{flag} — ceiling: {ceiling}")
+    if len(ordered) > _NARROWED_RUNS_SHOWN:
+        lines.append(f"  … and {len(ordered) - _NARROWED_RUNS_SHOWN} older worktree(s)")
+    return lines
+
+
 def cmd_test_status(project_dir: Path) -> int:
     """Report whether the saved suite run is fresh enough to trust, and on
     which of the two grounds — the tree it ran against, or the session it ran
     in. Exit 0 does NOT by itself establish that the evidence covers the
     current tree; the printed label says which clause answered. Thin wrapper —
-    body lives in ``lib.gates.test_status`` (STH-9V4K ch.6)."""
-    return _gates().test_status(project_dir)
+    body lives in ``lib.gates.test_status`` (STH-9V4K ch.6).
+
+    After the verdict line (first, so a reader of one line still has it), the
+    delegates' narrowed runs (DG2), one line per scratch worktree — so a
+    delegate's green is attributable to the tree and ceiling it ran on. They
+    change neither the verdict nor the exit code."""
+    rc = _gates().test_status(project_dir)
+    for line in _narrowed_run_lines(project_dir):
+        print(line)
+    return rc
 
 
 def cmd_validate_evidence(project_dir: Path) -> int:
@@ -7051,7 +7256,10 @@ _PLAN_HELP = (
     "       prawduct-hook plan bind <path> --branch B\n"
     "       prawduct-hook plan resolve [--json]\n"
     "       prawduct-hook plan status [<path>] [--json]\n"
-    "         (<path> omitted: the plan this checkout is bound to)"
+    "         (<path> omitted: the plan this checkout is bound to)\n"
+    "       prawduct-hook plan import-status <path> [--apply] [--remove-block] [--json]\n"
+    "         (ticked Status boxes -> chunk-imported facts; a preview without --apply)\n"
+    "       prawduct-hook plan check-claims [--json]"
 )
 
 #: The ``plan resolve`` exit when the binding is ``broken``. The CLI query row
@@ -7395,20 +7603,412 @@ def _cmd_plan_bind(project_dir: Path, argv: list[str]) -> int:
     return 0
 
 
-def cmd_plan(project_dir: Path, argv: list[str]) -> int:
-    """``plan new|bind|resolve|status`` — a work unit's identity, its binding,
-    and its chunk table.
+#: ``plan import-status`` / ``plan check-claims``: refused, or a claim that
+#: does not resolve — the CLI writer/query row of the error model (exit 1).
+PLAN_REFUSED_EXIT = 1
+#: ``plan check-claims`` when git cannot list the branches it would check
+#: against: the unreadable-subject outcome, never "every claim is missing".
+PLAN_CHECK_CLAIMS_UNREADABLE_EXIT = 3
 
-    ``resolve`` and ``status`` are reads (allowed in a harness scratch
-    worktree); ``new`` and ``bind`` write a plan (and ``new`` a change
-    fragment), so the ephemeral guard refuses them there — a claim minted in a
-    scratch tree governs nothing and is discarded with it.
+
+def _plan_refuse(op: str, code: str, detail: str, as_json: bool) -> int:
+    """Print one refusal as ``refused: <code>: <detail>`` (stderr) and, under
+    ``--json``, as ``{"status": "refused", "code", "detail"}`` on stdout."""
+    if as_json:
+        print(json.dumps({"status": "refused", "code": code, "detail": detail}, sort_keys=True))
+    print(f"plan {op}: refused: {code}: {detail}", file=sys.stderr)
+    return PLAN_REFUSED_EXIT
+
+
+def _status_block_span(lines: list[str]) -> "tuple[int, int] | tuple[str, str] | None":
+    """The ``[heading, end)`` line span of the plan's ``## Status`` block, for
+    deletion; ``None`` when the plan has none; ``(code, detail)`` when the block
+    cannot be delimited.
+
+    The bounds are ``plan_index.status_section_bounds`` — the one home of the
+    section's extent. That function is a READER's rule, tolerant by design: it
+    runs to end of file when nothing follows, and it knows nothing of code
+    fences or comments. Reused in a writer, each tolerance becomes a deletion
+    of something that is not the block (hook-surface.md: a writer claims
+    nothing it cannot delimit), so every case where the reader's answer could
+    be wider than the block is refused here rather than deleted:
+
+    - more than one ``## Status`` line (a fenced example, a duplicate) — which
+      one is the block is a guess;
+    - a block that runs to end of file — "to EOF" is the reader's default, and
+      deleting to EOF deletes whatever trails it;
+    - a code fence or an unclosed HTML comment inside the span — a ``## ``
+      line inside either is not the heading the bounds stopped at;
+    - an HTML comment trailing the block's last item — it reads exactly like
+      the next section's banner, and deleting it loses that section's prose.
+
+    Nothing BEFORE the heading is ever taken: there is no walk-back, so a
+    header or banner comment above ``## Status`` survives by construction.
+    """
+    headings = [i for i, line in enumerate(lines) if line.strip() == "## Status"]
+    if not headings:
+        return None
+    if len(headings) > 1:
+        return (
+            "status-block-ambiguous",
+            f"{len(headings)} `## Status` lines (lines "
+            f"{', '.join(str(i + 1) for i in headings)}) — which one is the block "
+            "cannot be told; remove the duplicate by hand",
+        )
+    bounds = _plan_index().status_section_bounds(lines)
+    if bounds is None:  # the heading scan above already found one
+        return None
+    start, end = bounds
+    heading = start - 1
+    if end >= len(lines):
+        return (
+            "status-block-undelimited",
+            "the `## Status` section runs to the end of the file, so where it ends "
+            "cannot be told from what follows it; add the next `## ` heading or "
+            "remove the block by hand",
+        )
+    in_comment = False
+    last_content = None  # index of the last non-blank line outside a comment
+    trailing_comment = None  # index where a comment after `last_content` opens
+    for index in range(start, end):
+        stripped = lines[index].strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            return (
+                "status-block-undelimited",
+                f"a code fence at line {index + 1} sits inside the `## Status` "
+                "section, so the heading that closes it may be fenced text",
+            )
+        opened = "<!--" in stripped and not in_comment
+        if opened:
+            in_comment = True
+            if last_content is not None:
+                trailing_comment = index
+        if in_comment:
+            if "-->" in stripped[stripped.find("<!--") + 4 if opened else 0:]:
+                in_comment = False
+            continue
+        if stripped:
+            last_content = index
+            trailing_comment = None
+    if in_comment:
+        return (
+            "status-block-undelimited",
+            "an HTML comment inside the `## Status` section never closes before "
+            "the next heading, so that heading may be commented-out text",
+        )
+    if trailing_comment is not None:
+        return (
+            "status-block-trailing-comment",
+            f"the HTML comment at line {trailing_comment + 1} follows the block's "
+            "last item and reads like the next section's banner — move it below "
+            "the next heading, or remove the block by hand",
+        )
+    return (heading, end)
+
+
+def _plan_index():
+    """Lazy-import ``lib.plan_index`` (read-only helpers for the plan ops)."""
+    _plan_status()  # seeds sys.path
+    from lib import plan_index  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return plan_index
+
+
+def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
+    """``plan import-status <path> [--apply] [--remove-block] [--json]`` — MG2.
+
+    Converts a live plan's ticked ``## Status`` boxes into ``chunk-imported``
+    facts (``{scope, chunk, source: "status-box", imported_at}``), code-written,
+    no judgment. WHICH chunks is ``plan_status.chunk_states``' own answer: a
+    chunk reading ``done, imported`` with no certifying fact is exactly a box
+    the in-memory import (MG1) reads, so the facts written are the ones the
+    reader already acts on — the import moves the answer, never changes it. A
+    chunk that already has its fact is reported and not written again, so a
+    re-run is a no-op.
+
+    Without ``--apply`` it is a preview: prints what would be written (and,
+    with ``--remove-block``, the line span that would be removed) and writes
+    nothing. ``--remove-block`` deletes exactly the ``## Status`` section —
+    heading to the next ``## `` heading — with the file's line endings kept,
+    and only after every fact is written: a block removed with a fact missing
+    would turn a done chunk open. It is opt-in because facts are per-clone
+    until #1052; another clone reading the plan without the block (and without
+    this clone's facts) answers "all open". Refusals (exit 1, ``refused:
+    <code>``): ``archived-plan``, ``no-scope``, ``store-unreadable``,
+    ``status-block-ambiguous``, ``status-block-undelimited``,
+    ``status-block-trailing-comment``, ``fact-append-failed``,
+    ``plan-write-failed``. A path that is not a readable build plan, or a bad
+    argument, is a usage error (exit 2).
+    """
+    parsed = _parse_plan_args(
+        "import-status", argv, frozenset(), frozenset({"--apply", "--remove-block", "--json"})
+    )
+    if isinstance(parsed, int):
+        return parsed
+    positionals, _values, seen = parsed
+    if len(positionals) != 1:
+        what = "name the plan to import" if not positionals else f"unexpected argument {positionals[1]!r}"
+        print(f"plan import-status: {what}\n{_PLAN_HELP}", file=sys.stderr)
+        return 2
+    apply, remove, as_json = "--apply" in seen, "--remove-block" in seen, "--json" in seen
+    import uuid  # noqa: PLC0415 — only this writer mints fact ids here
+
+    plan_status = _plan_status()
+    from lib import evidence, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+
+    plan_path = Path(positionals[0])
+    if not plan_path.is_absolute():
+        plan_path = project_dir / plan_path
+    try:
+        with open(plan_path, encoding="utf-8", newline="") as handle:
+            content = handle.read()
+    except (OSError, UnicodeDecodeError) as exc:
+        print(f"plan import-status: cannot read {positionals[0]} ({exc})\n{_PLAN_HELP}", file=sys.stderr)
+        return 2
+    if not plan_index.is_build_plan(content):
+        print(f"plan import-status: {positionals[0]} is not a build plan\n{_PLAN_HELP}", file=sys.stderr)
+        return 2
+    rel = _plan_rel(project_dir, plan_path)
+    try:
+        under_artifacts = plan_path.resolve().relative_to(
+            (get_prawduct_dir(project_dir) / "artifacts").resolve()
+        ).parts
+    except ValueError:  # outside `.prawduct/artifacts/`: not an archived plan of this repo
+        under_artifacts = ()
+    if under_artifacts[:1] == ("archive",):
+        return _plan_refuse(
+            "import-status", "archived-plan",
+            f"{rel} is archived — its boxes are history and are not imported", as_json,
+        )
+    _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
+    if not scope:
+        return _plan_refuse(
+            "import-status", "no-scope",
+            f"{rel} declares no `scope:`, so a chunk-imported fact could name no "
+            "plan; give the plan its scope first",
+            as_json,
+        )
+    facts = evidence.read_facts(project_dir)
+    if facts.get("status") == "error":
+        return _plan_refuse(
+            "import-status", "store-unreadable",
+            f"the evidence store cannot be read ({facts.get('reason')}), so which "
+            "chunks are already imported cannot be told",
+            as_json,
+        )
+    states = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir)
+    to_write = [
+        cid for cid, st in states.items()
+        if st.state == "done" and st.imported and st.fact_id is None and not st.synthetic
+    ]
+    already = [
+        (cid, st.fact_id) for cid, st in states.items()
+        if st.state == "done" and st.imported and st.fact_id is not None
+    ]
+
+    lines = content.splitlines(keepends=True)
+    span = _status_block_span(lines) if remove else None
+    if remove and isinstance(span, tuple) and isinstance(span[0], str):
+        # Refused BEFORE any fact is written: the caller asked for both, and a
+        # half-done migration is a state nobody chose.
+        return _plan_refuse("import-status", span[0], f"{rel}: {span[1]}", as_json)
+    block = "absent" if remove and span is None else ("kept" if not remove else None)
+
+    written: list[dict] = []
+    if apply:
+        for cid in to_write:
+            now = datetime.now(timezone.utc)
+            fact_id = "chunk-imported-{}-{}".format(now.strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8])
+            body = {
+                "scope": scope,
+                "chunk": cid,
+                "source": "status-box",
+                "imported_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+            appended = evidence.append_fact(project_dir, plan_status.IMPORTED_KIND, fact_id, body)
+            if appended.get("status") != "appended":
+                detail = (
+                    f"chunk {cid}: {appended.get('reason', 'unknown')}"
+                    + (f" ({len(written)} fact(s) written before it: "
+                       f"{', '.join(w['chunk'] for w in written)})" if written else "")
+                    + ("; the `## Status` block was NOT removed" if remove else "")
+                )
+                return _plan_refuse("import-status", "fact-append-failed", detail, as_json)
+            written.append({"chunk": cid, "fact_id": appended.get("id", fact_id)})
+    if remove and span is not None:
+        heading, end = span
+        if apply:
+            kept = lines[:heading] + lines[end:]
+            tmp = plan_path.with_name(plan_path.name + ".import-status.tmp")
+            try:
+                with open(tmp, "w", encoding="utf-8", newline="") as handle:
+                    handle.write("".join(kept))
+                os.replace(tmp, plan_path)
+            except OSError as exc:
+                return _plan_refuse(
+                    "import-status", "plan-write-failed",
+                    f"{rel}: {exc} ({len(written)} fact(s) were written; the block is unchanged)",
+                    as_json,
+                )
+            block = "removed"
+        else:
+            block = "would-remove"
+
+    if as_json:
+        print(json.dumps({
+            "status": "ok",
+            "plan_path": rel,
+            "scope": scope,
+            "apply": apply,
+            "facts": (
+                [{"chunk": w["chunk"], "action": "written", "fact_id": w["fact_id"]} for w in written]
+                if apply else
+                [{"chunk": cid, "action": "would-write", "fact_id": None} for cid in to_write]
+            ) + [{"chunk": cid, "action": "already-imported", "fact_id": fid} for cid, fid in already],
+            "block": {
+                "action": block,
+                "lines": [span[0] + 1, span[1]] if remove and span is not None else None,
+            },
+        }, sort_keys=True))
+        return 0
+    verb = "wrote" if apply else "would write"
+    targets = [w["chunk"] for w in written] if apply else to_write
+    print(f"{rel} (scope `{scope}`): {verb} {len(targets)} chunk-imported fact(s)"
+          + ("" if apply else " — preview, nothing written; pass --apply"))
+    for cid in targets:
+        print(f"  {'wrote' if apply else 'would write'}: chunk {cid} (source status-box)")
+    for cid, fid in already:
+        print(f"  already imported: chunk {cid} ({fid})")
+    if block == "removed":
+        print(f"  removed the `## Status` block (lines {span[0] + 1}–{span[1]})")
+    elif block == "would-remove":
+        print(f"  would remove the `## Status` block (lines {span[0] + 1}–{span[1]})")
+    elif block == "absent":
+        print("  no `## Status` block to remove")
+    else:
+        print("  `## Status` block kept (pass --remove-block to remove it; facts are "
+              "per-clone until #1052, so another clone without them reads the "
+              "plan's chunks from the block)")
+    return 0
+
+
+def _remote_branch_names(project_dir: Path) -> "set[str] | None":
+    """Every branch some remote holds (``refs/remotes/<remote>/<name>``, its
+    ``HEAD`` alias left out), or ``None`` when git could not be asked. A remote
+    name may contain ``/``, so each ref is split at the LONGEST configured
+    remote name that prefixes it, never at its first slash."""
+    gitstate = _gitstate()
+    rc, remotes_out, _err = gitstate._git_text(project_dir, "remote")
+    if rc != 0:
+        return None
+    remotes = sorted((r for r in remotes_out.splitlines() if r.strip()), key=len, reverse=True)
+    rc, refs_out, _err = gitstate._git_text(
+        project_dir, "for-each-ref", "--format=%(refname)", "refs/remotes/"
+    )
+    if rc != 0:
+        return None
+    names: set[str] = set()
+    for ref in refs_out.splitlines():
+        for remote in remotes:
+            prefix = f"refs/remotes/{remote}/"
+            if ref.startswith(prefix):
+                name = ref[len(prefix):]
+                if name and name != "HEAD":
+                    names.add(name)
+                break
+    return names
+
+
+def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
+    """``plan check-claims [--json]`` — BR3: every claim names a real branch.
+
+    Every live plan under ``.prawduct/artifacts/`` (``archive/`` excluded)
+    that declares ``branch:`` or ``working-branches:`` is read through the
+    binding's own reader (``work_unit``), and each named branch must exist
+    locally (``refs/heads/*``) or on a remote (``refs/remotes/<remote>/*``).
+    Each miss is one line, ``<plan>: <field> <branch> does not exist``; a plan
+    whose claim cannot be read is one line too — an unreadable claim is not a
+    resolving one.
+
+    Exit 0 every claim resolves (or none is declared); 1 any does not, every
+    one listed; :data:`PLAN_CHECK_CLAIMS_UNREADABLE_EXIT` (3) when git cannot
+    list branches — "could not ask" is never "missing"; 2 usage error.
+    ``--json``: ``{"ok", "claims": [{plan, field, branch, where}], "unreadable":
+    [{plan, reason}]}`` where ``where`` is ``local``, ``remote`` or null.
+    """
+    parsed = _parse_plan_args("check-claims", argv, frozenset(), frozenset({"--json"}))
+    if isinstance(parsed, int):
+        return parsed
+    positionals, _values, seen = parsed
+    if positionals:
+        print(f"plan check-claims: unexpected argument {positionals[0]!r}\n{_PLAN_HELP}", file=sys.stderr)
+        return 2
+    prawduct_dir = get_prawduct_dir(project_dir)
+    declarations, unreadable = _work_unit()._live_declarations(
+        prawduct_dir, prawduct_dir / "artifacts"
+    )
+    local = _gitstate().local_branches(project_dir)
+    remote = _remote_branch_names(project_dir) if local is not None else None
+    if local is None or remote is None:
+        print(
+            "plan check-claims: git could not list this repo's branches, so no claim "
+            "was checked",
+            file=sys.stderr,
+        )
+        return PLAN_CHECK_CLAIMS_UNREADABLE_EXIT
+    claims = []
+    for decl in sorted(declarations, key=lambda d: str(d.path)):
+        named = ([("branch", decl.branch)] if decl.branch else []) + [
+            ("working-branches", b) for b in decl.working
+        ]
+        for field, branch in named:
+            where = "local" if branch in local else "remote" if branch in remote else None
+            claims.append({
+                "plan": _plan_rel(project_dir, decl.path), "field": field,
+                "branch": branch, "where": where,
+            })
+    faults = [
+        {"plan": _plan_rel(project_dir, u.path), "reason": u.what}
+        for u in sorted(unreadable, key=lambda u: str(u.path))
+    ]
+    misses = [c for c in claims if c["where"] is None]
+    ok = not misses and not faults
+    if "--json" in seen:
+        print(json.dumps({"ok": ok, "claims": claims, "unreadable": faults}, sort_keys=True))
+    else:
+        for c in misses:
+            print(f"{c['plan']}: {c['field']} {c['branch']} does not exist")
+        for f in faults:
+            print(f"{f['plan']}: claim unreadable — {f['reason']}")
+        if ok:
+            plans = len({c["plan"] for c in claims})
+            print(
+                f"ok: {len(claims)} claim(s) across {plans} live plan(s) name existing branches"
+                if claims else "ok: no live plan claims a branch"
+            )
+    return 0 if ok else PLAN_REFUSED_EXIT
+
+
+def cmd_plan(project_dir: Path, argv: list[str]) -> int:
+    """``plan new|bind|resolve|status|import-status|check-claims`` — a work
+    unit's identity, its binding, its chunk table, the MG2 import and the BR3
+    claim check.
+
+    ``resolve``, ``status``, ``check-claims`` and a preview ``import-status``
+    are reads (allowed in a harness scratch worktree); ``new`` and ``bind``
+    write a plan (and ``new`` a change fragment), and ``import-status --apply``
+    writes facts (and the plan), so the ephemeral guard refuses them there — a
+    claim minted in a scratch tree governs nothing and is discarded with it.
     """
     op = argv[0] if argv else None
     if op == "resolve":
         return _cmd_plan_resolve(project_dir, argv[1:])
     if op == "status":
         return _cmd_plan_status(project_dir, argv[1:])
+    if op == "import-status":
+        return _cmd_plan_import_status(project_dir, argv[1:])
+    if op == "check-claims":
+        return _cmd_plan_check_claims(project_dir, argv[1:])
     if op == "new":
         return _cmd_plan_new(project_dir, argv[1:])
     if op == "bind":
@@ -7972,6 +8572,26 @@ def _plan_label(plan_path: Path, prawduct_dir: Path) -> str:
     return plan_index.display_path(plan_path, prawduct_dir / "artifacts")
 
 
+def _built_not_done_lead(count: int) -> str:
+    """The lead line over lifecycle-repair's built-but-not-done report.
+
+    ``plans_to_review`` names chunks with work committed on the plan's branch
+    that no review has certified (``plan_status.chunk_states`` with
+    ``built_chunks``). The sentence is derived from how many there are, never
+    written for one case; it names the two routes that settle a chunk, because
+    this report changes nothing itself."""
+    subject = (
+        "this chunk has work committed on its plan's branch, and no review has"
+        if count == 1
+        else f"these {count} chunks have work committed on their plans' branches, and no review has"
+    )
+    return (
+        f"  Read these once — {subject} certified it yet (built, not done). "
+        "Nothing here is changed for you: a chunk is done when a review covers "
+        "it, or dropped when its plan's `dropped:` says why."
+    )
+
+
 def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
     """Converge a repo off the retired derived-view model (FL2, FL3, GD2).
 
@@ -8096,10 +8716,7 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                   "covers all of them; they are ordinary file edits your version "
                   "control can undo.")
         if stale:
-            print("  Read these once — their progress checkboxes were generated, so "
-                  "an unfinished chunk may be marked wrongly. Nothing here is "
-                  "changed for you: only someone who knows what actually shipped "
-                  "can say.")
+            print(_built_not_done_lead(sum(len(r["chunks"]) for r in stale)))
             for report in stale:
                 print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
                 for chunk in report["chunks"]:
@@ -8137,13 +8754,13 @@ def cmd_plan_backfill(project_dir: Path, argv: list[str]) -> int:
     The one-time sweep that gives accumulated plans the end of life
     ``archive-plan`` gives a single one. Shipped is decided mechanically — a
     plan whose ``scope=`` carries a ``release=`` tag — so no judgment enters,
-    and checkbox state is never corrected on the way in.
+    and chunk state is never corrected on the way in.
 
     Since #634 that tag is **necessary but not sufficient**: it says the scope
-    shipped, not that the plan finished, and a plan whose own ``## Status`` does
-    not evidence completion is refused into ``blocked`` with the chunk named
-    rather than proposed. Still no judgment — the predicate is a deterministic
-    count, and the refusal hands the call to a human instead of taking it.
+    shipped, not that the plan finished, and a plan ``plan_status.is_finished``
+    does not call finished is refused into ``blocked`` with its open chunks
+    named rather than proposed (#1051). Still no judgment — the predicate is
+    deterministic, and the refusal hands the call to a human instead of taking it.
     ``archive-plan`` asks no completeness question, so it remains the route for a
     plan the operator has decided is done.
 
@@ -9101,7 +9718,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 #    That is the only reason the sentences above talk around it.
 _USAGE = (
     "Usage: prawduct-hook "
-    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--scope <s>] [--chunk <id>] [--force]|critic-end|critic-discard|"
+    "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|"
     "subagent-stop|"
     "stop|"
@@ -9573,8 +10190,11 @@ _EPHEMERAL_READ_ONLY_OPS = {
     "advisory": frozenset({"list", "show"}),
     # `resolve` prints the binding and `status` a plan's chunk table; both write
     # nothing and must work here, where a delegate asks why its tree is unbound
-    # or what its plan's chunks are. `new` and `bind` write a plan.
-    "plan": frozenset({"resolve", "status"}),
+    # or what its plan's chunks are. `check-claims` reads plans and git refs.
+    # `import-status` previews here and writes only under `--apply` — classified
+    # in `_ephemeral_command_writes`, not by this table. `new` and `bind` write
+    # a plan.
+    "plan": frozenset({"resolve", "status", "check-claims"}),
     # `show` is `get`'s alias — `lib/backlog/cli.py` dispatches `op in ("get",
     # "show")` to one handler — and omitting it refused a pure read with a
     # message asserting a discarded write, which is the false refusal this
@@ -9705,6 +10325,19 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
             # Scope-out rather than papered over here.
             return False
 
+    if command == "test-evidence" and _first_positional(argv) == "record":
+        # DG2 (1050-design § 7): admitted on a narrower promise than a read.
+        # From a scratch tree `cmd_test_evidence` writes ONLY the clone-shared
+        # store — one `test-run` fact marked `narrowed`, which outlives the tree
+        # and so cannot strand — and skips the per-worktree record, which would.
+        # The command refuses the sources that would write nothing.
+        return False
+    if command == "plan" and _first_positional(argv) == "import-status":
+        # A preview by default; `--apply` appends `chunk-imported` facts and,
+        # with `--remove-block`, edits the plan — both governance writes made
+        # against a tree that is discarded.
+        return "--apply" in argv
+
     read_only_ops = _EPHEMERAL_READ_ONLY_OPS.get(command)
     if read_only_ops is not None:
         op = _first_positional(argv)
@@ -9832,8 +10465,10 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
         "succeeded. (A review or disposition would instead persist to the "
         "clone-shared evidence store against a tree no branch carries — kept, "
         "but covering nothing.) Report this in your final message and let the "
-        "dispatching session record it; Critic reviews and test-evidence stay "
-        f"with the dispatcher. Override for one invocation: {_EPHEMERAL_OVERRIDE_ENV}=1",
+        "dispatching session record it; Critic reviews and governance records "
+        "stay with the dispatcher (`test-evidence record` is admitted here: it "
+        "writes one narrowed test-run fact to the shared store and nothing in "
+        f"this tree). Override for one invocation: {_EPHEMERAL_OVERRIDE_ENV}=1",
         file=sys.stderr,
     )
     return 1

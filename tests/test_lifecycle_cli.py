@@ -200,6 +200,46 @@ class TestLifecycleRepairCommand:
         assert reviews[0]["chunks"] == ["Chunk 02"]
 
 
+class TestBuiltNotDoneLeadLine:
+    """The human-mode lead over `plans_to_review`, renegotiated by #1051: it
+    said "their progress checkboxes were generated", which described the
+    retired box report. Now it describes the built-but-not-done report and
+    agrees in number with what it lists (hook-surface.md: derive a two-state
+    message from the state)."""
+
+    def _land(self, project: Path, *chunks: str) -> None:
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        steps = [
+            ("init", "-q", "-b", "main"),
+            ("config", "user.email", "t@example.com"),
+            ("config", "user.name", "T"),
+            ("add", "-A"),
+            ("commit", "-q", "-m", "init"),
+            ("checkout", "-q", "-b", "feat/demo"),
+        ] + [("commit", "-q", "--allow-empty", "-m", f"feat(demo): land it (Chunk {c})") for c in chunks]
+        for args in steps:
+            subprocess.run(["git", *args], cwd=str(project), env=env, check=True, capture_output=True)
+
+    def test_one_chunk_reads_singular_and_names_the_routes(self, tmp_path: Path) -> None:
+        project = _repo(tmp_path)
+        self._land(project, "02")
+        out = _run(project, "lifecycle-repair").stdout
+        flat = " ".join(out.split())
+        assert "this chunk has work committed on its plan's branch" in flat, out
+        assert "built, not done" in flat and "`dropped:`" in flat
+        assert "checkboxes were generated" not in flat
+        assert "- Chunk 02" in out
+
+    def test_several_chunks_read_plural_with_the_count(self, tmp_path: Path) -> None:
+        project = _repo(tmp_path)
+        self._land(project, "01", "02")
+        plan = next((project / ".prawduct" / "artifacts").glob("*.md"))
+        plan.write_text(plan.read_text().replace("- [x] Chunk 01: done", "- [ ] Chunk 01: done"))
+        out = _run(project, "lifecycle-repair").stdout
+        flat = " ".join(out.split())
+        assert "these 2 chunks have work committed on their plans' branches" in flat, out
+
+
 class TestUnreadableFilesChangeTheVerdict:
     """The command must not grade a repo it could not fully read.
 
