@@ -736,7 +736,9 @@ class TestBoundaryReviewOwed:
                       "body": {"mode": "cumulative (bundle review, ready for merge)",
                                "base_tree": "t1", "head_tree": "t2"}}
         for facts, owed in (([chunk], True), ([chunk, cumulative], False)):
-            monkeypatch.setattr(critic_mode, "_newest_branch_review", lambda _p, f=facts: f[-1])
+            monkeypatch.setattr(
+                critic_mode, "_newest_branch_review", lambda _p, _read=None, f=facts: f[-1]
+            )
             monkeypatch.setattr(evidence, "read_facts", lambda _p, f=facts: {"status": "ok", "facts": f})
             assert critic_mode.boundary_cumulative_still_owed(
                 Path("."), Path(".prawduct"), object(), progress

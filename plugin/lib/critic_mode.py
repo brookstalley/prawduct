@@ -251,7 +251,12 @@ def infer_mode(
     # no plan here and grounds on none; a legacy-window binding is the plan, and
     # rule 4 says how it was reached rather than presenting it as a claim.
     plan = work_unit.resolve(project_dir)
-    progress = binding_progress(project_dir, plan)
+    # The fact store is read ONCE per inference and threaded: `progress` carries
+    # the read (:attr:`PlanProgress.facts`) and every helper below reuses it
+    # rather than re-reading a store the Stop hook may hold thousands of lines of.
+    from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    progress = binding_progress(project_dir, plan, facts=evidence.read_facts(project_dir))
     total = progress.total
     current_chunk_id = progress.current_id
 
@@ -342,7 +347,9 @@ def infer_mode(
     # is the round the owner traded away, and inferring it would spend it.
     # Only a tree with code in flight is deferred — a record-only diff has no
     # chunk work to defer, and falls through to rule 4's honest answer.
-    deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
+    # Inference's reading of the deferral (`read_built=True`): a box-free short
+    # plan's committed chunks are `built`, so its last chunk is visible here.
+    deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress, read_built=True)
     if deferral.defers and _get_uncommitted_code_files(project_dir):
         return MODE_DEFERRED, _deferral_rationale(project_dir, deferral, plan)
 
@@ -387,7 +394,9 @@ def infer_mode(
     if _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
         if redirect:
-            mid = _mid_plan_answer(project_dir, prawduct_dir, plan, progress, "rule-4")
+            mid = _mid_plan_answer(
+                project_dir, prawduct_dir, plan, progress, "rule-4", deferral=deferral
+            )
             if mid:
                 return mid
             return "cumulative", f"rule-4 cumulative: {redirect}"
@@ -450,7 +459,7 @@ def _explicit_mode(
         if redirect:
             plan = work_unit.resolve(project_dir)
             progress = binding_progress(project_dir, plan)
-            verdict = _mid_plan_verdict(project_dir, plan, progress)
+            verdict = _mid_plan_verdict(project_dir, plan, progress, prawduct_dir)
             if verdict is not None and verdict[0] != _MID_PLAN_UNREACHABLE:
                 kind, start = verdict
                 if kind == _MID_PLAN_NOTHING_UNREVIEWED:
@@ -563,7 +572,10 @@ class PlanProgress(NamedTuple):
       because the Stop hook reads ``total - complete`` and that arithmetic
       still means "chunks not done or dropped";
     - ``finished`` — :func:`plan_status.is_finished`, the only "finished"
-      answer; never ``not open_ids``, which a synthetic entry makes false.
+      answer; never ``not open_ids``, which a synthetic entry makes false;
+    - ``facts`` — the ``evidence.read_facts`` result the walk read, so the
+      helpers handed this progress reuse that one read (:func:`_facts_for`)
+      instead of reading the store again. ``None`` when nothing was read.
     """
 
     total: int
@@ -572,6 +584,7 @@ class PlanProgress(NamedTuple):
     open_ids: tuple = ()
     states: "dict | None" = None
     finished: bool = True
+    facts: "dict | None" = None
 
     @property
     def open_count(self) -> int:
@@ -593,8 +606,9 @@ def progress_of(
 ) -> PlanProgress:
     """:class:`PlanProgress` for ``plan_path`` against ``facts`` (a
     ``read_facts`` result) — one :func:`plan_status.chunk_states` walk."""
+    store = facts if isinstance(facts, dict) else None
     if plan_path is None:
-        return NO_PLAN_PROGRESS
+        return NO_PLAN_PROGRESS._replace(facts=store)
     states = plan_status.chunk_states(Path(plan_path), facts, repo_dir=repo_dir)
     open_ids = tuple(
         plan_status.current_chunks(Path(plan_path), facts, repo_dir=repo_dir, states=states)
@@ -608,10 +622,11 @@ def progress_of(
         finished=plan_status.is_finished(
             Path(plan_path), facts, repo_dir=repo_dir, states=states
         ),
+        facts=store,
     )
 
 
-def binding_progress(project_dir: Path, binding) -> PlanProgress:
+def binding_progress(project_dir: Path, binding, facts: "dict | None" = None) -> PlanProgress:
     """The bound plan's chunk progress, or none at all for a checkout with no plan.
 
     Read from :mod:`lib.plan_status` over the clone's fact store — the review
@@ -619,14 +634,31 @@ def binding_progress(project_dir: Path, binding) -> PlanProgress:
     ``## Status`` boxes read as imports in memory there, not here. Only the
     binding's plan is ever read, so an unbound or broken checkout is never
     answered about a plan its binding refused.
+
+    ``facts`` is the caller's ``evidence.read_facts`` result when it holds one;
+    otherwise the store is read here — once, and only when a plan is bound. The
+    read rides the returned :attr:`PlanProgress.facts` so the helpers it is
+    handed to do not read again.
     """
     if binding.plan_path is None:
-        return NO_PLAN_PROGRESS
+        return NO_PLAN_PROGRESS._replace(facts=facts)
+    return progress_of(
+        binding.plan_path, _facts_for(project_dir, None, facts), repo_dir=Path(project_dir)
+    )
+
+
+def _facts_for(project_dir: Path, progress, facts: "dict | None" = None) -> dict:
+    """The fact-store read a helper works from: ``facts`` when the caller passed
+    one, else the read ``progress`` carries (:attr:`PlanProgress.facts`), else
+    one ``evidence.read_facts`` now — the default for a caller holding neither."""
+    if facts is not None:
+        return facts
+    carried = getattr(progress, "facts", None)
+    if carried is not None:
+        return carried
     from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
-    return progress_of(
-        binding.plan_path, evidence.read_facts(project_dir), repo_dir=Path(project_dir)
-    )
+    return evidence.read_facts(project_dir)
 
 
 def _plan_chunk_ids(plan_path: "Path | None", repo_dir: Path) -> "list[str] | None":
@@ -683,10 +715,10 @@ def _plan_relation_note(project_dir: Path, plan) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
+def _mid_plan_start(project_dir: Path, plan, progress, deferral=None) -> "dict | None":
     """Where the ``chunk`` interval would start, when the branch is mid-plan.
 
-    ``None`` when it is not mid-plan, which is two conditions, both required:
+    ``None`` when it is not mid-plan, which is three conditions, all required:
 
     - **the plan claims this branch** (``Binding.is_claim``). A plan
       reached through the legacy window is *assumed* related, and a branch
@@ -696,7 +728,12 @@ def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
       chunks open). With exactly one open chunk and a clean tree the
       boundary review is the answer. Chunk states cannot show whether the last
       chunk is BUILT, only that it is open, so :func:`short_plan_next_step`
-      tells the builder to build it before asking for review.
+      tells the builder to build it before asking for review;
+    - **a deferring short plan is not at its boundary** (``deferral``, the
+      :func:`short_plan_deferral` answer the caller holds): a short plan's
+      earlier chunks are committed and left open for the boundary review to
+      name, so "two or more open" says nothing there; its ``last_chunk`` —
+      one chunk neither done, dropped nor built — is the boundary.
 
     Mid-plan, the answer is the interval owner's
     (``critic_consolidate.working_tree_interval_base``), asked with the same
@@ -705,6 +742,8 @@ def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
     cannot be read: an unreadable state keeps today's answer.
     """
     if not plan.is_claim or not later_review_owed(progress):
+        return None
+    if deferral is not None and deferral.defers and deferral.last_chunk:
         return None
     head_commit = gitstate._git_head_sha(project_dir)
     head_tree = _head_tree(project_dir)
@@ -757,7 +796,9 @@ _MID_PLAN_NOTHING_UNREVIEWED = "nothing-unreviewed"
 _MID_PLAN_UNREACHABLE = "unreachable"
 
 
-def _mid_plan_verdict(project_dir: Path, plan, progress) -> "tuple[str, dict] | None":
+def _mid_plan_verdict(
+    project_dir: Path, plan, progress, prawduct_dir: "Path | None" = None, deferral=None
+) -> "tuple[str, dict] | None":
     """The one owner of the mid-plan question, for every caller that asks it.
 
     ``None`` when the branch is not mid-plan. Otherwise ``(verdict, start)``
@@ -770,9 +811,19 @@ def _mid_plan_verdict(project_dir: Path, plan, progress) -> "tuple[str, dict] | 
     applies to it; only the ``chunk`` answer does not. Inference (:func:`_mid_plan_answer`) and an explicit token
     (:func:`_explicit_mode`) both map this verdict. Neither re-derives it,
     because a second derivation is how an explicit `chunk` reached a mid-plan
-    `cumulative` in the state inference answers `deferred`.
+    `cumulative` in the state inference answers `deferred`. ``deferral`` is the
+    caller's :func:`short_plan_deferral` answer; without one it is asked here
+    (inference's reading, ``read_built=True``) when ``prawduct_dir`` is given
+    and the cheap mid-plan conditions hold.
     """
-    start = _mid_plan_start(project_dir, plan, progress)
+    if (
+        deferral is None
+        and prawduct_dir is not None
+        and plan.is_claim
+        and later_review_owed(progress)
+    ):
+        deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress, read_built=True)
+    start = _mid_plan_start(project_dir, plan, progress, deferral)
     if start is None:
         return None
     from . import critic_consolidate  # noqa: PLC0415 — lazy, as above
@@ -785,7 +836,7 @@ def _mid_plan_verdict(project_dir: Path, plan, progress) -> "tuple[str, dict] | 
 
 
 def _mid_plan_answer(
-    project_dir: Path, prawduct_dir: Path, plan, progress, rule: str
+    project_dir: Path, prawduct_dir: Path, plan, progress, rule: str, deferral=None
 ) -> "tuple[str, str] | None":
     """The mid-plan answer where a clean tree would otherwise infer ``cumulative``.
 
@@ -805,11 +856,17 @@ def _mid_plan_answer(
     - ``chunk`` over the unreviewed interval otherwise, from the covered
       frontier or, when no blocker-free reviewed state is behind HEAD, the
       merge-base (the rationale names which of the three reasons applies).
+
+    ``deferral`` is the caller's :func:`short_plan_deferral` answer, when it
+    holds one, so the short plan's ``built`` walk runs once per inference.
     """
-    verdict = _mid_plan_verdict(project_dir, plan, progress)
+    if not plan.is_claim or not later_review_owed(progress):
+        return None
+    if deferral is None:
+        deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress, read_built=True)
+    verdict = _mid_plan_verdict(project_dir, plan, progress, prawduct_dir, deferral)
     if verdict is None:
         return None
-    deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
     if deferral.defers:
         return MODE_DEFERRED, _deferral_rationale(project_dir, deferral, plan)
     kind, start = verdict
@@ -1110,6 +1167,13 @@ class ShortPlanDeferral(NamedTuple):
     last chunk's and block for a boundary review one chunk early — which chunk
     N would then owe again, two `cumulative` runs where the plan promised one.
     The facts are the same in both readings; only the plan text differs.
+
+    On inference's reading (``read_built=True``) a chunk that is ``built``
+    (:func:`plan_status.built_chunks` — committed on the branch) does not count
+    either: that IS the short plan's "committed, review deferred to the
+    boundary" state (``1050-design.md`` § 3), and with no box to tick it is the
+    only way a box-free plan's last chunk can be seen. Mode inference is advice,
+    not a gate verdict, so it may read ``built``; the Stop gate does not.
     """
 
     defers: bool
@@ -1121,7 +1185,9 @@ class ShortPlanDeferral(NamedTuple):
     unticked: tuple = ()
 
 
-def _progress_at_head(project_dir: Path, plan_path: "Path | None") -> "PlanProgress | None":
+def _progress_at_head(
+    project_dir: Path, plan_path: "Path | None", facts: dict
+) -> "PlanProgress | None":
     """:class:`PlanProgress` of the plan AS COMMITTED AT HEAD, or ``None``.
 
     The same walk (:func:`plan_status.chunk_states`) over the same facts, of the
@@ -1130,10 +1196,9 @@ def _progress_at_head(project_dir: Path, plan_path: "Path | None") -> "PlanProgr
     not at HEAD (a new plan, or ``.prawduct/`` not tracked), when git cannot
     run, or when the path is outside the repo — the caller falls back to the
     working-tree reading, which is the only one there is in that case.
+    ``facts`` is the caller's ``read_facts`` result — the store is not re-read.
     """
     import tempfile  # noqa: PLC0415 — only this reader needs a scratch file
-
-    from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
     if plan_path is None:
         return None
@@ -1153,7 +1218,7 @@ def _progress_at_head(project_dir: Path, plan_path: "Path | None") -> "PlanProgr
             copy.write_text(text, encoding="utf-8")
         except OSError:
             return None
-        return progress_of(copy, evidence.read_facts(project_dir), repo_dir=Path(project_dir))
+        return progress_of(copy, facts, repo_dir=Path(project_dir))
 
 
 def short_plan_deferral(
@@ -1161,6 +1226,9 @@ def short_plan_deferral(
     prawduct_dir: Path,
     plan,
     progress,
+    *,
+    facts: "dict | None" = None,
+    read_built: bool = False,
 ) -> ShortPlanDeferral:
     """Does this branch's plan owe one boundary review instead of one per chunk?
 
@@ -1194,7 +1262,13 @@ def short_plan_deferral(
     review stands wherever the predicate could not be evaluated. ``plan`` is
     the checkout's ``work_unit.Binding`` and ``progress`` a
     :class:`PlanProgress` (:func:`binding_progress`) — the caller resolves both
-    once, through the single owners, and passes them in.
+    once, through the single owners, and passes them in. ``facts`` is the
+    caller's store read (default: the one ``progress`` carries).
+
+    ``read_built`` is INFERENCE's reading (:class:`ShortPlanDeferral`'s
+    ``last_chunk``): it asks :func:`plan_status.built_chunks` — the one place
+    inference walks git history for chunk progress, and only for a plan within
+    :data:`SHORT_PLAN_MAX_CHUNKS`. The Stop gate calls this without it.
     """
     total = progress.total
     if total == 0:
@@ -1206,8 +1280,25 @@ def short_plan_deferral(
             False,
             total,
         )
-    committed = _progress_at_head(project_dir, plan.plan_path)
-    last_chunk = (committed if committed is not None else progress).open_count == 1
+    committed = _progress_at_head(
+        project_dir, plan.plan_path, _facts_for(project_dir, progress, facts)
+    )
+    reading = committed if committed is not None else progress
+    built: "set[str]" = set()
+    if read_built and total <= SHORT_PLAN_MAX_CHUNKS:
+        built = {
+            buildplan_refs._normalize_chunk_id(c)
+            for c in plan_status.built_chunks(Path(plan.plan_path), Path(project_dir))
+        }
+    left = [
+        chunk_id
+        for chunk_id, s in (reading.states or {}).items()
+        if s.state == "open"
+        and (s.synthetic or buildplan_refs._normalize_chunk_id(chunk_id) not in built)
+    ]
+    # One left is the last chunk; none left while the plan is unfinished means
+    # every open chunk is already built, which is the boundary too.
+    last_chunk = len(left) == 1 or (bool(built) and not left)
     return _short_plan_shape(
         project_dir, prawduct_dir, plan, total, last_chunk, progress.open_ids
     )
@@ -1415,6 +1506,19 @@ _BOUNDARY_CUMULATIVE_FINAL_WHY = (
 )
 
 
+def chain_named_chunks(chain: list[dict]) -> list[str]:
+    """The chunk ids the NEWEST fact on ``chain`` that names any names, as it
+    spells them — so a chunk-less ``verify-resolutions`` pass inherits the
+    chunk review it verifies. ``[]`` when no fact on the chain names a chunk.
+    The one inheritance rule, read by :func:`chain_certified_chunks` and by
+    ``critic_consolidate``'s ``verify-resolutions`` proposal."""
+    for fact in chain:
+        ids = plan_status.fact_chunks(fact.get("body") or {})
+        if ids:
+            return ids
+    return []
+
+
 def chain_certified_chunks(progress: PlanProgress, chain: list[dict]) -> "tuple | None":
     """The chunks ``chain`` reviewed, when its own facts certified every one; else ``None``.
 
@@ -1431,12 +1535,9 @@ def chain_certified_chunks(progress: PlanProgress, chain: list[dict]) -> "tuple 
     imported or certified off the chain: then nothing shows the reviewed work
     closed, and callers keep the ambiguous reading. Plan order.
     """
-    named: list[str] = []
-    for fact in chain:
-        ids = plan_status.fact_chunks(fact.get("body") or {})
-        if ids:
-            named = list(dict.fromkeys(buildplan_refs._normalize_chunk_id(c) for c in ids))
-            break
+    named = list(
+        dict.fromkeys(buildplan_refs._normalize_chunk_id(c) for c in chain_named_chunks(chain))
+    )
     if not named or not progress.states:
         return None
     chain_ids = {f.get("id") for f in chain}
@@ -1458,7 +1559,9 @@ def chain_certified_chunks(progress: PlanProgress, chain: list[dict]) -> "tuple 
     return tuple(sorted(certified, key=order.index))
 
 
-def boundary_cumulative_still_owed(project_dir: Path, prawduct_dir: Path, plan, progress) -> bool:
+def boundary_cumulative_still_owed(
+    project_dir: Path, prawduct_dir: Path, plan, progress, *, facts: "dict | None" = None
+) -> bool:
     """Whether a ``Type: cumulative-final`` last chunk's boundary ``cumulative``
     has yet to run on this branch: exactly one chunk is left open (the last
     one, under way) and no ``cumulative`` stands on the newest review's chain —
@@ -1471,29 +1574,27 @@ def boundary_cumulative_still_owed(project_dir: Path, prawduct_dir: Path, plan, 
     chunk whose review is the boundary."""
     if progress.open_count != 1 or not declares_boundary_cumulative(prawduct_dir, plan):
         return False
-    newest = _newest_branch_review(project_dir)
+    read = _facts_for(project_dir, progress, facts)
+    newest = _newest_branch_review(project_dir, read)
     chain: list[dict] = []
     if newest is not None:
-        from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
-
-        chain = review_chain(evidence.read_facts(project_dir).get("facts") or [], newest)
+        chain = review_chain(read.get("facts") or [], newest)
     return not boundary_review_on_chain(chain)
 
 
-def _newest_branch_review(project_dir: Path) -> "dict | None":
+def _newest_branch_review(project_dir: Path, facts: "dict | None" = None) -> "dict | None":
     """The most recent ``review`` fact recorded on the checked-out branch, or ``None``.
 
     Read from the clone-wide store and filtered by the ``actor.branch`` each fact
     carries, so a sibling worktree's reviews of another branch never answer for
     this one. Its tree need not be committed: a review of uncommitted work is
     exactly the case where the tree it judged exists nowhere in the history.
+    ``facts`` is the caller's ``read_facts`` result; read here when absent.
     """
-    from . import evidence  # noqa: PLC0415 — lazy, as this module's other lib imports are
-
     branch = gitstate.current_branch(project_dir)
     if not branch:
         return None
-    read = evidence.read_facts(project_dir)
+    read = _facts_for(project_dir, None, facts)
     if read.get("status") == "error":
         return None
     reviews = [
@@ -1568,20 +1669,26 @@ def boundary_review_on_chain(chain: list[dict]) -> bool:
     )
 
 
-def extension_deferral(project_dir: Path, prawduct_dir: Path, plan, progress) -> "str | None":
+def extension_deferral(
+    project_dir: Path, prawduct_dir: Path, plan, progress, *, facts: "dict | None" = None
+) -> "str | None":
     """Why the next review will cover this state, or ``None`` when it will not.
 
     :func:`extension_deferral_owed`'s reason without its kind — for the Stop
     gate and ``cost-of-commit``, which defer either way.
     """
-    owed = extension_deferral_owed(project_dir, prawduct_dir, plan, progress)
+    owed = extension_deferral_owed(project_dir, prawduct_dir, plan, progress, facts=facts)
     return owed[1] if owed else None
 
 
 def extension_deferral_owed(
-    project_dir: Path, prawduct_dir: Path, plan, progress
+    project_dir: Path, prawduct_dir: Path, plan, progress, *, facts: "dict | None" = None
 ) -> "tuple[str, str] | None":
     """``(kind, reason)`` when the next review will cover this state, else ``None``.
+
+    ``facts`` is the caller's ``read_facts`` result (default: the read
+    ``progress`` carries, else one read here). ``gates.covered_frontier`` still
+    reads the store for itself.
 
     ``kind`` is :func:`review_owed_after`'s. Inference needs it: on a clean
     tree the boundary ``cumulative`` is not a review to defer TO, it is the
@@ -1645,14 +1752,14 @@ def extension_deferral_owed(
     """
     if progress.total <= 0:
         return None
-    newest = _newest_branch_review(project_dir)
+    read = _facts_for(project_dir, progress, facts)
+    newest = _newest_branch_review(project_dir, read)
     if newest is None:
         return None
-    from . import evidence, gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
-    read = evidence.read_facts(project_dir)
-    facts = read.get("facts") or []
-    chain = review_chain(facts, newest)
+    fact_list = read.get("facts") or []
+    chain = review_chain(fact_list, newest)
     reviewed = chain_certified_chunks(progress, chain)
     if reviewed is not None:
         pending = _paths_since_tree((newest.get("body") or {}).get("head_tree"), project_dir)
@@ -1672,7 +1779,7 @@ def extension_deferral_owed(
         if current not in {buildplan_refs._normalize_chunk_id(c) for c in named}:
             return None
         label = progress.current_id
-    if _open_blocker_on_chain(facts, chain):
+    if _open_blocker_on_chain(fact_list, chain):
         return None
     owed = review_owed_after(project_dir, prawduct_dir, plan, progress, chain)
     if owed is None:
@@ -1781,30 +1888,30 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     """What a builder on a deferring short plan does next — the ONE statement.
 
     The inference rationale and both Stop-gate messages (the non-final warning
-    and the last-chunk block) compose this, so the tick rule cannot be stated
-    two ways. The rule: an earlier chunk's review is the boundary
-    ``cumulative``, so its box is ticked at commit rather than held for a
-    review that never comes; only the last box waits. The inference counts
-    open chunks (:func:`plan_status.current_chunks`, where a ticked box reads
-    as done until the plan is migrated, and git cannot tell "committed, not
-    ticked" from "not built"), so a held box reads as a chunk still to build
-    and the boundary review is never inferred. The same count means the
-    boundary review is inferred as soon as one chunk remains open on a clean
-    tree, whether or not the last chunk is built — so the text says to build
-    it first.
+    and the last-chunk block) compose this, so the rule cannot be stated two
+    ways. The rule: an earlier chunk's review is the boundary ``cumulative``,
+    so the chunk is COMMITTED and left for it — nothing is ticked, because the
+    boundary review names every chunk still open (``plan_status``:
+    ``propose_chunks`` in ``cumulative`` mode) and its fact closes them all.
+    Inference sees a committed chunk as ``built`` (:func:`short_plan_deferral`,
+    ``read_built``) when its subject names it or its diff touches the chunk's
+    Deliverables paths — hence "naming it in the subject" — so the boundary is
+    inferred as soon as one chunk is left
+    neither done nor committed on a clean tree, whether or not that last chunk
+    is built — so the text says to build it first.
     """
     if deferral.last_chunk:
         return LAST_CHUNK_BOUNDARY_STEP
     named = (
-        f" (unticked now: {', '.join(deferral.unticked)})" if deferral.unticked else ""
+        f" (open now: {', '.join(deferral.unticked)})" if deferral.unticked else ""
     )
     return (
-        "commit this chunk and tick its box, and tick every earlier committed "
-        f"chunk's box still open{named} — a deferred chunk's review is the "
-        "boundary's, so its box does not wait for one. Leave only the last "
-        "chunk's box open and build that chunk before asking for review: "
-        "`/prawduct:critic` infers the boundary `cumulative` once one box "
-        "remains unticked and the tree is clean, and it covers every chunk"
+        "commit this chunk, naming it in the subject (`… (Chunk <id>)`) — a "
+        f"deferred chunk's review is the boundary's, so it waits for none{named}. "
+        "Then build the last chunk before asking for review: `/prawduct:critic` "
+        "infers the boundary `cumulative` once one chunk is left uncommitted and "
+        "the tree is clean, and that review names every chunk still open and "
+        "closes them together"
     )
 
 
