@@ -3,8 +3,7 @@
 A live build plan **claims** the branch it governs (frontmatter ``branch:``), and
 may name working branches that merge into it (``working-branches:``). A checkout
 is **bound** to the one live plan claiming its branch, **unbound** when no plan
-claims it, and **broken** when the claim cannot be honoured — two live plans
-claim the branch, or a claimant gives the unit no identity. Unbound is a normal
+claims it, and **broken** when two live plans claim it. Unbound is a normal
 state: chores, small fixes, integration and release branches. It never borrows
 another plan.
 
@@ -63,12 +62,14 @@ ChosenBy = Literal["binding", "legacy-pointer", "legacy-default", "none"]
 class Binding:
     """The answer to "which unit, and which plan, is this checkout working on".
 
-    ``scope`` and ``plan_path`` are set only when ``state`` is ``bound``;
+    ``plan_path`` is set only when ``state`` is ``bound``, and so is ``scope``
+    — unless the bound plan declares none, which a pre-identity plan may.
     ``role`` says which of the unit's branch kinds the checkout is, and is
     ``None`` for a legacy binding, which declared no branch to have a kind.
     ``reason`` is one sentence for the briefing: why the checkout is unbound or
-    broken, or — for a legacy binding — the advisory key and the remedy. It is
-    ``None`` only for a declared binding, which has nothing to explain.
+    broken, or what a binding still lacks — the advisory key and the remedy for
+    a legacy binding, the missing ``scope:`` for a claimant without one. It is
+    ``None`` only for a binding with nothing to explain.
     """
 
     state: State
@@ -105,10 +106,11 @@ def resolve(project_dir: Path, *, branch: str | None = None) -> Binding:
        ``integration``) or whose working branches contain it (role ``working``).
     3. One claimant binds. Two or more is broken — reported, never resolved by
        precedence (BR5); it arises only from merging two claiming branches,
-       since minting refuses a second claim. So is a claimant that declares no
-       ``scope:``: it claims the branch but names no unit for a fact to record,
-       and answering "unbound" would disarm every gate that governed it
-       yesterday (authority fails closed, ``architecture.md``).
+       since minting refuses a second claim. A claimant that declares no
+       ``scope:`` still binds, with ``scope=None`` and a ``reason`` naming the
+       omission: that plan governs its branch today, and nothing is
+       reinterpreted until the repo migrates (MG1) — ``broken`` would change
+       what its gates do, and ``unbound`` would disarm them.
     4. With no claimant, the legacy window: only while *no* live plan in the
        repo declares a branch, the pointer or the conventional path names a
        live plan that itself declares none. Anything else is unbound.
@@ -155,13 +157,14 @@ def resolve(project_dir: Path, *, branch: str | None = None) -> Binding:
         )
     if len(claimants) == 1:
         decl, role = claimants[0]
+        reason = None
         if decl.scope is None:
-            return _broken(
+            reason = (
                 f"{plan_index.display_path(decl.path, artifacts_dir)} claims "
-                f"`{branch}` but declares no `scope:`, so the unit has no name "
-                "to record — add one"
+                f"`{branch}` but declares no `scope:`, so facts about this work "
+                "record no unit — add one"
             )
-        return Binding("bound", decl.scope, decl.path, role, None, "binding")
+        return Binding("bound", decl.scope, decl.path, role, reason, "binding")
 
     if any(d.branch is not None for d in declarations):
         # A claim exists somewhere in this repo, so claims are how its plans
@@ -215,9 +218,9 @@ def _live_declarations(artifacts_dir: Path) -> list[_Declaration]:
 
     Two discoverers, because they find different things and both matter: the
     scope walk finds plans with an identity, and the claim walk finds plans that
-    claim a branch. A plan in the second set and not the first is exactly the
-    claimant step 3 reports as broken — found by one walker only, it would be
-    silently unbound. Both prune the archive at directory level.
+    claim a branch. A plan in the second set and not the first is the claimant
+    without a ``scope:`` that step 3 binds with a reason — found by one walker
+    only, it would be silently unbound. Both prune the archive at directory level.
     """
     paths: set[Path] = {p for p, _ in plan_index.iter_scoped_plan_candidates(artifacts_dir)}
     paths.update(p for p, _ in plan_index.branch_claiming_plans(artifacts_dir))

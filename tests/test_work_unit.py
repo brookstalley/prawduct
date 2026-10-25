@@ -386,17 +386,27 @@ class TestLegacyWindow:
 
 
 class TestClaims:
-    def test_a_claimant_without_a_scope_is_broken_not_unbound(self, tmp_path):
+    def test_a_claimant_without_a_scope_is_bound_with_a_reason(self, tmp_path):
         """A plan that claims the branch but names no unit governed it under
-        the old resolver. Answering "unbound" would disarm every gate it armed
-        yesterday — authority fails closed, so the claim is reported broken."""
+        the old resolver, and nothing is reinterpreted until the repo migrates
+        (MG1): it still binds, with no scope and a reason naming the omission.
+        `broken` would change what its gates do; `unbound` would disarm them."""
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan-x.md", scope=None, branch="feature/x")
         assert _old_core(repo) == plan
 
         binding = resolve(repo)
-        assert binding.state == "broken"
-        assert "declares no `scope:`" in binding.reason
+        assert binding == Binding(
+            "bound", None, plan, "integration",
+            "build-plan-x.md claims `feature/x` but declares no `scope:`, so facts "
+            "about this work record no unit — add one",
+            "binding",
+        )
+
+    def test_a_scoped_claimant_has_nothing_to_explain(self, tmp_path):
+        repo = _repo(tmp_path, "feature/x")
+        _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        assert resolve(repo).reason is None
 
     def test_an_archived_plan_claims_nothing(self, tmp_path):
         repo = _repo(tmp_path, "feature/x")
