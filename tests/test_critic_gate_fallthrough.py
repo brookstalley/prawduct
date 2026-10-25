@@ -254,6 +254,26 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         ok, reason = _critic_session_satisfies_gate(repo)
         assert ok, f"final must satisfy the synthesis advisory: {reason!r}"
 
+    def test_a_broken_binding_trips_the_advisory_with_its_reason(self, tmp_path):
+        """Authority fails closed: two plans claiming the branch is not "no
+        plan". The same repo with one claimant is the control — a final review
+        on it satisfies the advisory."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_FINAL)
+        artifacts = repo / ".prawduct" / "artifacts"
+        claimed = (
+            "---\nartifact: build-plan\nscope: {s}\nbranch: main\n---\n\n"
+            "# Build Plan\n\n## Status\n- [x] Chunk 01: A\n- [x] Chunk 02: B\n"
+        )
+        (artifacts / "build-plan.md").write_text(claimed.format(s="a"))
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
+        (artifacts / "build-plan-rival.md").write_text(claimed.format(s="b"))
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok
+        assert "binding is broken" in reason and "2 live plans claim `main`" in reason
+
     def test_no_review_fact_means_nothing_to_judge(self, tmp_path):
         from lib.gates import _critic_session_satisfies_gate
 

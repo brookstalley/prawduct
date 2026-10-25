@@ -21,12 +21,11 @@ blocks session start — the lib-free hook top level is preserved (the ch.2–6
 precedent, no separate degradation shim).
 
 Depends on its lib siblings ``gitstate`` / ``gates`` / ``buildplan_refs`` /
-``plan_index`` and ``core`` (``resolve_build_plan_path`` — the only resolver;
-the hook's inline mirror of it was retired with branch-scoped resolution),
-plus the stdlib. ``briefing`` is the top of the decomposition DAG — nothing
-imports it. Sanctioned rewrites of the moved bodies (behavior-preserving):
-``get_prawduct_dir`` → ``gitstate.get_prawduct_dir``, the hook's inline
-build-plan resolver → ``core.resolve_build_plan_path``, the ``_gitstate()`` /
+``plan_index`` / ``work_unit`` (which plan, if any, this checkout is bound to —
+the one answer the gates also read) and ``core``, plus the stdlib.
+``briefing`` is the top of the decomposition DAG — nothing imports it.
+Sanctioned rewrites of the moved bodies (behavior-preserving):
+``get_prawduct_dir`` → ``gitstate.get_prawduct_dir``, the ``_gitstate()`` /
 ``_gates()`` / ``_buildplan_refs()`` accessor calls → direct sibling references.
 """
 
@@ -41,18 +40,15 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, gates, gitstate, learnings_files, plan_index, stranded_work
+from . import buildplan_refs, gates, gitstate, learnings_files, plan_index, stranded_work, work_unit
 from .backlog import legacy as backlog
 from .coverage import _resolve_base_branch
 from .core import (
     BUILD_PLAN_POINTER_KEY,
     PRAWDUCT_VERSION,
     atomic_write_text,
-    describe_branch_claim,
     pointer_plan_path,
     read_str_yaml_key,
-    resolve_branch_claim,
-    resolve_build_plan_path,
 )
 
 
@@ -239,11 +235,11 @@ def staleness_scan(project_dir: Path) -> list[str]:
 
     # 4. Stale build plan detection — check Status section first, fall back to WIP
     #
-    # Several live plans may claim this branch; resolution picks one and says so
-    # in `assemble_session_briefing`. Reported there and not here because it is
-    # context for the whole session rather than a staleness finding, and saying
-    # it twice in one briefing is how a reader learns to skip both.
-    build_plan_path: Path | None = resolve_build_plan_path(prawduct_dir)
+    # Only the plan this checkout is bound to. A broken binding (two plans
+    # claiming one branch) is reported by `assemble_session_briefing` and not
+    # here: it is context for the whole session rather than a staleness finding,
+    # and saying it twice in one briefing is how a reader learns to skip both.
+    build_plan_path: Path | None = work_unit.resolve(project_dir).plan_path
 
     # 4b. A plan with work left, claiming a branch this repo does not have —
     # advice, fails soft.
@@ -280,20 +276,24 @@ def staleness_scan(project_dir: Path) -> list[str]:
                     findings.append(
                         f"build plan: {label} has chunks left and declares "
                         f"`branch: {claimed_branch}`, which is not a branch in this "
-                        "repo — nothing resolves this plan by branch, so governance "
-                        "is reading whatever `active_build_plan` names instead. Fix "
-                        "the frontmatter, or create the branch it names."
+                        "repo — no checkout can bind to it, so its gates govern "
+                        "nothing. Fix the frontmatter, or create the branch it names."
                     )
     except Exception:  # prawduct:allow prawduct/broad-except -- staleness scan is best-effort
         pass
 
-    # `None`: the only candidate plan claims another branch, so nothing governs
-    # this one — its staleness is that branch's to report, and a finished plan
-    # retained for its release must not nag every other branch to archive it.
+    # `None`: no plan is bound to this checkout, so nothing governs it — another
+    # branch's plan is that branch's to report, and a finished plan retained for
+    # its release must not nag every other branch to archive it.
     if build_plan_path is not None and build_plan_path.is_file():
-        build_plan_label = f".prawduct/{build_plan_path.relative_to(prawduct_dir).as_posix()}"
         try:
-            status = buildplan_refs._parse_build_plan_status(project_dir)
+            build_plan_label = (
+                f".prawduct/{build_plan_path.relative_to(prawduct_dir.resolve()).as_posix()}"
+            )
+        except ValueError:
+            build_plan_label = build_plan_path.name
+        try:
+            status = buildplan_refs._parse_build_plan_status(project_dir, build_plan_path)
             if status.get("current_chunk"):
                 pass  # Active work — not stale
             elif buildplan_refs.build_plan_is_complete(status):
@@ -502,8 +502,15 @@ def _parse_all_wip_branches(prawduct_dir: Path) -> dict[str, dict[str, str]]:
         return {}
 
 
-def _get_active_work(project_dir: Path) -> dict[str, str]:
+def _get_active_work(
+    project_dir: Path, binding: "work_unit.Binding | None" = None
+) -> dict[str, str]:
     """Get active work context, preferring build plan Status over project-state.yaml WIP.
+
+    The plan read is the one this checkout is bound to; ``binding`` lets a
+    caller that already resolved it pass it in. An unbound or broken checkout
+    reads no plan — handing ``None`` to the Status parser would read the
+    repo's active plan instead, which is exactly the borrowing a binding refuses.
 
     A build plan whose chunks are ALL complete is not active work. Without that
     predicate a finished plan was reported as the next session's ``**Task**``
@@ -511,7 +518,13 @@ def _get_active_work(project_dir: Path) -> dict[str, str]:
     "all chunks complete", while this function said "in progress" from the same
     bytes. Both now ask ``buildplan_refs.build_plan_is_complete``.
     """
-    work = buildplan_refs._parse_build_plan_status(project_dir)
+    if binding is None:
+        binding = work_unit.resolve(project_dir)
+    work = (
+        buildplan_refs._parse_build_plan_status(project_dir, binding.plan_path)
+        if binding.plan_path is not None
+        else {}
+    )
     if work.get("description") and not buildplan_refs.build_plan_is_complete(work):
         return work
     return _parse_wip(gitstate.get_prawduct_dir(project_dir))
@@ -831,37 +844,40 @@ def assemble_session_briefing(
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     lines = ["== SESSION BRIEFING =="]
 
-    # Project identity + work in progress (branch-scoped). Resolved once and
-    # reused below — this walks the artifacts tree to resolve the branch's plan.
+    # Project identity + work in progress (branch-scoped). The binding is
+    # resolved once and reused below — it walks the artifacts tree.
     project_name = _get_product_name(prawduct_dir)
     current_branch = _get_current_branch(project_dir)
-    wip = _get_active_work(project_dir)
+    binding = work_unit.resolve(project_dir)
+    wip = _get_active_work(project_dir, binding)
     work_desc = _get_work_in_progress(project_dir, wip)
+    if binding.state == "unbound" and not wip.get("description"):
+        # Unbound is a normal state, so it is a qualifier rather than a warning;
+        # the reason says why (a chore branch, a scratch worktree, a detached
+        # HEAD) instead of "none active" leaving the reader to guess.
+        work_desc = f"{work_desc} (unbound: {binding.reason})"
     lines.append(f"Project: {project_name} | Branch: {current_branch} | Work: {work_desc}")
 
+    # The binding's own trouble, said once at the top. A broken binding (two
+    # live plans claiming this branch) governs by neither; a claimant with no
+    # `scope:` records no unit on any fact about its work; a legacy-window
+    # binding governs through a route that is being retired, and its reason
+    # carries the advisory key and the `plan bind` remedy. All three are the
+    # author's to repair, and the session is where the author is reading.
+    if binding.state == "broken":
+        lines.append(f"⚠ work-unit binding is broken: {binding.reason}")
+    elif binding.state == "bound" and binding.reason:
+        lines.append(f"⚠ build plan: {binding.reason}")
+
     # Dangling build-plan pointer guard (STH-5P2W). A SET pointer that resolves
-    # to no file means governance treats the repo as having NO active plan —
-    # the Critic gate, plan-aware mode inference, and chunk-ref verification
-    # all go silently blind (this happened live for a full work cycle). Say so
-    # at the top of the briefing, every session, until the pointer is fixed.
+    # to no file, on a checkout no plan is bound to: governance sees no plan
+    # here — the Critic gate, plan-aware mode inference, and chunk-ref
+    # verification all go silently blind (this happened live for a full work
+    # cycle). Say so at the top of the briefing, every session, until fixed.
     #
-    # It fires only when the pointer is the route resolution actually TOOK. A
-    # plan claiming this branch outranks the scalar, so on such a branch a stale
-    # pointer misleads nobody and warning about it would train the reader to
-    # scroll past a ⚠ that is usually wrong.
+    # Not on a bound checkout: there the binding answered, and a warning about
+    # a pointer that misleads nobody trains the reader to scroll past a ⚠.
     try:
-        # Resolved unconditionally, so the contested-branch line below is
-        # reported even in a repo that sets no pointer at all.
-        claim = resolve_branch_claim(prawduct_dir)
-        if claim is not None and claim.contested:
-            # Said once, at the top, rather than left for the operator to infer
-            # from a gate grading a plan they did not expect. Several plans on
-            # one branch is ordinary; governing by one of them without saying
-            # which is what is not.
-            lines.append(
-                f"⚠ {describe_branch_claim(claim, prawduct_dir / 'artifacts')}"
-            )
-        pointed = resolve_build_plan_path(prawduct_dir)
         # The raw scalar for the message, `pointer_plan_path` for the path it
         # means: a second local spelling of the `.prawduct/` prefix rule is how
         # this comparison comes to be about a different file than resolution is.
@@ -869,27 +885,26 @@ def assemble_session_briefing(
             prawduct_dir / "project-state.yaml", BUILD_PLAN_POINTER_KEY
         )
         pointer_target = pointer_plan_path(prawduct_dir)
-        if pointer and pointer_target is not None:
-            if pointed == pointer_target and not pointed.is_file():
-                rel = pointed.relative_to(prawduct_dir).as_posix()
-                lines.append(
-                    f"⚠ active_build_plan points at a MISSING file: '{pointer}' "
-                    f"resolved to .prawduct/{rel}. Governance sees no active plan "
-                    "(Critic gate, mode inference, and chunk-ref checks are blind). "
-                    "Fix the pointer in project-state.yaml — it is .prawduct/-relative "
-                    "(e.g. artifacts/build-plan-<scope>.md) — or unset it."
-                )
+        if (
+            pointer
+            and pointer_target is not None
+            and binding.state != "bound"
+            and not pointer_target.is_file()
+        ):
+            rel = pointer_target.relative_to(prawduct_dir).as_posix()
+            lines.append(
+                f"⚠ active_build_plan points at a MISSING file: '{pointer}' "
+                f"resolved to .prawduct/{rel}, and no plan is bound to this branch. "
+                "Governance sees no active plan (Critic gate, mode inference, and "
+                "chunk-ref checks are blind). Unset the pointer in project-state.yaml, "
+                f"or bind this branch's plan (`{work_unit.BIND_COMMAND} <plan> "
+                f"--branch {current_branch}`)."
+            )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- briefing must never block session start; attributed below
-        # Swallowed WITH ATTRIBUTION. This block holds the only surface that
-        # ever says a branch was contested — and the only place the arbitrary
-        # `order` basis is named — so a silent failure here leaves an operator
-        # governed by one of several plans with nothing anywhere saying so. The
-        # fail-closed route that used to backstop this is gone, deliberately, so
-        # nothing downstream notices either. Advice fails soft; it does not fail
-        # silent (`architecture.md`: swallowed *with attribution*).
+        # Swallowed WITH ATTRIBUTION: advice fails soft; it does not fail silent
+        # (`architecture.md`: swallowed *with attribution*).
         lines.append(
-            f"⚠ build-plan resolution could not be reported ({type(exc).__name__}: {exc}) "
-            "— if several plans declare this branch, nothing here says which one governs."
+            f"⚠ the build-plan pointer could not be checked ({type(exc).__name__}: {exc})."
         )
 
     # Work context and current chunk (resolved above; build plan Status
@@ -2214,14 +2229,19 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     # composed-coverage verdict cmd_stop blocks on (kernel-v3 chunk 04), so
     # the advisory and the blocking gate can never diverge. Advisory tone:
     # one warning line, not the full remedy text.
-    # Resolved from the BRANCH's plan, exactly as `cmd_stop` does. The comment
-    # above promises this advisory and the blocking gate can never diverge —
-    # reading the pointer here while the gate reads the branch is precisely a
-    # divergence, and in the silent direction: the advisory would say nothing
-    # at session start about the gate that blocks at session end.
-    gate_plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
+    # Resolved from the checkout's binding, exactly as `cmd_stop` does. The
+    # comment above promises this advisory and the blocking gate can never
+    # diverge — reading the pointer here while the gate reads the binding is
+    # precisely a divergence, and in the silent direction: the advisory would
+    # say nothing at session start about the gate that blocks at session end.
+    # A broken binding arms it as a bound one would: authority fails closed.
+    binding = work_unit.resolve(project_dir)
     has_build_plan = (
-        gates._has_active_build_plan_file(prawduct_dir, gate_plan)
+        binding.state == "broken"
+        or (
+            binding.plan_path is not None
+            and gates._has_active_build_plan_file(prawduct_dir, binding.plan_path)
+        )
         or gates._has_build_plan_in_state(prawduct_dir)
     )
     # Fires on the same span as cmd_stop's guard: judgeable work, committed or not.

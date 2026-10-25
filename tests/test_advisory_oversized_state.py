@@ -23,6 +23,7 @@ Registry isolation mirrors ``test_retired_state_probes.py`` (autouse
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -181,7 +182,10 @@ class TestTemplateCopiedKeyDocumentation:
 
 class TestTheFileNamedIsTheFileToEdit:
     def test_the_build_plan_is_measured_and_named_in_its_own_right(self, tmp_path):
+        # A work tree, because the plan measured is the one this checkout is
+        # bound to, and a directory outside git binds nothing.
         repo = _repo(tmp_path)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
         _write(repo, ".prawduct/artifacts/build-plan.md",
                _FILLER + "\ndeliverables: one\n")
         cand = _by_type(repo, "oversized-build-plan")
@@ -189,6 +193,15 @@ class TestTheFileNamedIsTheFileToEdit:
         assert ".prawduct/artifacts/build-plan.md" in cand.trigger_summary
         # ...and the oversize of the plan says nothing about project-state.yaml.
         assert _by_type(repo, "oversized-project-state") is None
+
+    def test_another_branchs_plan_is_not_measured(self, tmp_path):
+        """The plan measured is this checkout's: one that claims another branch
+        is that branch's to compact. The test above is the control."""
+        repo = _repo(tmp_path)
+        subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+        _write(repo, ".prawduct/artifacts/build-plan.md",
+               "---\nbranch: feat/other\n---\n" + _FILLER + "\ndeliverables: one\n")
+        assert _by_type(repo, "oversized-build-plan") is None
 
     def test_each_oversized_file_is_separately_dismissable(self, tmp_path):
         repo = _repo(tmp_path)

@@ -1081,7 +1081,7 @@ class TestRule4ChunkDefault:
             "# Build Plan\n\n## Status\n\n- [x] Chunk 01: done\n- [ ] Chunk 02: last\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: feature/mine\n---\n\n"
             "# Build Plan\n\n## Status\n\n"
             "- [x] Chunk 01: done\n- [ ] Chunk 02: current\n- [ ] Chunk 03: later\n"
             "- [ ] Chunk 04: last\n"
@@ -1093,8 +1093,40 @@ class TestRule4ChunkDefault:
 
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "chunk", rationale
-        assert "build-plan-mine.md" in rationale
-        assert "declares this branch's scope 'mine'" in rationale
+        assert "build plan .prawduct/artifacts/build-plan-mine.md, which claims this branch" in rationale
+
+    def test_an_unbound_checkout_grounds_on_no_plan(self, tmp_path: Path):
+        """#208: inference on a branch no plan claims read the pointer's plan and
+        honoured its chunk's `Critic mode: final`, so an unrelated fix was sent
+        to a full review on another unit's say-so. Unbound grounds on nothing.
+        The claimed branch is the control: the same override applies there."""
+        _init_repo(tmp_path)
+        _write(tmp_path, "README.md", "x\n")
+        _commit(tmp_path, "initial")
+        artifacts = tmp_path / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True, exist_ok=True)
+        # The pointer's plan claims no branch; another plan claims its own, which
+        # closes the legacy window — so the pointer answers nothing here.
+        for name, claim in (("other", ""), ("claimant", "branch: feature/claimant\n")):
+            (artifacts / f"build-plan-{name}.md").write_text(
+                f"---\nartifact: build-plan\nscope: {name}\n{claim}---\n\n"
+                "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: current\n- [ ] Chunk 02: later\n"
+                "\n### Chunk 01: current\n\n- **Critic mode:** final\n"
+            )
+        (tmp_path / ".prawduct" / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-other.md\n"
+        )
+        _checkout_new_branch(tmp_path, "fix/unrelated")
+        _write(tmp_path, "src/work.py", "# in progress\n")
+
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "chunk", rationale
+        assert "plan-override" not in rationale
+        assert "no active build plan" in rationale
+
+        _checkout_new_branch(tmp_path, "feature/claimant")
+        mode, rationale = infer_mode(tmp_path, None)
+        assert (mode, rationale) == ("final", "plan-override: final")
 
     def test_a_finished_live_plan_still_matches_until_it_is_archived(self, tmp_path: Path):
         """Archiving retires a plan; ticking its last box does not.
@@ -1333,14 +1365,14 @@ class TestRule4ChunkDefault:
 
         assert buildplan_refs._has_unfinished_chunk(tmp_path / "absent.md") is False
 
-    def test_an_unconfirmable_pointer_is_named_as_an_assumption(self, tmp_path: Path):
-        """A branch matching no declared scope cannot be shown related OR
-        unrelated — so the pointer stands and the rationale says it is assumed.
+    def test_an_unconfirmable_legacy_binding_is_named_as_an_assumption(self, tmp_path: Path):
+        """A plan bound through the legacy window — a repo whose plans declare
+        no branch — cannot be shown related OR unrelated to this branch, so it
+        grounds rule 4 and the rationale says it is assumed.
 
-        Declining here would demote every repo whose branch names differ from
-        its scopes; asserting relation silently is what misattributed three
-        review records. The rationale is the record: it lands in
-        `mode_chosen_by`.
+        Declining here would demote every repo whose plans predate claims;
+        asserting relation silently is what misattributed three review records.
+        The rationale is the record: it lands in `mode_chosen_by`.
         """
         _init_repo(tmp_path)
         _write(tmp_path, "README.md", "x\n")
@@ -1356,8 +1388,8 @@ class TestRule4ChunkDefault:
 
         mode, rationale = infer_mode(tmp_path, None)
         assert mode == "chunk"
-        assert "assumed related" in rationale
-        assert "matches no plan's declared scope" in rationale
+        assert "reached through the conventional path and assumed related" in rationale
+        assert "declares no `branch:`" in rationale
 
 
 # ---------------------------------------------------------------------------

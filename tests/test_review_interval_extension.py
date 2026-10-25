@@ -19,7 +19,7 @@ import subprocess
 from pathlib import Path
 
 from lib import critic_consolidate as cc
-from lib import critic_mode
+from lib import critic_mode, work_unit
 from lib.critic_mode import MODE_DEFERRED, infer_mode
 from test_critic_consolidate import (
     HOOK,
@@ -394,7 +394,7 @@ class TestOnlyASuppliedChunkIdIsCredited:
         monkeypatch.setattr(critic_mode.gitstate, "current_branch", lambda _p: "feat/work")
         monkeypatch.setattr(evidence, "read_facts", lambda _p: {"status": "ok", "facts": facts})
         monkeypatch.setattr(gates, "covered_frontier", lambda _p: {"commit": "abcdef1234567890"})
-        plan = type("Plan", (), {"path": Path("plan.md"), "rel": "plan.md"})
+        plan = type("Binding", (), {"plan_path": Path("plan.md"), "chosen_by": "binding"})
         progress = type("P", (), {"total": 5, "complete": complete, "current_id": current_id})
         return critic_mode.extension_deferral_owed(Path("."), Path(".prawduct"), plan, progress)
 
@@ -432,10 +432,9 @@ class TestBoundaryReviewOwed:
     final → verify-resolutions → cumulative, two rounds where one was owed."""
 
     def _owed(self, repo: Path, chain: list) -> "tuple[str, str] | None":
-        from lib import buildplan_refs
         prawduct = repo / ".prawduct"
-        plan = buildplan_refs.resolve_branch_plan(repo, prawduct)
-        progress = buildplan_refs.resolve_chunk_progress(repo, plan.path)
+        plan = work_unit.resolve(repo)
+        progress = critic_mode.binding_progress(repo, plan)
         return critic_mode.review_owed_after(repo, prawduct, plan, progress, chain)
 
     def test_a_cumulative_final_last_chunk_owes_the_boundary_review(self, tmp_path):
@@ -459,7 +458,7 @@ class TestBoundaryReviewOwed:
         assert self._owed(repo, [cumulative]) is None
 
     def test_an_unreadable_plan_declares_nothing(self, tmp_path):
-        missing = type("Plan", (), {"path": tmp_path / "gone.md", "rel": "gone.md"})
+        missing = type("Binding", (), {"plan_path": tmp_path / "gone.md"})
         assert not critic_mode.declares_boundary_cumulative(tmp_path, missing)
         assert not critic_mode.declares_boundary_cumulative(tmp_path, None)
 
@@ -574,10 +573,9 @@ class TestShortPlanBoundaryOwed:
     most three chunks)."""
 
     def _owed(self, repo: Path):
-        from lib import buildplan_refs
         prawduct = repo / ".prawduct"
-        plan = buildplan_refs.resolve_branch_plan(repo, prawduct)
-        progress = buildplan_refs.resolve_chunk_progress(repo, plan.path)
+        plan = work_unit.resolve(repo)
+        progress = critic_mode.binding_progress(repo, plan)
         return critic_mode.review_owed_after(repo, prawduct, plan, progress, [])
 
     def test_the_last_chunk_of_a_short_plan_owes_the_boundary_review(self, tmp_path):

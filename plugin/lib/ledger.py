@@ -54,14 +54,15 @@ to pass ``--findings <path>`` (the branch-derived evidence path the
 ``actor.model`` come from the findings record / ``--model`` — both
 nullable, never invented.
 
-**Scope attribution.** ``--scope`` comes from the dispatch manifest, where
-``critic-begin`` recorded it — derived in CODE from the branch name matched
-against the scopes build plans declare, or passed explicitly as an override.
-The ``active_build_plan`` pointer is only the last fallback, because
-side-plans (a feature branch whose plan isn't the pointed-at one) would
-otherwise mis-attribute the feature key. It used to say the *reviewer* passes
-it explicitly; having the agent derive attribution from the pointer is what
-misattributed manifests, review facts and ledger events to unrelated plans.
+**Scope attribution.** An event records the scope its caller hands it, or
+``null`` — never one this module derives. A review event's ``--scope`` comes
+from the dispatch manifest, where ``critic-begin`` recorded the checkout's
+work-unit binding (``lib.work_unit``) or an explicit override; a learning
+event's comes from the caller that knows which review or session it measured.
+This module used to fill a missing scope from the active build plan, and that
+fallback is what attributed a review of one branch to an unrelated plan's
+scope: the manifest said ``none`` and the ledger said otherwise, so the two
+records of one review described different work.
 
 Size is unbounded-but-tiny (one line per event). If a long-lived repo ever
 needs pruning, truncate oldest-first by line — every line is self-contained;
@@ -76,7 +77,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import gitstate, review_dispatch
-from .core import resolve_build_plan_path
 
 LEDGER_BASENAME = ".governance-ledger.jsonl"
 LEDGER_SCHEMA_VERSION = 1
@@ -122,50 +122,6 @@ def _cli_appendable() -> list[str]:
 
 def ledger_path(prawduct_dir: Path) -> Path:
     return prawduct_dir / LEDGER_BASENAME
-
-
-def _scope_from_plan(prawduct_dir: Path) -> str | None:
-    """Fallback scope: the active build plan's frontmatter ``scope:`` value,
-    else the ``build-plan-<scope>.md`` filename convention, else ``None``."""
-    plan_path = resolve_build_plan_path(prawduct_dir)
-    if plan_path is None or not plan_path.is_file():
-        return None
-    try:
-        # Explicit UTF-8, and `UnicodeDecodeError` (a `ValueError`) caught
-        # alongside `OSError` — same contract as every other build-plan reader.
-        content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-    # The canonical frontmatter reader, not a third hand-rolled copy.
-    #
-    # The driver is coverage, not a live bug: the decoding pin's data-flow
-    # mechanism follows content into a known parser, so an inline scan has no
-    # edge to follow and this read would have dropped silently out of the pin's
-    # view (tests/preferences/test_build_plan_decoding.py). Folding onto the
-    # shared reader keeps it visible by construction.
-    #
-    # The copy this replaced required `---` on line 1, so it could not read the
-    # third of this repo's plans that open with a comment header — but on every
-    # such plan today the frontmatter `scope:` equals the filename stem, and the
-    # stem was its fallback, so the divergence is real in principle and zero in
-    # practice here. Stated precisely because the first version of this comment
-    # claimed an observable disagreement that does not exist.
-    # Still imported lazily, for a reason that survived the split: a
-    # module-scope import here would pull the callee into `lib.telemetry` too,
-    # which imports `ledger`. `lib.plan_index` is cheap where the module it was
-    # split out of was not, so the cost argument is gone — but the coupling
-    # would be invisible to
-    # the lazy-import pin, which probes only `lib` and `lib.core`, and cheap is
-    # not the same as free on a path that never asks.
-    from .plan_index import parse_build_plan_frontmatter_scope  # noqa: PLC0415
-
-    _present, scope = parse_build_plan_frontmatter_scope(content)
-    if scope:
-        return scope
-    stem = plan_path.stem
-    if stem.startswith("build-plan-") and stem != "build-plan-":
-        return stem[len("build-plan-"):]
-    return None
 
 
 def _validate_pr_evidence(record) -> bool:
@@ -425,9 +381,6 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     actor_model = model or (
         record_model if isinstance(record_model, str) and record_model.strip() else None
     )
-    if scope is None:
-        scope = _scope_from_plan(prawduct_dir)
-
     review_tree = None
     review_written_at = None
     if event_kind == "review.pr":
@@ -612,6 +565,7 @@ def append_learning_event(
     review_id: "str | None" = None,
     seen: "set[tuple] | None" = None,
     from_hash: "str | None" = None,
+    scope: "str | None" = None,
 ) -> bool:
     """Append one ``learning.*`` event. ``True`` when a line was written,
     ``False`` when this exact event was already recorded.
@@ -628,6 +582,10 @@ def append_learning_event(
     something that already happened, so both are best-effort at their call
     sites — a ledger failure must never change a gate's verdict or a
     consolidation's exit code.
+
+    ``scope`` is the work unit the caller measured — ``critic-consolidate``
+    passes the scope its review recorded — and ``null`` when it has none to
+    give; it is not looked up here (see the module docstring).
 
     ``session`` is :func:`evidence._session_epoch`, nullable and never invented:
     a fixture or a headless probe has no session, and a made-up id would put
@@ -682,7 +640,7 @@ def append_learning_event(
         # A measurement of an act, not of a duration, and no model produced it:
         # both stay null rather than being given a plausible value.
         duration_seconds=None,
-        scope=_scope_from_plan(prawduct_dir),
+        scope=scope,
         actor_model=None,
     )
     return True

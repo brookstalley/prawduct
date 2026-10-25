@@ -53,7 +53,6 @@ _FLATTENED_EXPORTS: dict[str, str] = {
     "MANAGED_FILES": "core",
     "PRAWDUCT_VERSION": "core",
     "TEMPLATES_DIR": "core",
-    "resolve_build_plan_path": "core",
     "read_str_yaml_key": "core",
     "extract_block": "core",
     "log": "core",

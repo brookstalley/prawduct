@@ -285,6 +285,39 @@ class TestDegradations:
         assert not section["ok"]
         assert "Status" in section["degraded"]
 
+    def test_an_unbound_branch_borrows_no_plan_and_says_why(self, tmp_path):
+        """The plan claims `feat/widget`; a follow-up branch is bound to nothing,
+        so its Status boxes are not this PR's to grade. The bound fixture
+        (`test_the_build_plan_status_boxes_are_carried_verbatim`) is the control."""
+        repo = _repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "fix/follow-up")
+        section = _sections(repo)["build_plan"]
+        assert not section["ok"]
+        assert "binds no build plan" in section["degraded"]
+        assert "no live plan claims `fix/follow-up`" in section["degraded"]
+        assert "build-plan-widget.md" not in section["degraded"]
+
+    def test_a_broken_binding_is_named_as_broken(self, tmp_path):
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / "artifacts" / "build-plan-rival.md").write_text(
+            "---\nartifact: build-plan\nscope: rival\nbranch: feat/widget\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: rival\n"
+        )
+        section = _sections(repo)["build_plan"]
+        assert not section["ok"]
+        assert "this branch is broken" in section["degraded"]
+        assert "2 live plans claim `feat/widget`" in section["degraded"]
+
+    def test_a_legacy_binding_carries_its_caveat(self, tmp_path):
+        repo = _repo(tmp_path, with_plan=False)
+        (repo / ".prawduct" / "artifacts" / "build-plan.md").write_text(
+            "## Status\n\n- [ ] Chunk 01: legacy\n"
+        )
+        body = _sections(repo)["build_plan"]["body"]
+        assert "bound by: legacy-default" in body
+        assert "resolution caveat: plan-unbound-legacy:" in body
+        assert "- [ ] Chunk 01: legacy" in body
+
     def test_no_change_log_entry_names_the_finding_it_is(self, tmp_path):
         repo = _repo(tmp_path, with_change_log=False)
         section = _sections(repo)["change_log"]
