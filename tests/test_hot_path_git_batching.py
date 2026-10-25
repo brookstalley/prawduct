@@ -272,7 +272,7 @@ class TestHasProductCodePrune:
 # =============================================================================
 
 
-NOTES_PROBE = ("git", "rev-parse", "-q", "--verify", "refs/notes/prawduct")
+NOTES_PROBE = ("git", "for-each-ref", "--format=%(refname)", "refs/notes/")
 
 
 def _governed_branch_repo(tmp_path: Path, monkeypatch) -> Path:
@@ -337,10 +337,12 @@ def _session_start_calls(hook, repo: Path, monkeypatch) -> "tuple[list[tuple], l
 
 class TestSessionStartIngestCost:
     def test_no_notes_ref_adds_exactly_one_git_call(self, tmp_path, monkeypatch, capsys):
-        """NF1: a clone that has never received a note pays one ``rev-parse``
-        for the transport at session start and nothing more over today's
-        count. Pinned as the step's own calls during a whole boundary run, and
-        as that probe appearing once across the boundary."""
+        """NF1: a clone that has never received a note pays one call for the
+        transport at session start — the notes ref roster, one
+        ``for-each-ref`` over ``refs/notes/`` (the local ref and every fetched
+        tracking ref) — and nothing more over today's count. Pinned as the
+        step's own calls during a whole boundary run, and as that call
+        appearing once across the boundary."""
         repo = _governed_branch_repo(tmp_path, monkeypatch)
         hook = _load_hook()
         seen, inside = _session_start_calls(hook, repo, monkeypatch)

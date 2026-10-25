@@ -1228,7 +1228,7 @@ def _session_start_ingest(project_dir: Path) -> None:
     is a NOTE and session start goes on; the store is then read as it stands.
     A disposable agent worktree skips it — the store is clone-wide, and the
     main checkout's own boundary ingests for every worktree of the clone. A
-    clone with no notes ref pays one ``git rev-parse``.
+    clone with no notes ref pays one ``git for-each-ref``.
     """
     try:
         if _gitstate().is_ephemeral_worktree(project_dir) is not None:

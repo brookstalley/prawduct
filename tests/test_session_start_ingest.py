@@ -8,7 +8,7 @@ renders; nothing is printed unless something was appended; a continuation
 (``--brief-only``) and a disposable agent worktree ingest nothing — the main
 checkout's own boundary ingests for the whole clone.
 
-The cost half (one ``rev-parse`` when the clone has no notes ref) is pinned in
+The cost half (one ``for-each-ref`` over ``refs/notes/`` when the clone has no notes ref) is pinned in
 ``tests/test_hot_path_git_batching.py`` beside the other session-start costs.
 
 Real git repos and the real hook binary, with the environment notices removed
