@@ -10,11 +10,16 @@ missing — the repair for an attach that failed or never ran — and
 Moving the ref between clones (fetch, merge, push) is :mod:`evidence_sync`'s;
 nothing here touches a remote.
 
-**The note body is store lines.** Each record is exactly the line
+**The note body is store lines.** Each record is the line
 :func:`evidence.envelope_line` writes — one JSON object per line — so a note *is*
 store lines on a commit and ingesting one is an append, with nothing to
-translate. ``git notes append`` separates records with a blank line; the reader
-skips blank lines and surrounding whitespace.
+translate. One reduction is made on the way out (:func:`sent_envelope`): the
+note is pushed to the product's remote, where anyone who can fetch the repo
+reads it, so ``actor.worktree`` travels as its last path component and
+``actor.session`` not at all — the writing clone's store keeps both, and
+nothing a verdict or dedupe reads lives in ``actor``. ``git notes append``
+separates records with a blank line; the reader skips blank lines and
+surrounding whitespace.
 
 **The commit is a locator, the tree is the fact.** A note hangs on the fact's
 anchor: a review's ``head_commit``, or its ``dispatch_commit`` when it reviewed
@@ -72,12 +77,37 @@ def attach(project_dir: Path, envelope: object, anchor: "str | None") -> dict:
     return {"status": "attached", "reason": None}
 
 
+def sent_envelope(envelope: dict) -> dict:
+    """``envelope`` as a note carries it: identical except the actor's locator
+    fields. ``actor.worktree`` is cut to its last path component — the
+    reviewing machine's absolute path (``/Users/<name>/…``) is no one else's
+    business, while the directory name still tells a reader which tree it was —
+    and ``actor.session`` is dropped. ``(kind, id)``, ``ts`` and ``body`` are
+    untouched, so dedupe and every verdict read the same fact.
+
+    A reader comparing ``actor.worktree`` against a live path (the round
+    counter in ``critic_consolidate``, the latest-review lookup in ``gates``)
+    compares an absolute path, which a bare name never equals, so an ingested
+    fact never reads as recorded in this worktree. A non-dict ``actor`` or a
+    non-string ``worktree`` is left as it is."""
+    actor = envelope.get("actor")
+    if not isinstance(actor, dict):
+        return envelope
+    reduced = {k: v for k, v in actor.items() if k != "session"}
+    worktree = actor.get("worktree")
+    if isinstance(worktree, str):
+        reduced["worktree"] = Path(worktree).name
+    return {**envelope, "actor": reduced}
+
+
 def _append(project_dir: Path, anchor: str, envelopes: "list[dict]") -> "str | None":
-    """Append the envelopes' store lines to ``anchor``'s note in one git call;
-    ``None`` on success, else the reason."""
+    """Append the envelopes' lines, as :func:`sent_envelope` reduces them, to
+    ``anchor``'s note in one git call; ``None`` on success, else the reason.
+    The one writer of note lines — :func:`attach` and :func:`reconcile` both
+    come through here."""
     rc, _out, err = evidence.run_git(
         project_dir, "notes", "--ref", NOTES_REF, "append", "-F", "-", anchor,
-        input="".join(evidence.envelope_line(e) for e in envelopes),
+        input="".join(evidence.envelope_line(sent_envelope(e)) for e in envelopes),
     )
     if rc != 0:
         return f"git notes append on {anchor[:12]} failed ({err or rc})"
@@ -107,45 +137,98 @@ def tracking_ref(remote: str) -> str:
     return f"refs/notes/{remote}/prawduct"
 
 
+def is_notes_ref(name: str) -> bool:
+    """Whether ``name`` is one of the refs that hold the transport: the local
+    ``refs/notes/prawduct``, or a remote's tracking ref as
+    :func:`tracking_ref` builds it (``refs/notes/<remote>/prawduct``, the
+    remote's name possibly holding a slash). The one roster every reader uses
+    — ingest, the unsent-facts check and the presence read — so they cannot
+    disagree about which refs are "the notes". A sibling such as
+    ``refs/notes/<remote>/prawduct-other``, which the pattern refspec also
+    fetches, is not one."""
+    if name == NOTES_REF:
+        return True
+    prefix, suffix = "refs/notes/", "/prawduct"
+    return (name.startswith(prefix) and name.endswith(suffix)
+            and len(name) > len(prefix) + len(suffix))
+
+
 def _notes_refs(project_dir: Path) -> "list[str] | None":
-    """The notes refs this clone holds, in one ``for-each-ref``: the local
-    ``refs/notes/prawduct`` and every remote's tracking ref
-    ``refs/notes/<remote>/prawduct``. Empty when the clone has neither;
-    ``None`` when git could not answer."""
+    """The notes refs this clone holds (:func:`is_notes_ref`), in one
+    ``for-each-ref``. Empty when the clone has none; ``None`` when git could
+    not answer."""
     rc, out, _err = evidence.run_git(
         project_dir, "for-each-ref", "--format=%(refname)", "refs/notes/"
     )
     if rc != 0:
         return None
-    refs = []
-    for name in out.split():
-        parts = name.split("/")
-        if name == NOTES_REF or (len(parts) == 4 and parts[:2] == ["refs", "notes"]
-                                 and parts[3] == "prawduct"):
-            refs.append(name)
-    return refs
+    return [name for name in out.split() if is_notes_ref(name)]
 
 
-def ref_present(common_dir: Path) -> "bool | None":
-    """Whether ``refs/notes/prawduct`` exists, read from the files under the
-    clone's git common dir — no subprocess, so a surface that runs on every
-    status read pays nothing for a clone that has never written a note.
+def notes_refs_on_disk(common_dir: Path) -> "list[str] | None":
+    """The notes refs this clone holds (:func:`is_notes_ref`), read from the
+    files under the clone's git common dir — no subprocess, so a surface that
+    runs on every status read pays nothing for a clone that has never written
+    or fetched a note.
 
-    The loose ref file, then ``packed-refs``. ``None`` when the clone keeps its
-    refs in a ``reftable``, whose binary format this does not read; the caller
-    asks git instead."""
+    Loose ref files under ``refs/notes/``, then ``packed-refs``; sorted, each
+    once. ``None`` when the clone keeps its refs in a ``reftable``, whose
+    binary format this does not read, or a file cannot be read; the caller
+    asks git instead (:func:`_notes_refs`)."""
     if (common_dir / "reftable").is_dir():
         return None
-    if (common_dir / NOTES_REF).is_file():
-        return True
+    found: set[str] = set()
+    notes_dir = common_dir / "refs" / "notes"
+    try:
+        for path in notes_dir.rglob("prawduct"):
+            if path.is_file():
+                name = path.relative_to(common_dir).as_posix()
+                if is_notes_ref(name):
+                    found.add(name)
+    except OSError:
+        return None
     try:
         packed = (common_dir / "packed-refs").read_text(encoding="utf-8")
     except FileNotFoundError:
-        return False
+        packed = ""
     except (OSError, UnicodeDecodeError):
         return None
-    return any(line.split(" ", 1)[-1] == NOTES_REF for line in packed.splitlines()
-               if not line.startswith(("#", "^")))
+    for line in packed.splitlines():
+        if line.startswith(("#", "^")):
+            continue
+        name = line.split(" ", 1)[-1]
+        if is_notes_ref(name):
+            found.add(name)
+    return sorted(found)
+
+
+def ref_present(common_dir: Path) -> "bool | None":
+    """Whether the clone holds any notes ref — the local one or a fetched
+    tracking ref — by :func:`notes_refs_on_disk`; ``None`` when that cannot
+    tell."""
+    refs = notes_refs_on_disk(common_dir)
+    return None if refs is None else bool(refs)
+
+
+def unpushed(project_dir: Path, refs: "list[str]") -> "int | None":
+    """How many commits of the local ``refs/notes/prawduct`` the push
+    remote's tracking ref does not hold — notes attached here and not yet
+    pushed, the leg a failed or skipped push leaves that no note count shows.
+
+    ``refs`` is the clone's notes roster, already in hand. ``None`` (and no
+    subprocess) when either ref is absent: with no local ref there is nothing
+    to push, and with no tracking ref nothing has been fetched or pushed to
+    compare against. Otherwise one ``git remote`` (the push remote's name)
+    and one ``git rev-list --count``; ``None`` when git cannot answer."""
+    if NOTES_REF not in refs or not any(r != NOTES_REF for r in refs):
+        return None
+    tracking = tracking_ref(gitstate.push_remote(project_dir))
+    if tracking not in refs:
+        return None
+    rc, out, _err = evidence.run_git(project_dir, "rev-list", "--count", f"{tracking}..{NOTES_REF}")
+    if rc != 0 or not out.strip().isdigit():
+        return None
+    return int(out.strip())
 
 
 def _branch_commits(project_dir: Path) -> dict:
@@ -207,12 +290,15 @@ def _read_notes(project_dir: Path, in_range: "set[str] | None",
     return {"status": "ok", "notes": [(commit, body) for (_b, commit), body in zip(pairs, bodies)]}
 
 
-def unattached(project_dir: Path, *, known=None) -> dict:
+def unattached(project_dir: Path, *, known=None, refs: "list[str] | None" = None) -> dict:
     """This branch's transported facts whose note does not hold them.
 
     The check that sits outside the flow that writes notes: built from the
     store, which holds every fact whatever happened to its attach, and compared
-    against the notes as they stand. Returns
+    against the notes as they stand — under every ref :func:`ingest` reads (the
+    local ref and each fetched tracking ref), so a fact that arrived on a
+    fetched note is not reported as unsent. ``refs`` is that roster when the
+    caller already has it; omitted, one ``for-each-ref`` reads it. Returns
     ``{"status": "ok", "missing": [{"anchor", "envelope"}, ...], "reason": None}``,
     ``{"status": "unbounded", "missing": [], "reason"}`` when no merge base
     resolves, or ``{"status": "error", "missing": [], "reason"}``.
@@ -276,14 +362,17 @@ def unattached(project_dir: Path, *, known=None) -> dict:
     if not candidates:
         return {"status": "ok", "missing": [], "reason": None}
 
+    if refs is None:
+        refs = _notes_refs(project_dir)
+        if refs is None:
+            return {"status": "error", "missing": [], "reason": "git could not list refs/notes/"}
     held: dict[str, set[tuple[str, str]]] = {}
-    rc, _out, _err = evidence.run_git(project_dir, "rev-parse", "-q", "--verify", NOTES_REF)
-    if rc == 0:
-        read = _read_notes(project_dir, commits)
+    if refs:
+        read = _read_notes(project_dir, commits, tuple(refs))
         if read["status"] != "ok":
             return {"status": "error", "missing": [], "reason": read["reason"]}
         for commit, body in read["notes"]:
-            held[commit] = _keys_in(body)
+            held.setdefault(commit, set()).update(_keys_in(body))
     anywhere = set().union(*held.values()) if held else set()
 
     missing = []

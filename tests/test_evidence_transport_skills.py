@@ -59,8 +59,24 @@ class TestDoctorCheck25:
         check = self._check()
         assert "git config --get-all remote.<r>.fetch" in check
         assert "git config --get notes.rewriteRef" in check
-        assert "+refs/notes/prawduct:refs/notes/<r>/prawduct" in check
         assert "prawduct-hook evidence configure --apply" in check
+
+    def test_configured_means_the_refspec_configure_writes_and_not_the_legacy_one(self):
+        """R-1: the doctor's notion of "configured" is read from the module
+        that writes the key, so the prose cannot keep quoting a refspec the
+        code no longer writes. The exact form is named only as the line that
+        is NOT configured (it breaks a plain fetch on a remote with no notes)."""
+        import sys  # noqa: PLC0415
+
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import evidence_sync  # noqa: PLC0415
+
+        check = self._check()
+        pattern, legacy = evidence_sync.refspec("<r>"), evidence_sync._legacy_refspec("<r>")
+        assert pattern == "+refs/notes/prawduct*:refs/notes/<r>/prawduct*"
+        assert f"the pattern fetch line `{pattern}`" in check
+        assert f"no exact line `{legacy}`" in check
         # Offered, never applied unasked: it writes `.git/config`.
         assert "on the owner's yes" in check
 

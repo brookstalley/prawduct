@@ -149,6 +149,24 @@ def _line_of(repo: Path, kind: str, fact_id: str) -> str:
     raise AssertionError(f"no {kind} {fact_id} in the store")
 
 
+def _sent(line: str) -> str:
+    """The store line as a note carries it (O-16): identical except the
+    actor's locator fields — ``actor.worktree`` cut to its last path component
+    (the reviewing machine's absolute path names its user) and
+    ``actor.session`` dropped. Derived here by hand rather than through the
+    module's own transform, so the test states the contract."""
+    record = json.loads(line)
+    actor = dict(record["actor"])
+    actor.pop("session", None)
+    actor["worktree"] = Path(actor["worktree"]).name
+    record["actor"] = actor
+    return evidence.envelope_line(record).rstrip("\n")
+
+
+def _sent_line_of(repo: Path, kind: str, fact_id: str) -> str:
+    return _sent(_line_of(repo, kind, fact_id))
+
+
 def _note(repo: Path, commit: str) -> "str | None":
     proc = subprocess.run(
         ["git", "notes", "--ref", NOTES_REF, "show", commit],
@@ -297,7 +315,13 @@ def _reviewed_branch(repo: Path) -> dict:
 
 
 class TestNotesWrittenAtConsolidation:
-    def test_a_consolidated_review_leaves_one_note_on_its_anchor_holding_the_identical_line(self, repo):
+    def test_a_consolidated_review_leaves_one_note_holding_the_line_identical_except_the_actors_locator_fields(self, repo):
+        """Renegotiated (O-16): the note was the store line byte for byte, which
+        pushed the reviewing machine's absolute worktree path and the session id
+        to the product's remote. It is now that line with ``actor.worktree`` cut
+        to its basename and ``actor.session`` dropped; everything else —
+        ``(kind, id)``, which dedupe keys on, and the body the verdicts compose
+        from — is unchanged, and the writing clone's store keeps the full line."""
         seed = _git(repo, "rev-parse", "main")
         c1 = _commit(repo, "src/app.py", "x = 1\n", "work")
         result = _consolidate(repo, _manifest(
@@ -306,18 +330,43 @@ class TestNotesWrittenAtConsolidation:
         ))
         assert result.returncode == 0, result.stderr
         assert _annotated(repo) == {c1}
-        assert _note_records(repo, c1) == [_line_of(repo, "review", "rev-a")]
-        # Byte-for-byte, newline included — the note IS a store line.
-        assert _note(repo, c1) == _line_of(repo, "review", "rev-a") + "\n"
+        assert _note_records(repo, c1) == [_sent_line_of(repo, "review", "rev-a")]
+        # Byte-for-byte, newline included — the note is a store line, less the locators.
+        assert _note(repo, c1) == _sent_line_of(repo, "review", "rev-a") + "\n"
+
+    def test_the_note_carries_no_absolute_worktree_path_and_no_session_while_the_store_keeps_both(self, repo):
+        seed = _git(repo, "rev-parse", "main")
+        c1 = _commit(repo, "src/app.py", "x = 1\n", "work")
+        result = _consolidate(repo, _manifest(
+            "rev-a", commit_reviewed=c1, base_commit=seed, base_tree=_tree(repo, seed),
+            head_tree=_tree(repo, c1), head_commit=c1,
+        ))
+        assert result.returncode == 0, result.stderr
+        stored = json.loads(_line_of(repo, "review", "rev-a"))
+        assert stored["actor"]["worktree"] == str(repo), "control: the store line holds the full path"
+        assert "session" in stored["actor"], "control: the store line carries the session field"
+        sent = json.loads(_note_records(repo, c1)[0])
+        assert sent["actor"]["worktree"] == repo.name
+        assert "session" not in sent["actor"]
+        assert str(repo.parent) not in _note(repo, c1)
+        assert {k: v for k, v in sent.items() if k != "actor"} == \
+            {k: v for k, v in stored.items() if k != "actor"}
+
+    def test_reconcile_sends_the_same_reduced_line_attach_does(self, repo):
+        head = _git(repo, "rev-parse", "HEAD")
+        _review_on(repo, "r-lost", head)
+        assert evidence_notes.reconcile(repo)["attached"] == 1
+        sent = json.loads(_note_records(repo, head)[0])
+        assert sent["actor"]["worktree"] == repo.name and "session" not in sent["actor"]
 
     def test_a_resolution_note_lands_on_its_verifying_reviews_anchor(self, repo):
         refs = _reviewed_branch(repo)
-        resolution = _line_of(repo, "resolution", "rev-r2:rev-r1:R-1")
+        resolution = _sent_line_of(repo, "resolution", "rev-r2:rev-r1:R-1")
         # The verifying review (R2) anchors on C2; the finding it resolves was
         # recorded by R1 on C1. The resolution rides with the review that
         # verified it, never with the one that raised the finding.
-        assert _note_records(repo, refs["c2"]) == [_line_of(repo, "review", "rev-r2"), resolution]
-        assert _note_records(repo, refs["c1"]) == [_line_of(repo, "review", "rev-r1")]
+        assert _note_records(repo, refs["c2"]) == [_sent_line_of(repo, "review", "rev-r2"), resolution]
+        assert _note_records(repo, refs["c1"]) == [_sent_line_of(repo, "review", "rev-r1")]
 
     def test_a_dirty_tree_review_anchors_on_its_dispatch_commit(self, repo):
         seed = _git(repo, "rev-parse", "main")
@@ -330,7 +379,7 @@ class TestNotesWrittenAtConsolidation:
         assert result.returncode == 0, result.stderr
         fact = evidence.read_facts(repo)["facts"][0]
         assert fact["body"]["head_commit"] is None and fact["body"]["dispatch_commit"] == c1
-        assert _note_records(repo, c1) == [_line_of(repo, "review", "rev-dirty")]
+        assert _note_records(repo, c1) == [_sent_line_of(repo, "review", "rev-dirty")]
 
 
 class TestAttach:
@@ -393,7 +442,11 @@ class TestIngestRoundTrip:
         assert result["appended"] == len(before_keys) == 3
         assert result["commits"] == 2
         assert _keys(repo) == before_keys
-        assert sorted(_store_lines(repo)) == before_lines, "ingest must append the bytes the writer appended"
+        # Renegotiated (O-16): ingest appends the bytes the NOTE carries — the
+        # writer's line less the actor's locator fields — and the verdict below
+        # is unchanged, because nothing coverage reads lives in `actor`.
+        assert sorted(_store_lines(repo)) == sorted(_sent(line) for line in before_lines), \
+            "ingest must append the bytes the note carries"
         assert _verdict(repo, refs["base_tree"], refs["c2_tree"]) == before
 
     def test_ingest_twice_appends_nothing_the_second_time(self, repo):
@@ -631,6 +684,32 @@ class TestBareOriginRoundTrip:
         assert _keys(b) == _keys(a)
         assert _verdict(b, refs["base_tree"], refs["c2_tree"]) == verdict_a
 
+    def test_an_ingested_fact_never_counts_as_a_round_recorded_in_this_worktree(self, origin_and_clone, tmp_path):
+        """O-16's reader audit: `critic_consolidate` bounds a scope's round
+        count by ``actor.worktree == str(project_dir)``. An ingested fact
+        carries the writer's basename only, so it cannot match an absolute
+        path, even in a clone whose directory has the same basename."""
+        from lib import critic_consolidate  # noqa: PLC0415
+
+        origin, a = origin_and_clone
+        _reviewed_branch(a)
+        local = critic_consolidate._rounds_recorded_in_this_worktree(
+            evidence.read_facts(a)["facts"], a, "unit")
+        assert len(local) == 2, "control: the writing clone counts its own rounds"
+        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+
+        b = tmp_path / "elsewhere" / a.name  # the same basename, another path
+        b.parent.mkdir()
+        _git(tmp_path, "clone", "-q", str(origin), str(b))
+        _configure(b)
+        b = b.resolve()
+        _git(b, "checkout", "-q", "feature/unit")
+        _git(b, "fetch", "-q", "origin", f"{NOTES_REF}:{NOTES_REF}")
+        assert evidence_notes.ingest(b)["appended"] == 3
+        facts = evidence.read_facts(b)["facts"]
+        assert {f["actor"]["worktree"] for f in facts} == {a.name}
+        assert critic_consolidate._rounds_recorded_in_this_worktree(facts, b, "unit") == []
+
 
 # ---------------------------------------------------------------------------
 # append_envelope — the store side of ingest
@@ -763,7 +842,7 @@ class TestImportedFactsTravel:
         assert proc.returncode == 0, proc.stderr
         imported = [f for f in evidence.read_facts(repo)["facts"] if f["kind"] == "chunk-imported"]
         assert [f["body"]["chunk"] for f in imported] == ["01"]
-        assert _note_records(repo, head) == [_line_of(repo, "chunk-imported", imported[0]["id"])]
+        assert _note_records(repo, head) == [_sent_line_of(repo, "chunk-imported", imported[0]["id"])]
 
 
 # ---------------------------------------------------------------------------
@@ -795,7 +874,7 @@ class TestAttachIsIdempotent:
         assert evidence_notes.attach(repo, envelope, head)["status"] == "attached"
         second = evidence_notes.attach(repo, envelope, head)
         assert second["status"] == "present", second
-        assert _note_records(repo, head) == [_line_of(repo, "review", "r-1")]
+        assert _note_records(repo, head) == [_sent_line_of(repo, "review", "r-1")]
 
     def test_presence_is_judged_by_kind_and_id_among_the_notes_other_lines(self, repo):
         head = _git(repo, "rev-parse", "HEAD")
@@ -819,11 +898,11 @@ class TestReconcile:
 
         first = evidence_notes.reconcile(repo)
         assert (first["status"], first["attached"]) == ("ok", 1), first
-        assert _note_records(repo, c1) == [_line_of(repo, "review", "r-lost")]
+        assert _note_records(repo, c1) == [_sent_line_of(repo, "review", "r-lost")]
 
         second = evidence_notes.reconcile(repo)
         assert (second["status"], second["attached"]) == ("ok", 0), second
-        assert _note_records(repo, c1) == [_line_of(repo, "review", "r-lost")]
+        assert _note_records(repo, c1) == [_sent_line_of(repo, "review", "r-lost")]
 
     def test_each_kind_goes_to_its_own_anchor(self, repo):
         """A dirty-tree review on its dispatch commit, a resolution on its
@@ -840,11 +919,11 @@ class TestReconcile:
 
         result = evidence_notes.reconcile(repo)
         assert (result["status"], result["attached"]) == ("ok", 4), result
-        assert _note_records(repo, c1) == [_line_of(repo, "review", "r-dirty")]
+        assert _note_records(repo, c1) == [_sent_line_of(repo, "review", "r-dirty")]
         assert _note_records(repo, c2) == [
-            _line_of(repo, "review", "r-verify"),
-            _line_of(repo, "resolution", "r-verify:r-dirty:R-1"),
-            _line_of(repo, "chunk-imported", "ci-1"),
+            _sent_line_of(repo, "review", "r-verify"),
+            _sent_line_of(repo, "resolution", "r-verify:r-dirty:R-1"),
+            _sent_line_of(repo, "chunk-imported", "ci-1"),
         ]
         assert evidence_notes.reconcile(repo)["attached"] == 0
 
@@ -872,7 +951,7 @@ class TestReconcile:
         result = evidence_notes.reconcile(repo)
         assert (result["status"], result["attached"]) == ("ok", 1), result
         assert _annotated(repo) == {merge_base}
-        assert _note_records(repo, merge_base) == [_line_of(repo, "review", "r-base")]
+        assert _note_records(repo, merge_base) == [_sent_line_of(repo, "review", "r-base")]
 
     def test_a_note_that_cannot_be_written_is_an_error_naming_it(self, repo):
         head = _git(repo, "rev-parse", "HEAD")
@@ -899,8 +978,52 @@ class TestStatusNamesUnsentFacts:
         proc = _run_hook(repo, "evidence", "status")
         assert proc.returncode == 0, proc.stderr
         assert "with no note on their commit" not in proc.stdout
-        assert ("notes: no refs/notes/prawduct in this clone — none of the store's "
-                "1 transported fact(s) is on a note") in proc.stdout
+        # Renamed condition (O-2/O-7): the line fires only when the clone holds
+        # neither the local ref nor a fetched tracking ref, and now says both.
+        assert ("notes: no refs/notes/prawduct (or fetched refs/notes/<remote>/prawduct) in this "
+                "clone — none of the store's 1 transported fact(s) is on a note") in proc.stdout
+
+    @pytest.mark.parametrize("packed", [False, True], ids=["loose", "packed"])
+    def test_a_fact_held_only_by_a_fetched_tracking_ref_is_not_counted_missing(self, repo, packed):
+        """O-2/O-7: `configure` plus a plain `git fetch` fills only the
+        tracking ref, and ingest reads it; status must read the same roster or
+        it calls facts that arrived on a note unsent."""
+        head = _git(repo, "rev-parse", "HEAD")
+        evidence_notes.attach(repo, _review_on(repo, "r-1", head), head)
+        _git(repo, "update-ref", "refs/notes/origin/prawduct", NOTES_REF)
+        _git(repo, "update-ref", "-d", NOTES_REF)
+        if packed:
+            _git(repo, "pack-refs", "--all")
+            assert not (repo / ".git" / "refs" / "notes" / "origin" / "prawduct").exists()
+        proc = _run_hook(repo, "evidence", "status")
+        assert proc.returncode == 0, proc.stderr
+        assert "none of the store's" not in proc.stdout, proc.stdout
+        assert _status_line(repo) == "0 transported fact(s) with no note on their commit"
+        # Control: a fact no ref holds is still counted.
+        _review_on(repo, "r-2", head)
+        assert _status_line(repo) == "1 transported fact(s) with no note on their commit"
+
+    def test_a_fact_on_the_tracking_ref_is_held_though_the_local_ref_lacks_it(self, repo):
+        head = _git(repo, "rev-parse", "HEAD")
+        evidence_notes.attach(repo, _review_on(repo, "r-fetched", head), head)
+        _git(repo, "update-ref", "refs/notes/origin/prawduct", NOTES_REF)
+        _git(repo, "update-ref", "-d", NOTES_REF)
+        evidence_notes.attach(repo, _review_on(repo, "r-local", head), head)
+        found = evidence_notes.unattached(repo)
+        assert (found["status"], found["missing"]) == ("ok", []), found
+
+    def test_ref_present_reads_a_tracking_ref_and_rejects_a_sibling_name(self, repo):
+        common = repo / ".git"
+        assert evidence_notes.ref_present(common) is False
+        _git(repo, "update-ref", "refs/notes/origin/prawduct-other", "HEAD")
+        assert evidence_notes.ref_present(common) is False, "a sibling name is not the tracking ref"
+        _git(repo, "pack-refs", "--all")
+        assert evidence_notes.ref_present(common) is False
+        _git(repo, "update-ref", "refs/notes/up/stream/prawduct", "HEAD")
+        assert evidence_notes.ref_present(common) is True, "a remote whose name holds a slash"
+        _git(repo, "pack-refs", "--all")
+        assert evidence_notes.ref_present(common) is True
+        assert evidence_notes._notes_refs(repo) == ["refs/notes/up/stream/prawduct"]
 
     def test_no_notes_ref_adds_no_subprocess_to_status(self, repo, monkeypatch, capsys):
         head = _git(repo, "rev-parse", "HEAD")
@@ -921,6 +1044,24 @@ class TestStatusNamesUnsentFacts:
         assert evidence.evidence_cmd(repo, ["status"]) == 0
         assert ["git", "notes", "--ref", NOTES_REF, "list"] in calls
         assert "0 transported fact(s) with no note on their commit" in capsys.readouterr().out
+        # The unpushed comparison needs a tracking ref too; with the local ref
+        # alone it costs nothing (O-17's cost bound).
+        assert not [c for c in calls if c[1:3] == ["rev-list", "--count"] or c[1:2] == ["remote"]], calls
+
+    def test_with_a_tracking_ref_too_the_unpushed_count_is_one_rev_list(self, repo, monkeypatch, capsys):
+        """Positive control for the bound above: both refs present, the same
+        instrument sees exactly one `rev-list --count` over them."""
+        head = _git(repo, "rev-parse", "HEAD")
+        evidence_notes.attach(repo, _review_on(repo, "r-1", head), head)
+        _git(repo, "update-ref", "refs/notes/origin/prawduct", NOTES_REF)
+        evidence_notes.attach(repo, _review_on(repo, "r-2", head), head)
+        calls = TestIngestCost()._spy(monkeypatch)
+        assert evidence.evidence_cmd(repo, ["status"]) == 0
+        counts = [c for c in calls if c[1:3] == ["rev-list", "--count"]]
+        assert counts == [["git", "rev-list", "--count",
+                           f"refs/notes/origin/prawduct..{NOTES_REF}"]], calls
+        assert ("1 note commit(s) not yet pushed — run `prawduct-hook evidence sync`"
+                in capsys.readouterr().out)
 
     def test_a_packed_notes_ref_is_seen(self, repo, capsys):
         """`git pack-refs` moves the ref out of its loose file; the presence

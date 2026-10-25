@@ -7,12 +7,14 @@ remote, and sets a clone up so ordinary git carries it:
 - :func:`sync` — fetch the remote's notes into a tracking ref
   (``refs/notes/<remote>/prawduct``), merge them into the local ref by
   ``cat_sort_uniq``, attach any of this branch's stored facts whose note is
-  missing, ingest the records the store lacks, push the local ref.
-- :func:`configure` — add the notes refspec to ``remote.<remote>.fetch`` and
-  ``refs/notes/prawduct`` to ``notes.rewriteRef``, so a plain ``git fetch``
-  carries the notes and an amend or rebase carries them to the rewritten
-  commit. Preview by default; ``apply=True`` writes the clone's own
-  ``.git/config``.
+  missing, ingest the records the store lacks, push the local ref, and move
+  the tracking ref to what was pushed.
+- :func:`configure` — add the notes refspec (a pattern, :func:`refspec`) to
+  ``remote.<remote>.fetch`` and ``refs/notes/prawduct`` to
+  ``notes.rewriteRef``, so a plain ``git fetch`` carries the notes and an
+  amend or rebase carries them to the rewritten commit; an exact notes
+  refspec an earlier version wrote is replaced. Preview by default;
+  ``apply=True`` writes the clone's own ``.git/config``.
 
 **Why a tracking ref.** Fetching straight into the local ref would need a
 forced update and would drop notes written here and not yet pushed. The
@@ -28,9 +30,10 @@ would (``gitstate.push_remote``). Nothing runs unless a person or the agent
 runs the command; the PR skill's push step is where it is meant to run. Every
 git call goes through :func:`evidence.run_git` (its network legs take the
 network timeout floor), with ``GIT_TERMINAL_PROMPT=0`` so a credential prompt
-fails instead of waiting out the budget, and ``LC_ALL=C`` so git's
-"couldn't find remote ref" — a remote with no notes yet, the normal state
-before a first push — is recognisable. git's own message is echoed only after
+fails instead of waiting out the budget, and ``LC_ALL=C`` so the messages a
+person is shown read the same everywhere. A remote with no notes yet — the
+normal state before a first push — is not an error: the fetch refspec is a
+pattern, which matches nothing there. git's own message is echoed only after
 the credential denylist (``backlog.transport.scrub_secrets``) has run over it.
 
 **Failure.** The first failing step stops the run and is named in ``step``;
@@ -55,16 +58,28 @@ REWRITE_KEY = "notes.rewriteRef"
 _SYNC_USAGE = "Usage: prawduct-hook evidence sync [--no-push] [--json]"
 _CONFIGURE_USAGE = "Usage: prawduct-hook evidence configure [--apply] [--json]"
 
-#: git's message when the fetch source ref does not exist on the remote
-#: (``LC_ALL=C``): a remote nobody has pushed notes to yet.
-_NO_REMOTE_REF = "couldn't find remote ref"
-
-
 tracking_ref = evidence_notes.tracking_ref
 
 
 def refspec(remote: str) -> str:
-    """The fetch refspec that carries the remote's notes into the tracking ref."""
+    """The fetch refspec that carries the remote's notes into the tracking ref:
+    ``+refs/notes/prawduct*:refs/notes/<remote>/prawduct*``.
+
+    A pattern, not the exact ``+refs/notes/prawduct:…``. git resolves a
+    configured exact refspec as a ref that must exist, so while the remote has
+    no notes — every fresh onboard, until some clone first pushes — a plain
+    ``git fetch`` or ``git pull`` dies with ``couldn't find remote ref``; a
+    pattern that matches nothing is not an error (probed on git 2.54). The
+    pattern also carries any ``refs/notes/prawduct<suffix>`` to
+    ``refs/notes/<remote>/prawduct<suffix>``, which
+    :func:`evidence_notes.is_notes_ref` does not count as the transport."""
+    return f"+{NOTES_REF}*:{tracking_ref(remote)}*"
+
+
+def _legacy_refspec(remote: str) -> str:
+    """The exact refspec an earlier ``configure`` wrote; :func:`configure`
+    replaces it, because left beside the pattern it still breaks a plain
+    fetch while the remote has no notes."""
     return f"+{NOTES_REF}:{tracking_ref(remote)}"
 
 
@@ -78,6 +93,13 @@ def _git(project_dir: Path, *args: str) -> "tuple[int, str]":
     env = {**os.environ, "LC_ALL": "C", "GIT_TERMINAL_PROMPT": "0"}
     rc, out, err = evidence.run_git(project_dir, *args, env=env)
     return rc, scrub_secrets((err or out).strip())
+
+
+def _ere_literal(value: str) -> str:
+    """A POSIX extended regex matching exactly ``value`` — the value pattern
+    ``git config --unset-all`` takes. Escaped by hand rather than with
+    ``--fixed-value``, which git gained only in 2.30."""
+    return "^" + "".join("\\" + ch if ch in ".[]()*+?{}|^$\\" else ch for ch in value) + "$"
 
 
 def _remote(project_dir: Path) -> "tuple[str | None, str | None]":
@@ -100,21 +122,25 @@ def _has_ref(project_dir: Path, ref: str) -> bool:
     return rc == 0
 
 
-def _unfinished_merge(project_dir: Path) -> "str | None":
-    """The path of a notes merge left in progress (``NOTES_MERGE_REF`` or
-    ``NOTES_MERGE_WORKTREE``), or ``None``. git does not refuse a new merge
-    over one, so the check is ours."""
+def _unfinished_merge(project_dir: Path) -> "tuple[str | None, str | None]":
+    """Whether a notes merge was left in progress. git does not refuse a new
+    merge over one, so the check is ours.
+
+    ``(path, None)`` when the merge-state path ``NOTES_MERGE_REF`` or
+    ``NOTES_MERGE_WORKTREE`` exists — that path; ``(None, None)`` when neither
+    does; ``(None, reason)`` when git could not say where they live, which
+    tells nothing about a merge either way."""
     rc, out, err = evidence.run_git(
         project_dir, "rev-parse", "--git-path", "NOTES_MERGE_REF",
         "--git-path", "NOTES_MERGE_WORKTREE",
     )
     if rc != 0:
-        return f"(cannot locate the notes merge state: {err or rc})"
+        return None, f"{err or rc}"
     for line in out.splitlines():
         path = Path(line) if Path(line).is_absolute() else Path(project_dir) / line
         if path.exists():
-            return line
-    return None
+            return line, None
+    return None, None
 
 
 def sync(project_dir: Path, *, push: bool = True) -> dict:
@@ -140,21 +166,28 @@ def sync(project_dir: Path, *, push: bool = True) -> dict:
     tracking = tracking_ref(remote)
     notes: list[str] = []
 
+    # The pattern refspec: a remote with no notes yet fetches nothing, rc 0.
     rc, detail = _git(project_dir, "fetch", "--quiet", remote, refspec(remote))
     if rc != 0:
-        if _NO_REMOTE_REF not in detail:
-            return failed("fetch", f"git fetch {remote} failed: {detail or rc}")
-        notes.append(f"{remote} has no notes yet")
+        return failed("fetch", f"git fetch {remote} failed: {detail or rc}")
 
-    stuck = _unfinished_merge(project_dir)
+    stuck, unknown = _unfinished_merge(project_dir)
+    if unknown is not None:
+        return failed(
+            "merge",
+            "cannot tell whether a notes merge is in progress — git could not answer "
+            f"`rev-parse --git-path NOTES_MERGE_REF` ({unknown}); nothing was merged",
+        )
     if stuck is not None:
         return failed(
             "merge",
-            f"a notes merge is unfinished ({stuck}) — finish it with "
+            f"a notes merge is unfinished — {stuck} exists — finish it with "
             f"`git notes --ref {NOTES_REF} merge --commit`, or discard it with "
             f"`git notes --ref {NOTES_REF} merge --abort`, then sync again",
         )
-    if _has_ref(project_dir, tracking):
+    if not _has_ref(project_dir, tracking):
+        notes.append(f"{remote} has no notes yet")
+    else:
         rc, detail = _git(
             project_dir, "notes", "--ref", NOTES_REF, "merge", "-q", "-s", "cat_sort_uniq", tracking
         )
@@ -188,44 +221,69 @@ def sync(project_dir: Path, *, push: bool = True) -> dict:
                     f"unchanged: {detail or rc}",
                 )
             result["pushed"] = True
+            # The remote now holds the local ref. git moves the tracking ref
+            # itself only where `configure` set the fetch refspec; set it here
+            # too, so `evidence status`'s unpushed count (local against
+            # tracking) reads 0 in an unconfigured clone as well. Local only.
+            rc, detail = _git(project_dir, "update-ref", tracking, NOTES_REF)
+            if rc != 0:
+                notes.append(f"pushed, but {tracking} was not moved to match ({detail or rc})")
     result["reason"] = "; ".join(notes) or None
     return result
 
 
 def configure(project_dir: Path, *, apply: bool) -> dict:
     """Add the notes refspec to ``remote.<remote>.fetch`` and
-    ``refs/notes/prawduct`` to ``notes.rewriteRef`` where either is absent.
+    ``refs/notes/prawduct`` to ``notes.rewriteRef`` where either is absent, and
+    replace the exact notes refspec an earlier ``configure`` wrote.
 
-    Returns ``{"status": "ok"|"error", "changes": [{"key", "value"}, ...],
-    "applied": bool, "reason"}``. ``changes`` lists what is (or was) missing;
-    ``applied`` is true only when ``apply`` wrote at least one of them. Both
-    keys are multi-valued and only ever added to, so a value the clone already
-    holds — another rewrite ref, the branch refspec — is never replaced. No
-    remote is ``ok`` with the reason and nothing to do.
+    Returns ``{"status": "ok"|"error", "changes": [{"key", "value",
+    "replaces"}, ...], "applied": bool, "reason"}``. ``changes`` lists what is
+    (or was) missing or replaced — ``replaces`` is the line removed, else
+    ``None``; ``applied`` is true only when ``apply`` wrote at least one of
+    them. Both keys are multi-valued: a value the clone holds that is not the
+    legacy notes refspec — another rewrite ref, the branch refspec — is never
+    touched, and the pattern is added once. No remote is ``ok`` with the
+    reason and nothing to do.
     """
     remote, why = _remote(project_dir)
     if remote is None:
         return {"status": "ok", "changes": [], "applied": False, "reason": why}
-    wanted = [(f"remote.{remote}.fetch", refspec(remote)), (REWRITE_KEY, NOTES_REF)]
+    wanted = [
+        (f"remote.{remote}.fetch", refspec(remote), _legacy_refspec(remote)),
+        (REWRITE_KEY, NOTES_REF, None),
+    ]
     changes = []
-    for key, value in wanted:
+    for key, value, legacy in wanted:
         rc, out, err = evidence.run_git(project_dir, "config", "--get-all", key)
         if rc not in (0, 1):  # 1 is git's "key not set"
             return {"status": "error", "changes": [], "applied": False,
                     "reason": f"cannot read {key} ({err or rc})"}
-        if value not in out.splitlines():
-            changes.append({"key": key, "value": value})
+        held = out.splitlines()
+        replaces = legacy if legacy is not None and legacy in held else None
+        if value not in held or replaces is not None:
+            changes.append({"key": key, "value": value, "replaces": replaces,
+                            "add": value not in held})
     if not changes:
         return {"status": "ok", "changes": [], "applied": False,
                 "reason": "already configured"}
+    public = [{k: c[k] for k in ("key", "value", "replaces")} for c in changes]
     if not apply:
-        return {"status": "ok", "changes": changes, "applied": False, "reason": None}
-    for n, change in enumerate(changes):
-        rc, detail = _git(project_dir, "config", "--add", change["key"], change["value"])
-        if rc != 0:
-            return {"status": "error", "changes": changes, "applied": n > 0,
-                    "reason": f"git config --add {change['key']} failed: {detail or rc}"}
-    return {"status": "ok", "changes": changes, "applied": True, "reason": None}
+        return {"status": "ok", "changes": public, "applied": False, "reason": None}
+    wrote = False
+    for change in changes:
+        steps = []
+        if change["replaces"] is not None:
+            steps.append(("--unset-all", change["key"], _ere_literal(change["replaces"])))
+        if change["add"]:
+            steps.append(("--add", change["key"], change["value"]))
+        for step in steps:
+            rc, detail = _git(project_dir, "config", *step)
+            if rc != 0:
+                return {"status": "error", "changes": public, "applied": wrote,
+                        "reason": f"git config {step[0]} {change['key']} failed: {detail or rc}"}
+            wrote = True
+    return {"status": "ok", "changes": public, "applied": True, "reason": None}
 
 
 # ---------------------------------------------------------------------------
@@ -277,9 +335,15 @@ def cmd_evidence_configure(project_dir: Path, args: "list[str]") -> int:
     elif not result["changes"]:
         print(f"evidence configure: nothing to change — {result['reason']}")
     else:
-        verb = "added" if result["applied"] else "would add"
+        done = result["applied"]
         for change in result["changes"]:
-            print(f"evidence configure: {verb} {change['key']} {change['value']}")
+            if change.get("replaces"):
+                verb = "replaced" if done else "would replace"
+                print(f"evidence configure: {verb} {change['key']} {change['replaces']} "
+                      f"with {change['value']}")
+            else:
+                verb = "added" if done else "would add"
+                print(f"evidence configure: {verb} {change['key']} {change['value']}")
         if not apply:
             print("  re-run with --apply to write them to this clone's .git/config")
     return 0 if result["status"] == "ok" else 1

@@ -148,7 +148,7 @@ in `docs/governance-telemetry.md`.
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
 
-- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary, which also ingests the branch's notes and prints `N review facts ingested from refs/notes/prawduct` when N > 0 — `--brief-only` skips both, mutating),
+- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary, which also ingests the branch's notes and prints `N evidence fact(s) ingested from refs/notes/prawduct` when N > 0 — `--brief-only` skips both, mutating),
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
@@ -203,15 +203,23 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   worktree, so a disposable tree never races the main checkout's ingest, and by a foreign binary; session start
   runs it bounded at a session boundary. `evidence sync [--no-push] [--json]` (mutating; network)
   fetches the remote's notes into the tracking ref `refs/notes/<remote>/prawduct`, merges them into
-  `refs/notes/prawduct` with `cat_sort_uniq`, re-attaches any transported fact in the bound whose
-  note is missing, ingests, and pushes the ref unless `--no-push`; a missing remote ref is not an
-  error. Exit 0 ok; 1 a reported failure naming the failing `step` (`fetch`, `merge`, `ingest`,
-  `push`), git's stderr scrubbed of credentials and nothing retried; 2 usage.
+  `refs/notes/prawduct` with `cat_sort_uniq`, reconciles (re-attaches any transported fact in the
+  bound whose note is missing), ingests, and pushes the ref unless `--no-push`, then moves the
+  tracking ref to what it pushed; a remote with no notes yet is not an error. Note lines carry the
+  store line with the actor's locator fields reduced: `actor.worktree` cut to its last path
+  component, `actor.session` dropped. Exit 0 ok; 1 a reported failure naming the failing `step`
+  (`fetch`, `merge`, `reconcile`, `ingest`, `push`), git's stderr scrubbed of credentials and
+  nothing retried; 2 usage.
   `/prawduct:pr create|update` runs it after the branch push, and a failure there is reported
-  without blocking the PR. `evidence configure [--apply] [--json]` previews, and with `--apply`
-  writes, the clone's two keys: the fetch refspec `+refs/notes/prawduct:refs/notes/<remote>/prawduct`
-  in `remote.<remote>.fetch` (so a plain `git fetch` brings the remote's notes into the tracking
-  ref, which `evidence ingest` and session start read beside the local ref; `evidence sync`
+  without blocking the PR; `evidence status` then shows it as `N note commit(s) not yet pushed`
+  (the local ref against the push remote's tracking ref, counted only when both exist).
+  `evidence configure [--apply] [--json]` previews, and with `--apply`
+  writes, the clone's two keys: the fetch refspec
+  `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*` in `remote.<remote>.fetch` — a pattern,
+  because a configured exact refspec makes every plain `git fetch` fail while the remote has no
+  notes; the exact form an earlier version wrote is replaced, reported as a change with `replaces`
+  — (so a plain `git fetch` brings the remote's notes into the tracking ref, which
+  `evidence ingest`, session start and `evidence status` read beside the local ref; `evidence sync`
   merges it before pushing) and
   `notes.rewriteRef=refs/notes/prawduct` (so amend and rebase carry them); a repo with no remote
   reports so and changes nothing. Exit 0 ok; 1 a failure; 2 usage. `/prawduct:doctor` offers it
@@ -377,12 +385,20 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   scratch worktree; `--apply` is a governance write and is refused there.
   `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
   `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per
-  claim, each reported distinctly and carried in `--json` as `outcome`: `exists`; `release-pending`
-  (the branch is gone and the plan's scope has a pending change record — a fragment, or an untagged
-  change-log entry, read through `release_readiness.pending_scopes` — the gitflow retention policy
-  working, relayed as "archive at the release", never a defect); `missing` (gone with no pending
-  record, or a record that fails validation). Exit 0 when nothing is `missing`, 1 when anything is,
-  3 when git cannot list branches, 2 usage.
+  claim, each reported distinctly and carried in `--json` as `outcome`: `exists` (nothing printed);
+  `release-pending` (the branch is gone and the plan is observed merged and unreleased by
+  `plan_lifecycle.observe` — the derivation `plan status` prints: a review anchored in the base's
+  history, the integration branch merged, or a pending change record for the scope — the gitflow
+  retention policy working, printed as `<plan>: <field> claims <branch>, which no longer exists;
+  merged-unreleased (<reason>) — archive at the release`, never a defect); `missing` (gone, and the
+  plan is in any other lifecycle state — so a `working-branches:` entry that is gone while the
+  integration branch is still in progress is `missing`, whatever pending record the scope has),
+  printed as `<plan>: <field> <branch> does not exist`, with one stderr line per plan that has a
+  miss: `plan check-claims: <plan> is not release-pending (<state>: <reason>)`. A plan whose claim
+  cannot be read is listed too, and is not a resolving claim. Exit 0 when nothing is `missing` and
+  nothing is unreadable, 1 otherwise, 3 when git cannot list branches (nothing checked), 2 usage.
+  `--json`: `{ok, claims: [{plan, field, branch, where, outcome}], unreadable: [{plan, reason}]}`,
+  `where` being `local`, `remote` or null.
   `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
   bounded: past the repo's oversized threshold it moves entries verbatim into
   `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,
