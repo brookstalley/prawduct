@@ -38,8 +38,9 @@ facts (DG2), and the `record_lint` repo-relative path fix.
   (`unknown-chunk`, exit 1); an id outside the proposal is recorded with a `WARNING:` note.
 - New fact kind `chunk-imported` (observational for coverage; authoritative for chunk completion).
   New subcommands: `plan status [<path>] [--json]`; `plan import-status <path> [--apply]
-  [--remove-block]` (MG2 — the block is removed only on request until #1052 ships transport, because
-  facts are per-clone until then; refusal codes in `api-contract.md`); `plan check-claims [--json]`
+  [--remove-block]` (MG2 — the block is removed only on request, because the imported facts reach
+  another clone only through the notes transport that ships in this same release (`evidence sync`;
+  see the evidence-transport entry); refusal codes in `api-contract.md`); `plan check-claims [--json]`
   (outcomes `exists` / `release-pending` / `missing`; a merged plan retained for release is
   release-pending, not a defect).
 - Build-plan frontmatter gains `dropped:` — a block sequence of `- <id>: <reason>`; a reasonless or

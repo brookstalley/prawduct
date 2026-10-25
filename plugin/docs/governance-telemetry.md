@@ -338,7 +338,9 @@ read-time view, not a rewrite.
 What governance cost and what it caught, **per plugin version** (`major.minor`).
 It reads the clone-shared evidence store, not the ledger. Every fact there
 carries the plugin version that wrote it, and nothing is lost when a worktree is
-deleted. `review-stats` answers a different question: what a review costs, by
+deleted. The store also holds the review and resolution facts ingested from other
+clones' notes (`refs/notes/prawduct`), so two clones of one product count those
+reviews in both. `review-stats` answers a different question: what a review costs, by
 mode and model, in this worktree. Exit 0 with a report (an empty store is an
 answer); exit 1 on bad arguments or a store that cannot be read. `--since` and
 `--until` scope facts by their `ts`, and take the same bounds `review-stats`

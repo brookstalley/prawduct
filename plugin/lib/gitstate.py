@@ -203,13 +203,16 @@ def is_scratch_branch(name: str | None) -> bool:
     return isinstance(name, str) and _EPHEMERAL_BRANCH_PATTERN.match(name) is not None
 
 
-def _under_claude_worktrees(project_dir: Path) -> bool:
+def under_claude_worktrees(project_dir: Path) -> bool:
     """True when some ancestor pair of ``project_dir`` is ``.claude/worktrees``.
 
     Pure string work on an already-resolved path — no filesystem access and no
     subprocess. This is deliberately the FIRST test in
     :func:`is_ephemeral_worktree` so the common case (every session that is not
     inside a harness-managed worktree) costs nothing on the hook's hot path.
+
+    Public because :func:`evidence_notes.sent_envelope` must ask the same
+    question of a recorded path — a second spelling there drifted looser.
     """
     parts = project_dir.parts
     return any(
@@ -254,7 +257,7 @@ def ephemeral_kind_of(path: str | Path, branch: str | None) -> str | None:
         candidate = Path(path)
     except TypeError:
         return None
-    if not _under_claude_worktrees(candidate):
+    if not under_claude_worktrees(candidate):
         return None
     dir_label = _dir_label(candidate.name)
     if dir_label == "workflow":
@@ -369,7 +372,7 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     # Path shape first, and the ancestor test exactly once: the common case (any
     # tree not under `.claude/worktrees`) answers here having spawned no
     # subprocess, which is what keeps this off the hook's hot path.
-    if not _under_claude_worktrees(project_dir):
+    if not under_claude_worktrees(project_dir):
         return None
 
     # Only an `agent-` tree's answer depends on the branch, so only it pays for

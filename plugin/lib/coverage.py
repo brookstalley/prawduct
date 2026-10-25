@@ -854,8 +854,8 @@ def count_branch_rounds(
         if fact.get("kind") != "review":
             continue
         body = fact.get("body") or {}
-        commit = body.get("head_commit") or body.get("dispatch_commit")
-        if not isinstance(commit, str) or commit not in on_branch:
+        commit = evidence.review_anchor(body)
+        if commit is None or commit not in on_branch:
             continue
         rounds += 1
         reviews.append({"id": fact.get("id"), "mode": body.get("mode")})

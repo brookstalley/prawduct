@@ -45,7 +45,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent / "plugin"
+import pytest
+
+ROOT =Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
 
 # The guard's own marker. Every assertion keys on THIS rather than on an exit
@@ -247,6 +249,34 @@ class TestFrameworkCheckoutSkew:
             "it must still SAY the binary is foreign — silence here is the "
             "defect one severity down"
         )
+
+    @pytest.mark.parametrize(
+        "op", [("ingest",), ("sync",), ("configure", "--apply")], ids=["ingest", "sync", "configure"]
+    )
+    def test_an_evidence_write_refuses_on_a_foreign_binary(self, tmp_path, op):
+        """Pinned at the wiring, not the predicate: the guard sees an
+        `evidence` op only because `_dispatch` threads the command's argv into
+        it. Called without argv, every `evidence` op would read as the bare
+        (read) form and append, push or write config on a foreign binary while
+        a predicate-level test stayed green."""
+        repo = _make_framework_checkout(tmp_path / "fw")
+        foreign = _install_binary_at(tmp_path / "installed")
+
+        result = _run(repo, "evidence", *op, binary=foreign)
+
+        assert result.returncode == 1
+        assert _SKEW_MARKER in result.stderr
+        assert "BLOCKED: refusing `evidence`" in result.stderr
+
+    def test_an_evidence_read_proceeds_on_a_foreign_binary(self, tmp_path):
+        """Control for the write case above: the read beside it is noted, not refused."""
+        repo = _make_framework_checkout(tmp_path / "fw")
+        foreign = _install_binary_at(tmp_path / "installed")
+
+        result = _run(repo, "evidence", "status", binary=foreign)
+
+        assert _SKEW_MARKER in result.stderr
+        assert "BLOCKED" not in result.stderr
 
     def test_repo_local_binary_is_silent(self, tmp_path):
         """No skew, no noise: the guard must not nag the correct invocation."""

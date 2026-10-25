@@ -3,7 +3,7 @@ description: Onboard a repo to Prawduct — scaffold a new or existing repo onto
 argument-hint: "[target-path]"
 user-invocable: true
 disable-model-invocation: false
-allowed-tools: Bash(prawduct-hook init-product*), Bash(prawduct-hook coverage-scaffold*), Bash(prawduct-hook backlog provision*), Bash(python3 plugin/bin/prawduct-hook backlog provision*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status*), Bash(git -C * status*), Bash(git add *), Bash(git -C * add *), Bash(git commit *), Bash(git -C * commit *), Read, Glob, Grep
+allowed-tools: Bash(prawduct-hook init-product*), Bash(prawduct-hook coverage-scaffold*), Bash(prawduct-hook backlog provision*), Bash(python3 plugin/bin/prawduct-hook backlog provision*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status*), Bash(git -C * status*), Bash(git add *), Bash(git -C * add *), Bash(git commit *), Bash(git -C * commit *), Bash(prawduct-hook evidence configure*), Read, Glob, Grep
 ---
 
 You are onboarding a repo onto Prawduct under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Onboarding is the same whether the repo is brand-new or an existing codebase, and it operates on the consumer's own repo — there is no framework checkout to call back to.
@@ -100,6 +100,18 @@ whole, though, so if the dry-run step found any `edited` path not clean, say tha
 content in it would ride along, and let them choose. If git refuses (not a git repo, a hook rejects it, no identity configured), relay its
 message and report the scaffold as **uncommitted** — never as committed. On no, say the scaffold is
 uncommitted and go on.
+
+**Then configure the notes transport.** Review facts travel between clones on
+`refs/notes/prawduct`, and `prawduct-hook evidence configure --apply` sets this clone's notes fetch
+refspec (the pattern `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*`, so a plain `git fetch`
+still works while the remote has no notes) and `notes.rewriteRef` — two keys in `.git/config`,
+nothing committed. Run it only when this session runs in the target: the hook acts on the repo the
+session is in, so onboarding from another directory would configure the wrong clone. Then skip it,
+and say in the report that the target's first `/prawduct:doctor` offers it (Health Check #25).
+
+It decides the rest itself. `nothing to change — <reason>` (a target with no remote has nowhere for
+notes to go, and it says so) means it wrote nothing; put that reason in the report. A non-zero exit
+names what failed; relay it. It undoes nothing onboarding did.
 
 **2. Report in a few lines, not a manifest.** Lead with the outcome — onboarded, where the backlog
 lives, committed or not. Then add only what the owner must act on or would be surprised by:

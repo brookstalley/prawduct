@@ -4294,6 +4294,115 @@ class TestResolutionFacts:
 
 
 # ---------------------------------------------------------------------------
+# Integration: each appended fact goes onto the notes transport (#1052)
+# ---------------------------------------------------------------------------
+
+
+_NOTES_REF = "refs/notes/prawduct"
+
+
+def _note_lines(repo: Path, commit: str) -> list[str]:
+    proc = subprocess.run(
+        ["git", "notes", "--ref", _NOTES_REF, "show", commit],
+        cwd=str(repo), capture_output=True, text=True, env=_git_env(repo), timeout=10,
+    )
+    return [ln for ln in proc.stdout.splitlines() if ln.strip()] if proc.returncode == 0 else []
+
+
+def _sent(lines: list[str]) -> list[str]:
+    """Store lines as a note carries them (O-16): identical except the actor's
+    locator fields — ``actor.worktree`` cut to its basename (these fixtures
+    are no harness scratch tree, which would keep ``.claude/worktrees/<name>``),
+    ``actor.session`` dropped. Derived by hand so the test states the contract."""
+    out = []
+    for line in lines:
+        record = json.loads(line)
+        actor = {k: v for k, v in record["actor"].items() if k != "session"}
+        actor["worktree"] = Path(actor["worktree"]).name
+        out.append(evidence.envelope_line({**record, "actor": actor}).rstrip("\n"))
+    return out
+
+
+class TestFactsAttachAsNotes:
+    def test_a_review_and_its_resolution_are_attached_as_appended(self, tmp_path):
+        """The two write sites: the review fact, then the resolution fact,
+        each carried as its store line — less the actor's locator fields —
+        onto the verifying round's anchor (`dispatch_commit` here — the
+        manifests record `head_commit: null`)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        prior_id = _seed_prior_review_with_blocker(repo, c1)
+        assert _note_lines(repo, c1) == _sent(_store_lines(repo)), "the prior review's note"
+
+        c2 = _commit_file(repo, "src/app.py", "x = 2\n", "fix")
+        _set_marker(repo)
+        _write_manifest(repo, c2, id="rev-verify-0002", mode=VERIFY_MODE, roster=["reviewer"])
+        _write_partial(repo, "reviewer", c2, resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        lines = _store_lines(repo)
+        assert len(lines) == 3
+        assert _note_lines(repo, c2) == _sent(lines[1:]), "the verify review, then its resolution"
+        assert _note_lines(repo, c1) == _sent(lines[:1])
+        assert "NOTE" not in result.stderr
+
+    def test_a_note_that_cannot_be_written_never_fails_consolidation(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        # A ref UNDER the notes ref's name makes git refuse to create it.
+        _git(repo, "update-ref", f"{_NOTES_REF}/blocker", "HEAD")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert [f["id"] for f in _store_facts(repo, "review")] == [FAKE_REVIEW_ID]
+        assert (repo / FINDINGS_REL).is_file()
+        assert "git note was not written" in result.stderr
+        assert _note_lines(repo, head) == []
+
+    def test_a_retry_attaches_the_notes_a_failed_first_attempt_could_not_write(self, tmp_path):
+        """Both write sites, on the already-appended path: the first attempt
+        stores the verify review and its resolution but cannot write either
+        note; the replayed dispatch finds both facts present and must still put
+        them on the note — otherwise nothing in this clone ever re-sends them."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "update-ref", f"{_NOTES_REF}/blocker", "HEAD")
+        prior_id = _seed_prior_review_with_blocker(repo, c1)
+        c2 = _commit_file(repo, "src/app.py", "x = 2\n", "fix")
+
+        def verify() -> subprocess.CompletedProcess:
+            _set_marker(repo)
+            _write_manifest(repo, c2, id="rev-verify-0002", mode=VERIFY_MODE, roster=["reviewer"])
+            _write_partial(repo, "reviewer", c2, resolutions=[
+                {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+            ])
+            return _run_consolidate(repo)
+
+        first = verify()
+        assert first.returncode == 0, f"stderr={first.stderr!r}"
+        assert "git note was not written" in first.stderr
+        assert _note_lines(repo, c2) == []
+
+        _git(repo, "update-ref", "-d", f"{_NOTES_REF}/blocker")
+        retry = verify()
+        assert retry.returncode == 0, f"stderr={retry.stderr!r}"
+        lines = _store_lines(repo)
+        assert len(lines) == 3, "the retry appends nothing"
+        assert _note_lines(repo, c2) == _sent(lines[1:]), "the verify review, then its resolution"
+        assert "NOTE" not in retry.stderr
+        # A third replay finds both lines on the note and writes nothing more.
+        assert verify().returncode == 0
+        assert _note_lines(repo, c2) == _sent(lines[1:])
+
+
+# ---------------------------------------------------------------------------
 # Integration: the span verdict rides the clean verify close
 # ---------------------------------------------------------------------------
 

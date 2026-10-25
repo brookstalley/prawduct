@@ -63,9 +63,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from . import buildplan_refs, core, coverage, dispositions, evidence, gitstate, plan_index, work_unit
+
+if TYPE_CHECKING:
+    # For readers only: a runtime import would close a cycle, because
+    # plan_lifecycle imports release_readiness, which imports gates, which
+    # imports this module.
+    from . import plan_lifecycle
 
 State = Literal["open", "done", "dropped"]
 
@@ -419,7 +425,7 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             # review certifies once its dispatch commit is in the branch's
             # history; that the reviewed TREE was committed is the Stop gate's
             # coverage verdict to carry, not this function's.
-            anchor = body.get("head_commit") or body.get("dispatch_commit")
+            anchor = evidence.review_anchor(body)
             if not plan.branches:
                 why = "the plan declares no `branch:` its commit could be on"
             elif not gitstate.is_object_id(anchor):
@@ -765,6 +771,17 @@ def render_table(
     if built_unavailable:
         lines.append(f"built: unavailable ({built_unavailable})")
     return lines
+
+
+def render_lifecycle(lifecycle: "plan_lifecycle.Lifecycle") -> str:
+    """The ``plan status`` lifecycle line: ``lifecycle: <state>[ <release>] — <reason>``.
+
+    ``lifecycle`` is a ``plan_lifecycle.observe`` answer. The release tag
+    follows the state when there is one; the reason, which says what was
+    observed, closes the line.
+    """
+    release = f" {lifecycle.released_in}" if lifecycle.released_in else ""
+    return f"lifecycle: {lifecycle.state}{release} — {lifecycle.reason}"
 
 
 def chunk_title(content: str, chunk_id: str) -> str:

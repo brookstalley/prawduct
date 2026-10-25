@@ -123,6 +123,31 @@ OBSERVATIONAL_KINDS = frozenset(
     {"guard-refusal", "test-run", "session-start", "chunk-imported"}
 )
 
+#: Kinds whose facts travel between clones on ``refs/notes/prawduct``
+#: (:mod:`evidence_notes`). ``review`` and ``resolution`` are what the coverage
+#: verdict composes; ``chunk-imported`` rides too because an import made in one
+#: clone is otherwise invisible to every other, and ``plan_status.chunk_states``
+#: reads it as ``done``. Every other kind is about the clone that wrote it (a
+#: suite run, a session boundary, a guard firing, a builder's disposition) and
+#: stays in that clone's store.
+TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported"})
+
+
+def review_anchor(body: object) -> "str | None":
+    """The commit a review fact is anchored on: ``head_commit``, else — for a
+    dirty-tree review, which records none — ``dispatch_commit``.
+
+    The one home of that rule: the note a fact travels on hangs here, and
+    chunk status, lifecycle and the verify anchor all ask the same question.
+    ``None`` when the body is not a dict or carries neither; a caller putting
+    the answer in a git argv still passes it through ``gitstate.is_object_id``.
+    """
+    if not isinstance(body, dict):
+        return None
+    anchor = body.get("head_commit") or body.get("dispatch_commit")
+    return anchor if isinstance(anchor, str) and anchor else None
+
+
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
 
@@ -297,7 +322,63 @@ def append_fact(
         "actor": actor,
         "body": body,
     }
-    line = json.dumps(envelope) + "\n"
+    failed = _append_line(path, envelope_line(envelope))
+    if failed is not None:
+        return failed
+    # `envelope` is handed back so a caller that forwards the fact (the notes
+    # transport) sends the record the store holds rather than a rebuilt one.
+    return {"status": "appended", "path": str(path), "id": fact_id, "envelope": envelope}
+
+
+def envelope_line(envelope: dict) -> str:
+    """The store's serialisation of one envelope: one JSON object on one
+    newline-terminated line. The one home of that format, shared by the store's
+    writers and the notes transport, so a fact read back from a note and
+    appended here is byte-identical to the line the note carries — its
+    writer's line less the actor's locator fields
+    (:func:`evidence_notes.sent_envelope`)."""
+    return json.dumps(envelope) + "\n"
+
+
+def append_envelope(project_dir: Path, envelope: dict) -> dict:
+    """Append an envelope another writer built — a fact read from the notes
+    transport — as it stands. Returns what :func:`append_fact` returns.
+
+    Unlike :func:`append_fact` it refuses neither an unknown kind nor a schema
+    ahead of this reader: the record was valid where it was written, and
+    dropping it here would hide a newer plugin's write from the
+    ``schema_ahead`` block :func:`read_facts` raises for it. It refuses only a
+    record that is not an envelope (no ``kind``/``id``, a non-integer
+    ``schema``, a non-object ``body``) — a line :func:`read_facts` would
+    exclude anyway. It does not dedupe: the caller holds the store it read and
+    decides what is new."""
+    if not isinstance(envelope, dict):
+        return {"status": "error", "reason": "an envelope must be an object"}
+    kind, fact_id, schema = envelope.get("kind"), envelope.get("id"), envelope.get("schema")
+    if not isinstance(kind, str) or not kind.strip():
+        return {"status": "error", "reason": "envelope kind must be a non-empty string"}
+    if not isinstance(fact_id, str) or not fact_id.strip():
+        return {"status": "error", "reason": "envelope id must be a non-empty string"}
+    if not isinstance(schema, int) or isinstance(schema, bool):
+        return {"status": "error", "reason": "envelope schema must be an integer"}
+    if not isinstance(envelope.get("body"), dict):
+        return {"status": "error", "reason": "envelope body must be an object"}
+    path = store_path(project_dir)
+    if path is None:
+        return {
+            "status": "error",
+            "reason": f"no git repository at {project_dir} — the evidence store "
+            "lives in the clone's git common dir and has no fallback location",
+        }
+    failed = _append_line(path, envelope_line(envelope))
+    if failed is not None:
+        return failed
+    return {"status": "appended", "path": str(path), "id": fact_id, "envelope": envelope}
+
+
+def _append_line(path: Path, line: str) -> "dict | None":
+    """Append one serialised record to the store at ``path``. ``None`` on
+    success, else the ``{"status": "error", "reason"}`` the caller returns."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         # Self-heal a torn tail (D9): a crashed writer can leave a final line
@@ -325,7 +406,7 @@ def append_fact(
             os.close(fd)
     except OSError as exc:
         return {"status": "error", "reason": f"store unwritable ({exc})"}
-    return {"status": "appended", "path": str(path), "id": fact_id}
+    return None
 
 
 def append_guard_refusal(
@@ -375,8 +456,9 @@ def append_guard_refusal(
        class and names this sink; a second path for the same class is the thing
        it forbids.
 
-    **Neither store answers a cross-CLONE question** — this one lives inside
-    ``.git`` and is never committed, exactly like the ledger. The axis this
+    **A refusal stays in the clone that recorded it** — this store lives inside
+    ``.git`` and is never committed, and ``guard-refusal`` is not among the
+    kinds the notes transport carries (``TRANSPORTED_KINDS``). The axis this
     ruling turns on is cross-*worktree* durability plus an existing reader, not
     cross-clone reach, and a yield question spanning clones still needs an
     exporter nobody has built.
@@ -1365,8 +1447,11 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
 
 
 # ---------------------------------------------------------------------------
-# CLI (``prawduct-hook evidence <status|list>``) — the stable allowlistable
-# surface (R4); skills scope to ``Bash(prawduct-hook evidence*)``.
+# CLI (``prawduct-hook evidence <status|list|ingest>``). ``status`` and ``list``
+# are reads, the stable allowlistable surface (R4); ``ingest`` appends to the
+# store, a data-plane write. A ``Bash(prawduct-hook evidence*)`` grant therefore
+# admits a write — a read-only skill scopes to ``evidence status`` and
+# ``evidence list`` by name.
 # ---------------------------------------------------------------------------
 
 # The store is append-only, shared by every worktree of the clone, and never
@@ -1403,17 +1488,52 @@ def distinct_trees(facts: list[dict]) -> set[str]:
     return trees
 
 
-_CLI_USAGE = "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]}"
+#: Every op ``prawduct-hook evidence`` takes, as the hook's own usage line
+#: offers them (a test holds the two rosters equal) — the text an unknown op,
+#: or a ``list`` or ``ingest`` usage error, prints.
+_CLI_USAGE = (
+    "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]"
+    "|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}"
+)
 
 
 def evidence_cmd(project_dir: Path, argv: list[str]) -> int:
+    """``prawduct-hook evidence <op>`` — the one router for every op; the hook
+    calls it and nothing else.
+
+    Exit codes, one convention for every op: **0** ok, **1** a reported
+    failure, **2** usage (an unknown op, a bad flag). ``status`` adds its
+    documented sentinel, **2** = schema-ahead records present; it takes no
+    flags and ignores any argument, so no usage error shares that code.
+
+    ``ingest`` lives in :mod:`evidence_notes`, ``sync`` and ``configure`` in
+    :mod:`evidence_sync`; each is imported only when its op runs, so a store
+    read never loads the transport."""
     sub = argv[0] if argv else "status"
     if sub == "status":
         return _cmd_status(project_dir)
     if sub == "list":
         return _cmd_list(project_dir, argv[1:])
-    print(_CLI_USAGE, file=sys.stderr)
-    return 1
+    if sub == "ingest":
+        from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
+
+        return evidence_notes.ingest_cmd(project_dir, argv[1:], usage=_CLI_USAGE)
+    if sub in ("sync", "configure"):
+        try:
+            from . import evidence_sync  # noqa: PLC0415 — lazy; only these two ops reach it
+            run = getattr(evidence_sync, f"cmd_evidence_{sub}")
+        except (ImportError, AttributeError) as exc:
+            # A writer: a lib that cannot run it fails closed rather than
+            # reading as a sync that ran.
+            print(
+                f"evidence {sub} unavailable (the plugin lib/ does not provide it: {exc}) "
+                "— nothing was fetched, pushed or configured",
+                file=sys.stderr,
+            )
+            return 1
+        return run(project_dir, argv[1:])
+    print(f"evidence: unknown op {sub!r}\n{_CLI_USAGE}", file=sys.stderr)
+    return 2
 
 
 def is_ephemeral_fact(fact: dict) -> bool:
@@ -1498,6 +1618,53 @@ def _store_size_line(path: Path) -> str | None:
     return f"size: {len(raw) / 1_000_000:.2f} MB, {len(lines)} lines; largest kinds: {kinds}"
 
 
+def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
+    """The durable view of the two legs a fact travels after the store, each
+    otherwise said once, in the output of the act that lost it: how many of
+    this branch's transported facts have no note on their commit (an attach
+    that failed or never ran), and how many note commits the push remote's
+    tracking ref does not hold (a push that failed or never ran).
+
+    Both read the roster ingest reads — the local ref and every fetched
+    tracking ref — so a fact that arrived on a fetched note is not called
+    unsent. A clone with no notes ref pays no subprocess here: the roster is
+    read from the files under the git common dir (the store sits at
+    ``<common>/prawduct/evidence.jsonl``), and the store count already in hand
+    stands in for the bounded one. The unpushed count costs nothing unless
+    the local ref exists; then one ``rev-list --count`` — over the local ref
+    alone when no tracking ref does (a first push that failed or never ran),
+    else against the push remote's tracking ref."""
+    from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
+
+    remedy = "  `prawduct-hook evidence sync` attaches this branch's and sends them"
+    refs = evidence_notes.notes_refs(project_dir, common_dir=path.parent.parent)
+    if refs is not None and not refs:
+        transported = sum(1 for f in result["facts"] if f.get("kind") in TRANSPORTED_KINDS)
+        if transported:
+            print(
+                f"notes: no {evidence_notes.NOTES_REF} (or fetched "
+                f"refs/notes/<remote>/prawduct) in this clone — none of the "
+                f"store's {transported} transported fact(s) is on a note"
+            )
+            print(remedy)
+        return
+    found = evidence_notes.unattached(project_dir, known=result, refs=refs)
+    if found["status"] != "ok":
+        print(f"notes: facts with no note not counted — {found['reason']}")
+    else:
+        print(f"{len(found['missing'])} transported fact(s) with no note on their commit")
+        if found["missing"]:
+            print(remedy)
+    ahead = evidence_notes.unpushed(project_dir, refs or [])
+    sync = " — run `prawduct-hook evidence sync`"
+    if ahead is None:
+        return
+    if not ahead["tracked"]:
+        print(f"{ahead['count']} note commit(s) never pushed from this clone{sync}")
+    else:
+        print(f"{ahead['count']} note commit(s) not yet pushed{sync if ahead['count'] else ''}")
+
+
 def _cmd_status(project_dir: Path) -> int:
     path = store_path(project_dir)
     if path is None:
@@ -1524,6 +1691,7 @@ def _cmd_status(project_dir: Path) -> int:
         print(size_line)
     trees = distinct_trees(result["facts"])
     print(f"trees referenced: {len(trees)}")
+    _print_note_transport(project_dir, path, result)
     # Only COVERAGE-BEARING kinds belong in the wasted-cost sentence. A
     # `guard-refusal` recorded from a disposable worktree covers no branch
     # either, but saying "the review cost was spent" of it is exactly backwards
@@ -1573,11 +1741,11 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
                 limit = max(1, int(argv[i + 1]))
             except ValueError:
                 print(_CLI_USAGE, file=sys.stderr)
-                return 1
+                return 2
             i += 2
         else:
             print(_CLI_USAGE, file=sys.stderr)
-            return 1
+            return 2
     result = read_facts(project_dir)
     if result["status"] == "error":
         print(f"evidence: {result['reason']}", file=sys.stderr)
