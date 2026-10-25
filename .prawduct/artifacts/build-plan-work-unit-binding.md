@@ -57,7 +57,17 @@ plan that itself declares none, with the `plan-unbound-legacy` advisory. Tests p
 survive one release as shims over `resolve()` so that a consumer repo's pinned plugin version and a
 newer one agree on the answer during the window. Revisit: delete the shims when the window closes.
 
-**Decisions made mid-build:** (append here)
+**Decisions made mid-build:**
+- Chunk 05's acceptance grep was wrong as written: six `active_build_plan` mentions live in the
+  Critic skill's docs (`critic/SKILL.md`, `review-cycle.md`, `cross-checks.md`, `goals-1-3.md`,
+  `pr/review-protocol.md` "Dangling pointers", `doctor/SKILL.md`) and describe the scope-derivation
+  mechanism Chunks 02/03 change — prose that a code change falsifies is updated with the code, so
+  they move to Chunk 06's deliverables. Settled by the plan's own ownership rule.
+- 05 merged before 01 and reviewed with it in one `final`: both are small, `final` covers the full
+  diff anyway, and review wall clock is the owner's P0.
+- `pr/SKILL.md` step 9's "ignore the archive advisory during the window" sentence is deleted, not
+  moved: since #1049 a `branch:`-declaring plan is inactive on every other branch, so the advisory
+  it told you to ignore no longer fires.
 
 **Level:** High for § 2 (the resolver and its callers are enumerated in the requirements'
 grounding facts); Medium for § 1's `plan new` defaults for `base:` — raise by reading how
@@ -222,6 +232,9 @@ after each merge's review — this is the last plan that ticks; Wave 2 removes t
 - **Artifacts consumed:** everything above; `plugin/lib/core.py`; `plugin/lib/buildplan_refs.py`;
   the advisory registry.
 - **Deliverables:** the shims, the deletion, the advisory, the subcommand, the bump, the fragment;
+  the six Critic/PR/doctor skill-doc passages that still describe pointer-based scope derivation
+  (`grep -rn active_build_plan plugin/skills` lists them) rewritten to the `Binding` rule or
+  deleted;
   `tests/test_core*.py` and `tests/test_buildplan_refs*.py` adjusted so the shims' tests assert
   the new answer (never weakened: a test that pinned the old fallback is rewritten to pin the
   refusal, with the reason in the fragment).
