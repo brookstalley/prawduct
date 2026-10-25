@@ -1358,8 +1358,8 @@ def _raise_oserror(*_args, **_kwargs):
 class TestTheManifestRecordsTheBinding:
     """`critic-begin` records the unit a review was about, or none (#1050 BR4).
 
-    The manifest's `scope`, `scope_chosen_by` and `scope_unresolved_cause` are
-    what `critic_consolidate.build_fact_body` copies into the review fact, so
+    The manifest's `scope`, `scope_chosen_by`, `scope_unresolved_cause` and
+    `scope_reason` are what `critic_consolidate.build_fact_body` copies into the review fact, so
     the dispatch is where a borrowed plan would enter the record.
     """
 
@@ -1384,15 +1384,6 @@ class TestTheManifestRecordsTheBinding:
         (repo / "src" / "app.py").write_text("x = 2\n")
         return repo
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "#1050 Chunk 02: the manifest's scope fields are derived inside "
-            "lib/critic_consolidate.begin_review, which this hook command only "
-            "wraps. Strict, so it turns red the moment the lib takes the "
-            "Binding — delete this mark then."
-        ),
-    )
     def test_an_unclaimed_branch_records_no_unit(self, tmp_path):
         repo = self._repo_on_unclaimed_branch(tmp_path)
         result = _run_begin(repo, "--mode", "chunk")
@@ -1400,7 +1391,11 @@ class TestTheManifestRecordsTheBinding:
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["scope"] is None
         assert manifest["scope_chosen_by"] == "none"
-        assert "no live plan claims `fix/mine`" in (manifest["scope_unresolved_cause"] or "")
+        # The cause stays a short code; the binding's sentence has its own field.
+        # `no-claim`, not `unbound`: the fixture's plans are written on this
+        # branch (untracked), which is the evidence the branch has a plan.
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert "no live plan claims `fix/mine`" in (manifest["scope_reason"] or "")
 
     def test_an_explicit_scope_is_recorded_as_explicit_args(self, tmp_path):
         """The control: the override survives, labelled as one."""

@@ -6460,6 +6460,7 @@ class TestScopeAttribution:
         assert manifest["scope"] == "mine"
         assert manifest["scope_chosen_by"] == "binding"
         assert manifest["scope_unresolved_cause"] is None
+        assert manifest["scope_reason"] is None
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-mine.md")
 
     def test_an_explicit_scope_still_wins(self, tmp_path):
@@ -6524,7 +6525,16 @@ class TestScopeAttribution:
         manifest = self._manifest(repo)
         assert manifest["scope"] is None
         assert manifest["scope_chosen_by"] == "none"
-        assert manifest["scope_unresolved_cause"] == "no live plan claims `fix/unrelated-name`"
+        # A short code, and the binding's sentence in its own field: the cause
+        # field stays the countable code it always was (api-contract.md:
+        # additive-first, no field repurposed). `no-claim`: the fixture's plan
+        # is uncommitted, so it reads as written on this branch.
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        # The pointer names a branchless plan, so the binding's sentence goes on
+        # to name it and the bind command; the field is that sentence verbatim.
+        assert manifest["scope_reason"].startswith(
+            "no live plan claims `fix/unrelated-name` — `active_build_plan` names build-plan-other.md"
+        )
 
         assert manifest["roster"] == ["reviewer"]
         _write_partial(repo, "reviewer", manifest["commit_reviewed"])
@@ -6630,7 +6640,8 @@ class TestScopeChosenByVocabulary:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["scope"] is None
-        assert "2 live plans claim `feat/work`" in manifest["scope_unresolved_cause"]
+        assert manifest["scope_unresolved_cause"] == "broken"
+        assert "2 live plans claim `feat/work`" in manifest["scope_reason"]
         assert "this review resolved no build-plan scope" in result.stderr
         assert "build-plan-a.md, build-plan-b.md" in result.stderr
 
@@ -6694,8 +6705,9 @@ class TestUnresolvedScopeCause:
         result, manifest = self._dispatch(repo)
         assert manifest["scope"] is None
         assert manifest["scope_chosen_by"] == "binding"
+        assert manifest["scope_unresolved_cause"] == "claim-no-scope"
         assert "build-plan-a.md claims `feat/work` but declares no `scope:`" in (
-            manifest["scope_unresolved_cause"]
+            manifest["scope_reason"]
         )
         assert "build-plan-a.md claims `feat/work` but declares no `scope:`" in result.stderr
 
@@ -6715,7 +6727,7 @@ class TestUnresolvedScopeCause:
         result, manifest = self._dispatch(repo)
         assert manifest["scope"] == "dup"
         assert manifest["scope_chosen_by"] == "binding"
-        assert manifest["scope_unresolved_cause"] is None
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_a_branch_line_below_the_frontmatter_is_named(self, tmp_path):
@@ -6731,7 +6743,8 @@ class TestUnresolvedScopeCause:
         )
         result, manifest = self._dispatch(repo)
         assert manifest["scope_chosen_by"] == "none"
-        assert manifest["scope_unresolved_cause"] == "no live plan claims `feat/work`"
+        assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert manifest["scope_reason"] == "no live plan claims `feat/work`"
         assert "build-plan-a.md names branch 'feat/work' below its frontmatter" in result.stderr
         assert "move `branch: feat/work` into the `---` block" in result.stderr
         # It has a scope, so the fix is the one line — no second edit is asked for.
@@ -6760,6 +6773,7 @@ class TestUnresolvedScopeCause:
         result, manifest = self._dispatch(repo)
         assert manifest["scope"] is None
         assert manifest["scope_chosen_by"] == "none"
+        assert manifest["scope_unresolved_cause"] == "pointer-claims-other"
         assert "build-plan-p.md claims branch 'develop', not 'feat/work'" in result.stderr
 
     def test_a_plan_edited_here_that_does_not_claim_the_branch_is_named(self, tmp_path):
@@ -6771,6 +6785,7 @@ class TestUnresolvedScopeCause:
         )
         result, manifest = self._dispatch(repo)
         assert manifest["scope_chosen_by"] == "none"
+        assert manifest["scope_unresolved_cause"] == "no-claim"
         assert (
             "build-plan-a.md was edited on this branch but no live plan declares "
             "`branch: feat/work`"
@@ -6799,7 +6814,8 @@ class TestUnresolvedScopeCause:
         )
         result, manifest = self._dispatch(repo)
         assert manifest["scope_chosen_by"] == "none"
-        assert manifest["scope_unresolved_cause"] == "no live plan claims `chore/bump`"
+        assert manifest["scope_unresolved_cause"] == "unbound"
+        assert manifest["scope_reason"] == "no live plan claims `chore/bump`"
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_the_integration_branch_says_nothing(self, tmp_path):
@@ -6812,7 +6828,8 @@ class TestUnresolvedScopeCause:
         )
         result, manifest = self._dispatch(repo)
         assert manifest["scope_chosen_by"] == "none"
-        assert manifest["scope_unresolved_cause"] == "no live plan claims `main`"
+        assert manifest["scope_unresolved_cause"] == "unbound"
+        assert manifest["scope_reason"] == "no live plan claims `main`"
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_a_resolved_or_explicit_scope_says_nothing(self, tmp_path):
@@ -6824,13 +6841,13 @@ class TestUnresolvedScopeCause:
         repo = self._repo(tmp_path, plans, "feat/work")
         result, manifest = self._dispatch(repo)
         assert manifest["scope"] == "a"
-        assert manifest["scope_unresolved_cause"] is None
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
         assert "this review resolved no build-plan scope" not in result.stderr
 
         repo = self._repo(tmp_path / "explicit", {}, "feat/other")
         result, manifest = self._dispatch(repo, "--scope", "anything")
         assert manifest["scope_chosen_by"] == "explicit-args"
-        assert manifest["scope_unresolved_cause"] is None
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_the_cause_reaches_the_review_fact(self, tmp_path):
@@ -6848,8 +6865,45 @@ class TestUnresolvedScopeCause:
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         fact = _store_facts(repo, "review")[-1]
-        assert fact["body"]["scope_unresolved_cause"] == "no live plan claims `feat/work`"
+        assert fact["body"]["scope_unresolved_cause"] == "no-claim"
+        assert fact["body"]["scope_reason"] == "no live plan claims `feat/work`"
         assert fact["body"]["scope_chosen_by"] == "none"
+
+    def test_the_unbound_cases_about_no_plan_get_their_own_codes(self, tmp_path):
+        """`scratch-worktree`, `detached-head` and `no-work-tree` are read off the
+        binding's reason (`critic_consolidate._UNBOUND_CASE_CODES`), so each is
+        resolved FOR REAL here: a reworded reason in `work_unit` turns this red
+        instead of the code quietly degrading to `unbound`. A legacy binding
+        with no scope is the bound control."""
+        from lib import work_unit
+
+        def code(project):
+            binding = work_unit.resolve(project)
+            return cc._unresolved_scope_cause(project, project / ".prawduct", binding)
+
+        repo = self._repo(tmp_path / "repo", {}, "feat/work")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _git(repo, "checkout", "--detach", head, "--quiet")
+        assert code(repo) == ("detached-head", None)
+
+        plain = tmp_path / "plain"
+        (plain / ".prawduct" / "artifacts").mkdir(parents=True)
+        assert code(plain) == ("no-work-tree", None)
+
+        primary = self._repo(tmp_path / "primary", {}, "feat/work")
+        wid = "a287823214767feaa"
+        scratch = primary / ".claude" / "worktrees" / f"agent-{wid}"
+        scratch.parent.mkdir(parents=True)
+        _git(primary, "worktree", "add", "-q", "-b", f"worktree-agent-{wid}", str(scratch), "HEAD")
+        assert code(scratch) == ("scratch-worktree", None)
+
+        legacy = self._repo(
+            tmp_path / "legacy", {"build-plan.md": "---\nartifact: build-plan\n---\n\n# Plan\n"},
+            "feat/work",
+        )
+        got, advice = code(legacy)
+        assert got == "legacy"
+        assert advice.startswith(f"{work_unit.LEGACY_ADVISORY_KEY}:")
 
 
 # ---------------------------------------------------------------------------

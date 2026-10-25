@@ -2720,25 +2720,61 @@ def merge_base_start_reason(absent: "str | None") -> str:
     return "nothing on this branch is reviewed yet"
 
 
-def _unresolved_scope_advice(
-    project_dir: Path, prawduct_dir: Path, binding
-) -> "str | None":
-    """The remedy to print for a dispatch whose binding carried no scope, or ``None``.
+#: Prefixes of ``work_unit.resolve``'s unbound reasons that name a case with a
+#: code of its own. Matched on the reason because the ``Binding`` carries the
+#: case only there; ``tests/test_critic_consolidate.py`` resolves each case for
+#: real and pins the code, so a reworded reason turns that test red rather than
+#: this code quietly reading ``unbound``.
+_UNBOUND_CASE_CODES = (
+    ("a harness scratch worktree", "scratch-worktree"),
+    ("HEAD is detached", "detached-head"),
+    ("not inside a git work tree", "no-work-tree"),
+)
 
-    A broken binding and a claimant without ``scope:`` are always worth a line:
-    both are a plan the author meant to govern this branch, and the binding's
-    own reason names the edit. An **unbound** checkout is normal — a chore, a
-    fix, the integration branch — so its generic reason would fire on every such
-    review with nothing to act on; it gets a line only when
-    :func:`buildplan_refs.unresolved_scope_cause` finds evidence the branch has a
-    plan that fails to claim it.
+
+def _unresolved_scope_cause(
+    project_dir: Path, prawduct_dir: Path, binding
+) -> "tuple[str, str | None]":
+    """``(code, advice)`` for a dispatch whose binding carried no scope.
+
+    ``code`` is the short cause the manifest's ``scope_unresolved_cause``
+    records — a code, as it was before the binding existed, so a count over
+    the store groups by it (``api-contract.md``: additive-first; the binding's
+    sentence goes to the new ``scope_reason`` field instead):
+
+    - ``broken`` — two live plans claim the branch, or one cannot be read;
+    - ``legacy`` — a legacy-window plan (pointer or conventional path) that
+      declares no ``scope:``;
+    - ``claim-no-scope`` — a plan claims the branch and declares no ``scope:``;
+    - ``scratch-worktree``, ``detached-head``, ``no-work-tree`` — the unbound
+      cases that are not about any plan;
+    - for any other unbound checkout, the code
+      :func:`buildplan_refs.unresolved_scope_cause` finds (``body-branch``,
+      ``pointer-claims-other``, ``no-claim``), else ``unbound``.
+
+    ``advice`` is the remedy to print, or ``None``. A broken binding and a
+    bound plan without ``scope:`` are always worth a line: both are a plan the
+    author meant to govern this branch, and the binding's own reason names the
+    edit. An **unbound** checkout is normal — a chore, a fix, the integration
+    branch — so its generic reason would fire on every such review with
+    nothing to act on; it gets a line only when ``unresolved_scope_cause``
+    finds evidence the branch has a plan that fails to claim it.
     """
-    if binding.state != "unbound":
-        return binding.reason
+    if binding.state == "broken":
+        return "broken", binding.reason
+    if binding.state == "bound":
+        legacy = binding.chosen_by in ("legacy-pointer", "legacy-default")
+        return ("legacy" if legacy else "claim-no-scope"), binding.reason
+    reason = binding.reason or ""
+    for prefix, code in _UNBOUND_CASE_CODES:
+        if reason.startswith(prefix):
+            return code, None
     from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
 
     cause = buildplan_refs.unresolved_scope_cause(project_dir, prawduct_dir)
-    return cause[1] if cause is not None else None
+    if cause is None:
+        return "unbound", None
+    return cause
 
 
 def begin_review(
@@ -2870,6 +2906,7 @@ def begin_review(
     scope = (scope or "").strip() or None
     scope_chosen_by = "explicit-args" if scope else None
     scope_unresolved_cause: "str | None" = None
+    scope_reason: "str | None" = None
     notes_scope: list[str] = []
     # The plan this review's deliverable check will grade: the scope's when the
     # dispatch named one, the binding's otherwise — the same split `record_lint`
@@ -2883,12 +2920,14 @@ def begin_review(
         scope = binding.scope
         scope_chosen_by = binding.chosen_by
         if scope is None:
-            # The binding's reason is the cause, recorded so how often each one
-            # fires can be counted from the store afterwards.
-            scope_unresolved_cause = binding.reason
+            # A short code, so how often each cause fires can be counted from
+            # the store afterwards, and the binding's sentence beside it.
+            scope_unresolved_cause, sentence = _unresolved_scope_cause(
+                project_dir, prawduct_dir, binding
+            )
+            scope_reason = binding.reason
             # Say WHY, and what edit fixes it. Advice: it rides `notes` and
             # changes nothing about the dispatch.
-            sentence = _unresolved_scope_advice(project_dir, prawduct_dir, binding)
             if sentence:
                 notes_scope.append(
                     "this review resolved no build-plan scope, so it records none and "
@@ -3527,6 +3566,7 @@ def begin_review(
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
         "scope_unresolved_cause": scope_unresolved_cause,
+        "scope_reason": scope_reason,
         # The tree a chunk/final interval was extended back to, or null — the
         # yield of the extension, countable from the store.
         "base_extended_from": base_extended_from,
@@ -3898,7 +3938,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "scope_unresolved_cause", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
+                "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
@@ -4797,10 +4837,12 @@ def build_fact_body(
         # written before the binding existed carry `branch-name` or
         # `not-resolved`; readers keep accepting them, and nothing writes them.
         "scope_chosen_by": manifest.get("scope_chosen_by"),
-        # Why no scope was recorded, when none was — the binding's reason (an
-        # older fact carries a short cause code instead), queryable from the
-        # store like `record_lint` below.
+        # Why no scope was recorded, when none was: a short cause code (the
+        # set is `_unresolved_scope_cause`'s), queryable from the store like
+        # `record_lint` below, and the work-unit binding's own sentence beside
+        # it. Facts from before `scope_reason` carry the code alone.
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
+        "scope_reason": manifest.get("scope_reason"),
         "base_extended_from": manifest.get("base_extended_from"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),

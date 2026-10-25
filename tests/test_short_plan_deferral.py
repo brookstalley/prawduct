@@ -658,8 +658,10 @@ class TestStopGateOnShortPlans:
         loader.exec_module(hook)
 
         class _Exploding:
+            # Stands in for the `work_unit.Binding` the gate passes straight
+            # through (#1050) — `plan_path` is the field the helper reads.
             @property
-            def path(self):
+            def plan_path(self):
                 raise RuntimeError("plan resolution exploded")
 
         prawduct = _short_plan_branch(tmp_path)

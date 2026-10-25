@@ -734,6 +734,9 @@ class TestOneCurrentChunkImplementation:
 
 class TestDescriptionFallback:
     def test_frontmatter_scope_names_a_plan_with_no_h1(self, tmp_path: Path):
+        # A work tree: the plan is read through the work-unit binding, and
+        # outside one no branch binds and no plan is read (#1050).
+        _init_repo(tmp_path)
         _write_plan(
             tmp_path,
             "---\nartifact: build-plan\nscope: session-handoff-continuity\n---\n\n"
@@ -743,6 +746,9 @@ class TestDescriptionFallback:
         assert status["description"] == "session-handoff-continuity"
 
     def test_filename_is_the_last_resort(self, tmp_path: Path):
+        # A work tree: the plan is read through the work-unit binding, and
+        # outside one no branch binds and no plan is read (#1050).
+        _init_repo(tmp_path)
         plan_dir = tmp_path / ".prawduct" / "artifacts"
         plan_dir.mkdir(parents=True)
         (plan_dir / "build-plan-widgets.md").write_text("## Status\n\n- [ ] Chunk 01: A\n")
@@ -751,6 +757,9 @@ class TestDescriptionFallback:
         assert status["description"] == "widgets"
 
     def test_h1_still_wins_when_present(self, tmp_path: Path):
+        # A work tree: the plan is read through the work-unit binding, and
+        # outside one no branch binds and no plan is read (#1050).
+        _init_repo(tmp_path)
         _write_plan(
             tmp_path,
             "---\nscope: ignored-when-h1-present\n---\n\n"
@@ -800,6 +809,9 @@ Prose that is NOT context.
 
 class TestContextBlock:
     def test_multi_paragraph_context_survives_whole(self, tmp_path: Path):
+        # A work tree: the plan is read through the work-unit binding, and
+        # outside one no branch binds and no plan is read (#1050).
+        _init_repo(tmp_path)
         _write_plan(tmp_path, MULTI_PARAGRAPH_PLAN)
         context = buildplan_refs._parse_build_plan_status(tmp_path)["context"]
         assert context.startswith("**Chunk 01 complete**")
@@ -808,6 +820,9 @@ class TestContextBlock:
         assert "The last paragraph, which used to be lost." in context
 
     def test_context_stops_at_the_next_heading(self, tmp_path: Path):
+        # A work tree: the plan is read through the work-unit binding, and
+        # outside one no branch binds and no plan is read (#1050).
+        _init_repo(tmp_path)
         _write_plan(tmp_path, MULTI_PARAGRAPH_PLAN)
         context = buildplan_refs._parse_build_plan_status(tmp_path)["context"]
         assert "Prose that is NOT context" not in context
@@ -815,6 +830,9 @@ class TestContextBlock:
     def test_context_stops_at_a_later_chunk_item(self, tmp_path: Path):
         """Context is conventionally last, but a plan that interleaves must not
         swallow its own checklist into the handoff."""
+        # A work tree: the plan is read through the work-unit binding, and
+        # outside one no branch binds and no plan is read (#1050).
+        _init_repo(tmp_path)
         _write_plan(
             tmp_path,
             "# Build Plan — Interleaved (2026-07-26)\n\n## Status\n\n"
@@ -828,6 +846,9 @@ class TestContextBlock:
         """Block semantics dissolve the first-wins/last-wins question: the first
         `Context:` opens the block and a later one is text inside it, so neither
         wins and nothing is dropped."""
+        # A work tree: the plan is read through the work-unit binding, and
+        # outside one no branch binds and no plan is read (#1050).
+        _init_repo(tmp_path)
         _write_plan(
             tmp_path,
             "# Build Plan — Two (2026-07-26)\n\n## Status\n\n- [ ] Chunk 01: A\n\n"
@@ -992,8 +1013,12 @@ class TestNonUtf8PlanDegrades:
         read before any id is used. So the assertion below passed while the
         invocation it documented did not exist.
         """
-        self._write_undecodable_plan(tmp_path)
-        refs = buildplan_refs._parse_build_plan_chunk_refs(tmp_path / ".prawduct", "01")
+        # The plan is passed: `verify-chunk-refs` resolves the binding first
+        # and hands the bound plan in (an undecodable plan at the conventional
+        # path makes the binding broken, which the CLI test below covers). The
+        # subject here is the reader's own degradation on the bytes.
+        plan = self._write_undecodable_plan(tmp_path)
+        refs = buildplan_refs._parse_build_plan_chunk_refs(tmp_path / ".prawduct", "01", plan)
         assert "unreadable build-plan" in refs["error"]
 
     def test_verify_chunk_refs_cli_reports_rather_than_tracebacks(self, tmp_path: Path):

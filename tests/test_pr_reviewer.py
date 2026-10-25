@@ -707,16 +707,29 @@ class TestPrReviewSkillContent:
         release — retire at the release surface (in the closing PR, per
         create-flow Step 1d), RETAIN while release-pending — not
         unconditionally delete. Guards against a revert to the old
-        develop-merge=release assumption."""
+        develop-merge=release assumption.
+
+        It also pinned that the step named `active_build_plan`, so retirement
+        resolved the pointer rather than a hardcoded path. #1050 removed the
+        pointer bookkeeping from the Merge Flow (a plan claims its branch, and
+        a merged, deleted branch's claim resolves for nobody), so that anchor
+        now pins the opposite: the Merge Flow says a `branch:`-declaring plan
+        needs nothing at the merge, and names no pointer to maintain."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        start = content.index("## Merge Flow")
+        merge_flow = content[start:content.index("\n## ", start + 1)]
         # The discriminator is resolve-base, and BOTH branches must be present.
-        assert "resolve-base" in content, "cleanup step must branch on resolve-base"
-        assert "RETAIN" in content, "cleanup step must keep the plan while release-pending"
-        assert "active_build_plan" in content, (
-            "deletion must resolve the pointer, not a hardcoded build-plan.md path"
-        )
+        assert "resolve-base" in merge_flow, "cleanup step must branch on resolve-base"
+        assert "RETAIN" in merge_flow, "cleanup step must keep the plan while release-pending"
         # The release-pending branch must be tied to the develop base / statusless entry.
-        assert "release-pending" in content
+        assert "release-pending" in merge_flow
+        assert "A plan declaring `branch:` needs nothing at this merge" in merge_flow, (
+            "the Merge Flow must say a claiming plan needs no merge-time bookkeeping"
+        )
+        assert "active_build_plan" not in merge_flow, (
+            "the Merge Flow must not prescribe pointer bookkeeping — a plan's "
+            "claim, not the pointer, is what binds it (#1050)"
+        )
 
     def test_no_flow_requires_post_merge_integration_branch_commit(self):
         """single-pr-bookkeeping: the whole point — no flow may instruct a
