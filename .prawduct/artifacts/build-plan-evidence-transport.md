@@ -225,7 +225,8 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   pattern `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*` → rc 0, matches the bare name,
   and the `prawduct-other` it also fetches is rejected by `_notes_refs`' filter). Fixed by
   delegate E with O-2/O-7 (status and `unattached` read the tracking refs too), O-16 (the note
-  line carries the worktree's basename and no session, never the absolute path), O-17/O-8 (status
+  line carries the worktree's basename — `.claude/worktrees/<name>` for a scratch tree — and no
+  session, never the absolute path), O-17/O-8 (status
   counts note commits not yet pushed), O-19, O-3/O-6, O-4/O-13, O-20/O-21. Accepted on the
   record: O-1, O-5, O-9, O-10, O-11, O-12, O-14, O-15, O-18, O-22.
 - Backlog filed from Chunk 06 (through the skill, 2026-10-25): #1056 (`--github-status` needs an
