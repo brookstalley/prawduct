@@ -1,14 +1,18 @@
-"""Chunk status as a query — the one walker of a plan's progress (#1051).
+"""Chunk status as a query — the walker of a plan's progress (#1051).
 
-"Is chunk N done" and "is this plan finished" each have one answer, derived
-from the facts the Critic already writes, never from a hand-ticked box or a
-commit (``1050-design.md`` § 3). Every consumer takes the answer computed here
-and none re-derives it:
+"Is chunk N done" and "is this plan finished" are to have one answer each,
+derived from the facts the Critic already writes, never from a hand-ticked box
+or a commit (``1050-design.md`` § 3). This module computes it; moving every
+consumer onto it, deleting the box readers they use today and extending the
+status-walker pin in ``tests/test_handoff_parser_correctness.py`` to it is the
+rest of ``.prawduct/artifacts/build-plan-chunk-status.md``. Until that lands,
+older readers of the same question still exist beside this one.
 
 - :func:`chunk_states` — each chunk's state, ``open``, ``done`` or ``dropped``;
 - :func:`is_finished` — every chunk ``done`` or ``dropped`` (the only function
-  answering "finished");
-- :func:`current_chunks` — the ``open`` chunks, in plan order;
+  here answering "finished");
+- :func:`current_chunks` — the ``open`` chunks, in plan order, real ids only
+  (the fail-closed entries below are left out; see :attr:`ChunkState.synthetic`);
 - :func:`built_chunks` — a RENDERING convenience, the one git-walking function
   here; no gate reads it and :func:`chunk_states` never calls it;
 - :func:`propose_chunks` — the chunk set a review dispatch proposes (ST8).
@@ -26,15 +30,19 @@ in memory, nothing written (MG1).
 
 **dropped** is a frontmatter declaration, hand-written on purpose and never
 inferred: a block sequence under ``dropped:`` whose items read ``- <id>:
-<reason>``. The reason is required.
+<reason>`` (``<id>`` as the plan prints it, ``Chunk 02`` or ``02``). The reason
+is required.
 
 **Authority fails closed** (``architecture.md`` § Direction): what cannot be
-read leaves a chunk ``open``, which keeps every gate armed. An unreadable
-``dropped:`` entry drops nothing; a review fact whose blocking findings cannot
-all be read certifies nothing; an anchor git cannot place completes nothing; a
-plan file that cannot be read answers with one open :data:`UNREADABLE_PLAN`
-entry rather than the empty mapping, which would read as finished; and a chunk
-heading the parser rejects is an open chunk of its own rather than an absence.
+read leaves a chunk ``open``, which keeps every gate armed, and says why in its
+``reason``. An unreadable ``dropped:`` entry drops nothing; a review fact whose
+blocking findings cannot all be read certifies nothing; an anchor git cannot
+place completes nothing. A plan file that cannot be read answers with one open
+:data:`UNREADABLE_PLAN` entry rather than the empty mapping, which would read as
+finished, and a chunk heading the parser rejects is an open entry of its own
+rather than an absence. Both are ``synthetic``: they keep :func:`is_finished`
+false, but they are not chunk ids, so :func:`current_chunks` and
+:func:`propose_chunks` never hand one out.
 
 **Cost (NF1).** :func:`chunk_states` is called on every Stop. It walks no git
 history and makes no network call: its only subprocess is one ``git merge-base
@@ -90,6 +98,11 @@ class ChunkState:
     like an answer was not one (an unreadable ``dropped:`` entry, a review that
     names the chunk but cannot certify it, an unparseable heading); ``None``
     for a plain open chunk.
+
+    ``synthetic`` marks an entry that is not a chunk of the plan but stands in,
+    open, for what could not be read — the :data:`UNREADABLE_PLAN` key and a
+    ``?L<line>`` key per rejected heading. Its key is not a chunk id: never name
+    it in a fact or a dispatch. It keeps the plan unfinished.
     """
 
     state: State
@@ -97,6 +110,7 @@ class ChunkState:
     date: str | None = None
     imported: bool = False
     reason: str | None = None
+    synthetic: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -109,14 +123,26 @@ class _Plan:
     chunks: tuple[str, ...]  # ids as the plan prints them, plan order
     unparsed: tuple[tuple[str, str], ...]  # (key, heading) rejected headings
     scope: str | None
-    branches: tuple[str, ...]
+    branch: str | None  # the integration branch, argv-safe
+    branches: tuple[str, ...]  # integration + working branches, argv-safe
     dropped: dict[str, str]  # normalized id -> reason
     dropped_faults: dict[str, str]  # normalized id -> why its entry is unreadable
+    dropped_plan_faults: tuple[str, ...]  # why the declaration, or an entry naming no chunk, dropped nothing
     ticked: frozenset[str]  # normalized ids of ticked Status boxes
 
 
 def _norm(chunk_id: object) -> str:
     return buildplan_refs._normalize_chunk_id(str(chunk_id))
+
+
+def _ref_token(value: str | None) -> str | None:
+    """A frontmatter branch name fit for a git argv, else ``None``.
+
+    The one guard every frontmatter token reaching git passes: a value opening
+    with ``-`` would be read as an option (the exposure ``gitstate.is_object_id``
+    documents for ids).
+    """
+    return value if value and not value.startswith("-") else None
 
 
 def _read_plan(content: str) -> _Plan:
@@ -154,41 +180,63 @@ def _read_plan(content: str) -> _Plan:
 
     fm = plan_index.frontmatter_lines(content) or []
     _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
-    branch = plan_index.parse_build_plan_frontmatter_branch(content)
+    branch = _ref_token(plan_index.parse_build_plan_frontmatter_branch(content))
     working = work_unit._working_branches(fm) or ()
-    branches = tuple(
-        dict.fromkeys(b for b in (branch, *working) if b and not b.startswith("-"))
+    branches = tuple(dict.fromkeys(b for b in (branch, *map(_ref_token, working)) if b))
+    dropped, faults, plan_faults = _read_dropped(fm, seen)
+    return _Plan(
+        tuple(chunks), unparsed, scope, branch, branches, dropped, faults, plan_faults,
+        frozenset(ticked),
     )
-    dropped, faults = _read_dropped(fm)
-    return _Plan(tuple(chunks), unparsed, scope, branches, dropped, faults, frozenset(ticked))
 
 
-def _read_dropped(fm: list[str]) -> tuple[dict[str, str], dict[str, str]]:
-    """``(dropped, faults)`` from the frontmatter's ``dropped:`` block.
+def _read_dropped(
+    fm: list[str], chunk_ids: "set[str]"
+) -> tuple[dict[str, str], dict[str, str], tuple[str, ...]]:
+    """``(dropped, faults, plan_faults)`` from the frontmatter's ``dropped:`` block.
 
-    One form: a block sequence of ``- <id>: <reason>``. A declaration the
-    sequence reader cannot read whole drops nothing; an item whose id reads but
-    whose reason is empty drops nothing and is reported against that id.
+    One form: a block sequence of ``- <id>: <reason>``, ``<id>`` normalized as
+    every chunk id is (``Chunk 02`` and ``2`` both name ``02``). Nothing that
+    cannot be read drops anything, and each such case says why: an item whose
+    id reads but whose reason is empty is reported against that chunk; a
+    declaration the sequence reader cannot read whole, an item naming no id
+    this reader reads, and an id that is no chunk of the plan are reported
+    against every chunk, because none of them can be pinned to one.
+    ``chunk_ids`` are the plan's normalized ids.
     """
     status, items = core.read_block_sequence("\n".join(fm), DROPPED_KEY)
-    if status != core.YAML_DECLARED:
-        return {}, {}
+    if status == core.YAML_UNPARSEABLE:
+        return {}, {}, (
+            f"`{DROPPED_KEY}:` is declared in a shape this reader does not parse — "
+            f"write a block of `- <id>: <reason>` items — so it drops nothing",
+        )
     dropped: dict[str, str] = {}
     faults: dict[str, str] = {}
+    plan_faults: list[str] = []
     for item in items:
         raw_id, colon, reason = item.partition(":")
-        chunk_id = core.unquote_scalar(raw_id.strip())
+        written = core.unquote_scalar(raw_id.strip())
+        chunk_id = _norm(written)
         reason = core.unquote_scalar(reason.strip())
         if not _DROPPED_ID_RE.match(chunk_id):
-            continue  # names no chunk this reader can identify: drops nothing
-        if not colon or not reason:
-            faults[_norm(chunk_id)] = (
-                f"`{DROPPED_KEY}:` entry for {chunk_id} gives no reason "
-                f"(write `- {chunk_id}: <reason>`), so it drops nothing"
+            plan_faults.append(
+                f"`{DROPPED_KEY}:` entry `{item}` names no chunk id "
+                f"(write `- <id>: <reason>`), so it drops nothing"
             )
             continue
-        dropped[_norm(chunk_id)] = reason
-    return dropped, faults
+        if chunk_id not in chunk_ids:
+            plan_faults.append(
+                f"`{DROPPED_KEY}:` names {written}, which is not a chunk of this plan"
+            )
+            continue
+        if not colon or not reason:
+            faults[chunk_id] = (
+                f"`{DROPPED_KEY}:` entry for {written} gives no reason "
+                f"(write `- {written}: <reason>`), so it drops nothing"
+            )
+            continue
+        dropped[chunk_id] = reason
+    return dropped, faults, tuple(plan_faults)
 
 
 # ---------------------------------------------------------------------------
@@ -197,16 +245,13 @@ def _read_dropped(fm: list[str]) -> tuple[dict[str, str], dict[str, str]]:
 
 
 def _store(facts: object) -> dict:
-    """A ``read_facts`` result; a bare envelope list is accepted and wrapped."""
-    if isinstance(facts, dict):
-        return facts
-    if isinstance(facts, list):
-        return {"facts": facts}
-    return {"facts": []}
+    """The ``read_facts`` result, or an empty store for anything else."""
+    return facts if isinstance(facts, dict) else {"facts": []}
 
 
 def fact_chunks(body: dict) -> list[str]:
-    """The chunk ids a review fact names — the one reader rule for the field.
+    """The chunk ids a review fact names, by the reader rule the plan's fact
+    shape fixes — the rule every reader of the field is to take from here.
 
     ``chunks`` when present, else ``[chunk]`` when ``chunk`` is set, else
     ``[]``. A ``chunks`` that is not a list names nothing.
@@ -285,25 +330,30 @@ class _Reachability:
 def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str, ChunkState]:
     """Each chunk's :class:`ChunkState`, keyed by the id the plan prints, in plan order.
 
-    ``facts`` is an ``evidence.read_facts`` result (a bare envelope list is
-    accepted). ``repo_dir`` is the work tree git runs in for the reachability
-    probe. A plan with no chunks answers ``{}``; an unreadable plan answers
-    ``{UNREADABLE_PLAN: open}``; each heading the chunk parser rejects is an
-    open chunk keyed ``?L<line>``. Never raises; never walks git history and
-    never calls :func:`built_chunks` (module docstring, NF1).
+    ``facts`` is an ``evidence.read_facts`` result. ``repo_dir`` is the work
+    tree git runs in for the reachability probe. A plan with no chunks answers
+    ``{}``; an unreadable plan answers ``{UNREADABLE_PLAN: open}``; each heading
+    the chunk parser rejects adds an open entry keyed ``?L<line>``. Those two
+    are ``synthetic`` (:class:`ChunkState`). Never raises; never walks git
+    history and never calls :func:`built_chunks` (module docstring, NF1).
     """
     try:
         content = Path(plan_path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return {UNREADABLE_PLAN: ChunkState("open", reason=f"plan unreadable ({exc})")}
+        return {
+            UNREADABLE_PLAN: ChunkState("open", reason=f"plan unreadable ({exc})", synthetic=True)
+        }
     plan = _read_plan(content)
     store = _store(facts)
 
     states: dict[str, ChunkState] = {}
     by_norm: dict[str, str] = {}
+    plan_fault = "; ".join(plan.dropped_plan_faults) or None
     for chunk_id in plan.chunks:
         by_norm[_norm(chunk_id)] = chunk_id
-        states[chunk_id] = ChunkState("open", reason=plan.dropped_faults.get(_norm(chunk_id)))
+        states[chunk_id] = ChunkState(
+            "open", reason=plan.dropped_faults.get(_norm(chunk_id)) or plan_fault
+        )
 
     def still_open(norm_id: str) -> bool:
         key = by_norm.get(norm_id)
@@ -366,10 +416,18 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             # history; that the reviewed TREE was committed is the Stop gate's
             # coverage verdict to carry, not this function's.
             anchor = body.get("head_commit") or body.get("dispatch_commit")
-            if not gitstate.is_object_id(anchor) or not plan.branches or not reachable(anchor):
-                where = " or ".join(f"`{b}`" for b in plan.branches) or "no declared branch"
+            if not plan.branches:
+                why = "the plan declares no `branch:` its commit could be on"
+            elif not gitstate.is_object_id(anchor):
+                why = "it records no commit to place"
+            elif not reachable(anchor):
+                where = " or ".join(f"`{b}`" for b in plan.branches)
+                why = f"its commit is not on {where}"
+            else:
+                why = None
+            if why is not None:
                 for n in targets:
-                    note(n, f"review {fact['id']} names it, but its commit is not on {where}")
+                    note(n, f"review {fact['id']} names it, but {why}")
                 continue
             for n in targets:
                 states[by_norm[n]] = ChunkState("done", fact["id"], _date(fact.get("ts")))
@@ -379,20 +437,46 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             "open",
             reason=f"{buildplan_refs.UNPARSED_HEADING_MARKER}: `{heading}` is not a chunk "
             "heading the parser reads, so it cannot be certified — fix the heading",
+            synthetic=True,
         )
     return states
 
 
-def is_finished(plan_path: Path, facts: object, *, repo_dir: Path) -> bool:
-    """Every chunk ``done`` or ``dropped``. A plan with no chunks is finished."""
-    states = chunk_states(plan_path, facts, repo_dir=repo_dir)
+def is_finished(
+    plan_path: Path,
+    facts: object,
+    *,
+    repo_dir: Path,
+    states: "dict[str, ChunkState] | None" = None,
+) -> bool:
+    """Every entry ``done`` or ``dropped``. A plan with no chunks is finished;
+    a synthetic entry (always open) keeps it unfinished.
+
+    ``states`` is this plan's :func:`chunk_states` answer when the caller
+    already holds it, so the walk is not run twice.
+    """
+    if states is None:
+        states = chunk_states(plan_path, facts, repo_dir=repo_dir)
     return all(s.state != "open" for s in states.values())
 
 
-def current_chunks(plan_path: Path, facts: object, *, repo_dir: Path) -> list[str]:
-    """The ``open`` chunks, in plan order."""
-    states = chunk_states(plan_path, facts, repo_dir=repo_dir)
-    return [chunk_id for chunk_id, s in states.items() if s.state == "open"]
+def current_chunks(
+    plan_path: Path,
+    facts: object,
+    *,
+    repo_dir: Path,
+    states: "dict[str, ChunkState] | None" = None,
+) -> list[str]:
+    """The ``open`` chunk ids, in plan order — synthetic entries left out.
+
+    So a plan can be unfinished with no current chunk: when all that is open is
+    an unreadable plan or a rejected heading. "Finished" is :func:`is_finished`'s
+    question, never ``not current_chunks(...)``. ``states`` as for
+    :func:`is_finished`.
+    """
+    if states is None:
+        states = chunk_states(plan_path, facts, repo_dir=repo_dir)
+    return [k for k, s in states.items() if s.state == "open" and not s.synthetic]
 
 
 # ---------------------------------------------------------------------------
@@ -518,8 +602,8 @@ def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
     if not plan.chunks:
         return set()
     base = None
-    declared_base = plan_index.parse_build_plan_frontmatter_base(content)
-    if declared_base and not declared_base.startswith("-"):
+    declared_base = _ref_token(plan_index.parse_build_plan_frontmatter_base(content))
+    if declared_base:
         base = next(
             (r for r in (f"origin/{declared_base}", declared_base)
              if coverage._git_ref_exists(repo_dir, r)),
@@ -529,8 +613,7 @@ def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:
         base, _why = coverage.repo_base_branch(repo_dir)
     if base is None:
         return set()
-    branch = plan_index.parse_build_plan_frontmatter_branch(content)
-    head = branch if branch and coverage._git_ref_exists(repo_dir, branch) else "HEAD"
+    head = plan.branch if plan.branch and coverage._git_ref_exists(repo_dir, plan.branch) else "HEAD"
     rc, out, _err = evidence.run_git(
         repo_dir, "log", f"--format={_COMMIT_MARK}%s", "--name-only", f"{base}..{head}", "--",
         strip=False,
