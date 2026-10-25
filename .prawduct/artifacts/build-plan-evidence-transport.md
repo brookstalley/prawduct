@@ -100,6 +100,22 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   merge-only, and #1055's shim retirements are out.
 
 **Decisions made mid-build:** (appended while building)
+- Chunk 04 as built (delegate C, 2026-10-25), accepted by the coordinator: the review-fact
+  anchor rule (`head_commit or dispatch_commit`) becomes public `plan_status.review_anchor(body)`
+  with `chunk_states` calling it — the inventory found it inline at three sites, and Chunk 01's
+  note anchor is a fourth reader; the other two sites move onto it at integration (one home).
+  The merged check is two `for-each-ref` calls (branch and base refs, local and every remote;
+  `--contains <tip>` over the base refs found), not one `--is-ancestor`, so a merge visible only
+  on `origin/<base>` before a pull counts and "base missing" is `unknown`, not "not merged".
+  `merged_pr_for(project_dir, branch, sha=None)` answers from `--head <branch>` alone when the
+  branch is gone. Three holes in the Goals' lifecycle rule, found by C and sent back as one
+  round: a shipped scope with a newer pending fragment is not `released` (step 2 skips scopes
+  `pending_scopes` lists); an anchor equal to the fact's own `base_commit` is the fork point and
+  certifies no merge; a branch whose tip equals the base tip has no commits of its own and reads
+  `in-progress` unless an anchor certifies a fast-forward merge. Settled by LC1 (derived from
+  what is observed) and "authority fails closed". Carried to Chunk 02 (A): `plan status
+  --probe-pr` reaches `git_hygiene.merged_pr_for`'s `gh pr list`, so the `egress_boundary` entry
+  for that site names both callers.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a
