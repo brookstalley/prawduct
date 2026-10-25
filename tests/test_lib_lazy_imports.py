@@ -27,7 +27,7 @@ EXPECTED_FLAT_EXPORTS = frozenset({
     # core
     "BLOCK_BEGIN", "BLOCK_END", "BUILD_PLAN_POINTER_KEY", "DEFAULT_BUILD_PLAN_REL",
     "FRAMEWORK_DIR", "GITIGNORE_ENTRIES", "MANAGED_FILES", "PRAWDUCT_VERSION",
-    "TEMPLATES_DIR", "resolve_build_plan_path", "read_str_yaml_key", "extract_block",
+    "TEMPLATES_DIR", "read_str_yaml_key", "extract_block",
     "log", "render_template", "update_gitignore", "write_template",
     # advisory_store
     "AdvisoryCandidate", "Codebase", "ProjectState", "clear_registry", "compute_id",

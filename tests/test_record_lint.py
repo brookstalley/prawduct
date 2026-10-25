@@ -740,6 +740,60 @@ class TestChunkRefs:
         )
         assert named["unchecked"] == [], "no assumption to report when told"
 
+    def _repo_with_a_claim_elsewhere(self, tmp_path, name: str, *, also_claim: bool = False):
+        """The pointer names a plan whose chunk 03 deliverable is missing, and
+        another plan claims a different branch — so the legacy window is shut
+        and, on an unclaimed branch, the pointer answers nothing."""
+        repo = _make_repo(tmp_path, name=name)
+        artifacts = repo / ".prawduct" / "artifacts"
+        (artifacts / "build-plan-pointed.md").write_text(
+            "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 03: pointed\n\n"
+            "### Chunk 03: pointed\n\n- **Deliverables:** `src/absent.py`\n"
+        )
+        claimed = "feat/work" if also_claim else "feat/elsewhere"
+        for plan in ("a", "b") if also_claim else ("a",):
+            (artifacts / f"build-plan-{plan}.md").write_text(
+                f"---\nartifact: build-plan\nscope: {plan}\nbranch: {claimed}\n---\n\n"
+                "# Plan\n\n## Status\n\n- [ ] Chunk 03: x\n\n"
+                "### Chunk 03: x\n\n- **Deliverables:** `src/absent.py`\n"
+            )
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: t\nactive_build_plan: artifacts/build-plan-pointed.md\n"
+        )
+        head = _commit(repo, "plans")
+        _git(repo, "checkout", "-q", "-b", "feat/work")
+        return repo, head
+
+    def test_an_unbound_checkout_grades_no_other_plan(self, tmp_path):
+        """#208: with no scope and no plan claiming the branch, the deliverable
+        check used to grade the pointer's plan — another unit's chunk 03. An
+        unbound checkout grades nothing, and the null count says so."""
+        repo, head = self._repo_with_a_claim_elsewhere(tmp_path, "unbound")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert result["plan_graded"] is None
+        assert result["chunk_graded"] is None
+        assert _checks(result, "chunk-ref-missing") == []
+        # The control: named by scope, the same plan IS graded and its missing
+        # deliverable found — so the silence above is the binding, not the plan.
+        named = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="pointed"
+        )
+        assert named["plan_graded"].endswith("build-plan-pointed.md")
+        assert _checks(named, "chunk-ref-missing")
+
+    def test_a_broken_binding_is_reported_not_graded(self, tmp_path):
+        repo, head = self._repo_with_a_claim_elsewhere(tmp_path, "broken", also_claim=True)
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert result["plan_graded"] is None
+        entry = next(r for r in result["unchecked"] if r.startswith("chunk-ref-missing"))
+        assert entry.startswith("chunk-ref-missing unchecked"), entry
+        assert "binding is broken" in entry and "2 live plans claim `feat/work`" in entry
+
 
 # ---------------------------------------------------------------------------
 # governed-by-gap — the GOV-8C3W mechanical enumeration

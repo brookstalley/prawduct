@@ -186,12 +186,14 @@ class TestTheBoundaryIsKept:
         assert mode == "cumulative", why
 
     def test_a_plan_not_shown_to_be_this_branchs_keeps_rule_2(self, tmp_path):
-        """A plan reached only through the active-plan pointer is assumed
-        related, and the boundary is never inferred away on an assumption."""
+        """A plan reached only through the legacy window is assumed related,
+        and the boundary is never inferred away on an assumption."""
+        from lib import work_unit
+
         repo = _repo(tmp_path, scoped=False)
-        plan = buildplan_refs.resolve_branch_plan(repo, repo / ".prawduct")
-        assert plan.path is not None  # the plan IS found — just not as this branch's
-        assert plan.source != buildplan_refs.SOURCE_SCOPE_NAMED
+        binding = work_unit.resolve(repo)
+        assert binding.plan_path is not None  # the plan IS bound — just not by a claim
+        assert binding.chosen_by == "legacy-default"
         _commit_first(repo, 2)
         mode, why = infer_mode(repo, None)
         assert mode == "cumulative", why

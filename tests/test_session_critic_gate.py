@@ -831,10 +831,10 @@ class TestBriefingAdvisoryReadsTheBranchsPlan:
     session end. The sibling suite stubs the predicate, so this is the only
     place the resolution itself is exercised.
 
-    Discriminating by construction — the POINTER's plan is all `[x]` (so
-    `_has_active_build_plan_file` reads False through it and the advisory goes
-    quiet), the BRANCH's plan has an open chunk. Revert the branch resolution
-    and this warning disappears.
+    Discriminating by construction — the conventional-path plan is all `[x]`
+    (so `_has_active_build_plan_file` reads False through it and the advisory
+    goes quiet), the plan CLAIMING the branch has an open chunk. Revert to a
+    pointer reading and this warning disappears.
     """
 
     def _two_plan_repo(self, tmp_path: Path) -> Path:
@@ -846,7 +846,7 @@ class TestBriefingAdvisoryReadsTheBranchsPlan:
             "# Build Plan\n\n## Status\n- [x] Chunk 01: shipped\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: in progress\n"
         )
         (repo / ".prawduct" / ".session-git-baseline").write_text("")
@@ -863,15 +863,16 @@ class TestBriefingAdvisoryReadsTheBranchsPlan:
             f"the advisory must fire. warnings={warnings!r}"
         )
 
-    def test_an_unmatched_branch_keeps_the_pointer_reading(self, tmp_path):
-        """The fallback, pinned: no declared scope matches, behaviour unchanged."""
+    def test_an_unclaimed_branch_borrows_no_plan(self, tmp_path):
+        """An unbound checkout has no governed work: the claimed plan's open
+        chunk is another branch's, and the all-[x] conventional-path plan is
+        not consulted once any plan claims a branch."""
         repo = self._two_plan_repo(tmp_path)
         _git(repo, "checkout", "-q", "-b", "fix/unrelated-name")
         (repo / "code.py").write_text("x = 2\n")
         warnings = briefing._check_previous_session_gates(repo)
         assert not any("Critic" in w for w in warnings), (
-            "no branch match → the all-[x] pointer plan decides, exactly as "
-            f"before. warnings={warnings!r}"
+            f"an unbound checkout borrowed another branch's plan. warnings={warnings!r}"
         )
 
 

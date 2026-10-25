@@ -73,11 +73,11 @@ return the first that fires:
      rated on the inner BLOCKING set, and it fires on a signal rather than on
      the absence of one.
 
-The plan rule 4 grounds on is **this branch's**, not necessarily the
-``active_build_plan`` pointer's: a branch whose name matches a scope some plan
-declares is building that plan (``buildplan_refs.resolve_reviewed_plan``). A
-branch matching nothing keeps the pointer, and the rationale — which is what
-lands in ``mode_chosen_by`` — says the relation is assumed rather than shown.
+The plan rule 4 grounds on is **this checkout's binding** (``lib.work_unit``):
+the plan that claims the branch, or none. A legacy-window binding — a repo
+whose plans declare no branch, governed through the pointer or the
+conventional path — still grounds it, and the rationale, which is what lands
+in ``mode_chosen_by``, says the relation is assumed rather than shown.
 
 Deviation from build-plan rule 2: the spec reads "branch ahead of base by
 ≥2 commits AND no cumulative-mode record exists for the current HEAD"
@@ -91,8 +91,8 @@ cumulative when about to PR) without the cost.
 
 Pure-ish: takes ``project_dir``, reads files under it, runs ``git``
 subprocesses against it. Deterministic given fixed git state. Imports only
-from the stdlib + light lib siblings (``core``, ``coverage``, ``gitstate``,
-``buildplan_refs``) — never ``bin/prawduct-hook``, and never ``lib.gates``
+from the stdlib + light lib siblings (``coverage``, ``gitstate``,
+``buildplan_refs``, ``work_unit``) — never ``bin/prawduct-hook``, and never ``lib.gates``
 (keeping gates out of this module's import graph is why the chain-anchor
 helper below is a deliberate, test-pinned mirror rather than an import).
 The metadata/build-plan helpers once re-implemented here moved to their
@@ -108,8 +108,7 @@ import sys
 from pathlib import Path
 from typing import NamedTuple
 
-from . import buildplan_refs, coverage_algebra, gitstate, risk
-from .core import resolve_build_plan_path
+from . import buildplan_refs, coverage_algebra, gitstate, risk, work_unit
 from .coverage import _resolve_base_branch
 
 # Verbose-string mode constant — used to recognize prior findings'
@@ -245,16 +244,14 @@ def infer_mode(
     # defect reach three consumers (CRT-7B4M), so this module asks rather than
     # re-derives — that discipline outlives the second reading it was written
     # for.
-    # Which plan this branch is building. The `active_build_plan` pointer answers
-    # "which plan is in progress in this repo", which on a repo running several
-    # plans across worktrees is a different question — and rule 4 used to ground
-    # `chunk` on whatever it named, so a branch with no plan of its own inherited
-    # an unrelated one's chunk count. When the branch names a scope some plan
-    # declares, that plan is the subject and the pointer is not consulted; when
-    # it names nothing, the pointer stands and rule 4 says so in its rationale
-    # rather than presenting an assumption as a finding.
-    plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
-    progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+    # Which plan this branch is building: the checkout's work-unit binding, the
+    # one answer the gates and the review record share. Rule 4 used to ground
+    # `chunk` on whatever `active_build_plan` named, so a branch with no plan of
+    # its own inherited an unrelated one's chunk count. An unbound checkout has
+    # no plan here and grounds on none; a legacy-window binding is the plan, and
+    # rule 4 says how it was reached rather than presenting it as a claim.
+    plan = work_unit.resolve(project_dir)
+    progress = binding_progress(project_dir, plan)
     total, complete = progress.total, progress.complete
     current_chunk_id = progress.current_id
 
@@ -266,7 +263,7 @@ def infer_mode(
     # always Chunk 01 (CRT-7B4M). Only a recognized token overrides; an absent /
     # blank / unrecognized field falls through to ordinary inference.
     plan_read = (
-        _critic_mode_for_chunk(prawduct_dir, current_chunk_id, plan.path)
+        _critic_mode_for_chunk(prawduct_dir, current_chunk_id, plan.plan_path)
         if current_chunk_id is not None
         else ChunkModeRead(None, None)
     )
@@ -347,7 +344,7 @@ def infer_mode(
     # chunk work to defer, and falls through to rule 4's honest answer.
     deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
     if deferral.defers and _get_uncommitted_code_files(project_dir):
-        return MODE_DEFERRED, _deferral_rationale(deferral, plan)
+        return MODE_DEFERRED, _deferral_rationale(project_dir, deferral, plan)
 
     final_reason = _rule_final_fires(project_dir, total, complete)
     if final_reason:
@@ -362,7 +359,7 @@ def infer_mode(
                 f"cumulative-final deferral: {final_reason}, and the chunk declares "
                 f"`Type: cumulative-final`; {LAST_CHUNK_BOUNDARY_STEP}. An explicit "
                 "`/prawduct:critic final` still reviews the uncommitted chunk first. "
-                f"Grounded on {_plan_relation_note(plan)}"
+                f"Grounded on {_plan_relation_note(project_dir, plan)}"
             )
         return "final", f"rule-3 final: {final_reason}"
 
@@ -396,7 +393,7 @@ def infer_mode(
             return "cumulative", f"rule-4 cumulative: {redirect}"
     if total > 0:
         return "chunk", (
-            f"rule-4 chunk: {_plan_relation_note(plan)}, prior chunks "
+            f"rule-4 chunk: {_plan_relation_note(project_dir, plan)}, prior chunks "
             "committed, no fix-in-progress signal, no cumulative precondition"
         )
     return "chunk", (
@@ -451,21 +448,21 @@ def _explicit_mode(
     if token in _WORKING_TREE_MODES and _working_tree_is_empty(project_dir):
         redirect = _clean_tree_redirect(prawduct_dir, project_dir)
         if redirect:
-            plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
-            progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
+            plan = work_unit.resolve(project_dir)
+            progress = binding_progress(project_dir, plan)
             verdict = _mid_plan_verdict(project_dir, plan, progress)
             if verdict is not None and verdict[0] != _MID_PLAN_UNREACHABLE:
                 kind, start = verdict
                 if kind == _MID_PLAN_NOTHING_UNREVIEWED:
                     return token, (
                         f"explicit-args {token} (mid-plan, nothing unreviewed): "
-                        f"{_mid_plan_note(plan, progress)}; the last review already "
+                        f"{_mid_plan_note(project_dir, plan, progress)}; the last review already "
                         "covers HEAD, so this interval is empty and `critic-begin` "
                         "answers no review needed; a whole-branch `cumulative` is not owed mid-plan"
                     )
                 return token, (
                     f"explicit-args {token} (mid-plan, not redirected): "
-                    f"{_mid_plan_note(plan, progress)}; {_interval_note(start)}"
+                    f"{_mid_plan_note(project_dir, plan, progress)}; {_interval_note(start)}"
                 )
             return "cumulative", f"explicit-args {token} redirected: {redirect}"
     return token, "explicit-args"
@@ -549,25 +546,52 @@ def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool
     )
 
 
-def _plan_relation_note(plan) -> str:
-    """How rule 4's grounding plan was chosen — confirmed, or assumed.
+def binding_progress(project_dir: Path, binding) -> "buildplan_refs.ChunkProgress":
+    """The bound plan's chunk progress, or none at all for a checkout with no plan.
 
-    The relation is *confirmable* only when the branch names a scope some plan
-    declares; a branch whose name matches nothing cannot be shown related OR
-    unrelated, and declining there would demote every repo whose branch names
-    differ from its scopes. So the unconfirmable case keeps the pointer and says
-    so, which puts the assumption in ``mode_chosen_by`` — the record where a
-    reader can find it — instead of leaving it implied by a bare "active build
-    plan" (`nonfunctional-requirements.md` § Direction: a control emits its
-    yield observably or it can only be defended on principle).
+    Asked here rather than by handing ``binding.plan_path`` straight to
+    :func:`buildplan_refs.resolve_chunk_progress`, whose ``None`` means "read
+    the active plan" — so an unbound or broken checkout would be answered about
+    a plan its binding refused.
     """
-    if plan.source == buildplan_refs.SOURCE_SCOPE_NAMED:
-        return f"build plan {plan.rel} declares this branch's scope {plan.scope!r}"
-    return (
-        f"active build plan {plan.rel or '(unresolved)'}, assumed related — this "
-        "branch's name matches no plan's declared scope, so the pointer stands "
-        "unconfirmed"
-    )
+    if binding.plan_path is None:
+        return buildplan_refs.ChunkProgress(0, 0, None, "", False)
+    return buildplan_refs.resolve_chunk_progress(project_dir, binding.plan_path)
+
+
+def plan_rel(project_dir: Path, binding) -> "str | None":
+    """The bound plan's path relative to the repo root, for a rationale; ``None``
+    when nothing is bound. The binding's path is resolved, so the root is too."""
+    if binding is None or binding.plan_path is None:
+        return None
+    path = Path(binding.plan_path)
+    try:
+        return path.relative_to(Path(project_dir).resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _plan_relation_note(project_dir: Path, plan) -> str:
+    """How rule 4's grounding plan was reached — a claim, or the legacy window.
+
+    A plan that claims this branch is its subject with nothing assumed. A
+    legacy-window binding (the pointer or the conventional path, in a repo
+    whose plans declare no branch) still governs, but nothing shows the plan
+    and the branch are related, so the rationale says which route answered —
+    it lands in ``mode_chosen_by``, the record a reader can find it in
+    (`nonfunctional-requirements.md` § Direction: a control emits its yield
+    observably or it can only be defended on principle).
+    """
+    rel = plan_rel(project_dir, plan) or "(unresolved)"
+    if plan.chosen_by == "binding":
+        return f"build plan {rel}, which claims this branch"
+    if plan.chosen_by in ("legacy-pointer", "legacy-default"):
+        route = "`active_build_plan`" if plan.chosen_by == "legacy-pointer" else "the conventional path"
+        return (
+            f"build plan {rel}, reached through {route} and assumed related — "
+            "it declares no `branch:`, so nothing confirms it is this branch's"
+        )
+    return f"no build plan ({plan.reason or plan.state})"
 
 
 # ---------------------------------------------------------------------------
@@ -580,10 +604,10 @@ def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
 
     ``None`` when it is not mid-plan, which is two conditions, both required:
 
-    - **the plan is this branch's** (``SOURCE_SCOPE_NAMED``). A plan reached
-      only through the ``active_build_plan`` pointer is *assumed* related, and
-      a branch whose plan cannot be shown keeps rule 2's boundary answer — the
-      boundary is never inferred away on an assumption;
+    - **the plan claims this branch** (``chosen_by == "binding"``). A plan
+      reached through the legacy window is *assumed* related, and a branch
+      whose plan cannot be shown keeps rule 2's boundary answer — the boundary
+      is never inferred away on an assumption;
     - **a later review is owed** (:func:`later_review_owed`: two or more
       unticked chunks). With exactly one unticked chunk and a clean tree the
       boundary review is the answer. Ticks cannot show whether the last chunk
@@ -596,7 +620,7 @@ def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
     interval that mode then reviews cannot disagree. ``None`` too when HEAD
     cannot be read: an unreadable state keeps today's answer.
     """
-    if plan.source != buildplan_refs.SOURCE_SCOPE_NAMED or not later_review_owed(progress):
+    if plan.chosen_by != "binding" or not later_review_owed(progress):
         return None
     head_commit = gitstate._git_head_sha(project_dir)
     head_tree = _head_tree(project_dir)
@@ -617,11 +641,11 @@ def _reaches_committed_work(start: dict) -> bool:
     )
 
 
-def _mid_plan_note(plan, progress) -> str:
+def _mid_plan_note(project_dir: Path, plan, progress) -> str:
     """Why this state is inner-stage, in the words ``mode_chosen_by`` records."""
     left = progress.total - progress.complete
     return (
-        f"{left} chunk(s) of {plan.rel} are unticked, so this is mid-plan and the "
+        f"{left} chunk(s) of {plan_rel(project_dir, plan)} are unticked, so this is mid-plan and the "
         "review is inner-stage (the stage is keyed on where in the cycle the "
         "review sits, not on whether the builder committed first)"
     )
@@ -703,9 +727,9 @@ def _mid_plan_answer(
         return None
     deferral = short_plan_deferral(project_dir, prawduct_dir, plan, progress)
     if deferral.defers:
-        return MODE_DEFERRED, _deferral_rationale(deferral, plan)
+        return MODE_DEFERRED, _deferral_rationale(project_dir, deferral, plan)
     kind, start = verdict
-    note = _mid_plan_note(plan, progress)
+    note = _mid_plan_note(project_dir, plan, progress)
     if kind == _MID_PLAN_UNREACHABLE:
         return None
     if kind == _MID_PLAN_NOTHING_UNREVIEWED:
@@ -1041,9 +1065,10 @@ def short_plan_deferral(
     Fails closed at every degradation: a plan that cannot be read, a base that
     does not resolve, a detached HEAD, a git listing that fails, and an
     unparseable ``risk_surfaces:`` all answer "does not defer", so per-chunk
-    review stands wherever the predicate could not be evaluated. ``plan`` is a
-    ``buildplan_refs.ReviewedPlan`` and ``progress`` a ``ChunkProgress`` — the
-    caller resolves both once, through the single owners, and passes them in.
+    review stands wherever the predicate could not be evaluated. ``plan`` is
+    the checkout's ``work_unit.Binding`` and ``progress`` a ``ChunkProgress``
+    (:func:`binding_progress`) — the caller resolves both once, through the
+    single owners, and passes them in.
     """
     total, complete = progress.total, progress.complete
     if total == 0:
@@ -1055,7 +1080,7 @@ def short_plan_deferral(
             False,
             total,
         )
-    committed = buildplan_refs.committed_chunk_progress(project_dir, plan.path)
+    committed = buildplan_refs.committed_chunk_progress(project_dir, plan.plan_path)
     built_before = committed.complete if committed is not None else complete
     last_chunk = total - built_before == 1
     if total > SHORT_PLAN_MAX_CHUNKS:
@@ -1066,7 +1091,7 @@ def short_plan_deferral(
             last_chunk,
             total,
         )
-    declared = _declared_chunk_modes(prawduct_dir, plan.path)
+    declared = _declared_chunk_modes(prawduct_dir, plan.plan_path)
     if declared is None:
         return ShortPlanDeferral(
             False, "the build plan could not be read", last_chunk, total
@@ -1122,7 +1147,7 @@ def short_plan_deferral(
         f"{base_branch} is a risk surface ({why})",
         last_chunk,
         total,
-        _unticked_labels(plan.path),
+        _unticked_labels(plan.plan_path),
     )
 
 
@@ -1148,17 +1173,17 @@ def declares_boundary_cumulative(prawduct_dir: Path, plan) -> bool:
     field cannot be read: this only ever relaxes a gate or withholds a round,
     and a predicate that could not run must do neither.
     """
-    if plan is None or plan.path is None or not Path(plan.path).is_file():
+    if plan is None or plan.plan_path is None or not Path(plan.plan_path).is_file():
         return False
     try:
-        content = Path(plan.path).read_text(encoding="utf-8")
+        content = Path(plan.plan_path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return False
     ids = buildplan_refs.status_chunk_ids(content)
     if not ids:
         return False
     chunk_type, _error = buildplan_refs._parse_build_plan_chunk_type(
-        prawduct_dir, ids[-1], Path(plan.path)
+        prawduct_dir, ids[-1], Path(plan.plan_path)
     )
     return chunk_type == "cumulative-final"
 
@@ -1201,7 +1226,7 @@ def review_owed_after(
     left = progress.total - progress.complete
     if later_review_owed(progress):
         return OWED_LATER_CHUNK, (
-            f"{left - 1} more chunk(s) of {plan.rel or 'the plan'} follow, so a later "
+            f"{left - 1} more chunk(s) of {plan_rel(project_dir, plan) or 'the plan'} follow, so a later "
             "review is owed"
         )
     if left != 1:
@@ -1517,7 +1542,7 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     )
 
 
-def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
+def _deferral_rationale(project_dir: Path, deferral: ShortPlanDeferral, plan) -> str:
     """The ``mode_chosen_by``-shaped sentence for a :data:`MODE_DEFERRED` answer.
 
     The next step is :func:`short_plan_next_step`'s, the one statement the
@@ -1530,7 +1555,7 @@ def _deferral_rationale(deferral: ShortPlanDeferral, plan) -> str:
         f"{short_plan_next_step(deferral)}. {SHORT_PLAN_OWN_PR_NOTE}. "
         "An explicit mode (`/prawduct:critic chunk`) or a "
         "`Critic mode:` field on any chunk restores per-chunk review. "
-        f"Grounded on {_plan_relation_note(plan)}"
+        f"Grounded on {_plan_relation_note(project_dir, plan)}"
     )
 
 
@@ -1745,12 +1770,9 @@ def _critic_mode_for_chunk(
     if chunk_id is None:
         return ChunkModeRead(None, None)
 
-    # ``plan_path`` is the plan `infer_mode` resolved for this branch; the
-    # pointer is the fallback. Reading a different plan here than the one the
-    # chunk id came from is how a chunk's declared mode gets read off the wrong
-    # file.
-    if plan_path is None:
-        plan_path = resolve_build_plan_path(prawduct_dir)
+    # ``plan_path`` is the plan the chunk id came from — `infer_mode`'s bound
+    # plan — and nothing else is consulted: reading a different plan here than
+    # that one is how a chunk's declared mode gets read off the wrong file.
     if plan_path is None or not plan_path.is_file():
         # No plan at all is not an unreadable plan: rule 4 already grounds its
         # choice on the plan's absence and says so, so there is nothing here that

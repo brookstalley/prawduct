@@ -1701,15 +1701,17 @@ def _extension_reason(project_dir: Path) -> "str | None":
     ``None`` on any failure: this only ever lowers a price, and a price that
     could not be lowered stays the conservative one.
     """
-    from . import buildplan_refs, critic_mode, gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    from . import critic_mode, gitstate, work_unit  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     try:
         prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
-        if plan.path is None:
+        # The checkout's binding, as the Stop gate reads it. Unbound or broken
+        # has no plan to owe a later review, so nothing is lowered.
+        binding = work_unit.resolve(project_dir)
+        if binding.plan_path is None:
             return None
-        progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
-        return critic_mode.extension_deferral(project_dir, prawduct_dir, plan, progress)
+        progress = critic_mode.binding_progress(project_dir, binding)
+        return critic_mode.extension_deferral(project_dir, prawduct_dir, binding, progress)
     except (OSError, ValueError):
         return None
 
