@@ -195,7 +195,33 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   the check's first live run found both retained plans (`work-unit-binding`, `build-plan.md`)
   claiming deleted branches, which is D-BR5's retention working, so B adds a third outcome
   `release-pending` (branch gone AND the scope's fragment pending → not a miss, exit 0) before
-  integration.
+  integration. Done 2026-10-25 (merged 5fff485b): the pending set comes from
+  `release_readiness.pending_scopes`; JSON claims gain `outcome: exists|release-pending|missing`;
+  a fragment that fails validation stays a miss with a stderr note. Live: both retained plans
+  print the release-pending line, exit 0.
+- Chunk 02 as built (delegate A, 2026-10-25, merged 515e4d48), accepted: `begin_review(...,
+  chunks: list[str] | None = None)` appended last; declared ids normalised to the plan's spelling
+  and kept in plan order; an undeclared id refuses before the tree capture as `unknown-chunk`
+  (hook exit 1; recorded in api-contract.md at 06); a declared id outside the proposal records
+  with a `WARNING:` note; no plan → `chunks == chunks_proposed == []`, `chunk` None;
+  `validate_manifest` requires `chunk == chunks[0]` and a pre-`chunks` manifest still yields a
+  fact with the bare `chunk`. `binding_progress` returns `PlanProgress` from one `chunk_states`
+  walk, keeping `total`/`complete`; "final" = exactly one real open chunk and nothing synthetic
+  open. Beyond the brief, accepted: legacy (no-`branch:`) plans keep the old #167 trigger, since
+  facts can never certify there; the reviewed set is the NEWEST chunk-naming fact on the chain,
+  not the chain's union (an earlier, since-ticked chunk would otherwise kill the deferral);
+  `boundary_cumulative_still_owed` computed directly. The #167 fail-open was demonstrated by test:
+  a chunk with no path-shaped Deliverables defers, and the next review's interval starts at the
+  reviewed commit and covers both the fix and the new file — wider interval, nothing uncovered.
+  An older installed reader (3.7.2-dev.4 `evidence.py`) read a store holding a `chunk-imported`
+  fact with `status: ok`, `schema_ahead: []` — Level item (2) verified live. Three gaps found by
+  A, sent back as one round: box-free short plans never infer the boundary `cumulative` (settled:
+  the short-plan last-chunk rule may read `built_chunks`, the one place inference may, bounded to
+  plans within `SHORT_PLAN_MAX_CHUNKS`, because § 3 names `built` as exactly that state and mode
+  choice is not a gate verdict; `short_plan_next_step` says "commit", never "tick");
+  `verify-resolutions` naming a chunk always warned (settled: that mode's proposal is the anchored
+  review's recorded `chunks`); Stop read the store up to twice more (settled: one `read_facts`
+  per `infer_mode`, threaded).
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
