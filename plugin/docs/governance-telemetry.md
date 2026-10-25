@@ -205,7 +205,8 @@ Per grouping — overall, `actor.role` × `actor.model` × review mode,
 per-`scope`, and per review `stage` — it reports: review count; duration led by the **clocked**
 population (reviews whose dispatch was marked) and then the **unclocked** reviews' self-reported
 estimate, labelled as one — two disjoint populations, never pooled; findings by severity, **actionable rate** (share of reviews with ≥1
-blocking/warning), and findings-per-review. Plus a findings-by-file rollup
+blocking/warning: what a reviewer *labelled*), **what the builder did** with those findings
+(`dispositions`, below), and findings-per-review. Plus a findings-by-file rollup
 from per-finding `files` attribution (top paths by actionable findings,
 capped at 10 with the total attributed count alongside).
 
@@ -222,6 +223,8 @@ project          the repo's identity: product_identity.name, else the push
 generated_at     ISO-8601 UTC
 window           {since, until} — the bounds in force, stated even when both
                  are null so a slice is never mistaken for the whole corpus
+dispositions     {status: available, as_of} or {status: unavailable, reason}
+                 — whether the evidence store could be joined (below)
 events_total     reportable review.* events
 skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
@@ -254,7 +257,8 @@ two disjoint populations, because a median over the mixture measures
 neither; schema 6 added them — the human line leads with the first and labels the second an
 estimate), `findings`
 (`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
-`actionable_rate` (0–1), `observations` (items an inner-stage pass demoted —
+`actionable_rate` (0–1; severity-labelled — the human line calls it `severity-actionable`),
+`dispositions` (below), `observations` (items an inner-stage pass demoted —
 never counted in `findings`), `reviews_recording_observations`
 (reviews whose event carried the array; events written before it existed are
 excluded, so `observations: 0` over `0` recording reviews means *not measured*,
@@ -269,6 +273,28 @@ key at all) is a different claim from **blank**, because the PR reviewer's findi
 `{goal, severity, file, line, summary}` and have no remedy field in their schema. `rate` is over
 findings whose schema HAS the field, and is `null` when none does — reporting 0% there would be a
 claim about a population's behaviour that its schema cannot support. Schema 7 added the key.
+
+`dispositions` reports what the builder **did** with the blocking and warning findings of the
+block's reviews, which `actionable_rate` cannot: a finding that was fixed and one that was accepted
+and left carry the same severity. It is read from the clone-shared evidence store, once per run.
+A ledger `review.*` event joins when its `review.fact_id` names a review the store holds. Each
+finding's outcome comes from `stats.finding_outcome`, the rule `prawduct-hook stats` and
+`render-dispositions` use, so the reports never disagree about a finding.
+
+- `status`: `available`, or `unavailable` with a `reason` (outside git, no store yet, unreadable).
+  When it is unavailable, the block carries no counts and no rate rather than a 0%, and every
+  severity figure is unchanged.
+- `joined_reviews` / `unjoined_reviews`: every review in the block is in one of the two. A
+  `review.pr` event carries no `fact_id`, so it is always unjoined, and so is an event whose fact
+  is not in this clone's store. The rate is over the joined reviews only.
+- `by_outcome`: blocking and warning findings of the joined reviews, by `stats`'s outcome names
+  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `undispositioned`, `other`). A
+  finding with no `fid` is `other`.
+- `answered` and `acted_on_rate`: the same definition as `stats` (§ below, through the one
+  helper `stats.acted_on`). `acted_on_rate` is `null` when nothing was answered.
+
+The window selects reviews; their outcomes are read as the store stands now, and the top-level
+`dispositions` header states that moment as `as_of`. Schema 9 added the key.
 
 ### Windowing (`--since` / `--until`)
 

@@ -64,6 +64,7 @@ def _event(
     dispatched_at: str | None = None,
     trigger: str | None = None,
     ts: str = "2026-06-10T12:00:00Z",
+    fact_id: str | None = None,
 ) -> dict:
     event = {
         "schema_version": 1,
@@ -99,6 +100,10 @@ def _event(
         event["dispatched_at"] = dispatched_at
     if trigger is not None:
         event["trigger"] = trigger
+    # Absent by default, like a `review.pr` event: only a Critic review that
+    # reached the evidence store carries the id its disposition facts target.
+    if fact_id is not None:
+        event["review"]["fact_id"] = fact_id
     return event
 
 
@@ -480,7 +485,7 @@ class TestJsonSchemaStability:
         _write_ledger(repo, [_event()])
         report = json.loads(_run(repo, "--json").stdout)
         assert list(report) == [
-            "schema_version", "project", "generated_at", "window", "events_total",
+            "schema_version", "project", "generated_at", "window", "dispositions", "events_total",
             "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage",
             "consolidated_by", "top_files", "files_attributed_total", "learning",
         ]
@@ -504,7 +509,10 @@ class TestJsonSchemaStability:
         # additive-first norm permits and what this pin exists to hold you to.
         # 7 -> 8 (#182): a `consolidated_by` count of which path consolidated
         # each Critic review joined the top level (a key change).
-        assert report["schema_version"] == 8
+        # 8 -> 9 (#941): a top-level `dispositions` header and a `dispositions`
+        # block on every stat block — what the builder did with each
+        # blocking/warning finding, beside what the reviewer labelled. Added.
+        assert report["schema_version"] == 9
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -517,7 +525,7 @@ class TestJsonSchemaStability:
             "reviews", "duration_total_seconds", "duration_median_seconds",
             "duration_measured", "duration_self_reported",
             "findings", "remedies", "findings_per_review", "actionable_rate",
-            "observations", "reviews_recording_observations",
+            "dispositions", "observations", "reviews_recording_observations",
         ]
         assert list(report["overall"]) == stat_keys
         assert list(report["by_role_model_mode"][0]) == ["role", "model", "mode", *stat_keys]
@@ -767,14 +775,15 @@ class TestDurationProvenanceSplit:
     def test_the_json_keys_keep_their_meaning(self, tmp_path):
         """The control for the rendering change: `--json` is a published
         contract, so the older keys still carry the estimate over every review
-        that had one. No key is repurposed, so no schema version moves."""
+        that had one. No key is repurposed, so the rendering change moved no
+        schema version; 9 is #941's later key addition, not this change."""
         repo = tmp_path / "repo"
         _write_ledger(repo, [
             _event(duration=600, dispatched_at="2026-06-10T11:56:00Z"),
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 8
+        assert report["schema_version"] == 9
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 
@@ -1091,3 +1100,281 @@ class TestRemedyLineCoversTheWholePopulation:
         assert "other" in remedies_line, (
             "the remedies line omits a population the findings line counts, so "
             "the two lines of one report describe different sets")
+
+
+# --- The disposition join (#941) ---------------------------------------------
+#
+# `actionable_rate` says what a reviewer LABELLED. The `dispositions` block says
+# what the builder DID, read from the clone-shared evidence store by the rule
+# `stats` and `render-dispositions` use. These tests need a git repo, because the
+# store lives in the clone's git common dir.
+
+import sys  # noqa: E402
+
+sys.path.insert(0, str(ROOT))
+from lib import dispositions as _dispositions  # noqa: E402
+from lib import evidence as _evidence  # noqa: E402
+from lib import stats as _stats  # noqa: E402
+
+
+def _git_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=str(repo), check=True,
+                   capture_output=True, timeout=15)
+    (repo / ".prawduct").mkdir()
+    return repo
+
+
+def _store_review(repo: Path, rid: str, findings: list[dict]) -> None:
+    body = {"mode": CHUNK_MODE, "base_tree": "b0", "head_tree": f"h-{rid}",
+            "scope": "feat-a", "findings": findings}
+    assert _evidence.append_fact(repo, "review", rid, body)["status"] == "appended"
+
+
+def _store_resolution(repo: Path, rid: str, fid: str, disposition: str = "fixed") -> None:
+    body = {"finding": {"review_id": rid, "fid": fid}, "disposition": disposition,
+            "verified_by": f"verify-{rid}"}
+    assert _evidence.append_fact(repo, "resolution", f"res-{rid}-{fid}", body)["status"] == "appended"
+
+
+def _store_disposition(repo: Path, rid: str, fid: str, action: str) -> None:
+    # Through the real recorder, so a fixture cannot hold an answer it refuses.
+    # A blocking finding is accepted only under an owner ruling.
+    kwargs = ({"backlog_id": "#1"} if action == "file"
+              else {"reason": "r", "owner_ruling": "owner said so"})
+    result = _dispositions.record(repo, rid, fid, action, **kwargs)
+    assert result["status"] == "recorded", result
+
+
+def _bw(fid: str, severity: str = "blocking") -> dict:
+    return {"fid": fid, "goal": "1", "severity": severity, "summary": "s", "title": "t",
+            "recommendation": "fix it"}
+
+
+def _report(repo: Path, *args: str) -> dict:
+    result = _run(repo, "--json", *args)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+class TestDispositionJoin:
+    def test_acted_on_tells_a_fix_from_an_accept_where_actionable_cannot(self, tmp_path):
+        # The twins differ ONLY in what the builder did. Severity presence is the
+        # same, so `actionable_rate` cannot tell them apart; the outcome must.
+        rates = {}
+        for answer in ("fixed", "accept"):
+            repo = _git_repo(tmp_path / answer)
+            _store_review(repo, "r1", [_bw("R-1")])
+            if answer == "fixed":
+                _store_resolution(repo, "r1", "R-1")
+            else:
+                _store_disposition(repo, "r1", "R-1", "accept")
+            _write_ledger(repo, [_event(fact_id="r1", findings=[_bw("R-1")])])
+            overall = _report(repo)["overall"]
+            assert overall["actionable_rate"] == 1.0
+            assert overall["dispositions"]["status"] == "available"
+            rates[answer] = overall["dispositions"]["acted_on_rate"]
+        assert rates == {"fixed": 1.0, "accept": 0.0}
+
+    def test_the_outcome_tally_matches_stats_finding_for_finding(self, tmp_path):
+        repo = _git_repo(tmp_path)
+        findings = [_bw("R-1"), _bw("R-2", "warning"), _bw("R-3"), _bw("R-4", "warning"),
+                    _bw("R-5"), {"fid": "R-6", "severity": "note", "summary": "n"}]
+        _store_review(repo, "r1", findings)
+        _store_resolution(repo, "r1", "R-1")
+        _store_disposition(repo, "r1", "R-2", "accept")
+        _store_disposition(repo, "r1", "R-3", "file")
+        _store_resolution(repo, "r1", "R-4", "waived")
+        _write_ledger(repo, [_event(fact_id="r1", findings=findings)])
+
+        block = _report(repo)["overall"]["dispositions"]
+        (by_version,) = _stats.aggregate(_evidence.read_facts(repo)["facts"]).values()
+        expected = {
+            outcome: by_version["findings"]["blocking"][outcome]
+            + by_version["findings"]["warning"][outcome]
+            for outcome in _stats.OUTCOMES
+        }
+        assert block["by_outcome"] == expected
+        # The fixture reaches every branch it claims to: one of each, the note
+        # outside the block, and R-5 left open.
+        assert expected == {"fixed": 1, "fixed_unreviewed": 0, "filed": 1, "accepted": 1,
+                            "waived": 1, "undispositioned": 1, "other": 0}
+        answered = sum(by_version["findings"][s]["answered"] for s in ("blocking", "warning"))
+        assert block["answered"] == answered == 4
+        assert block["acted_on_rate"] == 0.5  # fixed + filed over four answered
+
+    def test_reviews_that_cannot_join_are_counted_apart_and_left_out_of_the_rate(self, tmp_path):
+        repo = _git_repo(tmp_path)
+        _store_review(repo, "r1", [_bw("R-1")])
+        _store_resolution(repo, "r1", "R-1")
+        _write_ledger(repo, [
+            _event(fact_id="r1", findings=[_bw("R-1")]),
+            # No id at all: what every `review.pr` event looks like.
+            _event(kind="review.pr", role="pr-reviewer", findings=[_bw("P-1")]),
+            # An id the store does not hold (a fresh clone, another clone's id).
+            _event(fact_id="gone", findings=[_bw("G-1")]),
+        ])
+        block = _report(repo)["overall"]["dispositions"]
+        assert (block["joined_reviews"], block["unjoined_reviews"]) == (1, 2)
+        assert block["by_outcome"]["fixed"] == 1
+        assert sum(block["by_outcome"].values()) == 1, "only the joined review's finding"
+        assert block["acted_on_rate"] == 1.0
+
+    def test_an_event_outside_the_window_is_in_neither_half_of_the_rate(self, tmp_path):
+        repo = _git_repo(tmp_path)
+        _store_review(repo, "early", [_bw("E-1")])
+        _store_disposition(repo, "early", "E-1", "accept")
+        _store_review(repo, "late", [_bw("L-1")])
+        _store_resolution(repo, "late", "L-1")
+        _write_ledger(repo, [
+            _event(fact_id="early", findings=[_bw("E-1")], ts="2026-08-01T00:00:00Z"),
+            _event(fact_id="late", findings=[_bw("L-1")], ts="2026-09-01T00:00:00Z"),
+        ])
+        whole = _report(repo)["overall"]["dispositions"]
+        assert (whole["answered"], whole["acted_on_rate"]) == (2, 0.5)
+        sliced = _report(repo, "--since", "2026-08-15")["overall"]["dispositions"]
+        assert (sliced["joined_reviews"], sliced["unjoined_reviews"]) == (1, 0)
+        assert (sliced["answered"], sliced["acted_on_rate"]) == (1, 1.0)
+
+    def test_a_joined_finding_with_no_fid_is_other_not_an_outcome(self, tmp_path):
+        # Without an id it cannot be looked up; `stats` counts it as `other`
+        # too. Its fixed sibling is the control that the review did join.
+        repo = _git_repo(tmp_path)
+        _store_review(repo, "r1", [_bw("R-1")])
+        _store_resolution(repo, "r1", "R-1")
+        no_fid = {k: v for k, v in _bw("X").items() if k != "fid"}
+        _write_ledger(repo, [_event(fact_id="r1", findings=[_bw("R-1"), no_fid])])
+        block = _report(repo)["overall"]["dispositions"]
+        assert block["joined_reviews"] == 1
+        assert (block["by_outcome"]["fixed"], block["by_outcome"]["other"]) == (1, 1)
+        assert block["answered"] == 1
+
+    def test_every_grouping_carries_the_block(self, tmp_path):
+        repo = _git_repo(tmp_path)
+        _store_review(repo, "r1", [_bw("R-1")])
+        _store_resolution(repo, "r1", "R-1")
+        _write_ledger(repo, [
+            _event(fact_id="r1", findings=[_bw("R-1")], stage="inner"),
+            _event(fact_id="r2", mode=FINAL_MODE, scope="feat-b", findings=[_bw("R-1")]),
+        ])
+        report = _report(repo)
+        for key in ("by_role_model_mode", "by_scope", "by_stage"):
+            joined = {e["dispositions"]["joined_reviews"] for e in report[key]}
+            assert joined == {0, 1}, key
+        assert report["dispositions"]["status"] == "available"
+        assert isinstance(report["dispositions"]["as_of"], str)
+
+
+def _without_dispositions(block: dict) -> dict:
+    return {k: v for k, v in block.items() if k != "dispositions"}
+
+
+class TestDispositionsUnavailable:
+    LEDGER = [_event(fact_id="r1", findings=[_bw("R-1"), _bw("R-2", "warning")])]
+
+    def _joined(self, tmp_path: Path) -> dict:
+        repo = _git_repo(tmp_path / "joined")
+        _store_review(repo, "r1", [_bw("R-1"), _bw("R-2", "warning")])
+        _store_resolution(repo, "r1", "R-1")
+        _write_ledger(repo, self.LEDGER)
+        report = _report(repo)
+        assert report["dispositions"]["status"] == "available"
+        return report
+
+    def _assert_unavailable_and_severity_identical(self, report: dict, joined: dict, reason: str):
+        assert report["dispositions"]["status"] == "unavailable"
+        assert reason in report["dispositions"]["reason"]
+        for key in ("overall",):
+            assert report[key]["dispositions"] == {
+                "status": "unavailable", "reason": report["dispositions"]["reason"]}
+            assert _without_dispositions(report[key]) == _without_dispositions(joined[key])
+        for key in ("by_role_model_mode", "by_scope", "by_stage"):
+            assert [_without_dispositions(e) for e in report[key]] == [
+                _without_dispositions(e) for e in joined[key]]
+        assert "acted_on_rate" not in report["overall"]["dispositions"], "never a 0%"
+
+    def test_outside_git_the_join_is_unavailable_and_severity_is_unchanged(self, tmp_path):
+        repo = tmp_path / "plain"
+        _write_ledger(repo, self.LEDGER)
+        self._assert_unavailable_and_severity_identical(
+            _report(repo), self._joined(tmp_path), "no git repository")
+
+    def test_a_missing_store_is_unavailable(self, tmp_path):
+        repo = _git_repo(tmp_path / "nostore")
+        _write_ledger(repo, self.LEDGER)
+        assert _evidence.read_facts(repo)["status"] == "empty"
+        self._assert_unavailable_and_severity_identical(
+            _report(repo), self._joined(tmp_path), "no evidence store")
+
+    def test_an_unreadable_store_is_unavailable(self, tmp_path):
+        repo = _git_repo(tmp_path / "broken")
+        _store_review(repo, "r1", [_bw("R-1")])
+        _evidence.store_path(repo).write_bytes(b"\xff\xfe not utf-8\n")
+        _write_ledger(repo, self.LEDGER)
+        self._assert_unavailable_and_severity_identical(
+            _report(repo), self._joined(tmp_path), "store unreadable")
+
+
+class TestDispositionsHumanLine:
+    def test_the_line_leads_with_the_outcome_and_names_severity_presence_as_such(self, tmp_path):
+        repo = _git_repo(tmp_path)
+        _store_review(repo, "r1", [_bw("R-1"), _bw("R-2")])
+        _store_resolution(repo, "r1", "R-1")
+        _store_disposition(repo, "r1", "R-2", "accept")
+        _write_ledger(repo, [_event(fact_id="r1", findings=[_bw("R-1"), _bw("R-2")]),
+                             _event(findings=[])])
+        out = _run(repo).stdout
+        overall = next(ln for ln in out.splitlines() if ln.startswith("overall:"))
+        assert ("acted on 50% of 2 answered blocking/warning findings, 0 undispositioned "
+                "(1 of 2 reviews joined) | severity-actionable 50%") in overall
+        assert "| actionable" not in overall
+        assert any(ln.startswith("dispositions: as of ") for ln in out.splitlines())
+
+    def test_no_answered_findings_prints_no_rate(self, tmp_path):
+        repo = _git_repo(tmp_path)
+        _store_review(repo, "r1", [_bw("R-1")])
+        _write_ledger(repo, [_event(fact_id="r1", findings=[_bw("R-1")])])
+        overall = next(ln for ln in _run(repo).stdout.splitlines() if ln.startswith("overall:"))
+        assert ("acted on n/a (0 answered blocking/warning findings, 1 undispositioned; "
+                "1 of 1 reviews joined)") in overall
+
+    def test_unavailable_says_why_once_and_keeps_the_severity_figure(self, tmp_path):
+        repo = tmp_path / "plain"
+        _write_ledger(repo, [_event(findings=[_bw("R-1")])])
+        lines = _run(repo).stdout.splitlines()
+        reasons = [ln for ln in lines if ln.startswith("dispositions: unavailable — ")]
+        assert len(reasons) == 1 and "no git repository" in reasons[0]
+        overall = next(ln for ln in lines if ln.startswith("overall:"))
+        assert "dispositions unavailable | severity-actionable 100%" in overall
+        assert "no git repository" not in overall
+
+
+class TestJsonContractMatchesTheDoc:
+    """The `--json` contract's prose home is `docs/governance-telemetry.md`; a key
+    the code emits and the doc does not list is a published shape nobody
+    described."""
+
+    def _contract_keys(self) -> list[str]:
+        doc = (ROOT / "docs" / "governance-telemetry.md").read_text()
+        section = doc.split("## `prawduct-hook review-stats", 1)[1].split("\n## ", 1)[0]
+        block = section.split("### The `--json` contract", 1)[1].split("```", 2)[1]
+        return [ln.split()[0] for ln in block.splitlines() if ln and not ln[0].isspace()]
+
+    def test_the_documented_top_level_keys_are_the_emitted_ones_in_order(self, tmp_path):
+        repo = _git_repo(tmp_path)
+        _write_ledger(repo, [_event()])
+        keys = self._contract_keys()
+        assert len(keys) > 10, "the parser reached the contract block"
+        assert keys == list(_report(repo))
+
+    def test_the_doc_names_the_schema_and_every_disposition_key(self):
+        doc = (ROOT / "docs" / "governance-telemetry.md").read_text()
+        section = doc.split("## `prawduct-hook review-stats", 1)[1].split("\n## ", 1)[0]
+        assert f"Schema {REPORT_SCHEMA} added" in section
+        for key in ("joined_reviews", "unjoined_reviews", "by_outcome", "answered",
+                    "acted_on_rate", "as_of"):
+            assert f"`{key}`" in section, key
+
+
+REPORT_SCHEMA = 9
