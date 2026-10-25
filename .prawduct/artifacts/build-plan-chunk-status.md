@@ -128,6 +128,24 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   ten fixed on the delegate's branch (O-1/O-11 silent `dropped:` rejection, O-7 sentinel keys
   reaching `current_chunks`, O-2, O-3, O-4, O-8, O-10, O-15, O-16), three answered by this record
   (O-5/O-14 this line, O-12 the signature block above), four accepted with reasons on the record.
+- Chunk 02's open call, settled by the coordinator 2026-10-25 (delegate A): the #167 extension
+  deferral's trigger was "the reviewed chunk is still the first UNTICKED one" — under fact-derived
+  status a clean review certifies the chunk at once, so that trigger is dead on every plan that
+  declares `branch:`. Settled for the observable form over the stored one (hook-surface.md): the
+  deferral fires when every chunk the review chain names was certified by a fact ON the chain (not
+  an import or box) AND the pending, uncovered work touches no open chunk's Deliverables
+  (`propose_chunks` in `chunk` mode over the uncovered paths is empty). Fail-open named: a chunk
+  declaring no path-shaped Deliverables lets new-chunk work read as a fix — the cost is a wider
+  interval at the next review, never lost coverage (the later review starts at the frontier).
+  Rejected: the literal port (kills #167 on bound plans, one verify-resolutions round per mid-plan
+  warning fix — against review-run count, the owner's P0). `later_review_owed` on the extension
+  path becomes ">=1 open after the reviewed set"; `_mid_plan_start` keeps ">=2 open".
+- Chunk 03's seam, found by delegate B before integration and closed in Chunk 04 (delegate C):
+  `gates._store_run_vouching` treats every `test-run` fact with a tree as a candidate, so a DG2
+  narrowed fact whose tree matched after the coordinator's merge would have vouched a 3-file run
+  for the whole suite (fail open). A narrowed fact is attribution only — skipped in that loop,
+  neither vouching nor denying; a refusal would have made the newest narrowed fact deny, the wrong
+  direction. Red-first test with the un-narrowed control.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
