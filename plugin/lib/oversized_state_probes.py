@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
-from .core import oversized_file_threshold, resolve_build_plan_path
+from .core import oversized_file_threshold
 
 FEATURE = "governance"
 PROBE_VERSION = 1
@@ -216,12 +216,15 @@ def _change_log_advice(root: Path, text: str, threshold: int) -> tuple[list[str]
 def _measured_path(measured: _Measured, root: Path) -> Path | None:
     """Where ``measured`` actually lives in this repo, or None if it has no home.
 
-    The build plan is found through the ``active_build_plan`` pointer rather than
-    by name — a repo's plan is whatever the pointer resolves to, and measuring a
-    guessed filename would nag about the wrong file or about none.
+    The build plan is the one this checkout is bound to (``lib.work_unit``)
+    rather than one found by name — measuring a guessed filename would nag
+    about the wrong file or about none, and another branch's plan is that
+    branch's to compact. Unbound, there is no plan to measure.
     """
     if measured.type == "oversized-build-plan":
-        return resolve_build_plan_path(root / ".prawduct")
+        from . import work_unit  # noqa: PLC0415 — lazy; the walk is this probe's only plan read
+
+        return work_unit.resolve(root).plan_path
     return root / measured.rel
 
 
@@ -250,10 +253,9 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
 
         shown = measured.rel
         if measured.type == "oversized-build-plan":
-            try:
-                shown = str(path.relative_to(root))
-            except ValueError:
-                shown = str(path)
+            from . import work_unit  # noqa: PLC0415 — lazy, as in `_measured_path`
+
+            shown = work_unit.repo_rel(path, root)
 
         bullets = [advice.text for advice in measured.advice if advice.applies_to(text)]
         archivable = False

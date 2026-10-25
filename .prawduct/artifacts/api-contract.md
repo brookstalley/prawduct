@@ -286,6 +286,28 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   and no gate reads it. **Exit 1 on `--apply` when anything is `blocked`
   or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
   a preview stays 0, having attempted nothing.
+  `plan new [<scope>] [--branch B] [--base BASE] [--title T] [--kind K] [--working]`, `plan bind <path>
+  --branch B` and `plan resolve [--json]` are the work-unit surface. `new` and `bind` are
+  state-mutating writers of tracked files: exit 0 when written or already so, 1 refused
+  (`refused: <code>: <detail>` — a taken scope, a second claim on the branch, the harness scratch
+  branch, a scope one spelling from an existing one, or `no-scope-suggestion` when the scope is
+  omitted and the branch name yields no slug), 2 usage. With the scope omitted, `new` derives it
+  from the branch and says so on stdout. `plan resolve` is the read-only query
+  every skill told to "resolve the plan the way governance does" runs; it is allowed inside a scratch
+  worktree. Exit 0 for `bound` and `unbound` (both are ordinary answers), 1 for `broken` — the query
+  returned, and the failing answer is that no binding can be decided until the plans it names are
+  repaired; 3 is not used because two clean claimants read fine. Its `--json` carries the `Binding`
+  keys and nothing else: `state` (`bound|unbound|broken`), `scope` (string or null — null when the
+  bound plan declares no `scope:` or the binding is a legacy one), `plan_path` (repo-relative or
+  null), `role` (`integration|working|null`), `reason` (one sentence or null), `chosen_by`
+  (`binding|legacy-pointer|legacy-default|none`), `claimants` (repo-relative paths, empty unless
+  bound or broken), `case` (the stable route code the resolver decided by — `claim`,
+  `legacy-pointer`, `legacy-default`, `no-claim`, `pointer-dangling`, `scratch-worktree`,
+  `detached-head`, `no-work-tree`, `two-claimants`, `unreadable-plan` — the one key a consumer
+  branches on, never the `reason` prose) and `base` (the bound plan's declared base branch or
+  null; base-branch resolution for the gates and the PR payload consults it first). Additive-first binds here as everywhere: `chosen_by` values are added, never
+  repurposed, and readers of historical review facts still meet the retired `branch-name` and
+  `not-resolved`.
   `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
   bounded: past the repo's oversized threshold it moves entries verbatim into
   `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,

@@ -239,7 +239,7 @@ def _section_work(project_dir: Path, prawduct_dir: Path, scope: str | None) -> S
     """What this branch claims to be doing — the scope goal's other operand.
 
     Two sources, and the second is not a fallback for a broken first: `scope` is
-    derived from the branch against the plans that declare it, while
+    the work-unit binding's — the plan that claims this branch — while
     `work_in_progress:` is a hand-maintained block many repos simply do not keep.
     An absent block is therefore an ANSWER about this repo, not a failure to read
     one, and rendering it as a degradation would teach the reviewer to distrust a
@@ -271,7 +271,7 @@ def _section_work(project_dir: Path, prawduct_dir: Path, scope: str | None) -> S
             "description was resolved, because resolving one requires the branch"
         )
     if scope:
-        fields.append(f"scope: {scope} (derived from the branch against declared plan scopes)")
+        fields.append(f"scope: {scope} (from the build plan bound to this branch)")
     if wip.get("description"):
         fields.append(f"description: {wip['description']}")
         for key in ("size", "type", "current_chunk", "governance_level"):
@@ -286,15 +286,15 @@ def _section_work(project_dir: Path, prawduct_dir: Path, scope: str | None) -> S
 
     if not scope and not wip.get("description"):
         # Two different causes, and saying the wrong one is its own defect: a
-        # branch that could not be READ has not "matched no declared scope" —
-        # nothing was matched against anything.
+        # branch that could not be READ has not "been claimed by no plan" —
+        # nothing was looked up at all.
         cause = (
             "project-state.yaml carries no `work_in_progress:` description and "
-            "the branch name matches no declared plan scope"
+            "no build plan bound to this branch declares a scope"
             if branch else
             "the branch could not be read (detached HEAD, or git failed), so "
-            "neither the declared plan scopes nor the branch-scoped "
-            "`work_in_progress:` block could be consulted"
+            "neither a plan's claim nor the branch-scoped `work_in_progress:` "
+            "block could be consulted"
         )
         return Section("work", degraded=(
             f"no stated scope for this branch — {cause}. The scope goal has "
@@ -330,37 +330,45 @@ def _section_test_evidence(project_dir: Path) -> Section:
     ))
 
 
-def _section_build_plan(reviewed) -> Section:
-    """``reviewed`` is the caller's already-resolved :class:`ReviewedPlan`.
+def _section_build_plan(project_dir: Path, binding) -> Section:
+    """``binding`` is the caller's already-resolved ``work_unit.Binding``.
 
     Resolved once by the caller and handed down, rather than re-resolved here:
-    ``resolve_branch_plan`` exists precisely because the longhand two-call form
-    scanned ``artifacts/`` twice per resolution, and asking it again here would
-    reinstate the second scan inside the command whose whole purpose is latency.
+    the same answer supplies the scope the change-log section pairs by, and
+    asking twice would walk ``artifacts/`` twice inside the command whose whole
+    purpose is latency — and could let the two sections answer differently.
     """
-    if reviewed.path is None:
+    if binding.plan_path is None:
+        # Unbound is ordinary and broken is not, but both leave the Status-box
+        # checks without a subject; the binding's reason says which, so the
+        # reviewer can tell a chore branch from two plans claiming one branch.
+        state = "is broken" if binding.state == "broken" else "binds no build plan"
         return Section("build_plan", degraded=(
-            f"no build plan resolved for this branch ({reviewed.gap or 'no reason given'}) "
-            "— the Status-box checks have no subject; say so rather than reading "
-            "them as all-ticked"
+            f"this branch {state} ({binding.reason or 'no reason given'}) — the "
+            "Status-box checks have no subject; say so rather than reading them "
+            "as all-ticked"
         ))
+    from . import work_unit  # noqa: PLC0415 — lazy, like `_lib`
+
+    rel = work_unit.repo_rel(binding.plan_path, project_dir)
     try:
-        content = reviewed.path.read_text(encoding="utf-8")
+        content = binding.plan_path.read_text(encoding="utf-8")
     except OSError as exc:
         return Section("build_plan", degraded=(
-            f"build plan at {reviewed.rel} could not be read ({exc.__class__.__name__}) "
+            f"build plan at {rel} could not be read ({exc.__class__.__name__}) "
             "— the Status-box checks have no subject"
         ))
     boxes = [
         ln for ln in content.splitlines()
         if ln.strip().startswith(("- [ ]", "- [x]", "- [X]"))
     ]
-    lines = [f"path: {reviewed.rel}"]
-    if reviewed.gap:
-        # A resolution that is an ASSUMPTION is reported as one. The plan may
-        # still be the right subject; what must not happen is the reviewer
-        # grading it as though the answer were grounded.
-        lines.append(f"resolution caveat: {reviewed.gap}")
+    lines = [f"path: {rel}", f"bound by: {binding.chosen_by}"]
+    if binding.reason:
+        # What the binding still lacks — a legacy-window route, a missing
+        # `scope:` — is reported as a caveat. The plan may still be the right
+        # subject; what must not happen is the reviewer grading it as though
+        # nothing were assumed.
+        lines.append(f"resolution caveat: {binding.reason}")
     if boxes:
         lines.append("## Status boxes (hand-authored; nothing derives them):")
         lines.extend(f"  {b.strip()}" for b in boxes)
@@ -869,11 +877,12 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
         return [], f"could not resolve a base branch: {base_reason}"
 
     commits = _section_commits(project_dir, base)
-    # ONE resolution, ONE scan of `artifacts/`: the composite already carries the
-    # scope it inferred, so asking separately would scan the directory twice and
-    # let the two answers drift.
-    reviewed = lib.buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
-    scope = reviewed.scope
+    # ONE resolution: the binding carries both the plan and its scope, so the
+    # build-plan and change-log sections cannot answer about different units.
+    from . import work_unit  # noqa: PLC0415 — lazy, like `_lib`
+
+    binding = work_unit.resolve(project_dir)
+    scope = binding.scope
 
     sections = [
         # The tree this ANSWERED about, so a reviewer can tell it apart from the
@@ -892,7 +901,7 @@ def assemble(project_dir: Path) -> tuple[list[Section], str | None]:
         _section_diffstat(project_dir, base),
         _section_work(project_dir, prawduct_dir, scope),
         _section_test_evidence(project_dir),
-        _section_build_plan(reviewed),
+        _section_build_plan(project_dir, binding),
     ]
     change_log_section = _section_change_log(project_dir, prawduct_dir, scope, base)
     bodies = _commit_bodies(project_dir, base)

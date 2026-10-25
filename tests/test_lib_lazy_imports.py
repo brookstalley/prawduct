@@ -27,7 +27,7 @@ EXPECTED_FLAT_EXPORTS = frozenset({
     # core
     "BLOCK_BEGIN", "BLOCK_END", "BUILD_PLAN_POINTER_KEY", "DEFAULT_BUILD_PLAN_REL",
     "FRAMEWORK_DIR", "GITIGNORE_ENTRIES", "MANAGED_FILES", "PRAWDUCT_VERSION",
-    "TEMPLATES_DIR", "resolve_build_plan_path", "read_str_yaml_key", "extract_block",
+    "TEMPLATES_DIR", "read_str_yaml_key", "extract_block",
     "log", "render_template", "update_gitignore", "write_template",
     # advisory_store
     "AdvisoryCandidate", "Codebase", "ProjectState", "clear_registry", "compute_id",
@@ -197,8 +197,10 @@ class TestLazyIsolation:
     def test_core_never_reaches_up_into_buildplan_refs(self):
         """#657: `buildplan_refs` imports `core` at module scope, so a `core`
         edge back to it — even a lazy one — holds the graph acyclic only while
-        nobody hoists it. The Status-roster predicate `resolve_branch_claim`
-        needs lives in `plan_index`, which imports nothing in `lib`."""
+        nobody hoists it. The Status-roster readers live in `plan_index`, which
+        imports nothing in `lib`, and `core` has no upward edge at all since
+        the `resolve_build_plan_path` shim (its one lazy `work_unit` import)
+        was deleted."""
         import ast
 
         tree = ast.parse((REPO_ROOT / "lib" / "core.py").read_text(encoding="utf-8"))

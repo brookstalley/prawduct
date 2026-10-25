@@ -40,10 +40,11 @@
   Optional, on the same line (distinct concepts — keep them straight):
     related:   PFX-XXXX, PFX-XXXX   cross-references to related items
     closes:    PFX-XXXX             this item supersedes another backlog item (item → item)
-    closed-by: <scope/branch | release tag>  what shipped this item (item → release), set on
+    closed-by: scope:<slug> | PR | release tag  what shipped this item (item → release), set on
                                     status=shipped; a handle that exists before the commit —
                                     never a bare chunk id (names no plan), a bare commit SHA
-                                    (dangles on --amend) or an unassigned PR#
+                                    (dangles on --amend) or a branch name (refused). Form:
+                                    the backlog skill's `update`
     reviewed:  YYYY-MM-DD           last-touched timestamp (auto-set on any update)
     accepted-by: @actor             soft claim "someone is on this" so others don't
                                     double-pick; pick/list exclude claimed items.

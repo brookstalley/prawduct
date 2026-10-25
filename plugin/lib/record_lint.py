@@ -68,8 +68,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, evidence, learnings_files, retired_claims
-from .core import resolve_build_plan_path
+from . import buildplan_refs, evidence, learnings_files, plan_index, retired_claims
 
 #: Every check this module can run, in manifest order. Named so a consumer can
 #: tell "ran and found nothing" from "never ran" (see ``unchecked`` below).
@@ -170,9 +169,8 @@ _BLOCK_SCALAR_RE = re.compile(
 )
 
 #: A build plan by filename. The `governed_by:` check reads plans only. Two
-#: conventions are live and `core.resolve_build_plan_path` documents both: the
-#: `build-plan-<scope>.md` prefix form, and the scope-named `<scope>-plan.md`
-#: suffix form (`artifacts/v1.6.0-foo-plan.md`). Matching only the prefix form
+#: conventions are live: the `build-plan-<scope>.md` prefix form, and the
+#: scope-named `<scope>-plan.md` suffix form (`artifacts/v1.6.0-foo-plan.md`). Matching only the prefix form
 #: would skip a scope-named plan silently — and silently is the whole problem,
 #: since a plan that is never read reports zero gaps exactly like a complete one.
 _BUILD_PLAN_RE = re.compile(r"(^|/)(?:build-plan[^/]*|[^/]*-plan)\.md$")
@@ -586,8 +584,8 @@ def _frontmatter_break(text: str) -> "tuple[int, str] | None":
 
     **Why this exists at all.** This plan's own frontmatter was invalid for two
     commits — an unterminated double-quoted scalar swallowed the closing fence —
-    and every reader passed it, because ``record_lint``, ``resolve_branch_plan``
-    and ``verify-chunk-refs`` all match line patterns rather than parsing. A
+    and every reader passed it, because ``record_lint``, the plan resolver and
+    ``verify-chunk-refs`` all match line patterns rather than parsing. A
     header no parser can read is worse than no header: it reads as *more*
     governed, exactly the failure shape as ``governed_by:`` citing a file nobody
     can open, which is why the finding it produces is that same check.
@@ -762,30 +760,74 @@ def _check_chunk_refs(
     chunk, and grading it produces a confident answer about the wrong subject.
 
     **Whose plan.** ``scope`` comes from the same manifest and selects the plan,
-    via :func:`buildplan_refs.resolve_reviewed_plan`. Without it the plan came
-    from ``active_build_plan`` while the chunk came from the dispatch, and
-    nothing checked the two agreed: a review of one branch's chunk 03 graded a
+    via :func:`buildplan_refs.resolve_reviewed_plan`. Without one, the plan is
+    the checkout's work-unit binding (``lib.work_unit``), and an unbound or
+    broken checkout grades nothing and says why. The plan once came from
+    ``active_build_plan`` while the chunk came from the dispatch, and nothing
+    checked the two agreed: a review of one branch's chunk 03 graded a
     different plan's chunk 03 and reported zero missing deliverables over a diff
     that cited a path no longer present. A scope naming no plan is the
-    unchecked case — falling back to the pointer there is that same silent grade.
+    unchecked case — falling back to another plan there is that same silent
+    grade.
 
     Returns ``(findings, gap, chunk_graded, plan_graded)``. The last two name the
     subject, so a zero count reads as an answer about a named chunk of a named
     plan rather than an answer about nothing.
     """
-    plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope)
-    if plan.path is None and plan.gap:
-        if _scope_declared_in_change_log(prawduct_dir, scope):
+    # Which plan, and what is assumed about it: a plan named by scope is the
+    # dispatch's own statement; a legacy-window binding is reached by a route
+    # that cannot show the plan is this branch's, and the line says so.
+    plan_caveat: "str | None" = None
+    if scope and scope.strip():
+        plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope)
+        if plan.path is None:
+            if _scope_declared_in_change_log(prawduct_dir, scope):
+                return [], (
+                    f"chunk-ref-missing no-subject — {plan.gap}; the change-log "
+                    f"declares scope {scope!r}, so the scope is real and carries no "
+                    "plan — there is no declared deliverable set to grade"
+                ), None, None
+            return [], f"chunk-ref-missing unchecked — {plan.gap}", None, None
+        plan_path, plan_rel = plan.path, plan.rel
+    else:
+        from . import work_unit  # noqa: PLC0415 — lazy; only the scope-less dispatch needs the walk
+
+        binding = work_unit.resolve(project_dir)
+        if binding.state == "broken":
+            # Two plans claim the branch, so neither is graded — and that is a
+            # defect to repair, not an absence, so it is reported.
             return [], (
-                f"chunk-ref-missing no-subject — {plan.gap}; the change-log "
-                f"declares scope {scope!r}, so the scope is real and carries no "
-                "plan — there is no declared deliverable set to grade"
+                f"chunk-ref-missing unchecked — this branch's work-unit binding is "
+                f"broken ({binding.reason}), so no plan's deliverables were graded"
             ), None, None
-        return [], f"chunk-ref-missing unchecked — {plan.gap}", None, None
+        if binding.plan_path is None:
+            # Unbound is a normal state (a chore, a fix, the integration branch):
+            # nothing is graded, and the null count already says the check had
+            # no subject. A line on every such review would be read by no one.
+            return [], None, None, None
+        plan_path = binding.plan_path
+        plan_rel = work_unit.repo_rel(plan_path, project_dir)
+        if binding.is_legacy and len(
+            plan_index.build_scope_to_plan_map(prawduct_dir / "artifacts")
+        ) > 1:
+            # A legacy-window binding is an assumption, worth reporting only
+            # where it could be WRONG: with one plan there was nothing to choose
+            # between, and a note on every review of every such repo is how a
+            # channel stops being read.
+            route = (
+                "the active_build_plan pointer"
+                if binding.case == "legacy-pointer"
+                else "the conventional path"
+            )
+            plan_caveat = (
+                f"graded {plan_rel}, bound through {route} because no plan claims "
+                "this branch — which need not be the plan this branch is building, "
+                "and this repo declares several; pass `--scope` to name it"
+            )
 
     assumed = False
     if chunk_id is None:
-        chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir, plan.path)
+        chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir, plan_path)
         assumed = chunk_id is not None
     if chunk_id is None:
         # "No chunk in scope" has two causes that look identical here and are
@@ -803,27 +845,27 @@ def _check_chunk_refs(
         # at all, so only a plan with neither a roster NOR a heading is
         # structurally ungradeable rather than simply done.
         total, _complete = buildplan_refs._count_build_plan_chunks(
-            prawduct_dir, plan.path
+            prawduct_dir, plan_path
         )
         if total == 0 and buildplan_refs.plan_has_parseable_chunk_heading(
-            plan.path
+            plan_path
         ) is False:
             return [], (
-                f"chunk-ref-missing unchecked — {plan.rel} exposes no parseable "
+                f"chunk-ref-missing unchecked — {plan_rel} exposes no parseable "
                 "chunk heading (`### Chunk NN: Name`), so no chunk section can "
                 "be located and the deliverable check graded nothing. List items "
                 "under a `## Chunks` section match no heading pattern"
             ), None, None
         return [], None, None, None  # no chunk in scope — nothing declared to check
     refs = buildplan_refs._parse_build_plan_chunk_refs(
-        prawduct_dir, chunk_id, plan.path
+        prawduct_dir, chunk_id, plan_path
     )
     if refs["error"]:
         # Name the plan. "chunk '03' not found in build-plan" is the same
         # sentence whether the chunk is missing or the wrong file was opened,
         # and those are very different problems for whoever reads it.
         return [], (
-            f"chunk-ref-missing unchecked — {refs['error']} ({plan.rel}); chunk "
+            f"chunk-ref-missing unchecked — {refs['error']} ({plan_rel}); chunk "
             f"{chunk_id}'s deliverable check did not run"
         ), None, None
     missing = buildplan_refs._verify_chunk_refs(project_dir, refs)
@@ -846,15 +888,15 @@ def _check_chunk_refs(
             "dispatch carried no chunk — Status names the first UNCHECKED chunk, "
             "so this may be the next chunk rather than the reviewed one"
         )
-    if plan.source == buildplan_refs.SOURCE_ACTIVE_PLAN and plan.gap:
-        assumptions.append(plan.gap)
+    if plan_caveat:
+        assumptions.append(plan_caveat)
     gap = None
     if assumptions:
         gap = (
-            f"chunk-ref-missing graded chunk {chunk_id} of {plan.rel}: "
+            f"chunk-ref-missing graded chunk {chunk_id} of {plan_rel}: "
             + "; ".join(assumptions)
         )
-    return findings, gap, chunk_id, plan.rel
+    return findings, gap, chunk_id, plan_rel
 
 
 # ---------------------------------------------------------------------------
@@ -1680,10 +1722,11 @@ def _count(findings: list[dict], no_answer: "set[str] | None" = None) -> dict:
 def _plans_to_check(prawduct_dir: Path, records: list[str]) -> list[str]:
     """Which build plans get the ``governed_by:`` enumeration this run.
 
-    Every changed plan, plus — when a *governing artifact* changed — the active
-    plan, because adding a norm to an artifact silently shortens the
-    disposition block of a plan that did not itself change. That is the GOV-8C3W
-    class rather than its instance, and it costs one extra file read.
+    Every changed plan, plus — when a *governing artifact* changed — the plan
+    this checkout is bound to, because adding a norm to an artifact silently
+    shortens the disposition block of a plan that did not itself change. That
+    is the GOV-8C3W class rather than its instance, and it costs one extra file
+    read. An unbound checkout adds nothing: no plan here is this work's.
     """
     plans = [rel for rel in records if _BUILD_PLAN_RE.search(rel)]
     governing_changed = any(
@@ -1691,11 +1734,13 @@ def _plans_to_check(prawduct_dir: Path, records: list[str]) -> list[str]:
         for rel in records
     )
     if governing_changed:
-        active = resolve_build_plan_path(prawduct_dir)
+        from . import work_unit  # noqa: PLC0415 — lazy; only this branch needs the walk
+
+        active = work_unit.resolve(prawduct_dir.parent).plan_path
         if active is None:
             return plans
         try:
-            rel_active = str(active.relative_to(prawduct_dir.parent))
+            rel_active = str(active.relative_to(prawduct_dir.parent.resolve()))
         except ValueError:
             rel_active = ""
         if rel_active and active.is_file() and rel_active not in plans:

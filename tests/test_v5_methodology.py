@@ -504,7 +504,12 @@ LAST_MEASURED_TOKENS = {
     # +2 on 2026-10-21 (#187): "Auto-cleared next session" names its sources (`/clear` or
     # startup) now that the widened session-boundary pin sees the past participle; spends the
     # two words the #695/#846 cuts left, so the reading is back where this branch began.
-    "methodology/building.md": 5320,
+    # -5 on 2026-10-24 (work-unit binding): the delegating section's "tell it not to write
+    # `.prawduct/`" gave way to the scratch-worktree-is-unbound sentence, placed where the
+    # coordinator's role is stated so it replaces "The subagent implements; the main agent
+    # governs." instead of sitting beside it; paid in place by the shared-worktree briefing
+    # clause and the canary's reflection note. A READING; the ceiling follows it down.
+    "methodology/building.md": 5315,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -972,7 +977,11 @@ LAST_MEASURED_TOKENS = {
     # +204 on 2026-10-21 (#95), DECLARED: the integrator section (stage-and-`chunk` pattern, the
     # `.prawduct/` gitignore trap, in-session vs unattended invocation). No review mode loads this
     # file (see test_critic_skill_metadata), so no reviewer route pays it; it serves integrators.
-    "skills/critic/review-cycle.md": 7711,
+    # -10 on 2026-10-25 (#1050 work-unit binding): the ledger `scope` sentence now says scope
+    # is taken from the checkout's binding (`plan resolve`), or null when unbound; paid in place
+    # by cutting the restated don't-pick-a-plan reason, which `SKILL.md` step 4 owns, to a
+    # pointer. The ceiling lowered with it. A READING.
+    "skills/critic/review-cycle.md": 7701,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1116,7 +1125,10 @@ LAST_MEASURED_TOKENS = {
     # -9 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -12 on 2026-09-28 (opus-55-w3b), C-20: the coordinator bullet points at coordinator.md instead of restating it; the ceiling lowered with it.
-    "skills/critic/SKILL.md": 3139,
+    # -27 on 2026-10-25 (#1050 work-unit binding): step 4's `--scope` derivation names the binding
+    # (`prawduct-hook plan resolve`) in place of the branch-name match and the retired
+    # `active_build_plan` pointer argument; the ceiling lowered with it. A READING.
+    "skills/critic/SKILL.md": 3112,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1361,7 +1373,11 @@ LAST_MEASURED_TOKENS = {
     # a plan declaring `branch:` governs that branch only (neither fallback resolves it
     # elsewhere), and the retention sentence drops its pointer step, citing that rule rather
     # than restating it. A READING.
-    "methodology/planning.md": 5890,
+    # -169 on 2026-10-24 (work-unit binding): the two branch-resolution paragraphs and their
+    # precedence list became one paragraph (a plan claims its branch; unbound is normal; two
+    # claimants is broken, never tie-broken), and the lifecycle paragraph lost the pointer
+    # bookkeeping split. A READING.
+    "methodology/planning.md": 5721,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1593,7 +1609,10 @@ LAST_MEASURED_TOKENS = {
     # RAISE, on-demand class: paid only by a session about to delegate.
     # -1 on 2026-10-22 (git-hygiene): reaping now names `git-tidy --reap`, paid in
     # place by tightening the reaping paragraph's own next sentence.
-    "methodology/delegation.md": 2896,
+    # +23 on 2026-10-24 (work-unit binding): the scratch-worktree-is-unbound sentence replaces
+    # the clause describing `prawduct-hook`'s refusal of `.prawduct/` writes; the rule is now
+    # a property of the binding, not a refusal list. A READING, on-demand class.
+    "methodology/delegation.md": 2919,
 }
 
 
@@ -3483,7 +3502,8 @@ class TestBuildingMethodology:
         # the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5322, f"building.md is ~{tokens} tokens, should be <5322"
+        # LOWERED 5322 -> 5316 (work-unit binding, 2026-10-24): one over the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5316, f"building.md is ~{tokens} tokens, should be <5316"
 
 
 # =============================================================================
@@ -5791,7 +5811,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3140, f"SKILL.md is ~{tokens} tokens, should be <3140"
+        # RATCHETED 3140 -> 3113 (#1050 work-unit binding, 2026-10-25) with the reading.
+        assert tokens < 3113, f"SKILL.md is ~{tokens} tokens, should be <3113"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6117,7 +6138,8 @@ class TestReviewCycle:
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
         # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
-        assert tokens < 7712, f"review-cycle.md is ~{tokens} tokens, should be <7712"
+        # RATCHETED 7712 -> 7702 (#1050 work-unit binding, 2026-10-25) with the reading.
+        assert tokens < 7702, f"review-cycle.md is ~{tokens} tokens, should be <7702"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

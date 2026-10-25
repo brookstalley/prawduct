@@ -54,6 +54,7 @@ from . import (
     standing_block,
     tree_key_memo,
     verdict_cache,
+    work_unit,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
 
@@ -1897,7 +1898,9 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     cache); it steers a workflow nudge, never evidence acceptance (D4).
 
     Specific cases (in order):
-    1. No build plan, or no chunks declared → satisfied (non-chunked work).
+    0. A broken work-unit binding (two live plans claim this branch) →
+       unsatisfied, naming the claimants.
+    1. No build plan bound, or no chunks declared → satisfied (non-chunked work).
     2. Single-chunk plan → satisfied (the one Critic run is the final).
     3. Multi-chunk plan with incomplete chunks → satisfied (mid-cycle).
     4. Multi-chunk plan, all chunks ``[x]``, latest review fact's mode is in
@@ -1908,8 +1911,21 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
        → satisfied.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    plan_path = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
+    binding = work_unit.resolve(project_dir)
+    if binding.state == "broken":
+        # Authority fails closed: two plans claiming one branch is not "no
+        # plan", so the nudge fires with the binding's reason rather than going
+        # quiet — which plan's chunks are complete cannot be known until the
+        # claim is repaired.
+        return False, (
+            f"This branch's work-unit binding is broken: {binding.reason}. Which "
+            "plan's chunks are complete cannot be judged until it is repaired; "
+            "repair the claim, then run /prawduct:critic final for end-of-cycle "
+            "synthesis before pushing."
+        )
+    if binding.plan_path is None:
+        return True, ""
+    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, binding.plan_path)
     if total == 0:
         return True, ""
     if total == 1:

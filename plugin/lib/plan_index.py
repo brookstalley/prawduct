@@ -31,6 +31,12 @@ BUILD_PLAN_TYPE = "build-plan"
 #: frontmatter. Re-run that grep before adding a second meaning to it.
 BRANCH_KEY = "branch"
 
+#: Frontmatter key naming the branch a unit's integration branch merges into —
+#: the diff base its reviews and PR are measured against. git records no
+#: per-branch parent, so a stacked unit (B cut from A) is only knowable from
+#: here; ``coverage._resolve_base_branch`` reads it through the binding.
+BASE_KEY = "base"
+
 #: Characters read from a plan's head when only its frontmatter is wanted. The
 #: largest frontmatter in this repo is ~2.5 KiB, so this covers it several times
 #: over; a block that does not close inside it makes the file be re-read WHOLE
@@ -196,6 +202,20 @@ def parse_build_plan_frontmatter_branch(content: str) -> str | None:
     # explicit null both mean "fall through to the scalar", so `present` is
     # discarded rather than returned.
     _present, value = _frontmatter_scalar(fm, BRANCH_KEY)
+    return value
+
+
+def parse_build_plan_frontmatter_base(content: str) -> str | None:
+    """The branch a build plan says its unit merges into (``base:``), or ``None``.
+
+    Read by the same value-level reader as ``branch:``; absence, an empty value
+    and the null literal are all "no base declared", and the caller falls back
+    to the repo's integration branch.
+    """
+    fm = frontmatter_lines(content)
+    if fm is None:
+        return None
+    _present, value = _frontmatter_scalar(fm, BASE_KEY)
     return value
 
 
@@ -461,6 +481,21 @@ def _markdown_files(root: Path, *, prune_archive: bool) -> list[Path]:
     return sorted(found)
 
 
+def live_markdown_files(artifacts_dir: Path) -> list[Path]:
+    """Every ``*.md`` under ``artifacts_dir`` outside the archive, sorted — read none.
+
+    The one discoverer for a caller that must see files the readers above skip.
+    :func:`iter_scoped_plan_candidates` and :func:`branch_claiming_plans` pass
+    over a file they cannot read, which is right for a map and wrong for an
+    authority: ``work_unit.resolve`` must report an unreadable live plan as a
+    broken binding rather than resolve as if it were not there, so it takes the
+    files and classifies each itself. Same walk, same prune, no second rule.
+    """
+    if not artifacts_dir.is_dir():
+        return []
+    return _markdown_files(artifacts_dir, prune_archive=True)
+
+
 def _walk_for_scopes(
     root: Path, artifacts_dir: Path, *, prune_archive: bool
 ) -> Iterator[tuple[Path, str]]:
@@ -679,10 +714,10 @@ def duplicate_scope_errors(artifacts_dir: Path) -> list[tuple[str, str]]:
 # ---------------------------------------------------------------------------
 # The Status roster — which chunks a plan still has open (#657)
 # ---------------------------------------------------------------------------
-# Here rather than in ``buildplan_refs`` because ``core.resolve_branch_claim``
-# asks it to choose the governing plan, and ``core`` may only reach DOWN:
-# ``buildplan_refs`` imports ``core``, this module imports nothing in ``lib``.
-# ``buildplan_refs`` re-exports each under its old name.
+# Here rather than in ``buildplan_refs`` because a reader below ``buildplan_refs``
+# may need it and ``core`` may only reach DOWN: ``buildplan_refs`` imports
+# ``core``, this module imports nothing in ``lib``. ``buildplan_refs`` re-exports
+# each under its old name.
 
 
 def status_section_bounds(lines: list[str]) -> "tuple[int, int] | None":
@@ -762,34 +797,21 @@ def iter_status_section_items(content: str):
 def has_unfinished_chunk(plan_path: Path) -> bool:
     """True when ``plan_path``'s Status section still holds an unchecked chunk.
 
-    **Read this before tuning it: it now decides which plan GOVERNS.**
-    :func:`core.resolve_branch_claim` uses it to choose among several live plans
-    claiming one branch, so a change here moves what every gate grades. Its other
-    consumer is the session briefing's "claims a branch this repo does not have"
-    advisory, which fires only for a plan with work left, because a finished plan
-    whose merged branch is gone is the documented end state, not a finding.
-    Branch-name scope inference asks it alongside
-    ``buildplan_refs._plan_changed_on_branch``, because every box is ticked by a
-    plan's own final review, which is when that inference is needed most.
+    It decides no binding: which plan governs a checkout is the plan's claim
+    (``work_unit.resolve``), and a plan with every box ticked governs its branch
+    exactly as one with work left does. Its consumer is the session briefing's
+    "claims a branch this repo does not have" advisory, which fires only for a
+    plan with work left, because a finished plan whose merged branch is gone is
+    the documented end state, not a finding.
 
     **The signal is blunt: the boxes flip per chunk, so a plan reads finished
     from the moment its last chunk is ticked** — typically before its branch
-    merges. Resolution answers that by ordering a *sole* claimant ahead of this
-    test, so a lone plan keeps governing through its own closing PR; what the
-    bluntness still costs is the tie-break among SEVERAL claimants, where a
-    just-ticked plan stops counting as open work. Repos whose checkboxes were a
-    derived view never had this: their boxes flipped at *release*, so "all
-    checked" meant shipped, which is precisely the question asked here. Retiring
-    the derived view removed that sharpness along with the false readings it
-    produced everywhere else — a deliberate trade, stated here rather than
-    discovered later. Sharpening it needs a liveness signal a plan does not carry
-    (a terminal state in frontmatter is the obvious candidate, and archival
-    introduces exactly that); ``active_build_plan`` and ``--scope`` are the
-    remedies meanwhile.
+    merges. That is the right reading for the advisory above and the reason it
+    must not be promoted to a liveness test; a terminal state in frontmatter
+    (archival introduces exactly that) is the sharper signal.
 
     A plan with no Status items at all reads as unfinished — an unparseable plan
-    is not evidence of completion, and the caller's fallback (the pointer) is no
-    better an answer for it.
+    is not evidence of completion.
     """
     try:
         content = plan_path.read_text(encoding="utf-8")

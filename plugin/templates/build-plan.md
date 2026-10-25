@@ -8,15 +8,25 @@
 ---
 artifact: build-plan
 version: 2
-# scope: change-log scope tag. The release gate pairs this plan with the change-log
-# entries carrying the same `scope=`. Use your in-flight chunks' tag; null is fine
-# for single-version products.
+# scope: this unit's identity, a slug (lowercase letters, digits, hyphens). The change
+# fragment `.prawduct/changes/<scope>.md`, the release gate and a backlog item's
+# `closed-by: scope:<scope>` all name the unit by it, and it must be unique across live
+# and archived plans. `prawduct-hook plan new <scope>` writes the plan and fragment together.
 scope: pantry-v1
-# branch: the branch this plan governs — uncomment with your real branch (a
-# placeholder names a branch no repo has). While it is checked out, governance
-# resolves this plan ahead of active_build_plan; several plans may declare one
-# branch (precedence: methodology/planning.md "Which plan is active is branch state").
+# branch: the claim — this plan governs the checkouts of this branch and no other. At
+# most one live plan claims a branch; two claimants make the binding broken and the
+# gates refuse to guess. A checkout no plan claims is bound to nothing, which is normal
+# (methodology/planning.md "Which plan governs a checkout is branch state"). Uncomment with your
+# real branch: a placeholder claims a branch no repo has. `prawduct-hook plan resolve`
+# prints what the current checkout is bound to.
 # branch: feature/pantry-v1
+# base: the branch this unit merges into. Recorded because git does not persist a
+# branch's parent, and the PR and the boundary review need it.
+# base: develop
+# working-branches: branches that merge into this unit's branch and bind to it
+# (e.g. a delegate's long-lived branch), so work there is still attributed to this unit.
+# Each must not be claimed by another plan.
+# working-branches: []
 depends_on:
   - artifact: product-brief
   - artifact: data-model

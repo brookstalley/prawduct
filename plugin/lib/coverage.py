@@ -41,11 +41,13 @@ from .core import read_str_yaml_key
 _BASE_BRANCH_KEY = "base_branch"
 _DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
 
-#: Branch names the historical candidate list already answers correctly.
+#: Branch names the historical candidate list already answers correctly — and
+#: the one roster of "the integration line" other modules read (``plan_mint``,
+#: ``migrate_plugin``), so no second list drifts from it.
 #: ``origin/HEAD`` is only *preferred* when it points somewhere else, which
 #: keeps the consultation strictly additive: a trunk repo resolves exactly the
 #: ref it resolved before, by the same first candidate.
-_MAIN_FAMILY = frozenset({"main", "master"})
+MAIN_FAMILY = frozenset({"main", "master"})
 
 
 def _git_ref_exists(project_dir: Path, ref: str) -> bool:
@@ -86,7 +88,47 @@ def _origin_head_ref(project_dir: Path) -> "str | None":
 
 
 def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
-    """Resolve the git diff/merge base, honoring a configured ``base_branch:``.
+    """Resolve the git diff/merge base: the bound plan's ``base:``, else the repo's.
+
+    **The unit's own base first (#1050).** git records no parent for a branch,
+    so a stacked unit — B cut from A, its plan saying ``base: feature/A`` — is
+    knowable only from its plan. When this checkout is bound
+    (``work_unit.resolve``) as a unit's integration branch, or through the
+    legacy window, and the plan declares ``base:``, that branch is the base,
+    ``origin/<b>`` preferred over ``<b>`` as below. A working branch is not
+    given its unit's base: it merges into the unit's integration branch, not
+    the base, and keeps the repo-level answer it had. A declared base that no
+    ref resolves falls through to :func:`repo_base_branch` rather than failing
+    closed: the ordinary way to get there is A merging and its branch being
+    deleted, after which the repo's integration branch is the right base.
+
+    Every other checkout — unbound, broken, or bound to a plan with no
+    ``base:`` — gets exactly :func:`repo_base_branch`'s answer.
+    """
+    planned = _bound_plan_base(project_dir)
+    if planned:
+        for ref in (f"origin/{planned}", planned):
+            if _git_ref_exists(project_dir, ref):
+                return ref, ref
+    return repo_base_branch(project_dir)
+
+
+def _bound_plan_base(project_dir: Path) -> "str | None":
+    """The ``base:`` of the plan this checkout is bound to, when it governs the
+    base; ``None`` otherwise. ``work_unit.resolve`` never raises."""
+    from . import work_unit  # noqa: PLC0415 — lazy; work_unit's readers stay off this module's import
+
+    binding = work_unit.resolve(project_dir)
+    if binding.state != "bound" or binding.role == "working":
+        return None
+    return binding.base
+
+
+def repo_base_branch(project_dir: Path) -> tuple[str | None, str]:
+    """The repo's integration base, honoring a configured ``base_branch:`` —
+    what :func:`_resolve_base_branch` answers for any checkout whose plan names
+    no base of its own. Public because minting a unit asks THIS question (which
+    branch does a new unit merge into), not the checked-out unit's.
 
     The 2.0.0 gitflow ship-blocker fix (build-plan Chunk 5): on a gitflow repo
     where feature branches cut from ``develop``, the hardcoded ``main``-first
@@ -161,7 +203,7 @@ def _resolve_base_branch(project_dir: Path) -> tuple[str | None, str]:
         )
 
     origin_head = _origin_head_ref(project_dir)
-    if origin_head and origin_head[len("origin/"):] not in _MAIN_FAMILY:
+    if origin_head and origin_head[len("origin/"):] not in MAIN_FAMILY:
         if _git_ref_exists(project_dir, origin_head):
             return origin_head, origin_head
 
@@ -1701,15 +1743,17 @@ def _extension_reason(project_dir: Path) -> "str | None":
     ``None`` on any failure: this only ever lowers a price, and a price that
     could not be lowered stays the conservative one.
     """
-    from . import buildplan_refs, critic_mode, gitstate  # noqa: PLC0415 — lazy keeps this module's import DAG light
+    from . import critic_mode, gitstate, work_unit  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     try:
         prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
-        if plan.path is None:
+        # The checkout's binding, as the Stop gate reads it. Unbound or broken
+        # has no plan to owe a later review, so nothing is lowered.
+        binding = work_unit.resolve(project_dir)
+        if binding.plan_path is None:
             return None
-        progress = buildplan_refs.resolve_chunk_progress(project_dir, plan.path)
-        return critic_mode.extension_deferral(project_dir, prawduct_dir, plan, progress)
+        progress = critic_mode.binding_progress(project_dir, binding)
+        return critic_mode.extension_deferral(project_dir, prawduct_dir, binding, progress)
     except (OSError, ValueError):
         return None
 

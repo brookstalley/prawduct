@@ -6400,15 +6400,27 @@ class TestRecordLintInManifest:
         assert cc.build_fact_body(manifest, [])["record_lint"] is None
 
 
-class TestScopeAttribution:
-    """Which plan the RECORD says the review was of.
+#: Every value a new manifest may write as ``scope_chosen_by``: the dispatch's
+#: override, else the work-unit binding's route. ``branch-name`` and
+#: ``not-resolved`` are history — readers accept them in old facts, and nothing
+#: writes them (additive-first: a retired value is never repurposed).
+SCOPE_CHOSEN_BY_WRITTEN = {"binding", "legacy-pointer", "legacy-default", "explicit-args", "none"}
+SCOPE_CHOSEN_BY_RETIRED = {"branch-name", "not-resolved"}
 
-    An unbounded `active_build_plan` has attributed the manifest, the review
-    fact and the ledger event to an unrelated plan — with the pointer correct
-    every time, which is why nothing here repoints it.
+
+class TestScopeAttribution:
+    """Which unit the RECORD says the review was of: the checkout's work-unit
+    binding (``lib.work_unit``), or the dispatch's explicit override.
+
+    An unbounded `active_build_plan` attributed the manifest, the review fact
+    and the ledger event to an unrelated plan — with the pointer correct every
+    time, which is why nothing here repoints it.
     """
 
     def _repo_with_scoped_plan(self, tmp_path, branch: str) -> Path:
+        """`mine` claims `fix/mine`; `other` is the pointer's plan and claims
+        nothing. A claim existing anywhere closes the legacy window, so on any
+        other branch the pointer answers nothing."""
         repo = tmp_path / "r"
         _init_repo(repo)
         _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -6423,7 +6435,7 @@ class TestScopeAttribution:
             "### Chunk 01: other\n\n- **Deliverables:** `src/app.py`\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n# Plan\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n# Plan\n\n"
             "## Status\n\n- [ ] Chunk 01: mine\n\n"
             "### Chunk 01: mine\n\n- **Deliverables:** `src/app.py`\n"
         )
@@ -6432,10 +6444,11 @@ class TestScopeAttribution:
         (repo / "src/app.py").write_text("x = 2\n")
         return repo
 
-    def test_scope_is_derived_from_the_branch_when_the_dispatch_omits_it(
-        self, tmp_path
-    ):
-        """No `--scope`, and the record still names this branch's plan.
+    def _manifest(self, repo) -> dict:
+        return json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+    def test_scope_is_the_binding_when_the_dispatch_omits_it(self, tmp_path):
+        """No `--scope`, and the record still names the plan claiming this branch.
 
         Derived in code rather than left to the dispatching agent to read off
         the pointer — that read is where the misattribution enters.
@@ -6443,16 +6456,18 @@ class TestScopeAttribution:
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
         result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
-        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        manifest = self._manifest(repo)
         assert manifest["scope"] == "mine"
-        assert manifest["scope_chosen_by"] == "branch-name"
+        assert manifest["scope_chosen_by"] == "binding"
+        assert manifest["scope_unresolved_cause"] is None
+        assert manifest["scope_reason"] is None
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-mine.md")
 
     def test_an_explicit_scope_still_wins(self, tmp_path):
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
         result = _run_begin(repo, "--mode", "chunk", "--chunk", "01", "--scope", "other")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
-        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        manifest = self._manifest(repo)
         assert manifest["scope"] == "other"
         assert manifest["scope_chosen_by"] == "explicit-args"
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
@@ -6472,7 +6487,7 @@ class TestScopeAttribution:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "record-lint graded chunk 01 of" in result.stdout
         assert "build-plan-mine.md" in result.stdout
-        assert "scope mine, branch-name" in result.stdout
+        assert "scope mine, binding" in result.stdout
 
     def test_a_dispatch_with_no_gradable_chunk_says_what_did_not_run(self, tmp_path):
         """A check with no subject is reported as not-run, not as a clean pass."""
@@ -6493,28 +6508,158 @@ class TestScopeAttribution:
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "NOT run: chunk-ref-missing" in result.stdout, result.stdout
-        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        manifest = self._manifest(repo)
         assert manifest["record_lint"]["counts"]["chunk-ref-missing"] is None
 
-    def test_a_branch_matching_no_declared_scope_infers_nothing(self, tmp_path):
-        """The inference can only ADD attribution, never redirect it.
+    def test_a_branch_no_plan_claims_records_none_through_to_the_ledger(self, tmp_path):
+        """The #1049 event shape. A review of a branch no plan claims recorded no
+        scope in its manifest, and then the ledger event — written without a
+        `--scope` — filled one in from the pointer's plan, so the two records of
+        one review named different work. Unbound records `none` everywhere.
 
-        A branch name matching nothing leaves every caller on the behaviour it
-        had before — which is the whole safety argument for reading a branch
-        name at all.
+        The control is the claimed branch, whose scope reaches every record.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/unrelated-name")
         result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "none"
+        # A short code, and the binding's sentence in its own field: the cause
+        # field stays the countable code it always was (api-contract.md:
+        # additive-first, no field repurposed). `no-claim`: the fixture's plan
+        # is uncommitted, so it reads as written on this branch.
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        # The pointer names a branchless plan, so the binding's sentence goes on
+        # to name it and the bind command; the field is that sentence verbatim.
+        assert manifest["scope_reason"].startswith(
+            "no live plan claims `fix/unrelated-name` — `active_build_plan` names build-plan-other.md"
+        )
+
+        assert manifest["roster"] == ["reviewer"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        consolidated = _run_consolidate(repo)
+        assert consolidated.returncode == 0, f"stderr={consolidated.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        assert fact["body"]["scope"] is None
+        assert fact["body"]["scope_chosen_by"] == "none"
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines() if ln.strip()]
+        assert [e["event"] for e in events] == ["review.critic"]
+        assert events[0]["scope"] is None
+
+    def test_the_claimed_branch_carries_its_scope_to_the_ledger(self, tmp_path):
+        """The control for the #1049 shape: the same fixture on the branch
+        `mine` claims puts `mine` on the manifest, the fact and the event."""
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        consolidated = _run_consolidate(repo)
+        assert consolidated.returncode == 0, f"stderr={consolidated.stderr!r}"
+        assert _store_facts(repo, "review")[-1]["body"]["scope"] == "mine"
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines() if ln.strip()]
+        assert events[-1]["scope"] == "mine"
+
+
+class TestScopeChosenByVocabulary:
+    """What a new manifest may write as ``scope_chosen_by``, across every
+    binding route — and what it may never write again."""
+
+    def _repo(self, tmp_path, plans: dict, branch: str, state: str = "") -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"project_name: t\n{state}")
+        for name, body in plans.items():
+            (artifacts / name).write_text(body)
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        _git(repo, "checkout", "-b", branch, "--quiet")
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    PLAN = "---\nartifact: build-plan\n{fm}---\n\n# Plan\n\n## Status\n\n- [ ] Chunk 01: a\n"
+
+    @pytest.mark.parametrize(
+        "plans, state, extra, expected",
+        [
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/work\n")},
+                "", (), "binding", id="claimed",
+            ),
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\n")},
+                "active_build_plan: artifacts/build-plan-a.md\n", (), "legacy-pointer",
+                id="legacy-pointer",
+            ),
+            pytest.param(
+                {"build-plan.md": PLAN.format(fm="scope: a\n")},
+                "", (), "legacy-default", id="legacy-default",
+            ),
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/other\n")},
+                "", (), "none", id="unbound",
+            ),
+            pytest.param(
+                {
+                    "build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/work\n"),
+                    "build-plan-b.md": PLAN.format(fm="scope: b\nbranch: feat/work\n"),
+                },
+                "", (), "none", id="broken",
+            ),
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/other\n")},
+                "", ("--scope", "a"), "explicit-args", id="explicit",
+            ),
+        ],
+    )
+    def test_every_route_writes_a_current_value(self, tmp_path, plans, state, extra, expected):
+        repo = self._repo(tmp_path, plans, "feat/work", state)
+        result = _run_begin(repo, "--mode", "chunk", *extra)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope_chosen_by"] == expected
+        assert manifest["scope_chosen_by"] in SCOPE_CHOSEN_BY_WRITTEN
+        assert manifest["scope_chosen_by"] not in SCOPE_CHOSEN_BY_RETIRED
+
+    def test_a_broken_binding_records_no_scope_and_says_why(self, tmp_path):
+        """Two claimants are reported, never resolved by precedence: neither
+        plan's scope is recorded, and the note names both."""
+        plan = self.PLAN
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-a.md": plan.format(fm="scope: a\nbranch: feat/work\n"),
+                "build-plan-b.md": plan.format(fm="scope: b\nbranch: feat/work\n"),
+            },
+            "feat/work",
+        )
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["scope"] is None
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
+        assert manifest["scope_unresolved_cause"] == "broken"
+        assert "2 live plans claim `feat/work`" in manifest["scope_reason"]
+        assert "this review resolved no build-plan scope" in result.stderr
+        assert "build-plan-a.md, build-plan-b.md" in result.stderr
+
+    def test_a_historical_fact_with_a_retired_value_still_builds(self):
+        """Additive-first: a manifest written before the binding carries a
+        retired value, and consolidating it must not refuse or rewrite it."""
+        manifest = _manifest_dict(scope=None, scope_chosen_by="not-resolved",
+                                  scope_unresolved_cause="no-claim")
+        ok, why = cc.validate_manifest(manifest)
+        assert ok, why
+        body = cc.build_fact_body(manifest, [])
+        assert body["scope_chosen_by"] == "not-resolved"
+        assert body["scope_unresolved_cause"] == "no-claim"
 
 
 class TestUnresolvedScopeCause:
-    """When a dispatch resolves no scope, `critic-begin` says why and what edit
-    fixes it, and records the cause in the manifest.
+    """When a dispatch records no scope, the manifest records the binding's
+    reason, and `critic-begin` says what edit fixes it where there is one.
 
     Before this the only trace was a parenthetical on the record-lint line, and
     a third of reviews across the fleet resolved no scope unnoticed — each one
@@ -6549,20 +6694,26 @@ class TestUnresolvedScopeCause:
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         return result, manifest
 
-    def test_a_claim_with_no_scope_is_named(self, tmp_path):
+    def test_a_claim_with_no_scope_binds_and_is_named(self, tmp_path):
+        """A claimant without `scope:` governs its branch — so the record says
+        `binding` — but records no unit, and the reason says to add one."""
         repo = self._repo(
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nbranch: feat/work\n---\n\n# Plan\n"},
             "feat/work",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "binding"
         assert manifest["scope_unresolved_cause"] == "claim-no-scope"
-        assert "build-plan-a.md claims branch 'feat/work' but declares no `scope:`" in result.stderr
+        assert "build-plan-a.md claims `feat/work` but declares no `scope:`" in (
+            manifest["scope_reason"]
+        )
+        assert "build-plan-a.md claims `feat/work` but declares no `scope:`" in result.stderr
 
-    def test_a_claimant_whose_scope_is_a_duplicate_is_not_told_to_add_one(self, tmp_path):
-        # The scope map keeps one plan per scope; the shadowed claimant still
-        # declares one, so "add one" would be wrong advice.
+    def test_a_claimant_whose_scope_another_plan_shares_still_binds(self, tmp_path):
+        # The claim answers, not the scope map: a plan sharing the claimant's
+        # scope does not shadow the claimant.
         repo = self._repo(
             tmp_path,
             {
@@ -6574,11 +6725,10 @@ class TestUnresolvedScopeCause:
             "feat/work",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        # b claims the branch and declares a scope; its scope is shadowed, and
-        # the branch edited no plan, so there is no advice worth printing.
-        assert manifest["scope_unresolved_cause"] is None
-        assert "declares no `scope:`" not in result.stderr
+        assert manifest["scope"] == "dup"
+        assert manifest["scope_chosen_by"] == "binding"
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
+        assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_a_branch_line_below_the_frontmatter_is_named(self, tmp_path):
         repo = self._repo(
@@ -6592,7 +6742,9 @@ class TestUnresolvedScopeCause:
             "feat/work",
         )
         result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "none"
         assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert manifest["scope_reason"] == "no live plan claims `feat/work`"
         assert "build-plan-a.md names branch 'feat/work' below its frontmatter" in result.stderr
         assert "move `branch: feat/work` into the `---` block" in result.stderr
         # It has a scope, so the fix is the one line — no second edit is asked for.
@@ -6603,7 +6755,7 @@ class TestUnresolvedScopeCause:
             tmp_path, {"build-plan-a.md": "# Plan\n\nbranch: feat/work\n"}, "feat/work"
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert manifest["scope_chosen_by"] == "none"
         assert "together with a `scope:`" in result.stderr
 
     def test_an_active_plan_claiming_another_branch_is_named(self, tmp_path):
@@ -6619,6 +6771,8 @@ class TestUnresolvedScopeCause:
             state="active_build_plan: artifacts/build-plan-p.md\n",
         )
         result, manifest = self._dispatch(repo)
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "none"
         assert manifest["scope_unresolved_cause"] == "pointer-claims-other"
         assert "build-plan-p.md claims branch 'develop', not 'feat/work'" in result.stderr
 
@@ -6630,6 +6784,7 @@ class TestUnresolvedScopeCause:
             edit="build-plan-a.md",
         )
         result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "none"
         assert manifest["scope_unresolved_cause"] == "no-claim"
         assert (
             "build-plan-a.md was edited on this branch but no live plan declares "
@@ -6643,23 +6798,24 @@ class TestUnresolvedScopeCause:
             "---\nartifact: build-plan\nscope: new\n---\n\n# Plan\n"
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert manifest["scope_chosen_by"] == "none"
         assert "build-plan-new.md was edited on this branch" in result.stderr
 
     def test_a_branch_that_touched_no_plan_says_nothing(self, tmp_path):
         """Plan-less work — a chore, a small fix — is normal, and the plans that
         exist belong to other work. A note telling it to add `branch:` to "the
         plan this work belongs to" would fire on every such review with nothing
-        to act on. The sibling test above, identical but for the edit, is the
-        control."""
+        to act on, so the reason is recorded and not printed. The sibling test
+        above, identical but for the edit, is the control."""
         repo = self._repo(
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
             "chore/bump",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        assert manifest["scope_unresolved_cause"] is None
+        assert manifest["scope_chosen_by"] == "none"
+        assert manifest["scope_unresolved_cause"] == "unbound"
+        assert manifest["scope_reason"] == "no live plan claims `chore/bump`"
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_the_integration_branch_says_nothing(self, tmp_path):
@@ -6671,8 +6827,9 @@ class TestUnresolvedScopeCause:
             "main",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        assert manifest["scope_unresolved_cause"] is None
+        assert manifest["scope_chosen_by"] == "none"
+        assert manifest["scope_unresolved_cause"] == "unbound"
+        assert manifest["scope_reason"] == "no live plan claims `main`"
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_a_resolved_or_explicit_scope_says_nothing(self, tmp_path):
@@ -6684,17 +6841,17 @@ class TestUnresolvedScopeCause:
         repo = self._repo(tmp_path, plans, "feat/work")
         result, manifest = self._dispatch(repo)
         assert manifest["scope"] == "a"
-        assert manifest["scope_unresolved_cause"] is None
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
         assert "this review resolved no build-plan scope" not in result.stderr
 
         repo = self._repo(tmp_path / "explicit", {}, "feat/other")
         result, manifest = self._dispatch(repo, "--scope", "anything")
         assert manifest["scope_chosen_by"] == "explicit-args"
-        assert manifest["scope_unresolved_cause"] is None
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_the_cause_reaches_the_review_fact(self, tmp_path):
-        """The note's yield must be queryable from the store, not only printed."""
+        """The reason must be queryable from the store, not only printed."""
         repo = self._repo(
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
@@ -6709,6 +6866,59 @@ class TestUnresolvedScopeCause:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         fact = _store_facts(repo, "review")[-1]
         assert fact["body"]["scope_unresolved_cause"] == "no-claim"
+        assert fact["body"]["scope_reason"] == "no live plan claims `feat/work`"
+        assert fact["body"]["scope_chosen_by"] == "none"
+
+    def test_the_unbound_cases_about_no_plan_get_their_own_codes(self, tmp_path):
+        """`scratch-worktree`, `detached-head` and `no-work-tree` are mapped from
+        the binding's case (`critic_consolidate.SCOPE_CAUSE_BY_CASE`), and each is
+        resolved FOR REAL here, so the resolver emitting a case and the map
+        reading it are pinned together. A legacy binding with no scope is the
+        bound control."""
+        from lib import work_unit
+
+        def code(project):
+            binding = work_unit.resolve(project)
+            return cc._unresolved_scope_cause(project, project / ".prawduct", binding)
+
+        repo = self._repo(tmp_path / "repo", {}, "feat/work")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _git(repo, "checkout", "--detach", head, "--quiet")
+        assert code(repo) == ("detached-head", None)
+
+        plain = tmp_path / "plain"
+        (plain / ".prawduct" / "artifacts").mkdir(parents=True)
+        assert code(plain) == ("no-work-tree", None)
+
+        primary = self._repo(tmp_path / "primary", {}, "feat/work")
+        wid = "a287823214767feaa"
+        scratch = primary / ".claude" / "worktrees" / f"agent-{wid}"
+        scratch.parent.mkdir(parents=True)
+        _git(primary, "worktree", "add", "-q", "-b", f"worktree-agent-{wid}", str(scratch), "HEAD")
+        assert code(scratch) == ("scratch-worktree", None)
+
+        legacy = self._repo(
+            tmp_path / "legacy", {"build-plan.md": "---\nartifact: build-plan\n---\n\n# Plan\n"},
+            "feat/work",
+        )
+        got, advice = code(legacy)
+        assert got == "legacy"
+        assert advice.startswith(f"{work_unit.LEGACY_ADVISORY_KEY}:")
+
+
+    def test_every_binding_case_has_a_cause_code(self):
+        """The map is keyed on `work_unit.Case`, enumerated from the module, not
+        typed here: a case added to the resolver with no entry would fall
+        through to the `no-claim` diagnosis and record a cause that is not its
+        own. Unknown keys are refused too — a map entry for a case the resolver
+        no longer emits is a stale second spelling."""
+        import typing
+
+        from lib import work_unit
+
+        cases = set(typing.get_args(work_unit.Case))
+        assert len(cases) >= 10, cases
+        assert set(cc.SCOPE_CAUSE_BY_CASE) == cases
 
 
 # ---------------------------------------------------------------------------

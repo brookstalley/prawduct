@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 
 from conftest import SHAPED_REFLECTION
-from lib import buildplan_refs, critic_mode, evidence, gates
+from lib import buildplan_refs, critic_mode, evidence, gates, work_unit
 from lib.critic_mode import infer_mode
 from test_critic_mode_inference import (
     _checkout_new_branch,
@@ -129,9 +129,9 @@ def _tick_in_working_tree(prawduct: Path, chunk_id: str) -> None:
 
 def _deferral(repo: Path):
     prawduct = repo / ".prawduct"
-    plan = buildplan_refs.resolve_branch_plan(repo, prawduct)
-    progress = buildplan_refs.resolve_chunk_progress(repo, plan.path)
-    return critic_mode.short_plan_deferral(repo, prawduct, plan, progress)
+    binding = work_unit.resolve(repo)
+    progress = critic_mode.binding_progress(repo, binding)
+    return critic_mode.short_plan_deferral(repo, prawduct, binding, progress)
 
 
 # ---------------------------------------------------------------------------
@@ -272,10 +272,10 @@ class TestEligiblePlanDefers:
         ``last_chunk`` from the working tree's ticks instead of HEAD's."""
         prawduct = _short_plan_branch(tmp_path, committed=("01",), plan_committed=True)
         _tick_in_working_tree(prawduct, "02")
-        plan = buildplan_refs.resolve_branch_plan(tmp_path, prawduct)
+        plan_path = work_unit.resolve(tmp_path).plan_path
         # Precondition: the two trees really disagree, so the subject is reached.
-        assert buildplan_refs.resolve_chunk_progress(tmp_path, plan.path).complete == 2
-        head = buildplan_refs.committed_chunk_progress(tmp_path, plan.path)
+        assert buildplan_refs.resolve_chunk_progress(tmp_path, plan_path).complete == 2
+        head = buildplan_refs.committed_chunk_progress(tmp_path, plan_path)
         assert head is not None and head.complete == 1
         d = _deferral(tmp_path)
         assert d.defers, d.reason
@@ -658,8 +658,10 @@ class TestStopGateOnShortPlans:
         loader.exec_module(hook)
 
         class _Exploding:
+            # Stands in for the `work_unit.Binding` the gate passes straight
+            # through (#1050) — `plan_path` is the field the helper reads.
             @property
-            def path(self):
+            def plan_path(self):
                 raise RuntimeError("plan resolution exploded")
 
         prawduct = _short_plan_branch(tmp_path)

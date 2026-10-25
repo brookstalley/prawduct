@@ -29,6 +29,7 @@ meaning.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from collections.abc import Callable
@@ -820,6 +821,83 @@ def _prepare_new_fields(fields: dict):
 # these are valued flags, never booleans.
 _UPDATE_BLOCK: tuple[str, ...] = ("refs", "revisit", "closed-by")
 
+# `closed-by` names what shipped an item in one of three validated forms (BL2) —
+# the unit's identity, its PR, or the release — never free text: a back-reference
+# a reader cannot follow is one nobody can check, and the old free-text field
+# collected branch names that stop resolving the day the branch is deleted.
+CLOSED_BY_SCOPE_PREFIX = "scope:"
+# The PR form is forge-neutral: a number (`123`, `#123`, `PR 123`) or ANY
+# absolute http(s) link to it. `closed-by` is validated on the markdown backend
+# too, so a GitLab `/-/merge_requests/N` or Bitbucket `/pull-requests/N` URL is
+# as followable as GitHub's `/pull/N`; what is refused is text with no handle.
+_CLOSED_BY_PR_RE = re.compile(r"(?:#|[Pp][Rr] ?)?[1-9][0-9]*|https?://[^/\s]+(?:/\S*)?")
+_CLOSED_BY_RELEASE_RE = re.compile(r"v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?")
+CLOSED_BY_FORMS = (
+    "`scope:<slug>` naming a unit this repo declares (a live or archived plan, or a "
+    "change fragment), a PR number or URL (`123`, `#123`, `PR 123`, or any "
+    "`https://` link to it), "
+    "or a release tag (`v3.7.2`)"
+)
+
+
+def closed_by_value(raw: str, scope_known: Callable[[str], bool | None] | None) -> "tuple[str, str | None] | dict":
+    """``(value to store, warning)`` for a ``closed-by`` write, or an error envelope.
+
+    ``scope_known(slug)`` answers whether the repo declares that unit — ``None``
+    from it, or no callable at all, means the question cannot be answered here,
+    and a ``scope:`` that cannot be checked is refused rather than stored
+    unchecked: WU2 is that the identity is validated where it is written.
+
+    A bare slug that IS a known scope is the one tolerated variant. It names
+    exactly one unit, it is the spelling every instruction asked for before this
+    form existed, and refusing it would fail every close those instructions
+    produce. It is stored as ``scope:<slug>`` and the result says so, so the
+    field has one spelling from here on. A bare word that is not a known scope —
+    a branch name, a chunk id — is refused with the three forms.
+    """
+    from .. import change_fragments  # noqa: PLC0415 — lazy: only a closed-by write needs the slug rule
+
+    value = raw.strip()
+    if value.startswith(CLOSED_BY_SCOPE_PREFIX):
+        slug = value[len(CLOSED_BY_SCOPE_PREFIX):]
+        if not change_fragments.is_scope(slug):
+            return error(
+                "validation",
+                f"`closed-by: {value}` — {slug!r} is not a scope slug; `closed-by` takes "
+                f"{CLOSED_BY_FORMS}",
+                details={"field": "closed-by"},
+            )
+        known = scope_known(slug) if scope_known is not None else None
+        if known is None:
+            return error(
+                "validation",
+                f"`closed-by: {value}` cannot be checked — this repo's plans and change "
+                "record could not be read — so it is not written",
+                details={"field": "closed-by"},
+            )
+        if not known:
+            return error(
+                "validation",
+                f"`closed-by: {value}` names no unit this repo declares — no live or "
+                "archived plan and no change fragment has that scope. Use the unit's own "
+                "`scope:` exactly as its plan or fragment spells it.",
+                details={"field": "closed-by"},
+            )
+        return value, None
+    if _CLOSED_BY_PR_RE.fullmatch(value) or _CLOSED_BY_RELEASE_RE.fullmatch(value):
+        return value, None
+    if change_fragments.is_scope(value) and scope_known is not None and scope_known(value):
+        return (
+            f"{CLOSED_BY_SCOPE_PREFIX}{value}",
+            f"`closed-by: {value}` was stored as `{CLOSED_BY_SCOPE_PREFIX}{value}` — the "
+            "validated form of a unit's identity",
+        )
+    return error(
+        "validation",
+        f"`closed-by: {value}` is free text; it takes {CLOSED_BY_FORMS}",
+        details={"field": "closed-by"},
+    )
+
 
 def update_item(
     transport: Transport,
@@ -831,6 +909,7 @@ def update_item(
     default_repo: tuple[str, str] | None = None,
     absorb: Absorb | None = None,
     own_repos: tuple[str, ...] | None = None,
+    scope_known: Callable[[str], bool | None] | None = None,
 ) -> dict:
     """Field-wise edit with optimistic CAS (CC2) and a mass-assignment guard (SEC-2).
 
@@ -852,6 +931,10 @@ def update_item(
     caller can *remove* a tag; ``tags=`` clears them. ``affected=``,
     ``working-branch=`` and each of the editorial block flags likewise clear
     their block keys.
+
+    ``closed-by`` is validated by :func:`closed_by_value` against
+    ``scope_known`` — the running repo's answer to "is this a unit", which only a
+    caller holding the project directory can give (the CLI passes it).
     """
     if not fields:
         return error("validation", "update requires at least one field to change")
@@ -880,6 +963,16 @@ def update_item(
             bad = encode.check_block_value(key, fields[key])
             if bad:
                 return error("validation", bad, details={"field": key})
+    # What the value MEANS, after what it can expand into: `closed-by` is a
+    # reference in one of three forms (BL2), checked offline like the rest so a
+    # refusal costs no round-trip. An empty value still clears the field.
+    closed_by_note: str | None = None
+    if fields.get("closed-by"):
+        resolved = closed_by_value(fields["closed-by"], scope_known)
+        if isinstance(resolved, dict):
+            return resolved
+        fields = {**fields, "closed-by": resolved[0]}
+        closed_by_note = resolved[1]
     # The sibling route: `--body` is caller text that lands in the same body an
     # unterminated fence can turn into block fields. Guarding the flags but not
     # this would leave the identical forgery one flag to the left.
@@ -916,7 +1009,7 @@ def update_item(
 
     # Facet values too: the facet loop below runs after the title/body PATCH, so a
     # value refused there would leave the item half-updated.
-    warnings: list[str] = []
+    warnings: list[str] = [closed_by_note] if closed_by_note else []
     for facet in _UPDATE_FACETS:
         if facet in fields:
             check = encode.check_enum(facet, fields[facet])

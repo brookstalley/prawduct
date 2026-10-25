@@ -220,8 +220,8 @@ build_state:
 # trades, its exact syntax) is the plugin's docs/project-state-keys.md —
 # `/prawduct:methodology project-state` — read it before setting one.
 
-# The in-progress build plan, when it isn't artifacts/build-plan.md (a plan's
-# own `branch:` frontmatter outranks this). Path relative to `.prawduct/`.
+# DEPRECATED: a plan claims its branch in its own `branch:` frontmatter
+# (`prawduct-hook plan bind`); this is read only while no plan does.
 # active_build_plan: artifacts/build-plan-my-scope.md
 
 # The branch feature work integrates onto. Set it on a gitflow repo.

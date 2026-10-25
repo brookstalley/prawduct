@@ -2720,6 +2720,69 @@ def merge_base_start_reason(absent: "str | None") -> str:
     return "nothing on this branch is reviewed yet"
 
 
+#: The ``scope_unresolved_cause`` code each binding case records, for a
+#: dispatch whose binding carried no scope. Keyed on ``Binding.case`` — the
+#: resolver's own discriminant — so a reworded reason cannot move a code.
+#: ``None`` means the case says only "no plan claims this branch", and the code
+#: is :func:`buildplan_refs.unresolved_scope_cause`'s diagnosis of why.
+#: ``tests/test_critic_consolidate.py`` pins that every ``work_unit.Case`` has
+#: an entry, so a case added to the resolver cannot fall through unmapped.
+SCOPE_CAUSE_BY_CASE: "dict[str, str | None]" = {
+    "claim": "claim-no-scope",
+    "legacy-pointer": "legacy",
+    "legacy-default": "legacy",
+    "two-claimants": "broken",
+    "unreadable-plan": "broken",
+    "scratch-worktree": "scratch-worktree",
+    "detached-head": "detached-head",
+    "no-work-tree": "no-work-tree",
+    "no-claim": None,
+    "pointer-dangling": None,
+}
+
+
+def _unresolved_scope_cause(
+    project_dir: Path, prawduct_dir: Path, binding
+) -> "tuple[str, str | None]":
+    """``(code, advice)`` for a dispatch whose binding carried no scope.
+
+    ``code`` is the short cause the manifest's ``scope_unresolved_cause``
+    records — a code, as it was before the binding existed, so a count over
+    the store groups by it (``api-contract.md``: additive-first; the binding's
+    sentence goes to the new ``scope_reason`` field instead):
+
+    - ``broken`` — two live plans claim the branch, or one cannot be read;
+    - ``legacy`` — a legacy-window plan (pointer or conventional path) that
+      declares no ``scope:``;
+    - ``claim-no-scope`` — a plan claims the branch and declares no ``scope:``;
+    - ``scratch-worktree``, ``detached-head``, ``no-work-tree`` — the unbound
+      cases that are not about any plan;
+    - for any other unbound checkout, the code
+      :func:`buildplan_refs.unresolved_scope_cause` finds (``body-branch``,
+      ``pointer-claims-other``, ``no-claim``), else ``unbound``.
+
+    ``advice`` is the remedy to print, or ``None``. A broken binding and a
+    bound plan without ``scope:`` are always worth a line: both are a plan the
+    author meant to govern this branch, and the binding's own reason names the
+    edit. An **unbound** checkout is normal — a chore, a fix, the integration
+    branch — so its generic reason would fire on every such review with
+    nothing to act on; it gets a line only when ``unresolved_scope_cause``
+    finds evidence the branch has a plan that fails to claim it.
+    """
+    code = SCOPE_CAUSE_BY_CASE.get(binding.case or "")
+    if code is not None:
+        # A broken binding and a bound plan without `scope:` carry the author's
+        # repair in the reason; the unbound cases before any plan is read have
+        # nothing to act on.
+        return code, (binding.reason if binding.state != "unbound" else None)
+    from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    cause = buildplan_refs.unresolved_scope_cause(project_dir, prawduct_dir)
+    if cause is None:
+        return "unbound", None
+    return cause
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -2837,34 +2900,46 @@ def begin_review(
             "reason": active_dispatch_refusal(prawduct_dir, age_s, active),
         }
 
-    # Which plan this review is OF. An unbounded `active_build_plan` has
-    # attributed the manifest, the review fact and the ledger event to an
-    # unrelated plan — with the pointer *correct* every time, which is why this
-    # resolves around it rather than asking anyone to repoint it. Derived here,
-    # in code, rather than left to the dispatching agent to read off the
-    # pointer: that read is where the misattribution enters.
-    from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
+    # Which unit this review is OF: the dispatch's explicit override, else the
+    # checkout's work-unit binding — computed in code (`work_unit.resolve`), the
+    # one answer every gate and record shares, rather than read off a pointer by
+    # the dispatching agent, which is where misattribution entered. `chosen_by`
+    # is the binding's own route, so the record says which one answered; an
+    # unbound or broken checkout records no scope and says so, and never borrows
+    # another unit's.
+    from . import buildplan_refs, work_unit  # noqa: PLC0415 — lazy; pulls the plan readers
 
     scope = (scope or "").strip() or None
     scope_chosen_by = "explicit-args" if scope else None
     scope_unresolved_cause: "str | None" = None
-    if scope is None:
-        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
-        scope_chosen_by = "branch-name" if scope else "not-resolved"
-
-    # Say WHY a scope did not resolve, and what edit fixes it. Advice: it rides
-    # `notes` and changes nothing about the dispatch. The code goes in the
-    # manifest so how often each cause fires can be counted afterwards.
+    scope_reason: "str | None" = None
     notes_scope: list[str] = []
-    if scope_chosen_by == "not-resolved":
-        cause = buildplan_refs.unresolved_scope_cause(project_dir, prawduct_dir)
-        if cause is not None:
-            scope_unresolved_cause, sentence = cause
-            notes_scope.append(
-                "this review resolved no build-plan scope, so it records none and "
-                "controls keyed on scope (the round budget among them) cannot see "
-                f"it: {sentence}"
+    # The plan this review's deliverable check will grade: the scope's when the
+    # dispatch named one, the binding's otherwise — the same split `record_lint`
+    # makes, so the dispatch-time note names the file that is actually graded.
+    graded_plan: "Path | None" = None
+    if scope is not None:
+        graded_plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path
+    else:
+        binding = work_unit.resolve(project_dir)
+        graded_plan = binding.plan_path
+        scope = binding.scope
+        scope_chosen_by = binding.chosen_by
+        if scope is None:
+            # A short code, so how often each cause fires can be counted from
+            # the store afterwards, and the binding's sentence beside it.
+            scope_unresolved_cause, sentence = _unresolved_scope_cause(
+                project_dir, prawduct_dir, binding
             )
+            scope_reason = binding.reason
+            # Say WHY, and what edit fixes it. Advice: it rides `notes` and
+            # changes nothing about the dispatch.
+            if sentence:
+                notes_scope.append(
+                    "this review resolved no build-plan scope, so it records none and "
+                    "controls keyed on scope (the round budget among them) cannot see "
+                    f"it: {sentence}"
+                )
 
     capture = evidence.capture_tree(project_dir)
     if capture.get("status") != "ok":
@@ -2901,15 +2976,10 @@ def begin_review(
     # release. Advisory by construction — it rides `notes`, changes no exit code
     # and blocks no dispatch — because the review is still worth running; what
     # is not worth having is a review that silently grades nothing while
-    # reporting cleanly. `resolve_reviewed_plan` is the same resolution
-    # `record_lint` performs, so this names the file that would actually be
-    # graded rather than whatever the pointer happens to say.
-    notes.extend(
-        buildplan_refs.deliverable_check_gaps(
-            prawduct_dir,
-            buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path,
-        )
-    )
+    # reporting cleanly. `graded_plan` is the resolution `record_lint`
+    # performs, so this names the file that would actually be graded rather
+    # than whatever the pointer happens to say.
+    notes.extend(buildplan_refs.deliverable_check_gaps(prawduct_dir, graded_plan))
     base_reviewed = None
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
@@ -3502,6 +3572,7 @@ def begin_review(
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
         "scope_unresolved_cause": scope_unresolved_cause,
+        "scope_reason": scope_reason,
         # The tree a chunk/final interval was extended back to, or null — the
         # yield of the extension, countable from the store.
         "base_extended_from": base_extended_from,
@@ -3873,7 +3944,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "scope_unresolved_cause", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
+                "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
@@ -4766,12 +4837,18 @@ def build_fact_body(
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
         # How the scope was decided, carried so attribution is auditable rather
-        # than merely asserted — a fact naming a plan should say whether the
-        # dispatch named it or the branch did.
+        # than merely asserted: `explicit-args` when the dispatch named it, else
+        # the work-unit binding's route (`binding`, `legacy-pointer`,
+        # `legacy-default`, or `none` for an unbound or broken checkout). Facts
+        # written before the binding existed carry `branch-name` or
+        # `not-resolved`; readers keep accepting them, and nothing writes them.
         "scope_chosen_by": manifest.get("scope_chosen_by"),
-        # Why a scope did not resolve, when it did not — the diagnosis note's
-        # yield, queryable from the store like `record_lint` below.
+        # Why no scope was recorded, when none was: a short cause code (the
+        # set is `_unresolved_scope_cause`'s), queryable from the store like
+        # `record_lint` below, and the work-unit binding's own sentence beside
+        # it. Facts from before `scope_reason` carry the code alone.
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
+        "scope_reason": manifest.get("scope_reason"),
         "base_extended_from": manifest.get("base_extended_from"),
         "chunk": manifest.get("chunk"),
         "base_reviewed": manifest.get("base_reviewed"),
@@ -4878,17 +4955,17 @@ def _plan_owes_a_later_review(
     changes advice, and advice that cannot be derived keeps the older wording.
     """
     try:
-        from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
+        from . import buildplan_refs, critic_mode, work_unit  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
-        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
-        if plan.path is None:
+        binding = work_unit.resolve(project_dir)
+        if binding.plan_path is None:
             return None
         chain = critic_mode.review_chain(facts or [], fact) if fact is not None else []
         owed = critic_mode.review_owed_after(
             project_dir,
             prawduct_dir,
-            plan,
-            buildplan_refs.resolve_chunk_progress(project_dir, plan.path),
+            binding,
+            buildplan_refs.resolve_chunk_progress(project_dir, binding.plan_path),
             chain,
         )
         return owed[0] if owed else None
@@ -5802,6 +5879,7 @@ def consolidate(
                     ledger.append_learning_event(
                         project_dir, "learning.fired",
                         file=rel, unit_hash=unit, review_id=review_id,
+                        scope=manifest.get("scope"),
                     )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a review's exit code
         print(

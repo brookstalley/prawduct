@@ -56,9 +56,12 @@ def _write_mock_git(mock_bin: Path, *, status: str, branch: str = "main") -> Non
         'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi\n'
         'if [[ "$1" == "status" ]]; then cat "%s"; exit 0; fi\n'
         'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "%s"; exit 0; fi\n'
+        # The branch probe `work_unit.resolve` reads: without it the checkout is
+        # a detached HEAD, which is unbound and arms no Critic gate.
+        'if [[ "$1" == "symbolic-ref" && "${@: -1}" == "HEAD" ]]; then echo "%s"; exit 0; fi\n'
         'if [[ "$1" == "worktree" ]]; then exit 0; fi\n'
         'if [[ "$1" == "ls-files" ]]; then exit 1; fi\n'
-        "exit 0\n" % (status_file, branch)
+        "exit 0\n" % (status_file, branch, branch)
     )
     git.chmod(0o755)
     gh = mock_bin / "gh"

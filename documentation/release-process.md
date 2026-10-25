@@ -156,8 +156,8 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 When `develop` is ready to release as `vX.Y.Z`:
 
 **The numbering below is the checklist's order, not the running order.** Every prep item in it —
-the version bump across the three files, the change-record cut, the `active_build_plan` clear and
-the plan sweep, the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
+the version bump across the three files, the change-record cut and
+the plan sweep (plus, on a repo still on the deprecated `active_build_plan` scalar, its clear), the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
 the promotion, not edited onto `main` after it; the reason is in the ordering note that closes
 "Step 1 mechanics" below. `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 is the
 same set in executable running order, and is the document to work from when actually cutting.
@@ -204,7 +204,7 @@ same set in executable running order, and is the document to work from when actu
    something this step fixes.
 
 4. **Archive the plans this release shipped.** On gitflow the closing PR deliberately
-   RETAINS the plan and its `active_build_plan` pointer — the work is not released yet — so
+   RETAINS the plan — the work is not released yet — so
    the release is where that retention ends, and without this step the live artifacts
    directory re-accumulates exactly the pile the archive exists to prevent. Step 3 has just
    written the record the sweep reads, so run the sweep rather than picking by hand:
@@ -215,11 +215,12 @@ same set in executable running order, and is the document to work from when actu
    It archives every live plan whose scope has an entry tagged `release=` in the change log or
    its archive, stamping each with `lifecycle: completed` and `released_in:`. It is a **no-op
    for anything still pending**, so running it on a pruned release cannot archive withheld work:
-   a withheld scope is still a fragment, and step 3 wrote no archived entry for it. **Clear `active_build_plan` BEFORE the
-   sweep**, not after: the sweep refuses to archive the plan the pointer names — archiving
-   it would leave the pointer at a moved file, which every gate reads as "no active build
-   plan" and goes quiet rather than failing — so a pointer left set is a plan left live,
-   and the run reports it under the plans it kept rather than the ones it moved.
+   a withheld scope is still a fragment, and step 3 wrote no archived entry for it. A repo still on the deprecated
+   `active_build_plan` scalar clears it BEFORE the sweep, not after: the sweep refuses to
+   archive the plan the pointer names — archiving it would leave the pointer at a moved file,
+   which the legacy route reads as "no active build plan" and goes quiet rather than failing —
+   so a pointer left set is a plan left live, and the run reports it under the plans it kept
+   rather than the ones it moved. A plan bound by its `branch:` has no pointer to clear.
    The preview also lists, separately, plans the change log says shipped but which the
    sweep **refuses** (a name already in the archive, a plan already carrying a terminal
    state, one it cannot read, or — since v3.3.1 — one whose `## Status` does not evidence
@@ -326,13 +327,12 @@ same set in executable running order, and is the document to work from when actu
   consumers with protected integration branches into a second, bookkeeping-only PR, so it was
   retired). `check-releasability` enumerates every fragment's scope as pending and advises when
   that scope resolves to no plan file — work shipping with nothing describing it. **The PLAN is
-  retained until the release**; what happens to the `active_build_plan` pointer depends on how
-  the plan resolves, and `/prawduct:pr`’s
-  Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` needs nothing at the merge (it
-  governs only its own branch, which is gone, so it reads live-but-inactive wherever the pointer
-  aims), while a pointer-resolved plan keeps the pointer, because clearing that one is what makes
-  governance blind. The
-  gate reads the plan by scope either way, which is why it does not depend on the pointer.
+  retained until the release**, and a plan declaring `branch:` needs nothing at the merge: it
+  governs only the checkouts of its own branch, which is gone, so it reads live-but-inactive
+  (`prawduct-hook plan resolve` reports what a checkout is bound to, `work_unit.resolve` being
+  the one owner of that answer). `/prawduct:pr`’s Merge Flow
+  *"Confirm the bookkeeping merged WITH the PR"* step owns what the merge does owe. The gate
+  reads the plan by scope, which is why it does not depend on any binding.
 - **Shipped** — an entry in `.prawduct/change-log-archive/` tagged `release=vX.Y.Z`. Step 3's
   cut writes it and removes the fragment in the same run, and that is the whole transition.
 
@@ -450,12 +450,12 @@ each shipped Python file's imports against its `develop` counterpart.
 The executable procedure is `.prawduct/runbooks/promote-a-pruned-release.md`; the worked example is
 `.prawduct/artifacts/release-plan-v3.1.2-pruned.md`.
 
-Note on **step 2 ordering**: the version bump + the change-record cut and CHANGELOG updates +
-`active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
+Note on **step 2 ordering**: the version bump + the change-record cut and CHANGELOG updates
+are done as a **release-prep commit on `develop`** *before* the promotion
 above, not as edits on `main` after the merge. That puts the release bookkeeping inside the promoted
 tree under **either** shape — the whole-develop tree-set inherits it, and the pruned candidate picks
 it up because the release-prep commit is the tip of the ship-set range. Nothing in the step reads a
-build plan, so the `active_build_plan` clear can happen anywhere in the prep commit.
+build plan.
 
 ## `/prawduct:pr` is not the release vehicle
 
@@ -480,7 +480,7 @@ benign**, not a gate to satisfy:
   bumps (zero added signal — the CRT-7M2D treadmill), and do **not** write `.gates-waived` — a waiver
   means "this gate cannot be satisfied this session," which is false here (the gate is perfectly
   satisfiable in a feature context; it simply isn't the release's gate). The stop hook also stands
-  down on its own: release-prep clears `active_build_plan`, so its Critic gate sees no active plan.
+  down on its own: a release-prep branch is claimed by no plan, so its checkout is unbound and its Critic gate sees no active plan.
   The operative pre-promotion check is the one that matches the promotion shape: the empty
   `git diff --stat origin/develop HEAD` for a whole-develop promotion, or the path partition for a
   pruned one.

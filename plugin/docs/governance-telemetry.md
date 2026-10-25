@@ -31,8 +31,8 @@ kind-named key (`review` for `review.*`):
 ```
 
 - `schema_version` is **per line** — a long-lived ledger can mix versions.
-- `scope` is the build-plan feature key (derived by `critic-begin` from the branch name, or passed explicitly as an override;
-  the `active_build_plan` pointer is only the fallback).
+- `scope` is the build-plan feature key (taken by `critic-begin` from the checkout's work-unit binding, or passed explicitly as an override;
+  `null` when the checkout is bound to no plan).
 - `duration_seconds` and `actor.model` are nullable — recorded, never invented.
   `duration_seconds` is the reviewing model's **own estimate**, never a clock. The clock is the
   optional `dispatched_at` key, written only when the review's dispatch was marked before the

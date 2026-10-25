@@ -205,6 +205,8 @@ _REFUSAL_AUDITED = {
     "pr-review-dispatch": "names the token; exits 1 (valid --begin exits 0)",
     "pr-review-payload": "names the token; exits 1 — same code as a base-less "
                          "valid run, message differs",
+    "plan": "names the token; exits 2 (valid resolve exits 0) — every op parses "
+            "through `_parse_plan_args`, which refuses any unknown dash token",
 }
 
 # Empty, and it must stay that way by argument rather than by neglect: an entry
@@ -240,6 +242,8 @@ _VALID_INVOCATIONS = {
     # the other reads git and `.prawduct/` state and opens no socket.
     "pr-review-dispatch": ["pr-review-dispatch", "--begin"],
     "pr-review-payload": ["pr-review-payload", "--json"],
+    # The read-only op; `new`/`bind` share its parser (`_parse_plan_args`).
+    "plan": ["plan", "resolve"],
 }
 
 _UNKNOWN_TOKEN = "--zzz-unrecognised-token"
@@ -572,6 +576,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "worktrees",
         "git-tidy",
         "stale-plugin-caches",
+        "plan",
     }
     assert set(_dispatch_branches()) == listed
 

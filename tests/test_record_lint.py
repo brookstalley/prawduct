@@ -700,11 +700,58 @@ class TestChunkRefs:
             repo, repo / ".prawduct", [], head, head, chunk_id="03"
         )
         assert result["chunk_graded"] == "03"
-        assert any("active_build_plan pointer" in r for r in result["unchecked"])
+        # R-2: the caveat is bound to the entry that carries it and names the
+        # route that fired, not merely present somewhere in `unchecked`.
+        entry = next(r for r in result["unchecked"] if r.startswith("chunk-ref-missing graded"))
+        assert entry.startswith(
+            "chunk-ref-missing graded chunk 03 of .prawduct/artifacts/build-plan-pointed.md: "
+        ), entry
+        assert "bound through the active_build_plan pointer because no plan claims" in entry
+        assert "pass `--scope` to name it" in entry
         # NOT the BLOCKING prefix: the check ran, against a named plan.
         assert not any(
             r.startswith("chunk-ref-missing unchecked") for r in result["unchecked"]
         )
+
+    def test_the_conventional_path_route_is_named_as_such(self, tmp_path):
+        """The other legacy route: no pointer, the plan at `artifacts/build-plan.md`
+        and a second scope-declaring plan beside it. The caveat names the route
+        that answered — a two-state message derived from the binding's case."""
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "conventional")
+        artifacts = repo / ".prawduct" / "artifacts"
+        (artifacts / "build-plan-pointed.md").rename(artifacts / "build-plan.md")
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        head = _commit(repo, "conventional path, no pointer")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        entry = next(r for r in result["unchecked"] if r.startswith("chunk-ref-missing graded"))
+        assert entry.startswith(
+            "chunk-ref-missing graded chunk 03 of .prawduct/artifacts/build-plan.md: "
+        ), entry
+        assert "bound through the conventional path because no plan claims" in entry
+        assert "active_build_plan pointer" not in entry
+
+    def test_a_claimed_plan_in_a_multi_plan_repo_carries_no_caveat(self, tmp_path):
+        """The control that differs only in HOW the plan was reached: the same
+        two scope-declaring plans, but the graded one claims the checked-out
+        branch. A claim is the grounding, so nothing is assumed and no
+        `graded … bound through` line is written — the caveat is the legacy
+        window's, not the multi-plan repo's."""
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "claimed")
+        branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-pointed.md"
+        plan.write_text(plan.read_text().replace(
+            "scope: pointed\n", f"scope: pointed\nbranch: {branch}\n"
+        ))
+        head = _commit(repo, "pointed claims the branch")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert result["chunk_graded"] == "03"
+        assert result["plan_graded"] == ".prawduct/artifacts/build-plan-pointed.md"
+        assert not any("bound through" in r for r in result["unchecked"]), result["unchecked"]
+        assert not any(r.startswith("chunk-ref-missing graded") for r in result["unchecked"])
 
     def test_a_single_plan_repo_reports_no_pointer_assumption(self, tmp_path):
         """With one plan there was nothing to choose between, and a note on
@@ -739,6 +786,60 @@ class TestChunkRefs:
             repo, repo / ".prawduct", [], head, head, chunk_id="01"
         )
         assert named["unchecked"] == [], "no assumption to report when told"
+
+    def _repo_with_a_claim_elsewhere(self, tmp_path, name: str, *, also_claim: bool = False):
+        """The pointer names a plan whose chunk 03 deliverable is missing, and
+        another plan claims a different branch — so the legacy window is shut
+        and, on an unclaimed branch, the pointer answers nothing."""
+        repo = _make_repo(tmp_path, name=name)
+        artifacts = repo / ".prawduct" / "artifacts"
+        (artifacts / "build-plan-pointed.md").write_text(
+            "---\nartifact: build-plan\nscope: pointed\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 03: pointed\n\n"
+            "### Chunk 03: pointed\n\n- **Deliverables:** `src/absent.py`\n"
+        )
+        claimed = "feat/work" if also_claim else "feat/elsewhere"
+        for plan in ("a", "b") if also_claim else ("a",):
+            (artifacts / f"build-plan-{plan}.md").write_text(
+                f"---\nartifact: build-plan\nscope: {plan}\nbranch: {claimed}\n---\n\n"
+                "# Plan\n\n## Status\n\n- [ ] Chunk 03: x\n\n"
+                "### Chunk 03: x\n\n- **Deliverables:** `src/absent.py`\n"
+            )
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "project_name: t\nactive_build_plan: artifacts/build-plan-pointed.md\n"
+        )
+        head = _commit(repo, "plans")
+        _git(repo, "checkout", "-q", "-b", "feat/work")
+        return repo, head
+
+    def test_an_unbound_checkout_grades_no_other_plan(self, tmp_path):
+        """#208: with no scope and no plan claiming the branch, the deliverable
+        check used to grade the pointer's plan — another unit's chunk 03. An
+        unbound checkout grades nothing, and the null count says so."""
+        repo, head = self._repo_with_a_claim_elsewhere(tmp_path, "unbound")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert result["plan_graded"] is None
+        assert result["chunk_graded"] is None
+        assert _checks(result, "chunk-ref-missing") == []
+        # The control: named by scope, the same plan IS graded and its missing
+        # deliverable found — so the silence above is the binding, not the plan.
+        named = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03", scope="pointed"
+        )
+        assert named["plan_graded"].endswith("build-plan-pointed.md")
+        assert _checks(named, "chunk-ref-missing")
+
+    def test_a_broken_binding_is_reported_not_graded(self, tmp_path):
+        repo, head = self._repo_with_a_claim_elsewhere(tmp_path, "broken", also_claim=True)
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert result["plan_graded"] is None
+        entry = next(r for r in result["unchecked"] if r.startswith("chunk-ref-missing"))
+        assert entry.startswith("chunk-ref-missing unchecked"), entry
+        assert "binding is broken" in entry and "2 live plans claim `feat/work`" in entry
 
 
 # ---------------------------------------------------------------------------
@@ -1218,7 +1319,11 @@ class TestVerifyRecordsCLI:
     def test_it_derives_the_same_scope_the_dispatch_would(self, tmp_path):
         """The by-hand form exists to pre-answer the record checks. Grading a
         different plan than `critic-begin` will makes it answer a different
-        question — confidently, and in the shape of the real answer."""
+        question — confidently, and in the shape of the real answer.
+
+        Both take the checkout's binding: `build-plan-mine.md` claims `fix/mine`
+        with `branch:`, so that plan is graded while the pointer names the other
+        (#1050 — the claim, not the branch NAME, is what binds)."""
         repo = _make_repo(tmp_path, name="scopeparity")
         artifacts = repo / ".prawduct" / "artifacts"
         (artifacts / "build-plan-pointed.md").write_text(
@@ -1227,7 +1332,7 @@ class TestVerifyRecordsCLI:
             "### Chunk 01: pointed\n\n- **Deliverables:** `code.py`\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: mine\n\n"
             "### Chunk 01: mine\n\n- **Deliverables:** `code.py`\n"
         )
@@ -1295,8 +1400,6 @@ class TestEveryCheckCarriesASeverity:
         sys.path.insert(0, str(root / "plugin"))
         from lib import record_lint
 
-        from lib import buildplan_refs
-
         # Both shapes must still be what the code emits, or the anchors below
         # are pinning prose against a contract that moved. The assumption shape
         # has two causes — an inferred chunk and an inferred plan — assembled
@@ -1306,7 +1409,11 @@ class TestEveryCheckCarriesASeverity:
         assert "chunk-ref-missing unchecked — " in emitter_src
         assert "chunk-ref-missing graded chunk " in emitter_src
         assert "inferred from build-plan Status" in emitter_src
-        assert "active_build_plan pointer" in Path(buildplan_refs.__file__).read_text()
+        # The plan half's caveat (`… bound through the active_build_plan pointer`)
+        # is pinned by behaviour, not by its spelling in the source: R-2 replaced
+        # a presence pin here, which stayed green with the branch unreachable,
+        # with `TestChunkRefs`'s legacy-pointer, conventional-path and
+        # claimed-control fixtures.
 
         for rel in ("plugin/skills/critic/cross-checks.md",
                     "plugin/skills/critic/goals-1-3.md"):
@@ -1348,9 +1455,10 @@ class TestFrontmatterBreak:
     """A machine-read header that no machine can read.
 
     This repo's own build plan carried an unterminated double-quoted scalar for
-    two commits and every reader passed it, because `record_lint`,
-    `resolve_branch_plan` and `verify-chunk-refs` all match line patterns rather
-    than parsing. That is the same failure shape as `governed_by:` citing a file
+    two commits and every reader passed it, because `record_lint`, the
+    branch-plan resolver of the day and `verify-chunk-refs` all matched line
+    patterns rather than parsing (the work-unit binding that replaced the
+    resolver refuses an unclosed block — `work_unit._frontmatter_unterminated`). That is the same failure shape as `governed_by:` citing a file
     nobody can open, which is why the finding is that check: the header presents
     as *more* governed than an absent one.
     """
