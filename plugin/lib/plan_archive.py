@@ -35,6 +35,7 @@ CLI boundary turns those into exit codes.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from . import buildplan_refs, plan_index
@@ -336,11 +337,51 @@ def archive_destination(plan_path: Path, artifacts_dir: Path) -> Path:
     ``artifacts/archive/build-plan.md`` and collide on the first archival. The
     scanners find an ``archive`` component at any depth, so a sibling archive is
     as discoverable as a top-level one.
+
+    The archived name carries the plan's ``scope:`` (see :func:`archived_name`),
+    because one directory holds many plans' history over time: a plan living at
+    the generic ``build-plan.md`` would otherwise archive under that bare name,
+    which says nothing about which plan it holds and refuses the next one that
+    archives from the same directory.
     """
     parent = plan_path.parent
+    name = archived_name(plan_path)
     if parent != artifacts_dir and parent.is_relative_to(artifacts_dir):
-        return parent / plan_index.ARCHIVE_DIR_NAME / plan_path.name
-    return artifacts_dir / plan_index.ARCHIVE_DIR_NAME / plan_path.name
+        return parent / plan_index.ARCHIVE_DIR_NAME / name
+    return artifacts_dir / plan_index.ARCHIVE_DIR_NAME / name
+
+
+#: A scope fit to become part of a filename: no separators, no `..`, no leading
+#: dot. A scope outside it keeps the plan's own name rather than steering the
+#: archive path — the traversal guard checks the SOURCE path, not this one.
+_FILENAME_SCOPE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9_-]|\.(?=[A-Za-z0-9]))*")
+
+
+def archived_name(plan_path: Path) -> str:
+    """The plan's filename in ``archive/``: its own, with its scope appended if absent.
+
+    A name that already carries the scope as a hyphen-delimited segment
+    (``build-plan-demo.md``, ``build-plan-demo-v2.md`` for scope ``demo``) is kept
+    as is, so the established ``build-plan-<scope>.md`` convention archives
+    unrenamed. Any other name gains ``-<scope>`` before its suffix — appended,
+    never prefixed, so a reader that finds an archived plan by a name-prefix glob
+    (``release_readiness._find_release_plan``'s ``release-plan-<version>*.md``)
+    still finds it, which is what keeps archival from changing findability by
+    name (lifecycle requirement BP8). A plan with no readable, filename-safe
+    scope keeps its own name — and an unreadable plan is refused by
+    :func:`refusal_reason` on the read that follows, so falling back here names
+    nothing that gets written.
+    """
+    try:
+        content = plan_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return plan_path.name
+    _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
+    if not scope or not _FILENAME_SCOPE.fullmatch(scope):
+        return plan_path.name
+    if f"-{scope}-" in f"-{plan_path.stem}-":
+        return plan_path.name
+    return f"{plan_path.stem}-{scope}{plan_path.suffix}"
 
 
 def refusal_reason(
