@@ -4350,6 +4350,42 @@ class TestFactsAttachAsNotes:
         assert "git note was not written" in result.stderr
         assert _note_lines(repo, head) == []
 
+    def test_a_retry_attaches_the_notes_a_failed_first_attempt_could_not_write(self, tmp_path):
+        """Both write sites, on the already-appended path: the first attempt
+        stores the verify review and its resolution but cannot write either
+        note; the replayed dispatch finds both facts present and must still put
+        them on the note — otherwise nothing in this clone ever re-sends them."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "update-ref", f"{_NOTES_REF}/blocker", "HEAD")
+        prior_id = _seed_prior_review_with_blocker(repo, c1)
+        c2 = _commit_file(repo, "src/app.py", "x = 2\n", "fix")
+
+        def verify() -> subprocess.CompletedProcess:
+            _set_marker(repo)
+            _write_manifest(repo, c2, id="rev-verify-0002", mode=VERIFY_MODE, roster=["reviewer"])
+            _write_partial(repo, "reviewer", c2, resolutions=[
+                {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+            ])
+            return _run_consolidate(repo)
+
+        first = verify()
+        assert first.returncode == 0, f"stderr={first.stderr!r}"
+        assert "git note was not written" in first.stderr
+        assert _note_lines(repo, c2) == []
+
+        _git(repo, "update-ref", "-d", f"{_NOTES_REF}/blocker")
+        retry = verify()
+        assert retry.returncode == 0, f"stderr={retry.stderr!r}"
+        lines = _store_lines(repo)
+        assert len(lines) == 3, "the retry appends nothing"
+        assert _note_lines(repo, c2) == lines[1:], "the verify review, then its resolution"
+        assert "NOTE" not in retry.stderr
+        # A third replay finds both lines on the note and writes nothing more.
+        assert verify().returncode == 0
+        assert _note_lines(repo, c2) == lines[1:]
+
 
 # ---------------------------------------------------------------------------
 # Integration: the span verdict rides the clean verify close
