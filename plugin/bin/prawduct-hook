@@ -8572,6 +8572,26 @@ def _plan_label(plan_path: Path, prawduct_dir: Path) -> str:
     return plan_index.display_path(plan_path, prawduct_dir / "artifacts")
 
 
+def _built_not_done_lead(count: int) -> str:
+    """The lead line over lifecycle-repair's built-but-not-done report.
+
+    ``plans_to_review`` names chunks with work committed on the plan's branch
+    that no review has certified (``plan_status.chunk_states`` with
+    ``built_chunks``). The sentence is derived from how many there are, never
+    written for one case; it names the two routes that settle a chunk, because
+    this report changes nothing itself."""
+    subject = (
+        "this chunk has work committed on its plan's branch, and no review has"
+        if count == 1
+        else f"these {count} chunks have work committed on their plans' branches, and no review has"
+    )
+    return (
+        f"  Read these once — {subject} certified it yet (built, not done). "
+        "Nothing here is changed for you: a chunk is done when a review covers "
+        "it, or dropped when its plan's `dropped:` says why."
+    )
+
+
 def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
     """Converge a repo off the retired derived-view model (FL2, FL3, GD2).
 
@@ -8696,10 +8716,7 @@ def cmd_lifecycle_repair(project_dir: Path, argv: list[str]) -> int:
                   "covers all of them; they are ordinary file edits your version "
                   "control can undo.")
         if stale:
-            print("  Read these once — their progress checkboxes were generated, so "
-                  "an unfinished chunk may be marked wrongly. Nothing here is "
-                  "changed for you: only someone who knows what actually shipped "
-                  "can say.")
+            print(_built_not_done_lead(sum(len(r["chunks"]) for r in stale)))
             for report in stale:
                 print(f"    {_plan_label(report['path'], Path(project_dir) / '.prawduct')}")
                 for chunk in report["chunks"]:
