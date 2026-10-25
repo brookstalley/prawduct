@@ -6360,8 +6360,9 @@ def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
 def cmd_evidence(project_dir: Path, argv: list[str]) -> int:
     """Inspect the kernel-v3 evidence store and move its facts between clones.
     Thin wrapper. ``status`` and ``list`` read (``lib.evidence.evidence_cmd``).
-    ``ingest`` appends facts other clones wrote, read verbatim from
-    ``refs/notes/prawduct`` (``lib.evidence_notes``). ``sync [--no-push]
+    ``ingest`` appends facts other clones wrote, read from ``refs/notes/prawduct``
+    and every fetched ``refs/notes/<remote>/prawduct`` (``lib.evidence_notes``;
+    a note line is the store line less the actor's machine path and session). ``sync [--no-push]
     [--json]`` fetches, merges, ingests and pushes that ref, and ``configure
     [--apply] [--json]`` sets the clone's notes refspec and rewrite ref
     (``lib.evidence_sync``: exit 0 ok, 1 a failure naming its step, 2 usage).

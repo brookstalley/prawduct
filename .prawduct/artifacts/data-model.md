@@ -108,7 +108,8 @@ by every worktree of a clone), so it is uncommitted by construction and shared a
 An absent file is the empty store.
 
 **Reach beyond the clone.** The kinds in `evidence.TRANSPORTED_KINDS` — `review`, `resolution`,
-`chunk-imported` — are also written, as their exact store lines, into a note on
+`chunk-imported` — are also written, as their store lines with the actor's locator fields
+reduced (the worktree's name, no session, no machine path), into a note on
 `refs/notes/prawduct` on the fact's anchor commit (a review's `head_commit`, or its
 `dispatch_commit` for a dirty tree; a resolution on its verifying review's anchor; an import on
 the HEAD it was written at). `evidence ingest` appends note lines this store lacks, deduplicated by

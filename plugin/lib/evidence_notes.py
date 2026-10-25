@@ -77,6 +77,13 @@ def attach(project_dir: Path, envelope: object, anchor: "str | None") -> dict:
     return {"status": "attached", "reason": None}
 
 
+#: The directory under which the harness keeps scratch worktrees; a note keeps
+#: this tail of the writer's path so the receiving clone classifies the fact as
+#: ephemeral too (`evidence.is_ephemeral_fact` looks for it).
+_SCRATCH_TAIL = "worktrees"
+_SCRATCH_TAIL_PATH = ".claude/worktrees"
+
+
 def sent_envelope(envelope: dict) -> dict:
     """``envelope`` as a note carries it: identical except the actor's locator
     fields. ``actor.worktree`` is cut to its last path component — the
@@ -88,15 +95,22 @@ def sent_envelope(envelope: dict) -> dict:
     A reader comparing ``actor.worktree`` against a live path (the round
     counter in ``critic_consolidate``, the latest-review lookup in ``gates``)
     compares an absolute path, which a bare name never equals, so an ingested
-    fact never reads as recorded in this worktree. A non-dict ``actor`` or a
-    non-string ``worktree`` is left as it is."""
+    fact never reads as recorded in this worktree. A fact written in a harness
+    scratch worktree keeps the ``.claude/worktrees/<name>`` tail, so
+    :func:`evidence.is_ephemeral_fact` classifies it the same way in every
+    clone — the tail names no user. A non-dict ``actor`` or a non-string
+    ``worktree`` is left as it is."""
     actor = envelope.get("actor")
     if not isinstance(actor, dict):
         return envelope
     reduced = {k: v for k, v in actor.items() if k != "session"}
     worktree = actor.get("worktree")
     if isinstance(worktree, str):
-        reduced["worktree"] = Path(worktree).name
+        path = Path(worktree)
+        if _SCRATCH_TAIL in path.parts:
+            reduced["worktree"] = f"{_SCRATCH_TAIL_PATH}/{path.name}"
+        else:
+            reduced["worktree"] = path.name
     return {**envelope, "actor": reduced}
 
 

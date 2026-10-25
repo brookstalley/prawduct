@@ -334,6 +334,22 @@ class TestNotesWrittenAtConsolidation:
         # Byte-for-byte, newline included — the note is a store line, less the locators.
         assert _note(repo, c1) == _sent_line_of(repo, "review", "rev-a") + "\n"
 
+    def test_a_scratch_worktree_fact_keeps_its_ephemeral_tail_and_no_user(self):
+        """A fact written in `.claude/worktrees/<name>` is classified ephemeral by
+        `evidence.is_ephemeral_fact` in the receiving clone too, without the path
+        above it travelling."""
+        env = _envelope("review", "r-eph", {})
+        env["actor"] = {"worktree": "/Users/someone/src/repo/.claude/worktrees/agent-a4c9b742610c039f9", "session": "s"}
+        sent = evidence_notes.sent_envelope(env)
+        assert sent["actor"]["worktree"] == ".claude/worktrees/agent-a4c9b742610c039f9"
+        assert "session" not in sent["actor"]
+        assert "someone" not in json.dumps(sent)
+        assert evidence.is_ephemeral_fact(sent) is True
+        main = _envelope("review", "r-main", {})
+        main["actor"] = {"worktree": "/Users/someone/src/repo"}
+        assert evidence_notes.sent_envelope(main)["actor"]["worktree"] == "repo"
+        assert evidence.is_ephemeral_fact(evidence_notes.sent_envelope(main)) is False
+
     def test_the_note_carries_no_absolute_worktree_path_and_no_session_while_the_store_keeps_both(self, repo):
         seed = _git(repo, "rev-parse", "main")
         c1 = _commit(repo, "src/app.py", "x = 1\n", "work")

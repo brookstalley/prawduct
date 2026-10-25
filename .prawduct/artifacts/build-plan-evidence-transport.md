@@ -211,6 +211,23 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   `rev-20261025T173802Z-7a0e5c49`. Acceptance met. `plan status` on this branch prints
   `lifecycle: in-progress`; `check-claims` names all three retained plans `merged-unreleased` by
   anchor, exit 0.
+- Suite over cbab5222: the first record (0e3a447a + records) had 3 red — Chunk 05's grant sweep
+  read `_DATA_PLANE_OPS`, which Chunk 03's R-7 refactor replaced with a read set; fixed in
+  cbab5222 (`_EVIDENCE_WRITE_OPS` roster beside the read set, pinned to equal the usage line's
+  offer, which caught the usage line never gaining `sync`/`configure`). Second record green,
+  tree-valid (`prawduct-hook test-status`).
+- The verify pass for the keystone's routed warnings widened to a `final`
+  (`rev-20261025T182810Z-3266301c`, 31 files since the prior review): 1 blocking, 0 warning,
+  22 observations; the keystone's R-2…R-16 were confirmed not to recur and close by
+  non-recurrence (no resolution record — the cumulative spans them). R-1: `configure` wrote an
+  EXACT notes refspec, and a configured non-pattern refspec makes plain `git fetch` die on a
+  remote with no notes yet, i.e. every fresh onboard — probed 2026-10-25 (exact → rc 128;
+  pattern `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*` → rc 0, matches the bare name,
+  and the `prawduct-other` it also fetches is rejected by `_notes_refs`' filter). Fixed by
+  delegate E with O-2/O-7 (status and `unattached` read the tracking refs too), O-16 (the note
+  line carries the worktree's basename and no session, never the absolute path), O-17/O-8 (status
+  counts note commits not yet pushed), O-19, O-3/O-6, O-4/O-13, O-20/O-21. Accepted on the
+  record: O-1, O-5, O-9, O-10, O-11, O-12, O-14, O-15, O-18, O-22.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a
@@ -237,7 +254,8 @@ Shapes every chunk reads or writes (fixed here so no delegate guesses them):
   `TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported"})`.
 - **Refs:** local `NOTES_REF = "refs/notes/prawduct"`; tracking
   `NOTES_TRACKING_REF = "refs/notes/origin/prawduct"` (the remote name substituted from
-  `gitstate.push_remote`); refspec `+refs/notes/prawduct:refs/notes/<remote>/prawduct`; config
+  `gitstate.push_remote`); refspec `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*` (a pattern: an exact one makes
+  plain `git fetch` fail while the remote has no notes — the final review's R-1); config
   `notes.rewriteRef = refs/notes/prawduct`.
 - **`evidence_notes` signature** (Chunk 01, reviewed before 02/03 are briefed):
   `attach(project_dir, envelope: dict, anchor: str) -> dict` (`{"status": "attached"|"skipped"|"error", "reason"}`;
@@ -311,8 +329,8 @@ Shapes every chunk reads or writes (fixed here so no delegate guesses them):
 ### Chunk 02: `evidence sync` and `evidence configure`
 
 - **Description:** New module `plugin/lib/evidence_sync.py`. `sync`: `git fetch <remote>
-  +refs/notes/prawduct:refs/notes/<remote>/prawduct` (a missing remote ref is not an error — a
-  first push has nothing to fetch), `git notes --ref prawduct merge -s cat_sort_uniq
+  +refs/notes/prawduct*:refs/notes/<remote>/prawduct*` (a pattern, so a remote with no notes yet
+  fetches nothing and fails nothing), `git notes --ref prawduct merge -s cat_sort_uniq
   <remote>/prawduct` when the tracking ref exists, `evidence_notes.ingest` (bounded), then
   `git push <remote> refs/notes/prawduct` unless `push=False`; a rejected push, a stuck
   `NOTES_MERGE_REF` from an earlier failure, or git failing are reported with the failing `step`
@@ -363,7 +381,7 @@ Shapes every chunk reads or writes (fixed here so no delegate guesses them):
 - **Description:** In `plugin/bin/prawduct-hook`: `cmd_clear`'s boundary region (beside
   `_record_session_start`, boundary only, never `--brief-only`) calls `evidence_notes.ingest`
   bounded, failing soft with a NOTE and printing one line only when something was appended
-  (`N review facts ingested from refs/notes/prawduct`); registers `evidence sync` and
+  (`N evidence fact(s) ingested from refs/notes/prawduct`); registers `evidence sync` and
   `evidence configure` from Chunk 02 (`_reject_unknown_args`, the data-plane/read-only tables as
   each command's writes require); `plan status` prints a `lifecycle:` line from
   `plan_lifecycle.observe` and `--json` gains `lifecycle: {state, reason, released_in, probed}`,
