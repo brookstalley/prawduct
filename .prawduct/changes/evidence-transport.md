@@ -8,7 +8,8 @@ closes: [brookstalley/prawduct#1052, brookstalley/prawduct#1050]
 ---
 
 Critic review, resolution and chunk-imported facts now travel with the branch. Consolidation
-appends each fact's store line as a note on its anchor commit under `refs/notes/prawduct`;
+appends each fact's store line as a note on its anchor commit under `refs/notes/prawduct`, with
+the reviewing machine's worktree path cut to its directory name and the session id left out;
 `/prawduct:pr create|update` pushes the ref after the branch, and a clone that has the notes
 ingests them into its own evidence store at session start, so it reaches the same coverage verdict
 from the same facts. The store itself still never leaves its clone, and gates read only the store:
@@ -26,8 +27,11 @@ and, as its last child, #1050.
 - Three new commands. `prawduct-hook evidence ingest [--all]` reads the ref into the store
   (session start runs it bounded to the branch). `evidence sync [--no-push]` fetches, merges,
   ingests and pushes the ref; `/prawduct:pr create|update` runs it after the branch push, and a
-  failure there is reported without blocking the PR. `evidence configure --apply` adds the notes
-  fetch refspec and `notes.rewriteRef` to the clone's `.git/config`, so a plain `git fetch` brings
+  failure there is reported without blocking the PR — `evidence status` then shows
+  `N note commit(s) not yet pushed` until a sync succeeds. `evidence configure --apply` adds the
+  notes fetch refspec (a pattern, `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*`, so a
+  plain `git fetch` keeps working while the remote has no notes yet) and `notes.rewriteRef` to the
+  clone's `.git/config`, so a plain `git fetch` brings
   the remote's notes into a tracking ref that the next session start or `evidence ingest` reads, and an amend or rebase keeps them; `/prawduct:doctor` offers it and
   `/prawduct:onboard` runs it. Exit codes are in `api-contract.md`.
 - A fresh clone has an empty store: it shows a branch's coverage after one `evidence sync` run, or after
@@ -38,3 +42,6 @@ and, as its last child, #1050.
 - `stats` and `contribute` read the store, so reviews ingested from another clone count there too.
 - `plan status` prints a `lifecycle:` line and `--json` gains `lifecycle`; `--probe-pr` asks GitHub
   for a merged PR when git alone cannot tell (never run by a hook).
+- `plan check-claims` now judges a claim by the plan's observed lifecycle, so a `working-branches:`
+  entry missing while the integration branch is still in progress reads `missing` (exit 1) where
+  it was `release-pending`, which can flip a consumer's `/prawduct:doctor` check #24 line.

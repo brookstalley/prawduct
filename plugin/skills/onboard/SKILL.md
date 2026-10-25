@@ -103,7 +103,9 @@ uncommitted and go on.
 
 **Then configure the notes transport.** Review facts travel between clones on
 `refs/notes/prawduct`, and `prawduct-hook evidence configure --apply` sets this clone's notes fetch
-refspec and `notes.rewriteRef` — two keys in `.git/config`, nothing committed. Run it only when both
+refspec (the pattern `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*`, so a plain `git fetch`
+still works while the remote has no notes) and `notes.rewriteRef` — two keys in `.git/config`,
+nothing committed. Run it only when both
 hold, and when one does not, say in the report why it was skipped:
 - the target has a remote (`git -C <target> remote` lists one). With no remote there is nowhere for
   notes to go;

@@ -30,7 +30,13 @@ from lib import evidence, evidence_notes, evidence_sync  # noqa: E402
 
 NOTES_REF = "refs/notes/prawduct"
 TRACKING_REF = "refs/notes/origin/prawduct"
-REFSPEC = f"+{NOTES_REF}:{TRACKING_REF}"
+#: The pattern form. A configured EXACT refspec makes a plain ``git fetch`` die
+#: (``couldn't find remote ref``) while the remote has no notes, which is every
+#: fresh onboard (R-1, probed on git 2.54); a pattern matching nothing is not an
+#: error.
+REFSPEC = f"+{NOTES_REF}*:{TRACKING_REF}*"
+#: What this branch's earlier ``configure`` wrote: replaced, never kept beside.
+LEGACY_REFSPEC = f"+{NOTES_REF}:{TRACKING_REF}"
 
 
 @pytest.fixture(autouse=True)
@@ -215,9 +221,28 @@ class TestSync:
         result = evidence_sync.sync(b)
         assert (result["status"], result["step"], result["pushed"]) == ("error", "merge", False), result
         assert "merge --abort" in result["reason"]
+        # O-19: the reason says what was observed — the merge-state path exists.
+        assert f"{merge_ref.name} exists" in result["reason"], result["reason"]
         assert merge_ref.exists(), "the unfinished merge is the person's; sync must not clear it"
         assert _ref(b, NOTES_REF) == before
         assert len(_note_records(b, head)) == 1
+
+    def test_git_failing_to_locate_the_merge_state_is_not_reported_as_an_unfinished_merge(self, a, monkeypatch):
+        """O-19: when ``rev-parse --git-path`` fails nothing was seen of a merge,
+        so the reason must not prescribe finishing or aborting one."""
+        _review(a, "r-a")
+        real_run_git = evidence.run_git
+
+        def failing_git_path(project_dir, *args, **kw):
+            if args[:2] == ("rev-parse", "--git-path"):
+                return 128, "", "fatal: simulated"
+            return real_run_git(project_dir, *args, **kw)
+
+        monkeypatch.setattr(evidence, "run_git", failing_git_path)
+        result = evidence_sync.sync(a)
+        assert (result["status"], result["step"], result["pushed"]) == ("error", "merge", False), result
+        assert "could not answer" in result["reason"] and "fatal: simulated" in result["reason"], result
+        assert "unfinished" not in result["reason"] and "--abort" not in result["reason"], result
 
     def test_a_remote_that_cannot_be_reached_reports_step_fetch(self, a):
         _review(a, "r-a")
@@ -249,6 +274,51 @@ class TestSyncReconciles:
         # And it reaches the other clone, which is the point of re-sending it.
         assert evidence_sync.sync(b, push=False)["ingested"] == 1
         assert _keys(b) == {("review", "r-lost")}
+
+
+def _unpushed_lines(repo: Path, capsys) -> list[str]:
+    capsys.readouterr()
+    assert evidence.evidence_cmd(repo, ["status"]) == 0
+    return [ln for ln in capsys.readouterr().out.splitlines() if "not yet pushed" in ln]
+
+
+class TestStatusNamesUnpushedNotes:
+    """O-17/O-8: a failed or skipped push leaves every fact attached locally, so
+    the no-note count reads 0 while nothing has left the clone. The local ref
+    against the push remote's tracking ref is the durable view of that leg."""
+
+    def test_an_attach_after_a_sync_is_one_unpushed_note_commit_and_a_sync_clears_it(self, a, capsys):
+        _review(a, "r-1")
+        assert evidence_sync.sync(a)["pushed"] is True
+        assert _unpushed_lines(a, capsys) == ["0 note commit(s) not yet pushed"]
+
+        _commit(a, "src/app.py", "x = 2\n", "fix")
+        _review(a, "r-2")
+        assert _unpushed_lines(a, capsys) == [
+            "1 note commit(s) not yet pushed — run `prawduct-hook evidence sync`"
+        ]
+        assert evidence_sync.sync(a)["pushed"] is True
+        assert _unpushed_lines(a, capsys) == ["0 note commit(s) not yet pushed"]
+
+    def test_a_refused_push_stays_visible_after_the_run(self, a, origin, capsys):
+        _review(a, "r-1")
+        assert evidence_sync.sync(a)["pushed"] is True
+        _commit(a, "src/app.py", "x = 2\n", "fix")
+        _review(a, "r-2")
+        hook = origin / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+        assert evidence_sync.sync(a)["step"] == "push"
+        assert _unpushed_lines(a, capsys) == [
+            "1 note commit(s) not yet pushed — run `prawduct-hook evidence sync`"
+        ]
+
+    def test_no_tracking_ref_prints_no_unpushed_line(self, a, capsys):
+        """Never synced or fetched: there is nothing to compare against, and
+        the no-note line already names the facts."""
+        _review(a, "r-1")
+        assert _ref(a, TRACKING_REF) is None
+        assert _unpushed_lines(a, capsys) == []
 
 
 class TestNetworkDiscipline:
@@ -321,6 +391,7 @@ class TestConfigure:
         before = (a / ".git" / "config").read_text()
         result = evidence_sync.configure(a, apply=False)
         assert (result["status"], result["applied"]) == ("ok", False), result
+        assert all(c["replaces"] is None for c in result["changes"]), result
         assert [(c["key"], c["value"]) for c in result["changes"]] == [
             ("remote.origin.fetch", REFSPEC),
             ("notes.rewriteRef", NOTES_REF),
@@ -361,6 +432,66 @@ class TestConfigure:
         _git(b, "fetch", "-q")
         assert _ref(b, TRACKING_REF) == _ref(a, NOTES_REF)
         assert len(_note_records(b, head, ref=TRACKING_REF)) == 1
+
+    def test_after_apply_a_plain_fetch_succeeds_while_the_remote_has_no_notes(self, a, b, origin):
+        """R-1: the normal state right after onboarding. An exact refspec makes
+        every plain ``git fetch`` (and ``pull``) exit 128 until some clone
+        pushes notes; the pattern form matches nothing and fetches the rest."""
+        assert _ref(origin, NOTES_REF) is None
+        assert evidence_sync.configure(b, apply=True)["applied"] is True
+        fetched = subprocess.run(["git", "fetch", "-q"], cwd=str(b), capture_output=True, text=True, timeout=20)
+        assert fetched.returncode == 0, fetched.stderr
+        assert _ref(b, TRACKING_REF) is None
+
+        head = _review(a, "r-a")
+        assert evidence_sync.sync(a)["pushed"] is True
+        again = subprocess.run(["git", "fetch", "-q"], cwd=str(b), capture_output=True, text=True, timeout=20)
+        assert again.returncode == 0, again.stderr
+        assert _ref(b, TRACKING_REF) == _ref(a, NOTES_REF)
+        assert len(_note_records(b, head, ref=TRACKING_REF)) == 1
+
+    def test_an_exact_refspec_an_earlier_configure_wrote_is_replaced_not_kept_beside(self, a, origin):
+        _git(a, "config", "--add", "remote.origin.fetch", LEGACY_REFSPEC)
+        broken = subprocess.run(["git", "fetch", "-q"], cwd=str(a), capture_output=True, text=True, timeout=20)
+        assert broken.returncode != 0, "control: the legacy line is what breaks a plain fetch"
+        fetch_before = [v for v in _config(a, "remote.origin.fetch") if v != LEGACY_REFSPEC]
+
+        preview = evidence_sync.configure(a, apply=False)
+        assert {"key": "remote.origin.fetch", "value": REFSPEC, "replaces": LEGACY_REFSPEC} in preview["changes"]
+        result = evidence_sync.configure(a, apply=True)
+        assert (result["status"], result["applied"]) == ("ok", True), result
+        assert _config(a, "remote.origin.fetch") == fetch_before + [REFSPEC]
+        fetched = subprocess.run(["git", "fetch", "-q"], cwd=str(a), capture_output=True, text=True, timeout=20)
+        assert fetched.returncode == 0, fetched.stderr
+
+        again = evidence_sync.configure(a, apply=True)
+        assert (again["applied"], again["changes"]) == (False, []), again
+        assert _config(a, "remote.origin.fetch") == fetch_before + [REFSPEC]
+
+    def test_a_legacy_line_beside_the_pattern_is_removed_and_the_pattern_kept_once(self, a):
+        _git(a, "config", "--add", "remote.origin.fetch", REFSPEC)
+        _git(a, "config", "--add", "remote.origin.fetch", LEGACY_REFSPEC)
+        assert evidence_sync.configure(a, apply=True)["applied"] is True
+        lines = _config(a, "remote.origin.fetch")
+        assert lines.count(REFSPEC) == 1 and LEGACY_REFSPEC not in lines, lines
+
+    def test_a_sibling_notes_ref_the_pattern_fetches_is_never_read(self, a, b):
+        """The pattern also carries ``refs/notes/prawduct-other`` to
+        ``refs/notes/origin/prawduct-other``; the readers' roster must not
+        take it for the tracking ref."""
+        head = _git(a, "rev-parse", "HEAD")
+        sibling = evidence.envelope_line({
+            "schema": 1, "kind": "review", "id": "r-sibling", "ts": "2026-10-25T10:00:00Z",
+            "actor": {"plugin": "9.9.9"}, "body": {"head_commit": head},
+        })
+        _git(a, "notes", "--ref", "refs/notes/prawduct-other", "add", "-m", sibling.strip(), head)
+        _git(a, "push", "-q", "origin", "refs/notes/prawduct-other")
+        assert evidence_sync.configure(b, apply=True)["applied"] is True
+        _git(b, "fetch", "-q")
+        assert _ref(b, "refs/notes/origin/prawduct-other") is not None, "the instrument reached nothing"
+        assert evidence_notes._notes_refs(b) == []
+        assert evidence_notes.ingest(b, bound=False)["appended"] == 0
+        assert ("review", "r-sibling") not in _keys(b)
 
     def test_after_apply_a_rebase_carries_the_note_along(self, a):
         _commit(a, "src/app.py", "x = 2\n", "fix")
@@ -406,6 +537,31 @@ class TestCmdEvidenceSync:
         assert _ref(origin, NOTES_REF) is None
 
 
+def _evidence_ops(text: str) -> set[str]:
+    import re  # noqa: PLC0415
+
+    match = re.search(r"\bevidence \{([^}]*\|[^}]*)\}", text)
+    assert match, "no `evidence {...}` usage line"
+    return {alt.strip().split()[0] for alt in match.group(1).split("|") if alt.strip()}
+
+
+class TestLibUsageOffersEveryOp:
+    """O-3/O-6: two routers each print a usage line — the hook's for
+    sync/configure, the lib's for every other op and for an unknown one — so
+    the lib's must offer the same five ops the hook's does."""
+
+    def test_the_lib_usage_and_the_hook_usage_offer_the_same_ops(self):
+        hook_text = (ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        hook_ops = _evidence_ops(hook_text)
+        assert {"sync", "configure"} <= hook_ops, "control: the hook's line offers the two"
+        assert _evidence_ops(evidence._CLI_USAGE) == hook_ops
+
+    def test_an_unknown_op_prints_a_usage_naming_sync_and_configure(self, a, capsys):
+        assert evidence.evidence_cmd(a, ["bogus"]) == 1
+        err = capsys.readouterr().err
+        assert "sync [--no-push] [--json]" in err and "configure [--apply] [--json]" in err, err
+
+
 class TestCmdEvidenceConfigure:
     def test_preview_lists_the_changes_and_writes_nothing(self, a, capsys):
         assert evidence_sync.cmd_evidence_configure(a, []) == 0
@@ -419,6 +575,19 @@ class TestCmdEvidenceConfigure:
         assert set(payload) == {"status", "changes", "applied", "reason"}
         assert payload["applied"] is True
         assert REFSPEC in _config(a, "remote.origin.fetch")
+
+    def test_a_replacement_is_named_as_one_in_the_preview_and_the_apply(self, a, capsys):
+        _git(a, "config", "--add", "remote.origin.fetch", LEGACY_REFSPEC)
+        assert evidence_sync.cmd_evidence_configure(a, []) == 0
+        preview = capsys.readouterr().out
+        assert (f"evidence configure: would replace remote.origin.fetch {LEGACY_REFSPEC} "
+                f"with {REFSPEC}") in preview, preview
+        assert evidence_sync.cmd_evidence_configure(a, ["--apply"]) == 0
+        applied = capsys.readouterr().out
+        assert (f"evidence configure: replaced remote.origin.fetch {LEGACY_REFSPEC} "
+                f"with {REFSPEC}") in applied, applied
+        # Control: the key with nothing to replace still reads as an addition.
+        assert f"added notes.rewriteRef {NOTES_REF}" in applied
 
     def test_an_unknown_argument_is_a_usage_error(self, a, capsys):
         assert evidence_sync.cmd_evidence_configure(a, ["--force"]) == 2

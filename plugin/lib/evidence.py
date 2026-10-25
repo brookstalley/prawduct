@@ -334,7 +334,9 @@ def envelope_line(envelope: dict) -> str:
     """The store's serialisation of one envelope: one JSON object on one
     newline-terminated line. The one home of that format, shared by the store's
     writers and the notes transport, so a fact read back from a note and
-    appended here is byte-identical to the line its writer appended."""
+    appended here is byte-identical to the line the note carries — its
+    writer's line less the actor's locator fields
+    (:func:`evidence_notes.sent_envelope`)."""
     return json.dumps(envelope) + "\n"
 
 
@@ -1486,9 +1488,14 @@ def distinct_trees(facts: list[dict]) -> set[str]:
     return trees
 
 
+#: Every op ``prawduct-hook evidence`` takes, as the hook's own usage line
+#: offers them (a test holds the two rosters equal). ``sync`` and ``configure``
+#: are routed by the hook before :func:`evidence_cmd` is reached, so this
+#: router never dispatches them — but this is the text an unknown op or an
+#: ``ingest`` usage error prints, so it names them too.
 _CLI_USAGE = (
     "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]"
-    "|ingest [--all] [--json]}"
+    "|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}"
 )
 
 
@@ -1589,33 +1596,46 @@ def _store_size_line(path: Path) -> str | None:
 
 
 def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
-    """How many of this branch's transported facts have no note on their
-    commit — the durable view of an attach that failed or never ran, which is
-    otherwise said once, in the output of the act that lost it.
+    """The durable view of the two legs a fact travels after the store, each
+    otherwise said once, in the output of the act that lost it: how many of
+    this branch's transported facts have no note on their commit (an attach
+    that failed or never ran), and how many note commits the push remote's
+    tracking ref does not hold (a push that failed or never ran).
 
-    A clone with no notes ref pays no subprocess here: the ref's presence is
+    Both read the roster ingest reads — the local ref and every fetched
+    tracking ref — so a fact that arrived on a fetched note is not called
+    unsent. A clone with no notes ref pays no subprocess here: the roster is
     read from the files under the git common dir (the store sits at
     ``<common>/prawduct/evidence.jsonl``), and the store count already in hand
-    stands in for the bounded one."""
+    stands in for the bounded one. The unpushed count costs nothing unless
+    both the local and a tracking ref exist."""
     from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
 
     remedy = "  `prawduct-hook evidence sync` attaches this branch's and sends them"
-    if evidence_notes.ref_present(path.parent.parent) is False:
+    refs = evidence_notes.notes_refs_on_disk(path.parent.parent)
+    if refs is None:  # a reftable clone, or an unreadable file: ask git
+        refs = evidence_notes._notes_refs(project_dir)
+    if refs is not None and not refs:
         transported = sum(1 for f in result["facts"] if f.get("kind") in TRANSPORTED_KINDS)
         if transported:
             print(
-                f"notes: no {evidence_notes.NOTES_REF} in this clone — none of the "
+                f"notes: no {evidence_notes.NOTES_REF} (or fetched "
+                f"refs/notes/<remote>/prawduct) in this clone — none of the "
                 f"store's {transported} transported fact(s) is on a note"
             )
             print(remedy)
         return
-    found = evidence_notes.unattached(project_dir, known=result)
+    found = evidence_notes.unattached(project_dir, known=result, refs=refs)
     if found["status"] != "ok":
         print(f"notes: facts with no note not counted — {found['reason']}")
-        return
-    print(f"{len(found['missing'])} transported fact(s) with no note on their commit")
-    if found["missing"]:
-        print(remedy)
+    else:
+        print(f"{len(found['missing'])} transported fact(s) with no note on their commit")
+        if found["missing"]:
+            print(remedy)
+    ahead = evidence_notes.unpushed(project_dir, refs or [])
+    if ahead is not None:
+        tail = " — run `prawduct-hook evidence sync`" if ahead else ""
+        print(f"{ahead} note commit(s) not yet pushed{tail}")
 
 
 def _cmd_status(project_dir: Path) -> int:
