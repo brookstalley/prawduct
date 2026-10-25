@@ -439,6 +439,18 @@ class TestProposeChunks:
         assert plan_status.propose_chunks(plan, done01, diff, "chunk", repo_dir=repo) == ["02", "03"]
         assert plan_status.propose_chunks(plan, _facts(), ["tests/shared.py"], "chunk", repo_dir=repo) == []
 
+    def test_a_one_segment_directory_in_deliverables_prose_matches_nothing_under_it(self, repo):
+        """This repo's own plan: Chunk 03's Deliverables bullet says "any other
+        `.prawduct/` write still refused" — prose about a tree, which must not
+        make every governance write that chunk's work. A deeper directory still
+        matches what is under it (control: `lib/pkg/` above)."""
+        plan = _plan(repo, ("01", "02"), deliverables={
+            "01": "`src/c01.py`; any other `.prawduct/` write still refused",
+            "02": "`plugin/lib/backlog/`",
+        })
+        diff = [".prawduct/changes/x.md", "plugin/lib/backlog/cli.py"]
+        assert plan_status.propose_chunks(plan, _facts(), diff, "chunk", repo_dir=repo) == ["02"]
+
     @pytest.mark.parametrize("mode", ["final", "cumulative"])
     def test_whole_plan_modes_propose_every_open_chunk(self, repo, mode):
         head = _commit(repo, "src/c01.py", "x\n", "work")

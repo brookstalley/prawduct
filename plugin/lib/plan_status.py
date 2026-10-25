@@ -431,9 +431,18 @@ def deliverable_paths(content: str, chunk_id: str) -> list[str]:
 
 
 def _touches(deliverables: list[str], changed: "set[str]") -> bool:
+    """Whether a changed path is a deliverable, or under a deliverable directory.
+
+    A directory matches what is under it only when it has two or more segments
+    (``plugin/lib/backlog/``): a one-segment token (``.prawduct/``, ``tests/``)
+    names a whole tree, and in a Deliverables bullet it is prose about that
+    tree — matching it would read every governance write as this chunk's work.
+    """
     for path in deliverables:
-        prefix = path.rstrip("/") + "/"
-        if path in changed or any(c.startswith(prefix) for c in changed):
+        bare = path.rstrip("/")
+        if path in changed or bare in changed:
+            return True
+        if bare.count("/") >= 1 and any(c.startswith(bare + "/") for c in changed):
             return True
     return False
 
