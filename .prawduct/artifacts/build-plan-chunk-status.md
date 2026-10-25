@@ -558,7 +558,7 @@ Chunk 02 writes it):
   `test_v5_methodology.py` (`:4358` Status-comment pin, `LAST_MEASURED_TOKENS`),
   `test_plugin_methodology_digest.py`, `test_v5_templates.py::TestBuildPlanTemplate`,
   `test_short_plan_deferral.py::TestProseCarriesTheConstant`,
-  `preferences/test_critic_skill_structure.py`, `tests/test_pr_reviewer.py`) renegotiated, with
+  `tests/preferences/test_critic_skill_structure.py`, `tests/test_pr_reviewer.py`) renegotiated, with
   a new pin that `planning.md` carries the rule and `building.md`, the digest and the template
   reference it without restating.
 - **Tests:** as above.
