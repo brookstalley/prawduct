@@ -1489,10 +1489,8 @@ def distinct_trees(facts: list[dict]) -> set[str]:
 
 
 #: Every op ``prawduct-hook evidence`` takes, as the hook's own usage line
-#: offers them (a test holds the two rosters equal). ``sync`` and ``configure``
-#: are routed by the hook before :func:`evidence_cmd` is reached, so this
-#: router never dispatches them — but this is the text an unknown op or an
-#: ``ingest`` usage error prints, so it names them too.
+#: offers them (a test holds the two rosters equal) — the text an unknown op,
+#: or a ``list`` or ``ingest`` usage error, prints.
 _CLI_USAGE = (
     "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]"
     "|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}"
@@ -1500,6 +1498,17 @@ _CLI_USAGE = (
 
 
 def evidence_cmd(project_dir: Path, argv: list[str]) -> int:
+    """``prawduct-hook evidence <op>`` — the one router for every op; the hook
+    calls it and nothing else.
+
+    Exit codes, one convention for every op: **0** ok, **1** a reported
+    failure, **2** usage (an unknown op, a bad flag). ``status`` adds its
+    documented sentinel, **2** = schema-ahead records present; it takes no
+    flags and ignores any argument, so no usage error shares that code.
+
+    ``ingest`` lives in :mod:`evidence_notes`, ``sync`` and ``configure`` in
+    :mod:`evidence_sync`; each is imported only when its op runs, so a store
+    read never loads the transport."""
     sub = argv[0] if argv else "status"
     if sub == "status":
         return _cmd_status(project_dir)
@@ -1509,8 +1518,22 @@ def evidence_cmd(project_dir: Path, argv: list[str]) -> int:
         from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
 
         return evidence_notes.ingest_cmd(project_dir, argv[1:], usage=_CLI_USAGE)
-    print(_CLI_USAGE, file=sys.stderr)
-    return 1
+    if sub in ("sync", "configure"):
+        try:
+            from . import evidence_sync  # noqa: PLC0415 — lazy; only these two ops reach it
+            run = getattr(evidence_sync, f"cmd_evidence_{sub}")
+        except (ImportError, AttributeError) as exc:
+            # A writer: a lib that cannot run it fails closed rather than
+            # reading as a sync that ran.
+            print(
+                f"evidence {sub} unavailable (the plugin lib/ does not provide it: {exc}) "
+                "— nothing was fetched, pushed or configured",
+                file=sys.stderr,
+            )
+            return 1
+        return run(project_dir, argv[1:])
+    print(f"evidence: unknown op {sub!r}\n{_CLI_USAGE}", file=sys.stderr)
+    return 2
 
 
 def is_ephemeral_fact(fact: dict) -> bool:
@@ -1608,13 +1631,13 @@ def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
     read from the files under the git common dir (the store sits at
     ``<common>/prawduct/evidence.jsonl``), and the store count already in hand
     stands in for the bounded one. The unpushed count costs nothing unless
-    both the local and a tracking ref exist."""
+    the local ref exists; then one ``rev-list --count`` — over the local ref
+    alone when no tracking ref does (a first push that failed or never ran),
+    else against the push remote's tracking ref."""
     from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
 
     remedy = "  `prawduct-hook evidence sync` attaches this branch's and sends them"
-    refs = evidence_notes.notes_refs_on_disk(path.parent.parent)
-    if refs is None:  # a reftable clone, or an unreadable file: ask git
-        refs = evidence_notes._notes_refs(project_dir)
+    refs = evidence_notes.notes_refs(project_dir, common_dir=path.parent.parent)
     if refs is not None and not refs:
         transported = sum(1 for f in result["facts"] if f.get("kind") in TRANSPORTED_KINDS)
         if transported:
@@ -1633,9 +1656,13 @@ def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
         if found["missing"]:
             print(remedy)
     ahead = evidence_notes.unpushed(project_dir, refs or [])
-    if ahead is not None:
-        tail = " — run `prawduct-hook evidence sync`" if ahead else ""
-        print(f"{ahead} note commit(s) not yet pushed{tail}")
+    sync = " — run `prawduct-hook evidence sync`"
+    if ahead is None:
+        return
+    if not ahead["tracked"]:
+        print(f"{ahead['count']} note commit(s) never pushed from this clone{sync}")
+    else:
+        print(f"{ahead['count']} note commit(s) not yet pushed{sync if ahead['count'] else ''}")
 
 
 def _cmd_status(project_dir: Path) -> int:
@@ -1714,11 +1741,11 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
                 limit = max(1, int(argv[i + 1]))
             except ValueError:
                 print(_CLI_USAGE, file=sys.stderr)
-                return 1
+                return 2
             i += 2
         else:
             print(_CLI_USAGE, file=sys.stderr)
-            return 1
+            return 2
     result = read_facts(project_dir)
     if result["status"] == "error":
         print(f"evidence: {result['reason']}", file=sys.stderr)

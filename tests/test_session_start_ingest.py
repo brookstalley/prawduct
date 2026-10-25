@@ -4,7 +4,7 @@ A boundary ``clear --session-start`` runs ``evidence_notes.ingest`` bounded to t
 branch's commits, before the briefing reads the store, so a second clone's
 coverage verdict is computed from the same facts as the clone that ran the
 reviews. The step is advice-shaped: a failure is a NOTE and the briefing still
-renders; nothing is printed unless something was appended; a continuation
+renders, its NOTE on stdout where the agent reads it; nothing is printed otherwise unless something was appended; a continuation
 (``--brief-only``) and a disposable agent worktree ingest nothing — the main
 checkout's own boundary ingests for the whole clone.
 
@@ -187,9 +187,15 @@ class TestWhereItDoesNotRun:
 
 
 class TestFailsSoft:
-    def test_an_unreadable_notes_ref_is_a_note_and_the_briefing_still_renders(self, repo, home):
+    def test_an_unreadable_notes_ref_is_a_note_the_agent_reads_and_the_briefing_still_renders(self, repo, home):
         """A notes ref that is not a notes tree (here: a blob) cannot be listed.
-        Ingest reports an error; session start says so on stderr and goes on."""
+        Ingest reports an error; session start says so and goes on.
+
+        Renegotiated (R-14): the NOTE went to stderr, which a SessionStart
+        hook shows the person in the terminal and never injects into the
+        session — the agent the NOTE addresses ("`evidence ingest` retries
+        it") never saw it. It goes to stdout, the channel `clear`'s
+        agent-facing lines use, ahead of the briefing it qualifies."""
         blob = subprocess.run(
             ["git", "hash-object", "-w", "--stdin"], cwd=str(repo), input="not a notes tree\n",
             capture_output=True, text=True, env=_env(home), check=True,
@@ -199,11 +205,14 @@ class TestFailsSoft:
         result = _clear(repo, home)
 
         assert result.returncode == 0, result.stderr
-        notes = [line for line in result.stderr.splitlines() if line.startswith("NOTE: evidence ingest")]
-        assert len(notes) == 1, result.stderr
-        assert "session start" in notes[0]
+        out = result.stdout.splitlines()
+        notes = [i for i, line in enumerate(out) if line.startswith("NOTE: evidence ingest")]
+        assert len(notes) == 1, result.stdout
+        assert "session start" in out[notes[0]]
+        assert "NOTE: evidence ingest" not in result.stderr, "the agent never reads stderr"
         assert _ingest_lines(result.stdout) == []
-        assert "== SESSION BRIEFING ==" in result.stdout.splitlines(), "the briefing did not render"
+        assert "== SESSION BRIEFING ==" in out, "the briefing did not render"
+        assert notes[0] < out.index("== SESSION BRIEFING =="), "the NOTE qualifies the briefing below it"
 
     def test_an_ingest_that_raises_is_a_note(self, repo, home, monkeypatch, capsys):
         """The step's own guard, in-process: whatever `ingest` raises becomes one
@@ -216,8 +225,9 @@ class TestFailsSoft:
 
         monkeypatch.setattr(evidence_notes, "ingest", boom)
         hook._session_start_ingest(repo)
-        err = capsys.readouterr().err
-        assert "NOTE: evidence ingest" in err and "simulated ingest failure" in err
+        captured = capsys.readouterr()
+        assert "NOTE: evidence ingest" in captured.out and "simulated ingest failure" in captured.out
+        assert captured.err == ""
 
     def test_an_error_result_after_a_partial_append_says_both(self, repo, home, monkeypatch, capsys):
         hook = _load_hook()
@@ -230,8 +240,10 @@ class TestFailsSoft:
         )
         hook._session_start_ingest(repo)
         captured = capsys.readouterr()
-        assert captured.out.splitlines() == ["2 evidence fact(s) ingested from refs/notes/prawduct"]
-        assert "disk full" in captured.err
+        lines = captured.out.splitlines()
+        assert lines[0] == "2 evidence fact(s) ingested from refs/notes/prawduct"
+        assert len(lines) == 2 and lines[1].startswith("NOTE: evidence ingest") and "disk full" in lines[1]
+        assert captured.err == ""
 
 
 def _load_hook():

@@ -862,6 +862,18 @@ class TestEvidenceCli:
         assert proc.returncode == 0
         assert "r-1" in proc.stdout and "s-1" not in proc.stdout
 
+    @pytest.mark.parametrize("argv", [("--bogus",), ("-n", "many"), ("--kind",)],
+                             ids=["unknown-flag", "non-integer-count", "flag-without-value"])
+    def test_list_usage_errors_exit_2(self, tmp_path, argv):
+        """R-6: one usage convention for every `evidence` op — 2, never the 1
+        a reported failure exits with. Control: a well-formed list exits 0."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {"head_tree": "a" * 40})
+        proc = _run_hook(repo, "evidence", "list", *argv)
+        assert proc.returncode == 2, (proc.returncode, proc.stderr)
+        assert "Usage" in proc.stderr
+        assert _run_hook(repo, "evidence", "list", "-n", "1").returncode == 0
+
     def test_list_tolerates_opaque_body_values(self, tmp_path):
         repo = _make_repo(tmp_path)
         # Valid envelope, body fields this lister doesn't understand — a
@@ -910,10 +922,12 @@ class TestEvidenceCli:
         assert proc.returncode == 1
         assert "no git repository" in proc.stderr
 
-    def test_unknown_subcommand_usage(self, tmp_path):
+    def test_unknown_subcommand_is_a_usage_error_exit_2(self, tmp_path):
+        """Renegotiated (R-6): an unknown op exited 1, the code a reported
+        failure uses; every `evidence` op now answers a usage error with 2."""
         repo = _make_repo(tmp_path)
         proc = _run_hook(repo, "evidence", "wipe")
-        assert proc.returncode == 1
+        assert proc.returncode == 2
         assert "Usage" in proc.stderr
 
 

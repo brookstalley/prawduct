@@ -4,12 +4,14 @@ Review facts travel between clones on ``refs/notes/prawduct``. ``/prawduct:pr``
 pushes them (pinned in ``test_pr_reviewer.py``); these pin the other two
 skills' share, read in the order an agent reads them:
 
-- ``doctor`` Health Check #25 detects an unconfigured clone (no notes fetch
-  refspec on the remote, or no ``notes.rewriteRef``) and offers
-  ``evidence configure --apply``; #23 no longer tells the owner imported facts
-  are stuck in this clone; #24 quotes the release-pending line the hook prints.
+- ``doctor`` Health Check #25 runs ``evidence configure`` — the preview the
+  module that writes the keys prints — and offers ``--apply`` when it lists
+  changes, rather than re-deriving "configured" in prose from ``git config``
+  reads (R-5); #23 no longer tells the owner imported facts are stuck in this
+  clone; #24 quotes the release-pending line the hook prints.
 - ``onboard`` runs ``evidence configure --apply`` after its commit, only where
-  it can reach the target and there is a remote, and says why when it skips.
+  the session runs in the target, and relays configure's own reason when it
+  changes nothing (no remote).
 
 The numbering pin is here because check numbers are cross-referenced by name
 (``Health Check #24``) from the classification paragraph and other files.
@@ -52,46 +54,41 @@ class TestDoctorNumbering:
 
 
 class TestDoctorCheck25:
+    """Renegotiated (R-5): #25 read `git remote` and two `git config` keys and
+    judged "configured" in prose — a second copy of `configure`'s own
+    decision, which already drifted once (it kept naming the exact refspec
+    `configure` replaced). It now runs `configure`'s preview and relays it."""
+
     def _check(self) -> str:
         return _health_checks(DOCTOR.read_text(encoding="utf-8"))[25]
 
-    def test_it_detects_with_the_two_config_reads_and_offers_the_apply(self):
+    def test_it_runs_the_preview_and_offers_the_apply_when_it_lists_changes(self):
         check = self._check()
-        assert "git config --get-all remote.<r>.fetch" in check
-        assert "git config --get notes.rewriteRef" in check
-        assert "prawduct-hook evidence configure --apply" in check
-
-    def test_configured_means_the_refspec_configure_writes_and_not_the_legacy_one(self):
-        """R-1: the doctor's notion of "configured" is read from the module
-        that writes the key, so the prose cannot keep quoting a refspec the
-        code no longer writes. The exact form is named only as the line that
-        is NOT configured (it breaks a plain fetch on a remote with no notes)."""
-        import sys  # noqa: PLC0415
-
-        if str(ROOT) not in sys.path:
-            sys.path.insert(0, str(ROOT))
-        from lib import evidence_sync  # noqa: PLC0415
-
-        check = self._check()
-        pattern, legacy = evidence_sync.refspec("<r>"), evidence_sync._legacy_refspec("<r>")
-        assert pattern == "+refs/notes/prawduct*:refs/notes/<r>/prawduct*"
-        assert f"the pattern fetch line `{pattern}`" in check
-        assert f"no exact line `{legacy}`" in check
+        preview = check.index("`prawduct-hook evidence configure`")
+        apply = check.index("`prawduct-hook evidence configure --apply`")
+        assert preview < apply, "the preview is run first, the apply offered after"
         # Offered, never applied unasked: it writes `.git/config`.
         assert "on the owner's yes" in check
+        assert "nothing to change" in check, "the configured state is the preview's own line"
+
+    def test_it_does_not_re_derive_configured_from_git_config_reads(self):
+        check = self._check()
+        assert "git config" not in check, check
+        assert "git remote" not in check, check
+        assert "+refs/notes/prawduct:refs/notes/" not in check, "no exact refspec is ever named"
 
     def test_a_repo_without_a_remote_is_not_a_finding(self):
         assert "no remote" in self._check()
 
-    def test_what_it_reads_and_runs_is_granted(self):
+    def test_what_it_runs_is_granted_and_the_read_grants_are_gone(self):
         frontmatter = _frontmatter(DOCTOR.read_text(encoding="utf-8"))
-        for grant in (
+        assert "Bash(prawduct-hook evidence configure*)" in frontmatter
+        for gone in (
             "Bash(git remote)",
             "Bash(git config --get-all remote.*)",
             "Bash(git config --get notes.rewriteRef)",
-            "Bash(prawduct-hook evidence configure*)",
         ):
-            assert grant in frontmatter, grant
+            assert gone not in frontmatter, gone
 
 
 class TestDoctorCheck23And24:
@@ -124,14 +121,19 @@ class TestOnboardConfiguresTheTransport:
         assert commit < configure < report
 
     def test_it_says_why_when_it_skips(self):
+        """Renegotiated (R-5): the no-remote skip was a prose test
+        (`git -C <target> remote`) ahead of the run; configure reports it
+        itself, so the step relays configure's line instead."""
         finish = self._finish()
         at = finish.index("prawduct-hook evidence configure --apply")
         step = " ".join(finish[at - 600: finish.index("**2. Report in a few lines")].split())
         assert "no remote" in step
+        assert "nothing to change" in step
+        assert "git -C <target> remote" not in step
         assert "from another directory" in step
         assert "Health Check #25" in step
 
     def test_what_it_runs_is_granted(self):
         frontmatter = _frontmatter(ONBOARD.read_text(encoding="utf-8"))
         assert "Bash(prawduct-hook evidence configure*)" in frontmatter
-        assert "Bash(git -C * remote)" in frontmatter
+        assert "Bash(git -C * remote)" not in frontmatter, "no prose remote test is left to need it"
