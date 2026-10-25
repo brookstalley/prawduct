@@ -50,7 +50,7 @@ Scan your findings against the rules the session actually had in context: `.clau
 reconciliation unavailable — [the command's reason]; run `prawduct-hook backlog sync --repo <scope>`."
 
 For each open item, check whether this session's changes resolve it — directly or incidentally.
-`affecting` is the cheap first pass: the items whose `affected:` paths cover the changed files. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify it, then call `/prawduct:backlog update <id> status=shipped closed-by=<scope>` **when** the backlog skill's "When to mark shipped" rule says." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
+`affecting` is the cheap first pass: the items whose `affected:` paths cover the changed files. For each resolved item, emit a **NOTE**: "Backlog item appears resolved: [item text]. Verify it, then call `/prawduct:backlog update <id> status=shipped closed-by=scope:<slug>` **when** the backlog skill's "When to mark shipped" rule says." Do not change status yourself — the framework never infers status; the builder makes the explicit call.
 
 **Backlog hygiene checks (C-B1–C-B4 — all NOTE-level, never BLOCKING)** — four soft signals (`/prawduct:backlog` is the fix path for each), each with the yield it is kept for:
 - **C-B1 — missing metadata:** an item `created-since` the interval's base with no metadata bar → NOTE the structured format. Post-cutover a new item is an Issue, never in the diff. *Yield: items unfindable by `list`/`pick`.*
@@ -149,7 +149,7 @@ in place of one; the prefixes below are the exceptions.
 - **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
   check ran (`chunk_graded` non-null), but one half of "whose deliverables" was inferred — the
   **chunk** inferred from build-plan Status (which names the first UNCHECKED chunk, so possibly the next one),
-  or the **plan** from the `active_build_plan` pointer because the dispatch carried no scope. The
+  or the **plan** from a legacy-window fallback because the dispatch carried no scope. The
   line names which fired. Either means **no answer about this diff**, not clean; a branch that builds
   no chunk has no `--chunk` to supply.
 - **Every other entry takes the inherited severity above** — BLOCKING → WARNING, else NOTE — and

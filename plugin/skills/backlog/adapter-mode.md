@@ -224,7 +224,8 @@ field rather than a missing one; it is not permission to write the block.
 Route by what changed:
 - **status** (`status=X`) → `status <id> --to <mapped>` (bridge table above). Idempotent (re-run =
   no-op). `status` takes no scope, and a close records `closed_by` only on close-on-merge, so pass a
-  `closed-by=<scope>` argument through as `update <id> --closed-by <scope>` in the same breath, or
+  `closed-by=<ref>` argument through as `update <id> --closed-by <ref>` in the same breath (the form is
+  defined under `update` in `SKILL.md`; the adapter refuses what it does not accept), or
   the ship handle is lost. Never hand-write it into a `prawduct:` block: that block is adapter-owned.
 - **field** (title/body/stage/kind/area/effort/impact/source) → `update <id> [--flag …]` (last write
   wins — correct for the interactive single-actor case). **`--title` is gated**: a new title failing
@@ -252,7 +253,7 @@ Route by what changed:
   Setting the branch is how an item is taken: `pick` excludes on it, and nothing expires it,
   because the branch's last commit is the activity signal.
 - **editorial block field** (`refs:`/`revisit:`/`closed-by:`) → `update <id> --refs V`,
-  `--revisit V`, `--closed-by V` — each takes a value, and an **empty** value clears the field, so
+  `--revisit V`, `--closed-by V` (form: `SKILL.md` `update`) — each takes a value, and an **empty** value clears the field, so
   an expired `revisit:` can be removed rather than blanked. `file` also takes `--refs` so a new item
   can carry its governing-doc link from birth. The only writable block fields are `--affected`,
   `--working-branch`, `--refs`, `--revisit`, `--closed-by` and the multi-valued `--tags`;

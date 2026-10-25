@@ -62,7 +62,7 @@ to grade.
 `chunk-ref-missing
 graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID run (`chunk_graded`
 non-null), but half of "whose deliverables" was guessed — the chunk
-inferred from build-plan Status, or the plan from the `active_build_plan` pointer — the line names
+inferred from build-plan Status, or the plan from a legacy-window fallback — the line names
 which → **NOTE**. Blocking it is a false blocker no `--chunk` can clear.
 State every entry. `chunk_graded`/`plan_graded` name the subject.
 `null` there, or in any `counts` entry, means **no answer** — not a zero.

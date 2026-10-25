@@ -339,9 +339,9 @@ def _count_build_plan_chunks(
 
     - ``lib.gates._has_active_build_plan_file`` — passes ``plan_path``.
     - ``lib.record_lint._check_chunk_refs`` — passes ``plan.path``.
-    - ``lib.gates._critic_session_satisfies_gate`` — passes the branch-resolved
-      plan (``resolve_branch_plan``). It used to resolve its own, so on a branch
-      whose scope named a plan it and its sibling one screen up could disagree
+    - ``lib.gates._critic_session_satisfies_gate`` — passes the plan the
+      checkout is bound to (``work_unit.resolve``). It used to resolve its own, so
+      on a branch whose scope named a plan it and its sibling one screen up could disagree
       about how many chunks exist; #541 closed that.
     """
     if plan_path is None:

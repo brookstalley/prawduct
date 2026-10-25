@@ -201,7 +201,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
     # -3 on 2026-10-22 (retired-claim-survives): goals-1-3.md names the new record-lint check, paid by
     # tightening the chunk-ref-missing parenthesis. Ceiling lowered with it.
-    "single-pass-inner": 5823,
+    # -27 on 2026-10-24 (work-unit binding): the Critic skill's scope-derivation passage now states the
+    # binding rule in fewer words than the branch-name/pointer rule it replaced. Ceiling lowered with it.
+    "single-pass-inner": 5796,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -247,7 +249,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
     # -10 on 2026-10-22 (retired-claim-survives): the new check's cross-checks row and its goals-1-3.md
     # name, both paid in place (cross-checks -10, goals-1-3 -3). Ceiling lowered with it.
-    "single-pass-full": 11563,
+    # -27 on 2026-10-24 (work-unit binding): the Critic skill's scope-derivation passage now states the
+    # binding rule in fewer words than the branch-name/pointer rule it replaced. Ceiling lowered with it.
+    "single-pass-full": 11536,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -350,14 +354,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
     # -10 on 2026-10-22 (retired-claim-survives): the new check's cross-checks row and its goals-1-3.md
     # name, both paid in place (cross-checks -10, goals-1-3 -3). Ceiling lowered with it.
-    "coordinator-fork": 12157,
+    # -27 on 2026-10-24 (work-unit binding): the Critic skill's scope-derivation passage now states the
+    # binding rule in fewer words than the branch-name/pointer rule it replaced. Ceiling lowered with it.
+    "coordinator-fork": 12130,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5824,
-    "single-pass-full": 11564,
+    "single-pass-inner": 5797,
+    "single-pass-full": 11537,
     "dispatched-reviewer": 10995,
-    "coordinator-fork": 12158,
+    "coordinator-fork": 12131,
 }
 
 
