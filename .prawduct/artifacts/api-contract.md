@@ -211,7 +211,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   without blocking the PR. `evidence configure [--apply] [--json]` previews, and with `--apply`
   writes, the clone's two keys: the fetch refspec `+refs/notes/prawduct:refs/notes/<remote>/prawduct`
   in `remote.<remote>.fetch` (so a plain `git fetch` brings the remote's notes into the tracking
-  ref; `evidence sync` merges and ingests them) and
+  ref, which `evidence ingest` and session start read beside the local ref; `evidence sync`
+  merges it before pushing) and
   `notes.rewriteRef=refs/notes/prawduct` (so amend and rebase carry them); a repo with no remote
   reports so and changes nothing. Exit 0 ok; 1 a failure; 2 usage. `/prawduct:doctor` offers it
   and `/prawduct:onboard` runs it.

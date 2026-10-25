@@ -545,7 +545,25 @@ class TestIngestCost:
         calls = self._spy(monkeypatch)
         result = evidence_notes.ingest(repo)
         assert (result["status"], result["appended"]) == ("ok", 0)
-        assert calls == [["git", "rev-parse", "-q", "--verify", NOTES_REF]]
+        assert calls == [["git", "for-each-ref", "--format=%(refname)", "refs/notes/"]]
+
+    def test_a_note_held_only_by_a_fetched_tracking_ref_is_ingested(self, repo):
+        """A configured refspec plus a plain ``git fetch`` fills only
+        ``refs/notes/<remote>/prawduct``; ingest reads it without a merge."""
+        head = _git(repo, "rev-parse", "HEAD")
+        evidence_notes.attach(repo, _envelope("review", "r-tracked", {}), head)
+        _git(repo, "update-ref", "refs/notes/origin/prawduct", NOTES_REF)
+        _git(repo, "update-ref", "-d", NOTES_REF)
+        assert _git(repo, "for-each-ref", "--format=%(refname)", "refs/notes/") == "refs/notes/origin/prawduct"
+        result = evidence_notes.ingest(repo)
+        assert (result["status"], result["appended"]) == ("ok", 1)
+        assert ("review", "r-tracked") in {
+            (f["kind"], f["id"]) for f in evidence.read_facts(repo)["facts"]
+        }
+        # The same blob reached through both refs is read once.
+        _git(repo, "update-ref", NOTES_REF, "refs/notes/origin/prawduct")
+        again = evidence_notes.ingest(repo)
+        assert (again["status"], again["appended"], again["commits"]) == ("ok", 0, 1)
 
     def test_the_spy_sees_the_work_when_a_ref_exists(self, repo, monkeypatch):
         """Positive control: with notes present the same instrument records the

@@ -60,9 +60,7 @@ _CONFIGURE_USAGE = "Usage: prawduct-hook evidence configure [--apply] [--json]"
 _NO_REMOTE_REF = "couldn't find remote ref"
 
 
-def tracking_ref(remote: str) -> str:
-    """Where the remote's notes are fetched to: ``refs/notes/<remote>/prawduct``."""
-    return f"refs/notes/{remote}/prawduct"
+tracking_ref = evidence_notes.tracking_ref
 
 
 def refspec(remote: str) -> str:

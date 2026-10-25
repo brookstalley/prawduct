@@ -98,6 +98,34 @@ def _keys_in(body: str) -> "set[tuple[str, str]]":
     return keys
 
 
+def tracking_ref(remote: str) -> str:
+    """Where a remote's notes are fetched to: ``refs/notes/<remote>/prawduct``.
+    A plain ``git fetch`` with the refspec ``evidence configure`` sets fills it;
+    :func:`ingest` reads it beside the local ref, so fetched facts reach the
+    store without a merge (the merge is what ``evidence sync`` does before it
+    pushes)."""
+    return f"refs/notes/{remote}/prawduct"
+
+
+def _notes_refs(project_dir: Path) -> "list[str] | None":
+    """The notes refs this clone holds, in one ``for-each-ref``: the local
+    ``refs/notes/prawduct`` and every remote's tracking ref
+    ``refs/notes/<remote>/prawduct``. Empty when the clone has neither;
+    ``None`` when git could not answer."""
+    rc, out, _err = evidence.run_git(
+        project_dir, "for-each-ref", "--format=%(refname)", "refs/notes/"
+    )
+    if rc != 0:
+        return None
+    refs = []
+    for name in out.split():
+        parts = name.split("/")
+        if name == NOTES_REF or (len(parts) == 4 and parts[:2] == ["refs", "notes"]
+                                 and parts[3] == "prawduct"):
+            refs.append(name)
+    return refs
+
+
 def ref_present(common_dir: Path) -> "bool | None":
     """Whether ``refs/notes/prawduct`` exists, read from the files under the
     clone's git common dir — no subprocess, so a surface that runs on every
@@ -140,24 +168,30 @@ def _branch_commits(project_dir: Path) -> dict:
     return {"status": "ok", "commits": set(out.split()) | {merge_base}}
 
 
-def _read_notes(project_dir: Path, in_range: "set[str] | None") -> dict:
-    """Every note on a commit in ``in_range`` (every note when ``None``), read
-    with one listing and one ``cat-file --batch``.
+def _read_notes(project_dir: Path, in_range: "set[str] | None",
+                refs: "tuple[str, ...]" = (NOTES_REF,)) -> dict:
+    """Every note on a commit in ``in_range`` (every note when ``None``) under
+    each of ``refs``, read with one listing per ref and one ``cat-file --batch``
+    for all of them. The same note blob reached through two refs is read once.
 
     ``{"status": "ok", "notes": [(commit, body), ...]}`` or
     ``{"status": "error", "reason", "commits"}`` (``commits``: how many notes
     the failed read was for)."""
-    rc, out, err = evidence.run_git(project_dir, "notes", "--ref", NOTES_REF, "list")
-    if rc != 0:
-        return {"status": "error", "commits": 0, "reason": f"cannot list {NOTES_REF} ({err or rc})"}
     pairs: list[tuple[str, str]] = []
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) != 2 or not all(gitstate.is_object_id(p) for p in parts):
-            return {"status": "error", "commits": 0, "reason": f"unreadable notes listing line {line!r}"}
-        blob, commit = parts
-        if in_range is None or commit in in_range:
-            pairs.append((blob, commit))
+    seen: set[tuple[str, str]] = set()
+    for ref in refs:
+        rc, out, err = evidence.run_git(project_dir, "notes", "--ref", ref, "list")
+        if rc != 0:
+            return {"status": "error", "commits": 0, "reason": f"cannot list {ref} ({err or rc})"}
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) != 2 or not all(gitstate.is_object_id(p) for p in parts):
+                return {"status": "error", "commits": 0,
+                        "reason": f"unreadable notes listing line {line!r}"}
+            blob, commit = parts
+            if (in_range is None or commit in in_range) and (blob, commit) not in seen:
+                seen.add((blob, commit))
+                pairs.append((blob, commit))
     if not pairs:
         return {"status": "ok", "notes": []}
     blobs = [blob for blob, _commit in pairs]
@@ -304,16 +338,21 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
     :func:`evidence.read_facts` result to dedupe against; omitted, the store is
     read once, and only if there is a note to read.
 
-    With no notes ref the cost is one ``git rev-parse``. Otherwise: one notes
-    listing, at most one ``rev-list``, and one ``cat-file --batch`` for every
-    note however many there are.
+    Reads the local ``refs/notes/prawduct`` and every fetched tracking ref
+    (``refs/notes/<remote>/prawduct``), so a configured refspec plus a plain
+    ``git fetch`` is enough for another clone's facts to arrive. With no notes
+    ref the cost is one ``git for-each-ref``. Otherwise: one listing per ref, at
+    most one ``rev-list``, and one ``cat-file --batch`` for every note however
+    many there are.
 
     Only :data:`evidence.TRANSPORTED_KINDS` are taken from a note; a schema-ahead
     record is taken whatever its kind, so the newer writer's block fires here.
     """
-    rc, _out, _err = evidence.run_git(project_dir, "rev-parse", "-q", "--verify", NOTES_REF)
-    if rc != 0:
-        return _result("ok", reason=f"no {NOTES_REF} in this clone — nothing to ingest")
+    refs = _notes_refs(project_dir)
+    if refs is None:
+        return _result("error", reason="git could not list refs/notes/")
+    if not refs:
+        return _result("ok", reason=f"no {NOTES_REF} (or a fetched tracking ref) in this clone — nothing to ingest")
 
     in_range: "set[str] | None" = None
     if bound:
@@ -328,7 +367,7 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
             return _result("error", reason=branch["reason"])
         in_range = branch["commits"]
 
-    read = _read_notes(project_dir, in_range)
+    read = _read_notes(project_dir, in_range, tuple(refs))
     if read["status"] != "ok":
         return _result("error", commits=read["commits"], reason=read["reason"])
     if not read["notes"]:

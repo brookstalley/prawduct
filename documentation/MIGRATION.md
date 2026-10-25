@@ -122,7 +122,8 @@ prawduct ever placed," only known framework files.
   about it; the governance anchor (in `AGENTS.md`, imported by `CLAUDE.md`) is the one surface that reaches that session, and
   `/prawduct:doctor` Health Check #4 keeps it current. A fresh clone also starts with an empty
   evidence store: it shows a branch's review coverage after one `prawduct-hook evidence sync` run
-  with that branch checked out, which fetches the review facts other clones pushed on
+  with that branch checked out (or, once `evidence configure --apply` has set the refspec, after a
+  plain `git fetch` and a session start), which brings in the review facts other clones pushed on
   `refs/notes/prawduct`.
 
 ## Rollback
