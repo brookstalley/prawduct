@@ -1226,6 +1226,9 @@ def _session_start_ingest(project_dir: Path) -> None:
 
     One line on stdout, only when something was appended. Advice: any failure
     is a NOTE and session start goes on; the store is then read as it stands.
+    The NOTE goes to stdout too, ahead of the briefing it qualifies: a
+    SessionStart hook's stdout is what the agent is shown, its stderr only the
+    person's terminal, and the NOTE's remedy is the agent's to run.
     A disposable agent worktree skips it — the store is clone-wide, and the
     main checkout's own boundary ingests for every worktree of the clone. A
     clone with no notes ref pays one ``git for-each-ref``.
@@ -1244,8 +1247,7 @@ def _session_start_ingest(project_dir: Path) -> None:
         print(
             f"NOTE: evidence ingest at session start failed ({result.get('reason') or 'unknown'}) "
             "— the briefing reads this clone's store without the other clones' notes; "
-            "`prawduct-hook evidence ingest` retries it",
-            file=sys.stderr,
+            "`prawduct-hook evidence ingest` retries it"
         )
 
 
@@ -6359,36 +6361,21 @@ def cmd_ledger_append(project_dir: Path, argv: list[str]) -> int:
 
 def cmd_evidence(project_dir: Path, argv: list[str]) -> int:
     """Inspect the kernel-v3 evidence store and move its facts between clones.
-    Thin wrapper. ``status`` and ``list`` read (``lib.evidence.evidence_cmd``).
-    ``ingest`` appends facts other clones wrote, read from ``refs/notes/prawduct``
-    and every fetched ``refs/notes/<remote>/prawduct`` (``lib.evidence_notes``;
-    a note line is the store line less the actor's machine path and session). ``sync [--no-push]
-    [--json]`` fetches, merges, ingests and pushes that ref, and ``configure
-    [--apply] [--json]`` sets the clone's notes refspec and rewrite ref
-    (``lib.evidence_sync``: exit 0 ok, 1 a failure naming its step, 2 usage).
-    All three are writes to both pre-dispatch guards (``_EVIDENCE_READ_OPS``).
-    Facts themselves are written by the review lifecycle commands, never the
-    agent by hand."""
+    Thin wrapper: every op goes to ``lib.evidence.evidence_cmd``, the one
+    router, which owns the ops and their exit codes (0 ok, 1 a reported
+    failure, 2 usage). ``status`` and ``list`` read; ``ingest``, ``sync`` and
+    ``configure`` are writes to both pre-dispatch guards
+    (``_EVIDENCE_READ_OPS``). Facts themselves are written by the review
+    lifecycle commands, never the agent by hand."""
     lib_root = _plugin_root()
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
-    op = argv[0] if argv else None
-    if op in ("sync", "configure"):
-        try:
-            from lib import evidence_sync  # noqa: PLC0415 — lazy; only these two ops reach it
-            run = getattr(evidence_sync, f"cmd_evidence_{op}")
-        except (ImportError, AttributeError) as exc:
-            # A writer: a lib that cannot run it fails closed rather than
-            # reading as a sync that ran.
-            print(
-                f"evidence {op} unavailable (the plugin lib/ at {lib_root} does not "
-                f"provide it: {exc}) — nothing was fetched, pushed or configured",
-                file=sys.stderr,
-            )
-            return 1
-        return run(project_dir, argv[1:])
-    from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
-
+    try:
+        from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+    except ImportError as exc:
+        print(f"evidence unavailable (the plugin lib/ at {lib_root} cannot be imported: "
+              f"{exc}) — nothing was read or written", file=sys.stderr)
+        return 1
     return evidence.evidence_cmd(project_dir, argv)
 
 

@@ -151,8 +151,9 @@ def _line_of(repo: Path, kind: str, fact_id: str) -> str:
 
 def _sent(line: str) -> str:
     """The store line as a note carries it (O-16): identical except the
-    actor's locator fields — ``actor.worktree`` cut to its last path component
-    (the reviewing machine's absolute path names its user) and
+    actor's locator fields — ``actor.worktree`` cut to its basename (the
+    reviewing machine's absolute path names its user; these fixtures are no
+    harness scratch tree, which would keep ``.claude/worktrees/<name>``) and
     ``actor.session`` dropped. Derived here by hand rather than through the
     module's own transform, so the test states the contract."""
     record = json.loads(line)
@@ -349,6 +350,38 @@ class TestNotesWrittenAtConsolidation:
         main["actor"] = {"worktree": "/Users/someone/src/repo"}
         assert evidence_notes.sent_envelope(main)["actor"]["worktree"] == "repo"
         assert evidence.is_ephemeral_fact(evidence_notes.sent_envelope(main)) is False
+
+    @pytest.mark.parametrize("rel", [
+        "plugin/lib/evidence_notes.py",
+        ".prawduct/artifacts/api-contract.md",
+        ".prawduct/artifacts/data-model.md",
+    ])
+    def test_every_description_of_the_note_line_states_the_scratch_tail(self, rel):
+        """R-8/R-13: the rule is "the basename, or `.claude/worktrees/<name>`
+        for a harness scratch tree; no session; never the path above". Three
+        surfaces described it as the last path component alone, or the
+        worktree's name, which the scratch case falsifies."""
+        text = " ".join((ROOT.parent / rel).read_text(encoding="utf-8").split())
+        assert "last path component" not in text, rel
+        assert "the worktree's name, no session" not in text, rel
+        assert ".claude/worktrees/<name>" in text, rel
+
+    @pytest.mark.parametrize("path", [
+        "/srv/worktrees/feature-x",
+        "/Users/someone/worktrees/agent-a4c9b742610c039f9",
+        "/Users/someone/.claude/x/worktrees/agent-a4c9b742610c039f9",
+    ])
+    def test_a_worktrees_dir_not_under_claude_is_not_spelled_as_scratch(self, path):
+        """R-2: "scratch worktree" is the harness's `.claude/worktrees/<name>`,
+        decided by `gitstate`'s own predicate. A durable tree that merely sits
+        in some `worktrees` directory travels as its basename — re-spelled with
+        the scratch tail, the receiving clone would classify a durable fact as
+        ephemeral (an `agent-` name with no branch reads as disposable)."""
+        env = _envelope("review", "r-durable", {})
+        env["actor"] = {"worktree": path, "session": "s"}  # no branch: the restrictive reading
+        sent = evidence_notes.sent_envelope(env)
+        assert sent["actor"]["worktree"] == Path(path).name
+        assert evidence.is_ephemeral_fact(sent) is evidence.is_ephemeral_fact(env)
 
     def test_the_note_carries_no_absolute_worktree_path_and_no_session_while_the_store_keeps_both(self, repo):
         seed = _git(repo, "rev-parse", "main")
@@ -791,9 +824,12 @@ class TestIngestCli:
         assert proc.returncode == 0, proc.stderr
         assert "appended 1" in proc.stdout
 
-    def test_an_unknown_flag_is_a_usage_error(self, repo):
+    def test_an_unknown_flag_is_a_usage_error_exit_2(self, repo):
+        """Renegotiated (R-6): this was exit 1 while `sync`/`configure` said 2
+        for the same mistake. Every `evidence` op now answers a usage error
+        with 2, so 1 means only "it ran and reported a failure"."""
         proc = _run_hook(repo, "evidence", "ingest", "--bogus")
-        assert proc.returncode == 1
+        assert proc.returncode == 2
         assert "Usage" in proc.stderr
         assert _store_lines(repo) == []
 
@@ -1028,18 +1064,41 @@ class TestStatusNamesUnsentFacts:
         found = evidence_notes.unattached(repo)
         assert (found["status"], found["missing"]) == ("ok", []), found
 
-    def test_ref_present_reads_a_tracking_ref_and_rejects_a_sibling_name(self, repo):
-        common = repo / ".git"
-        assert evidence_notes.ref_present(common) is False
+    @pytest.mark.parametrize("cheap", [False, True], ids=["git", "files"])
+    def test_notes_refs_reads_a_tracking_ref_and_rejects_a_sibling_name(self, repo, cheap):
+        """Renegotiated (R-7): this pinned ``ref_present`` (no production
+        caller) and ``_notes_refs`` (private, called from ``evidence``) — two
+        of three readers of one question. ``notes_refs`` is the one; both of
+        its paths — one ``for-each-ref``, or the files under a common dir the
+        caller already holds — give the same answer, loose and packed."""
+        kw = {"common_dir": repo / ".git"} if cheap else {}
+        assert evidence_notes.notes_refs(repo, **kw) == []
         _git(repo, "update-ref", "refs/notes/origin/prawduct-other", "HEAD")
-        assert evidence_notes.ref_present(common) is False, "a sibling name is not the tracking ref"
+        assert evidence_notes.notes_refs(repo, **kw) == [], "a sibling name is not the tracking ref"
         _git(repo, "pack-refs", "--all")
-        assert evidence_notes.ref_present(common) is False
+        assert evidence_notes.notes_refs(repo, **kw) == []
         _git(repo, "update-ref", "refs/notes/up/stream/prawduct", "HEAD")
-        assert evidence_notes.ref_present(common) is True, "a remote whose name holds a slash"
+        assert evidence_notes.notes_refs(repo, **kw) == ["refs/notes/up/stream/prawduct"], \
+            "a remote whose name holds a slash"
         _git(repo, "pack-refs", "--all")
-        assert evidence_notes.ref_present(common) is True
-        assert evidence_notes._notes_refs(repo) == ["refs/notes/up/stream/prawduct"]
+        assert evidence_notes.notes_refs(repo, **kw) == ["refs/notes/up/stream/prawduct"]
+        _git(repo, "update-ref", NOTES_REF, "HEAD")
+        assert evidence_notes.notes_refs(repo, **kw) == [NOTES_REF, "refs/notes/up/stream/prawduct"]
+
+    def test_the_file_read_falls_back_to_git_for_a_reftable_clone(self, repo, tmp_path):
+        """A common dir whose refs live in a ``reftable`` is not read from
+        files; the same call asks git instead of answering "none"."""
+        _git(repo, "update-ref", NOTES_REF, "HEAD")
+        fake = tmp_path / "fake-common"
+        (fake / "reftable").mkdir(parents=True)
+        assert evidence_notes.notes_refs(repo, common_dir=fake) == [NOTES_REF]
+
+    def test_one_reader_answers_which_notes_refs(self):
+        """R-7: the question has one public answer; the deleted readers stay
+        deleted."""
+        assert callable(evidence_notes.notes_refs)
+        for gone in ("ref_present", "_notes_refs", "notes_refs_on_disk"):
+            assert not hasattr(evidence_notes, gone), gone
 
     def test_no_notes_ref_adds_no_subprocess_to_status(self, repo, monkeypatch, capsys):
         head = _git(repo, "rev-parse", "HEAD")
@@ -1059,10 +1118,16 @@ class TestStatusNamesUnsentFacts:
         calls = TestIngestCost()._spy(monkeypatch)
         assert evidence.evidence_cmd(repo, ["status"]) == 0
         assert ["git", "notes", "--ref", NOTES_REF, "list"] in calls
-        assert "0 transported fact(s) with no note on their commit" in capsys.readouterr().out
-        # The unpushed comparison needs a tracking ref too; with the local ref
-        # alone it costs nothing (O-17's cost bound).
-        assert not [c for c in calls if c[1:3] == ["rev-list", "--count"] or c[1:2] == ["remote"]], calls
+        out = capsys.readouterr().out
+        assert "0 transported fact(s) with no note on their commit" in out
+        # Renegotiated (R-10): with the local ref alone this cost nothing and
+        # printed nothing — the state a failed FIRST push leaves. It now costs
+        # one `rev-list --count` over the local ref, and still no remote lookup.
+        assert [c for c in calls if c[1:3] == ["rev-list", "--count"]] == [
+            ["git", "rev-list", "--count", NOTES_REF]], calls
+        assert not [c for c in calls if c[1:2] == ["remote"]], calls
+        assert ("1 note commit(s) never pushed from this clone — run `prawduct-hook evidence sync`"
+                in out)
 
     def test_with_a_tracking_ref_too_the_unpushed_count_is_one_rev_list(self, repo, monkeypatch, capsys):
         """Positive control for the bound above: both refs present, the same

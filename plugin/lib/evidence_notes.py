@@ -15,8 +15,10 @@ nothing here touches a remote.
 store lines on a commit and ingesting one is an append, with nothing to
 translate. One reduction is made on the way out (:func:`sent_envelope`): the
 note is pushed to the product's remote, where anyone who can fetch the repo
-reads it, so ``actor.worktree`` travels as its last path component and
-``actor.session`` not at all — the writing clone's store keeps both, and
+reads it, so ``actor.worktree`` travels as its basename — or as
+``.claude/worktrees/<name>`` for a harness scratch worktree, so the receiving
+clone classifies the fact as ephemeral too — never the path above it, and
+``actor.session`` not at all. The writing clone's store keeps both, and
 nothing a verdict or dedupe reads lives in ``actor``. ``git notes append``
 separates records with a blank line; the reader skips blank lines and
 surrounding whitespace.
@@ -77,28 +79,24 @@ def attach(project_dir: Path, envelope: object, anchor: "str | None") -> dict:
     return {"status": "attached", "reason": None}
 
 
-#: The directory under which the harness keeps scratch worktrees; a note keeps
-#: this tail of the writer's path so the receiving clone classifies the fact as
-#: ephemeral too (`evidence.is_ephemeral_fact` looks for it).
-_SCRATCH_TAIL = "worktrees"
-_SCRATCH_TAIL_PATH = ".claude/worktrees"
-
-
 def sent_envelope(envelope: dict) -> dict:
     """``envelope`` as a note carries it: identical except the actor's locator
-    fields. ``actor.worktree`` is cut to its last path component — the
-    reviewing machine's absolute path (``/Users/<name>/…``) is no one else's
+    fields. ``actor.worktree`` is cut to its basename, or to
+    ``.claude/worktrees/<name>`` for a harness scratch worktree — the
+    reviewing machine's path above it (``/Users/<name>/…``) is no one else's
     business, while the directory name still tells a reader which tree it was —
     and ``actor.session`` is dropped. ``(kind, id)``, ``ts`` and ``body`` are
     untouched, so dedupe and every verdict read the same fact.
 
     A reader comparing ``actor.worktree`` against a live path (the round
     counter in ``critic_consolidate``, the latest-review lookup in ``gates``)
-    compares an absolute path, which a bare name never equals, so an ingested
-    fact never reads as recorded in this worktree. A fact written in a harness
-    scratch worktree keeps the ``.claude/worktrees/<name>`` tail, so
-    :func:`evidence.is_ephemeral_fact` classifies it the same way in every
-    clone — the tail names no user. A non-dict ``actor`` or a non-string
+    compares an absolute path, which neither form equals, so an ingested fact
+    never reads as recorded in this worktree. The scratch tail is kept so
+    :func:`evidence.is_ephemeral_fact` classifies the fact the same way in
+    every clone; "scratch" is :func:`gitstate.under_claude_worktrees`, the
+    predicate that classification itself starts from, so a durable tree that
+    merely sits in some ``worktrees`` directory travels as its basename and is
+    not re-spelled as disposable. A non-dict ``actor`` or a non-string
     ``worktree`` is left as it is."""
     actor = envelope.get("actor")
     if not isinstance(actor, dict):
@@ -107,8 +105,8 @@ def sent_envelope(envelope: dict) -> dict:
     worktree = actor.get("worktree")
     if isinstance(worktree, str):
         path = Path(worktree)
-        if _SCRATCH_TAIL in path.parts:
-            reduced["worktree"] = f"{_SCRATCH_TAIL_PATH}/{path.name}"
+        if gitstate.under_claude_worktrees(path):
+            reduced["worktree"] = f".claude/worktrees/{path.name}"
         else:
             reduced["worktree"] = path.name
     return {**envelope, "actor": reduced}
@@ -155,9 +153,9 @@ def is_notes_ref(name: str) -> bool:
     """Whether ``name`` is one of the refs that hold the transport: the local
     ``refs/notes/prawduct``, or a remote's tracking ref as
     :func:`tracking_ref` builds it (``refs/notes/<remote>/prawduct``, the
-    remote's name possibly holding a slash). The one roster every reader uses
-    — ingest, the unsent-facts check and the presence read — so they cannot
-    disagree about which refs are "the notes". A sibling such as
+    remote's name possibly holding a slash). Both of :func:`notes_refs`' paths
+    filter by it, so ingest, the unsent-facts check and ``evidence status``
+    cannot disagree about which refs are "the notes". A sibling such as
     ``refs/notes/<remote>/prawduct-other``, which the pattern refspec also
     fetches, is not one."""
     if name == NOTES_REF:
@@ -167,28 +165,35 @@ def is_notes_ref(name: str) -> bool:
             and len(name) > len(prefix) + len(suffix))
 
 
-def _notes_refs(project_dir: Path) -> "list[str] | None":
-    """The notes refs this clone holds (:func:`is_notes_ref`), in one
-    ``for-each-ref``. Empty when the clone has none; ``None`` when git could
-    not answer."""
+def notes_refs(project_dir: Path, *, common_dir: "Path | None" = None) -> "list[str] | None":
+    """The notes refs this clone holds (:func:`is_notes_ref`), sorted — the one
+    answer to "which notes refs are here" that :func:`ingest`,
+    :func:`unattached` and ``evidence status`` all read.
+
+    One ``git for-each-ref``. A caller that already holds the clone's git
+    common dir (``evidence status`` does, from the store path) passes it as
+    ``common_dir`` and the refs are read from the files there instead, with no
+    subprocess, so a status read pays nothing for a clone that has never
+    written or fetched a note; where the files cannot answer (a ``reftable``
+    clone, an unreadable file) the same call asks git. Empty when the clone
+    has none; ``None`` when git could not answer."""
+    if common_dir is not None:
+        found = _refs_on_disk(common_dir)
+        if found is not None:
+            return found
     rc, out, _err = evidence.run_git(
         project_dir, "for-each-ref", "--format=%(refname)", "refs/notes/"
     )
     if rc != 0:
         return None
-    return [name for name in out.split() if is_notes_ref(name)]
+    return sorted(name for name in out.split() if is_notes_ref(name))
 
 
-def notes_refs_on_disk(common_dir: Path) -> "list[str] | None":
-    """The notes refs this clone holds (:func:`is_notes_ref`), read from the
-    files under the clone's git common dir — no subprocess, so a surface that
-    runs on every status read pays nothing for a clone that has never written
-    or fetched a note.
-
-    Loose ref files under ``refs/notes/``, then ``packed-refs``; sorted, each
-    once. ``None`` when the clone keeps its refs in a ``reftable``, whose
-    binary format this does not read, or a file cannot be read; the caller
-    asks git instead (:func:`_notes_refs`)."""
+def _refs_on_disk(common_dir: Path) -> "list[str] | None":
+    """:func:`notes_refs`' no-subprocess path: loose ref files under
+    ``refs/notes/``, then ``packed-refs``; sorted, each once. ``None`` when the
+    clone keeps its refs in a ``reftable``, whose binary format this does not
+    read, or a file cannot be read."""
     if (common_dir / "reftable").is_dir():
         return None
     found: set[str] = set()
@@ -216,33 +221,31 @@ def notes_refs_on_disk(common_dir: Path) -> "list[str] | None":
     return sorted(found)
 
 
-def ref_present(common_dir: Path) -> "bool | None":
-    """Whether the clone holds any notes ref — the local one or a fetched
-    tracking ref — by :func:`notes_refs_on_disk`; ``None`` when that cannot
-    tell."""
-    refs = notes_refs_on_disk(common_dir)
-    return None if refs is None else bool(refs)
+def unpushed(project_dir: Path, refs: "list[str]") -> "dict | None":
+    """How many commits of the local ``refs/notes/prawduct`` the push remote
+    does not hold — notes attached here and not yet pushed, the leg a failed
+    or skipped push leaves that no note count shows.
 
-
-def unpushed(project_dir: Path, refs: "list[str]") -> "int | None":
-    """How many commits of the local ``refs/notes/prawduct`` the push
-    remote's tracking ref does not hold — notes attached here and not yet
-    pushed, the leg a failed or skipped push leaves that no note count shows.
-
-    ``refs`` is the clone's notes roster, already in hand. ``None`` (and no
-    subprocess) when either ref is absent: with no local ref there is nothing
-    to push, and with no tracking ref nothing has been fetched or pushed to
-    compare against. Otherwise one ``git remote`` (the push remote's name)
-    and one ``git rev-list --count``; ``None`` when git cannot answer."""
-    if NOTES_REF not in refs or not any(r != NOTES_REF for r in refs):
+    ``refs`` is the clone's notes roster (:func:`notes_refs`), already in
+    hand. Returns ``{"count": int, "tracked": bool}``: ``tracked`` when the
+    push remote's tracking ref exists and ``count`` is the local ref's commits
+    it lacks (one ``git rev-list --count``); untracked when it does not —
+    nothing was ever pushed from this clone (or fetched), as a failed FIRST
+    push leaves it — and ``count`` is every commit on the local ref. The push
+    remote's name (one ``git remote``) is asked only when some tracking ref
+    exists to be told apart. ``None`` with no local ref — nothing to push, and
+    no subprocess — or when git cannot answer."""
+    if NOTES_REF not in refs:
         return None
-    tracking = tracking_ref(gitstate.push_remote(project_dir))
-    if tracking not in refs:
-        return None
-    rc, out, _err = evidence.run_git(project_dir, "rev-list", "--count", f"{tracking}..{NOTES_REF}")
+    tracking = None
+    if any(r != NOTES_REF for r in refs):
+        candidate = tracking_ref(gitstate.push_remote(project_dir))
+        tracking = candidate if candidate in refs else None
+    span = NOTES_REF if tracking is None else f"{tracking}..{NOTES_REF}"
+    rc, out, _err = evidence.run_git(project_dir, "rev-list", "--count", span)
     if rc != 0 or not out.strip().isdigit():
         return None
-    return int(out.strip())
+    return {"count": int(out.strip()), "tracked": tracking is not None}
 
 
 def _branch_commits(project_dir: Path) -> dict:
@@ -377,7 +380,7 @@ def unattached(project_dir: Path, *, known=None, refs: "list[str] | None" = None
         return {"status": "ok", "missing": [], "reason": None}
 
     if refs is None:
-        refs = _notes_refs(project_dir)
+        refs = notes_refs(project_dir)
         if refs is None:
             return {"status": "error", "missing": [], "reason": "git could not list refs/notes/"}
     held: dict[str, set[tuple[str, str]]] = {}
@@ -451,7 +454,7 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
     Only :data:`evidence.TRANSPORTED_KINDS` are taken from a note; a schema-ahead
     record is taken whatever its kind, so the newer writer's block fires here.
     """
-    refs = _notes_refs(project_dir)
+    refs = notes_refs(project_dir)
     if refs is None:
         return _result("error", reason="git could not list refs/notes/")
     if not refs:
@@ -596,11 +599,12 @@ def _is_envelope(record: object) -> bool:
 
 def ingest_cmd(project_dir: Path, argv: "list[str]", *, usage: str = _USAGE) -> int:
     """``prawduct-hook evidence ingest [--all] [--json]``: 0 when the ingest
-    ran (appending nothing included), 1 on an error or a bad argument."""
+    ran (appending nothing included), 1 on an error, 2 on a bad argument —
+    the convention every ``evidence`` op shares."""
     unknown = [a for a in argv if a not in ("--all", "--json")]
     if unknown:
         print(f"evidence ingest: unexpected argument {unknown[0]!r}\n{usage}", file=sys.stderr)
-        return 1
+        return 2
     result = ingest(project_dir, bound="--all" not in argv)
     if "--json" in argv:
         print(json.dumps(result, sort_keys=True))

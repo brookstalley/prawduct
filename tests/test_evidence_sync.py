@@ -35,8 +35,6 @@ TRACKING_REF = "refs/notes/origin/prawduct"
 #: fresh onboard (R-1, probed on git 2.54); a pattern matching nothing is not an
 #: error.
 REFSPEC = f"+{NOTES_REF}*:{TRACKING_REF}*"
-#: What this branch's earlier ``configure`` wrote: replaced, never kept beside.
-LEGACY_REFSPEC = f"+{NOTES_REF}:{TRACKING_REF}"
 
 
 @pytest.fixture(autouse=True)
@@ -279,7 +277,8 @@ class TestSyncReconciles:
 def _unpushed_lines(repo: Path, capsys) -> list[str]:
     capsys.readouterr()
     assert evidence.evidence_cmd(repo, ["status"]) == 0
-    return [ln for ln in capsys.readouterr().out.splitlines() if "not yet pushed" in ln]
+    return [ln for ln in capsys.readouterr().out.splitlines()
+            if "not yet pushed" in ln or "never pushed" in ln]
 
 
 class TestStatusNamesUnpushedNotes:
@@ -313,11 +312,37 @@ class TestStatusNamesUnpushedNotes:
             "1 note commit(s) not yet pushed — run `prawduct-hook evidence sync`"
         ]
 
-    def test_no_tracking_ref_prints_no_unpushed_line(self, a, capsys):
-        """Never synced or fetched: there is nothing to compare against, and
-        the no-note line already names the facts."""
+    def test_a_local_ref_with_no_tracking_ref_is_named_as_never_pushed(self, a, origin, capsys):
+        """Renegotiated (R-10): this pinned silence — "nothing to compare
+        against" — but a clone whose FIRST push failed is exactly that state,
+        every fact attached locally and none sent, and the no-note count reads
+        0. The local ref alone is the count: every commit on it is unsent."""
         _review(a, "r-1")
         assert _ref(a, TRACKING_REF) is None
+        assert _unpushed_lines(a, capsys) == [
+            "1 note commit(s) never pushed from this clone — run `prawduct-hook evidence sync`"
+        ]
+
+    def test_a_refused_first_push_leaves_the_never_pushed_line(self, a, origin, capsys):
+        _review(a, "r-1")
+        hook = origin / "hooks" / "pre-receive"
+        hook.write_text("#!/bin/sh\nexit 1\n")
+        hook.chmod(0o755)
+        assert evidence_sync.sync(a)["step"] == "push"
+        assert _ref(a, TRACKING_REF) is None
+        assert _unpushed_lines(a, capsys) == [
+            "1 note commit(s) never pushed from this clone — run `prawduct-hook evidence sync`"
+        ]
+        # Control: once a push lands the line becomes the tracked count.
+        hook.unlink()
+        assert evidence_sync.sync(a)["pushed"] is True
+        assert _unpushed_lines(a, capsys) == ["0 note commit(s) not yet pushed"]
+
+    def test_no_local_ref_prints_no_unpushed_line(self, a, capsys):
+        """Nothing attached here: nothing to push, so no line (the no-note
+        line already names the stored facts)."""
+        _review(a, "r-1", attach=False)
+        assert _ref(a, NOTES_REF) is None
         assert _unpushed_lines(a, capsys) == []
 
 
@@ -391,7 +416,9 @@ class TestConfigure:
         before = (a / ".git" / "config").read_text()
         result = evidence_sync.configure(a, apply=False)
         assert (result["status"], result["applied"]) == ("ok", False), result
-        assert all(c["replaces"] is None for c in result["changes"]), result
+        # R-4: a change is what is added, nothing else — no released version
+        # wrote another notes refspec, so there is nothing to replace.
+        assert all(set(c) == {"key", "value"} for c in result["changes"]), result
         assert [(c["key"], c["value"]) for c in result["changes"]] == [
             ("remote.origin.fetch", REFSPEC),
             ("notes.rewriteRef", NOTES_REF),
@@ -450,31 +477,6 @@ class TestConfigure:
         assert _ref(b, TRACKING_REF) == _ref(a, NOTES_REF)
         assert len(_note_records(b, head, ref=TRACKING_REF)) == 1
 
-    def test_an_exact_refspec_an_earlier_configure_wrote_is_replaced_not_kept_beside(self, a, origin):
-        _git(a, "config", "--add", "remote.origin.fetch", LEGACY_REFSPEC)
-        broken = subprocess.run(["git", "fetch", "-q"], cwd=str(a), capture_output=True, text=True, timeout=20)
-        assert broken.returncode != 0, "control: the legacy line is what breaks a plain fetch"
-        fetch_before = [v for v in _config(a, "remote.origin.fetch") if v != LEGACY_REFSPEC]
-
-        preview = evidence_sync.configure(a, apply=False)
-        assert {"key": "remote.origin.fetch", "value": REFSPEC, "replaces": LEGACY_REFSPEC} in preview["changes"]
-        result = evidence_sync.configure(a, apply=True)
-        assert (result["status"], result["applied"]) == ("ok", True), result
-        assert _config(a, "remote.origin.fetch") == fetch_before + [REFSPEC]
-        fetched = subprocess.run(["git", "fetch", "-q"], cwd=str(a), capture_output=True, text=True, timeout=20)
-        assert fetched.returncode == 0, fetched.stderr
-
-        again = evidence_sync.configure(a, apply=True)
-        assert (again["applied"], again["changes"]) == (False, []), again
-        assert _config(a, "remote.origin.fetch") == fetch_before + [REFSPEC]
-
-    def test_a_legacy_line_beside_the_pattern_is_removed_and_the_pattern_kept_once(self, a):
-        _git(a, "config", "--add", "remote.origin.fetch", REFSPEC)
-        _git(a, "config", "--add", "remote.origin.fetch", LEGACY_REFSPEC)
-        assert evidence_sync.configure(a, apply=True)["applied"] is True
-        lines = _config(a, "remote.origin.fetch")
-        assert lines.count(REFSPEC) == 1 and LEGACY_REFSPEC not in lines, lines
-
     def test_a_sibling_notes_ref_the_pattern_fetches_is_never_read(self, a, b):
         """The pattern also carries ``refs/notes/prawduct-other`` to
         ``refs/notes/origin/prawduct-other``; the readers' roster must not
@@ -489,7 +491,7 @@ class TestConfigure:
         assert evidence_sync.configure(b, apply=True)["applied"] is True
         _git(b, "fetch", "-q")
         assert _ref(b, "refs/notes/origin/prawduct-other") is not None, "the instrument reached nothing"
-        assert evidence_notes._notes_refs(b) == []
+        assert evidence_notes.notes_refs(b) == []
         assert evidence_notes.ingest(b, bound=False)["appended"] == 0
         assert ("review", "r-sibling") not in _keys(b)
 
@@ -546,9 +548,9 @@ def _evidence_ops(text: str) -> set[str]:
 
 
 class TestLibUsageOffersEveryOp:
-    """O-3/O-6: two routers each print a usage line — the hook's for
-    sync/configure, the lib's for every other op and for an unknown one — so
-    the lib's must offer the same five ops the hook's does."""
+    """O-3/O-6, R-6: the lib's router dispatches every op and prints the usage
+    an unknown one gets, so its line must offer the same five ops the hook's
+    usage line does."""
 
     def test_the_lib_usage_and_the_hook_usage_offer_the_same_ops(self):
         hook_text = (ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
@@ -556,10 +558,22 @@ class TestLibUsageOffersEveryOp:
         assert {"sync", "configure"} <= hook_ops, "control: the hook's line offers the two"
         assert _evidence_ops(evidence._CLI_USAGE) == hook_ops
 
-    def test_an_unknown_op_prints_a_usage_naming_sync_and_configure(self, a, capsys):
-        assert evidence.evidence_cmd(a, ["bogus"]) == 1
+    def test_an_unknown_op_is_a_usage_error_exit_2_naming_sync_and_configure(self, a, capsys):
+        """Renegotiated (R-6): an unknown op exited 1, the code a reported
+        failure uses; it is a usage error, 2, like every op's bad flag."""
+        assert evidence.evidence_cmd(a, ["bogus"]) == 2
         err = capsys.readouterr().err
         assert "sync [--no-push] [--json]" in err and "configure [--apply] [--json]" in err, err
+
+    @pytest.mark.parametrize("op", ["sync", "configure"])
+    def test_the_lib_router_reaches_sync_and_configure_itself(self, a, origin, capsys, op):
+        """R-6: one router. The lib's `evidence_cmd` dispatches `sync` and
+        `configure` (it printed a usage and exited 1 for both while the hook
+        routed them around it)."""
+        assert evidence.evidence_cmd(a, [op, "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["status"] == "ok", payload
+        assert evidence.evidence_cmd(a, [op, "--bogus"]) == 2
 
 
 class TestCmdEvidenceConfigure:
@@ -576,20 +590,29 @@ class TestCmdEvidenceConfigure:
         assert payload["applied"] is True
         assert REFSPEC in _config(a, "remote.origin.fetch")
 
-    def test_a_replacement_is_named_as_one_in_the_preview_and_the_apply(self, a, capsys):
-        _git(a, "config", "--add", "remote.origin.fetch", LEGACY_REFSPEC)
-        assert evidence_sync.cmd_evidence_configure(a, []) == 0
-        preview = capsys.readouterr().out
-        assert (f"evidence configure: would replace remote.origin.fetch {LEGACY_REFSPEC} "
-                f"with {REFSPEC}") in preview, preview
-        assert evidence_sync.cmd_evidence_configure(a, ["--apply"]) == 0
-        applied = capsys.readouterr().out
-        assert (f"evidence configure: replaced remote.origin.fetch {LEGACY_REFSPEC} "
-                f"with {REFSPEC}") in applied, applied
-        # Control: the key with nothing to replace still reads as an addition.
-        assert f"added notes.rewriteRef {NOTES_REF}" in applied
-
     def test_an_unknown_argument_is_a_usage_error(self, a, capsys):
         assert evidence_sync.cmd_evidence_configure(a, ["--force"]) == 2
         assert "Usage" in capsys.readouterr().err
         assert REFSPEC not in _config(a, "remote.origin.fetch")
+
+
+class TestApiContractAgrees:
+    """R-4/R-6: the contract's transport entry is what a caller codes against;
+    it must not promise a ``replaces`` key ``configure`` no longer returns, and
+    must state the one exit convention every op now shares."""
+
+    def _entry(self) -> str:
+        text = (ROOT.parent / ".prawduct" / "artifacts" / "api-contract.md").read_text(encoding="utf-8")
+        start = text.index("- **Evidence transport**")
+        return " ".join(text[start: text.index("\n- **", start + 1)].split())
+
+    def test_configure_promises_no_replaces_key(self):
+        entry = self._entry()
+        assert "`evidence configure [--apply] [--json]`" in entry, "the instrument reached the entry"
+        assert "replaces" not in entry and "replaced" not in entry, entry
+
+    def test_ingest_states_usage_as_exit_2(self):
+        entry = self._entry()
+        ingest = entry[entry.index("`evidence ingest [--all] [--json]`"): entry.index("`evidence sync [--no-push]")]
+        assert "2 usage" in ingest, ingest
+        assert "1 on an error or an unknown argument" not in ingest, ingest

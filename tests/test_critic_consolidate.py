@@ -4311,7 +4311,8 @@ def _note_lines(repo: Path, commit: str) -> list[str]:
 
 def _sent(lines: list[str]) -> list[str]:
     """Store lines as a note carries them (O-16): identical except the actor's
-    locator fields — ``actor.worktree`` cut to its last path component,
+    locator fields — ``actor.worktree`` cut to its basename (these fixtures
+    are no harness scratch tree, which would keep ``.claude/worktrees/<name>``),
     ``actor.session`` dropped. Derived by hand so the test states the contract."""
     out = []
     for line in lines:

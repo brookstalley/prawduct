@@ -12,8 +12,7 @@ remote, and sets a clone up so ordinary git carries it:
 - :func:`configure` — add the notes refspec (a pattern, :func:`refspec`) to
   ``remote.<remote>.fetch`` and ``refs/notes/prawduct`` to
   ``notes.rewriteRef``, so a plain ``git fetch`` carries the notes and an
-  amend or rebase carries them to the rewritten commit; an exact notes
-  refspec an earlier version wrote is replaced. Preview by default;
+  amend or rebase carries them to the rewritten commit. Preview by default;
   ``apply=True`` writes the clone's own ``.git/config``.
 
 **Why a tracking ref.** Fetching straight into the local ref would need a
@@ -76,13 +75,6 @@ def refspec(remote: str) -> str:
     return f"+{NOTES_REF}*:{tracking_ref(remote)}*"
 
 
-def _legacy_refspec(remote: str) -> str:
-    """The exact refspec an earlier ``configure`` wrote; :func:`configure`
-    replaces it, because left beside the pattern it still breaks a plain
-    fetch while the remote has no notes."""
-    return f"+{NOTES_REF}:{tracking_ref(remote)}"
-
-
 def _git(project_dir: Path, *args: str) -> "tuple[int, str]":
     """``(returncode, detail)`` for one git call; ``detail`` is git's stderr
     (else stdout), scrubbed of credential shapes, because a remote's URL or its
@@ -93,13 +85,6 @@ def _git(project_dir: Path, *args: str) -> "tuple[int, str]":
     env = {**os.environ, "LC_ALL": "C", "GIT_TERMINAL_PROMPT": "0"}
     rc, out, err = evidence.run_git(project_dir, *args, env=env)
     return rc, scrub_secrets((err or out).strip())
-
-
-def _ere_literal(value: str) -> str:
-    """A POSIX extended regex matching exactly ``value`` — the value pattern
-    ``git config --unset-all`` takes. Escaped by hand rather than with
-    ``--fixed-value``, which git gained only in 2.30."""
-    return "^" + "".join("\\" + ch if ch in ".[]()*+?{}|^$\\" else ch for ch in value) + "$"
 
 
 def _remote(project_dir: Path) -> "tuple[str | None, str | None]":
@@ -234,60 +219,45 @@ def sync(project_dir: Path, *, push: bool = True) -> dict:
 
 def configure(project_dir: Path, *, apply: bool) -> dict:
     """Add the notes refspec to ``remote.<remote>.fetch`` and
-    ``refs/notes/prawduct`` to ``notes.rewriteRef`` where either is absent, and
-    replace the exact notes refspec an earlier ``configure`` wrote.
+    ``refs/notes/prawduct`` to ``notes.rewriteRef`` where either is absent.
 
-    Returns ``{"status": "ok"|"error", "changes": [{"key", "value",
-    "replaces"}, ...], "applied": bool, "reason"}``. ``changes`` lists what is
-    (or was) missing or replaced — ``replaces`` is the line removed, else
-    ``None``; ``applied`` is true only when ``apply`` wrote at least one of
-    them. Both keys are multi-valued: a value the clone holds that is not the
-    legacy notes refspec — another rewrite ref, the branch refspec — is never
-    touched, and the pattern is added once. No remote is ``ok`` with the
-    reason and nothing to do.
+    Returns ``{"status": "ok"|"error", "changes": [{"key", "value"}, ...],
+    "applied": bool, "reason"}``. ``changes`` lists what is (or was) missing;
+    ``applied`` is true only when ``apply`` wrote at least one of them. Both
+    keys are multi-valued: a value the clone already holds — another rewrite
+    ref, the branch refspec — is never touched, and a value already present is
+    not added again, so a second run changes nothing. No remote is ``ok`` with
+    the reason and nothing to do.
     """
     remote, why = _remote(project_dir)
     if remote is None:
         return {"status": "ok", "changes": [], "applied": False, "reason": why}
-    wanted = [
-        (f"remote.{remote}.fetch", refspec(remote), _legacy_refspec(remote)),
-        (REWRITE_KEY, NOTES_REF, None),
-    ]
     changes = []
-    for key, value, legacy in wanted:
+    for key, value in ((f"remote.{remote}.fetch", refspec(remote)), (REWRITE_KEY, NOTES_REF)):
         rc, out, err = evidence.run_git(project_dir, "config", "--get-all", key)
         if rc not in (0, 1):  # 1 is git's "key not set"
             return {"status": "error", "changes": [], "applied": False,
                     "reason": f"cannot read {key} ({err or rc})"}
-        held = out.splitlines()
-        replaces = legacy if legacy is not None and legacy in held else None
-        if value not in held or replaces is not None:
-            changes.append({"key": key, "value": value, "replaces": replaces,
-                            "add": value not in held})
+        if value not in out.splitlines():
+            changes.append({"key": key, "value": value})
     if not changes:
         return {"status": "ok", "changes": [], "applied": False,
                 "reason": "already configured"}
-    public = [{k: c[k] for k in ("key", "value", "replaces")} for c in changes]
     if not apply:
-        return {"status": "ok", "changes": public, "applied": False, "reason": None}
+        return {"status": "ok", "changes": changes, "applied": False, "reason": None}
     wrote = False
     for change in changes:
-        steps = []
-        if change["replaces"] is not None:
-            steps.append(("--unset-all", change["key"], _ere_literal(change["replaces"])))
-        if change["add"]:
-            steps.append(("--add", change["key"], change["value"]))
-        for step in steps:
-            rc, detail = _git(project_dir, "config", *step)
-            if rc != 0:
-                return {"status": "error", "changes": public, "applied": wrote,
-                        "reason": f"git config {step[0]} {change['key']} failed: {detail or rc}"}
-            wrote = True
-    return {"status": "ok", "changes": public, "applied": True, "reason": None}
+        rc, detail = _git(project_dir, "config", "--add", change["key"], change["value"])
+        if rc != 0:
+            return {"status": "error", "changes": changes, "applied": wrote,
+                    "reason": f"git config --add {change['key']} failed: {detail or rc}"}
+        wrote = True
+    return {"status": "ok", "changes": changes, "applied": True, "reason": None}
 
 
 # ---------------------------------------------------------------------------
-# Hook-facing commands: 0 ok, 1 a reported failure, 2 usage
+# The two ops `evidence.evidence_cmd` routes here: 0 ok, 1 a reported
+# failure, 2 usage — the convention every `evidence` op shares
 # ---------------------------------------------------------------------------
 
 
@@ -335,15 +305,9 @@ def cmd_evidence_configure(project_dir: Path, args: "list[str]") -> int:
     elif not result["changes"]:
         print(f"evidence configure: nothing to change — {result['reason']}")
     else:
-        done = result["applied"]
+        verb = "added" if result["applied"] else "would add"
         for change in result["changes"]:
-            if change.get("replaces"):
-                verb = "replaced" if done else "would replace"
-                print(f"evidence configure: {verb} {change['key']} {change['replaces']} "
-                      f"with {change['value']}")
-            else:
-                verb = "added" if done else "would add"
-                print(f"evidence configure: {verb} {change['key']} {change['value']}")
+            print(f"evidence configure: {verb} {change['key']} {change['value']}")
         if not apply:
             print("  re-run with --apply to write them to this clone's .git/config")
     return 0 if result["status"] == "ok" else 1

@@ -165,7 +165,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
-  their commit` — what `evidence sync` re-attaches, for the branch's commits, before it pushes), `ledger-append`
+  their commit` — what `evidence sync` re-attaches, for the branch's commits, before it pushes;
+  every `evidence` op exits 0 ok, 1 a reported failure, 2 usage — an unknown op or a bad flag —
+  and `status`, which takes no flags, keeps its 2 = schema-ahead sentinel below), `ledger-append`
   (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
   as well as `review.pr`, and writes the optional `dispatched_at` envelope key when one is present;
   `--trigger subagent-stop|explicit|session-end-backstop` is required for `review.critic` and
@@ -199,26 +201,28 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the branch's commits from the merge base, or every note with `--all`; it prints how many records
   it appended of how many it saw on how many commits, and a skipped class (malformed lines, kinds
   not transported) is counted in `reason`. Exit 0 when the ingest ran, appending nothing included;
-  1 on an error or an unknown argument. A data-plane write: refused (exit 1) from a scratch
+  1 on an error; 2 usage. A data-plane write: refused (exit 1) from a scratch
   worktree, so a disposable tree never races the main checkout's ingest, and by a foreign binary; session start
   runs it bounded at a session boundary. `evidence sync [--no-push] [--json]` (mutating; network)
   fetches the remote's notes into the tracking ref `refs/notes/<remote>/prawduct`, merges them into
   `refs/notes/prawduct` with `cat_sort_uniq`, reconciles (re-attaches any transported fact in the
   bound whose note is missing), ingests, and pushes the ref unless `--no-push`, then moves the
   tracking ref to what it pushed; a remote with no notes yet is not an error. Note lines carry the
-  store line with the actor's locator fields reduced: `actor.worktree` cut to its last path
-  component, `actor.session` dropped. Exit 0 ok; 1 a reported failure naming the failing `step`
+  store line with the actor's locator fields reduced: `actor.worktree` cut to its basename, or to
+  `.claude/worktrees/<name>` for a harness scratch worktree (so the receiving clone classifies the
+  fact as ephemeral too), never the path above it; `actor.session` dropped. Exit 0 ok; 1 a reported failure naming the failing `step`
   (`fetch`, `merge`, `reconcile`, `ingest`, `push`), git's stderr scrubbed of credentials and
   nothing retried; 2 usage.
   `/prawduct:pr create|update` runs it after the branch push, and a failure there is reported
   without blocking the PR; `evidence status` then shows it as `N note commit(s) not yet pushed`
-  (the local ref against the push remote's tracking ref, counted only when both exist).
+  (the local ref against the push remote's tracking ref), or, when no tracking ref exists — a
+  first push that failed or never ran — `N note commit(s) never pushed from this clone` (every
+  commit on the local ref); with no local ref, no line.
   `evidence configure [--apply] [--json]` previews, and with `--apply`
   writes, the clone's two keys: the fetch refspec
   `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*` in `remote.<remote>.fetch` — a pattern,
   because a configured exact refspec makes every plain `git fetch` fail while the remote has no
-  notes; the exact form an earlier version wrote is replaced, reported as a change with `replaces`
-  — (so a plain `git fetch` brings the remote's notes into the tracking ref, which
+  notes (so a plain `git fetch` brings the remote's notes into the tracking ref, which
   `evidence ingest`, session start and `evidence status` read beside the local ref; `evidence sync`
   merges it before pushing) and
   `notes.rewriteRef=refs/notes/prawduct` (so amend and rebase carry them); a repo with no remote
