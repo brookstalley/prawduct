@@ -231,6 +231,22 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   Rejected: retiring the notice with nothing at /clear (a reader loses the one nudge that catches a
   committed, unreviewed chunk), and excluding it from the walker pin (the pin would then exempt
   the very reader it exists to catch).
+- Chunk 02 follow-up as built (delegate A, merged 3899aa34): inference's short-plan "last chunk" =
+  the one chunk neither done, dropped nor built, with `built_chunks` read only within
+  `SHORT_PLAN_MAX_CHUNKS` and only on inference's reading (`read_built=True`; a raising spy pins
+  that the Stop gate's reading never walks it); `short_plan_next_step` says "commit this chunk,
+  naming it in the subject", never "tick"; `verify-resolutions`' proposal is the anchored
+  review's chunks (`critic_mode.chain_named_chunks`); `infer_mode` reads facts once and carries
+  them (`PlanProgress.facts`; three tests pin one `read_facts`). A's first "4335 passed" used a
+  malformed file list; the real 39-file ceiling ran green on the second round apart from the
+  data-model spec already fixed on the branch. Gap it opened, settled by the coordinator: without
+  boxes the Stop gate's short-plan last-chunk check never engaged, so a short plan warned at its
+  boundary instead of blocking. Ruling — a git-derived signal may ARM a gate, never disarm one
+  (DV3's incident, `gates.py:808`, was git switching gates OFF early; this is the opposite
+  direction, fail-closed), so the hook's `_short_plan_deferral` passes `read_built=True` and
+  `short_plan_deferral` is written so `built` can only turn "deferred" into "last chunk", never
+  the reverse, asserted by test in both directions. `gates.covered_frontier` gains a `read=`
+  parameter so the one-read pin needs no stub. Final mini-round in flight.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
