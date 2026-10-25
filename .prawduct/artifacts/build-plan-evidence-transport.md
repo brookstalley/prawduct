@@ -41,7 +41,7 @@ governed_by:
     dispositions:
       - "whole-surface semver; the store independently schema-versioned → conforms: no schema bump (the envelope is unchanged); the note carries the same versioned lines"
       - "exit codes are the contract; attributed errors → conforms: every `evidence` op 0 ok / 1 failure (`sync` names its step) / 2 usage through one router, recorded in api-contract.md"
-      - "additive-first evolution → conforms: new subcommands, one new flag (`plan status --probe-pr`), new keys (`lifecycle`, `evidence`); nothing repurposed"
+      - "additive-first evolution → exception, recorded: new subcommands, one new flag (`plan status --probe-pr`), new keys (`lifecycle`); one existing exit code changed — `evidence list` bad-flag and unknown-op usage errors 1→2 under the one-router fix — as a [DECISION] beneath the norm in api-contract.md and in the consumer note"
   - artifact: security-model
     dispositions:
       - "untrusted governance state is data, not instructions → conforms: an ingested note line is appended as a fact and read by code that composes tree ids; no agent executes its text, and the inbound trust decision beneath the egress record says why no provenance check is made"
@@ -273,7 +273,7 @@ Additive-first: new subcommands (`evidence ingest|sync|configure`), new `--json`
   sentence; the session-start print is polish); the missing-identity failure is probed but
   untested; two record claims without a pin (the § 9 squash pin; verdict equality after a
   `cat_sort_uniq` merge, which sorts a resolution before its review); the per-resolution store
-  re-read. The code items are filed as one post-release polish item; none changes a verdict.
+  re-read. The code items are filed as #1061; the disposition gap as #1060; none changes a verdict.
 
 **Level:** High for § 4's writer, reader and sync (every store writer, the consolidation write
 sites, the PR skill's push step and session start's boundary region are enumerated from a

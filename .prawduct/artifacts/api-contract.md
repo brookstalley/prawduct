@@ -144,6 +144,7 @@ in `docs/governance-telemetry.md`.
   [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
   whose retained behaviour is inert rather than itself non-conforming.
 
+  Decision: 2026-10-25 (evidence-transport) — `[DECISION: one router and one exit convention for every `evidence` op (0 ok / 1 failure / 2 usage), which moves `evidence list`'s bad-flag exit and the unknown-op exit from 1 to 2 | the Critic's cumulative found two routers with two conventions on a surface this branch doubled in size, and a usage error on `list` was never documented as a meaning distinct from a failure — but it IS an existing exit code changed, so it is recorded here as the departure it is rather than as "nothing repurposed"; the consumer note names it | user can veto/override — reverting restores exit 1 for those two cases and keeps the router]`
 ## Operations
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.

@@ -36,6 +36,18 @@ and, as its last child, #1050.
   clone's `.git/config`, so a plain `git fetch` brings
   the remote's notes into a tracking ref that the next session start or `evidence ingest` reads, and an amend or rebase keeps them; `/prawduct:doctor` offers it and
   `/prawduct:onboard` runs it. Exit codes are in `api-contract.md`.
+- Facts fetched from the remote feed this clone's coverage gates exactly as locally written ones do;
+  the trust decision and its limits are recorded in `security-model.md` beneath the egress site.
+- Exit codes: `evidence list` with a bad flag and an unknown `evidence` op now exit 2 (usage), not 1
+  — every `evidence` op shares one router and one convention (0 ok / 1 failure / 2 usage); a script
+  that branched on 1 for those two cases needs the change. Recorded as a departure from
+  additive-first in `api-contract.md`.
+- To undo transport in a clone: `git config --unset-all remote.<remote>.fetch '^\\+refs/notes/prawduct'`,
+  `git config --unset notes.rewriteRef`, `git update-ref -d refs/notes/prawduct` (and the tracking
+  ref `refs/notes/<remote>/prawduct`); on the remote, `git push <remote> --delete refs/notes/prawduct`
+  — the ref carries findings text and file paths, so deleting it there is the only way to retract them.
+- `stats` and `contribute` count ingested reviews beside native ones, so two contributing clones
+  double-count at the collector — a known defect, #1058, not intended behaviour.
 - A shallow or single-branch clone (CI's default checkout) has no merge base, so a bounded ingest
   reads nothing and session start says nothing: run `evidence ingest --all` there, or fetch the base
   branch first.

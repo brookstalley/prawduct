@@ -106,9 +106,11 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   clone cannot diff is a gap, not a pass; a schema-ahead line blocks loudly rather than being
   read); and the alternative (signed notes, or an allowlist of writer identities) is a
   credential the governance runtime does not hold | user can veto/override — a product whose
-  remote admits pushers it does not trust for governance has no filtered ingest to fall back on:
-  it must leave the refspec unconfigured AND not run `evidence sync` (which ingests the same
-  unchecked lines), and then its coverage stays per clone, as before this change]`
+  remote admits pushers it does not trust for governance has no filtered ingest to fall back on,
+  and today no switch either: `/prawduct:pr create|update` runs `evidence sync` and
+  `/prawduct:onboard` runs `evidence configure --apply` unconditionally. Until the
+  `Evidence transport` preference row ships (backlog, filed from this PR's review), such a product
+  declines to run those two steps by hand; its coverage then stays per clone, as before]`
   The first two, git-tidy and `evidence sync` scrub credentials out of foreign-CLI stderr before
   echoing or serialising it; the Stop-hook call does not echo stderr at all; the two collector
   sites carry no credential and refuse redirects.
