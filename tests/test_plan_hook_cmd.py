@@ -207,8 +207,17 @@ class TestStatus:
         assert proc.returncode == 0, proc.stderr
         data = json.loads(proc.stdout)
         # `built_unavailable` joined in cumulative R-10: null when git answered.
-        assert set(data) == {"plan_path", "scope", "finished", "chunks", "built_unavailable"}
+        # `lifecycle` joined for #1052: `plan_lifecycle.observe`'s answer, whole.
+        assert set(data) == {
+            "plan_path", "scope", "finished", "chunks", "built_unavailable", "lifecycle",
+        }
         assert data["built_unavailable"] is None
+        assert data["lifecycle"] == {
+            "state": "in-progress",
+            "reason": "`feature/unit` exists locally and its tip is not in `main`'s history",
+            "released_in": None,
+            "probed": False,
+        }
         assert (data["plan_path"], data["scope"], data["finished"]) == (
             ".prawduct/artifacts/build-plan-unit.md", "unit", True,
         )
@@ -228,6 +237,8 @@ class TestStatus:
         assert proc.returncode == 0, proc.stderr
         assert proc.stdout.splitlines() == [
             ".prawduct/artifacts/build-plan-unit.md (scope `unit`): finished (3 chunks)",
+            "lifecycle: in-progress — `feature/unit` exists locally and its tip is not in "
+            "`main`'s history",
             "  chunk  state    fact   date        tags",
             "  01     done     -      -           imported",
             "  02     done     R-two  2026-10-25  built",
@@ -243,7 +254,9 @@ class TestStatus:
         assert proc.returncode == 0, proc.stderr
         lines = proc.stdout.splitlines()
         assert lines[0] == ".prawduct/artifacts/build-plan-unit.md (scope `unit`): 1 of 3 open"
-        assert lines[3] == "  02     open     -     -     -"
+        # A branch with no commits of its own and no review: in progress.
+        assert lines[1].startswith("lifecycle: in-progress — `feature/unit` exists locally")
+        assert lines[4] == "  02     open     -     -     -"
 
     @pytest.mark.parametrize(
         "chunks, summary",
@@ -265,7 +278,68 @@ class TestStatus:
         assert proc.returncode == 0, proc.stderr
         lines = proc.stdout.splitlines()
         assert lines[0] == f".prawduct/artifacts/build-plan-unit.md (scope `unit`): {summary}"
-        assert len(lines) == (1 if not chunks else 2 + len(chunks))
+        assert lines[1].startswith("lifecycle: ")
+        assert len(lines) == (2 if not chunks else 3 + len(chunks))
+
+    def _gone_plan_and_fake_gh(self, tmp_path: Path) -> "tuple[Path, Path, dict[str, str]]":
+        """A plan whose branch is gone with nothing local to say it merged, and a
+        fake `gh` that lists a merged pull request from it and logs each call."""
+        repo = _repo(tmp_path, "main")
+        _plan(repo, "build-plan-gone.md", "scope: gone\nbranch: feature/gone\nbase: main\n")
+        bin_dir = tmp_path / "fakebin"
+        bin_dir.mkdir()
+        log = tmp_path / "gh-calls.log"
+        gh = bin_dir / "gh"
+        gh.write_text(
+            "#!/bin/sh\n"
+            f'echo "$@" >> "{log}"\n'
+            "echo '[{\"number\": 41, \"headRefOid\": \"abc\", \"isCrossRepository\": false}]'\n"
+        )
+        gh.chmod(0o755)
+        env = _env(repo)
+        env["PATH"] = f"{bin_dir}:{env['PATH']}"
+        return repo, log, env
+
+    def test_probe_pr_is_passed_through_and_only_then_asks_gh(self, tmp_path):
+        """`--probe-pr` is the one route to `gh` (a squash merge leaves nothing
+        local); without it the answer is offline and says what was missing."""
+        repo, log, env = self._gone_plan_and_fake_gh(tmp_path)
+        rel = ".prawduct/artifacts/build-plan-gone.md"
+
+        def status(*flags: str) -> dict:
+            proc = subprocess.run(
+                [sys.executable, str(HOOK), "plan", "status", rel, "--json", *flags],
+                cwd=str(repo), capture_output=True, text=True, timeout=60, env=env,
+            )
+            assert proc.returncode == 0, proc.stderr
+            return json.loads(proc.stdout)["lifecycle"]
+
+        offline = status()
+        assert (offline["state"], offline["probed"]) == ("unknown", False)
+        assert not log.exists(), "gh was asked without --probe-pr"
+
+        probed = status("--probe-pr")
+        assert probed == {
+            "state": "merged-unreleased",
+            "reason": "`feature/gone` is on no local or remote branch, and `gh` lists pull "
+                      "request #41 from it as merged",
+            "released_in": None,
+            "probed": True,
+        }
+        assert log.read_text().startswith("pr list --state merged --head feature/gone")
+
+    def test_the_lifecycle_line_follows_the_summary_in_the_human_output(self, tmp_path):
+        repo, _log, env = self._gone_plan_and_fake_gh(tmp_path)
+        proc = subprocess.run(
+            [sys.executable, str(HOOK), "plan", "status",
+             ".prawduct/artifacts/build-plan-gone.md", "--probe-pr"],
+            cwd=str(repo), capture_output=True, text=True, timeout=60, env=env,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.splitlines()[1] == (
+            "lifecycle: merged-unreleased — `feature/gone` is on no local or remote branch, "
+            "and `gh` lists pull request #41 from it as merged"
+        )
 
     def test_unbound_with_no_path_exits_1_with_the_reason(self, tmp_path):
         repo = _repo(tmp_path, "chore/bump")

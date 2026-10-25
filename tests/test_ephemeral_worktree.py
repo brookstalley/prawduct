@@ -1274,3 +1274,60 @@ class TestPlanImportStatusUnderTheGuard:
         assert result.returncode == 1
         assert "BLOCKED: refusing `plan`" in result.stderr
         assert (wt / rel).read_bytes() == before
+
+
+# ---------------------------------------------------------------------------
+# `evidence`: one read set decides both pre-dispatch guards
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceOpsUnderTheGuards:
+    """`evidence status|list` read; every other op writes — `ingest` appends to
+    the clone's store, `sync` merges and pushes the notes ref, `configure`
+    writes `.git/config`. Both guards derive the answer from the hook's one
+    read set, so a new op is a write on both sides until it is listed."""
+
+    OPS = ([], ["status"], ["list"], ["list", "--kind", "review"], ["ingest"],
+           ["ingest", "--all"], ["sync"], ["sync", "--no-push"], ["configure"],
+           ["configure", "--apply"], ["no-such-op"])
+
+    def test_both_guards_give_one_answer_for_every_op(self, tmp_path):
+        hook = _hook_module()
+        answers = {
+            tuple(argv): (
+                hook._ephemeral_command_writes("evidence", list(argv), tmp_path),
+                hook._is_data_plane_write("evidence", list(argv)),
+            )
+            for argv in self.OPS
+        }
+        assert all(a == b for a, b in answers.values()), answers
+        writes = {argv for argv, (w, _) in answers.items() if w}
+        assert writes == {
+            ("ingest",), ("ingest", "--all"), ("sync",), ("sync", "--no-push"),
+            ("configure",), ("configure", "--apply"), ("no-such-op",),
+        }
+
+    @pytest.mark.parametrize("argv", [("evidence", "sync"), ("evidence", "configure", "--apply")])
+    def test_sync_and_configure_are_refused_from_a_scratch_tree(self, tmp_path, argv):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        result = _run(wt, *argv)
+        assert result.returncode == 1
+        assert "BLOCKED: refusing `evidence`" in result.stderr
+
+    def test_the_refusal_states_its_real_reason_for_a_store_write(self, tmp_path):
+        """A store or `.git` write outlives the tree, so "discarded when it
+        merges" would be false here. The refusal says what it protects."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        refused = _run(wt, "evidence", "ingest").stderr
+        assert "BLOCKED: refusing `evidence`" in refused
+        assert "discarded when it merges" not in refused
+        assert "main checkout" in refused
+        assert "PRAWDUCT_ALLOW_EPHEMERAL_WRITES=1" in refused
+        # Control: a write into this tree still gets the strand reason.
+        other = _run(wt, "norm-index-scaffold", "--apply").stderr
+        assert "discarded when it merges" in other
+        assert "main checkout" not in other

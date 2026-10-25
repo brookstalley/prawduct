@@ -192,7 +192,15 @@ class TestReleasePending:
     its branch is deleted, its plan stays live, and its change record is
     still pending. That is the retention policy working, so it gets its own
     line and does not fail the check. A missing branch with no pending record
-    is still a miss."""
+    is still a miss.
+
+    Renegotiated for #1052: "release-pending" is now the plan's observed
+    lifecycle (``plan_lifecycle.observe(...).state == merged-unreleased``), the
+    one derivation `plan status` prints too, and the line carries its reason
+    instead of a message rebuilt here. What changed with it: a claim is judged
+    by its PLAN's lifecycle, so a missing `working-branches:` entry of a plan
+    whose integration branch is still in progress is a miss, pending fragment
+    or not (`TestJudgedByThePlansLifecycle`)."""
 
     def test_a_pending_fragment_makes_a_missing_branch_release_pending(self, tmp_path):
         repo = _repo(tmp_path)
@@ -202,7 +210,9 @@ class TestReleasePending:
         assert result.returncode == 0, result.stdout + result.stderr
         assert (
             ".prawduct/artifacts/build-plan-shipped.md: branch claims feature/merged, which no "
-            "longer exists; its fragment is pending release — archive at the release"
+            "longer exists; merged-unreleased (inferred: `feature/merged` is on no local or "
+            "remote branch, and its fragment for scope `shipped` is pending release) — archive "
+            "at the release"
         ) in result.stdout.splitlines()
         assert "does not exist" not in result.stdout
 
@@ -223,7 +233,9 @@ class TestReleasePending:
         )
         result = _run(repo)
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "its change-log entry is pending release — archive at the release" in result.stdout
+        assert (
+            "its change-log entry for scope `shipped` is pending release) — archive at the release"
+        ) in result.stdout
 
     def test_a_released_change_log_entry_is_not_pending(self, tmp_path):
         repo = _repo(tmp_path)
@@ -260,7 +272,9 @@ class TestReleasePending:
 
     def test_an_invalid_fragment_exempts_nothing(self, tmp_path):
         """A fragment that fails validation may carry the wrong scope, so the
-        pending set refuses it, and the missing branch stays a miss."""
+        pending set refuses it, and the missing branch stays a miss. Why it is
+        not release-pending is the lifecycle's reason, on stderr — it names
+        the refusal (it used to be a message of its own here)."""
         repo = _repo(tmp_path)
         _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
         changes = repo / ".prawduct" / "changes"
@@ -269,4 +283,58 @@ class TestReleasePending:
         result = _run(repo)
         assert result.returncode == 1, result.stdout
         assert "branch feature/merged does not exist" in result.stdout
-        assert "could not be trusted" in result.stderr
+        why = [line for line in result.stderr.splitlines() if "not release-pending" in line]
+        assert len(why) == 1, result.stderr
+        assert why[0].startswith(
+            "plan check-claims: .prawduct/artifacts/build-plan-shipped.md is not "
+            "release-pending (unknown: "
+        )
+        assert "the pending change records were refused" in why[0]
+
+
+class TestJudgedByThePlansLifecycle:
+    """A claim is release-pending when its plan is observed merged and
+    unreleased — whichever field names the missing branch."""
+
+    def _unit(self, repo: Path) -> None:
+        _plan(
+            repo, "build-plan-unit.md",
+            "scope: unit\nbranch: feature/unit\nbase: main\nworking-branches:\n  - feature/unit-a\n",
+        )
+        _fragment(repo, "unit")
+
+    def test_a_missing_working_branch_of_an_in_progress_plan_is_a_miss(self, tmp_path):
+        """The behaviour that changed: before #1052 a pending fragment for the
+        scope exempted any missing claim of the plan. The integration branch is
+        still unmerged, so the plan is in progress and the claim is stale."""
+        repo = _repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "feature/unit")
+        (repo / "work.txt").write_text("w\n")
+        _git(repo, "add", "work.txt")
+        _git(repo, "commit", "-qm", "work")
+        _git(repo, "checkout", "-q", "main")
+        self._unit(repo)
+        result = _run(repo, "--json")
+        assert result.returncode == 1, result.stdout + result.stderr
+        outcomes = {c["branch"]: c["outcome"] for c in json.loads(result.stdout)["claims"]}
+        assert outcomes == {"feature/unit": "exists", "feature/unit-a": "missing"}
+        assert "is not release-pending (in-progress: `feature/unit` exists locally" in result.stderr
+
+    def test_control_the_same_claim_of_a_merged_plan_is_release_pending(self, tmp_path):
+        """Control: merge the integration branch (kept) and the same missing
+        working branch is retention, not a miss."""
+        repo = _repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "feature/unit")
+        (repo / "work.txt").write_text("w\n")
+        _git(repo, "add", "work.txt")
+        _git(repo, "commit", "-qm", "work")
+        _git(repo, "checkout", "-q", "main")
+        _git(repo, "merge", "-q", "--no-ff", "-m", "merge unit", "feature/unit")
+        self._unit(repo)
+        result = _run(repo)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (
+            ".prawduct/artifacts/build-plan-unit.md: working-branches claims feature/unit-a, "
+            "which no longer exists; merged-unreleased (`feature/unit` exists locally and its "
+            "tip is in `main`'s history) — archive at the release"
+        ) in result.stdout.splitlines()

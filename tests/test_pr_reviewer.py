@@ -1181,6 +1181,42 @@ class TestPrReviewerScoping:
             "without the evidence-voiding reason it reads as mere preference"
         )
 
+    def test_create_step_5_syncs_the_evidence_notes_between_push_and_push_gate(self):
+        """The notes ride the branch push (#1052): `evidence sync` runs after
+        the push it travels with and before `check-branch-pushed`, which
+        certifies the push and must stay the last word before `gh pr create`.
+        Read in the order an agent reads Step 5, once each."""
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        assert step5.count("prawduct-hook evidence sync") == 1, step5
+        push = step5.index("Push branch with `-u`")
+        sync = step5.index("prawduct-hook evidence sync")
+        gate = step5.index("prawduct-hook check-branch-pushed")
+        assert push < sync < gate, (push, sync, gate)
+
+    def test_a_failed_sync_is_reported_and_never_blocks_the_pr(self):
+        """Coverage is the PR's gate; transport is not. Bound to the sentence
+        that runs the sync, so a reword elsewhere cannot satisfy it."""
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        at = step5.index("prawduct-hook evidence sync")
+        sentence = step5[at: step5.index("check-branch-pushed", at)]
+        assert "never blocks the PR" in sentence
+        assert "report" in sentence
+
+    def test_the_update_flow_syncs_once_right_after_its_push(self):
+        update = self.skill.split("## Update Flow", 1)[1].split("\n## ", 1)[0]
+        assert update.count("prawduct-hook evidence sync") == 1, update
+        first = update.split("\n2. ", 1)[0]
+        assert first.index("Push new commits") < first.index("prawduct-hook evidence sync")
+        assert "never blocks" in first
+
+    def test_the_sync_is_granted_in_both_spellings(self):
+        """The bare form a governed product runs, and this repo's
+        `python3 plugin/bin/...` form — a self-hosted grant never stands alone
+        (`tests/test_skill_command_grants.py`)."""
+        frontmatter = self.skill.split("---", 2)[1]
+        assert "Bash(prawduct-hook evidence sync*)" in frontmatter
+        assert "Bash(python3 plugin/bin/prawduct-hook evidence sync*)" in frontmatter
+
     def test_learnings_and_backlog_not_rescanned(self):
         """The cumulative Critic owns the Learnings Cross-Check and Backlog
         Reconciliation walk; the PR reviewer must not repeat them. R-2 (data
