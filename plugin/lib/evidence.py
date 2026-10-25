@@ -132,6 +132,7 @@ OBSERVATIONAL_KINDS = frozenset(
 #: stays in that clone's store.
 TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported"})
 
+
 def review_anchor(body: object) -> "str | None":
     """The commit a review fact is anchored on: ``head_commit``, else — for a
     dirty-tree review, which records none — ``dispatch_commit``.
@@ -1443,8 +1444,11 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
 
 
 # ---------------------------------------------------------------------------
-# CLI (``prawduct-hook evidence <status|list>``) — the stable allowlistable
-# surface (R4); skills scope to ``Bash(prawduct-hook evidence*)``.
+# CLI (``prawduct-hook evidence <status|list|ingest>``). ``status`` and ``list``
+# are reads, the stable allowlistable surface (R4); ``ingest`` appends to the
+# store, a data-plane write. A ``Bash(prawduct-hook evidence*)`` grant therefore
+# admits a write — a read-only skill scopes to ``evidence status`` and
+# ``evidence list`` by name.
 # ---------------------------------------------------------------------------
 
 # The store is append-only, shared by every worktree of the clone, and never
@@ -1583,6 +1587,36 @@ def _store_size_line(path: Path) -> str | None:
     return f"size: {len(raw) / 1_000_000:.2f} MB, {len(lines)} lines; largest kinds: {kinds}"
 
 
+def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
+    """How many of this branch's transported facts have no note on their
+    commit — the durable view of an attach that failed or never ran, which is
+    otherwise said once, in the output of the act that lost it.
+
+    A clone with no notes ref pays no subprocess here: the ref's presence is
+    read from the files under the git common dir (the store sits at
+    ``<common>/prawduct/evidence.jsonl``), and the store count already in hand
+    stands in for the bounded one."""
+    from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
+
+    remedy = "  `prawduct-hook evidence sync` attaches this branch's and sends them"
+    if evidence_notes.ref_present(path.parent.parent) is False:
+        transported = sum(1 for f in result["facts"] if f.get("kind") in TRANSPORTED_KINDS)
+        if transported:
+            print(
+                f"notes: no {evidence_notes.NOTES_REF} in this clone — none of the "
+                f"store's {transported} transported fact(s) is on a note"
+            )
+            print(remedy)
+        return
+    found = evidence_notes.unattached(project_dir, known=result)
+    if found["status"] != "ok":
+        print(f"notes: facts with no note not counted — {found['reason']}")
+        return
+    print(f"{len(found['missing'])} transported fact(s) with no note on their commit")
+    if found["missing"]:
+        print(remedy)
+
+
 def _cmd_status(project_dir: Path) -> int:
     path = store_path(project_dir)
     if path is None:
@@ -1609,6 +1643,7 @@ def _cmd_status(project_dir: Path) -> int:
         print(size_line)
     trees = distinct_trees(result["facts"])
     print(f"trees referenced: {len(trees)}")
+    _print_note_transport(project_dir, path, result)
     # Only COVERAGE-BEARING kinds belong in the wasted-cost sentence. A
     # `guard-refusal` recorded from a disposable worktree covers no branch
     # either, but saying "the review cost was spent" of it is exactly backwards

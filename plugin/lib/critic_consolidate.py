@@ -5560,15 +5560,17 @@ def tree_changed_since_dispatch(
     return ("changed", paths) if paths else ("unchanged", [])
 
 
-def _attach_note(project_dir: Path, appended: dict, anchor: "str | None") -> None:
-    """Put a just-appended fact on the notes transport (``evidence_notes``).
+def _attach_note(project_dir: Path, envelope: object, anchor: "str | None") -> None:
+    """Put a stored fact on the notes transport (``evidence_notes``) — a fact
+    just appended, or one a replayed dispatch found already stored, since only
+    the retry can repair an attach the first attempt failed. ``attach`` is a
+    no-op when the anchor's note already holds the fact.
 
     Advice, never authority: the fact is already in this clone's store, which
     is what every gate here reads, so a note that cannot be written costs only
     its reach to other clones. That is said on stderr and consolidation goes
-    on. A ``skipped`` attach (a kind that stays local, an anchor that is no
-    commit id) is silent — nothing failed."""
-    envelope = appended.get("envelope")
+    on; ``evidence status`` counts it and ``evidence sync`` re-attaches it. A
+    ``skipped`` or ``present`` attach is silent — nothing failed."""
     if not isinstance(envelope, dict):
         return
     outcome = evidence_notes.attach(project_dir, envelope, anchor)
@@ -5900,22 +5902,30 @@ def consolidate(
             )
             return 1
         review_anchor = evidence.review_anchor(body)
-        _attach_note(project_dir, result, review_anchor)
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
     else:
-        review_anchor = next(
-            (
-                evidence.review_anchor(f.get("body"))
-                for f in evidence.facts_of_kind(store, "review")
-                if f.get("id") == review_id
-            ),
+        stored = next(
+            (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == review_id),
             None,
         )
+        review_anchor = evidence.review_anchor(stored.get("body")) if stored else None
+        _attach_note(project_dir, stored, review_anchor)
 
-    # Resolution facts (D5) — deterministic ids so a retry appends nothing new.
+    # Resolution facts (D5) — deterministic ids so a retry appends nothing new,
+    # but still re-attaches: the retry is the only pass that can repair a note
+    # its first attempt failed to write.
     appended_resolutions = 0
     for r in resolutions:
         res_id = f"{review_id}:{r['review_id']}:{r['fid']}"
-        if evidence.has_fact(project_dir, "resolution", res_id):
+        held = next(
+            (
+                f for f in evidence.facts_of_kind(evidence.read_facts(project_dir), "resolution")
+                if f.get("id") == res_id
+            ),
+            None,
+        )
+        if held is not None:
+            _attach_note(project_dir, held, review_anchor)
             continue
         res_body = {
             "finding": {"review_id": r["review_id"], "fid": r["fid"]},
@@ -5934,7 +5944,7 @@ def consolidate(
             return 1
         # A resolution rides on the note of the review that verified it, so the
         # fix's verdict travels with the round that judged it.
-        _attach_note(project_dir, result, review_anchor)
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
         appended_resolutions += 1
 
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a

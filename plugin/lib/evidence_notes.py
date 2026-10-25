@@ -1,11 +1,14 @@
 """Evidence transport — review facts travel between clones as git notes (#1052).
 
-The evidence store (:mod:`evidence`) lives inside ``.git`` and is never pushed,
-so every clone but the one that ran a review sees no coverage. This module is
-the clone-local half of the transport: :func:`attach` writes a transported fact
-onto ``refs/notes/prawduct`` as it is appended, and :func:`ingest` appends the
-note records this clone's store does not hold yet. Moving the ref between
-clones (fetch, merge, push) is a separate step; nothing here touches a remote.
+The evidence store (:mod:`evidence`) is a file inside ``.git``, which no push
+carries; its transported facts reach other clones on ``refs/notes/prawduct``.
+This module is the clone-local half of that transport: :func:`attach` writes a
+transported fact onto the ref as it is appended (a no-op when the note already
+holds it), :func:`reconcile` attaches every fact of this branch whose note is
+missing — the repair for an attach that failed or never ran — and
+:func:`ingest` appends the note records this clone's store does not hold yet.
+Moving the ref between clones (fetch, merge, push) is :mod:`evidence_sync`'s;
+nothing here touches a remote.
 
 **The note body is store lines.** Each record is exactly the line
 :func:`evidence.envelope_line` writes — one JSON object per line — so a note *is*
@@ -40,28 +43,249 @@ NOTES_REF = "refs/notes/prawduct"
 _USAGE = "Usage: prawduct-hook evidence ingest [--all] [--json]"
 
 
+def attach(project_dir: Path, envelope: object, anchor: "str | None") -> dict:
+    """Append ``envelope``'s store line to the note on ``anchor``, unless that
+    note already holds it.
 
-
-def attach(project_dir: Path, envelope: dict, anchor: str) -> dict:
-    """Append ``envelope``'s store line to the note on ``anchor``.
-
-    Returns ``{"status": "attached"|"skipped"|"error", "reason"}``. Skipped
-    when the kind is not in :data:`evidence.TRANSPORTED_KINDS` or ``anchor`` is
-    not a full object id (it reaches git's argv, and an abbreviation means it
-    did not come from a fact). One local git call; never a network one.
+    Returns ``{"status": "attached"|"present"|"skipped"|"error", "reason"}``.
+    ``present`` when a line of the anchor's note carries the same
+    ``(kind, id)`` — so a retry, or a repair run over facts already sent, adds
+    nothing. Skipped when the kind is not in :data:`evidence.TRANSPORTED_KINDS`
+    or ``anchor`` is not a full object id (``None`` included: a fact with no
+    anchor has nowhere to travel; and an abbreviation means the value did not
+    come from a fact, while it would reach git's argv). Two local git calls,
+    the read and the append; never a network one.
     """
     kind = envelope.get("kind") if isinstance(envelope, dict) else None
     if kind not in evidence.TRANSPORTED_KINDS:
         return {"status": "skipped", "reason": f"kind {kind!r} stays in this clone's store"}
     if not gitstate.is_object_id(anchor):
         return {"status": "skipped", "reason": f"anchor {anchor!r} is not a commit id"}
+    # A failed read (no note on the anchor, no ref yet) reads as an empty note:
+    # the append below then either writes or reports the real failure.
+    rc, out, _err = evidence.run_git(project_dir, "notes", "--ref", NOTES_REF, "show", anchor)
+    if rc == 0 and (kind, envelope.get("id")) in _keys_in(out):
+        return {"status": "present", "reason": None}
+    failed = _append(project_dir, anchor, [envelope])
+    if failed is not None:
+        return {"status": "error", "reason": failed}
+    return {"status": "attached", "reason": None}
+
+
+def _append(project_dir: Path, anchor: str, envelopes: "list[dict]") -> "str | None":
+    """Append the envelopes' store lines to ``anchor``'s note in one git call;
+    ``None`` on success, else the reason."""
     rc, _out, err = evidence.run_git(
         project_dir, "notes", "--ref", NOTES_REF, "append", "-F", "-", anchor,
-        input=evidence.envelope_line(envelope),
+        input="".join(evidence.envelope_line(e) for e in envelopes),
     )
     if rc != 0:
-        return {"status": "error", "reason": f"git notes append on {anchor[:12]} failed ({err or rc})"}
-    return {"status": "attached", "reason": None}
+        return f"git notes append on {anchor[:12]} failed ({err or rc})"
+    return None
+
+
+def _keys_in(body: str) -> "set[tuple[str, str]]":
+    """The ``(kind, id)`` of every parseable record in one note body."""
+    keys: set[tuple[str, str]] = set()
+    for raw in body.splitlines():
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict) and isinstance(record.get("kind"), str) \
+                and isinstance(record.get("id"), str):
+            keys.add((record["kind"], record["id"]))
+    return keys
+
+
+def ref_present(common_dir: Path) -> "bool | None":
+    """Whether ``refs/notes/prawduct`` exists, read from the files under the
+    clone's git common dir — no subprocess, so a surface that runs on every
+    status read pays nothing for a clone that has never written a note.
+
+    The loose ref file, then ``packed-refs``. ``None`` when the clone keeps its
+    refs in a ``reftable``, whose binary format this does not read; the caller
+    asks git instead."""
+    if (common_dir / "reftable").is_dir():
+        return None
+    if (common_dir / NOTES_REF).is_file():
+        return True
+    try:
+        packed = (common_dir / "packed-refs").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    except (OSError, UnicodeDecodeError):
+        return None
+    return any(line.split(" ", 1)[-1] == NOTES_REF for line in packed.splitlines()
+               if not line.startswith(("#", "^")))
+
+
+def _branch_commits(project_dir: Path) -> dict:
+    """The bound every bounded read and repair shares: the commits in
+    ``merge_base..HEAD`` plus the merge base itself, which is where a fresh
+    branch's first dirty-tree review anchors.
+
+    ``{"status": "ok", "commits": set}``; ``{"status": "unbounded", "reason"}``
+    when no merge base resolves; ``{"status": "error", "reason"}`` when the
+    commits cannot be listed."""
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls in the gate stack
+
+    base = coverage.resolve_merge_base_tree(project_dir)
+    if base.get("status") != "ok":
+        return {"status": "unbounded", "reason": base.get("reason")}
+    merge_base = base["merge_base"]
+    rc, out, err = evidence.run_git(project_dir, "rev-list", f"{merge_base}..HEAD")
+    if rc != 0:
+        return {"status": "error", "reason": f"cannot list the branch's commits ({err or rc})"}
+    return {"status": "ok", "commits": set(out.split()) | {merge_base}}
+
+
+def _read_notes(project_dir: Path, in_range: "set[str] | None") -> dict:
+    """Every note on a commit in ``in_range`` (every note when ``None``), read
+    with one listing and one ``cat-file --batch``.
+
+    ``{"status": "ok", "notes": [(commit, body), ...]}`` or
+    ``{"status": "error", "reason", "commits"}`` (``commits``: how many notes
+    the failed read was for)."""
+    rc, out, err = evidence.run_git(project_dir, "notes", "--ref", NOTES_REF, "list")
+    if rc != 0:
+        return {"status": "error", "commits": 0, "reason": f"cannot list {NOTES_REF} ({err or rc})"}
+    pairs: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) != 2 or not all(gitstate.is_object_id(p) for p in parts):
+            return {"status": "error", "commits": 0, "reason": f"unreadable notes listing line {line!r}"}
+        blob, commit = parts
+        if in_range is None or commit in in_range:
+            pairs.append((blob, commit))
+    if not pairs:
+        return {"status": "ok", "notes": []}
+    blobs = [blob for blob, _commit in pairs]
+    rc, out, err = evidence.run_git(
+        project_dir, "cat-file", "--batch", input="\n".join(blobs) + "\n", strip=False
+    )
+    if rc != 0:
+        return {"status": "error", "commits": len(blobs), "reason": f"cannot read the notes ({err or rc})"}
+    bodies = _split_batch(out, blobs)
+    if bodies is None:
+        return {"status": "error", "commits": len(blobs),
+                "reason": "the notes batch read was not framed as asked"}
+    return {"status": "ok", "notes": [(commit, body) for (_b, commit), body in zip(pairs, bodies)]}
+
+
+def unattached(project_dir: Path, *, known=None) -> dict:
+    """This branch's transported facts whose note does not hold them.
+
+    The check that sits outside the flow that writes notes: built from the
+    store, which holds every fact whatever happened to its attach, and compared
+    against the notes as they stand. Returns
+    ``{"status": "ok", "missing": [{"anchor", "envelope"}, ...], "reason": None}``,
+    ``{"status": "unbounded", "missing": [], "reason"}`` when no merge base
+    resolves, or ``{"status": "error", "missing": [], "reason"}``.
+
+    A fact is this branch's when its anchor is in the bound :func:`ingest`
+    reads. The anchor is the writer's: a review's :func:`evidence.review_anchor`;
+    a resolution's ``verified_by`` review's anchor (a resolution whose review
+    is not in the store has none). A ``chunk-imported`` fact does not record
+    the HEAD it was attached on, so it counts as this branch's when its
+    ``actor.branch`` is the checked-out branch, as missing only when no note in
+    the bound holds it, and is re-attached on HEAD — a descendant of the commit
+    it was written at, so the same branch carries it.
+
+    ``known`` is a :func:`evidence.read_facts` result; omitted, the store is
+    read once. Schema-ahead records are not re-sent: this reader cannot vouch
+    for their anchor.
+    """
+    if known is None:
+        known = evidence.read_facts(project_dir)
+    if known.get("status") == "error":
+        return {"status": "error", "missing": [],
+                "reason": f"the store cannot be read ({known.get('reason')})"}
+    facts = [f for f in known.get("facts", []) if f.get("kind") in evidence.TRANSPORTED_KINDS]
+    if not facts:
+        return {"status": "ok", "missing": [], "reason": None}
+
+    bound = _branch_commits(project_dir)
+    if bound["status"] != "ok":
+        return {"status": bound["status"], "missing": [],
+                "reason": f"no branch range to bound the check ({bound['reason']})"}
+    commits = bound["commits"]
+
+    anchors = {
+        f["id"]: evidence.review_anchor(f.get("body"))
+        for f in facts if f["kind"] == "review"
+    }
+    head = branch = None
+    candidates: list[tuple[str | None, dict]] = []  # (anchor or None for "any note", fact)
+    for fact in facts:
+        body = fact.get("body") if isinstance(fact.get("body"), dict) else {}
+        if fact["kind"] == "review":
+            anchor = anchors.get(fact["id"])
+        elif fact["kind"] == "resolution":
+            anchor = anchors.get(body.get("verified_by"))
+        else:
+            if head is None:
+                rc, out, err = evidence.run_git(
+                    project_dir, "rev-parse", "HEAD", "--abbrev-ref", "HEAD"
+                )
+                lines = out.splitlines() if rc == 0 else []
+                if len(lines) != 2:
+                    return {"status": "error", "missing": [],
+                            "reason": f"cannot read HEAD ({err or rc})"}
+                head, branch = lines
+            actor = fact.get("actor") if isinstance(fact.get("actor"), dict) else {}
+            if actor.get("branch") == branch:
+                candidates.append((None, fact))
+            continue
+        if anchor in commits:
+            candidates.append((anchor, fact))
+    if not candidates:
+        return {"status": "ok", "missing": [], "reason": None}
+
+    held: dict[str, set[tuple[str, str]]] = {}
+    rc, _out, _err = evidence.run_git(project_dir, "rev-parse", "-q", "--verify", NOTES_REF)
+    if rc == 0:
+        read = _read_notes(project_dir, commits)
+        if read["status"] != "ok":
+            return {"status": "error", "missing": [], "reason": read["reason"]}
+        for commit, body in read["notes"]:
+            held[commit] = _keys_in(body)
+    anywhere = set().union(*held.values()) if held else set()
+
+    missing = []
+    for anchor, fact in candidates:
+        key = (fact["kind"], fact["id"])
+        if anchor is None:
+            if key not in anywhere:
+                missing.append({"anchor": head, "envelope": fact})
+        elif key not in held.get(anchor, set()):
+            missing.append({"anchor": anchor, "envelope": fact})
+    return {"status": "ok", "missing": missing, "reason": None}
+
+
+def reconcile(project_dir: Path, *, known=None) -> dict:
+    """Attach every fact :func:`unattached` finds, one append per anchor.
+
+    Returns ``{"status": "ok"|"unbounded"|"error", "attached": int,
+    "missing": int, "reason"}``: ``missing`` is what was found, ``attached``
+    what was written before any failure. Local only; :mod:`evidence_sync` runs
+    it before a push so a fact whose note was never written still travels.
+    """
+    found = unattached(project_dir, known=known)
+    missing = found["missing"]
+    if found["status"] != "ok":
+        return {"status": found["status"], "attached": 0, "missing": 0, "reason": found["reason"]}
+    by_anchor: dict[str, list[dict]] = {}
+    for item in missing:
+        by_anchor.setdefault(item["anchor"], []).append(item["envelope"])
+    attached = 0
+    for anchor, envelopes in by_anchor.items():
+        failed = _append(project_dir, anchor, envelopes)
+        if failed is not None:
+            return {"status": "error", "attached": attached, "missing": len(missing),
+                    "reason": f"{failed}; {attached} of {len(missing)} attached before it"}
+        attached += len(envelopes)
+    return {"status": "ok", "attached": attached, "missing": len(missing), "reason": None}
 
 
 def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
@@ -93,50 +317,31 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
 
     in_range: "set[str] | None" = None
     if bound:
-        from . import coverage  # noqa: PLC0415 — lazy; coverage pulls in the gate stack
-
-        base = coverage.resolve_merge_base_tree(project_dir)
-        if base.get("status") != "ok":
+        branch = _branch_commits(project_dir)
+        if branch["status"] == "unbounded":
             return _result(
                 "ok",
-                reason=f"no branch range to bound the read ({base.get('reason')}); "
+                reason=f"no branch range to bound the read ({branch['reason']}); "
                 "`evidence ingest --all` reads every note",
             )
-        merge_base = base["merge_base"]
-        rc, out, err = evidence.run_git(project_dir, "rev-list", f"{merge_base}..HEAD")
-        if rc != 0:
-            return _result("error", reason=f"cannot list the branch's commits ({err or rc})")
-        in_range = set(out.split()) | {merge_base}
+        if branch["status"] != "ok":
+            return _result("error", reason=branch["reason"])
+        in_range = branch["commits"]
 
-    rc, out, err = evidence.run_git(project_dir, "notes", "--ref", NOTES_REF, "list")
-    if rc != 0:
-        return _result("error", reason=f"cannot list {NOTES_REF} ({err or rc})")
-    blobs: list[str] = []
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) != 2 or not all(gitstate.is_object_id(p) for p in parts):
-            return _result("error", reason=f"unreadable notes listing line {line!r}")
-        blob, commit = parts
-        if in_range is None or commit in in_range:
-            blobs.append(blob)
-    if not blobs:
+    read = _read_notes(project_dir, in_range)
+    if read["status"] != "ok":
+        return _result("error", commits=read["commits"], reason=read["reason"])
+    if not read["notes"]:
         return _result("ok", reason=None)
-
-    rc, out, err = evidence.run_git(
-        project_dir, "cat-file", "--batch", input="\n".join(blobs) + "\n", strip=False
-    )
-    if rc != 0:
-        return _result("error", commits=len(blobs), reason=f"cannot read the notes ({err or rc})")
-    bodies = _split_batch(out, blobs)
-    if bodies is None:
-        return _result("error", commits=len(blobs), reason="the notes batch read was not framed as asked")
+    bodies = [body for _commit, body in read["notes"]]
+    annotated = len(bodies)
 
     records, skipped = _parse(bodies)
     if known is None:
         known = evidence.read_facts(project_dir)
     if known.get("status") == "error":
         return _result(
-            "error", seen=len(records), commits=len(blobs),
+            "error", seen=len(records), commits=annotated,
             reason=f"the store cannot be read to dedupe against ({known.get('reason')})",
         )
     held = {(f.get("kind"), f.get("id")) for f in known.get("facts", [])}
@@ -150,13 +355,13 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
         written = evidence.append_envelope(project_dir, record)
         if written.get("status") != "appended":
             return _result(
-                "error", appended=appended, seen=len(records), commits=len(blobs),
+                "error", appended=appended, seen=len(records), commits=annotated,
                 reason=f"store append failed after {appended} record(s) ({written.get('reason')})",
             )
         held.add(key)
         appended += 1
     return _result(
-        "ok", appended=appended, seen=len(records), commits=len(blobs),
+        "ok", appended=appended, seen=len(records), commits=annotated,
         reason="; ".join(skipped) or None,
     )
 

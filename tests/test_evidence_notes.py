@@ -746,3 +746,171 @@ class TestImportedFactsTravel:
         imported = [f for f in evidence.read_facts(repo)["facts"] if f["kind"] == "chunk-imported"]
         assert [f["body"]["chunk"] for f in imported] == ["01"]
         assert _note_records(repo, head) == [_line_of(repo, "chunk-imported", imported[0]["id"])]
+
+
+# ---------------------------------------------------------------------------
+# Idempotent attach and reconciliation — a fact whose note was never written
+# is findable and re-sendable from the clone that holds it
+# ---------------------------------------------------------------------------
+
+
+def _review_on(repo: Path, fact_id: str, anchor: "str | None", **body) -> dict:
+    """A review fact appended to the store WITHOUT its note — the state a
+    consolidation leaves when it appends and then dies, or its attach errors."""
+    appended = evidence.append_fact(repo, "review", fact_id, {"head_commit": anchor, **body})
+    assert appended["status"] == "appended", appended
+    return appended["envelope"]
+
+
+def _status_line(repo: Path) -> "str | None":
+    proc = _run_hook(repo, "evidence", "status")
+    assert proc.returncode == 0, proc.stderr
+    hits = [ln for ln in proc.stdout.splitlines() if "with no note on their commit" in ln]
+    assert len(hits) <= 1, proc.stdout
+    return hits[0] if hits else None
+
+
+class TestAttachIsIdempotent:
+    def test_two_attaches_of_one_fact_leave_one_line(self, repo):
+        head = _git(repo, "rev-parse", "HEAD")
+        envelope = _review_on(repo, "r-1", head)
+        assert evidence_notes.attach(repo, envelope, head)["status"] == "attached"
+        second = evidence_notes.attach(repo, envelope, head)
+        assert second["status"] == "present", second
+        assert _note_records(repo, head) == [_line_of(repo, "review", "r-1")]
+
+    def test_presence_is_judged_by_kind_and_id_among_the_notes_other_lines(self, repo):
+        head = _git(repo, "rev-parse", "HEAD")
+        one = _review_on(repo, "r-1", head)
+        two = _review_on(repo, "r-2", head)
+        assert evidence_notes.attach(repo, one, head)["status"] == "attached"
+        # A different id on the same anchor is not "present".
+        assert evidence_notes.attach(repo, two, head)["status"] == "attached"
+        # The same id under another transported kind is a different fact.
+        same_id = _envelope("resolution", "r-1", {"verified_by": "r-1"})
+        assert evidence_notes.attach(repo, same_id, head)["status"] == "attached"
+        assert evidence_notes.attach(repo, one, head)["status"] == "present"
+        assert len(_note_records(repo, head)) == 3
+
+
+class TestReconcile:
+    def test_a_stored_fact_whose_note_is_missing_is_attached_once(self, repo):
+        c1 = _commit(repo, "src/app.py", "x = 1\n", "work")
+        _review_on(repo, "r-lost", c1)
+        assert _annotated(repo) == set()
+
+        first = evidence_notes.reconcile(repo)
+        assert (first["status"], first["attached"]) == ("ok", 1), first
+        assert _note_records(repo, c1) == [_line_of(repo, "review", "r-lost")]
+
+        second = evidence_notes.reconcile(repo)
+        assert (second["status"], second["attached"]) == ("ok", 0), second
+        assert _note_records(repo, c1) == [_line_of(repo, "review", "r-lost")]
+
+    def test_each_kind_goes_to_its_own_anchor(self, repo):
+        """A dirty-tree review on its dispatch commit, a resolution on its
+        verifying review's anchor, a chunk-imported fact written on this branch
+        on HEAD — the anchors the writers use."""
+        c1 = _commit(repo, "src/app.py", "x = 1\n", "work")
+        c2 = _commit(repo, "src/app.py", "x = 2\n", "fix")
+        _review_on(repo, "r-dirty", None, dispatch_commit=c1)
+        _review_on(repo, "r-verify", c2)
+        assert evidence.append_fact(repo, "resolution", "r-verify:r-dirty:R-1",
+                                    {"verified_by": "r-verify"})["status"] == "appended"
+        assert evidence.append_fact(repo, "chunk-imported", "ci-1",
+                                    {"scope": "unit", "chunk": "01"})["status"] == "appended"
+
+        result = evidence_notes.reconcile(repo)
+        assert (result["status"], result["attached"]) == ("ok", 4), result
+        assert _note_records(repo, c1) == [_line_of(repo, "review", "r-dirty")]
+        assert _note_records(repo, c2) == [
+            _line_of(repo, "review", "r-verify"),
+            _line_of(repo, "resolution", "r-verify:r-dirty:R-1"),
+            _line_of(repo, "chunk-imported", "ci-1"),
+        ]
+        assert evidence_notes.reconcile(repo)["attached"] == 0
+
+    def test_a_chunk_imported_fact_already_on_a_branch_note_is_not_re_sent(self, repo):
+        c1 = _commit(repo, "src/app.py", "x = 1\n", "work")
+        imported = evidence.append_fact(repo, "chunk-imported", "ci-1", {"scope": "unit", "chunk": "01"})
+        assert evidence_notes.attach(repo, imported["envelope"], c1)["status"] == "attached"
+        c2 = _commit(repo, "src/app.py", "x = 2\n", "later")
+        assert evidence_notes.reconcile(repo)["attached"] == 0
+        assert _note(repo, c2) is None
+
+    def test_facts_outside_the_branch_are_left_alone(self, repo):
+        """The bound is the one ingest reads — `merge_base..HEAD` and the merge
+        base. A review anchored on another branch's commit, and an import
+        written on another branch, are not this branch's to send."""
+        _git(repo, "checkout", "-q", "main")
+        elsewhere = _commit(repo, "other.txt", "o\n", "main moves on")
+        assert evidence.append_fact(repo, "chunk-imported", "ci-main",
+                                    {"scope": "other", "chunk": "01"})["status"] == "appended"
+        _git(repo, "checkout", "-q", "feature/unit")
+        _review_on(repo, "r-there", elsewhere)
+        merge_base = _git(repo, "merge-base", "main", "HEAD")
+        _review_on(repo, "r-base", merge_base)  # control: the merge base is inside
+
+        result = evidence_notes.reconcile(repo)
+        assert (result["status"], result["attached"]) == ("ok", 1), result
+        assert _annotated(repo) == {merge_base}
+        assert _note_records(repo, merge_base) == [_line_of(repo, "review", "r-base")]
+
+    def test_a_note_that_cannot_be_written_is_an_error_naming_it(self, repo):
+        head = _git(repo, "rev-parse", "HEAD")
+        _review_on(repo, "r-1", head)
+        _block_notes_ref(repo)
+        result = evidence_notes.reconcile(repo)
+        assert result["status"] == "error"
+        assert result["attached"] == 0 and result["reason"]
+
+
+class TestStatusNamesUnsentFacts:
+    def test_the_line_counts_a_missing_note_before_reconcile_and_zero_after(self, repo):
+        c1 = _commit(repo, "src/app.py", "x = 1\n", "work")
+        envelope = _review_on(repo, "r-sent", c1)
+        assert evidence_notes.attach(repo, envelope, c1)["status"] == "attached"
+        _review_on(repo, "r-lost", c1)
+        assert _status_line(repo) == "1 transported fact(s) with no note on their commit"
+        assert evidence_notes.reconcile(repo)["attached"] == 1
+        assert _status_line(repo) == "0 transported fact(s) with no note on their commit"
+
+    def test_with_no_notes_ref_the_store_count_is_named_instead(self, repo):
+        head = _git(repo, "rev-parse", "HEAD")
+        _review_on(repo, "r-1", head)
+        proc = _run_hook(repo, "evidence", "status")
+        assert proc.returncode == 0, proc.stderr
+        assert "with no note on their commit" not in proc.stdout
+        assert ("notes: no refs/notes/prawduct in this clone — none of the store's "
+                "1 transported fact(s) is on a note") in proc.stdout
+
+    def test_no_notes_ref_adds_no_subprocess_to_status(self, repo, monkeypatch, capsys):
+        head = _git(repo, "rev-parse", "HEAD")
+        _review_on(repo, "r-1", head)
+        calls = TestIngestCost()._spy(monkeypatch)
+        assert evidence.evidence_cmd(repo, ["status"]) == 0
+        assert calls, "the spy saw nothing — it would pass any implementation"
+        # Exactly what `status` cost before notes existed: locating the store.
+        assert {tuple(c) for c in calls} == {("git", "rev-parse", "--git-common-dir")}, calls
+        assert "none of the store's 1 transported fact(s)" in capsys.readouterr().out
+
+    def test_the_spy_sees_the_count_work_once_a_ref_exists(self, repo, monkeypatch, capsys):
+        """Positive control for the cost pin: the same instrument records the
+        notes read when there is a ref to read."""
+        head = _git(repo, "rev-parse", "HEAD")
+        evidence_notes.attach(repo, _review_on(repo, "r-1", head), head)
+        calls = TestIngestCost()._spy(monkeypatch)
+        assert evidence.evidence_cmd(repo, ["status"]) == 0
+        assert ["git", "notes", "--ref", NOTES_REF, "list"] in calls
+        assert "0 transported fact(s) with no note on their commit" in capsys.readouterr().out
+
+    def test_a_packed_notes_ref_is_seen(self, repo, capsys):
+        """`git pack-refs` moves the ref out of its loose file; the presence
+        check reads `packed-refs` too, or a packed clone reads as having none."""
+        head = _git(repo, "rev-parse", "HEAD")
+        evidence_notes.attach(repo, _review_on(repo, "r-1", head), head)
+        _review_on(repo, "r-2", head)
+        _git(repo, "pack-refs", "--all")
+        assert not (repo / ".git" / "refs" / "notes" / "prawduct").exists()
+        assert evidence.evidence_cmd(repo, ["status"]) == 0
+        assert "1 transported fact(s) with no note on their commit" in capsys.readouterr().out
