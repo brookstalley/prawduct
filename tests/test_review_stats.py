@@ -1237,6 +1237,19 @@ class TestDispositionJoin:
         assert (sliced["joined_reviews"], sliced["unjoined_reviews"]) == (1, 0)
         assert (sliced["answered"], sliced["acted_on_rate"]) == (1, 1.0)
 
+    def test_a_joined_finding_with_no_fid_is_other_not_an_outcome(self, tmp_path):
+        # Without an id it cannot be looked up; `stats` counts it as `other`
+        # too. Its fixed sibling is the control that the review did join.
+        repo = _git_repo(tmp_path)
+        _store_review(repo, "r1", [_bw("R-1")])
+        _store_resolution(repo, "r1", "R-1")
+        no_fid = {k: v for k, v in _bw("X").items() if k != "fid"}
+        _write_ledger(repo, [_event(fact_id="r1", findings=[_bw("R-1"), no_fid])])
+        block = _report(repo)["overall"]["dispositions"]
+        assert block["joined_reviews"] == 1
+        assert (block["by_outcome"]["fixed"], block["by_outcome"]["other"]) == (1, 1)
+        assert block["answered"] == 1
+
     def test_every_grouping_carries_the_block(self, tmp_path):
         repo = _git_repo(tmp_path)
         _store_review(repo, "r1", [_bw("R-1")])

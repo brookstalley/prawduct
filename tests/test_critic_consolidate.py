@@ -4659,6 +4659,46 @@ class TestStageReachesEveryReader:
         assert by_stage["inner"]["observations"] == 1
         assert "boundary" not in by_stage
 
+    def test_the_ledger_event_joins_its_fact_so_review_stats_reads_the_disposition(self, tmp_path):
+        """The join key, end to end through the real writers. `review-stats`
+        matches a ledger event to its stored review by `review.fact_id` and a
+        finding by `fid`; every unit test hand-writes both, so a hop that
+        stopped carrying either would turn every review unjoined, silently."""
+        repo = self._dirty(tmp_path)
+        begin = _run_begin(repo, "--mode", "chunk", "--scope", "demo")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = self._manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[
+            {"name": "Missing test", "goal": "Nothing Is Missing", "severity": "warning",
+             "recommendation": "Add one", "files": ["a.py"]},
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+        fact = _store_facts(repo, "review")[0]
+        (finding,) = fact["body"]["findings"]
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
+                  if '"review.critic"' in ln]
+        assert len(events) == 1
+        assert events[0]["review"]["fact_id"] == fact["id"]
+        assert [f.get("fid") for f in events[0]["review"]["findings"]] == [finding["fid"]]
+
+        env = {**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
+        filed = subprocess.run(
+            ["python3", str(HOOK), "disposition", fact["id"], finding["fid"], "--file", "#1"],
+            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        )
+        assert filed.returncode == 0, filed.stderr
+        stats = subprocess.run(
+            ["python3", str(HOOK), "review-stats", "--json"],
+            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        )
+        assert stats.returncode == 0, stats.stderr
+        block = json.loads(stats.stdout)["overall"]["dispositions"]
+        assert (block["status"], block["joined_reviews"], block["unjoined_reviews"]) == (
+            "available", 1, 0)
+        assert block["by_outcome"]["filed"] == 1
+
     def test_the_fact_body_and_cache_carry_a_null_stage_for_an_old_manifest(self):
         body = cc.build_fact_body(_manifest_dict(), [_partial("reviewer", "abc123")])
         assert "stage" in body and body["stage"] is None
