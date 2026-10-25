@@ -177,6 +177,25 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   routed to B. The C/D phrase seam (`inferred as the plan's first open chunk`) closed at merge:
   the two-surface test passes on the integrated tree. D's ten forward-true sentences are the
   checklist Chunk 06 verifies at integration before the cumulative.
+- Chunk 03 as built (delegate B, 2026-10-25, merged fd4ce72d), accepted: the hook passes
+  `chunks=[ids in order, de-duplicated]` to `begin_review` when `--chunks`/`--chunk` is given (they
+  mix and repeat) and omits the keyword otherwise — never `None`/`[]`, never `chunk=`.
+  `import-status` picks what to write from `chunk_states` (done, imported, no fact yet), so it
+  holds no box-reading code; it writes every fact first and removes the block only after all
+  succeed, and every block refusal precedes any write. Refusal codes recorded in api-contract.md
+  at Chunk 06: `import-status` 1 `refused: archived-plan | no-scope | store-unreadable |
+  status-block-ambiguous | status-block-undelimited | status-block-trailing-comment |
+  fact-append-failed | plan-write-failed`, 2 usage/not-a-plan; `check-claims` 0/1/3 (git cannot
+  list branches)/2; `critic-begin` 1 on an empty chunk id; `test-evidence record` from a scratch
+  tree refuses `--no-rerun` and `--from-counts` with 2 (neither records a fact). `test-status`
+  prints the verdict first, then one line per scratch worktree's newest narrowed run (≤10), exit
+  unchanged. Two intended mutation survivors named: `dg2-degraded` (no test drives a degraded
+  narrowed run) and the write-side `newline=""` (inert on POSIX; read side killed). Carried to
+  06: `check-claims` reads the private `work_unit._live_declarations` — give it a public name;
+  the check's first live run found both retained plans (`work-unit-binding`, `build-plan.md`)
+  claiming deleted branches, which is D-BR5's retention working, so B adds a third outcome
+  `release-pending` (branch gone AND the scope's fragment pending → not a miss, exit 0) before
+  integration.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
