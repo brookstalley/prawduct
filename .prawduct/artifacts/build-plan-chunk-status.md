@@ -254,6 +254,36 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   by subject → exit 2; one → exit 0). `covered_frontier` and `working_tree_interval_base` take
   `read=`. Six of seven mutants killed; the intended survivor (extension path dropping `read=`
   against the one-read class) is killed by its own new pin.
+- Chunk 06 code half as built (integration delegate, merged 34a02f90): every § 8 name on the
+  deletion list is gone from `plugin/` except the legacy pointer/default routes (MG3's window, not
+  this wave — they live on as `core.fallback_plan_path` and `work_unit`'s legacy step);
+  `_completed_chunk_ids`' "`new` exemption expires once the chunk is done" behaviour re-pointed at
+  `chunk_states` (a non-chunk Status entry no longer keeps a done chunk's exemption alive — the old
+  reader reasoned by roster position, renegotiated in the open); `has_build_plan_shape` kept
+  box-free (dropping it would stop recognising `waiver-pragma-plan.md`); briefing's Context block
+  moved to `plan_index.status_context`, the chunk-title lookup to `plan_status.chunk_title`;
+  `plan_status.render_table` serves `plan status`, the handoff and the PR payload (pinned
+  identical on one fixture); `plan_status.built_not_done_notice` replaces the unticked notice at
+  both hook sites; `work_unit.live_declarations` public. The extended pin scans 48 modules plus
+  the hook, red on a box regex planted in `gates.py`, a walker planted in `briefing.py` and a regex
+  in the hook outside the import-status writer; known gap written into the test: a literal
+  `startswith("- [x]")` or a concatenated regex passes. Diff +940/−1650; `plugin/` +281/−974.
+- Review cadence, re-settled by the coordinator 2026-10-25: 02–05's separate `chunk` review is
+  folded into Chunk 06's `cumulative` (one review over 02–06 instead of two), because 06's code
+  landed before the chunk review was dispatched and a cumulative is a strict superset — the
+  owner's review-run-count P0. The fact names `--chunks 02,03,04,05,06` (this wave's ST8, used on
+  itself). Consequence for the migration below: 02–05 were never ticked, so they import as nothing
+  and stay `open` until the cumulative's fact certifies them — the design working as stated.
+- **Chunk 06 verified live, 2026-10-25T14:38Z** (`plan import-status
+  .prawduct/artifacts/build-plan-chunk-status.md --remove-block` preview → "would write 1
+  chunk-imported fact (chunk 01); would remove the `## Status` block (lines 297–309)", exit 0;
+  `--apply --remove-block` → "wrote 1 … removed the block", exit 0; `plan status` → `5 of 6
+  open`, 01 `done` certified by `chunk-imported-20261025T143853Z-2122395d` tagged `imported,
+  built`, 02–06 `open` tagged `built`; `grep -c '^## Status'` → 0; `work_unit.resolve` → `bound
+  chunk-status`, `gate_arms` → True with no box anywhere; `infer-critic-mode` → `chunk` (mid-plan,
+  five open — the cumulative is passed explicitly, as the plan always intended for 06). The suite
+  recorded 10,432 passed / 0 failed / 17 skipped over the 01–05 tree (2026-10-25T14:37Z); the
+  06 tree's run is recorded before the cumulative.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
@@ -293,19 +323,6 @@ before Chunk 02 is briefed; if it blocks, the kind is added in a schema bump, no
 - `api-contract.md` additive-first; exit codes are the contract — **conforms**; new subcommand
   `plan status`, new flags `--chunks`, `--remove-block`, new keys; `critic-begin` refuses an
   unknown chunk id with a documented code; nothing repurposed.
-
-## Status
-
-<!-- Governed by the OLD rule until Chunk 06: tick when the chunk is built, committed and reviewed
-     on the branch. 06's import converts these boxes to `chunk-imported` facts and removes this
-     block — that conversion is the chunk's live verification. -->
-
-- [x] Chunk 01: `plan_status` — the one walker, and `plan status` renders it
-- [ ] Chunk 02: review facts name their chunks (ST8); inference reads `current_chunks`
-- [ ] Chunk 03: hook — gate arms on binding (ST2/ST7), doctor import (MG2), BR3 check, DG2 admission
-- [ ] Chunk 04: lib readers take `plan_status`; the `repo_rel` fix
-- [ ] Chunk 05: one home for the rule — prose, template, digest, DV3 amendment
-- [ ] Chunk 06: integration — delete the walkers, extend the pin, migrate this plan, measure NF3, cumulative review
 
 ## Build Chunks
 
