@@ -7919,6 +7919,31 @@ def _remote_branch_names(project_dir: Path) -> "set[str] | None":
     return names
 
 
+def _release_pending_records(project_dir: Path) -> "dict[str, str]":
+    """scope -> ``"fragment"`` or ``"change-log entry"`` for every scope whose
+    change record is still pending release, by ``release_readiness.pending_scopes``
+    (the one owner of that union). A set it cannot read, or refuses as
+    untrustworthy, says so on stderr. A missing branch then stays a miss:
+    an exemption that cannot be shown does not exempt."""
+    _plan_status()  # seeds sys.path
+    from lib import release_readiness  # noqa: PLC0415 — lazy; only a missing branch pays for it
+
+    pending = release_readiness.pending_scopes(project_dir)
+    if pending.read_error is not None or pending.refusals:
+        why = pending.read_error or "; ".join(pending.refusals)
+        print(
+            f"plan check-claims: the release-pending change records could not be "
+            f"trusted ({why}); a missing branch is reported as missing",
+            file=sys.stderr,
+        )
+        if pending.read_error is not None:
+            return {}
+    records = {scope: "change-log entry" for scope in pending.legacy_scopes}
+    for scope in pending.fragment_scopes:
+        records.setdefault(scope, "fragment")
+    return records
+
+
 def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
     """``plan check-claims [--json]`` — BR3: every claim names a real branch.
 
@@ -7926,15 +7951,28 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
     that declares ``branch:`` or ``working-branches:`` is read through the
     binding's own reader (``work_unit``), and each named branch must exist
     locally (``refs/heads/*``) or on a remote (``refs/remotes/<remote>/*``).
-    Each miss is one line, ``<plan>: <field> <branch> does not exist``; a plan
-    whose claim cannot be read is one line too — an unreadable claim is not a
-    resolving one.
+    Each claim has one of three outcomes:
 
-    Exit 0 every claim resolves (or none is declared); 1 any does not, every
-    one listed; :data:`PLAN_CHECK_CLAIMS_UNREADABLE_EXIT` (3) when git cannot
-    list branches — "could not ask" is never "missing"; 2 usage error.
-    ``--json``: ``{"ok", "claims": [{plan, field, branch, where}], "unreadable":
-    [{plan, reason}]}`` where ``where`` is ``local``, ``remote`` or null.
+    - ``exists`` — the branch is there; nothing is printed for it.
+    - ``release-pending`` — the branch is gone, but the plan's scope still has a
+      pending change record (a fragment, or an untagged change-log entry in a
+      single-file-log repo; ``release_readiness.pending_scopes`` owns that set).
+      That is gitflow retention working (D-BR5): a merged child's plan rides
+      along inert until the release. One line, ``<plan>: <field> claims
+      <branch>, which no longer exists; its <record> is pending release —
+      archive at the release``, and it does not fail the check.
+    - ``missing`` — gone with no pending record: ``<plan>: <field> <branch> does
+      not exist``.
+
+    A plan whose claim cannot be read is a line too; an unreadable claim is not
+    a resolving one.
+
+    Exit 0 when no claim is ``missing`` and none is unreadable (release-pending
+    ones included); 1 otherwise, every one listed;
+    :data:`PLAN_CHECK_CLAIMS_UNREADABLE_EXIT` (3) when git cannot list branches
+    — "could not ask" is never "missing"; 2 usage error. ``--json``: ``{"ok",
+    "claims": [{plan, field, branch, where, outcome}], "unreadable": [{plan,
+    reason}]}``, where ``where`` is ``local``, ``remote`` or null.
     """
     parsed = _parse_plan_args("check-claims", argv, frozenset(), frozenset({"--json"}))
     if isinstance(parsed, int):
@@ -7956,6 +7994,7 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return PLAN_CHECK_CLAIMS_UNREADABLE_EXIT
+    pending: "dict[str, str] | None" = None  # scope -> the record holding it, read on a first miss
     claims = []
     for decl in sorted(declarations, key=lambda d: str(d.path)):
         named = ([("branch", decl.branch)] if decl.branch else []) + [
@@ -7963,27 +8002,42 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
         ]
         for field, branch in named:
             where = "local" if branch in local else "remote" if branch in remote else None
+            record = None
+            if where is None:
+                if pending is None:
+                    pending = _release_pending_records(project_dir)
+                record = pending.get(decl.scope) if decl.scope else None
             claims.append({
                 "plan": _plan_rel(project_dir, decl.path), "field": field,
                 "branch": branch, "where": where,
+                "outcome": "exists" if where else "release-pending" if record else "missing",
+                **({"_record": record} if record else {}),
             })
     faults = [
         {"plan": _plan_rel(project_dir, u.path), "reason": u.what}
         for u in sorted(unreadable, key=lambda u: str(u.path))
     ]
-    misses = [c for c in claims if c["where"] is None]
+    misses = [c for c in claims if c["outcome"] == "missing"]
+    retained = [c for c in claims if c["outcome"] == "release-pending"]
+    records = {id(c): c.pop("_record") for c in retained}
     ok = not misses and not faults
     if "--json" in seen:
         print(json.dumps({"ok": ok, "claims": claims, "unreadable": faults}, sort_keys=True))
     else:
         for c in misses:
             print(f"{c['plan']}: {c['field']} {c['branch']} does not exist")
+        for c in retained:
+            print(
+                f"{c['plan']}: {c['field']} claims {c['branch']}, which no longer exists; "
+                f"its {records[id(c)]} is pending release — archive at the release"
+            )
         for f in faults:
             print(f"{f['plan']}: claim unreadable — {f['reason']}")
         if ok:
             plans = len({c["plan"] for c in claims})
+            held = f" ({len(retained)} release-pending)" if retained else ""
             print(
-                f"ok: {len(claims)} claim(s) across {plans} live plan(s) name existing branches"
+                f"ok: {len(claims)} claim(s) across {plans} live plan(s) resolve{held}"
                 if claims else "ok: no live plan claims a branch"
             )
     return 0 if ok else PLAN_REFUSED_EXIT

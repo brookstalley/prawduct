@@ -103,7 +103,7 @@ def test_a_branch_only_on_a_remote_resolves(tmp_path):
     assert payload["ok"] is True
     assert payload["claims"] == [{
         "plan": ".prawduct/artifacts/build-plan-p.md", "field": "branch",
-        "branch": "feature/pushed", "where": "remote",
+        "branch": "feature/pushed", "where": "remote", "outcome": "exists",
     }]
 
 
@@ -168,3 +168,105 @@ def test_an_extra_argument_is_a_usage_error(tmp_path):
     repo = _repo(tmp_path)
     assert _run(repo, "extra").returncode == 2
     assert _run(repo, "--bogus").returncode == 2
+
+
+# ---------------------------------------------------------------------------
+# release-pending: gitflow retention, not a miss (D-BR5)
+# ---------------------------------------------------------------------------
+
+_FRAGMENT = (
+    "---\nschema: 1\ntype: feature\nscope: {scope}\ndate: 2026-10-01\n"
+    "title: Ship the thing\n---\nNarrative, naming Chunk 01.\n\n"
+    "## Consumer note\nnone: test fixture\n"
+)
+
+
+def _fragment(repo: Path, scope: str) -> None:
+    changes = repo / ".prawduct" / "changes"
+    changes.mkdir(parents=True, exist_ok=True)
+    (changes / f"{scope}.md").write_text(_FRAGMENT.format(scope=scope))
+
+
+class TestReleasePending:
+    """A merged child's plan rides along until release (D-BR5, release.md):
+    its branch is deleted, its plan stays live, and its change record is
+    still pending. That is the retention policy working, so it gets its own
+    line and does not fail the check. A missing branch with no pending record
+    is still a miss."""
+
+    def test_a_pending_fragment_makes_a_missing_branch_release_pending(self, tmp_path):
+        repo = _repo(tmp_path)
+        _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
+        _fragment(repo, "shipped")
+        result = _run(repo)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert (
+            ".prawduct/artifacts/build-plan-shipped.md: branch claims feature/merged, which no "
+            "longer exists; its fragment is pending release — archive at the release"
+        ) in result.stdout.splitlines()
+        assert "does not exist" not in result.stdout
+
+    def test_without_a_pending_record_it_stays_a_miss(self, tmp_path):
+        repo = _repo(tmp_path)
+        _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
+        _fragment(repo, "some-other-scope")
+        result = _run(repo)
+        assert result.returncode == 1, result.stdout
+        assert "branch feature/merged does not exist" in result.stdout
+        assert "pending release" not in result.stdout
+
+    def test_an_untagged_change_log_entry_counts_in_a_single_file_log_repo(self, tmp_path):
+        repo = _repo(tmp_path)
+        _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-10-01: shipped it\n<!-- prawduct: scope=shipped -->\n\nBody.\n"
+        )
+        result = _run(repo)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "its change-log entry is pending release — archive at the release" in result.stdout
+
+    def test_a_released_change_log_entry_is_not_pending(self, tmp_path):
+        repo = _repo(tmp_path)
+        _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
+        (repo / ".prawduct" / "change-log.md").write_text(
+            "# Change Log\n\n## 2026-10-01: shipped it\n<!-- prawduct: scope=shipped | release=v1.0.0 -->\n\nBody.\n"
+        )
+        result = _run(repo)
+        assert result.returncode == 1, result.stdout
+        assert "branch feature/merged does not exist" in result.stdout
+
+    def test_an_existing_branch_is_unchanged_by_a_pending_fragment(self, tmp_path):
+        repo = _repo(tmp_path)
+        _git(repo, "branch", "feature/live")
+        _plan(repo, "build-plan-live.md", "scope: live\nbranch: feature/live\n")
+        _fragment(repo, "live")
+        result = _run(repo, "--json")
+        assert result.returncode == 0
+        payload = json.loads(result.stdout)
+        assert payload["claims"] == [{
+            "plan": ".prawduct/artifacts/build-plan-live.md", "field": "branch",
+            "branch": "feature/live", "where": "local", "outcome": "exists",
+        }]
+
+    def test_json_names_the_outcome(self, tmp_path):
+        repo = _repo(tmp_path)
+        _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
+        _plan(repo, "build-plan-gone.md", "scope: gone\nbranch: feature/gone\n")
+        _fragment(repo, "shipped")
+        result = _run(repo, "--json")
+        assert result.returncode == 1
+        outcomes = {c["branch"]: c["outcome"] for c in json.loads(result.stdout)["claims"]}
+        assert outcomes == {"feature/merged": "release-pending", "feature/gone": "missing"}
+
+    def test_an_invalid_fragment_exempts_nothing(self, tmp_path):
+        """A fragment that fails validation may carry the wrong scope, so the
+        pending set refuses it, and the missing branch stays a miss."""
+        repo = _repo(tmp_path)
+        _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
+        changes = repo / ".prawduct" / "changes"
+        changes.mkdir(parents=True)
+        (changes / "shipped.md").write_text("---\nscope: shipped\n---\nNo schema.\n")
+        result = _run(repo)
+        assert result.returncode == 1, result.stdout
+        assert "branch feature/merged does not exist" in result.stdout
+        assert "could not be trusted" in result.stderr
