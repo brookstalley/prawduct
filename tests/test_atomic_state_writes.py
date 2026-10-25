@@ -162,7 +162,6 @@ class TestConvertedWriteSites:
         pr = tmp_path / ".prawduct"
         pr.mkdir()
         (pr / ".session-reflected").write_text("a reflection long enough to persist")
-        monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
         monkeypatch.setattr(briefing.gitstate, "_get_session_changed_files", lambda d: [])
         monkeypatch.setattr(briefing, "_git_session_commits", lambda d: [])
         briefing.generate_session_handoff(tmp_path)

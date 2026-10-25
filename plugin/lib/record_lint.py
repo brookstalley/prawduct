@@ -754,10 +754,10 @@ def _check_chunk_refs(
     not the plan file moved in the same diff.
 
     **Whose chunk.** ``chunk_id`` comes from the dispatch manifest. Falling back
-    to the build plan's Status is a last resort and is *reported as an
-    assumption*, because Status resolves "current" to the first unchecked box —
-    so the instant a chunk is marked ``[x]``, "current" is the next, unbuilt
-    chunk, and grading it produces a confident answer about the wrong subject.
+    to ``plan_status.current_chunks`` (the first open chunk) is a last resort and
+    is *reported as an assumption*: the instant a chunk's review is recorded,
+    "current" is the next, unbuilt chunk, and grading it produces a confident
+    answer about the wrong subject.
 
     **Whose plan.** ``scope`` comes from the same manifest and selects the plan,
     via :func:`buildplan_refs.resolve_reviewed_plan`. Without one, the plan is
@@ -827,36 +827,47 @@ def _check_chunk_refs(
 
     assumed = False
     if chunk_id is None:
-        chunk_id = buildplan_refs._current_chunk_id_from_status(project_dir, plan_path)
-        assumed = chunk_id is not None
-    if chunk_id is None:
-        # "No chunk in scope" has two causes that look identical here and are
-        # not alike. A plan whose chunks are all ticked genuinely has nothing to
-        # grade, and silence is right. A plan exposing no `### Chunk NN:`
-        # heading has nothing to grade EITHER — but because no chunk section can
-        # be located at all, which disables this check for the plan's whole life
-        # while reporting a null count that reads exactly like the healthy case.
-        # That is the wholly-silent route: unlike the other failures here it
-        # emits no `unchecked` line, so nothing downstream has a word to carry.
-        # Both conditions, and the second is what keeps a FINISHED plan quiet.
-        # "No current chunk" is also what a plan whose boxes are all ticked
-        # reports, and that is a healthy end state — grading is over, not
-        # disabled. A Status roster is the evidence that chunks were locatable
-        # at all, so only a plan with neither a roster NOR a heading is
-        # structurally ungradeable rather than simply done.
-        total, _complete = buildplan_refs._count_build_plan_chunks(
-            prawduct_dir, plan_path
+        from . import evidence, plan_status  # noqa: PLC0415 — lazy; only the chunk-less dispatch reads facts
+
+        facts = evidence.read_facts(project_dir)
+        states = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir)
+        current = plan_status.current_chunks(
+            plan_path, facts, repo_dir=project_dir, states=states
         )
-        if total == 0 and buildplan_refs.plan_has_parseable_chunk_heading(
-            plan_path
-        ) is False:
-            return [], (
-                f"chunk-ref-missing unchecked — {plan_rel} exposes no parseable "
-                "chunk heading (`### Chunk NN: Name`), so no chunk section can "
-                "be located and the deliverable check graded nothing. List items "
-                "under a `## Chunks` section match no heading pattern"
-            ), None, None
-        return [], None, None, None  # no chunk in scope — nothing declared to check
+        chunk_id = current[0] if current else None
+        assumed = chunk_id is not None
+        if chunk_id is None:
+            # "No chunk in scope" has three causes that look identical here and
+            # are not alike. A FINISHED plan (`plan_status.is_finished`: every
+            # chunk done or dropped) genuinely has nothing to grade, and silence
+            # is right — grading is over, not disabled. A plan exposing no chunk
+            # at all has nothing to grade EITHER — but because no chunk section
+            # can be located, which disables this check for the plan's whole life
+            # while reporting a null count that reads exactly like the healthy
+            # case. And a plan whose only open entries are ones `plan_status`
+            # could not read (an unreadable file, a rejected heading) is
+            # unfinished with no chunk to name. The last two say so.
+            if not states and buildplan_refs.plan_has_parseable_chunk_heading(
+                plan_path
+            ) is False:
+                return [], (
+                    f"chunk-ref-missing unchecked — {plan_rel} exposes no parseable "
+                    "chunk heading (`### Chunk NN: Name`), so no chunk section can "
+                    "be located and the deliverable check graded nothing. List items "
+                    "under a `## Chunks` section match no heading pattern"
+                ), None, None
+            if not plan_status.is_finished(
+                plan_path, facts, repo_dir=project_dir, states=states
+            ):
+                why = next(
+                    (st.reason for st in states.values() if st.synthetic and st.reason),
+                    "no open chunk could be read",
+                )
+                return [], (
+                    f"chunk-ref-missing unchecked — {plan_rel} is unfinished but names "
+                    f"no open chunk ({why}), so the deliverable check graded nothing"
+                ), None, None
+            return [], None, None, None  # finished — nothing declared to check
     refs = buildplan_refs._parse_build_plan_chunk_refs(
         prawduct_dir, chunk_id, plan_path
     )
@@ -884,9 +895,10 @@ def _check_chunk_refs(
     assumptions = []
     if assumed:
         assumptions.append(
-            f"chunk {chunk_id} was inferred from build-plan Status because the "
-            "dispatch carried no chunk — Status names the first UNCHECKED chunk, "
-            "so this may be the next chunk rather than the reviewed one"
+            f"chunk {chunk_id} was inferred as the plan's first open chunk "
+            "(`plan_status.current_chunks`) because the dispatch carried no chunk "
+            "— a chunk whose review is not yet recorded is still open, so this may "
+            "be the next chunk rather than the reviewed one"
         )
     if plan_caveat:
         assumptions.append(plan_caveat)
@@ -1533,21 +1545,31 @@ def lint_records(
     head_tree: str,
     chunk_id: "str | None" = None,
     scope: "str | None" = None,
+    *,
+    chunk_ids: "list[str] | None" = None,
 ) -> dict:
     """Run every check over the record subset of ``paths``.
 
-    Returns ``{"records", "chunk_graded", "plan_graded", "findings",
-    "unchecked", "counts"}``. ``findings`` is advisory — it never gates.
+    Returns ``{"records", "chunk_graded", "chunks_graded", "plan_graded",
+    "findings", "unchecked", "counts"}``. ``findings`` is advisory — it never gates.
+
+    ``chunk_ids`` is the set the review's fact names (``critic_consolidate``'s
+    ``chunks``, ST8 #1051): every one of them is graded, so the deliverables
+    checked are the chunks the fact will certify, not only the first.
+    ``chunks_graded`` lists each chunk graded; ``chunk_graded`` stays a single
+    id (the first) and is ``None`` unless EVERY requested chunk was graded, so
+    it and the ``chunk-ref-missing`` count stay null together. Without
+    ``chunk_ids`` the single ``chunk_id`` is graded as before.
     ``unchecked`` names each check that could not run and why, so an unrun check
     is never mistaken for a clean one; ``chunk_graded`` and ``plan_graded`` name
     whose deliverables were checked, so a zero count is never mistaken for an
     answer about a different chunk or a different plan.
 
     ``chunk_id`` should be the reviewed chunk from the dispatch manifest. It is
-    NOT inferred by default, because the build-plan Status resolves "current" to
-    the first *unchecked* box — which, the moment a chunk is marked ``[x]``, is
-    the NEXT chunk. A review of chunk 02 was silently graded against chunk 03's
-    unbuilt deliverables exactly that way.
+    NOT inferred by default, because "current" is the plan's first OPEN chunk —
+    which, the moment a chunk's review is recorded (or, before #1051, its box
+    ticked), is the NEXT chunk. A review of chunk 02 was silently graded against
+    chunk 03's unbuilt deliverables exactly that way.
 
     ``scope`` is the other half of the same manifest and selects the PLAN — see
     :func:`_check_chunk_refs`. The two used to come from different places with
@@ -1564,12 +1586,25 @@ def lint_records(
     # Chunk deliverables are checked whether or not a RECORD changed — a
     # code-only diff still has a reviewed chunk whose declared outputs must
     # exist by review time.
-    chunk_findings, chunk_gap, chunk_graded, plan_graded = _check_chunk_refs(
-        project_dir, prawduct_dir, chunk_id, scope
-    )
-    findings.extend(chunk_findings)
-    if chunk_gap:
-        unchecked.append(chunk_gap)
+    requested = [c for c in (chunk_ids or []) if c] or [chunk_id]
+    chunks_graded: list[str] = []
+    chunk_graded: "str | None" = None
+    plan_graded: "str | None" = None
+    all_graded = True
+    for wanted in requested:
+        chunk_findings, chunk_gap, graded, plan = _check_chunk_refs(
+            project_dir, prawduct_dir, wanted, scope
+        )
+        findings.extend(chunk_findings)
+        if chunk_gap:
+            unchecked.append(chunk_gap)
+        if graded is None:
+            all_graded = False
+        elif graded not in chunks_graded:
+            chunks_graded.append(graded)
+        plan_graded = plan_graded or plan
+    if all_graded and chunks_graded:
+        chunk_graded = chunks_graded[0]
     if chunk_graded is None:
         # Agrees with `chunk_graded` by construction: `cross-checks.md` already
         # reads a null subject as "nothing was checked at all", and the counter
@@ -1627,6 +1662,7 @@ def lint_records(
     return {
         "records": records,
         "chunk_graded": chunk_graded,
+        "chunks_graded": chunks_graded,
         "plan_graded": plan_graded,
         "findings": findings,
         "unchecked": unchecked,
@@ -1642,6 +1678,8 @@ def lint_records_safe(
     head_tree: str,
     chunk_id: "str | None" = None,
     scope: "str | None" = None,
+    *,
+    chunk_ids: "list[str] | None" = None,
 ) -> dict:
     """:func:`lint_records`, but a crash degrades to a reported ``unchecked``
     instead of taking the caller down with it.
@@ -1661,7 +1699,8 @@ def lint_records_safe(
     """
     try:
         return lint_records(
-            project_dir, prawduct_dir, paths, base_tree, head_tree, chunk_id, scope
+            project_dir, prawduct_dir, paths, base_tree, head_tree, chunk_id, scope,
+            chunk_ids=chunk_ids,
         )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never abort review dispatch; reported as unchecked, never swallowed
         return {
@@ -1671,6 +1710,7 @@ def lint_records_safe(
             # would pair a named subject with zero counts — the shape a clean
             # result has.
             "chunk_graded": None,
+            "chunks_graded": [],
             "plan_graded": None,
             "findings": [],
             # The `chunk-ref-missing unchecked` prefix is load-bearing:
@@ -1739,11 +1779,12 @@ def _plans_to_check(prawduct_dir: Path, records: list[str]) -> list[str]:
         active = work_unit.resolve(prawduct_dir.parent).plan_path
         if active is None:
             return plans
-        try:
-            rel_active = str(active.relative_to(prawduct_dir.parent.resolve()))
-        except ValueError:
-            rel_active = ""
-        if rel_active and active.is_file() and rel_active not in plans:
+        # `repo_rel`, the one display rule for a binding's paths: POSIX, both
+        # sides resolved (a project dir reached through a symlink otherwise
+        # fails `relative_to` and the plan was dropped), and a plan outside the
+        # root kept as an absolute path rather than lost as "".
+        rel_active = work_unit.repo_rel(active, prawduct_dir.parent)
+        if active.is_file() and rel_active not in plans:
             plans.append(rel_active)
     return plans
 

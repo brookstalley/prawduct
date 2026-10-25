@@ -337,31 +337,41 @@ def _section_build_plan(project_dir: Path, binding) -> Section:
     the same answer supplies the scope the change-log section pairs by, and
     asking twice would walk ``artifacts/`` twice inside the command whose whole
     purpose is latency — and could let the two sections answer differently.
+
+    The chunk rows are ``plan_status.chunk_states`` rendered by
+    ``plan_status.render_table`` — the ``plan status`` table (id, state,
+    certifying fact, date, ``imported`` / ``built`` tags) — never a scan of the
+    plan's boxes (#1051): what the reviewer grades is the answer the gates read.
     """
     if binding.plan_path is None:
-        # Unbound is ordinary and broken is not, but both leave the Status-box
+        # Unbound is ordinary and broken is not, but both leave the chunk
         # checks without a subject; the binding's reason says which, so the
         # reviewer can tell a chore branch from two plans claiming one branch.
         state = "is broken" if binding.state == "broken" else "binds no build plan"
         return Section("build_plan", degraded=(
             f"this branch {state} ({binding.reason or 'no reason given'}) — the "
-            "Status-box checks have no subject; say so rather than reading them "
-            "as all-ticked"
+            "chunk-status checks have no subject; say so rather than reading "
+            "them as finished"
         ))
-    from . import work_unit  # noqa: PLC0415 — lazy, like `_lib`
+    from . import evidence, plan_status, work_unit  # noqa: PLC0415 — lazy, like `_lib`
 
     rel = work_unit.repo_rel(binding.plan_path, project_dir)
-    try:
-        content = binding.plan_path.read_text(encoding="utf-8")
-    except OSError as exc:
+    if not binding.plan_path.is_file():
         return Section("build_plan", degraded=(
-            f"build plan at {rel} could not be read ({exc.__class__.__name__}) "
-            "— the Status-box checks have no subject"
+            f"build plan at {rel} could not be read (missing) "
+            "— the chunk-status checks have no subject"
         ))
-    boxes = [
-        ln for ln in content.splitlines()
-        if ln.strip().startswith(("- [ ]", "- [x]", "- [X]"))
-    ]
+    facts = evidence.read_facts(project_dir)
+    states = plan_status.chunk_states(binding.plan_path, facts, repo_dir=project_dir)
+    if plan_status.UNREADABLE_PLAN in states:
+        return Section("build_plan", degraded=(
+            f"build plan at {rel} could not be read "
+            f"({states[plan_status.UNREADABLE_PLAN].reason}) "
+            "— the chunk-status checks have no subject"
+        ))
+    finished = plan_status.is_finished(
+        binding.plan_path, facts, repo_dir=project_dir, states=states
+    )
     lines = [f"path: {rel}", f"bound by: {binding.chosen_by}"]
     if binding.reason:
         # What the binding still lacks — a legacy-window route, a missing
@@ -369,11 +379,18 @@ def _section_build_plan(project_dir: Path, binding) -> Section:
         # subject; what must not happen is the reviewer grading it as though
         # nothing were assumed.
         lines.append(f"resolution caveat: {binding.reason}")
-    if boxes:
-        lines.append("## Status boxes (hand-authored; nothing derives them):")
-        lines.extend(f"  {b.strip()}" for b in boxes)
+    if states:
+        open_count = sum(1 for st in states.values() if st.state == "open")
+        summary = "finished" if finished else f"{open_count} of {len(states)} open"
+        lines.append(f"## Chunk status (plan status; derived from facts): {summary}")
+        report = plan_status.built_report(binding.plan_path, project_dir)
+        lines.extend(
+            f"  {ln}" for ln in plan_status.render_table(
+                states, built=report.built, built_unavailable=report.unavailable
+            )
+        )
     else:
-        lines.append("## Status: no checkbox items found in the plan")
+        lines.append("## Chunk status: the plan declares no chunks")
     return Section("build_plan", body="\n".join(lines))
 
 

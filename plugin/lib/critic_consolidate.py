@@ -2635,8 +2635,14 @@ def working_tree_interval_base(
     head_commit: str,
     head_tree: str,
     why: "list[str] | None" = None,
+    *,
+    read: "dict | None" = None,
 ) -> dict:
     """Where a ``chunk``/``final`` review's interval starts — the one owner.
+
+    ``read`` is the caller's ``evidence.read_facts`` result, passed through to
+    ``gates.covered_frontier`` so a caller that already read the store (mode
+    inference) does not read it again.
 
     Returns ``{"origin", "commit", "tree", "absent"}``; ``origin`` is one of the
     ``BASE_AT_*`` constants above, and ``absent`` is the ``gates.FRONTIER_ABSENT_*``
@@ -2671,7 +2677,7 @@ def working_tree_interval_base(
 
     frontier_why: list[str] = []
     absent: list[str] = []
-    frontier = gates.covered_frontier(project_dir, frontier_why, absent)
+    frontier = gates.covered_frontier(project_dir, frontier_why, absent, read=read)
     if why is not None:
         why.extend(frontier_why)
     absent_code = absent[0] if absent else None
@@ -2783,6 +2789,98 @@ def _unresolved_scope_cause(
     return cause
 
 
+#: The refusal ``kind`` for a declared chunk id the reviewed plan does not
+#: declare. Not one of the CLI's mapped kinds, so it exits 1 (the generic
+#: dispatch error): the remedy is to fix the id, not to demote the mode.
+UNKNOWN_CHUNK_KIND = "unknown-chunk"
+
+
+def _declared_chunks(
+    project_dir: Path, plan_path: "Path | None", chunks: "list | None"
+) -> "tuple[list[str] | None, dict | None]":
+    """``(declared, refusal)`` for a dispatch's declared chunk set.
+
+    ``declared`` is ``None`` when nothing was declared (the proposal stands in
+    later), ``[]`` when no plan is bound (nothing can be named), else the ids
+    as the plan prints them, deduplicated, in plan order. ``refusal`` is the
+    ``unknown-chunk`` error result when an id is not one the plan declares —
+    read from :func:`plan_status.chunk_states` over no facts, so the roster
+    costs no git; a synthetic key (an unreadable plan ``?``, a rejected heading
+    ``?L<n>``) is not a chunk id and is refused like any other unknown one.
+    """
+    if chunks is None:
+        return None, None
+    wanted = [str(c).strip() for c in chunks if str(c).strip()]
+    if plan_path is None:
+        return [], None
+    from . import buildplan_refs, plan_status, work_unit  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    states = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
+    roster = [k for k, s in states.items() if not s.synthetic]
+    by_norm = {buildplan_refs._normalize_chunk_id(k): k for k in roster}
+    unknown = [c for c in wanted if buildplan_refs._normalize_chunk_id(c) not in by_norm]
+    if unknown:
+        unreadable = [s.reason for s in states.values() if s.synthetic and s.reason]
+        why = f" ({'; '.join(unreadable)})" if unreadable else ""
+        return None, {
+            "status": "error",
+            "kind": UNKNOWN_CHUNK_KIND,
+            "reason": (
+                f"chunk id(s) {', '.join(unknown)} are not chunks of "
+                f"{work_unit.repo_rel(Path(plan_path), project_dir)}, which declares "
+                f"{', '.join(roster) or 'none'}{why} — name a chunk the plan declares, "
+                "or omit the flag and the review names the proposed set"
+            ),
+        }
+    named = {by_norm[buildplan_refs._normalize_chunk_id(c)] for c in wanted}
+    return [k for k in roster if k in named], None
+
+
+def _proposed_chunks(
+    project_dir: Path,
+    plan_path: "Path | None",
+    read_store,
+    files_changed: list,
+    mode_token: str,
+    verify_anchor: "dict | None" = None,
+) -> list[str]:
+    """The chunk set this dispatch proposes to name: ``files_changed`` is the
+    interval, ``read_store`` the dispatch's one store read. ``[]`` with no plan
+    bound, or when the store cannot be read (the proposal is advice beside a
+    declaration; a store that cannot be read certifies nothing).
+
+    ``chunk``/``final``/``cumulative``: :func:`plan_status.propose_chunks`.
+    ``verify-resolutions`` resolves findings of the review it is anchored to
+    (``verify_anchor``), so its proposal is THAT review's chunks — the newest
+    naming fact on the anchor's chain (``critic_mode.chain_named_chunks``),
+    spelled and ordered as the plan prints them. A verify pass naming the same
+    set is then silent, and one naming a new chunk still warns."""
+    if plan_path is None:
+        return []
+    from . import plan_status  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    store = read_store()
+    if store.get("status") == "error":
+        return []
+    if mode_token == "verify-resolutions":
+        if verify_anchor is None:
+            return []
+        from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        chain = critic_mode.review_chain(store.get("facts") or [], verify_anchor)
+        named = {
+            buildplan_refs._normalize_chunk_id(c) for c in critic_mode.chain_named_chunks(chain)
+        }
+        roster = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
+        return [
+            k for k, s in roster.items()
+            if not s.synthetic and buildplan_refs._normalize_chunk_id(k) in named
+        ]
+    return plan_status.propose_chunks(
+        Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir)
+    )
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -2791,8 +2889,27 @@ def begin_review(
     scope: str | None = None,
     tier: str | None = None,
     force: bool = False,
+    chunks: "list[str] | None" = None,
 ) -> dict:
     """Derive and write the dispatch manifest for one review. All code.
+
+    **Which chunks the review names (ST8, #1051).** ``chunks`` is the declared
+    set; ``chunk`` is its one-element alias for one release (``chunks is None``
+    and ``chunk`` given → ``[chunk]``). The code-derived proposal,
+    ``chunks_proposed``, is :func:`plan_status.propose_chunks` over this
+    dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
+    Deliverables it touches; ``final``/``cumulative``: every open chunk;
+    ``verify-resolutions``: the chunks the review it verifies names, inherited
+    along that review's chain). With nothing declared, the declared set IS
+    the proposal. A declared id the reviewed plan does not declare is refused
+    (``{"status": "error", "kind": "unknown-chunk"}``, exit 1 through the CLI's
+    error path) before the tree is captured; a declared set that leaves the
+    proposal is recorded as declared, with a ``WARNING:`` note, so the edit is
+    on the record and never silent. Both lists ride the manifest in plan order
+    (ids as the plan prints them), and ``chunk`` there is ``chunks[0]`` or
+    ``None``. No plan to grade (an unbound checkout): ``chunks == []``,
+    ``chunks_proposed == []``, ``chunk`` ``None``, and a declared set is noted
+    as dropped.
 
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
@@ -2941,6 +3058,22 @@ def begin_review(
                     f"it: {sentence}"
                 )
 
+    # The chunks this review names: validated against the graded plan BEFORE
+    # anything is captured, so a typo'd id costs no tree capture. `None` means
+    # "nothing declared" — the proposal, computed once the interval is known,
+    # stands in for it below.
+    if chunks is None and chunk is not None and str(chunk).strip():
+        chunks = [chunk]
+    declared_chunks, chunk_refusal = _declared_chunks(project_dir, graded_plan, chunks)
+    if chunk_refusal is not None:
+        return chunk_refusal
+    if graded_plan is None and chunks:
+        notes_scope.append(
+            f"no build plan resolves for this review, so the declared chunk(s) {', '.join(map(str, chunks))} "
+            "name nothing and the review records `chunks: []`"
+        )
+    chunk = declared_chunks[0] if declared_chunks else None
+
     capture = evidence.capture_tree(project_dir)
     if capture.get("status") != "ok":
         return {
@@ -3003,6 +3136,9 @@ def begin_review(
     # dispositions block was not built from. LAZY, so a dispatch that reaches
     # neither reader pays no parse.
     _store_slot: "list[dict]" = []
+    # The review a `verify-resolutions` pass is anchored to — its recorded
+    # chunks are that mode's proposal (ST8), inherited along its chain.
+    verify_anchor: "dict | None" = None
 
     def read_store() -> dict:
         if not _store_slot:
@@ -3074,6 +3210,7 @@ def begin_review(
                 refusal["kind"] = "store-unusable"
             return refusal
         prior_body = prior.get("body") or {}
+        verify_anchor = prior
         base_tree = prior_body.get("head_tree")
         if not isinstance(base_tree, str) or not base_tree:
             return {
@@ -3513,15 +3650,37 @@ def begin_review(
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
 
+    # ST8: the code-derived proposal from THIS interval, then the declared set
+    # (the proposal itself when nothing was declared). Declared outside the
+    # proposal is recorded as declared, and said: `chunks_proposed` sits beside
+    # it on the fact, so the edit is visible on the record. Resolved BEFORE
+    # record-lint, so the deliverables it grades are the chunks the fact names.
+    chunks_proposed = _proposed_chunks(
+        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor
+    )
+    if declared_chunks is None:
+        declared_chunks = list(chunks_proposed)
+        chunk = declared_chunks[0] if declared_chunks else None
+    else:
+        outside = [c for c in declared_chunks if c not in chunks_proposed]
+        if outside:
+            notes.append(
+                f"WARNING: declared chunk(s) {', '.join(outside)} are not in the proposal "
+                f"for this {mode_token} interval ({', '.join(chunks_proposed) or 'none'}); "
+                "recorded as declared, with the proposal beside them on the fact"
+            )
+
     # Machine-verified record checks, computed HERE so the reviewers are told
     # the answers rather than re-deriving them (record-class findings were 57%
     # of one day's review output on 2026-07-29, and none of them needed
     # judgment). Advisory: the result rides the manifest for the builder, and
     # nothing downstream gates on it. A lint that cannot run reports itself
-    # ``unchecked`` rather than empty — see ``record_lint``.
+    # ``unchecked`` rather than empty — see ``record_lint``. It grades every
+    # chunk the fact will name (`chunk_ids`), not only the first.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope,
+        chunk_ids=list(declared_chunks),
     )
 
     # Answers already given about findings in these files, so a fresh review can
@@ -3576,6 +3735,11 @@ def begin_review(
         # The tree a chunk/final interval was extended back to, or null — the
         # yield of the extension, countable from the store.
         "base_extended_from": base_extended_from,
+        # The chunks this review names (declared, plan order) and the set the
+        # code proposed for its interval; `chunk` is the first, for readers
+        # older than `chunks` (one release).
+        "chunks": list(declared_chunks),
+        "chunks_proposed": list(chunks_proposed),
         "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
@@ -3869,7 +4033,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
-    has no commit), ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
+    has no commit), ``chunks``/``chunks_proposed`` (lists of ids; ``chunk``
+    must then be ``chunks[0]`` or null),
+    ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
     ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
     None on a detached HEAD — PDT-WT9K). Optional and typed: ``stage``
     (``inner``/``boundary`` — the severity rule keys on it), ``judgeable_files``,
@@ -3943,6 +4109,21 @@ def validate_manifest(data) -> tuple[bool, str]:
     # the fact and a reader that walks it must not meet a non-string.
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
+    # The chunks the review names and the code's proposal (ST8). Optional, as a
+    # manifest restored from before the fields still consolidates (its fact then
+    # carries `chunk` alone, which `plan_status.fact_chunks` reads); typed when
+    # present, because `chunks` reaches the fact `plan_status.chunk_states`
+    # certifies from, and `chunk` must be its first element there.
+    for key in ("chunks", "chunks_proposed"):
+        if data.get(key) is not None and not _str_list(data.get(key)):
+            return False, f"'{key}' must be a list of non-empty strings or null"
+    if isinstance(data.get("chunks"), list) and data.get("chunk") != (
+        data["chunks"][0] if data["chunks"] else None
+    ):
+        return False, (
+            f"'chunk' ({data.get('chunk')!r}) must be the first of 'chunks' "
+            f"({data['chunks']!r}), or null when 'chunks' is empty"
+        )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree"):
@@ -4777,6 +4958,24 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
     return blocking, warning, note
 
 
+def _fact_chunk_fields(manifest: dict) -> dict:
+    """``chunks``, ``chunks_proposed`` and ``chunk`` for a review fact body.
+
+    ``chunk`` is ``chunks[0]`` or ``None``. A manifest written before ``chunks``
+    existed gives ``{"chunk": <its chunk>}`` alone: inventing ``chunks`` from it
+    would claim a declaration nobody made, and
+    :func:`plan_status.fact_chunks` reads the bare ``chunk`` the same way.
+    """
+    chunks = manifest.get("chunks")
+    if not isinstance(chunks, list):
+        return {"chunk": manifest.get("chunk")}
+    return {
+        "chunks": list(chunks),
+        "chunks_proposed": list(manifest.get("chunks_proposed") or []),
+        "chunk": chunks[0] if chunks else None,
+    }
+
+
 def build_fact_body(
     manifest: dict, partials: list[dict], *, dispatched_at: "str | None" = None
 ) -> dict:
@@ -4850,7 +5049,12 @@ def build_fact_body(
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
         "scope_reason": manifest.get("scope_reason"),
         "base_extended_from": manifest.get("base_extended_from"),
-        "chunk": manifest.get("chunk"),
+        # The chunks this review names (ST8) — what `plan_status.chunk_states`
+        # certifies from — with the code-derived proposal beside them, so a
+        # coordinator's edit of the set is visible on the record. `chunk` is the
+        # first, for readers older than `chunks`. A manifest from before the
+        # fields carries `chunk` alone; its fact keeps that reading.
+        **_fact_chunk_fields(manifest),
         "base_reviewed": manifest.get("base_reviewed"),
         # The record-lint control's YIELD, carried from the dispatch manifest
         # into the fact so it is queryable rather than printed and forgotten
@@ -4955,17 +5159,19 @@ def _plan_owes_a_later_review(
     changes advice, and advice that cannot be derived keeps the older wording.
     """
     try:
-        from . import buildplan_refs, critic_mode, work_unit  # noqa: PLC0415 — lazy, as this module's other lib imports are
+        from . import critic_mode, work_unit  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
         binding = work_unit.resolve(project_dir)
         if binding.plan_path is None:
             return None
         chain = critic_mode.review_chain(facts or [], fact) if fact is not None else []
+        # Progress is read from the store AFTER this review's fact was appended,
+        # so the chunks it just certified read as done (`plan_status`).
         owed = critic_mode.review_owed_after(
             project_dir,
             prawduct_dir,
             binding,
-            buildplan_refs.resolve_chunk_progress(project_dir, binding.plan_path),
+            critic_mode.binding_progress(project_dir, binding),
             chain,
         )
         return owed[0] if owed else None

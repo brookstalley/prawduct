@@ -148,18 +148,18 @@ in place of one; the prefixes below are the exceptions.
   which `building.md` says needs no plan. Nothing was skipped and no edit could clear it. A typo'd scope is declared nowhere and still arrives `unchecked`.
 - **`chunk-ref-missing graded chunk … of <plan>: …` → NOTE.** An *assumption*, not a failure: the
   check ran (`chunk_graded` non-null), but one half of "whose deliverables" was inferred — the
-  **chunk** inferred from build-plan Status (which names the first UNCHECKED chunk, so possibly the next one),
+  **chunk** inferred as the plan's first open chunk (so possibly the next one),
   or the **plan** from the `active_build_plan` pointer or conventional path, absent a scope. The
   line names which fired. Either means **no answer about this diff**, not clean; a branch that builds
-  no chunk has no `--chunk` to supply.
+  no chunk has no `--chunks` to supply.
 - **Every other entry takes the inherited severity above** — BLOCKING → WARNING, else NOTE — and
   is stated either way.
 
 `goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.
 
-**`chunk_graded` and `plan_graded`** name whose deliverables were checked — which chunk, of which
-plan file. A zero count is an answer about that chunk of that plan; if either is `null`, nothing was
-checked at all.
+**`chunks_graded` and `plan_graded`** name whose deliverables were checked — every chunk the review
+names, of which plan file (`chunk_graded`: the one id, else `null`). A zero count is an answer
+about those chunks of that plan.
 
 **A `null` count is not a zero.** Each entry in `counts` is an integer when the check ran and `null`
 when it produced no answer. Read alike, they are opposite facts: zeros are a clean check, nulls are

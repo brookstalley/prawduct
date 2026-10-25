@@ -18,14 +18,14 @@ live build plan (SCN-4H9T, BLD-7K3Q), all in the path from build-plan Status to
 Real ``git init`` repos throughout: the defects survived unit-level correctness
 for months precisely because nothing exercised the real path.
 
-The second defect was fixed twice. First by deriving progress from git commits
-when the checkboxes could not be trusted — two readings of one question, with a
-precedence between them. Then by removing the reason for the second reading: the
-derived view is retired and a ticked box is a statement the builder made. What
-remains from the git era is a **report**, not a reading —
-``unticked_committed_chunk_notice`` — because the single reading is only as good
-as the ticking, and a chunk whose work is committed under an empty box is the way
-back into exactly this defect.
+The second defect was fixed three times. First by deriving progress from git
+commits when the checkboxes could not be trusted — two readings of one question,
+with a precedence between them. Then by retiring the derived view, so a ticked
+box was a statement the builder made. Then (#1051) by taking the box out of the
+answer: a chunk is done when a review fact certifies it, and
+``plan_status.chunk_states`` is the one walker every consumer reads. What remains
+from the git era is a **report**, not a reading — ``built_not_done_notice`` —
+naming committed work no review has certified yet.
 """
 
 from __future__ import annotations
@@ -41,7 +41,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import briefing, buildplan_refs, critic_mode, gates, plan_index  # noqa: E402
+from lib import (  # noqa: E402
+    briefing, buildplan_refs, critic_mode, evidence, gates, plan_index, plan_status, work_unit,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -135,9 +137,9 @@ def _live_repo(tmp_path: Path, *, commit_chunk: int | None = 4) -> Path:
     too and answered "nothing current". So a consumer that quietly reintroduced a
     commit-derived reading fails here instead of agreeing by coincidence.
 
-    It is also the exact state the tripwire exists to report, so one fixture
-    carries both halves of the contract: the boxes decide, and the discrepancy is
-    reported rather than silently resolved.
+    It is also a state the built-but-not-done notice reports (04 is committed
+    and no review certifies it), so one fixture carries both halves: the answer
+    decides, and the discrepancy is reported rather than silently resolved.
     """
     repo = tmp_path / "repo"
     _init_repo(repo, branch="develop")
@@ -156,15 +158,6 @@ def _live_repo(tmp_path: Path, *, commit_chunk: int | None = 4) -> Path:
 
 class TestSingleReadingCurrentChunk:
     """Chunks 01-03 ticked, 04 open and committed. Every consumer must say 04."""
-
-    def test_parse_reports_the_chunk_actually_in_flight(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        status = buildplan_refs._parse_build_plan_status(repo)
-        assert status["current_chunk"] == "Chunk 04: The Critic summary"
-
-    def test_current_chunk_id(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        assert buildplan_refs._current_chunk_id_from_status(repo) == "04"
 
     def test_verify_chunk_refs_grades_the_right_chunk(self, tmp_path: Path):
         """BLD-7K3Q: the gate reported `ok: chunk 01` for a whole branch while
@@ -186,26 +179,6 @@ class TestSingleReadingCurrentChunk:
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "ok: chunk 04" in proc.stdout, proc.stdout + proc.stderr
 
-    def test_progress_counts_ticked_chunks(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        progress = buildplan_refs.resolve_chunk_progress(repo)
-        assert (progress.complete, progress.current_id) == (3, "04")
-
-    def test_progress_is_a_pure_function_of_the_plan_text(self, tmp_path: Path):
-        """The collapse's structural claim: no git, no repo state, no I/O beyond
-        reading the plan. Asserted by making every subprocess call raise — a
-        reading that still consults git cannot survive it."""
-        repo = _live_repo(tmp_path)
-
-        def _boom(*_a, **_k):
-            raise AssertionError("chunk progress must not shell out")
-
-        import unittest.mock
-
-        with unittest.mock.patch.object(buildplan_refs.subprocess, "run", _boom):
-            progress = buildplan_refs.resolve_chunk_progress(repo)
-        assert (progress.complete, progress.current_id) == (3, "04")
-
     def test_mode_inference_routes_through_the_single_owner(
         self, tmp_path: Path, monkeypatch
     ):
@@ -216,22 +189,21 @@ class TestSingleReadingCurrentChunk:
         redirect the owner and require `infer_mode`'s answer to move with it.
         Chunk 04 declares `**Critic mode:** final`; Chunk 02 declares none, so
         the plan-override appears only when 04 is the resolved chunk.
+
+        Ported to the owner #1051 made it (`plan_status.current_chunks`, read by
+        `critic_mode.binding_progress`): the redirect is applied THERE. The
+        Status reader it used to redirect is deleted (Chunk 06).
         """
         repo = _live_repo(tmp_path)
         mode, rationale = critic_mode.infer_mode(repo)
         assert (mode, rationale) == ("final", "plan-override: final")
 
-        redirected = buildplan_refs.resolve_chunk_progress(repo)._replace(
-            current_id="02", current_text="Chunk 02: Parser correctness"
-        )
         monkeypatch.setattr(
-            critic_mode.buildplan_refs,
-            "resolve_chunk_progress",
-            # Accepts the plan-path argument `infer_mode` now passes (it resolves
-            # this branch's plan rather than trusting the pointer). The stub
-            # ignores it: what is under test is that the ANSWER comes from the
-            # owner, not which file the owner was pointed at.
-            lambda _d, _plan_path=None: redirected,
+            critic_mode.plan_status,
+            "current_chunks",
+            # The stub ignores the plan it is asked about: what is under test is
+            # that the ANSWER comes from the owner, not which file it was given.
+            lambda *_a, **_k: ["02", "04"],
         )
         assert critic_mode.infer_mode(repo)[1] != "plan-override: final", (
             "infer_mode ignored the resolver — it is re-deriving which chunk is "
@@ -249,28 +221,18 @@ class TestSingleReadingCurrentChunk:
         handoff = (repo / ".prawduct" / ".session-handoff.md").read_text()
         assert "**Current chunk**: Chunk 04: The Critic summary" in handoff
 
-    def test_all_boxes_ticked_clears_the_current_chunk(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        _write_plan(repo, LIVE_PLAN.replace("- [ ] Chunk", "- [x] Chunk"))
-        status = buildplan_refs._parse_build_plan_status(repo)
-        assert "current_chunk" not in status
-        assert buildplan_refs.build_plan_is_complete(status) is True
+    def test_handoff_reports_a_completed_plan_as_finished(self, tmp_path: Path):
+        """SCN-4H9T end-to-end, renegotiated by #1051 (was
+        `test_handoff_omits_work_section_for_a_completed_plan`).
 
-    def test_handoff_omits_work_section_for_a_completed_plan(self, tmp_path: Path):
-        """SCN-4H9T end-to-end: a finished plan is never stamped as the next
-        session's work.
-
-        The sibling above asserts the same thing about the *parse*, and that is
-        not a substitute — `generate_session_handoff` composes the parse with a
-        project-state read, and it is the composition that reaches a reader. The
-        surviving unit tests all stub a project-state WIP, so every one of them
-        passes against a writer that renders the section unconditionally.
-
-        This regression was carried by the retired `views_enabled` fixture class
-        and went down with it. It is restored deliberately rather than
-        rewritten: the checkbox is now the SINGLE reading of completeness, so
-        the composed path this pins is strictly more load-bearing than it was
-        when the assertion was first written.
+        The defect was a finished plan stamped as the next session's work "in
+        progress" while `staleness_scan` called it complete from the same bytes.
+        The handoff and the briefing now read `plan_status`, and a finished
+        plan's work section says `**Current chunk**: finished` rather than
+        naming a chunk — the two readers cannot disagree — instead of vanishing,
+        because the plan stays live until it is archived and the next session
+        should be told what it is. Asserted on the COMPOSED path
+        (`generate_session_handoff`), which is what reaches a reader.
         """
         _init_repo(tmp_path)
         _write_plan(
@@ -280,238 +242,248 @@ class TestSingleReadingCurrentChunk:
         (tmp_path / ".prawduct" / ".session-reflected").write_text("did the thing")
         briefing.generate_session_handoff(tmp_path)
         handoff = (tmp_path / ".prawduct" / ".session-handoff.md").read_text()
-        assert "## Work In Progress" not in handoff
+        assert "## Work In Progress" in handoff
+        assert "**Current chunk**: finished\n" in handoff
+        assert "**Current chunk**: Chunk" not in handoff
         assert "did the thing" in handoff
 
-    def test_an_unchecked_non_chunk_item_still_blocks_completion(self, tmp_path: Path):
-        """A Status section may hold items that name no chunk (a plain to-do).
-        Such an item is done iff its box is ticked — the walk covers EVERY Status
-        item, not just the chunk-shaped ones. Skipping them once made a plan with
-        every chunk done read as COMPLETE while an unchecked item sat right
-        there, which retires a live plan and blanks the handoff's work section.
-        """
-        repo = _live_repo(tmp_path)
+    def test_handoff_names_the_open_chunk_of_an_unfinished_plan(self, tmp_path: Path):
+        """The control for the test above: the same plan with its box unticked
+        names the chunk, so `finished` is the state's answer, not a constant."""
+        _init_repo(tmp_path)
         _write_plan(
-            repo,
-            LIVE_PLAN.replace(
-                "- [ ] Chunk 04: The Critic summary",
-                "- [x] Chunk 04: The Critic summary\n- [ ] Retire the shim",
-            ),
+            tmp_path,
+            "# Build Plan — Done (2026-07-26)\n\n## Status\n\n- [ ] Chunk 01: A\n",
         )
-        status = buildplan_refs._parse_build_plan_status(repo)
-        assert buildplan_refs.build_plan_is_complete(status) is False
-        assert status["current_chunk"] == "Retire the shim"
+        briefing.generate_session_handoff(tmp_path)
+        handoff = (tmp_path / ".prawduct" / ".session-handoff.md").read_text()
+        assert "**Current chunk**: Chunk 01: A\n" in handoff
 
-    def test_a_status_of_only_non_chunk_items_is_not_complete(self, tmp_path: Path):
-        """The degenerate end of the same defect: nothing chunk-shaped to walk,
-        so a chunk-only walk returned "0 complete, nothing current" and the
-        done-predicate read that as *finished* with zero work done."""
-        content = LIVE_PLAN
-        for n in range(1, 5):
-            content = re.sub(rf"- \[[ x]\] Chunk 0{n}: .*", f"- [ ] Task {n}", content)
-        repo = _live_repo(tmp_path)
-        _write_plan(repo, content)
-        status = buildplan_refs._parse_build_plan_status(repo)
-        assert buildplan_refs.build_plan_is_complete(status) is False
-        assert status["current_chunk"] == "Task 1"
-
-    def test_a_ticked_chunk_after_the_current_one_still_counts_as_done(
+    def test_a_done_chunk_after_the_current_one_still_counts_as_done(
         self, tmp_path: Path
     ):
-        """Done-ness is per-item and non-contiguous. The retired git reading
-        reported a bare COUNT with the predicate locked in a closure, so callers
-        had to approximate with the roster prefix before `current_id` and
-        under-reported a ticked chunk sitting after it. With one reading the flag
-        is exact, so this must be counted, not approximated."""
+        """Done-ness is per-chunk and non-contiguous. The retired git reading
+        reported a bare COUNT, so callers approximated with the roster prefix
+        before the current chunk and under-reported a done chunk sitting after
+        it. Ported from the box reader to `plan_status`: 01, 02 and 04 done
+        (here as unmigrated boxes), 03 the only open chunk."""
         repo = _live_repo(tmp_path)
-        _write_plan(
+        plan = _write_plan(
             repo,
             LIVE_PLAN.replace("- [x] Chunk 03", "- [ ] Chunk 03").replace(
                 "- [ ] Chunk 04", "- [x] Chunk 04"
             ),
         )
-        progress = buildplan_refs.resolve_chunk_progress(repo)
-        assert (progress.complete, progress.current_id) == (3, "03")
-        assert buildplan_refs._completed_chunk_ids(
-            (repo / ".prawduct" / "artifacts" / "build-plan.md").read_text()
-        ) == {"1", "2", "4"}
+        states = plan_status.chunk_states(plan, None, repo_dir=repo)
+        assert {k: s.state for k, s in states.items()} == {
+            "02": "done", "04": "done", "01": "done", "03": "open",
+        }
+        assert plan_status.current_chunks(plan, None, repo_dir=repo, states=states) == ["03"]
 
 
-class TestUntickedCommittedChunkTripwire:
-    """DV7: the single reading is only as good as the ticking, so a chunk whose
-    work is committed under an empty box is REPORTED — never silently resolved.
+# A plan that CLAIMS its branch, so a review fact's anchor can be placed on it
+# and certify a chunk; `_live_repo`'s plan binds through the legacy route and
+# declares no branch, so nothing could certify it.
+CLAIMED_PLAN = """---
+artifact: build-plan
+scope: notice
+branch: feature/notice
+---
 
-    This is the branch's own opening failure, generalized: a plan said a chunk
-    was not done, every consumer believed it, and the next session inherited the
-    false signal as testimony because a handoff is written by an agent reading
-    the same surface.
+## Build Chunks
+
+### Chunk 01: The first half
+
+### Chunk 02: The second half
+"""
+
+
+def _claimed_repo(tmp_path: Path, *subjects: str, branch: str = "feature/notice") -> Path:
+    repo = tmp_path / "repo"
+    _init_repo(repo, branch="develop")
+    _write_state(repo, "base_branch: develop\n")
+    _write_plan(repo, CLAIMED_PLAN)
+    _commit(repo, "chore: plan")
+    _git(repo, "checkout", "-b", branch, "--quiet")
+    for subject in subjects:
+        _commit(repo, subject)
+    return repo
+
+
+def _certify(repo: Path, chunk: str) -> None:
+    """Append a clean review fact naming ``chunk``, anchored at HEAD."""
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    appended = evidence.append_fact(repo, "review", f"review-{chunk}", {
+        "scope": "notice", "mode": "chunk", "chunk": chunk, "chunks": [chunk],
+        "head_commit": head, "dispatch_commit": head, "findings": [],
+        "counts": {"blocking": 0, "warning": 0, "note": 0},
+    })
+    assert appended.get("status") == "appended", appended
+
+
+def _hook():
+    import importlib.machinery
+    import importlib.util
+
+    loader = importlib.machinery.SourceFileLoader(
+        "prawduct_hook_built_not_done_call_site",
+        str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"),
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    hook = importlib.util.module_from_spec(spec)
+    loader.exec_module(hook)
+    return hook
+
+
+class TestBuiltNotDoneNotice:
+    """Committed work no review has certified is REPORTED — never resolved.
+
+    Replaces the unticked-committed-chunk tripwire (#1051): with done-ness read
+    from review facts, the discrepancy worth naming is no longer "committed but
+    unticked" but "built but not reviewed", and the remedy is a review. It
+    reports, never writes and never decides; no gate reads it.
     """
 
-    def test_it_fires_and_names_the_chunk_and_the_commit(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
+    def test_it_names_a_built_unreviewed_chunk_of_the_bound_plan(self, tmp_path: Path):
+        repo = _claimed_repo(tmp_path, "feat(notice): land it (Chunk 01)")
+        assert work_unit.resolve(repo).state == "bound"
+        notice = plan_status.built_not_done_notice(repo)
         assert notice is not None
-        assert buildplan_refs.UNTICKED_CHUNK_TOKEN in notice
-        assert "Chunk 04: The Critic summary" in notice
-        assert "land it (Chunk 04)" in notice, (
-            "the notice must cite the commit — a report nobody can check is a "
-            f"report nobody acts on (got {notice!r})"
+        first, *rest = notice.splitlines()
+        assert first == (
+            f"WARNING: {plan_status.BUILT_NOT_DONE_TOKEN}: 1 chunk of build-plan.md has "
+            "work committed on the plan's branch that no review has certified — "
+            "built, not done — run the Critic."
         )
+        assert rest == ["  - Chunk 01: The first half"]
 
-    def test_it_is_silent_when_the_boxes_match_the_commits(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        _write_plan(repo, LIVE_PLAN.replace("- [ ] Chunk 04", "- [x] Chunk 04"))
-        assert buildplan_refs.unticked_committed_chunk_notice(repo) is None
+    def test_two_chunks_are_counted_and_listed_in_plan_order(self, tmp_path: Path):
+        repo = _claimed_repo(
+            tmp_path,
+            "feat(notice): the second (Chunk 02)",
+            "feat(notice): the first (Chunk 01)",
+        )
+        notice = plan_status.built_not_done_notice(repo)
+        assert notice is not None
+        assert "2 chunks of build-plan.md have work committed" in notice.splitlines()[0]
+        assert notice.splitlines()[1:] == [
+            "  - Chunk 01: The first half", "  - Chunk 02: The second half",
+        ]
 
-    def test_it_is_silent_when_no_commit_names_a_chunk(self, tmp_path: Path):
-        repo = _live_repo(tmp_path, commit_chunk=None)
-        assert buildplan_refs.unticked_committed_chunk_notice(repo) is None
+    def test_a_chunk_certified_by_a_review_fact_is_not_named(self, tmp_path: Path):
+        repo = _claimed_repo(tmp_path, "feat(notice): land it (Chunk 01)")
+        assert plan_status.built_not_done_notice(repo) is not None  # the control
+        _certify(repo, "01")
+        assert plan_status.built_not_done_notice(repo) is None
+
+    def test_an_unbound_checkout_prints_nothing(self, tmp_path: Path):
+        """The plan claims `feature/notice`; this checkout is another branch
+        with a commit naming Chunk 01, so no plan is borrowed and nothing is
+        reported about one."""
+        repo = _claimed_repo(
+            tmp_path, "feat(notice): land it (Chunk 01)", branch="feature/elsewhere"
+        )
+        assert work_unit.resolve(repo).state == "unbound"
+        assert plan_status.built_not_done_notice(repo) is None
+
+    def test_it_is_silent_when_nothing_is_built(self, tmp_path: Path):
+        repo = _claimed_repo(tmp_path)
+        assert plan_status.built_not_done_notice(repo) is None
 
     def test_it_never_writes(self, tmp_path: Path):
-        """Reporting-only, asserted rather than asserted-in-prose: the plan on
-        disk must be byte-identical after the notice fires. A tripwire that
-        'helpfully' ticked the box would be a model in a fact's write path."""
-        repo = _live_repo(tmp_path)
+        """Reporting-only, asserted rather than asserted-in-prose: the plan and
+        the fact store are byte-identical after the notice fires."""
+        repo = _claimed_repo(tmp_path, "feat(notice): land it (Chunk 01)")
         plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
-        before = plan.read_bytes()
-        assert buildplan_refs.unticked_committed_chunk_notice(repo) is not None
-        assert plan.read_bytes() == before
+        store = evidence.store_path(repo)
+        before = (plan.read_bytes(), store.read_bytes() if store.is_file() else None)
+        assert plan_status.built_not_done_notice(repo) is not None
+        assert (plan.read_bytes(), store.read_bytes() if store.is_file() else None) == before
 
     def test_it_does_not_change_what_any_consumer_reads(self, tmp_path: Path):
-        """The report must not become a second reading by the back door: with the
-        tripwire firing on 04, the current chunk is STILL 04 (the boxes), not
-        "nothing current" as a commit-derived reading would say."""
+        """The report must not become a reading by the back door: with it
+        firing on 04, the current chunk is STILL 04, and the gate stays armed —
+        a chunk's last commit lands before its review (`plan_status.gate_arms`)."""
         repo = _live_repo(tmp_path)
-        assert buildplan_refs.unticked_committed_chunk_notice(repo) is not None
-        assert buildplan_refs.resolve_chunk_progress(repo).current_id == "04"
+        assert plan_status.built_not_done_notice(repo) is not None
+        plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        assert plan_status.current_chunks(plan, None, repo_dir=repo) == ["04"]
+        assert plan_status.gate_arms(work_unit.resolve(repo)) is True
 
-    def test_the_report_is_ordered_numerically_and_skips_alpha_ids(
-        self, tmp_path: Path
-    ):
-        """Two properties, one fixture, because the second explains the first.
+    def test_the_session_boundary_emits_it_on_stdout(self, tmp_path: Path, capsys):
+        """**The call site, not just the function**: `/clear` is the surface an
+        ordinary session passes through, and a refactor that drops the call
+        leaves every unit test above green."""
+        repo = _claimed_repo(tmp_path, "feat(notice): land it (Chunk 01)")
+        hook = _hook()
+        capsys.readouterr()
+        assert hook.cmd_clear(repo) == 0
+        out = capsys.readouterr().out
+        assert f"WARNING: {plan_status.BUILT_NOT_DONE_TOKEN}: 1 chunk" in out
+        assert "  - Chunk 01: The first half" in out
 
-        Chunks are listed in NUMERIC order (`10` after `2`, not lexically), and
-        the sort key is total on its domain — the report is built from a set, so
-        a key with ties would leave tied ids in set-iteration order and the same
-        repo could print the same finding two ways on two runs.
+    def test_the_session_boundary_is_silent_for_a_certified_chunk(self, tmp_path: Path, capsys):
+        repo = _claimed_repo(tmp_path, "feat(notice): land it (Chunk 01)")
+        _certify(repo, "01")
+        hook = _hook()
+        capsys.readouterr()
+        assert hook.cmd_clear(repo) == 0
+        assert plan_status.BUILT_NOT_DONE_TOKEN not in capsys.readouterr().out
 
-        The domain is digit strings only, and that is the second assertion: a
-        `Chunk A` is never reported, because `_CHUNK_COMMIT_RE` captures `\\d+`
-        and no commit subject can match one. Pinned as a KNOWN GAP rather than
-        left to be discovered — a plan on alpha chunk ids gets no tripwire
-        coverage, and a future widening of the commit pattern must widen the
-        sort key with it.
-        """
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "base_branch: develop\n")
-        _write_plan(
-            repo,
-            "---\nartifact: build-plan\nscope: ordering\n---\n\n## Status\n\n"
-            "- [ ] Chunk 02: two\n- [ ] Chunk 10: ten\n- [ ] Chunk 01: one\n"
-            "- [ ] Chunk B: bee\n- [ ] Chunk A: ay\n",
+    def test_handoff_preview_emits_it_on_stderr(self, tmp_path: Path, capsys):
+        repo = _claimed_repo(tmp_path, "feat(notice): land it (Chunk 01)")
+        hook = _hook()
+        capsys.readouterr()
+        assert hook.cmd_handoff(repo, ["preview"]) == 0
+        captured = capsys.readouterr()
+        assert f"WARNING: {plan_status.BUILT_NOT_DONE_TOKEN}: 1 chunk" in captured.err
+        assert plan_status.BUILT_NOT_DONE_TOKEN not in captured.out
+
+    def test_handoff_preview_is_silent_unbound_and_once_certified(self, tmp_path: Path, capsys):
+        hook = _hook()
+        unbound = _claimed_repo(
+            tmp_path / "u", "feat(notice): land it (Chunk 01)", branch="feature/elsewhere"
         )
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        for cid in ("01", "02", "10", "A", "B"):
-            _commit(repo, f"feat(ordering): land it (Chunk {cid})")
-
-        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
-        assert notice is not None
-        listed = [
-            line.split("Chunk ", 1)[1].split(":", 1)[0]
-            for line in notice.splitlines()
-            if line.startswith("  - ")
-        ]
-        assert listed == ["01", "02", "10"], notice
-        assert "Chunk A" not in notice and "Chunk B" not in notice, (
-            "an alpha chunk id was reported — if the commit pattern widened to "
-            "accept one, `flagged`'s `key=int` now raises on it"
-        )
-
-    def test_a_foreign_plans_chunk_ids_are_not_reported(self, tmp_path: Path):
-        """Chunk ids are PER-PLAN (SCN-5B8Q R-2/R-7): a sibling plan's
-        `(Chunk 02)` must not produce a report about THIS plan's chunk 02.
-        Scoping by conventional-commit scope is what stops it."""
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "base_branch: develop\n")
-        _write_plan(
-            repo,
-            "---\nartifact: build-plan\nscope: boundary-events\n---\n\n"
-            "## Status\n\n"
-            "- [x] Chunk 01: Split the acts\n- [ ] Chunk 02: Handoff vintage\n",
-        )
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        _commit(repo, "fix(boundary-events): split the acts (Chunk 01)")
-        _commit(repo, "feat(other-plan): unrelated work (Chunk 02)")
-
-        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
-        assert notice is None, (
-            f"a foreign plan's (Chunk 02) was reported against this plan: {notice!r}"
-        )
-
-    def test_an_unmatched_plan_scope_keeps_the_unscoped_reading(self, tmp_path: Path):
-        """Scope tags are a convention, not a guarantee — on the branch that
-        surfaced this, the continuity plan's commits said `session-continuity`
-        while its frontmatter said `session-handoff-continuity`. A strict filter
-        would erase the plan's whole signal, so when nothing matches the scope,
-        the unscoped reading survives and the tripwire still reports."""
-        repo = tmp_path / "repo"
-        _init_repo(repo, branch="develop")
-        _write_state(repo, "base_branch: develop\n")
-        _write_plan(repo, LIVE_PLAN)  # scope: session-handoff-continuity
-        _commit(repo, "chore: plan")
-        _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        _commit(repo, "fix(session-continuity): the critic summary (Chunk 04)")
-
-        notice = buildplan_refs.unticked_committed_chunk_notice(repo)
-        assert notice is not None and "Chunk 04" in notice
-
-    def test_a_git_failure_degrades_to_silence_not_to_a_claim(
-        self, tmp_path: Path, monkeypatch
-    ):
-        """A raising git call (absent binary, timeout) must produce no report.
-        The honest answer when the evidence cannot be read is nothing at all."""
-        repo = _live_repo(tmp_path)
-
-        def _boom(*_a, **_k):
-            raise subprocess.TimeoutExpired(cmd="git", timeout=10)
-
-        monkeypatch.setattr(buildplan_refs.subprocess, "run", _boom)
-        assert buildplan_refs.unticked_committed_chunk_notice(repo) is None
+        capsys.readouterr()
+        hook.cmd_handoff(unbound, ["preview"])
+        assert plan_status.BUILT_NOT_DONE_TOKEN not in capsys.readouterr().err
+        certified = _claimed_repo(tmp_path / "c", "feat(notice): land it (Chunk 01)")
+        _certify(certified, "01")
+        hook.cmd_handoff(certified, ["preview"])
+        assert plan_status.BUILT_NOT_DONE_TOKEN not in capsys.readouterr().err
 
 
 class TestChunkCommitSubjectForms:
-    """Which commit subjects mean *this commit carried chunk N*.
+    """Which commit subjects mean *this commit carried chunk N* — now
+    `plan_status.built_chunks`' rule, the one home it moved to (#1051).
 
     The original pattern matched a chunk id ANYWHERE in a subject, so a commit
-    saying "…carried to Chunk 04" reported 04 as finished-but-unticked minutes
-    after the tripwire shipped. A brand-new control whose first firing is wrong
-    teaches its first readers to ignore it — and this control's whole defence is
-    that it emits its yield observably, so being ignorable is the failure that
-    matters.
+    saying "…carried to Chunk 04" reported 04 minutes after the first notice
+    shipped. A control whose first firing is wrong teaches its readers to
+    ignore it.
 
-    All four forms are pinned together because the narrowing is only correct as a
-    set: the three that must match are the conventions actually in use in this
-    repo's history, and the one that must not is the false positive. Dropping any
-    match arm silences a real convention; widening past them re-admits prose.
+    All the forms are pinned together because the narrowing is only correct as
+    a set: the three that must match are the conventions actually in use in
+    this repo's history, and the ones that must not are false positives.
+    Dropping any match arm silences a real convention; widening past them
+    re-admits prose.
     """
 
-    def _notice_for(self, tmp_path: Path, subject: str) -> str | None:
+    PLAN = (
+        "---\nartifact: build-plan\nscope: forms\n---\n\n"
+        "### Chunk 04: the subject under test\n"
+    )
+
+    def _built_for(self, tmp_path: Path, *subjects: str, plan: str = PLAN) -> set[str]:
         repo = tmp_path / "repo"
         _init_repo(repo, branch="develop")
         _write_state(repo, "base_branch: develop\n")
-        _write_plan(
-            repo,
-            "---\nartifact: build-plan\nscope: forms\n---\n\n## Status\n\n"
-            "- [ ] Chunk 04: the subject under test\n",
-        )
+        plan_path = _write_plan(repo, plan)
         _commit(repo, "chore: plan")
         _git(repo, "checkout", "-b", "feature/x", "--quiet")
-        _commit(repo, subject)
-        return buildplan_refs.unticked_committed_chunk_notice(repo)
+        for subject in subjects:
+            _commit(repo, subject)
+        return plan_status.built_chunks(plan_path, repo)
 
     @pytest.mark.parametrize(
         "subject",
@@ -522,10 +494,10 @@ class TestChunkCommitSubjectForms:
         ],
         ids=["parenthesised", "after-the-colon", "close-idiom"],
     )
-    def test_a_commit_that_carries_the_chunk_is_reported(self, tmp_path: Path, subject):
-        notice = self._notice_for(tmp_path, subject)
-        assert notice is not None, f"{subject!r} names chunk 04's work and was not reported"
-        assert "Chunk 04" in notice
+    def test_a_commit_that_carries_the_chunk_is_built(self, tmp_path: Path, subject):
+        assert self._built_for(tmp_path, subject) == {"04"}, (
+            f"{subject!r} names chunk 04's work and was not counted"
+        )
 
     @pytest.mark.parametrize(
         "subject",
@@ -539,52 +511,45 @@ class TestChunkCommitSubjectForms:
     def test_a_commit_that_merely_mentions_the_chunk_is_not(self, tmp_path: Path, subject):
         """Every one of these is a real subject from this repo's log, and every
         one made the original pattern report a chunk that had not been done."""
-        notice = self._notice_for(tmp_path, subject)
-        assert notice is None, (
-            f"{subject!r} only MENTIONS chunk 04 — reporting it is the false "
-            f"positive that teaches readers to ignore this control (got {notice!r})"
+        assert self._built_for(tmp_path, subject) == set(), (
+            f"{subject!r} only MENTIONS chunk 04 — counting it is the false "
+            "positive that teaches readers to ignore this control"
         )
 
-    def test_the_session_boundary_actually_emits_it(self, tmp_path: Path, capsys):
-        """**The call site, not just the function.** Its only callers were two
-        deliberately-invoked commands, so an ordinary governed session never
-        reached it — and a control nothing runs is worse than one that runs and
-        finds nothing: a later "zero recorded yield" reads as *no defect
-        occurred* when the truth is *never armed*, and the retirement-on-evidence
-        argument this control offers would be made from a control that was never
-        in the path.
-
-        `/clear` is the surface an ordinary session passes through. Pinned here
-        because a refactor that drops the call leaves every unit test above
-        green.
-        """
-        import importlib.machinery
-        import importlib.util
-
-        repo = _live_repo(tmp_path)
-        loader = importlib.machinery.SourceFileLoader(
-            "prawduct_hook_dv7_call_site",
-            str(Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"),
+    def test_alpha_ids_are_never_built_by_subject(self, tmp_path: Path):
+        """A KNOWN GAP, pinned rather than left to be discovered: the subject
+        forms capture digits and dots only, so `Chunk A` is built only through
+        its Deliverables paths, never by a subject naming it."""
+        plan = (
+            "---\nartifact: build-plan\nscope: forms\n---\n\n"
+            "### Chunk A: ay\n\n### Chunk 1.2: dotted\n"
         )
-        spec = importlib.util.spec_from_loader(loader.name, loader)
-        hook = importlib.util.module_from_spec(spec)
-        loader.exec_module(hook)
-
-        capsys.readouterr()
-        assert hook.cmd_clear(repo) == 0
-        out = capsys.readouterr().out
-        assert buildplan_refs.UNTICKED_CHUNK_TOKEN in out, (
-            "the session boundary did not emit the unticked-chunk notice — the "
-            "control is defined but not armed anywhere a session reaches"
+        built = self._built_for(
+            tmp_path, "feat(forms): land it (Chunk A)", "feat(forms): land it (Chunk 1.2)",
+            plan=plan,
         )
-        assert "Chunk 04" in out
+        assert built == {"1.2"}
+
+    def test_a_foreign_plans_chunk_ids_are_not_counted(self, tmp_path: Path):
+        """Chunk ids are PER-PLAN (SCN-5B8Q R-2/R-7): once some commit carries
+        this plan's scope, a sibling plan's `(Chunk 04)` counts for nothing."""
+        built = self._built_for(
+            tmp_path,
+            "fix(forms): unrelated tidy",
+            "feat(other-plan): unrelated work (Chunk 04)",
+        )
+        assert built == set()
+
+    def test_an_unmatched_plan_scope_keeps_the_unscoped_reading(self, tmp_path: Path):
+        """Scope tags are a convention, not a guarantee: when NO commit carries
+        the plan's scope, every subject counts rather than none."""
+        built = self._built_for(tmp_path, "fix(forms-renamed): the critic summary (Chunk 04)")
+        assert built == {"04"}
 
     def test_the_narrowing_strictly_narrows(self):
-        """Over this repo's own history the new pattern must match nothing the
-        old one missed. Pinned as a property because the risk of a rewrite is
-        not "it stops matching" — a test of the three forms above would catch
-        that — but "it starts matching something else", which no positive test
-        can see."""
+        """Over this repo's own history the pattern must match nothing the old
+        one missed — the risk of a rewrite is "it starts matching something
+        else", which no positive test can see."""
         old = re.compile(r"Chunk\s+(\d+)")
         subjects = subprocess.run(
             ["git", "log", "--format=%s", "-800"],
@@ -596,134 +561,178 @@ class TestChunkCommitSubjectForms:
         if not subjects:
             pytest.skip("no git history available to compare against")
         gained = [
-            s
-            for s in subjects
-            if buildplan_refs._CHUNK_COMMIT_RE.search(s) and not old.search(s)
+            s for s in subjects
+            if plan_status._CHUNK_COMMIT_RE.search(s) and not old.search(s)
         ]
         assert gained == [], f"the pattern widened rather than narrowed: {gained}"
-
-
-class TestGateSemanticsUnchanged:
-    """Success criterion 6 of the governing plan: no gate semantics change.
-
-    The gate trigger reads the CHECKBOXES and must never read a commit-derived
-    signal. The gate asks "is there still governed work", and a chunk's last
-    commit lands BEFORE its Critic pass and its reflection. Deriving the gate
-    from git switched the blocking reflection and Critic gates off for the entire
-    complete-but-unmerged window — the PR-fix and finding-resolution sessions.
-
-    The git-derived progress reading that caused it is gone, but the tripwire is
-    a commit-derived signal still in the tree, and it reports precisely the state
-    in which this gate must keep saying "governed". So the pin stays.
-    """
-
-    def test_gate_armed_mid_branch(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        assert gates._has_active_build_plan_file(repo / ".prawduct") is True
-
-    def test_gate_stays_armed_through_the_complete_but_unmerged_window(
-        self, tmp_path: Path
-    ):
-        """Every chunk COMMITTED but the last box not yet ticked — the window in
-        which the Critic pass and the reflection still have to happen. This is
-        also when the tripwire is firing, which is the temptation to disarm."""
-        repo = _live_repo(tmp_path)
-        assert buildplan_refs.unticked_committed_chunk_notice(repo) is not None
-        assert gates._has_active_build_plan_file(repo / ".prawduct") is True
-
-    def test_gate_disarms_once_every_box_is_ticked(self, tmp_path: Path):
-        repo = _live_repo(tmp_path)
-        _write_plan(repo, LIVE_PLAN.replace("- [ ] Chunk", "- [x] Chunk"))
-        assert gates._has_active_build_plan_file(repo / ".prawduct") is False
-
-    def test_a_git_failure_leaves_the_parse_and_the_gate_intact(
-        self, tmp_path: Path, monkeypatch
-    ):
-        """Collapsing the parse to `{}` on a transient git hiccup would blank the
-        handoff's work section AND read as "no build plan" to the gates —
-        authority failing OPEN. Progress no longer consults git at all, so this
-        now asserts the stronger property: a raising git call changes nothing.
-        """
-        repo = _live_repo(tmp_path)
-
-        def _boom(*_a, **_k):
-            raise subprocess.TimeoutExpired(cmd="git", timeout=10)
-
-        monkeypatch.setattr(buildplan_refs.subprocess, "run", _boom)
-        status = buildplan_refs._parse_build_plan_status(repo)
-        assert status["description"] == "session-handoff-continuity"
-        assert status["current_chunk"] == "Chunk 04: The Critic summary"
-        assert "Chunks 01-03 shipped." in status["context"]
-        assert gates._has_active_build_plan_file(repo / ".prawduct") is True
 
 
 class TestOneCurrentChunkImplementation:
     """The sweep's structural guarantee: the derivation has ONE home, and no
     consumer re-derives "first unchecked" for itself. CRT-7B4M fixed this at one
     consumer and the defect recurred at two more — the recurrence is the reason
-    this pin exists."""
+    this pin exists. Since #1051 the home is ``plan_status``."""
 
     # `_git_aware_progress` was a member until the git-derived progress reading
-    # was retired; it is deleted, so asserting `buildplan_refs` owns it would be
-    # a pin on a name that no longer exists. The three survivors still belong
-    # here: `_commits_ahead_of_base` is used by `critic_mode` and the rest feed
-    # the unticked-chunk tripwire, so the "one home" rule still has subjects.
+    # was retired. Of the three names moved out of `critic_mode`, one still lives
+    # in `buildplan_refs` (`_commits_ahead_of_base`, which `critic_mode` calls),
+    # the subject-form rule moved to `plan_status` (`_CHUNK_COMMIT_RE`, read by
+    # `built_chunks`), and `_committed_chunk_ids` is deleted with the notice it
+    # fed (#1051). Each still must not regrow in `critic_mode`.
     MOVED_OUT_OF_CRITIC_MODE = (
         "_commits_ahead_of_base",
         "_committed_chunk_ids",
         "_CHUNK_COMMIT_RE",
     )
 
+    #: The population's three exclusions, named so a fourth cannot be added
+    #: quietly: the one walker of chunk progress, the module owning the Status
+    #: section's bounds and walk, and — inside the hook, bounded to its own
+    #: span — the MG2 writer that turns boxes into facts.
+    EXCLUDED_MODULES = ("plan_status.py", "plan_index.py")
+    EXCLUDED_HOOK_FUNCTION = "_cmd_plan_import_status"
+
+    # A regex escaping a checkbox: `\[`, up to ten box-ish characters, `\]`.
+    _BOX = re.compile(r"\\\[((?:[ xX()|?:\[\]]|\\s){1,10}?)\\\]")
+
+    @staticmethod
+    def _reads_box_state(interior: str) -> bool:
+        """Whether an escaped box tells ticked from unticked.
+
+        A class accepting both states (`[ xX]`, non-capturing) SKIPS a box —
+        `buildplan_refs._CHUNK_CHECKBOX` tolerates `### [ ] Chunk 7:` headings
+        that way — and is not a reading. A capture, or a box matching one state
+        (`x`, ` `, `\\s`), is.
+        """
+        body = interior
+        if body.startswith("(?:") and body.endswith(")"):
+            body = body[3:-1]
+        if body.startswith("[") and body.endswith("]"):
+            cls = body[1:-1]
+            if "x" in cls.lower() and (" " in cls or "\\s" in cls) and "(" not in cls:
+                return False
+        return True
+
+    def _offences(self, path: Path, text: str, skip: "tuple[int, int] | None" = None):
+        """``(lineno, what)`` for each Status walk or box-state regex in ``text``."""
+        import ast
+
+        tree = ast.parse(text, filename=str(path))
+        found = []
+        for node in ast.walk(tree):
+            line = getattr(node, "lineno", None)
+            if line is None or (skip and skip[0] <= line <= skip[1]):
+                continue
+            names = []
+            if isinstance(node, ast.Name):
+                names = [node.id]
+            elif isinstance(node, ast.Attribute):
+                names = [node.attr]
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                names = [a.asname or a.name for a in node.names] + [a.name for a in node.names]
+            for name in names:
+                if name.startswith(("iter_status_section_", "_iter_status_section_")):
+                    found.append((line, f"walks Status via {name}"))
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                for m in self._BOX.finditer(node.value):
+                    if self._reads_box_state(m.group(1)):
+                        found.append((line, f"box regex {m.group(0)!r}"))
+        return found
+
+    def _hook_writer_span(self, text: str) -> "tuple[int, int]":
+        import ast
+
+        for node in ast.walk(ast.parse(text)):
+            if isinstance(node, ast.FunctionDef) and node.name == self.EXCLUDED_HOOK_FUNCTION:
+                return node.lineno, node.end_lineno
+        raise AssertionError(
+            f"the hook defines no {self.EXCLUDED_HOOK_FUNCTION} — the exclusion names "
+            "a function that is gone; re-point it at the import-status writer"
+        )
+
     def test_the_retired_derivation_is_really_gone(self):
         """The git-derived progress reading must not come back anywhere.
 
-        Its absence is what makes the checkbox the single reading; a module
-        quietly reintroducing it would restore the precedence this work removed
-        without any test above going red.
+        A module quietly reintroducing it would restore the precedence this
+        work removed without any test above going red.
         """
-        for module in (buildplan_refs, critic_mode, gates, briefing):
+        for module in (buildplan_refs, critic_mode, gates, briefing, plan_status):
             assert "_git_aware_progress" not in vars(module), (
                 f"{module.__name__} defines _git_aware_progress — chunk progress "
-                "has ONE reading (the Status checkboxes), and a second derived "
-                "reading is the defect shape this work removed."
+                "has ONE reading (plan_status), and a second derived reading is "
+                "the defect shape this work removed."
             )
 
     def test_critic_mode_no_longer_defines_the_derivation(self):
         for name in self.MOVED_OUT_OF_CRITIC_MODE:
             assert name not in vars(critic_mode), (
-                f"{name} is back in lib/critic_mode.py — the git-derived "
-                "current-chunk path belongs to lib/buildplan_refs.py so every "
-                "consumer gets the same answer (BLD-7K3Q)."
+                f"{name} is back in lib/critic_mode.py — the current-chunk path "
+                "belongs to lib/plan_status.py so every consumer gets the same "
+                "answer (BLD-7K3Q, #1051)."
             )
 
-    def test_buildplan_refs_owns_it(self):
-        for name in self.MOVED_OUT_OF_CRITIC_MODE:
-            assert name in vars(buildplan_refs)
+    def test_each_moved_name_has_one_home(self):
+        """Renegotiated by #1051 Chunk 06 (was `test_buildplan_refs_owns_it`)."""
+        assert "_commits_ahead_of_base" in vars(buildplan_refs)
+        assert "_CHUNK_COMMIT_RE" in vars(plan_status)
+        assert "_CHUNK_COMMIT_RE" not in vars(buildplan_refs), (
+            "the subject-form rule regrew in buildplan_refs; plan_status.built_chunks owns it"
+        )
+        for module in (buildplan_refs, plan_status, gates, briefing):
+            assert "_committed_chunk_ids" not in vars(module)
+
+    def test_the_box_classifier_tells_a_reading_from_a_skip(self):
+        """The control: the scan below is only as good as this classifier, so
+        it is shown to flag each state-reading form and to pass the one
+        tolerance the tree carries — on the real constant, not a copy."""
+        for form in (r"^- \[([ xX])\]", r"- \[x\]", r"- \[ \]", r"\[\s\]", r"\[(x| )\]"):
+            hits = [m.group(1) for m in self._BOX.finditer(form)]
+            assert hits and self._reads_box_state(hits[0]), form
+        tolerance = [m.group(1) for m in self._BOX.finditer(buildplan_refs._CHUNK_CHECKBOX)]
+        assert tolerance and not self._reads_box_state(tolerance[0]), tolerance
 
     def test_no_consumer_walks_the_status_section_itself(self):
-        """Only ``buildplan_refs`` may consume the Status-section walkers.
+        """Only the owners may walk ``## Status`` or read a box (#1051).
 
-        Deriving currency means walking Status and testing checkboxes; a module
-        that reaches for the walker is a module about to re-derive "current" for
-        itself, which is exactly how this defect reached three consumers. A bare
-        ``- [ ]`` grep is NOT the guard — backlog acceptance-checkbox lint and
-        docstring prose both match it — so the pin is on the walkers instead.
-        The one module that used to be exempt — the derived-view regenerator,
-        which rewrote Status by line index rather than reading it — no longer
-        exists, so the rule is now without exception.
+        The population is every ``plugin/lib/**/*.py`` and ``plugin/bin/prawduct-hook``.
+        Excluded, exactly: ``plan_status.py`` (the one walker of chunk progress),
+        ``plan_index.py`` (the section's bounds and its one walk) and, in the
+        hook, the span of ``_cmd_plan_import_status`` (the writer turning boxes
+        into facts) — nothing else in the hook is exempt. Everywhere else: no
+        reference to an ``iter_status_section_*`` walker (a call, an alias or an
+        import) and no regex that reads a box's state.
+
+        A bare ``- [ ]`` grep is NOT the guard — backlog acceptance-checkbox
+        lint and docstring prose both match it — so the box half is on regexes
+        (``_reads_box_state``). Known gap, stated so it is not mistaken for
+        coverage: a literal ``startswith("- [x]")`` test, or a box regex built
+        by concatenation, passes this scan; the walker half still catches any
+        reader that reaches the section through ``plan_index``.
         """
-        walkers = ("_iter_status_section_lines", "_iter_status_section_items")
+        lib = REPO_ROOT / "lib"
+        hook = REPO_ROOT / "bin" / "prawduct-hook"
+        excluded = sorted(lib / name for name in self.EXCLUDED_MODULES)
+        for path in excluded:
+            assert path.is_file(), f"{path} is an exclusion and is gone — re-derive the set"
+        scanned = [p for p in sorted(lib.rglob("*.py")) if p not in excluded]
+        assert len(scanned) > 30 and lib / "gates.py" in scanned and lib / "briefing.py" in scanned, (
+            f"the scan reached {len(scanned)} modules — too few to be the population"
+        )
+
         offenders = []
-        for path in sorted((REPO_ROOT / "lib").rglob("*.py")):
-            if path.name == "buildplan_refs.py":
-                continue
-            text = path.read_text()
-            if any(w in text for w in walkers):
-                offenders.append(path.relative_to(REPO_ROOT).as_posix())
+        for path in scanned:
+            for line, what in self._offences(path, path.read_text(encoding="utf-8")):
+                offenders.append(f"{path.relative_to(REPO_ROOT).as_posix()}:{line}: {what}")
+        hook_text = hook.read_text(encoding="utf-8")
+        span = self._hook_writer_span(hook_text)
+        assert span[1] - span[0] > 20, span  # the writer, not a stub
+        for line, what in self._offences(hook, hook_text, skip=span):
+            offenders.append(f"bin/prawduct-hook:{line}: {what}")
+
         assert not offenders, (
-            f"{offenders} walk the build-plan Status section directly; resolve "
-            "the current chunk via buildplan_refs._parse_build_plan_status so "
-            "every consumer gets the same (git-aware) answer."
+            f"{offenders} walk the build-plan Status section or read a box "
+            "directly; ask plan_status (chunk_states / current_chunks / "
+            "is_finished) so every consumer gets the one answer."
         )
 
 
@@ -733,16 +742,17 @@ class TestOneCurrentChunkImplementation:
 
 
 class TestDescriptionFallback:
+    """Ported from `buildplan_refs._parse_build_plan_status` (deleted, #1051) to
+    `briefing._plan_work`, the reader the handoff and the briefing now share."""
+
     def test_frontmatter_scope_names_a_plan_with_no_h1(self, tmp_path: Path):
-        # A work tree: the plan is read through the work-unit binding, and
-        # outside one no branch binds and no plan is read (#1050).
         _init_repo(tmp_path)
-        _write_plan(
+        plan = _write_plan(
             tmp_path,
             "---\nartifact: build-plan\nscope: session-handoff-continuity\n---\n\n"
             "## Status\n\n- [ ] Chunk 01: A\n",
         )
-        status = buildplan_refs._parse_build_plan_status(tmp_path)
+        status = briefing._plan_work(tmp_path, plan)
         assert status["description"] == "session-handoff-continuity"
 
     def test_filename_is_the_last_resort(self, tmp_path: Path):
@@ -751,21 +761,21 @@ class TestDescriptionFallback:
         _init_repo(tmp_path)
         plan_dir = tmp_path / ".prawduct" / "artifacts"
         plan_dir.mkdir(parents=True)
-        (plan_dir / "build-plan-widgets.md").write_text("## Status\n\n- [ ] Chunk 01: A\n")
-        _write_state(tmp_path, "active_build_plan: artifacts/build-plan-widgets.md\n")
-        status = buildplan_refs._parse_build_plan_status(tmp_path)
+        plan = plan_dir / "build-plan-widgets.md"
+        plan.write_text("## Status\n\n- [ ] Chunk 01: A\n")
+        status = briefing._plan_work(tmp_path, plan)
         assert status["description"] == "widgets"
 
     def test_h1_still_wins_when_present(self, tmp_path: Path):
         # A work tree: the plan is read through the work-unit binding, and
         # outside one no branch binds and no plan is read (#1050).
         _init_repo(tmp_path)
-        _write_plan(
+        plan = _write_plan(
             tmp_path,
             "---\nscope: ignored-when-h1-present\n---\n\n"
             "# Build Plan — Real Title (2026-07-26)\n\n## Status\n\n- [ ] Chunk 01: A\n",
         )
-        assert buildplan_refs._parse_build_plan_status(tmp_path)["description"] == "Real Title"
+        assert briefing._plan_work(tmp_path, plan)["description"] == "Real Title"
 
     def test_handoff_work_section_survives_a_missing_h1(self, tmp_path: Path):
         """The section vanished entirely on a live four-chunk plan, because
@@ -808,53 +818,41 @@ Prose that is NOT context.
 
 
 class TestContextBlock:
-    def test_multi_paragraph_context_survives_whole(self, tmp_path: Path):
-        # A work tree: the plan is read through the work-unit binding, and
-        # outside one no branch binds and no plan is read (#1050).
-        _init_repo(tmp_path)
-        _write_plan(tmp_path, MULTI_PARAGRAPH_PLAN)
-        context = buildplan_refs._parse_build_plan_status(tmp_path)["context"]
+    """`plan_index.status_context` — the block's one reader since #1051 moved it
+    out of `briefing` (and `_parse_build_plan_status` before it)."""
+
+    def test_multi_paragraph_context_survives_whole(self):
+        context = plan_index.status_context(MULTI_PARAGRAPH_PLAN)
         assert context.startswith("**Chunk 01 complete**")
         assert "generator stopped destroying" in context
         assert "Parents: SCN-4H9T." in context
         assert "The last paragraph, which used to be lost." in context
 
-    def test_context_stops_at_the_next_heading(self, tmp_path: Path):
-        # A work tree: the plan is read through the work-unit binding, and
-        # outside one no branch binds and no plan is read (#1050).
-        _init_repo(tmp_path)
-        _write_plan(tmp_path, MULTI_PARAGRAPH_PLAN)
-        context = buildplan_refs._parse_build_plan_status(tmp_path)["context"]
+    def test_context_stops_at_the_next_heading(self):
+        context = plan_index.status_context(MULTI_PARAGRAPH_PLAN)
         assert "Prose that is NOT context" not in context
 
     def test_context_stops_at_a_later_chunk_item(self, tmp_path: Path):
         """Context is conventionally last, but a plan that interleaves must not
         swallow its own checklist into the handoff."""
-        # A work tree: the plan is read through the work-unit binding, and
-        # outside one no branch binds and no plan is read (#1050).
         _init_repo(tmp_path)
-        _write_plan(
+        plan = _write_plan(
             tmp_path,
             "# Build Plan — Interleaved (2026-07-26)\n\n## Status\n\n"
             "- [ ] Chunk 01: A\n\nContext: mid-plan note.\n\n- [ ] Chunk 02: B\n",
         )
-        status = buildplan_refs._parse_build_plan_status(tmp_path)
+        status = briefing._plan_work(tmp_path, plan)
         assert status["context"] == "mid-plan note."
         assert status["current_chunk"] == "Chunk 01: A"
 
-    def test_a_second_context_line_is_kept_as_block_text(self, tmp_path: Path):
+    def test_a_second_context_line_is_kept_as_block_text(self):
         """Block semantics dissolve the first-wins/last-wins question: the first
         `Context:` opens the block and a later one is text inside it, so neither
         wins and nothing is dropped."""
-        # A work tree: the plan is read through the work-unit binding, and
-        # outside one no branch binds and no plan is read (#1050).
-        _init_repo(tmp_path)
-        _write_plan(
-            tmp_path,
+        context = plan_index.status_context(
             "# Build Plan — Two (2026-07-26)\n\n## Status\n\n- [ ] Chunk 01: A\n\n"
-            "Context: first note.\n\nContext: second note.\n",
+            "Context: first note.\n\nContext: second note.\n"
         )
-        context = buildplan_refs._parse_build_plan_status(tmp_path)["context"]
         assert "first note." in context
         assert "second note." in context
 

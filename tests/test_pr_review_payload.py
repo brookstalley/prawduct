@@ -251,11 +251,39 @@ class TestTheHappyPath:
         assert "app.py" in sections["diffstat"]["body"]
         assert "print(2)" not in sections["diffstat"]["body"]
 
-    def test_the_build_plan_status_boxes_are_carried_verbatim(self, tmp_path):
+    def test_the_build_plan_section_renders_chunk_states(self, tmp_path):
+        """Renegotiated by #1051 (was `..._status_boxes_are_carried_verbatim`):
+        the section is `plan_status.chunk_states` rendered as the `plan status`
+        table — id, state, certifying fact, date, tags — not the plan's boxes
+        copied out. A ticked box reads as an imported `done` until the plan is
+        migrated (MG1); an unticked one with no fact is `open`."""
         body = _sections(_repo(tmp_path))["build_plan"]["body"]
         assert "build-plan-widget.md" in body
-        assert "- [x] Chunk 01: the first one" in body
-        assert "- [ ] Chunk 02: the second one" in body
+        assert "## Chunk status (plan status; derived from facts): 1 of 2 open" in body
+        rows = {ln.split()[0]: ln.split()[1:] for ln in body.splitlines()
+                if ln.startswith("  ") and ln.split()[0] in ("01", "02")}
+        assert rows["01"] == ["done", "-", "-", "imported"]
+        assert rows["02"][:3] == ["open", "-", "-"]
+        assert "- [" not in body, "no box is copied into the section"
+
+    def test_a_review_fact_certifies_a_chunk_in_the_section(self, tmp_path):
+        """The control for the test above: the same plan, plus a clean review
+        fact naming Chunk 02 at the branch's HEAD, renders 02 `done` with that
+        fact's id — the box is still unticked, so only `chunk_states` can say so."""
+        from lib import evidence
+
+        repo = _repo(tmp_path)
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        appended = evidence.append_fact(repo, "review", "rev-20261025T000000Z-0a0b0c0d", {
+            "scope": "widget", "chunks": ["02"], "chunk": "02", "counts": {"blocking": 0},
+            "head_commit": head, "mode": "chunk (lighter pass, not ready for push)",
+        })
+        assert appended["status"] == "appended", appended
+        body = _sections(repo)["build_plan"]["body"]
+        assert "## Chunk status (plan status; derived from facts): finished" in body
+        row = next(ln.split() for ln in body.splitlines()
+                   if ln.startswith("  ") and ln.split()[0] == "02")
+        assert row[:3] == ["02", "done", "rev-20261025T000000Z-0a0b0c0d"]
 
     def test_the_change_log_entry_is_paired_by_scope(self, tmp_path):
         body = _sections(_repo(tmp_path))["change_log"]["body"]
@@ -283,12 +311,12 @@ class TestDegradations:
         repo = _repo(tmp_path, with_plan=False)
         section = _sections(repo)["build_plan"]
         assert not section["ok"]
-        assert "Status" in section["degraded"]
+        assert "the chunk-status checks have no subject" in section["degraded"]
 
     def test_an_unbound_branch_borrows_no_plan_and_says_why(self, tmp_path):
         """The plan claims `feat/widget`; a follow-up branch is bound to nothing,
-        so its Status boxes are not this PR's to grade. The bound fixture
-        (`test_the_build_plan_status_boxes_are_carried_verbatim`) is the control."""
+        so its chunks are not this PR's to grade. The bound fixture
+        (`test_the_build_plan_section_renders_chunk_states`) is the control."""
         repo = _repo(tmp_path)
         _git(repo, "checkout", "-q", "-b", "fix/follow-up")
         section = _sections(repo)["build_plan"]
@@ -316,7 +344,9 @@ class TestDegradations:
         body = _sections(repo)["build_plan"]["body"]
         assert "bound by: legacy-default" in body
         assert "resolution caveat: plan-unbound-legacy:" in body
-        assert "- [ ] Chunk 01: legacy" in body
+        row = next(ln.split() for ln in body.splitlines()
+                   if ln.startswith("  ") and ln.split()[0] == "01")
+        assert row[:2] == ["01", "open"]
 
     def test_no_change_log_entry_names_the_finding_it_is(self, tmp_path):
         repo = _repo(tmp_path, with_change_log=False)

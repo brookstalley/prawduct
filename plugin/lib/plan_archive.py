@@ -162,34 +162,63 @@ def _parse_scalar(raw: str) -> str:
     return raw.split("#", 1)[0].rstrip()
 
 
-def unbuilt_at_archive(content: str) -> str | None:
-    """What this plan's ``## Status`` says was still unbuilt, or ``None``.
+def open_chunks_reason(
+    plan_path: Path, *, repo_dir: Path, facts: object = None
+) -> str | None:
+    """Why ``plan_status`` says this plan is not finished, or ``None``.
 
-    A one-line pass-through to :func:`buildplan_refs.incompleteness_reason`,
-    kept so that **one module owns the key and its derivation**: a caller that
-    wants to preview the stamp (the CLI's ``--dry-run``) asks the same question
-    through the same door as the caller that writes it, and neither has to know
-    which module computes completeness.
-
-    Note the middle case, which is the one that matters. ``incompleteness_reason``
-    returns a *sentence* for a plan with no readable ``## Status`` roster rather
-    than ``None`` — an unparseable plan is not evidence of completion. That
-    sentence is stamped like any other, because filing an unreadable plan away as
-    clean is precisely the silent-completion failure this key exists to end.
-
-    **Which is exactly why the type gate comes first.** ``archive-plan`` archives
-    whatever it is pointed at, and a release plan, a discovery note or a design
-    doc has **no ``## Status`` roster by design** — so without this gate the
-    "cannot be read" sentence would land on every release plan at every cut,
-    reporting a missing roster in a document that never had one. That is a
-    control firing where there is nothing to catch, which
-    ``nonfunctional-requirements.md`` § Direction removes by default. Caught by
-    running the real command against this repo's own artifacts rather than by
-    reading the code.
+    The one sentence both the ``unbuilt_at_archive`` stamp and the backfill
+    sweep's #634 refusal print, derived from ``plan_status.chunk_states`` —
+    never from a box (#1051). ``None`` exactly when ``plan_status.is_finished``
+    (every chunk ``done`` or ``dropped``; a plan with no chunks is finished).
+    Otherwise the open chunks are named, and an open entry that is not a chunk
+    — an unreadable plan, a heading the parser rejects — is named by its
+    reason, because filing an unreadable plan away as clean is the
+    silent-completion failure this exists to end. ``facts`` defaults to the
+    store at ``repo_dir``.
     """
-    if not plan_index.is_build_plan(content):
+    from . import evidence, plan_status  # noqa: PLC0415 — lazy; only the stamp reads facts
+
+    if facts is None:
+        facts = evidence.read_facts(repo_dir)
+    states = plan_status.chunk_states(plan_path, facts, repo_dir=repo_dir)
+    if plan_status.is_finished(plan_path, facts, repo_dir=repo_dir, states=states):
         return None
-    return buildplan_refs.incompleteness_reason(content)
+    current = plan_status.current_chunks(plan_path, facts, repo_dir=repo_dir, states=states)
+    unreadable = [s.reason for s in states.values() if s.synthetic and s.reason]
+    parts: list[str] = []
+    if current:
+        shown = ", ".join(f"Chunk {c}" for c in current[:3]) + (", …" if len(current) > 3 else "")
+        parts.append(f"{len(current)} of {len(states)} chunks not done ({shown})")
+    parts.extend(unreadable[:2])
+    return "; ".join(parts) + " — the scope shipped, but this plan did not finish with it"
+
+
+def unbuilt_at_archive(
+    plan_path: Path, *, repo_dir: Path, facts: object = None
+) -> str | None:
+    """What ``plan_status`` says was still unbuilt in this plan, or ``None``.
+
+    :func:`open_chunks_reason` behind a type gate, kept so that **one module
+    owns the key and its derivation**: a caller that wants to preview the stamp
+    (the CLI's ``--dry-run``) asks the same question through the same door as
+    the caller that writes it.
+
+    **The type gate comes first.** ``archive-plan`` archives whatever it is
+    pointed at, and a release plan, a discovery note or a design doc has **no
+    chunks by design** — stamping one would report a missing roster in a
+    document that never had one, a control firing where there is nothing to
+    catch (``nonfunctional-requirements.md`` § Direction). A file that cannot be
+    read here is not gated out: ``plan_status`` answers an unreadable plan as
+    unfinished, and that is stamped.
+    """
+    try:
+        content = Path(plan_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        content = None
+    if content is not None and not plan_index.is_build_plan(content):
+        return None
+    return open_chunks_reason(plan_path, repo_dir=repo_dir, facts=facts)
 
 
 def completion_fields(
@@ -459,6 +488,7 @@ def archive_plan(
     date: str,
     release: str | None = None,
     superseded_by: str | None = None,
+    repo_dir: Path | None = None,
 ) -> dict[str, object]:
     """Stamp ``plan_path`` with its terminal state and move it into the archive.
 
@@ -499,13 +529,15 @@ def archive_plan(
     # CRLF document is normalized for the edit and restored on the way out. The
     # test asserts the bytes, not the intent.
     crlf = "\r\n" in content
-    # Derived HERE, from the plan's own content, rather than accepted as a
-    # parameter. The date is a parameter because the caller owns the calendar;
-    # completeness is not that kind of fact — it is written in the file being
-    # archived, and a parameter would let a caller assert a plan finished clean
-    # when its own Status says otherwise. This is the one field the operation
-    # reads rather than is told.
-    unbuilt = unbuilt_at_archive(content)
+    # Derived HERE, from `plan_status` over the plan and the fact store, rather
+    # than accepted as a parameter. The date is a parameter because the caller
+    # owns the calendar; completeness is not that kind of fact, and a parameter
+    # would let a caller assert a plan finished clean when its chunk states say
+    # otherwise. This is the one field the operation reads rather than is told.
+    # `repo_dir` defaults to the work tree holding `<repo>/.prawduct/artifacts`.
+    unbuilt = unbuilt_at_archive(
+        plan_path, repo_dir=repo_dir if repo_dir is not None else artifacts_dir.parent.parent
+    )
     stamped = apply_completion_frontmatter(
         content.replace("\r\n", "\n") if crlf else content,
         state=state,

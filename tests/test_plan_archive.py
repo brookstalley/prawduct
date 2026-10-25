@@ -332,19 +332,24 @@ class TestArchivePlan:
         archived = Path(result["destination"]).read_text(encoding="utf-8")
         assert plan_archive.UNBUILT_KEY not in archived
 
-    def test_a_plan_with_no_readable_status_is_stamped_not_filed_clean(
+    def test_a_plan_whose_chunk_cannot_be_read_is_stamped_not_filed_clean(
         self, tmp_path: Path
     ):
         """The case that would otherwise be silent, and the reason the field is
         derived rather than passed in.
 
-        A plan predating the Status convention, or one whose roster failed to
-        parse, produces the same empty item list as a fully-ticked plan. Reading
-        that silence as completion is exactly the failure the key exists to end,
-        so `incompleteness_reason` returns a SENTENCE there — and it must be
-        stamped like any other.
+        Renegotiated by #1051 (was `..._with_no_readable_status_...`). The stamp
+        is now `plan_status`' answer, and under it a plan with NO chunks is
+        finished (`1050-design.md` § 3: "finished everywhere"), so a
+        Status-less plan is no longer the silent case — the next test pins that.
+        The silent case is now a chunk heading the parser rejects: it reads as
+        no chunk to a heading walker, and `plan_status` keeps it OPEN so it is
+        stamped like any other unfinished chunk, with its reason.
         """
-        body = "---\nartifact: build-plan\nscope: demo\n---\n\nNo status section here.\n"
+        body = (
+            "---\nartifact: build-plan\nscope: demo\n---\n\n"
+            "## Build Chunks\n\n#### Chunk 01: too deep for the parser\n"
+        )
         project = _repo(tmp_path, body=body)
         result = plan_archive.archive_plan(
             _artifacts(project) / "build-plan-demo.md",
@@ -352,7 +357,35 @@ class TestArchivePlan:
             state=plan_archive.COMPLETED,
             date="2026-08-11",
         )
-        assert "no readable" in result["fields"][plan_archive.UNBUILT_KEY]
+        assert "unparseable-chunk-heading" in result["fields"][plan_archive.UNBUILT_KEY]
+
+    def test_a_plan_with_no_chunks_is_finished_and_unstamped(self, tmp_path: Path):
+        """The other half of the renegotiation above: no chunks at all is
+        `is_finished`, so nothing is unbuilt and the key is absent."""
+        body = "---\nartifact: build-plan\nscope: demo\n---\n\nNo chunks here.\n"
+        project = _repo(tmp_path, body=body)
+        result = plan_archive.archive_plan(
+            _artifacts(project) / "build-plan-demo.md",
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+        )
+        assert plan_archive.UNBUILT_KEY not in result["fields"]
+
+    def test_the_stamp_lists_the_open_chunks_and_not_a_dropped_one(self, tmp_path: Path):
+        """`unbuilt_at_archive` is stamped from `plan_status.chunk_states`: the
+        open chunks are named, and a chunk the plan DROPPED is not unbuilt."""
+        body = (
+            "---\nartifact: build-plan\nscope: demo\ndropped:\n  - 03: descoped\n---\n\n"
+            "## Build Chunks\n\n### Chunk 01: one\n\n### Chunk 02: two\n\n### Chunk 03: three\n"
+        )
+        project = _repo(tmp_path, body=body)
+        stamp = plan_archive.unbuilt_at_archive(
+            _artifacts(project) / "build-plan-demo.md", repo_dir=project
+        )
+        assert stamp is not None
+        assert stamp.startswith("2 of 3 chunks not done (Chunk 01, Chunk 02)")
+        assert "Chunk 03" not in stamp
 
     @pytest.mark.parametrize("declared", ["release-plan", "discovery", "design"])
     def test_a_document_that_is_not_a_build_plan_is_never_stamped(

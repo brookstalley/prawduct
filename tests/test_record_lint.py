@@ -515,6 +515,35 @@ class TestChunkRefs:
         assert any("chunk-ref-missing unchecked" in r for r in result["unchecked"])
         assert result["chunk_graded"] is None
 
+    def test_an_unfinished_plan_with_no_readable_chunk_is_not_quiet(self, tmp_path):
+        """#1051: a plan whose only open entry is a heading `plan_status` cannot
+        read is unfinished with no chunk to infer — `current_chunks` is empty
+        but `is_finished` is false, and that must say so rather than read as the
+        finished case below."""
+        plan = "# Plan\n\n## Build Chunks\n\n#### Chunk 01: too deep for the parser\n"
+        repo, head = self._repo_with_plan(tmp_path, plan, "unfinishednone")
+        result = _lint(repo, [], head, head)
+        assert result["chunk_graded"] is None
+        assert any(
+            "is unfinished but names no open chunk" in u and "unparseable-chunk-heading" in u
+            for u in result["unchecked"]
+        ), result["unchecked"]
+
+    def test_the_inferred_chunk_is_plan_status_first_open_chunk(self, tmp_path):
+        """The fallback is `plan_status.current_chunks`, not the first unticked
+        box: a `dropped:` chunk is not open, so inference skips it although its
+        box is unticked."""
+        plan = (
+            "---\nscope: s\ndropped:\n  - 01: descoped\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: dropped\n- [ ] Chunk 02: next\n\n"
+            "### Chunk 01: dropped\n\n- **Deliverables:** `src/gone.py`\n\n"
+            "### Chunk 02: next\n\n- **Deliverables:** `code.py`\n"
+        )
+        repo, head = self._repo_with_plan(tmp_path, plan, "inferdropped")
+        result = _lint(repo, [], head, head)
+        assert result["chunk_graded"] == "02"
+        assert result["findings"] == []
+
     def test_no_current_chunk_is_quiet(self, tmp_path):
         plan = "# Plan\n\n## Status\n\n- [x] Chunk 01: done\n"
         repo, head = self._repo_with_plan(tmp_path, plan, "allcomplete")
@@ -780,7 +809,7 @@ class TestChunkRefs:
         )
         repo, head = self._repo_with_plan(tmp_path, plan, "inferred")
         result = _lint(repo, [], head, head)
-        assert any("inferred from build-plan Status" in r for r in result["unchecked"])
+        assert any("inferred as the plan's first open chunk" in r for r in result["unchecked"])
 
         named = record_lint.lint_records(
             repo, repo / ".prawduct", [], head, head, chunk_id="01"
@@ -1011,6 +1040,62 @@ class TestDirectionNormCount:
         assert record_lint.direction_norm_count(text) == 2
 
 
+class TestPlansToCheckPath:
+    """`_plans_to_check` names the bound plan by `work_unit.repo_rel` — POSIX,
+    both sides resolved, an out-of-root plan kept absolute — rather than a
+    hand-rolled `relative_to` that answered `""` (and dropped the plan from the
+    `governed_by:` enumeration) whenever the two sides were spelled differently
+    (#1051 Chunk 04, inherited from Wave 1's cumulative)."""
+
+    _GOVERNING = [".prawduct/artifacts/architecture.md"]
+
+    def _real_and_link(self, tmp_path: Path) -> "tuple[Path, Path]":
+        real = _make_repo(tmp_path.resolve(), name="real")
+        _git(real, "checkout", "-q", "-b", "feat/s")
+        (real / ".prawduct" / "artifacts" / "build-plan-s.md").write_text(
+            "---\nartifact: build-plan\nscope: s\nbranch: feat/s\n---\n\n### Chunk 01: a\n"
+        )
+        link = tmp_path.resolve() / "link"
+        link.symlink_to(real)
+        return real, link
+
+    def test_a_symlinked_root_gives_a_posix_repo_relative_path(self, tmp_path):
+        """End to end through the real binding — a guard: `work_unit.resolve`
+        resolves its paths, so this held before the fix too."""
+        _real, link = self._real_and_link(tmp_path)
+        plans = record_lint._plans_to_check(link / ".prawduct", self._GOVERNING)
+        assert plans == [".prawduct/artifacts/build-plan-s.md"]
+
+    def test_a_binding_spelled_through_the_link_still_reads_repo_relative(
+        self, tmp_path, monkeypatch
+    ):
+        """The red: a `Binding` whose path is spelled through the symlink (one
+        built by hand, or by a resolver that stops resolving) against a resolved
+        root. `relative_to` raised there and the plan vanished as `""`."""
+        from lib import work_unit
+
+        _real, link = self._real_and_link(tmp_path)
+        spelled = link / ".prawduct" / "artifacts" / "build-plan-s.md"
+        monkeypatch.setattr(work_unit, "resolve", lambda d, **_k: work_unit.Binding(
+            "bound", "s", spelled, "integration", None, "binding"
+        ))
+        plans = record_lint._plans_to_check(link / ".prawduct", self._GOVERNING)
+        assert plans == [".prawduct/artifacts/build-plan-s.md"]
+
+    def test_a_plan_outside_the_root_is_kept_absolute(self, tmp_path, monkeypatch):
+        from lib import work_unit
+
+        real, _link = self._real_and_link(tmp_path)
+        outside = tmp_path.resolve() / "elsewhere" / "build-plan-s.md"
+        outside.parent.mkdir()
+        outside.write_text("---\nscope: s\n---\n")
+        monkeypatch.setattr(work_unit, "resolve", lambda d, **_k: work_unit.Binding(
+            "bound", "s", outside, "integration", None, "binding"
+        ))
+        plans = record_lint._plans_to_check(real / ".prawduct", self._GOVERNING)
+        assert plans == [outside.as_posix()]
+
+
 class TestGovernedByParsing:
     def test_soft_wrapped_disposition_counts_once(self):
         text = (
@@ -1079,6 +1164,8 @@ class TestUncheckedReporting:
         assert result == {
             "records": [],
             "chunk_graded": None,
+            # Added in the open (#1051): every chunk graded, listed — none here.
+            "chunks_graded": [],
             "plan_graded": None,
             "findings": [],
             "unchecked": [],
@@ -1408,7 +1495,7 @@ class TestEveryCheckCarriesASeverity:
         emitter_src = Path(record_lint.__file__).read_text()
         assert "chunk-ref-missing unchecked — " in emitter_src
         assert "chunk-ref-missing graded chunk " in emitter_src
-        assert "inferred from build-plan Status" in emitter_src
+        assert "inferred as the plan's first open chunk" in emitter_src
         # The plan half's caveat (`… bound through the active_build_plan pointer`)
         # is pinned by behaviour, not by its spelling in the source: R-2 replaced
         # a presence pin here, which stayed green with the branch unreachable,
@@ -1422,7 +1509,7 @@ class TestEveryCheckCarriesASeverity:
                 f"{rel} no longer names the cannot-run shape by its prefix — a "
                 "reviewer cannot tell which `unchecked` entry blocks."
             )
-            assert "inferred from build-plan Status" in text, (
+            assert "inferred as the plan's first open chunk" in text, (
                 f"{rel} dropped the assumption shape, so the compressed reading "
                 "('any chunk-ref-missing entry is BLOCKING') returns and with it "
                 "a false blocker that no --chunk value can clear."
@@ -1434,7 +1521,7 @@ class TestEveryCheckCarriesASeverity:
             )
             # The assumption shape must be graded NOTE somewhere after it is
             # named — the specific severity, not merely a mention.
-            tail = text[text.index("inferred from build-plan Status"):]
+            tail = text[text.index("inferred as the plan's first open chunk"):]
             assert "NOTE" in tail[:600], (
                 f"{rel} names the assumption shape but does not grade it NOTE "
                 "nearby; an ungraded mention is how the BLOCKING reading wins."

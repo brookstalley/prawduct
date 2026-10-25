@@ -1,10 +1,10 @@
-"""``prawduct-hook plan new|bind|resolve`` — the CLI over ``lib.plan_mint`` and
-``lib.work_unit`` (#1050 Chunk 06).
+"""``prawduct-hook plan new|bind|resolve|status`` — the CLI over ``lib.plan_mint``,
+``lib.work_unit`` and ``lib.plan_status``.
 
 Driven through the real binary: the subject is what the operator's command does
-— its exit code on each binding state, its refusal conventions, and the
-ephemeral-worktree guard's verdict (``resolve`` is a read, ``new``/``bind`` are
-writes). ``lib.plan_mint``'s own refusals are pinned in ``test_plan_mint.py``;
+— its exit code on each binding state, its refusal conventions, the chunk table
+``status`` renders, and the ephemeral-worktree guard's verdict (``resolve`` and
+``status`` are reads, ``new``/``bind`` are writes). ``lib.plan_mint``'s own refusals are pinned in ``test_plan_mint.py``;
 these pin that each reaches the CLI as a stable ``refused: <code>:`` at exit 1.
 """
 
@@ -164,6 +164,154 @@ class TestResolve:
             assert "BLOCKED: refusing `plan`" in refused.stderr, argv
 
 
+def _status_plan(repo: Path) -> Path:
+    """Three chunks: 01 ticked (in-memory import), 02 certified by a review
+    fact, 03 dropped with a reason — every row shape the table renders."""
+    path = repo / ".prawduct" / "artifacts" / "build-plan-unit.md"
+    path.write_text(
+        "---\nartifact: build-plan\nscope: unit\nbranch: feature/unit\nbase: main\n"
+        "dropped:\n  - 03: folded into 02\n---\n\n# Build Plan\n\n"
+        "## Status\n\n- [x] Chunk 01: one\n- [ ] Chunk 02: two\n- [ ] Chunk 03: three\n\n"
+        "## Build Chunks\n\n"
+        "### Chunk 01: one\n\n- **Deliverables:** `src/one.py`\n\n"
+        "### Chunk 02: two\n\n- **Deliverables:** `src/two.py`\n\n"
+        "### Chunk 03: three\n\n- **Deliverables:** `src/three.py`\n"
+    )
+    return path
+
+
+def _status_fixture(repo: Path) -> Path:
+    plan = _status_plan(repo)
+    (repo / "src").mkdir()
+    (repo / "src" / "two.py").write_text("x\n")
+    _git(repo, "add", "src/two.py")
+    _git(repo, "commit", "-qm", "feat(unit): the second (Chunk 02)")
+    head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+    store = repo / ".git" / "prawduct" / "evidence.jsonl"
+    store.parent.mkdir(parents=True)
+    store.write_text(json.dumps({
+        "schema": 1, "kind": "review", "id": "R-two", "ts": "2026-10-25T10:00:00Z",
+        "actor": {}, "body": {
+            "scope": "unit", "chunks": ["02"], "chunk": "02", "mode": "chunk",
+            "head_commit": head, "findings": [], "counts": {"blocking": 0},
+        },
+    }) + "\n")
+    return plan
+
+
+class TestStatus:
+    def test_json_carries_the_plan_and_every_chunk_field(self, tmp_path):
+        repo = _repo(tmp_path)
+        _status_fixture(repo)
+        proc = _run(repo, "status", "--json")
+        assert proc.returncode == 0, proc.stderr
+        data = json.loads(proc.stdout)
+        # `built_unavailable` joined in cumulative R-10: null when git answered.
+        assert set(data) == {"plan_path", "scope", "finished", "chunks", "built_unavailable"}
+        assert data["built_unavailable"] is None
+        assert (data["plan_path"], data["scope"], data["finished"]) == (
+            ".prawduct/artifacts/build-plan-unit.md", "unit", True,
+        )
+        assert data["chunks"] == [
+            {"id": "01", "state": "done", "fact_id": None, "date": None,
+             "imported": True, "built": False, "reason": None},
+            {"id": "02", "state": "done", "fact_id": "R-two", "date": "2026-10-25",
+             "imported": False, "built": True, "reason": None},
+            {"id": "03", "state": "dropped", "fact_id": None, "date": None,
+             "imported": False, "built": False, "reason": "folded into 02"},
+        ]
+
+    def test_the_human_table_renders_every_row_shape(self, tmp_path):
+        repo = _repo(tmp_path)
+        _status_fixture(repo)
+        proc = _run(repo, "status", ".prawduct/artifacts/build-plan-unit.md")
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.splitlines() == [
+            ".prawduct/artifacts/build-plan-unit.md (scope `unit`): finished (3 chunks)",
+            "  chunk  state    fact   date        tags",
+            "  01     done     -      -           imported",
+            "  02     done     R-two  2026-10-25  built",
+            "  03     dropped  -      -           -",
+            "      folded into 02",
+        ]
+
+    def test_an_unfinished_plan_counts_its_open_chunks(self, tmp_path):
+        """Control for the summary line: with no fact, 02 is open."""
+        repo = _repo(tmp_path)
+        _status_plan(repo)
+        proc = _run(repo, "status")
+        assert proc.returncode == 0, proc.stderr
+        lines = proc.stdout.splitlines()
+        assert lines[0] == ".prawduct/artifacts/build-plan-unit.md (scope `unit`): 1 of 3 open"
+        assert lines[3] == "  02     open     -     -     -"
+
+    @pytest.mark.parametrize(
+        "chunks, summary",
+        [
+            ((), "no chunks — finished"),
+            (("01",), "finished (1 chunk)"),
+        ],
+    )
+    def test_the_summary_line_for_no_chunks_and_one(self, tmp_path, chunks, summary):
+        repo = _repo(tmp_path)
+        path = repo / ".prawduct" / "artifacts" / "build-plan-unit.md"
+        body = "".join(f"### Chunk {c}: c\n\n" for c in chunks)
+        roster = "".join(f"- [x] Chunk {c}: c\n" for c in chunks)
+        path.write_text(
+            "---\nartifact: build-plan\nscope: unit\nbranch: feature/unit\n---\n\n"
+            f"## Status\n\n{roster}\n## Build Chunks\n\n{body}"
+        )
+        proc = _run(repo, "status")
+        assert proc.returncode == 0, proc.stderr
+        lines = proc.stdout.splitlines()
+        assert lines[0] == f".prawduct/artifacts/build-plan-unit.md (scope `unit`): {summary}"
+        assert len(lines) == (1 if not chunks else 2 + len(chunks))
+
+    def test_unbound_with_no_path_exits_1_with_the_reason(self, tmp_path):
+        repo = _repo(tmp_path, "chore/bump")
+        _status_plan(repo)
+        proc = _run(repo, "status")
+        assert proc.returncode == 1, proc.stdout
+        assert proc.stdout == ""
+        assert proc.stderr.splitlines() == [
+            "plan status: unbound: no plan resolves for this checkout — "
+            "no live plan claims `chore/bump`; name one"
+        ]
+        # A path answers on any checkout.
+        named = _run(repo, "status", ".prawduct/artifacts/build-plan-unit.md")
+        assert named.returncode == 0, named.stderr
+
+    @pytest.mark.parametrize("rel", ["missing.md", "notes.md"])
+    def test_a_path_that_is_not_a_build_plan_is_a_usage_error(self, tmp_path, rel):
+        repo = _repo(tmp_path)
+        # Declared some other artifact; a file declaring none counts as a plan.
+        (repo / "notes.md").write_text("---\nartifact: architecture\n---\n\n# Notes\n")
+        proc = _run(repo, "status", rel)
+        assert proc.returncode == 2, proc.stdout
+        assert proc.stderr.startswith(f"plan status: {'cannot read' if rel == 'missing.md' else 'notes.md is not a build plan'}")
+        assert "usage: prawduct-hook plan" in proc.stderr
+
+    def test_it_runs_in_a_scratch_worktree(self, tmp_path):
+        """`status` is a read: the ephemeral guard admits it. A scratch tree is
+        unbound, so it needs a path; given one, it answers."""
+        repo = _repo(tmp_path)
+        _status_plan(repo)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "plan")
+        wid = "a287823214767feab"
+        scratch = repo / ".claude" / "worktrees" / f"agent-{wid}"
+        scratch.parent.mkdir(parents=True)
+        _git(repo, "worktree", "add", "-q", "-b", f"worktree-agent-{wid}", str(scratch), "HEAD")
+        proc = _run(scratch, "status", ".prawduct/artifacts/build-plan-unit.md", "--json")
+        assert proc.returncode == 0, proc.stderr
+        assert [c["state"] for c in json.loads(proc.stdout)["chunks"]] == ["done", "open", "dropped"]
+        unbound = _run(scratch, "status")
+        assert unbound.returncode == 1
+        assert "BLOCKED" not in unbound.stderr
+        # The guard's scratch-tree NOTE precedes the command's own one line.
+        assert unbound.stderr.splitlines()[-1].startswith("plan status: unbound:")
+
+
 class TestNew:
     def test_new_mints_a_plan_the_binding_reads(self, tmp_path):
         repo = _repo(tmp_path)
@@ -241,6 +389,8 @@ class TestNew:
             ("bind", "plan.md"),
             ("bind", "--branch", "x"),
             ("resolve", "extra"),
+            ("status", "a.md", "b.md"),
+            ("status", "--bogus"),
             ("nope",),
             (),
         ],

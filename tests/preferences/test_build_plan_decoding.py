@@ -56,12 +56,11 @@ PLAN_PARSERS = frozenset(
     {
         "parse_build_plan_frontmatter_scope",
         "frontmatter_lines",
-        "_iter_status_section_lines",
-        "_iter_status_section_items",
-        "iter_status_section_lines",  # plan_index's names for the two above (#657)
-        "iter_status_section_items",
+        "iter_status_section_lines",  # plan_index's walk (#657); the buildplan_refs
+        "iter_status_section_items",  # aliases went in #1051
+        "status_context",
+        "chunk_title",
         "_chunk_section_lines",
-        "_resolve_chunk_progress_from",
         "_chunk_id_from_item_text",
     }
 )
@@ -172,6 +171,20 @@ def test_the_pin_has_something_to_check():
     modules = {r.rel for r in reads}
     assert len(reads) >= 11, f"only {len(reads)} build-plan reads matched: {reads}"
     assert set(PLAN_MODULES) <= modules, f"a plan module contributed nothing: {modules}"
+
+
+def test_every_parser_name_still_exists():
+    """The vocabulary rule above, mechanised (#1051 Chunk 06 deleted three more
+    names — `_iter_status_section_*` and `_resolve_chunk_progress_from`): a
+    name no function in `plugin/` defines can never match, so it is removed
+    rather than left to make the sweep read broader than it is."""
+    defined = {
+        n.name
+        for path in PLUGIN.rglob("*.py")
+        for n in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert PLAN_PARSERS <= defined, f"no longer defined: {sorted(PLAN_PARSERS - defined)}"
 
 
 def test_every_build_plan_read_names_utf8():

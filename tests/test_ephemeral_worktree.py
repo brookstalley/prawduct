@@ -445,13 +445,21 @@ class TestGuardRefusesWrites:
         assert "discarded when it merges" not in result.stderr
 
     def test_refusal_names_the_consequence_and_the_override(self, tmp_path):
-        """A refusal that does not explain itself just moves the confusion."""
+        """A refusal that does not explain itself just moves the confusion.
+
+        Renegotiated for #1051 (DG2): this was driven through `test-evidence
+        record`, which the guard now ADMITS from a scratch tree (it writes only
+        a narrowed fact to the shared store — `TestScratchTreeTestEvidence`).
+        The refusal's wording is unchanged, so it is pinned on a writer that
+        is still refused."""
         primary = tmp_path / "primary"
         _init_repo(primary)
         wt = _agent_worktree(primary)
 
-        stderr = _run(wt, "test-evidence", "record").stderr
+        result = _run(wt, "norm-index-scaffold", "--apply")
+        stderr = result.stderr
 
+        assert result.returncode == 1
         assert "discarded when it merges" in stderr
         # The message must not overclaim: a review or disposition persists to the
         # clone-shared evidence store and survives the worktree — it covers no
@@ -936,8 +944,12 @@ class TestGuardScope:
         primary = tmp_path / "primary"
         _init_repo(primary)
         wt = _agent_worktree(primary)
+        # Driven through a writer the guard still refuses (#1051 admits
+        # `test-evidence record`, so it no longer shows the override working);
+        # the control shows the refusal is live without the override.
+        assert "BLOCKED" in _run(wt, "norm-index-scaffold", "--apply").stderr
         stderr = _run(
-            wt, "test-evidence", "record",
+            wt, "norm-index-scaffold", "--apply",
             env_extra={"PRAWDUCT_ALLOW_EPHEMERAL_WRITES": "1"},
         ).stderr
         assert "BLOCKED" not in stderr
@@ -1071,3 +1083,194 @@ class TestScratchWorktreeArmsNoCriticGate:
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
         assert "CRITIC REVIEW" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# DG2 (#1051): `test-evidence record` from a scratch tree → shared store only
+# ---------------------------------------------------------------------------
+
+_JUNIT_GREEN = (
+    '<?xml version="1.0" encoding="utf-8"?>\n<testsuites><testsuite name="s" time="0.5">'
+    '<testcase classname="tests.test_a" name="t1"/><testcase classname="tests.test_a" name="t2"/>'
+    '<testcase classname="tests.test_a" name="t3"/></testsuite></testsuites>\n'
+)
+
+
+def _store_test_runs(repo: Path) -> list[dict]:
+    from lib import evidence
+
+    return evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
+
+
+class TestScratchTreeTestEvidence:
+    """The guard admits `record` on a narrower promise than a read: from a
+    harness scratch tree the per-worktree `.test-evidence.json` — which would be
+    discarded with the tree — is NOT written, and the run lands in the
+    clone-shared store as one `test-run` fact marked `narrowed` with its
+    ceiling. A durable (named-branch) agent tree is the control: it writes its
+    record exactly as before and its fact is not narrowed."""
+
+    def _report(self, tmp_path: Path) -> Path:
+        report = tmp_path / "report.xml"  # outside every tree: not part of the work
+        report.write_text(_JUNIT_GREEN)
+        return report
+
+    def test_a_scratch_tree_appends_one_narrowed_fact_and_writes_no_record(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        report = self._report(tmp_path)
+        before = len(_store_test_runs(primary))
+
+        result = _run(wt, "test-evidence", "record", "--from-junit", str(report))
+
+        assert result.returncode == 0, result.stderr
+        assert "BLOCKED" not in result.stderr
+        assert "recorded (narrowed, shared store only): 3 passed, 0 failed, 0 skipped" in result.stdout
+        assert not (wt / ".prawduct" / ".test-evidence.json").exists()
+        runs = _store_test_runs(primary)
+        assert len(runs) == before + 1
+        body, actor = runs[-1]["body"], runs[-1]["actor"]
+        assert body["narrowed"] is True
+        assert body["ceiling"] == f"--from-junit {report}"
+        assert (body["passed"], body["failed"], body["skipped"]) == (3, 0, 0)
+        assert isinstance(body.get("tree"), str) and body["tree"]
+        assert Path(actor["worktree"]).resolve() == wt
+
+    def test_a_live_narrowed_run_records_its_test_paths_as_the_ceiling(self, tmp_path):
+        """The delegate's real path: the fallback runner over the files it was
+        told to run. The ceiling is the command, so the paths are in it."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        (primary / ".gitignore").write_text(".pytest_cache/\n__pycache__/\n")
+        (primary / "tests").mkdir()
+        (primary / "tests" / "test_one.py").write_text("def test_one():\n    assert True\n")
+        _git(primary, "add", "-A")
+        _git(primary, "commit", "-qm", "a test")
+        wt = _agent_worktree(primary)
+
+        result = _run(wt, "test-evidence", "record", "--", "-p", "no:cacheprovider", "tests/test_one.py")
+
+        assert result.returncode == 0, result.stderr
+        assert "recorded (narrowed" in result.stdout, result.stdout + result.stderr
+        assert not (wt / ".prawduct" / ".test-evidence.json").exists()
+        body = _store_test_runs(primary)[-1]["body"]
+        assert body["narrowed"] is True and body["passed"] == 1
+        assert body["ceiling"].endswith("tests/test_one.py")
+        assert body["source"] == "run"
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ("--from-counts", "passed=3", "failed=0", "skipped=0"),
+            ("--no-rerun",),
+        ],
+    )
+    def test_sources_that_record_no_fact_are_refused_there(self, tmp_path, argv):
+        """Neither source records a fact, and from a scratch tree the fact is the
+        only write — so they would write nothing and say `recorded`."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        before = len(_store_test_runs(primary))
+
+        result = _run(wt, "test-evidence", "record", *argv)
+
+        assert result.returncode == 2, result.stderr
+        assert "records no test-run fact" in result.stderr
+        assert "BLOCKED" not in result.stderr
+        assert not (wt / ".prawduct" / ".test-evidence.json").exists()
+        assert len(_store_test_runs(primary)) == before
+
+    def test_the_durable_tree_control_writes_its_record_and_no_narrowed_fact(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree_on_named_branch(primary)
+        report = self._report(tmp_path)
+
+        result = _run(wt, "test-evidence", "record", "--from-junit", str(report))
+
+        assert result.returncode == 0, result.stderr
+        assert (wt / ".prawduct" / ".test-evidence.json").is_file()
+        assert "narrowed" not in result.stdout
+        assert "narrowed" not in _store_test_runs(primary)[-1]["body"]
+
+    def test_test_status_lists_the_narrowed_run_by_tree(self, tmp_path):
+        """The coordinator's `test-status` names the delegate's tree, when, the
+        counts and the ceiling — one line — and leaves the verdict line first
+        and the exit code as the verdict made it. An un-narrowed run (the
+        durable control) is not listed."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        scratch = _agent_worktree(primary)
+        durable = _agent_worktree_on_named_branch(primary)
+        report = self._report(tmp_path)
+        assert _run(scratch, "test-evidence", "record", "--from-junit", str(report)).returncode == 0
+        assert _run(durable, "test-evidence", "record", "--from-junit", str(report)).returncode == 0
+
+        result = _run(primary, "test-status")
+
+        lines = result.stdout.splitlines()
+        assert lines[0].startswith(("stale:", "current")), lines
+        assert result.returncode == 1, result.stdout  # no record here: the verdict is unchanged
+        assert lines[1].startswith("delegate runs (narrowed")
+        listed = [ln for ln in lines[2:] if ln.startswith("  ")]
+        assert len(listed) == 1, lines
+        assert str(scratch) in listed[0]
+        assert "3 passed 0 failed 0 skipped" in listed[0]
+        assert f"ceiling: --from-junit {report}" in listed[0]
+        assert str(durable) not in result.stdout
+
+    def test_test_status_lists_nothing_extra_when_no_delegate_ran(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        result = _run(primary, "test-status")
+        assert "delegate runs" not in result.stdout
+        assert len(result.stdout.splitlines()) == 1
+
+    def test_critic_begin_from_a_scratch_tree_is_still_refused(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+        result = _run(wt, "critic-begin", "--mode", "chunk", "--chunks", "01,02")
+        assert result.returncode == 1
+        assert "BLOCKED: refusing `critic-begin`" in result.stderr
+
+
+class TestPlanImportStatusUnderTheGuard:
+    """`plan import-status` previews anywhere and writes only under `--apply`;
+    `plan check-claims` is a read."""
+
+    def _plan(self, primary: Path) -> str:
+        plan = primary / ".prawduct" / "artifacts" / "build-plan-unit.md"
+        plan.parent.mkdir(parents=True, exist_ok=True)
+        plan.write_text(
+            "---\nartifact: build-plan\nscope: unit\nbranch: main\n---\n\n"
+            "## Status\n\n- [x] Chunk 01: a\n\n## Build Chunks\n\n### Chunk 01: a\n"
+        )
+        _git(primary, "add", "-A")
+        _git(primary, "commit", "-qm", "plan")
+        return ".prawduct/artifacts/build-plan-unit.md"
+
+    def test_the_preview_and_check_claims_proceed(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        rel = self._plan(primary)
+        wt = _agent_worktree(primary)
+        preview = _run(wt, "plan", "import-status", rel, "--remove-block")
+        assert preview.returncode == 0, preview.stderr
+        assert "would write: chunk 01" in preview.stdout
+        claims = _run(wt, "plan", "check-claims")
+        assert "BLOCKED" not in claims.stderr
+        assert claims.returncode == 0, claims.stdout + claims.stderr
+
+    def test_apply_is_refused_and_writes_nothing(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        rel = self._plan(primary)
+        wt = _agent_worktree(primary)
+        before = (wt / rel).read_bytes()
+        result = _run(wt, "plan", "import-status", rel, "--apply", "--remove-block")
+        assert result.returncode == 1
+        assert "BLOCKED: refusing `plan`" in result.stderr
+        assert (wt / rel).read_bytes() == before

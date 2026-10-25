@@ -712,12 +712,14 @@ def duplicate_scope_errors(artifacts_dir: Path) -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
-# The Status roster — which chunks a plan still has open (#657)
+# The Status section — its bounds and its one walk (#657)
 # ---------------------------------------------------------------------------
-# Here rather than in ``buildplan_refs`` because a reader below ``buildplan_refs``
-# may need it and ``core`` may only reach DOWN: ``buildplan_refs`` imports
-# ``core``, this module imports nothing in ``lib``. ``buildplan_refs`` re-exports
-# each under its old name.
+# Here rather than in ``buildplan_refs`` because ``core`` may only reach DOWN:
+# ``buildplan_refs`` imports ``core``, this module imports nothing in ``lib``.
+# Which chunks are done is not answered here: ``plan_status`` reads these walks
+# (#1051), and beside it only :func:`status_context` (the handoff's ``Context:``
+# block) and the hook's ``plan import-status`` writer read the section. Pinned
+# by ``tests/test_handoff_parser_correctness.py::TestOneCurrentChunkImplementation``.
 
 
 def status_section_bounds(lines: list[str]) -> "tuple[int, int] | None":
@@ -785,39 +787,44 @@ def iter_status_section_lines(content: str):
         yield stripped
 
 
+def _status_item(stripped: str) -> "tuple[bool, str] | None":
+    """``(checked, text)`` when one stripped Status line is an item, else ``None``
+    — the one item rule, read by both walks below."""
+    if stripped.startswith("- [ ]"):
+        return False, stripped[5:].strip()
+    if stripped.startswith("- [x]") or stripped.startswith("- [X]"):
+        return True, stripped[5:].strip()
+    return None
+
+
 def iter_status_section_items(content: str):
     """Yield ``(checked, text)`` for each ``- [ ]`` / ``- [x]`` Status item."""
     for stripped in iter_status_section_lines(content):
-        if stripped.startswith("- [ ]"):
-            yield False, stripped[5:].strip()
-        elif stripped.startswith("- [x]") or stripped.startswith("- [X]"):
-            yield True, stripped[5:].strip()
+        item = _status_item(stripped)
+        if item is not None:
+            yield item
 
 
-def has_unfinished_chunk(plan_path: Path) -> bool:
-    """True when ``plan_path``'s Status section still holds an unchecked chunk.
+def status_context(content: str) -> str:
+    """The Status section's ``Context:`` block, or ``""``.
 
-    It decides no binding: which plan governs a checkout is the plan's claim
-    (``work_unit.resolve``), and a plan with every box ticked governs its branch
-    exactly as one with work left does. Its consumer is the session briefing's
-    "claims a branch this repo does not have" advisory, which fires only for a
-    plan with work left, because a finished plan whose merged branch is gone is
-    the documented end state, not a finding.
-
-    **The signal is blunt: the boxes flip per chunk, so a plan reads finished
-    from the moment its last chunk is ticked** — typically before its branch
-    merges. That is the right reading for the advisory above and the reason it
-    must not be promoted to a liveness test; a terminal state in frontmatter
-    (archival introduces exactly that) is the sharper signal.
-
-    A plan with no Status items at all reads as unfinished — an unparseable plan
-    is not evidence of completion.
+    The block runs from the first ``Context:`` line to the end of the section,
+    not to the end of that physical line — plans write it as several
+    paragraphs. A later ``Context:`` is text inside it, so nothing is dropped,
+    and a Status item after it ends the block, so a plan that interleaves them
+    does not swallow its own checklist into the handoff. Whether an item is
+    ticked is never read.
     """
-    try:
-        content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return False
-    items = list(iter_status_section_items(content))
-    if not items:
-        return True
-    return any(not checked for checked, _text in items)
+    lines: list[str] = []
+    in_context = False
+    for stripped in iter_status_section_lines(content):
+        if _status_item(stripped) is not None:
+            in_context = False
+            continue
+        if not in_context and stripped.startswith("Context:"):
+            in_context = True
+            lines.append(stripped.removeprefix("Context:").strip())
+            continue
+        if in_context:
+            lines.append(stripped)
+    return "\n".join(lines).strip()

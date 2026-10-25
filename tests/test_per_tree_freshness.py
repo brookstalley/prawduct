@@ -382,6 +382,58 @@ class TestAMalformedCountNeverVouches:
         assert _status(repo).returncode == 0
 
 
+class TestANarrowedRunIsAttributionOnly:
+    """A scratch worktree's ``test-evidence record`` of a few files (DG2) lands a
+    ``test-run`` fact with ``narrowed: true``. A green 3-file run is not the
+    suite, so it must never vouch for the tree; and it must not deny either, or
+    the newest narrowed fact would overrule a real run on the same tree."""
+
+    def _fact(self, repo: Path, head: str, *, narrowed: bool, failed: int = 0) -> None:
+        tree = evidence.capture_tree(repo)["tree"]
+        body = {
+            "tree": tree, "head": head, "passed": 3, "failed": failed,
+            "skipped": 0, "duration_seconds": 1.0, "source": "run",
+        }
+        if narrowed:
+            body.update({"narrowed": True, "ceiling": ["tests/test_a.py"]})
+        evidence.append_test_run(repo, body)
+
+    def _only_the_fact_can_vouch(self, tmp_path):
+        # feat-b's run is this worktree's record; feat-a has no real run, so the
+        # appended fact is the only candidate that meets feat-a's tree.
+        repo = _repo(tmp_path)
+        _branch(repo, "feat-b", "B = 2\n")
+        _record(repo)
+        _branch(repo, "feat-a", "A = 1\n")
+        return repo, _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def test_a_narrowed_green_fact_does_not_vouch(self, tmp_path):
+        repo, head_a = self._only_the_fact_can_vouch(tmp_path)
+        self._fact(repo, head_a, narrowed=True)
+        res = _status(repo)
+        assert res.returncode == 1, res.stdout
+        assert res.stdout.startswith("stale:"), res.stdout
+
+    def test_an_unnarrowed_green_fact_is_the_control(self, tmp_path):
+        repo, head_a = self._only_the_fact_can_vouch(tmp_path)
+        self._fact(repo, head_a, narrowed=False)
+        res = _status(repo)
+        assert res.returncode == 0, res.stdout
+
+    def test_a_narrowed_red_fact_does_not_deny_a_real_green(self, tmp_path):
+        repo, head_a = _feat_a_green_then_b(tmp_path)
+        _git(repo, "switch", "-q", "feat-a")
+        self._fact(repo, head_a, narrowed=True, failed=1)
+        res = _status(repo)
+        assert res.returncode == 0, res.stdout
+
+    def test_an_unnarrowed_red_fact_denies_the_control(self, tmp_path):
+        repo, head_a = _feat_a_green_then_b(tmp_path)
+        _git(repo, "switch", "-q", "feat-a")
+        self._fact(repo, head_a, narrowed=False, failed=1)
+        assert _status(repo).returncode == 1
+
+
 class TestRunRefusal:
     def test_each_malformed_count_refuses(self):
         from lib import gates

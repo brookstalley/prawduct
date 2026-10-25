@@ -29,10 +29,11 @@ unchanged and binds both routes.
 above answers "did the scope ship", never "did the plan finish", and the two come
 apart whenever a scope ships partially: a real product archived a plan as
 ``completed``/``released_in`` with two chunks unbuilt and still live work, having
-declined the identical proposal at its two previous cuts. So a plan whose own
-``## Status`` does not evidence completion is now *refused and named* rather than
-proposed (:func:`_incompleteness_refusal`). This does not put a model in the write
-path — the predicate is a deterministic count, and declining moves the judgment to
+declined the identical proposal at its two previous cuts. So a plan that
+``plan_status.is_finished`` does not call finished is now *refused and its open
+chunks named* rather than proposed (:func:`_incompleteness_refusal`; #1051 moved
+the reading from the boxes to the facts). This does not put a model in the write
+path — the predicate is deterministic, and declining moves the judgment to
 a human and OUT of the write path. Nor does it strand the descoped plan the
 archival norm worries about: that plan was never meant to be archived *completed*
 but **superseded**, which needs a human to name a reason, so an explicit
@@ -51,7 +52,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from . import buildplan_refs, change_log, change_log_archive, plan_archive, plan_index
+from . import buildplan_refs, change_log, change_log_archive, evidence, plan_archive, plan_index
 
 
 #: A change-log entry opens ``## YYYY-MM-DD: title``. The date is compared as a
@@ -140,30 +141,32 @@ def _active_plan_path(prawduct_dir: Path) -> Path | None:
         return None
 
 
-def _incompleteness_refusal(plan_path: Path) -> "str | None":
-    """The sweep's extra caution: this plan's own Status forbids archiving it.
+def _incompleteness_refusal(
+    plan_path: Path, *, repo_dir: Path, facts: object
+) -> "str | None":
+    """The sweep's extra caution: ``plan_status`` says this plan is not finished.
+
+    The #634 precondition is ``not plan_status.is_finished`` (#1051) — every
+    chunk ``done`` or ``dropped`` by the facts, never by a ticked box — and the
+    refusal names the open chunks (:func:`plan_archive.open_chunks_reason`, the
+    sentence the ``unbuilt_at_archive`` stamp prints too).
 
     **Deliberately here and not in :func:`plan_archive.refusal_reason`**, even
     though that function is otherwise the single home for refusals. The two
     callers are asking different questions. An explicit ``archive-plan <path>``
-    is a human asserting the plan is done, and ``plan_archive``'s own module
-    docstring records that an archived plan may legitimately carry unticked
-    boxes — nothing reads them again. The *sweep* has no such assertion behind
-    it: it selects by a ``release=`` tag on a scope, and a scope can ship while
-    chunks of its plan remain unbuilt. Moving this check down would break
-    deliberate archiving to fix the automatic kind.
+    is a human asserting the plan is done — it asks no completeness question
+    (``data-model.md`` § Direction, the #634 ruling). The *sweep* has no such
+    assertion behind it: it selects by a ``release=`` tag on a scope, and a
+    scope can ship while chunks of its plan remain unbuilt. Moving this check
+    down would break deliberate archiving to fix the automatic kind.
 
     The preview/write invariant the survey docstring states is unaffected:
     :func:`backfill` archives ``survey()["shipped"]``, so both paths ask this.
 
-    Read failure is a refusal, not a pass — the same direction every other
-    guard here takes.
+    An unreadable plan is a refusal, not a pass — ``plan_status`` answers it as
+    unfinished, the same direction every other guard here takes.
     """
-    try:
-        content = plan_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        return f"cannot read the plan to check completeness: {exc}"
-    return buildplan_refs.incompleteness_reason(content)
+    return plan_archive.open_chunks_reason(plan_path, repo_dir=repo_dir, facts=facts)
 
 
 def survey(prawduct_dir: Path) -> dict:
@@ -173,7 +176,7 @@ def survey(prawduct_dir: Path) -> dict:
     ``[{path, scope, release}]`` — the plans a run would actually archive.
     ``blocked`` is ``[{path, scope, release, reason}]``: plans the change log
     says shipped but which :func:`plan_archive.refusal_reason` would refuse, plus
-    (since #634) those whose own ``## Status`` does not evidence completion —
+    (since #634) those ``plan_status.is_finished`` does not call finished —
     see :func:`_incompleteness_refusal` for why that second predicate lives here
     rather than beside the first.
     ``unshipped`` is ``[{path, scope}]``, the live plans it leaves alone.
@@ -234,6 +237,10 @@ def survey(prawduct_dir: Path) -> dict:
     # deprecated legacy-window input — so what it protects is the plan a
     # pointer still names.
     active = _active_plan_path(prawduct_dir)
+    # One store read for the whole sweep; `plan_status` reads the facts for
+    # every candidate the change log says shipped.
+    repo_dir = prawduct_dir.parent
+    facts = evidence.read_facts(repo_dir)
 
     shipped: list[dict] = []
     blocked: list[dict] = []
@@ -246,7 +253,7 @@ def survey(prawduct_dir: Path) -> dict:
         candidate = {"path": plan_path, "scope": scope, "release": release}
         reason = plan_archive.refusal_reason(
             plan_path, artifacts_dir, state=plan_archive.COMPLETED
-        ) or _incompleteness_refusal(plan_path)
+        ) or _incompleteness_refusal(plan_path, repo_dir=repo_dir, facts=facts)
         if reason is None:
             shipped.append(candidate)
         else:
@@ -281,8 +288,8 @@ def backfill(prawduct_dir: Path, *, date: str, apply: bool = False) -> dict:
     longer assumes it is.** The two come apart whenever a scope ships partially,
     and the assumption archived two unbuilt chunks as shipped in a real product.
     :func:`survey` now also asks :func:`_incompleteness_refusal`, so a plan whose
-    own ``## Status`` does not evidence completion lands in ``blocked`` with the
-    chunk named. Checkboxes are still never *corrected* on the way in — how the
+    chunks are not all done or dropped (``plan_status``) lands in ``blocked``
+    with the open chunks named. Checkboxes are still never *corrected* on the way in — how the
     work ended is a fact worth keeping — and an explicit ``archive-plan`` still
     asks no completeness question at all.
 

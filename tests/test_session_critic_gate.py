@@ -881,6 +881,46 @@ class TestBriefingAdvisoryReadsTheBranchsPlan:
 # ---------------------------------------------------------------------------
 
 
+class TestAFinishedPlanPassesOnCoverageAlone:
+    """#1051 (ST2): the gate arms on the binding, so a plan with every box
+    ticked no longer disarms it. The other half of that contract: nothing has
+    to disarm it either. The verdict is still the session's coverage, so once
+    a review covers the tree, the finished plan's Stop passes with no
+    disarming step. Real verdict, real git; the uncovered run is the control.
+    """
+
+    def _finished_plan_session(self, tmp_path: Path) -> Path:
+        repo = _session_repo(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: done\nbranch: main\n---\n\n"
+            "# Build Plan\n\n## Status\n\n- [x] Chunk 01: a\n- [x] Chunk 02: b\n\n"
+            "## Build Chunks\n\n### Chunk 01: a\n\n### Chunk 02: b\n"
+        )
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "plan")
+        _write_marker(repo)
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        (repo / "code.py").write_text("x = 2\n")
+        return repo
+
+    def test_unreviewed_work_on_a_finished_plan_blocks(self, tmp_path, capsys):
+        repo = self._finished_plan_session(tmp_path)
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+        assert rc == 2, err
+        assert "CRITIC REVIEW" in err
+
+    def test_a_review_covering_the_tree_passes_with_no_disarming_step(self, tmp_path, capsys):
+        repo = self._finished_plan_session(tmp_path)
+        _fact(repo, _tree(repo), _captured_tree(repo), ["code.py"])
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        assert "CRITIC REVIEW" not in err
+
+
 class TestSupersededAdviceReachesTheStopHook:
     """Two gates render a blocking verdict — the PR gate (pinned in
     ``test_cumulative_gate.py``) and ``cmd_stop``. Both prescribe
