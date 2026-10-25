@@ -504,7 +504,12 @@ LAST_MEASURED_TOKENS = {
     # +2 on 2026-10-21 (#187): "Auto-cleared next session" names its sources (`/clear` or
     # startup) now that the widened session-boundary pin sees the past participle; spends the
     # two words the #695/#846 cuts left, so the reading is back where this branch began.
-    "methodology/building.md": 5320,
+    # -5 on 2026-10-24 (work-unit binding): the delegating section's "tell it not to write
+    # `.prawduct/`" gave way to the scratch-worktree-is-unbound sentence, placed where the
+    # coordinator's role is stated so it replaces "The subagent implements; the main agent
+    # governs." instead of sitting beside it; paid in place by the shared-worktree briefing
+    # clause and the canary's reflection note. A READING; the ceiling follows it down.
+    "methodology/building.md": 5315,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1361,7 +1366,11 @@ LAST_MEASURED_TOKENS = {
     # a plan declaring `branch:` governs that branch only (neither fallback resolves it
     # elsewhere), and the retention sentence drops its pointer step, citing that rule rather
     # than restating it. A READING.
-    "methodology/planning.md": 5890,
+    # -169 on 2026-10-24 (work-unit binding): the two branch-resolution paragraphs and their
+    # precedence list became one paragraph (a plan claims its branch; unbound is normal; two
+    # claimants is broken, never tie-broken), and the lifecycle paragraph lost the pointer
+    # bookkeeping split. A READING.
+    "methodology/planning.md": 5721,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1593,7 +1602,10 @@ LAST_MEASURED_TOKENS = {
     # RAISE, on-demand class: paid only by a session about to delegate.
     # -1 on 2026-10-22 (git-hygiene): reaping now names `git-tidy --reap`, paid in
     # place by tightening the reaping paragraph's own next sentence.
-    "methodology/delegation.md": 2896,
+    # +23 on 2026-10-24 (work-unit binding): the scratch-worktree-is-unbound sentence replaces
+    # the clause describing `prawduct-hook`'s refusal of `.prawduct/` writes; the rule is now
+    # a property of the binding, not a refusal list. A READING, on-demand class.
+    "methodology/delegation.md": 2919,
 }
 
 
@@ -3483,7 +3495,8 @@ class TestBuildingMethodology:
         # the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5322, f"building.md is ~{tokens} tokens, should be <5322"
+        # LOWERED 5322 -> 5316 (work-unit binding, 2026-10-24): one over the reading — see LAST_MEASURED_TOKENS.
+        assert tokens < 5316, f"building.md is ~{tokens} tokens, should be <5316"
 
 
 # =============================================================================
