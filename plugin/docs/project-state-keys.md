@@ -266,7 +266,8 @@ the other), and on a trunk-based repo the merge-base span is zeroed by every pus
 branch-counted rule could never fire. A dispatch that resolves no scope is not budgeted at all.
 
 The scope's rounds are still bounded — the evidence store is shared by every worktree of the
-clone, so something has to separate them. On a branch that is its lineage. Where the `base..HEAD`
+clone, and holds the rounds other clones ran on this branch once their notes are ingested, so
+something has to separate them. On a branch that is its lineage. Where the `base..HEAD`
 span holds NO COMMITS, it is the worktree the rounds were recorded from, and on a trunk repo that
 is the only reason the ceiling can fire at all.
 

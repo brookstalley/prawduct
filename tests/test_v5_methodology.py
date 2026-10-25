@@ -514,7 +514,11 @@ LAST_MEASURED_TOKENS = {
     # scratch-worktree sentence lost its refusal list ("writes no fact" is false once a
     # delegate records narrowed test runs). One clause points the Critic step at
     # planning.md's rule. A READING; the ceiling follows it down.
-    "methodology/building.md": 5293,
+    # +4 on 2026-10-25 (evidence-transport), DECLARED: the evidence-model sentence says
+    # `/prawduct:pr` carries the store's review facts to other clones; mostly paid in place by
+    # dropping its `evidence status|list` pointer, which `review-cycle.md` — cited at the
+    # paragraph's end as the full model — states in the same sentence.
+    "methodology/building.md": 5297,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -991,7 +995,11 @@ LAST_MEASURED_TOKENS = {
     # -3 on 2026-10-25 (chunk-status, owner ruling D1): the final-nudge advisory, the plan-override's current chunk and the
     # mid-plan count read open chunks instead of unticked boxes; the free-writes list no
     # longer names a Status block. A READING; the ceiling follows it down.
-    "skills/critic/review-cycle.md": 7698,
+    # +68 on 2026-10-25 (evidence-transport), DECLARED: one consequence bullet in the evidence
+    # model — review facts reach other clones on `refs/notes/prawduct`, and a clone lacking a
+    # fact's tree reads a gap, so only committed reviews count everywhere. No review mode loads
+    # this file, so no reviewer route pays it.
+    "skills/critic/review-cycle.md": 7766,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1144,7 +1152,11 @@ LAST_MEASURED_TOKENS = {
     # archive's retention mechanics (newest 3, degrade to delete) left the parenthetical,
     # since the hook states them on stderr and no reader decides by them. The every-mode
     # payload therefore SHRANK. A READING; the ceiling follows it down.
-    "skills/critic/SKILL.md": 3095,
+    # +12 on 2026-10-25 (evidence-transport), DECLARED: the `evidence*` grant (both spellings)
+    # narrowed to `evidence status*` and `evidence list*`, because `evidence ingest` is a store
+    # write a reviewer must not reach — four grants where two stood. Not paid by trimming: the
+    # grant line is the reviewer boundary, and no prose in this file restates another's.
+    "skills/critic/SKILL.md": 3107,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -3543,7 +3555,8 @@ class TestBuildingMethodology:
         # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5322 -> 5316 (work-unit binding, 2026-10-24): one over the reading — see LAST_MEASURED_TOKENS.
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
-        assert tokens < 5294, f"building.md is ~{tokens} tokens, should be <5294"
+        # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5298, f"building.md is ~{tokens} tokens, should be <5298"
 
 
 # =============================================================================
@@ -5912,7 +5925,9 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
         # RATCHETED 3140 -> 3113 (#1050 work-unit binding, 2026-10-25) with the reading.
         # RATCHETED 3113 -> 3096 (chunk-status, 2026-10-25) with the reading.
-        assert tokens < 3096, f"SKILL.md is ~{tokens} tokens, should be <3096"
+        # RAISED 3096 -> 3108 (evidence-transport, 2026-10-25): the `evidence` grant narrowed
+        # to `status`/`list` — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3108, f"SKILL.md is ~{tokens} tokens, should be <3108"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6240,7 +6255,8 @@ class TestReviewCycle:
         # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
         # RATCHETED 7712 -> 7702 (#1050 work-unit binding, 2026-10-25) with the reading.
         # RATCHETED 7702 -> 7699 (chunk-status, 2026-10-25) with the reading.
-        assert tokens < 7699, f"review-cycle.md is ~{tokens} tokens, should be <7699"
+        # RAISED 7699 -> 7767 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 7767, f"review-cycle.md is ~{tokens} tokens, should be <7767"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

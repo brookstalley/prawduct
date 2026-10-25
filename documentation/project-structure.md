@@ -111,7 +111,7 @@ my-product/
 │   │                                  #   history, pruned at directory level by every scan on a hot path
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
-│   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file)
+│   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file — review facts reach other clones as notes on refs/notes/prawduct)
 │   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `lib.ledger` — `ledger-append` for review events, the Stop hook and `critic-consolidate` for `learning.*`)
 ├── .claude/
 │   └── settings.json                  # the committed install reference (marketplace + enabled plugin)

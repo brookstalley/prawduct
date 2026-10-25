@@ -207,7 +207,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
     # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
     # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
-    "single-pass-inner": 5783,
+    # +12 on 2026-10-25 (evidence-transport), DECLARED: the Critic skill's `evidence*` grant (both
+    # spellings) narrowed to `evidence status*`/`evidence list*`, so the reviewer side cannot reach
+    # `evidence ingest`, a store write. Priced against the SUM: 12 tokens per review, the cost of
+    # the grant line naming the two reads it admits rather than a prefix that admits a write.
+    "single-pass-inner": 5795,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -259,7 +263,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
     # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
     # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
-    "single-pass-full": 11515,
+    # +12 on 2026-10-25 (evidence-transport), DECLARED: the Critic skill's `evidence*` grant (both
+    # spellings) narrowed to `evidence status*`/`evidence list*`, so the reviewer side cannot reach
+    # `evidence ingest`, a store write. Priced against the SUM: 12 tokens per review, the cost of
+    # the grant line naming the two reads it admits rather than a prefix that admits a write.
+    "single-pass-full": 11527,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -372,14 +380,18 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
     # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
     # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
-    "coordinator-fork": 12109,
+    # +12 on 2026-10-25 (evidence-transport), DECLARED: the Critic skill's `evidence*` grant (both
+    # spellings) narrowed to `evidence status*`/`evidence list*`, so the reviewer side cannot reach
+    # `evidence ingest`, a store write. Priced against the SUM: 12 tokens per review, the cost of
+    # the grant line naming the two reads it admits rather than a prefix that admits a write.
+    "coordinator-fork": 12121,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5784,
-    "single-pass-full": 11516,
+    "single-pass-inner": 5796,
+    "single-pass-full": 11528,
     "dispatched-reviewer": 10991,
-    "coordinator-fork": 12110,
+    "coordinator-fork": 12122,
 }
 
 

@@ -191,7 +191,7 @@ In `final` mode the Critic also cross-checks learnings and reconciles the backlo
 
 ### The evidence model
 
-Every consolidated review appends a fact to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`; inspect with `prawduct-hook evidence status|list`). Facts record *trees*, so nothing expires by time or session and the gates answer by composing them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend opens a gap, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact (no gate reads it), written by the lifecycle commands, never you. Full model: `skills/critic/review-cycle.md`.
+Every consolidated review appends a fact to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`), whose review facts `/prawduct:pr` carries to other clones. Facts record *trees*, so nothing expires by time or session and the gates answer by composing them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend opens a gap, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact (no gate reads it), written by the lifecycle commands, never you. Full model: `skills/critic/review-cycle.md`.
 
 ### Modes
 
