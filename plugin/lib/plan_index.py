@@ -31,6 +31,12 @@ BUILD_PLAN_TYPE = "build-plan"
 #: frontmatter. Re-run that grep before adding a second meaning to it.
 BRANCH_KEY = "branch"
 
+#: Frontmatter key naming the branch a unit's integration branch merges into —
+#: the diff base its reviews and PR are measured against. git records no
+#: per-branch parent, so a stacked unit (B cut from A) is only knowable from
+#: here; ``coverage._resolve_base_branch`` reads it through the binding.
+BASE_KEY = "base"
+
 #: Characters read from a plan's head when only its frontmatter is wanted. The
 #: largest frontmatter in this repo is ~2.5 KiB, so this covers it several times
 #: over; a block that does not close inside it makes the file be re-read WHOLE
@@ -196,6 +202,20 @@ def parse_build_plan_frontmatter_branch(content: str) -> str | None:
     # explicit null both mean "fall through to the scalar", so `present` is
     # discarded rather than returned.
     _present, value = _frontmatter_scalar(fm, BRANCH_KEY)
+    return value
+
+
+def parse_build_plan_frontmatter_base(content: str) -> str | None:
+    """The branch a build plan says its unit merges into (``base:``), or ``None``.
+
+    Read by the same value-level reader as ``branch:``; absence, an empty value
+    and the null literal are all "no base declared", and the caller falls back
+    to the repo's integration branch.
+    """
+    fm = frontmatter_lines(content)
+    if fm is None:
+        return None
+    _present, value = _frontmatter_scalar(fm, BASE_KEY)
     return value
 
 

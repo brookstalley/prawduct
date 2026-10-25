@@ -53,9 +53,10 @@ are added, none repurposed (`api-contract.md`).
 deleted, in this wave: served only when no live plan in the repo declares `branch:`, and only for a
 plan that itself declares none, with the `plan-unbound-legacy` advisory. Tests pin both halves.
 
-**Tradeoffs accepted:** `core.resolve_build_plan_path` and `buildplan_refs.resolve_branch_plan`
-survive one release as shims over `resolve()` so that a consumer repo's pinned plugin version and a
-newer one agree on the answer during the window. Revisit: delete the shims when the window closes.
+**Tradeoffs accepted:** none standing. The cumulative review (R-8) showed the planned one-release
+shims for `core.resolve_build_plan_path` and `buildplan_refs.resolve_branch_plan` would serve no
+deployment — a pinned plugin imports its own `lib`, so only this tree's tests could call them —
+and they are deleted outright; their tests pin the same answers through `work_unit.resolve()`.
 
 **Decisions made mid-build:**
 - Chunk 05's acceptance grep was wrong as written: six `active_build_plan` mentions live in the
@@ -119,6 +120,16 @@ newer one agree on the answer during the window. Revisit: delete the shims when 
   Stop-gate tests are red until 06a closes the seam), so they are reviewed together with 06a in
   one `chunk` pass once green, and the PR's `cumulative` follows. Two rounds instead of four; the
   fact will name one chunk because today's field is singular (ST8 is Wave 2).
+- Cumulative review (`rev-…ae885815`, 0 blocking / 10 warning / 7 note), settled by the
+  coordinator: every warning is fixed in one round — `Binding` gains `case` (a stable code; no
+  consumer prefix-matches `reason` prose again) and `base` (read from the plan and consulted first
+  by base-branch resolution, so a stacked branch reviews against its declared base — the first
+  consumer of the field the template promised); `plan new` with no scope takes the branch-derived
+  suggestion (the suggestion finally has a consumer); the shims go (above); `closed-by` accepts
+  any forge's PR reference; the retired-mechanism prose outside `plugin/` and the missing
+  `plan resolve` grants are swept; the fragment's consumer note states the full `scope_chosen_by`
+  set. Accepted: the two Critic-skill passages that describe the legacy caveat accurately, and a
+  session-start binding memo deferred to #1051 where `plan_status` joins the same walk.
 - Chunk 05's prose states the rule in the present tense while `plan bind`, the
   `plan-unbound-legacy` advisory and the Stop hook's scratch-worktree behaviour land in 03 and 06.
   One PR; at merge every sentence is true. Chunk 06's acceptance gains one check per claim.

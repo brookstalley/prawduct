@@ -286,12 +286,7 @@ def staleness_scan(project_dir: Path) -> list[str]:
     # branch's plan is that branch's to report, and a finished plan retained for
     # its release must not nag every other branch to archive it.
     if build_plan_path is not None and build_plan_path.is_file():
-        try:
-            build_plan_label = (
-                f".prawduct/{build_plan_path.relative_to(prawduct_dir.resolve()).as_posix()}"
-            )
-        except ValueError:
-            build_plan_label = build_plan_path.name
+        build_plan_label = work_unit.repo_rel(build_plan_path, project_dir)
         try:
             status = buildplan_refs._parse_build_plan_status(project_dir, build_plan_path)
             if status.get("current_chunk"):
@@ -870,7 +865,7 @@ def assemble_session_briefing(
     elif (
         binding.state == "bound"
         and binding.reason
-        and binding.chosen_by not in ("legacy-pointer", "legacy-default")
+        and not binding.is_legacy
     ):
         lines.append(f"⚠ build plan: {binding.reason}")
 

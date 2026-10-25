@@ -16,7 +16,7 @@ scope: pantry-v1
 # branch: the claim — this plan governs the checkouts of this branch and no other. At
 # most one live plan claims a branch; two claimants make the binding broken and the
 # gates refuse to guess. A checkout no plan claims is bound to nothing, which is normal
-# (methodology/planning.md "Which plan is active is branch state"). Uncomment with your
+# (methodology/planning.md "Which plan governs a checkout is branch state"). Uncomment with your
 # real branch: a placeholder claims a branch no repo has. `prawduct-hook plan resolve`
 # prints what the current checkout is bound to.
 # branch: feature/pantry-v1

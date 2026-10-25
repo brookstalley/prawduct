@@ -1648,6 +1648,13 @@ class TestClosedByForms:
         "#123",
         "123",
         "https://github.com/octo/repo/pull/123",
+        # R-9: forge-neutral — the markdown backend validates this field too,
+        # and a non-GitHub forge's merge-request link is as followable.
+        "https://gitlab.example.com/group/repo/-/merge_requests/45",
+        "https://bitbucket.org/team/repo/pull-requests/7",
+        "http://forge.internal/pr/9",
+        "PR 123",
+        "pr 123",
         "v3.7.2",
         "3.7.2",
         "v3.7.1-dev.2",
@@ -1673,7 +1680,13 @@ class TestClosedByForms:
         "scope:Not_A_Slug",
         "scope:",
         "#0",
-        "https://github.com/octo/repo/issues/123",
+        # `https://github.com/octo/repo/issues/123` was refused here while the
+        # URL form was GitHub's `/pull/` path; R-9 made the form "any absolute
+        # http(s) link" (the property, not one forge's shape), so it left this list.
+        "PR #12",                # one handle form, not two glued together
+        "pull request 12",       # prose around a number is still free text
+        "https:/forge/pr/1",     # not an absolute link
+        "github.com/octo/repo/pull/1",  # no scheme: not a link a reader can open
     ])
     def test_anything_else_is_refused_naming_the_three_forms(self, fake, value):
         n = self._seed(fake)

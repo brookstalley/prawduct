@@ -1,4 +1,4 @@
-"""Tests for build-plan resolution: the shim over the work-unit binding, and
+"""Tests for build-plan resolution: the work-unit binding's plan answer, and
 the chunk readers that resolve "the active plan" through it.
 
 Which plan governs a checkout is ``lib.work_unit.resolve``'s answer (#1050):
@@ -6,8 +6,11 @@ the live plan whose ``branch:`` claims the checked-out branch, else — only in 
 repo where no live plan declares a branch — the ``active_build_plan`` pointer
 or the conventional ``artifacts/build-plan.md`` (the legacy window). Two
 claimants, or a plan that cannot be read, is ``broken`` and serves nothing.
-``core.resolve_build_plan_path`` survives one release as a shim returning the
-bound plan, or ``None``; the cases below pin it against that answer.
+The cases below pin that answer — the bound plan, or ``None`` — asked of
+``work_unit.resolve`` through :func:`_bound_plan`. They once asked
+``core.resolve_build_plan_path``, a shim kept "for one release" that no
+deployment could reach (a pinned plugin imports its own ``lib/``); it was
+deleted (R-8) and every assertion kept, through the owner.
 
 There is no inline mirror of the resolver in ``bin/prawduct-hook`` any more,
 and nothing pins one: the hook asks ``work_unit`` like every other caller
@@ -32,7 +35,6 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from lib import core as _mod  # noqa: E402
 from lib import work_unit as _work_unit  # noqa: E402
-resolve_build_plan_path = _mod.resolve_build_plan_path
 read_str_yaml_key = _mod.read_str_yaml_key
 BUILD_PLAN_POINTER_KEY = _mod.BUILD_PLAN_POINTER_KEY
 DEFAULT_BUILD_PLAN_REL = _mod.DEFAULT_BUILD_PLAN_REL
@@ -51,6 +53,13 @@ _hook = importlib.util.module_from_spec(_hook_spec)
 _hook_loader.exec_module(_hook)
 
 
+def _bound_plan(prawduct: Path) -> "Path | None":
+    """The plan the checkout governing ``prawduct`` is bound to, or ``None``
+    when it is unbound or broken — the answer the deleted shim returned."""
+    binding = _work_unit.resolve(prawduct.parent)
+    return binding.plan_path if binding.state == "bound" else None
+
+
 def _prawduct(tmp_path: Path, state: str = "") -> Path:
     p = tmp_path / ".prawduct"
     (p / "artifacts").mkdir(parents=True)
@@ -64,7 +73,7 @@ class TestPointerSpelling:
 
     These pinned ``resolve_build_plan_path`` until it became a shim over the
     binding (#1050); the spelling rules they pin now live in the two helpers the
-    binding reads, so they are asked there — the shim answers only about a plan
+    binding reads, so they are asked there — the binding answers only about a plan
     that exists and binds, which no fixture here builds.
     """
 
@@ -84,15 +93,15 @@ class TestPointerSpelling:
 
     def test_pointer_to_missing_file_is_a_candidate_the_binding_refuses(self, tmp_path: Path):
         """The raw candidate is still the pointed path; the old resolver returned
-        it and left "does it exist" to each caller. The shim answers that once,
+        it and left "does it exist" to each caller. The binding answers that once,
         through the binding: a pointer naming no live plan binds nothing."""
         repo = _branch_repo(tmp_path, "feat/x", "active_build_plan: artifacts/gone-plan.md\n")
         prawduct = repo / ".prawduct"
         assert _mod.fallback_plan_path(prawduct) == prawduct / "artifacts" / "gone-plan.md"
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         # The control: the same pointer naming a plan that exists binds it.
         _plan(prawduct, "gone-plan.md")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "gone-plan.md"
+        assert _bound_plan(prawduct) == prawduct / "artifacts" / "gone-plan.md"
 
     def test_repo_relative_pointer_accepted(self, tmp_path: Path):
         # STH-5P2W: the natural repo-relative spelling (".prawduct/artifacts/…")
@@ -171,7 +180,7 @@ def _plan(
 
 
 class TestBranchScopedResolution:
-    """The shim answers the work-unit binding: (1) the one live plan claiming
+    """The work-unit binding's answer: (1) the one live plan claiming
     the checked-out branch, else (2) — only while no live plan in the repo
     declares a branch — the ``active_build_plan`` pointer or (3) the
     conventional default, else nothing.
@@ -195,7 +204,7 @@ class TestBranchScopedResolution:
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
         claimed = _plan(prawduct, "branch-plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == claimed
+        assert _bound_plan(prawduct) == claimed
 
     def test_a_claim_elsewhere_closes_the_scalar_route(self, tmp_path: Path):
         """Was ``test_scalar_still_wins_when_no_plan_claims_the_branch``. The
@@ -209,7 +218,7 @@ class TestBranchScopedResolution:
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
         _plan(prawduct, "branch-plan.md", branch="feat/somewhere-else")
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         binding = _work_unit.resolve(repo)
         assert binding.state == "unbound"
         assert "`active_build_plan` names other-plan.md" in binding.reason
@@ -221,7 +230,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "branch-plan.md", branch="feat/other")
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
 
     def test_a_repo_with_no_opt_in_is_unchanged(self, tmp_path: Path):
         # The compatibility contract: existing repos behave identically until a
@@ -232,7 +241,7 @@ class TestBranchScopedResolution:
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "pointed-plan.md")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "pointed-plan.md"
+        assert _bound_plan(prawduct) == prawduct / "artifacts" / "pointed-plan.md"
         assert _work_unit.resolve(repo).chosen_by == "legacy-pointer"
 
     @pytest.mark.parametrize(
@@ -267,7 +276,7 @@ class TestBranchScopedResolution:
         boxes = {"open": "- [ ] Chunk 01: open\n", "done": "- [x] Chunk 01: shipped\n"}
         for name, kind in plans.items():
             _plan(prawduct, name, branch="feat/x", chunks=boxes[kind])
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         binding = _work_unit.resolve(repo)
         assert binding.state == "broken"
         assert f"{len(plans)} live plans claim `feat/x`" in binding.reason
@@ -285,7 +294,7 @@ class TestBranchScopedResolution:
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
         plan = _plan(prawduct, "the-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        assert resolve_build_plan_path(prawduct) == plan
+        assert _bound_plan(prawduct) == plan
 
     def test_the_consumer_shape_that_found_this_resolves(self, tmp_path: Path):
         # The population that produced the defect: a repo carrying five plans
@@ -315,10 +324,10 @@ class TestBranchScopedResolution:
             # name a branch that, so nothing ever matches it.
             if len(expected) == 1:
                 assert binding.state == "bound"
-                assert resolve_build_plan_path(prawduct) == binding.plan_path
+                assert _bound_plan(prawduct) == binding.plan_path
             else:
                 assert binding.state == "broken"
-                assert resolve_build_plan_path(prawduct) is None
+                assert _bound_plan(prawduct) is None
 
     def test_an_archived_plan_claims_nothing(self, tmp_path: Path):
         # Archiving ends the claim, which is what makes the move the whole
@@ -327,7 +336,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "archive/old-plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         assert _work_unit.resolve(repo).claimants == ()
 
     def test_an_archived_twin_does_not_make_a_live_claim_ambiguous(self, tmp_path: Path):
@@ -337,7 +346,7 @@ class TestBranchScopedResolution:
         prawduct = repo / ".prawduct"
         _plan(prawduct, "archive/plan.md", branch="feat/x")
         live = _plan(prawduct, "plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == live
+        assert _bound_plan(prawduct) == live
 
     def test_a_default_plan_claiming_another_branch_governs_nothing_here(
         self, tmp_path: Path
@@ -349,7 +358,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "fix/unrelated")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "build-plan.md", branch="feature/finished", chunks="- [x] Chunk 01: a\n")
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
 
     def test_a_pointed_plan_claiming_another_branch_governs_nothing_here(
         self, tmp_path: Path
@@ -359,7 +368,7 @@ class TestBranchScopedResolution:
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "build-plan-other.md", branch="feature/other")
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
 
     def test_a_fallback_plan_declaring_no_branch_still_governs(self, tmp_path: Path):
         """The control: only a DECLARED other branch refuses. A plan that claims
@@ -367,7 +376,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "fix/unrelated")
         prawduct = repo / ".prawduct"
         plan = _plan(prawduct, "build-plan.md")
-        assert resolve_build_plan_path(prawduct) == plan
+        assert _bound_plan(prawduct) == plan
 
     def test_detached_head_binds_nothing_even_to_a_branchless_fallback(self, tmp_path: Path):
         """Was ``test_detached_head_keeps_a_fallback_that_claims_a_branch``,
@@ -381,10 +390,10 @@ class TestBranchScopedResolution:
         plan = _plan(prawduct, "build-plan.md")
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
         _git(repo, "checkout", "-q", "--detach", head)
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         assert _work_unit.resolve(repo).reason == "HEAD is detached, so no branch can be claimed"
         _git(repo, "checkout", "-q", "feature/finished")
-        assert resolve_build_plan_path(prawduct) == plan
+        assert _bound_plan(prawduct) == plan
 
     def test_chunk_readers_say_no_plan_governs_rather_than_naming_a_file(
         self, tmp_path: Path
@@ -450,7 +459,7 @@ class TestBranchScopedResolution:
         _plan(prawduct, "branch-plan.md", branch="feat/x")
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
         _git(repo, "checkout", "-q", "--detach", head)
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         assert _work_unit.resolve(repo).state == "unbound"
 
     def test_outside_a_work_tree_binds_nothing(self, tmp_path: Path):
@@ -461,7 +470,7 @@ class TestBranchScopedResolution:
         branchless pointed plan is the control: even that one is not served."""
         prawduct = _prawduct(tmp_path, "active_build_plan: artifacts/other-plan.md\n")
         _plan(prawduct, "other-plan.md")
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         binding = _work_unit.resolve(tmp_path)
         assert binding.reason == "not inside a git work tree, so no branch can be claimed"
 
@@ -473,9 +482,9 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "a-design-note.md", branch="feat/x", artifact="design")
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         plan = _plan(prawduct, "build-plan.md")
-        assert resolve_build_plan_path(prawduct) == plan
+        assert _bound_plan(prawduct) == plan
 
     def test_a_plan_declaring_no_artifact_type_may_still_claim(self, tmp_path: Path):
         # Inherits `plan_index`'s fail-safe direction: at least one real plan in
@@ -483,7 +492,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         claimed = _plan(prawduct, "typeless-plan.md", branch="feat/x", artifact=None)
-        assert resolve_build_plan_path(prawduct) == claimed
+        assert _bound_plan(prawduct) == claimed
 
     def test_a_nested_plan_can_claim(self, tmp_path: Path):
         # Discovery is recursive, as it is for `scope:` — repos that organize
@@ -491,7 +500,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         claimed = _plan(prawduct, "plans/007/build-plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == claimed
+        assert _bound_plan(prawduct) == claimed
 
     def test_long_frontmatter_still_yields_its_claim(self, tmp_path: Path):
         # The bounded header read must not become a silent correctness knob: a
@@ -502,7 +511,7 @@ class TestBranchScopedResolution:
         filler = "\n".join(f"note_{i}: {'x' * 200}" for i in range(200))
         path.write_text(f"---\nartifact: build-plan\n{filler}\nbranch: feat/x\n---\n\n# P\n")
         assert len(path.read_text()) > _plan_index._FRONTMATTER_PROBE_CHARS
-        assert resolve_build_plan_path(prawduct) == path
+        assert _bound_plan(prawduct) == path
 
     def test_a_null_branch_claims_nothing(self, tmp_path: Path):
         repo = _branch_repo(
@@ -511,7 +520,7 @@ class TestBranchScopedResolution:
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
         _plan(prawduct, "opted-out.md", branch="null")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+        assert _bound_plan(prawduct) == prawduct / "artifacts" / "other-plan.md"
 
     def test_a_nested_branch_key_does_not_claim(self, tmp_path: Path):
         # Indented under another key, `branch:` is not a claim — the file binds
@@ -522,14 +531,15 @@ class TestBranchScopedResolution:
         (prawduct / "artifacts" / "nested.md").write_text(
             "---\nartifact: build-plan\nwip:\n  branch: feat/x\n---\n\n# P\n"
         )
-        assert resolve_build_plan_path(prawduct) is None
+        assert _bound_plan(prawduct) is None
         assert _work_unit.resolve(repo).claimants == ()
 
 
-class TestTheShimsAgreeWithTheBinding:
-    """Both shims kept for one release answer exactly what the binding answers,
-    on every state — the reason they were kept (a pinned consumer and a newer
-    one agree during the legacy window)."""
+class TestTheBindingStatesThroughTheirConsumers:
+    """Each binding state, read by the two consumer-facing answers that
+    replaced the shims: the governing plan (``_bound_plan``) and the
+    scope-less review subject (``buildplan_refs.resolve_reviewed_plan`` with
+    no scope). Both must agree with the binding on every state."""
 
     def _shapes(self, tmp_path: Path):
         bound = _branch_repo(tmp_path / "bound", "feat/x")
@@ -546,27 +556,37 @@ class TestTheShimsAgreeWithTheBinding:
         _plan(broken / ".prawduct", "build-plan-b.md", branch="feat/x")
         return {"bound": bound, "legacy": legacy, "unbound": unbound, "broken": broken}
 
-    def test_core_shim_is_the_bound_plan_or_none(self, tmp_path: Path):
+    def test_the_governing_plan_is_the_bound_plan_or_none(self, tmp_path: Path):
         for state, repo in self._shapes(tmp_path).items():
             binding = _work_unit.resolve(repo)
             expected = binding.plan_path if binding.state == "bound" else None
-            assert resolve_build_plan_path(repo / ".prawduct") == expected, state
+            assert _bound_plan(repo / ".prawduct") == expected, state
             assert (expected is not None) == (state in ("bound", "legacy")), state
 
-    def test_branch_plan_shim_carries_the_binding_and_its_reason(self, tmp_path: Path):
+    def test_the_scopeless_review_subject_carries_the_binding_and_its_reason(self, tmp_path: Path):
         shapes = self._shapes(tmp_path)
         for state, repo in shapes.items():
             binding = _work_unit.resolve(repo)
-            plan = _bpr.resolve_branch_plan(repo, repo / ".prawduct")
+            plan = _bpr.resolve_reviewed_plan(repo, repo / ".prawduct", None)
             assert plan.path == (binding.plan_path if binding.state == "bound" else None), state
             assert plan.gap == binding.reason, state
-        claimed = _bpr.resolve_branch_plan(shapes["bound"], shapes["bound"] / ".prawduct")
-        assert (claimed.source, claimed.scope, claimed.gap) == (_bpr.SOURCE_SCOPE_NAMED, "x", None)
+        claimed = _bpr.resolve_reviewed_plan(shapes["bound"], shapes["bound"] / ".prawduct", None)
+        assert (claimed.scope, claimed.gap, claimed.rel) == (
+            "x", None, ".prawduct/artifacts/build-plan-x.md",
+        )
+        assert _work_unit.resolve(shapes["bound"]).case == "claim"
         # #1007(a): a legacy-window answer is never silent, even on a repo with
-        # one plan — it was, and read exactly like a grounded one.
-        legacy = _bpr.resolve_branch_plan(shapes["legacy"], shapes["legacy"] / ".prawduct")
-        assert legacy.source == _bpr.SOURCE_ACTIVE_PLAN
+        # one plan — it was, and read exactly like a grounded one. Which route
+        # answered is the binding's case (the review answer no longer restates it).
+        legacy = _bpr.resolve_reviewed_plan(shapes["legacy"], shapes["legacy"] / ".prawduct", None)
+        assert _work_unit.resolve(shapes["legacy"]).case == "legacy-default"
         assert legacy.gap.startswith(f"{_work_unit.LEGACY_ADVISORY_KEY}:")
+
+    def test_the_retired_shims_stay_deleted(self):
+        """R-8: two public names answering the question `work_unit.resolve`
+        owns are how the next consumer gets a second walker."""
+        assert not hasattr(_mod, "resolve_build_plan_path")
+        assert not hasattr(_bpr, "resolve_branch_plan")
 
 
 class TestTheCliResolvesRatherThanRefusing:

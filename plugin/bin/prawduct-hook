@@ -7034,8 +7034,9 @@ def _plan_mint():
 
 
 _PLAN_HELP = (
-    "usage: prawduct-hook plan new <scope> [--branch B] [--base BASE] [--title T] "
+    "usage: prawduct-hook plan new [<scope>] [--branch B] [--base BASE] [--title T] "
     "[--kind K] [--working]\n"
+    "         (<scope> omitted: suggested from the branch being claimed, and printed)\n"
     "       prawduct-hook plan bind <path> --branch B\n"
     "       prawduct-hook plan resolve [--json]"
 )
@@ -7097,13 +7098,11 @@ def _parse_plan_args(
 
 
 def _plan_rel(project_dir: Path, path: "Path | None") -> str:
-    """``path`` relative to the repo root, for a message; the path as given otherwise."""
+    """``path`` for a message, by the binding's one display rule
+    (``work_unit.repo_rel``); ``(none)`` for no path."""
     if path is None:
         return "(none)"
-    try:
-        return Path(path).resolve().relative_to(Path(project_dir).resolve()).as_posix()
-    except ValueError:
-        return str(path)
+    return _work_unit().repo_rel(path, project_dir)
 
 
 def _cmd_plan_resolve(project_dir: Path, argv: list[str]) -> int:
@@ -7114,7 +7113,9 @@ def _cmd_plan_resolve(project_dir: Path, argv: list[str]) -> int:
     and record takes. Human form: one ``<state>: ...`` line, then the reason
     when there is one. ``--json``: the ``Binding``'s fields — ``state``,
     ``scope``, ``plan_path`` (repo-relative, or null), ``role``, ``reason``,
-    ``chosen_by``, ``claimants`` (repo-relative list) — as one object on stdout.
+    ``chosen_by``, ``claimants`` (repo-relative list), ``case`` (the resolver's
+    route, ``work_unit.Case``) and ``base`` (the bound plan's ``base:``, or
+    null) — as one object on stdout.
 
     Exit 0 for ``bound`` and ``unbound`` (both are answers; unbound is normal),
     :data:`PLAN_RESOLVE_BROKEN_EXIT` for ``broken``, 2 for a usage error.
@@ -7137,6 +7138,8 @@ def _cmd_plan_resolve(project_dir: Path, argv: list[str]) -> int:
             "reason": binding.reason,
             "chosen_by": binding.chosen_by,
             "claimants": [_plan_rel(project_dir, p) for p in binding.claimants],
+            "case": binding.case,
+            "base": binding.base,
         }, sort_keys=True))
         return exit_code
     if binding.state == "bound":
@@ -7164,6 +7167,14 @@ def _cmd_plan_new(project_dir: Path, argv: list[str]) -> int:
     ``--working`` takes only ``--branch``: it mints nothing, so a ``--base``,
     ``--title`` or ``--kind`` beside it would be dropped silently, and is
     refused instead.
+
+    With ``<scope>`` omitted, a mint takes ``plan_mint.suggest_scope`` of the
+    branch it will claim (``--branch``, else the checked-out one) and prints
+    ``scope <slug> suggested from branch <name>`` first, so the identity it
+    used is on the screen to be checked. A branch that suggests nothing (an
+    integration line, a release or scratch branch, nothing slug-legal left) is
+    refused with ``no-scope-suggestion``. ``--working`` still needs the scope:
+    it names an existing unit, which the working branch's name is not.
     """
     parsed = _parse_plan_args(
         "new", argv,
@@ -7173,11 +7184,11 @@ def _cmd_plan_new(project_dir: Path, argv: list[str]) -> int:
     if isinstance(parsed, int):
         return parsed
     positionals, values, seen = parsed
-    if len(positionals) != 1:
-        what = "name the unit's scope" if not positionals else f"unexpected argument {positionals[1]!r}"
+    working = "--working" in seen
+    if len(positionals) > 1 or (working and not positionals):
+        what = "name the unit to join" if not positionals else f"unexpected argument {positionals[1]!r}"
         print(f"plan new: {what}\n{_PLAN_HELP}", file=sys.stderr)
         return 2
-    working = "--working" in seen
     if working:
         extra = sorted(set(values) - {"--branch"})
         if extra:
@@ -7188,6 +7199,20 @@ def _cmd_plan_new(project_dir: Path, argv: list[str]) -> int:
             )
             return 2
     plan_mint = _plan_mint()
+    if positionals:
+        scope = positionals[0]
+    else:
+        claimed = values.get("--branch") or _gitstate().current_branch(project_dir)
+        scope = plan_mint.suggest_scope(claimed, project_dir)
+        if scope is None:
+            print(
+                f"refused: no-scope-suggestion: branch `{claimed or '(detached HEAD)'}` "
+                "suggests no scope (an integration, release or scratch branch, or "
+                "nothing slug-legal left) — name the unit's scope",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"scope {scope} suggested from branch {claimed}")
     kwargs = {"branch": values.get("--branch"), "working": working}
     if not working:
         kwargs.update(
@@ -7196,7 +7221,7 @@ def _cmd_plan_new(project_dir: Path, argv: list[str]) -> int:
             kind=values.get("--kind", "feature"),
         )
     try:
-        result = plan_mint.new(project_dir, positionals[0], **kwargs)
+        result = plan_mint.new(project_dir, scope, **kwargs)
     except plan_mint.PlanMintRefused as exc:
         print(f"refused: {exc.code}: {exc.detail}", file=sys.stderr)
         return 1

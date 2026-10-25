@@ -142,8 +142,12 @@ Algorithm, in full (as built in Chunk 01 and settled after its review):
 
 Every consumer takes `Binding`, not the walker. The two resolvers it replaces,
 `core.resolve_build_plan_path` (13 callers) and `buildplan_refs.resolve_branch_plan` (10 callers),
-become thin shims over `resolve()` for one release and are then deleted; `buildplan_refs.
-infer_scope_from_branch` is deleted in Wave 1 (D3) except as the suggestion inside `plan new`.
+are deleted outright — a shim kept "for one release" would serve no deployment, since a pinned
+plugin imports its own `lib` (Wave 1's cumulative review, R-8); `buildplan_refs.
+infer_scope_from_branch` is deleted (D3) and survives only as `plan_mint.suggest_scope`, which
+`plan new` uses when the scope is omitted. `Binding` also carries `case` (the route code consumers
+branch on) and `base` (the plan's declared base, consulted first by base-branch resolution — so a
+stacked branch reviews against its declared base).
 The explicit overrides (`--scope`/`--chunk` on `critic-begin` and `verify-records`, the manifest's
 fields, `PRAWDUCT_VERIFY_CHUNK_ID`) remain, recorded as `explicit-args`.
 

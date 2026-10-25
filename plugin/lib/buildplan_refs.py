@@ -557,25 +557,6 @@ class ChunkProgress(NamedTuple):
     has_status_items: bool
 
 
-#: How :func:`resolve_reviewed_plan` reached the plan it graded. Constants
-#: rather than bare strings because the value is a **cross-module contract**:
-#: ``record_lint`` tests for ``SOURCE_ACTIVE_PLAN`` to decide whether to attach
-#: the "this need not be the plan this branch is building" caveat, and
-#: ``critic_mode`` tests for ``SOURCE_SCOPE_NAMED``. Two literals typed in two
-#: files agree only until one of them is renamed, and the failure is silent in
-#: the direction that matters — the caveat quietly stops being emitted and a
-#: reviewer grades chunk refs against a possibly-unrelated plan with nothing
-#: saying so.
-#:
-#: ``SOURCE_ACTIVE_PLAN`` is the work-unit binding's legacy window (the
-#: ``active_build_plan`` pointer or the conventional path, in a repo where no plan
-#: claims a branch): a plan the binding served without a claim to show it is this
-#: branch's. Which of the two routes answered is the binding's ``chosen_by``, and
-#: the ``gap`` carries its reason.
-SOURCE_SCOPE_NAMED = "scope-named"
-SOURCE_ACTIVE_PLAN = "active-plan"
-
-
 class ReviewedPlan(NamedTuple):
     """Which build plan a review is actually about, and how that was decided.
 
@@ -594,7 +575,6 @@ class ReviewedPlan(NamedTuple):
     path: Path | None
     rel: str | None
     scope: str | None
-    source: str  # SOURCE_SCOPE_NAMED | SOURCE_ACTIVE_PLAN | "none"
     gap: str | None
 
 
@@ -612,21 +592,6 @@ def _scope_plan_map(prawduct_dir: Path) -> dict[str, Path]:
     directory level.
     """
     return plan_index.build_scope_to_plan_map(prawduct_dir / "artifacts")
-
-
-def resolve_branch_plan(project_dir: Path, prawduct_dir: Path) -> ReviewedPlan:
-    """The checkout's work-unit binding, as a :class:`ReviewedPlan`.
-
-    **A shim, kept for one release** (``build-plan-work-unit-binding.md``
-    Tradeoffs) so a consumer on an older plugin and one on this version agree
-    during the legacy window; nothing in ``lib/`` or the hook calls it. It is
-    exactly :func:`resolve_reviewed_plan` with no scope. Its old body inferred a
-    scope from the branch NAME and resolved the plan that declared it, which
-    graded a fix branch against whichever plan's scope it happened to match
-    (#208); a name is not a claim, and the one surviving use of name inference
-    is a suggestion offered to a person (``plan_mint.suggest_scope``).
-    """
-    return resolve_reviewed_plan(project_dir, prawduct_dir, None)
 
 
 def _declares_scope(plan_path: Path) -> bool:
@@ -724,7 +689,7 @@ def unresolved_scope_cause(
     scoped = set(known.values())
 
     def rel(path: Path) -> str:
-        return _repo_rel(prawduct_dir, path)
+        return work_unit.repo_rel(path, prawduct_dir.parent)
 
     for path, claimed in plan_index.branch_claiming_plans(artifacts_dir):
         if (
@@ -794,13 +759,14 @@ def resolve_reviewed_plan(
       precisely the silent grade of an unrelated plan, so the caller must report
       instead of answering.
     - **no scope** → the binding (``work_unit.resolve``). A plan that claims
-      this branch is ``SOURCE_SCOPE_NAMED`` with ``gap=None`` — the claim is
-      the grounding — unless it declares no ``scope:``, which the gap says. A
-      legacy-window plan is ``SOURCE_ACTIVE_PLAN`` and the gap carries the
-      binding's reason, on every repo: it was once silent where only one plan
-      declared a scope (#1007(a)), which left a fallback answer looking exactly
-      like a grounded one. An unbound or broken checkout is ``path=None`` with
-      the binding's reason as the gap — no plan is borrowed and none is chosen.
+      this branch has ``gap=None`` — the claim is the grounding — unless it
+      declares no ``scope:``, which the gap says. A legacy-window plan's gap
+      carries the binding's reason, on every repo: it was once silent where
+      only one plan declared a scope (#1007(a)), which left a fallback answer
+      looking exactly like a grounded one. An unbound or broken checkout is
+      ``path=None`` with the binding's reason as the gap — no plan is borrowed
+      and none is chosen. How the binding was reached is the binding's
+      ``case``; this answer does not restate it.
     """
     if scope and scope.strip():
         scope = scope.strip()
@@ -810,32 +776,21 @@ def resolve_reviewed_plan(
                 None,
                 None,
                 scope,
-                "none",
                 f"the dispatch names scope {scope!r} but no build plan under "
                 "artifacts/ declares it — grading this repo's active plan "
                 "would grade a different subject",
             )
-        return ReviewedPlan(match, _repo_rel(prawduct_dir, match), scope, SOURCE_SCOPE_NAMED, None)
+        return ReviewedPlan(match, work_unit.repo_rel(match, project_dir), scope, None)
 
     binding = work_unit.resolve(project_dir)
     if binding.state != "bound" or binding.plan_path is None:
-        return ReviewedPlan(None, None, None, "none", binding.reason)
-    claimed = binding.chosen_by == "binding"
+        return ReviewedPlan(None, None, None, binding.reason)
     return ReviewedPlan(
         binding.plan_path,
-        _repo_rel(prawduct_dir, binding.plan_path),
+        work_unit.repo_rel(binding.plan_path, project_dir),
         binding.scope,
-        SOURCE_SCOPE_NAMED if claimed and binding.scope is not None else SOURCE_ACTIVE_PLAN,
         binding.reason,
     )
-
-
-def _repo_rel(prawduct_dir: Path, path: Path) -> str:
-    """``path`` relative to the repo root, or its bare name when it lies outside."""
-    try:
-        return str(path.relative_to(prawduct_dir.parent))
-    except ValueError:
-        return path.name
 
 
 def resolve_chunk_progress(

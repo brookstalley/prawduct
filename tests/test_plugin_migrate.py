@@ -1129,7 +1129,7 @@ def test_the_cutover_owns_no_second_notion_of_a_main_family_branch(tmp_path: Pat
     from lib import coverage
 
     src = Path(_migrate_plugin.__file__).read_text()
-    assert "coverage._MAIN_FAMILY" in src, (
+    assert "coverage.MAIN_FAMILY" in src, (
         "the cutover restated the resolver's family test instead of reading it"
     )
     assert not re.search(r'["\']master["\']', src), (
@@ -1137,7 +1137,7 @@ def test_the_cutover_owns_no_second_notion_of_a_main_family_branch(tmp_path: Pat
         "that vocabulary"
     )
     # And the shared predicate is what it claims to be.
-    assert coverage._MAIN_FAMILY == frozenset({"main", "master"})
+    assert coverage.MAIN_FAMILY == frozenset({"main", "master"})
 
 
 def test_human_output_names_the_recorded_base_branch(tmp_path: Path):

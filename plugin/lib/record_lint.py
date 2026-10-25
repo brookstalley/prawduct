@@ -806,11 +806,8 @@ def _check_chunk_refs(
             # no subject. A line on every such review would be read by no one.
             return [], None, None, None
         plan_path = binding.plan_path
-        try:
-            plan_rel = plan_path.relative_to(Path(project_dir).resolve()).as_posix()
-        except ValueError:
-            plan_rel = plan_path.name
-        if binding.chosen_by != "binding" and len(
+        plan_rel = work_unit.repo_rel(plan_path, project_dir)
+        if binding.is_legacy and len(
             plan_index.build_scope_to_plan_map(prawduct_dir / "artifacts")
         ) > 1:
             # A legacy-window binding is an assumption, worth reporting only
@@ -819,7 +816,7 @@ def _check_chunk_refs(
             # channel stops being read.
             route = (
                 "the active_build_plan pointer"
-                if binding.chosen_by == "legacy-pointer"
+                if binding.case == "legacy-pointer"
                 else "the conventional path"
             )
             plan_caveat = (

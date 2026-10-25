@@ -509,16 +509,33 @@ class TestDefaultBase:
     ("feature/---", None),
     (None, None),
 ])
-def test_suggest_scope_offers_a_slug_and_never_for_an_unbound_branch(branch, expected):
-    suggestion = plan_mint.suggest_scope(branch)
+def test_suggest_scope_offers_a_slug_and_never_for_an_unbound_branch(tmp_path, branch, expected):
+    repo = _repo(tmp_path, state="base_branch: develop\n")
+    suggestion = plan_mint.suggest_scope(branch, repo)
     assert suggestion == expected
     if suggestion is not None:
         assert change_fragments.is_scope(suggestion)
 
 
+def test_the_integration_roster_is_the_main_family_plus_the_repos_own_base(tmp_path):
+    """One roster (R-11): `coverage.MAIN_FAMILY` and the repo's integration
+    branch, never a second hand-kept list. `trunk` is unbound where the repo
+    integrates onto it and an ordinary name where it does not — the control
+    that shows the answer comes from the repo, not from a literal."""
+    from lib import coverage
+
+    trunk_repo = _repo(tmp_path / "t", state="base_branch: trunk\n")
+    assert plan_mint.integration_branches(trunk_repo) == coverage.MAIN_FAMILY | {"trunk"}
+    assert plan_mint.suggest_scope("trunk", trunk_repo) is None
+    plain = _repo(tmp_path / "p")
+    assert plan_mint.suggest_scope("trunk", plain) == "trunk"
+    assert plan_mint.suggest_scope("master", plain) is None
+
+
 def test_suggest_scope_is_only_a_suggestion():
-    """D3: nothing in the library decides with it. A caller that bound through it
-    would be name inference come back."""
+    """D3: nothing in the library decides with it — its one consumer is the
+    `plan new` CLI, which prints what it took. A library caller that bound
+    through it would be name inference come back."""
     source = (ROOT / "lib" / "plan_mint.py").read_text()
     body_uses = [line for line in source.splitlines()
                  if "suggest_scope(" in line and not line.lstrip().startswith("def ")]

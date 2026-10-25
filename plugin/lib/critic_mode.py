@@ -561,14 +561,10 @@ def binding_progress(project_dir: Path, binding) -> "buildplan_refs.ChunkProgres
 
 def plan_rel(project_dir: Path, binding) -> "str | None":
     """The bound plan's path relative to the repo root, for a rationale; ``None``
-    when nothing is bound. The binding's path is resolved, so the root is too."""
+    when nothing is bound (``work_unit.repo_rel`` is the display rule)."""
     if binding is None or binding.plan_path is None:
         return None
-    path = Path(binding.plan_path)
-    try:
-        return path.relative_to(Path(project_dir).resolve()).as_posix()
-    except ValueError:
-        return path.name
+    return work_unit.repo_rel(binding.plan_path, project_dir)
 
 
 def _plan_relation_note(project_dir: Path, plan) -> str:
@@ -583,10 +579,10 @@ def _plan_relation_note(project_dir: Path, plan) -> str:
     observably or it can only be defended on principle).
     """
     rel = plan_rel(project_dir, plan) or "(unresolved)"
-    if plan.chosen_by == "binding":
+    if plan.is_claim:
         return f"build plan {rel}, which claims this branch"
-    if plan.chosen_by in ("legacy-pointer", "legacy-default"):
-        route = "`active_build_plan`" if plan.chosen_by == "legacy-pointer" else "the conventional path"
+    if plan.is_legacy:
+        route = "`active_build_plan`" if plan.case == "legacy-pointer" else "the conventional path"
         return (
             f"build plan {rel}, reached through {route} and assumed related — "
             "it declares no `branch:`, so nothing confirms it is this branch's"
@@ -604,7 +600,7 @@ def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
 
     ``None`` when it is not mid-plan, which is two conditions, both required:
 
-    - **the plan claims this branch** (``chosen_by == "binding"``). A plan
+    - **the plan claims this branch** (``Binding.is_claim``). A plan
       reached through the legacy window is *assumed* related, and a branch
       whose plan cannot be shown keeps rule 2's boundary answer — the boundary
       is never inferred away on an assumption;
@@ -620,7 +616,7 @@ def _mid_plan_start(project_dir: Path, plan, progress) -> "dict | None":
     interval that mode then reviews cannot disagree. ``None`` too when HEAD
     cannot be read: an unreadable state keeps today's answer.
     """
-    if plan.chosen_by != "binding" or not later_review_owed(progress):
+    if not plan.is_claim or not later_review_owed(progress):
         return None
     head_commit = gitstate._git_head_sha(project_dir)
     head_tree = _head_tree(project_dir)

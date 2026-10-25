@@ -6870,11 +6870,11 @@ class TestUnresolvedScopeCause:
         assert fact["body"]["scope_chosen_by"] == "none"
 
     def test_the_unbound_cases_about_no_plan_get_their_own_codes(self, tmp_path):
-        """`scratch-worktree`, `detached-head` and `no-work-tree` are read off the
-        binding's reason (`critic_consolidate._UNBOUND_CASE_CODES`), so each is
-        resolved FOR REAL here: a reworded reason in `work_unit` turns this red
-        instead of the code quietly degrading to `unbound`. A legacy binding
-        with no scope is the bound control."""
+        """`scratch-worktree`, `detached-head` and `no-work-tree` are mapped from
+        the binding's case (`critic_consolidate.SCOPE_CAUSE_BY_CASE`), and each is
+        resolved FOR REAL here, so the resolver emitting a case and the map
+        reading it are pinned together. A legacy binding with no scope is the
+        bound control."""
         from lib import work_unit
 
         def code(project):
@@ -6904,6 +6904,21 @@ class TestUnresolvedScopeCause:
         got, advice = code(legacy)
         assert got == "legacy"
         assert advice.startswith(f"{work_unit.LEGACY_ADVISORY_KEY}:")
+
+
+    def test_every_binding_case_has_a_cause_code(self):
+        """The map is keyed on `work_unit.Case`, enumerated from the module, not
+        typed here: a case added to the resolver with no entry would fall
+        through to the `no-claim` diagnosis and record a cause that is not its
+        own. Unknown keys are refused too — a map entry for a case the resolver
+        no longer emits is a stale second spelling."""
+        import typing
+
+        from lib import work_unit
+
+        cases = set(typing.get_args(work_unit.Case))
+        assert len(cases) >= 10, cases
+        assert set(cc.SCOPE_CAUSE_BY_CASE) == cases
 
 
 # ---------------------------------------------------------------------------

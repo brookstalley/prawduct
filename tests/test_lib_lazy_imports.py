@@ -198,8 +198,9 @@ class TestLazyIsolation:
         """#657: `buildplan_refs` imports `core` at module scope, so a `core`
         edge back to it — even a lazy one — holds the graph acyclic only while
         nobody hoists it. The Status-roster readers live in `plan_index`, which
-        imports nothing in `lib`; `core`'s one upward edge is the lazy
-        `work_unit` import in the `resolve_build_plan_path` shim."""
+        imports nothing in `lib`, and `core` has no upward edge at all since
+        the `resolve_build_plan_path` shim (its one lazy `work_unit` import)
+        was deleted."""
         import ast
 
         tree = ast.parse((REPO_ROOT / "lib" / "core.py").read_text(encoding="utf-8"))

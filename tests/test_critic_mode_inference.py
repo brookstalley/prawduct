@@ -27,7 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lib import buildplan_refs, core, coverage_algebra, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
+from lib import buildplan_refs, coverage_algebra, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
 from lib import plan_mint, work_unit  # noqa: E402
 
 
@@ -1276,7 +1276,7 @@ class TestRule4ChunkDefault:
         binding = work_unit.resolve(tmp_path)
         assert (binding.state, binding.scope, binding.plan_path) == ("broken", None, None)
         assert "build-plan-a.md" in binding.reason and "build-plan-b.md" in binding.reason
-        assert core.resolve_build_plan_path(tmp_path / ".prawduct") is None
+        assert binding.case == "two-claimants"
 
     def test_a_declared_plan_with_no_scope_binds_with_none(self, tmp_path: Path):
         """A branch claim is not a scope. Inventing one would tag a change-log

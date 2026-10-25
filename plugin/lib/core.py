@@ -766,32 +766,6 @@ def fallback_plan_path(prawduct_dir: Path) -> Path:
     return pointer_plan_path(prawduct_dir) or prawduct_dir / DEFAULT_BUILD_PLAN_REL
 
 
-def resolve_build_plan_path(prawduct_dir: Path) -> Path | None:
-    """The plan the checkout's work-unit binding names, or ``None``.
-
-    **A shim, kept for one release** (``build-plan-work-unit-binding.md``
-    Tradeoffs): ``work_unit.resolve`` is the one owner of "which plan governs
-    this checkout", and this name survives only so a consumer pinned to an
-    older plugin and one on this version agree on the answer during the legacy
-    window. It has no caller in ``lib/`` or the hook; delete it when the window
-    closes.
-
-    ``None`` unless the binding is ``bound``: an unbound checkout borrows no
-    plan, and a ``broken`` one may serve none — two claimants are never chosen
-    between by precedence (BR5), and an unreadable plan fails closed rather
-    than reading as absent. The precedence this function used to own (a
-    branch claim, then the ``active_build_plan`` pointer, then the
-    conventional path, with a tie-break among several claimants) is gone; the
-    legacy window that replaces the last two is ``work_unit.resolve``'s step 5.
-    A bound path exists — the resolver read it — where the old answer might
-    have named a missing file.
-    """
-    from . import work_unit  # noqa: PLC0415 — lazy: work_unit imports core, so the edge points up
-
-    binding = work_unit.resolve(prawduct_dir.parent)
-    return binding.plan_path if binding.state == "bound" else None
-
-
 def foreign_fallback_claim(prawduct_dir: Path) -> tuple[Path, str] | None:
     """``(plan, its branch)`` when the fallback plan declares a branch other than
     the one checked out, else ``None``.

@@ -39,9 +39,9 @@ ARTIFACTS_REL = ".prawduct/artifacts"
 STATE_REL = ".prawduct/project-state.yaml"
 
 #: The keys this module owns in a plan's frontmatter, in the order it writes them.
-#: ``base:`` is where the unit's integration branch merges; nothing reads it for a
-#: binding yet, and it is written so the answer exists when something does.
-BASE_KEY = "base"
+#: ``base:`` is where the unit's integration branch merges — read back through
+#: the binding as the unit's diff base (``coverage._resolve_base_branch``).
+BASE_KEY = plan_index.BASE_KEY
 _IDENTITY_KEYS = ("scope", plan_index.BRANCH_KEY, BASE_KEY, work_unit.WORKING_BRANCHES_KEY)
 
 #: The fallback when neither the repo's knob nor git names an integration branch:
@@ -54,8 +54,6 @@ _KIND_PREFIXES = frozenset({
     "feature", "feat", "fix", "bugfix", "hotfix", "chore", "docs", "refactor", "perf",
     "governance", "wip", "topic",
 })
-#: Branches that are never a unit's: integration and release lines are unbound.
-_UNBOUND_BRANCHES = frozenset({"main", "master", "develop", "trunk"})
 
 Action = Literal["minted", "working", "bound", "unchanged"]
 
@@ -130,18 +128,31 @@ def known_scopes(project_dir: Path) -> set[str] | None:
     return scopes
 
 
-def suggest_scope(branch: str | None) -> str | None:
+def integration_branches(project_dir: Path | None) -> frozenset[str]:
+    """Branches that are never a unit's: the ``main`` family (``coverage``'s one
+    roster) plus this repo's own integration branch (:func:`default_base`).
+    Without a repo to ask, the family alone."""
+    from . import coverage  # noqa: PLC0415 — lazy; only scope suggestion and minting need it
+
+    if project_dir is None:
+        return coverage.MAIN_FAMILY
+    return coverage.MAIN_FAMILY | {default_base(Path(project_dir))[0]}
+
+
+def suggest_scope(branch: str | None, project_dir: Path | None = None) -> str | None:
     """A candidate scope from a branch name, for a person to confirm — never a binding.
 
-    The one surviving use of name inference (D3). Drops the kind prefix
-    (``feature/``) and a leading issue number (an issue is a ``closes:``
-    reference, never the identity — D5), then folds what is left onto the slug
-    rule. ``None`` for a branch that is never a unit's (an integration line, a
-    release branch, a harness scratch branch) or that leaves nothing legal.
+    The one surviving use of name inference (D3), and its consumer is
+    ``prawduct-hook plan new`` with the scope omitted, which prints what it
+    took. Drops the kind prefix (``feature/``) and a leading issue number (an
+    issue is a ``closes:`` reference, never the identity — D5), then folds what
+    is left onto the slug rule. ``None`` for a branch that is never a unit's
+    (:func:`integration_branches` for ``project_dir``, a release branch, a
+    harness scratch branch) or that leaves nothing legal.
     """
     if not branch:
         return None
-    if branch in _UNBOUND_BRANCHES or gitstate._EPHEMERAL_BRANCH_PATTERN.match(branch):
+    if branch in integration_branches(project_dir) or gitstate.is_scratch_branch(branch):
         return None
     parts = [p for p in branch.split("/") if p]
     if parts and parts[0].casefold() == "release":
@@ -309,7 +320,7 @@ def join_working(project_dir: Path, scope: str, *, branch: str | None = None) ->
             f"no integration branch to merge into — run `{work_unit.BIND_COMMAND}` first",
         )
     binding = work_unit.resolve(project_dir, branch=integration)
-    if binding.state != "bound" or binding.chosen_by != "binding" or binding.plan_path != plan_path:
+    if not binding.is_claim or binding.plan_path != plan_path:
         raise PlanMintRefused(
             "unit-not-bound",
             f"`{integration}` does not bind to this plan: {binding.reason or binding.state}",
@@ -400,12 +411,14 @@ def default_base(project_dir: Path) -> tuple[str, str]:
     from . import coverage  # noqa: PLC0415 — lazy; only minting needs the base resolver
 
     try:
-        ref, _reason = coverage._resolve_base_branch(project_dir)
+        # The repo's base, not the checked-out unit's: a new unit's default is
+        # the integration line, and a stacked one names its base with --base.
+        ref, _reason = coverage.repo_base_branch(project_dir)
     except (OSError, subprocess.SubprocessError):
         ref = None
     if ref and ref != "HEAD~1":
         name = ref[len("origin/"):] if ref.startswith("origin/") else ref
-        rule = "main-family" if name in coverage._MAIN_FAMILY else "origin-head"
+        rule = "main-family" if name in coverage.MAIN_FAMILY else "origin-head"
         return name, rule
     return _FALLBACK_BASE, "fallback"
 
@@ -453,7 +466,7 @@ def _check_scope_is_free(project_dir: Path, scope: str) -> None:
 
 def _check_claimable(project_dir: Path, branch: str) -> None:
     """Refuse a branch no live plan may claim: scratch, unrepresentable, or claimed."""
-    if gitstate._EPHEMERAL_BRANCH_PATTERN.match(branch) or gitstate.ephemeral_kind_of(
+    if gitstate.is_scratch_branch(branch) or gitstate.ephemeral_kind_of(
         project_dir, branch
     ):
         raise PlanMintRefused(
@@ -469,7 +482,7 @@ def _check_claimable(project_dir: Path, branch: str) -> None:
     binding = work_unit.resolve(project_dir, branch=branch)
     # A legacy binding is the pointer or the default answering for a repo with no
     # claims; it is not a claim, and minting is how such a repo starts having them.
-    if binding.state == "broken" or binding.chosen_by == "binding":
+    if binding.state == "broken" or binding.is_claim:
         raise PlanMintRefused(
             "branch-claimed",
             f"`{branch}` is already claimed — {binding.reason or binding.plan_path}; a branch "

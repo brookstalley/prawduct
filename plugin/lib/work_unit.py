@@ -74,6 +74,48 @@ State = Literal["bound", "unbound", "broken"]
 Role = Literal["integration", "working"]
 ChosenBy = Literal["binding", "legacy-pointer", "legacy-default", "none"]
 
+#: Which branch of :func:`resolve` produced the answer — the discriminant a
+#: consumer dispatches on, so none has to recover it from ``reason`` prose or
+#: re-spell a ``chosen_by`` comparison. Every value is emitted by exactly one
+#: route below (``tests/test_work_unit.py`` pins the set against the source):
+#:
+#: - ``claim`` — bound: one live plan claims the branch (``role`` says whether
+#:   as its integration or a working branch);
+#: - ``legacy-pointer`` / ``legacy-default`` — bound through the legacy window,
+#:   by the ``active_build_plan`` pointer or the conventional path;
+#: - ``no-claim`` — unbound: no live plan claims the branch (the window is shut,
+#:   or no plan exists for it to serve);
+#: - ``pointer-dangling`` — unbound: inside the window, the pointer names a file
+#:   that is not a live plan;
+#: - ``scratch-worktree``, ``detached-head``, ``no-work-tree`` — unbound before
+#:   any plan is read: no branch can be claimed;
+#: - ``two-claimants`` / ``unreadable-plan`` — broken: rival claims, or a live
+#:   plan whose claim cannot be read.
+Case = Literal[
+    "claim",
+    "legacy-pointer",
+    "legacy-default",
+    "no-claim",
+    "pointer-dangling",
+    "scratch-worktree",
+    "detached-head",
+    "no-work-tree",
+    "two-claimants",
+    "unreadable-plan",
+]
+
+#: The cases in which the legacy window answered.
+LEGACY_CASES: frozenset[str] = frozenset({"legacy-pointer", "legacy-default"})
+
+#: The route each bound case records as ``chosen_by``; every other case is
+#: ``none``. ``chosen_by`` is derived from the case here, once, so the two
+#: cannot disagree on a binding :func:`resolve` built.
+_CHOSEN_BY: dict[str, ChosenBy] = {
+    "claim": "binding",
+    "legacy-pointer": "legacy-pointer",
+    "legacy-default": "legacy-default",
+}
+
 
 @dataclass(frozen=True)
 class Binding:
@@ -90,6 +132,11 @@ class Binding:
     ``claimants`` are the plans the answer is about: the one plan when
     ``bound``, every plan involved when ``broken`` (the rival claimants, or the
     files that could not be read), none when ``unbound``.
+    ``case`` is the :data:`Case` that answered — what a consumer dispatches on
+    (``None`` only on a ``Binding`` built by hand, never on one :func:`resolve`
+    returns). ``base`` is the bound plan's ``base:`` — the branch the unit's
+    integration branch merges into — or ``None`` when it declares none or
+    nothing is bound.
     """
 
     state: State
@@ -99,6 +146,38 @@ class Binding:
     reason: str | None
     chosen_by: ChosenBy
     claimants: tuple[Path, ...] = ()
+    case: Case | None = None
+    base: str | None = None
+
+    @property
+    def is_legacy(self) -> bool:
+        """Bound through the legacy window — a plan served without a claim."""
+        return self.case in LEGACY_CASES
+
+    @property
+    def is_claim(self) -> bool:
+        """Bound because a live plan claims this branch — nothing assumed."""
+        return self.case == "claim"
+
+
+def repo_rel(path: Path | str, project_dir: Path | str, *, within: str = "") -> str:
+    """``path`` as a person reads it: relative to the repo root (or to
+    ``within`` under it, e.g. ``.prawduct/artifacts``), POSIX-spelled.
+
+    The one display rule for a binding's paths. Both sides are resolved: a
+    :class:`Binding`'s paths are, and a project dir reached through a symlink
+    is not, so a consumer comparing them unresolved falls to its fallback on
+    exactly the checkouts where that matters. A path outside the root is shown
+    absolute — it still identifies the file, which a bare name does not.
+    """
+    target = Path(path).resolve()
+    root = Path(project_dir).resolve()
+    if within:
+        root = root / within
+    try:
+        return target.relative_to(root).as_posix()
+    except ValueError:
+        return target.as_posix()
 
 
 class _Declaration(NamedTuple):
@@ -108,6 +187,7 @@ class _Declaration(NamedTuple):
     scope: str | None
     branch: str | None
     working: tuple[str, ...]
+    base: str | None = None
 
 
 class _Unreadable(NamedTuple):
@@ -162,13 +242,16 @@ def resolve(project_dir: Path, *, branch: str | None = None) -> Binding:
     kind = gitstate.ephemeral_kind_of(project_dir, branch)
     if kind is not None:
         return _unbound(
+            "scratch-worktree",
             f"a harness scratch worktree ({kind}) is unbound by construction — "
-            "it builds, its coordinator governs"
+            "it builds, its coordinator governs",
         )
     if branch is None:
         if gitstate.git_common_dir(project_dir) is None:
-            return _unbound("not inside a git work tree, so no branch can be claimed")
-        return _unbound("HEAD is detached, so no branch can be claimed")
+            return _unbound(
+                "no-work-tree", "not inside a git work tree, so no branch can be claimed"
+            )
+        return _unbound("detached-head", "HEAD is detached, so no branch can be claimed")
 
     prawduct_dir = project_dir / ".prawduct"
     artifacts_dir = prawduct_dir / "artifacts"
@@ -179,6 +262,7 @@ def resolve(project_dir: Path, *, branch: str | None = None) -> Binding:
             f"{plan_index.display_path(u.path, artifacts_dir)} ({u.what})" for u in unreadable
         )
         return _broken(
+            "unreadable-plan",
             f"{len(unreadable)} live plan{'s' if len(unreadable) > 1 else ''} cannot be read "
             f"— {faults} — so whether it claims `{branch}` is unknown and no binding "
             "can be decided; repair the file",
@@ -197,6 +281,7 @@ def resolve(project_dir: Path, *, branch: str | None = None) -> Binding:
             plan_index.display_path(d.path, artifacts_dir) for d, _ in claimants
         )
         return _broken(
+            "two-claimants",
             f"{len(claimants)} live plans claim `{branch}` ({names}) — a branch "
             "has one unit; archive or re-bind all but one",
             tuple(d.path for d, _ in claimants),
@@ -210,14 +295,16 @@ def resolve(project_dir: Path, *, branch: str | None = None) -> Binding:
                 f"`{branch}` but declares no `scope:`, so facts about this work "
                 "record no unit — add one"
             )
-        return Binding("bound", decl.scope, decl.path, role, reason, "binding", (decl.path,))
+        return _bound("claim", decl.scope, decl.path, role, reason, decl.base)
 
     if any(d.branch is not None for d in declarations):
         # A claim exists somewhere in this repo, so claims are how its plans
         # bind; the demoted routes answer nothing here. A pointer-only plan is
         # named with its remedy, because "no plan claims" alone reads as "no
         # plan exists" to the operator who still has one.
-        return _unbound(_closed_window_reason(prawduct_dir, artifacts_dir, branch, declarations))
+        return _unbound(
+            "no-claim", _closed_window_reason(prawduct_dir, artifacts_dir, branch, declarations)
+        )
     return _legacy(prawduct_dir, artifacts_dir, branch)
 
 
@@ -258,32 +345,34 @@ def _legacy(prawduct_dir: Path, artifacts_dir: Path, branch: str) -> Binding:
     route that could serve a plan the walk never saw.
     """
     pointer = core.pointer_plan_path(prawduct_dir)
-    chosen_by: ChosenBy = "legacy-pointer" if pointer is not None else "legacy-default"
+    case: Case = "legacy-pointer" if pointer is not None else "legacy-default"
     plan_path = core.fallback_plan_path(prawduct_dir)
+    # A missing conventional file is the ordinary unbound; a pointer naming
+    # nothing it may serve is a declaration nobody honours, and says so.
+    unserved: Case = "pointer-dangling" if pointer is not None else "no-claim"
     if not _is_live_plan_file(plan_path, artifacts_dir):
-        return _unbound(_dangling_pointer_reason(prawduct_dir, pointer, branch))
+        return _unbound(unserved, _dangling_pointer_reason(prawduct_dir, pointer, branch))
     try:
         content = plan_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        return _unbound(_dangling_pointer_reason(prawduct_dir, pointer, branch))
+        return _unbound(unserved, _dangling_pointer_reason(prawduct_dir, pointer, branch))
     if not plan_index.is_build_plan(content):
-        return _unbound(_dangling_pointer_reason(prawduct_dir, pointer, branch))
+        return _unbound(unserved, _dangling_pointer_reason(prawduct_dir, pointer, branch))
     if plan_index.parse_build_plan_frontmatter_branch(content) is not None:
         # Unreachable while `_live_declarations` saw this file; kept so the
         # rule holds even for a plan the walk did not yield.
-        return _unbound(f"no live plan claims `{branch}`")
+        return _unbound("no-claim", f"no live plan claims `{branch}`")
     _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
     route = "`active_build_plan`" if pointer is not None else "the conventional path"
     rel = plan_index.display_path(plan_path, artifacts_dir)
-    return Binding(
-        "bound",
+    return _bound(
+        case,
         scope,
         plan_path,
         None,
         f"{LEGACY_ADVISORY_KEY}: {rel} governs `{branch}` through {route} and "
         f"declares no `branch:` — run `{BIND_COMMAND} {rel} --branch {branch}`",
-        chosen_by,
-        (plan_path,),
+        plan_index.parse_build_plan_frontmatter_base(content),
     )
 
 
@@ -372,7 +461,11 @@ def _live_declarations(
         _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
         declarations.append(
             _Declaration(
-                path, scope, plan_index.parse_build_plan_frontmatter_branch(content), working
+                path,
+                scope,
+                plan_index.parse_build_plan_frontmatter_branch(content),
+                working,
+                plan_index.parse_build_plan_frontmatter_base(content),
             )
         )
     return declarations, unreadable
@@ -473,9 +566,22 @@ def _is_live_plan_file(path: Path, artifacts_dir: Path) -> bool:
     return path.is_file()
 
 
-def _unbound(reason: str) -> Binding:
-    return Binding("unbound", None, None, None, reason, "none")
+def _bound(
+    case: Case,
+    scope: str | None,
+    plan_path: Path,
+    role: Role | None,
+    reason: str | None,
+    base: str | None,
+) -> Binding:
+    return Binding(
+        "bound", scope, plan_path, role, reason, _CHOSEN_BY[case], (plan_path,), case, base
+    )
 
 
-def _broken(reason: str, claimants: tuple[Path, ...]) -> Binding:
-    return Binding("broken", None, None, None, reason, "none", claimants)
+def _unbound(case: Case, reason: str) -> Binding:
+    return Binding("unbound", None, None, None, reason, "none", (), case)
+
+
+def _broken(case: Case, reason: str, claimants: tuple[Path, ...]) -> Binding:
+    return Binding("broken", None, None, None, reason, "none", claimants, case)

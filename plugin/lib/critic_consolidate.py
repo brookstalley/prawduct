@@ -2720,16 +2720,25 @@ def merge_base_start_reason(absent: "str | None") -> str:
     return "nothing on this branch is reviewed yet"
 
 
-#: Prefixes of ``work_unit.resolve``'s unbound reasons that name a case with a
-#: code of its own. Matched on the reason because the ``Binding`` carries the
-#: case only there; ``tests/test_critic_consolidate.py`` resolves each case for
-#: real and pins the code, so a reworded reason turns that test red rather than
-#: this code quietly reading ``unbound``.
-_UNBOUND_CASE_CODES = (
-    ("a harness scratch worktree", "scratch-worktree"),
-    ("HEAD is detached", "detached-head"),
-    ("not inside a git work tree", "no-work-tree"),
-)
+#: The ``scope_unresolved_cause`` code each binding case records, for a
+#: dispatch whose binding carried no scope. Keyed on ``Binding.case`` — the
+#: resolver's own discriminant — so a reworded reason cannot move a code.
+#: ``None`` means the case says only "no plan claims this branch", and the code
+#: is :func:`buildplan_refs.unresolved_scope_cause`'s diagnosis of why.
+#: ``tests/test_critic_consolidate.py`` pins that every ``work_unit.Case`` has
+#: an entry, so a case added to the resolver cannot fall through unmapped.
+SCOPE_CAUSE_BY_CASE: "dict[str, str | None]" = {
+    "claim": "claim-no-scope",
+    "legacy-pointer": "legacy",
+    "legacy-default": "legacy",
+    "two-claimants": "broken",
+    "unreadable-plan": "broken",
+    "scratch-worktree": "scratch-worktree",
+    "detached-head": "detached-head",
+    "no-work-tree": "no-work-tree",
+    "no-claim": None,
+    "pointer-dangling": None,
+}
 
 
 def _unresolved_scope_cause(
@@ -2760,15 +2769,12 @@ def _unresolved_scope_cause(
     nothing to act on; it gets a line only when ``unresolved_scope_cause``
     finds evidence the branch has a plan that fails to claim it.
     """
-    if binding.state == "broken":
-        return "broken", binding.reason
-    if binding.state == "bound":
-        legacy = binding.chosen_by in ("legacy-pointer", "legacy-default")
-        return ("legacy" if legacy else "claim-no-scope"), binding.reason
-    reason = binding.reason or ""
-    for prefix, code in _UNBOUND_CASE_CODES:
-        if reason.startswith(prefix):
-            return code, None
+    code = SCOPE_CAUSE_BY_CASE.get(binding.case or "")
+    if code is not None:
+        # A broken binding and a bound plan without `scope:` carry the author's
+        # repair in the reason; the unbound cases before any plan is read have
+        # nothing to act on.
+        return code, (binding.reason if binding.state != "unbound" else None)
     from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
 
     cause = buildplan_refs.unresolved_scope_cause(project_dir, prawduct_dir)

@@ -2,7 +2,7 @@
 
 A repo whose plans predate claims still binds through the ``active_build_plan``
 pointer or the conventional ``artifacts/build-plan.md`` — ``work_unit.resolve``
-serves such a plan with ``chosen_by`` naming the route, and only while no live
+serves such a plan with its ``case`` naming the route, and only while no live
 plan in the repo declares a ``branch:``. That window is temporary: it closes the
 moment any plan claims a branch, and a later release retires the window itself.
 A repo still inside it when it closes would find its gates disarmed, so the
@@ -36,23 +36,15 @@ from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_
 FEATURE = "work-unit"
 PROBE_VERSION = 1
 
-#: The ``chosen_by`` values that mean the legacy window answered.
-LEGACY_ROUTES = ("legacy-pointer", "legacy-default")
-
-
 def probe_plan_unbound_legacy(state: ProjectState, codebase: Codebase):
     """One advisory when this checkout's plan governs through the legacy window."""
     root = codebase.root
     branch = gitstate.current_branch(root)
     binding = work_unit.resolve(root, branch=branch)
-    if binding.chosen_by not in LEGACY_ROUTES or binding.plan_path is None or not branch:
+    if not binding.is_legacy or binding.plan_path is None or not branch:
         return []
-    artifacts = root / ".prawduct" / "artifacts"
-    try:
-        rel = binding.plan_path.resolve().relative_to(artifacts.resolve()).as_posix()
-    except ValueError:
-        rel = binding.plan_path.name
-    route = "the active_build_plan pointer" if binding.chosen_by == "legacy-pointer" else (
+    rel = work_unit.repo_rel(binding.plan_path, root, within=".prawduct/artifacts")
+    route = "the active_build_plan pointer" if binding.case == "legacy-pointer" else (
         "the conventional build-plan path"
     )
     return [

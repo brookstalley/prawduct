@@ -92,7 +92,7 @@ class TestResolve:
 
     def test_json_carries_every_binding_field(self, tmp_path):
         repo = _repo(tmp_path)
-        _plan(repo, "build-plan-unit.md", "scope: unit\nbranch: feature/unit\n")
+        _plan(repo, "build-plan-unit.md", "scope: unit\nbranch: feature/unit\nbase: feature/a\n")
         proc = _run(repo, "resolve", "--json")
         assert proc.returncode == 0, proc.stderr
         data = json.loads(proc.stdout)
@@ -104,6 +104,8 @@ class TestResolve:
             "reason": None,
             "chosen_by": "binding",
             "claimants": [".prawduct/artifacts/build-plan-unit.md"],
+            "case": "claim",
+            "base": "feature/a",
         }
         # The key set is the Binding's field set — a field added there without
         # reaching the JSON fails here.
@@ -127,7 +129,7 @@ class TestResolve:
         proc = _run(repo, "resolve", "--json")
         assert proc.returncode == 1, proc.stdout
         data = json.loads(proc.stdout)
-        assert data["state"] == "broken"
+        assert (data["state"], data["case"], data["base"]) == ("broken", "two-claimants", None)
         assert data["claimants"] == [
             ".prawduct/artifacts/build-plan-a.md", ".prawduct/artifacts/build-plan-b.md",
         ]
@@ -197,10 +199,42 @@ class TestNew:
         again = _run(repo, "new", "unit", "--working")
         assert (again.returncode, again.stdout.split(":")[0]) == (0, "unchanged")
 
+    def test_an_omitted_scope_is_suggested_from_the_branch_and_printed(self, tmp_path):
+        """R-1: `plan_mint.suggest_scope`'s one consumer. The kind prefix and the
+        issue number are dropped, the slug is printed before the mint line so the
+        identity used is on screen, and the plan the binding reads carries it."""
+        repo = _repo(tmp_path, "feature/1050-the-unit")
+        proc = _run(repo, "new")
+        assert proc.returncode == 0, proc.stderr
+        lines = proc.stdout.splitlines()
+        assert lines[0] == "scope the-unit suggested from branch feature/1050-the-unit"
+        assert lines[1].startswith("minted: unit `the-unit` — .prawduct/artifacts/build-plan-the-unit.md")
+        binding = work_unit.resolve(repo)
+        assert (binding.state, binding.scope, binding.case) == ("bound", "the-unit", "claim")
+
+    def test_an_omitted_scope_is_suggested_from_the_branch_being_created(self, tmp_path):
+        repo = _repo(tmp_path, "main")
+        proc = _run(repo, "new", "--branch", "fix/other-thing")
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.splitlines()[0] == "scope other-thing suggested from branch fix/other-thing"
+        assert (repo / ".prawduct" / "artifacts" / "build-plan-other-thing.md").is_file()
+
+    def test_a_branch_that_suggests_nothing_is_refused_and_writes_nothing(self, tmp_path):
+        """The integration line is never a unit's, so `main` suggests nothing:
+        refused at exit 1 with a stable code, nothing written — never a mint
+        under a guessed name."""
+        repo = _repo(tmp_path, "main")
+        proc = _run(repo, "new")
+        assert proc.returncode == 1, proc.stdout
+        assert proc.stderr.startswith("refused: no-scope-suggestion: branch `main`"), proc.stderr
+        assert proc.stdout == ""
+        assert list((repo / ".prawduct" / "artifacts").iterdir()) == []
+        assert not (repo / ".prawduct" / "changes").exists()
+
     @pytest.mark.parametrize(
         "argv",
         [
-            ("new",),
+            ("new", "--working"),
             ("new", "a", "b"),
             ("new", "a", "--branch"),
             ("new", "a", "--bogus"),

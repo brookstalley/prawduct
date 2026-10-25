@@ -700,11 +700,58 @@ class TestChunkRefs:
             repo, repo / ".prawduct", [], head, head, chunk_id="03"
         )
         assert result["chunk_graded"] == "03"
-        assert any("active_build_plan pointer" in r for r in result["unchecked"])
+        # R-2: the caveat is bound to the entry that carries it and names the
+        # route that fired, not merely present somewhere in `unchecked`.
+        entry = next(r for r in result["unchecked"] if r.startswith("chunk-ref-missing graded"))
+        assert entry.startswith(
+            "chunk-ref-missing graded chunk 03 of .prawduct/artifacts/build-plan-pointed.md: "
+        ), entry
+        assert "bound through the active_build_plan pointer because no plan claims" in entry
+        assert "pass `--scope` to name it" in entry
         # NOT the BLOCKING prefix: the check ran, against a named plan.
         assert not any(
             r.startswith("chunk-ref-missing unchecked") for r in result["unchecked"]
         )
+
+    def test_the_conventional_path_route_is_named_as_such(self, tmp_path):
+        """The other legacy route: no pointer, the plan at `artifacts/build-plan.md`
+        and a second scope-declaring plan beside it. The caveat names the route
+        that answered — a two-state message derived from the binding's case."""
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "conventional")
+        artifacts = repo / ".prawduct" / "artifacts"
+        (artifacts / "build-plan-pointed.md").rename(artifacts / "build-plan.md")
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: t\n")
+        head = _commit(repo, "conventional path, no pointer")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        entry = next(r for r in result["unchecked"] if r.startswith("chunk-ref-missing graded"))
+        assert entry.startswith(
+            "chunk-ref-missing graded chunk 03 of .prawduct/artifacts/build-plan.md: "
+        ), entry
+        assert "bound through the conventional path because no plan claims" in entry
+        assert "active_build_plan pointer" not in entry
+
+    def test_a_claimed_plan_in_a_multi_plan_repo_carries_no_caveat(self, tmp_path):
+        """The control that differs only in HOW the plan was reached: the same
+        two scope-declaring plans, but the graded one claims the checked-out
+        branch. A claim is the grounding, so nothing is assumed and no
+        `graded … bound through` line is written — the caveat is the legacy
+        window's, not the multi-plan repo's."""
+        repo, _head = self._repo_with_two_scoped_plans(tmp_path, "claimed")
+        branch = _git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-pointed.md"
+        plan.write_text(plan.read_text().replace(
+            "scope: pointed\n", f"scope: pointed\nbranch: {branch}\n"
+        ))
+        head = _commit(repo, "pointed claims the branch")
+        result = record_lint.lint_records(
+            repo, repo / ".prawduct", [], head, head, chunk_id="03"
+        )
+        assert result["chunk_graded"] == "03"
+        assert result["plan_graded"] == ".prawduct/artifacts/build-plan-pointed.md"
+        assert not any("bound through" in r for r in result["unchecked"]), result["unchecked"]
+        assert not any(r.startswith("chunk-ref-missing graded") for r in result["unchecked"])
 
     def test_a_single_plan_repo_reports_no_pointer_assumption(self, tmp_path):
         """With one plan there was nothing to choose between, and a note on
@@ -1362,10 +1409,11 @@ class TestEveryCheckCarriesASeverity:
         assert "chunk-ref-missing unchecked — " in emitter_src
         assert "chunk-ref-missing graded chunk " in emitter_src
         assert "inferred from build-plan Status" in emitter_src
-        # The plan half's caveat moved from `buildplan_refs.resolve_reviewed_plan`
-        # into `record_lint` itself when the scope-less path took the work-unit
-        # binding (#1050) — the emitter is where the string is pinned.
-        assert "the active_build_plan pointer" in emitter_src
+        # The plan half's caveat (`… bound through the active_build_plan pointer`)
+        # is pinned by behaviour, not by its spelling in the source: R-2 replaced
+        # a presence pin here, which stayed green with the branch unreachable,
+        # with `TestChunkRefs`'s legacy-pointer, conventional-path and
+        # claimed-control fixtures.
 
         for rel in ("plugin/skills/critic/cross-checks.md",
                     "plugin/skills/critic/goals-1-3.md"):

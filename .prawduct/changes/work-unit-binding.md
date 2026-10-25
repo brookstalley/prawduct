@@ -43,5 +43,10 @@ name; a bare slug that is a known scope is accepted and stored as `scope:<slug>`
   before resolves to none, and gates keyed to the plan do not arm there.
 - `closed-by` is validated: a branch name or an unknown `scope:` value is refused where it is written.
 - A fragment whose scope near-misses a plan's is refused where it is read.
-- `critic-begin` records `scope_chosen_by` as `binding` or `explicit-args`; `branch-name` and
-  `not-resolved` are no longer written, and history that carries them still reads.
+- `critic-begin` records `scope_chosen_by` as one of `binding`, `legacy-pointer`, `legacy-default`,
+  `explicit-args` or `none`; `branch-name` and `not-resolved` are no longer written, and history
+  that carries them still reads. A consumer filtering on `binding` alone misses every
+  legacy-window and every unbound review.
+- `prawduct-hook plan resolve --json` carries `case` and `base` beside the Binding's other keys. The
+  `core.resolve_build_plan_path` and `buildplan_refs.resolve_branch_plan` shims are removed, not
+  kept for a release.

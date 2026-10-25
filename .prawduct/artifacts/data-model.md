@@ -296,7 +296,7 @@ before the key existed lack it; read absence as *not recorded*, never as any par
 
 The shared "answer store." Long-lived, hand- and tool-edited, committed. Holds product identity,
 `classification.structural` (the six structural characteristics that drive artifact coverage),
-`dependency_graph` (recorded design decisions and what they affect), `active_build_plan`, the
+`dependency_graph` (recorded design decisions and what they affect), the deprecated `active_build_plan`, the
 governance flags (`coverage_required`, `operator_verification_required`, `base_branch`), and
 resolution-condition state that advisory probes read (so a committed answer clears a nag for the
 whole team).

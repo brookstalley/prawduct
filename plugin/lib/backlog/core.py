@@ -826,11 +826,16 @@ _UPDATE_BLOCK: tuple[str, ...] = ("refs", "revisit", "closed-by")
 # a reader cannot follow is one nobody can check, and the old free-text field
 # collected branch names that stop resolving the day the branch is deleted.
 CLOSED_BY_SCOPE_PREFIX = "scope:"
-_CLOSED_BY_PR_RE = re.compile(r"#?([1-9][0-9]*)|https?://[^/\s]+/[^/\s]+/[^/\s]+/pull/([1-9][0-9]*)/?")
+# The PR form is forge-neutral: a number (`123`, `#123`, `PR 123`) or ANY
+# absolute http(s) link to it. `closed-by` is validated on the markdown backend
+# too, so a GitLab `/-/merge_requests/N` or Bitbucket `/pull-requests/N` URL is
+# as followable as GitHub's `/pull/N`; what is refused is text with no handle.
+_CLOSED_BY_PR_RE = re.compile(r"(?:#|[Pp][Rr] ?)?[1-9][0-9]*|https?://[^/\s]+(?:/\S*)?")
 _CLOSED_BY_RELEASE_RE = re.compile(r"v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?")
 CLOSED_BY_FORMS = (
     "`scope:<slug>` naming a unit this repo declares (a live or archived plan, or a "
-    "change fragment), a PR number or URL (`#123`, `123`, `https://…/pull/123`), "
+    "change fragment), a PR number or URL (`123`, `#123`, `PR 123`, or any "
+    "`https://` link to it), "
     "or a release tag (`v3.7.2`)"
 )
 

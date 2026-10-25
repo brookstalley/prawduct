@@ -348,10 +348,9 @@ def _section_build_plan(project_dir: Path, binding) -> Section:
             "Status-box checks have no subject; say so rather than reading them "
             "as all-ticked"
         ))
-    try:
-        rel = binding.plan_path.relative_to(Path(project_dir).resolve()).as_posix()
-    except ValueError:
-        rel = binding.plan_path.name
+    from . import work_unit  # noqa: PLC0415 — lazy, like `_lib`
+
+    rel = work_unit.repo_rel(binding.plan_path, project_dir)
     try:
         content = binding.plan_path.read_text(encoding="utf-8")
     except OSError as exc:

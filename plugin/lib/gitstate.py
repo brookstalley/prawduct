@@ -195,6 +195,14 @@ _EPHEMERAL_DIR_PATTERNS = (
 _EPHEMERAL_BRANCH_PATTERN = re.compile(r"^worktree-agent-[0-9a-f]{6,}$")
 
 
+def is_scratch_branch(name: str | None) -> bool:
+    """Whether ``name`` is the harness scratch-branch pattern — by name alone.
+
+    The branch half of :func:`ephemeral_kind_of`, for a caller that has a
+    branch name and no tree (a branch about to be created or claimed)."""
+    return isinstance(name, str) and _EPHEMERAL_BRANCH_PATTERN.match(name) is not None
+
+
 def _under_claude_worktrees(project_dir: Path) -> bool:
     """True when some ancestor pair of ``project_dir`` is ``.claude/worktrees``.
 
@@ -258,7 +266,7 @@ def ephemeral_kind_of(path: str | Path, branch: str | None) -> str | None:
     # can never promote a disposable tree to durable.
     if not isinstance(branch, str) or not branch:
         branch = None
-    scratch = branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch) is not None
+    scratch = is_scratch_branch(branch)
     if dir_label == "agent":
         return "agent" if (branch is None or scratch) else None
     return "agent" if scratch else None

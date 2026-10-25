@@ -253,10 +253,9 @@ def probe_oversized_governance_file(state: ProjectState, codebase: Codebase):
 
         shown = measured.rel
         if measured.type == "oversized-build-plan":
-            try:
-                shown = str(path.relative_to(root.resolve()))
-            except ValueError:
-                shown = str(path)
+            from . import work_unit  # noqa: PLC0415 — lazy, as in `_measured_path`
+
+            shown = work_unit.repo_rel(path, root)
 
         bullets = [advice.text for advice in measured.advice if advice.applies_to(text)]
         archivable = False

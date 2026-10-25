@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib import buildplan_refs, core, work_unit  # noqa: E402
+from lib import buildplan_refs, work_unit  # noqa: E402
 from lib.work_unit import Binding, resolve  # noqa: E402
 
 
@@ -127,21 +127,24 @@ def _scratch_worktree(repo: Path, wid: str = "a287823214767feaa") -> Path:
     return dest.resolve()
 
 
-def _shim_core(repo: Path) -> Path | None:
-    """``core.resolve_build_plan_path`` — the old resolver, a shim over
-    :func:`resolve` since Chunk 06.
+def _governing_plan(repo: Path) -> Path | None:
+    """The plan the binding governs by, or ``None`` — what the deleted
+    ``core.resolve_build_plan_path`` shim answered, asked of the owner.
 
     Chunk 01 wrote each shipped shape below red-first: it asserted the OLD
-    resolvers' answer here (the defect), then the binding's. Once both became
-    shims those assertions would pin a retired rule, so each is rewritten to
-    pin what the shim answers now — the binding's plan, or ``None`` — and the
-    comment beside it records what the old resolver did."""
-    return core.resolve_build_plan_path(repo / ".prawduct")
+    resolvers' answer here (the defect), then the binding's. The shims had no
+    deployment to serve (a pinned plugin imports its own ``lib/``) and were
+    deleted (R-8), so each assertion now pins the same answer through
+    :func:`resolve`, and the comment beside it records what the old resolver
+    did."""
+    binding = resolve(repo)
+    return binding.plan_path if binding.state == "bound" else None
 
 
-def _shim_refs(repo: Path) -> buildplan_refs.ReviewedPlan:
-    """``buildplan_refs.resolve_branch_plan`` — the shim over :func:`resolve`."""
-    return buildplan_refs.resolve_branch_plan(repo, repo / ".prawduct")
+def _scopeless_review_plan(repo: Path) -> buildplan_refs.ReviewedPlan:
+    """The scope-less review answer — ``buildplan_refs.resolve_reviewed_plan``
+    with no scope, which the deleted ``resolve_branch_plan`` shim was exactly."""
+    return buildplan_refs.resolve_reviewed_plan(repo, repo / ".prawduct", None)
 
 
 FINISHED = "- [x] Chunk 01: done\n- [x] Chunk 02: done\n"
@@ -154,10 +157,12 @@ FINISHED = "- [x] Chunk 01: done\n- [x] Chunk 02: done\n"
 
 class TestBindingShape:
     def test_fields_in_the_order_the_design_states(self):
-        """The design's six, then ``claimants`` — added last with a default so
-        every positional construction written against the six stays valid."""
+        """The design's six, then ``claimants``, ``case`` and ``base`` — each
+        added last with a default so every positional construction written
+        against the six stays valid."""
         assert [f.name for f in fields(Binding)] == [
             "state", "scope", "plan_path", "role", "reason", "chosen_by", "claimants",
+            "case", "base",
         ]
 
     def test_six_positional_fields_still_construct_with_no_claimants(self):
@@ -188,13 +193,13 @@ class TestShippedShapes:
         # Post-#1049 both old resolvers already refused this plan. The route
         # that wrote the ledger event was `ledger._scope_from_plan`, which
         # Chunk 02 deleted; a ledger event records the fact's scope or null.
-        assert _shim_core(repo) is None
-        assert _shim_refs(repo).path is None
+        assert _governing_plan(repo) is None
+        assert _scopeless_review_plan(repo).path is None
 
         binding = resolve(repo)
         assert binding == Binding(
             "unbound", None, None, None,
-            "no live plan claims `fix/plan-archive-scope-name`", "none",
+            "no live plan claims `fix/plan-archive-scope-name`", "none", case="no-claim",
         )
 
     def test_1007a_lone_plan_declaring_no_branch_binds_through_the_legacy_window(self, tmp_path):
@@ -204,8 +209,8 @@ class TestShippedShapes:
         and the binding says which route answered and how to end the window."""
         repo = _repo(tmp_path, "feat/anything")
         plan = _plan(repo, "build-plan.md", scope="lonely")
-        assert _shim_core(repo) == plan
-        shim = _shim_refs(repo)
+        assert _governing_plan(repo) == plan
+        shim = _scopeless_review_plan(repo)
         assert shim.path == plan
         # The old resolver said nothing here (gap None): a fallback answer read
         # exactly like a grounded one. The shim carries the binding's reason.
@@ -222,7 +227,7 @@ class TestShippedShapes:
     def test_1007a_the_pointer_route_is_named_as_such(self, tmp_path):
         repo = _repo(tmp_path, "feat/anything", "active_build_plan: artifacts/v2-plan.md\n")
         plan = _plan(repo, "v2-plan.md", scope="v2")
-        assert _shim_core(repo) == plan
+        assert _governing_plan(repo) == plan
 
         binding = resolve(repo)
         assert (binding.state, binding.chosen_by) == ("bound", "legacy-pointer")
@@ -239,7 +244,7 @@ class TestShippedShapes:
         # name and answered `other`, the plan another branch is building. The
         # shim answers no plan and no scope.
         assert other.is_file()
-        assert (_shim_refs(repo).path, _shim_refs(repo).scope) == (None, None)
+        assert (_scopeless_review_plan(repo).path, _scopeless_review_plan(repo).scope) == (None, None)
 
         binding = resolve(repo)
         assert binding.state == "unbound"
@@ -252,7 +257,7 @@ class TestShippedShapes:
         b = _plan(repo, "build-plan-b.md", scope="b", branch="release/2-0", chunks=FINISHED)
         # The old resolver picked `a` by precedence (the claimant with open
         # chunks) and `b` governed nothing, silently. The shim serves neither.
-        assert _shim_core(repo) is None
+        assert _governing_plan(repo) is None
 
         binding = resolve(repo)
         assert binding.state == "broken"
@@ -270,17 +275,19 @@ class TestShippedShapes:
         # Neither old resolver knew working branches (core answered the
         # conventional path, which did not exist; the branch-plan resolver no
         # plan at all). The shims now answer the unit's plan.
-        assert _shim_core(repo) == plan
-        assert _shim_refs(repo).path == plan
+        assert _governing_plan(repo) == plan
+        assert _scopeless_review_plan(repo).path == plan
 
         binding = resolve(repo)
-        assert binding == Binding("bound", "x", plan, "working", None, "binding", (plan,))
+        assert binding == Binding(
+            "bound", "x", plan, "working", None, "binding", (plan,), case="claim"
+        )
 
     def test_the_integration_branch_binds_with_role_integration(self, tmp_path):
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan-x.md", scope="x", branch="feature/x", working=[])
         assert resolve(repo) == Binding(
-            "bound", "x", plan, "integration", None, "binding", (plan,)
+            "bound", "x", plan, "integration", None, "binding", (plan,), case="claim"
         )
 
     def test_a_scratch_worktree_forked_from_a_bound_branch_is_unbound(self, tmp_path):
@@ -292,8 +299,8 @@ class TestShippedShapes:
         _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
         assert resolve(repo).state == "bound"
         scratch = _scratch_worktree(repo)
-        assert _shim_core(scratch) is None
-        assert _shim_refs(scratch).path is None
+        assert _governing_plan(scratch) is None
+        assert _scopeless_review_plan(scratch).path is None
 
         binding = resolve(scratch)
         assert binding.state == "unbound"
@@ -307,8 +314,8 @@ class TestShippedShapes:
         plan = _plan(repo, "build-plan.md", scope="lonely")
         scratch = _scratch_worktree(repo)
         assert (scratch / ".prawduct" / "artifacts" / "build-plan.md").is_file()
-        assert _shim_core(scratch) is None
-        assert _shim_refs(scratch).path is None
+        assert _governing_plan(scratch) is None
+        assert _scopeless_review_plan(scratch).path is None
 
         assert resolve(scratch).state == "unbound"
         assert resolve(repo).plan_path == plan  # the primary still binds
@@ -323,7 +330,7 @@ class TestShippedShapes:
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
         _git(repo, "checkout", "-q", "--detach", head)
         assert plan.is_file()
-        assert _shim_core(repo) is None  # the old resolver answered `plan`
+        assert _governing_plan(repo) is None  # the old resolver answered `plan`
 
         binding = resolve(repo)
         assert binding.state == "unbound"
@@ -335,7 +342,7 @@ class TestShippedShapes:
         (project / ".prawduct" / "project-state.yaml").write_text("")
         plan = _plan(project, "build-plan.md", scope="lonely")
         assert plan.is_file()
-        assert _shim_core(project) is None  # the old resolver answered `plan`
+        assert _governing_plan(project) is None  # the old resolver answered `plan`
 
         binding = resolve(project)
         assert binding.state == "unbound"
@@ -353,14 +360,14 @@ class TestLegacyWindow:
         _plan(repo, "other-plan.md", scope="other", branch="feature/other")
         # Already refused by the old core resolver since #1049 (the one route
         # that fix closed); `resolve()` makes it the whole rule.
-        assert _shim_core(repo) is None
+        assert _governing_plan(repo) is None
 
         assert resolve(repo).state == "unbound"
 
     def test_a_plan_declaring_a_branch_is_never_served_by_the_default(self, tmp_path):
         repo = _repo(tmp_path, "feat/me")
         _plan(repo, "build-plan.md", scope="other", branch="feature/other")
-        assert _shim_core(repo) is None
+        assert _governing_plan(repo) is None
         assert resolve(repo).state == "unbound"
 
     def test_one_claim_anywhere_closes_the_window_for_the_whole_repo(self, tmp_path):
@@ -374,7 +381,7 @@ class TestLegacyWindow:
         old_plan = _plan(repo, "old-plan.md", scope="old")
         _plan(repo, "build-plan-new.md", scope="new", branch="feature/new")
         assert old_plan.is_file()
-        assert _shim_core(repo) is None  # the old resolver served `old_plan`
+        assert _governing_plan(repo) is None  # the old resolver served `old_plan`
 
         binding = resolve(repo)
         assert (binding.state, binding.plan_path, binding.chosen_by) == ("unbound", None, "none")
@@ -410,7 +417,7 @@ class TestLegacyWindow:
         # The old resolver returned the path and left "does it exist" to each
         # of its callers; a binding answers the question once, and says which
         # file the pointer resolved to and what would bind this branch.
-        assert _shim_core(repo) is None
+        assert _governing_plan(repo) is None
         binding = resolve(repo)
         assert binding.state == "unbound"
         assert binding.reason.startswith("no live plan claims `feat/me` — `active_build_plan` names artifacts/gone.md")
@@ -450,14 +457,14 @@ class TestClaims:
         `broken` would change what its gates do; `unbound` would disarm them."""
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan-x.md", scope=None, branch="feature/x")
-        assert _shim_core(repo) == plan
+        assert _governing_plan(repo) == plan
 
         binding = resolve(repo)
         assert binding == Binding(
             "bound", None, plan, "integration",
             "build-plan-x.md claims `feature/x` but declares no `scope:`, so facts "
             "about this work record no unit — add one",
-            "binding", (plan,),
+            "binding", (plan,), case="claim",
         )
 
     def test_a_scoped_claimant_has_nothing_to_explain(self, tmp_path):
@@ -485,7 +492,7 @@ class TestClaims:
         repo = _repo(tmp_path, "feature/x")
         plan = _plan(repo, "build-plan-x.md", scope="x", branch="feature/x", working=["feature/x"])
         assert resolve(repo) == Binding(
-            "bound", "x", plan, "integration", None, "binding", (plan,)
+            "bound", "x", plan, "integration", None, "binding", (plan,), case="claim"
         )
 
     def test_a_working_branch_claimed_by_two_plans_is_broken(self, tmp_path):
@@ -501,7 +508,9 @@ class TestClaims:
         seam, not safety."""
         repo = _repo(tmp_path, "feature/x-wip")
         path = _raw_plan(repo, "build-plan-x.md", f"working-branches: {flow}\n")
-        assert resolve(repo) == Binding("bound", "x", path, "working", None, "binding", (path,))
+        assert resolve(repo) == Binding(
+            "bound", "x", path, "working", None, "binding", (path,), case="claim"
+        )
 
     def test_an_explicit_branch_skips_the_probe_but_not_the_scratch_test(self, tmp_path):
         """A caller that has already read the branch passes it. The scratch
@@ -669,6 +678,7 @@ class TestProbeFailures:
         assert binding == Binding(
             "unbound", None, None, None,
             "not inside a git work tree, so no branch can be claimed", "none",
+            case="no-work-tree",
         )
 
 
@@ -727,3 +737,162 @@ class TestCost:
         repo = _repo(tmp_path, "feature/x")
         _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
         assert resolve(repo).state == "bound"
+
+
+# ---------------------------------------------------------------------------
+# The case discriminant, the base, and the display rule (R-6, R-7, R-13)
+# ---------------------------------------------------------------------------
+
+
+def _emitted_cases() -> set[str]:
+    """Every case literal ``work_unit`` hands a constructor, read from its source.
+
+    The constructors are ``_bound``, ``_unbound`` and ``_broken``; their first
+    argument is a string literal or a local annotated ``Case`` whose value is a
+    conditional over literals. Read with ``ast`` so a new route that emits a case
+    the ``Case`` literal does not list (or the reverse) turns this red without
+    anyone remembering to add it to a hand-kept list."""
+    import ast
+
+    tree = ast.parse(Path(work_unit.__file__).read_text())
+    constructors = {"_bound", "_unbound", "_broken"}
+
+    def literals(node) -> set[str]:
+        return {
+            n.value for n in ast.walk(node)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+        }
+
+    found: set[str] = set()
+    for func in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        locals_ = {
+            n.target.id: n.value
+            for n in ast.walk(func)
+            if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name)
+            and isinstance(n.annotation, ast.Name) and n.annotation.id == "Case"
+        }
+        for call in (n for n in ast.walk(func) if isinstance(n, ast.Call)):
+            if not (isinstance(call.func, ast.Name) and call.func.id in constructors):
+                continue
+            arg = call.args[0]
+            if isinstance(arg, ast.Constant):
+                found.add(arg.value)
+            elif isinstance(arg, ast.Name) and arg.id in locals_:
+                found |= literals(locals_[arg.id])
+            else:
+                raise AssertionError(f"unreadable case argument at line {call.lineno}")
+    return found
+
+
+class TestCase:
+    def test_the_case_literal_is_exactly_what_the_resolver_emits(self):
+        import typing
+
+        emitted = _emitted_cases()
+        assert len(emitted) >= 10, emitted
+        assert emitted == set(typing.get_args(work_unit.Case))
+
+    def test_each_case_is_reached_for_real_and_chosen_by_agrees(self, tmp_path):
+        """One fixture per case, resolved — the enumeration above says what the
+        source can emit; this says each route is reachable and labelled as the
+        consumers will read it."""
+        seen: dict[str, Binding] = {}
+
+        def note(binding: Binding) -> None:
+            seen[binding.case] = binding
+
+        r = _repo(tmp_path / "claim", "feature/x")
+        _plan(r, "build-plan-x.md", scope="x", branch="feature/x")
+        note(resolve(r))
+        r = _repo(tmp_path / "pointer", "feat/a", "active_build_plan: artifacts/v2-plan.md\n")
+        _plan(r, "v2-plan.md", scope="v2")
+        note(resolve(r))
+        r = _repo(tmp_path / "default", "feat/a")
+        _plan(r, "build-plan.md", scope="lonely")
+        note(resolve(r))
+        r = _repo(tmp_path / "noclaim", "feat/a")
+        _plan(r, "build-plan-x.md", scope="x", branch="feature/x")
+        note(resolve(r))
+        r = _repo(tmp_path / "dangling", "feat/a", "active_build_plan: artifacts/gone.md\n")
+        note(resolve(r))
+        r = _repo(tmp_path / "two", "feature/x")
+        _plan(r, "build-plan-a.md", scope="a", branch="feature/x")
+        _plan(r, "build-plan-b.md", scope="b", branch="feature/x")
+        note(resolve(r))
+        r = _repo(tmp_path / "unreadable", "feature/x")
+        _raw_plan(r, "build-plan-x.md", "working-branches: {a: b}\n")
+        note(resolve(r))
+        r = _repo(tmp_path / "detached", "feature/x")
+        _git(r, "checkout", "-q", "--detach")
+        note(resolve(r))
+        plain = tmp_path / "plain"
+        (plain / ".prawduct" / "artifacts").mkdir(parents=True)
+        note(resolve(plain))
+        r = _repo(tmp_path / "scratch", "feature/x")
+        note(resolve(_scratch_worktree(r)))
+
+        import typing
+
+        assert set(seen) == set(typing.get_args(work_unit.Case))
+        for case, binding in seen.items():
+            assert binding.chosen_by == work_unit._CHOSEN_BY.get(case, "none"), case
+            assert binding.is_legacy == (case in ("legacy-pointer", "legacy-default")), case
+            assert binding.is_claim == (case == "claim"), case
+        assert {c for c, b in seen.items() if b.state == "bound"} == {
+            "claim", "legacy-pointer", "legacy-default",
+        }
+        assert {c for c, b in seen.items() if b.state == "broken"} == {
+            "two-claimants", "unreadable-plan",
+        }
+
+
+class TestBase:
+    def test_a_claimants_base_is_carried(self, tmp_path):
+        repo = _repo(tmp_path, "feature/b")
+        _raw_plan(repo, "build-plan-b.md", "base: feature/a\n")
+        path = repo / ".prawduct" / "artifacts" / "build-plan-b.md"
+        path.write_text(path.read_text().replace("branch: feature/x", "branch: feature/b"))
+        assert resolve(repo).base == "feature/a"
+
+    def test_a_legacy_plans_base_is_carried(self, tmp_path):
+        repo = _repo(tmp_path, "feat/a")
+        path = repo / ".prawduct" / "artifacts" / "build-plan.md"
+        path.write_text("---\nartifact: build-plan\nscope: s\nbase: develop\n---\n\n## Status\n")
+        binding = resolve(repo)
+        assert (binding.case, binding.base) == ("legacy-default", "develop")
+
+    def test_no_base_declared_and_nothing_bound_are_none(self, tmp_path):
+        repo = _repo(tmp_path, "feature/x")
+        _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        assert resolve(repo).base is None
+        other = _repo(tmp_path / "o", "chore/y")
+        _raw_plan(other, "build-plan-x.md", "base: develop\n")
+        assert resolve(other).base is None
+
+
+class TestRepoRel:
+    def test_a_symlinked_project_dir_still_reads_repo_relative(self, tmp_path):
+        """R-7: the binding's paths are resolved; a project dir reached through a
+        symlink is not. Comparing them unresolved is what dropped consumers to a
+        bare filename."""
+        repo = _repo(tmp_path, "feature/x")
+        plan = _plan(repo, "build-plan-x.md", scope="x", branch="feature/x")
+        link = tmp_path / "link"
+        link.symlink_to(repo)
+        binding = resolve(link)
+        assert work_unit.repo_rel(binding.plan_path, link) == ".prawduct/artifacts/build-plan-x.md"
+        assert work_unit.repo_rel(
+            binding.plan_path, link, within=".prawduct/artifacts"
+        ) == "build-plan-x.md"
+        # Control: unresolved comparison — the shape the six consumers each had
+        # — fails on exactly this checkout.
+        with pytest.raises(ValueError):
+            binding.plan_path.relative_to(link)
+        assert plan.resolve() == binding.plan_path
+
+    def test_outside_the_root_is_shown_absolute(self, tmp_path):
+        outside = tmp_path / "elsewhere.md"
+        outside.write_text("x")
+        root = tmp_path / "root"
+        root.mkdir()
+        assert work_unit.repo_rel(outside, root) == outside.resolve().as_posix()

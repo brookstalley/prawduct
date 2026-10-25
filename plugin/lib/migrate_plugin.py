@@ -769,7 +769,7 @@ def detect_base_branch(project_dir: Path) -> "str | None":
 
     The decision is deliberately the SAME predicate the resolver applies, read
     from the resolver itself rather than restated here: ``origin/HEAD``
-    resolving, naming ``origin/<b>`` with ``<b>`` outside ``coverage._MAIN_FAMILY``,
+    resolving, naming ``origin/<b>`` with ``<b>`` outside ``coverage.MAIN_FAMILY``,
     and that ref existing. Two copies of "non-main-family" would drift, and the
     knob would then disagree with the gate it exists to steer.
 
@@ -805,7 +805,7 @@ def detect_base_branch(project_dir: Path) -> "str | None":
         if not origin_head:
             return None
         branch = origin_head[len("origin/") :]
-        if branch in coverage._MAIN_FAMILY:
+        if branch in coverage.MAIN_FAMILY:
             return None
         if not coverage._git_ref_exists(project_dir, origin_head):
             return None

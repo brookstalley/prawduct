@@ -67,9 +67,13 @@ def shipped_scopes(change_log_text: str) -> dict[str, str]:
     rule — "it has a release tag somewhere" — archives a live plan the moment a
     work-stream name is reused, because an older round of `auth` shipping in
     v1.0.0 makes the in-flight `auth` plan look finished. That plan is then moved
-    out of the live directory and stamped with a release that did not carry it,
-    the ``active_build_plan`` pointer dangles, and every gate reading that pointer
-    goes quiet — the failure class this whole change treats as its worst. It is
+    out of the live directory and stamped with a release that did not carry it.
+    An archived plan binds nothing: a plan declaring ``branch:`` governs that
+    branch only while it is live (``work_unit.resolve`` never descends the
+    archive), so the in-flight branch goes unbound and its gates stop applying —
+    the failure class this whole change treats as its worst. (In a repo still in
+    the legacy window, the deprecated ``active_build_plan`` pointer that served
+    the plan dangles instead, to the same effect.) It is
     not hypothetical and it is not rare: the release checklist runs this sweep
     unattended at every release, so the reuse only has to happen once.
 
@@ -221,11 +225,14 @@ def survey(prawduct_dir: Path) -> dict:
     )
 
     # A plan the session is actively building is never this sweep's to move, and
-    # no derived answer overrides that. Archiving it dangles the pointer, and a
-    # dangling pointer reads to every gate as "no active build plan" — they stop
-    # firing rather than fail, which is the failure mode this work exists to end.
-    # The date rule above should already withhold it; this is the guard that does
-    # not depend on the change log being written correctly.
+    # no derived answer overrides that. A plan declaring `branch:` governs its
+    # branch while it is live and needs nothing done at merge; archiving it early
+    # unbinds that branch, and the gates stop firing rather than fail, which is
+    # the failure mode this work exists to end. The date rule above should
+    # already withhold it; this is the guard that does not depend on the change
+    # log being written correctly. It reads the `active_build_plan` pointer — a
+    # deprecated legacy-window input — so what it protects is the plan a
+    # pointer still names.
     active = _active_plan_path(prawduct_dir)
 
     shipped: list[dict] = []
