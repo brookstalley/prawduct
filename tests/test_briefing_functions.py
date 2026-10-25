@@ -1009,7 +1009,6 @@ class TestGenerateSessionHandoff:
             "work_in_progress:\n  description: ship it\n  current_chunk: C3\n"
         )
         (pr / ".session-reflected").write_text("learned a thing during this session here")
-        monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
         monkeypatch.setattr(briefing.gitstate, "_get_session_changed_files", lambda d: [])
         briefing.generate_session_handoff(tmp_path)
         text = (pr / ".session-handoff.md").read_text()
@@ -1020,7 +1019,6 @@ class TestGenerateSessionHandoff:
     def test_no_content_writes_nothing(self, tmp_path, monkeypatch):
         pr = _prawduct(tmp_path)
         (pr / "project-state.yaml").write_text("product_identity:\n  name: X\n")  # no WIP
-        monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
         monkeypatch.setattr(briefing.gitstate, "_get_session_changed_files", lambda d: [])
         briefing.generate_session_handoff(tmp_path)
         assert not (pr / ".session-handoff.md").exists()

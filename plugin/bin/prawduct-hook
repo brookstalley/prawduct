@@ -1106,19 +1106,19 @@ def _boundary_close_session(project_dir: Path, prawduct_dir: Path) -> None:
     evidence belonging to a session that is OVER, so none of it may run on a continuation (SCN-5B8Q) — a new boundary
     statement belongs inside this function, which is the point of extracting it.
     """
-    # Announce a finished-but-unticked chunk BEFORE the handoff is generated, and
+    # Announce a built-but-not-done chunk BEFORE the handoff is generated, and
     # to STDOUT. Both halves are deliberate. Before, because the handoff's Resume
-    # line IS the checkbox reading, so an unticked finished chunk makes the thing
-    # being written wrong — and a handoff is how a false progress signal
-    # propagates to the next session as testimony. Stdout, because this boundary's
-    # documented audience split sends continuity facts to the incoming agent
-    # (stdout is what SessionStart shows the model) and housekeeping the operator
-    # must fix to stderr; the remedy here — tick the box — is the agent's. That is
-    # why it differs from the two operator-invoked commands that print it to
-    # stderr. Its own guard, not the handoff's: a diagnostic that failed must not
-    # print "could not generate the session handoff", which would be false.
+    # line names the first open chunk, and committed work no review has certified
+    # is the state in which the next session most needs telling to review rather
+    # than build on. Stdout, because this boundary's documented audience split
+    # sends continuity facts to the incoming agent (stdout is what SessionStart
+    # shows the model) and housekeeping the operator must fix to stderr; the
+    # remedy here — run the Critic — is the agent's. That is why it differs from
+    # `handoff`, which prints it to stderr. Its own guard, not the handoff's: a
+    # diagnostic that failed must not print "could not generate the session
+    # handoff", which would be false.
     try:
-        notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
+        notice = _plan_status().built_not_done_notice(project_dir)
         if notice:
             print(notice)
     except Exception:  # prawduct:allow prawduct/broad-except -- a diagnostic must never block /clear, and it has no remedy to narrate
@@ -6386,7 +6386,7 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
     if lib_root not in sys.path:
         sys.path.insert(0, lib_root)
     try:
-        from lib import briefing  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+        from lib import briefing, plan_status  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
     except ImportError:
         print(
             "handoff unavailable (could not import the plugin lib/ from "
@@ -6395,13 +6395,13 @@ def cmd_handoff(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    # The preview's Resume line is the chunk reading, so an unticked finished
-    # chunk makes the thing being previewed wrong — and this preview is what a
-    # session hands the next one, which is precisely how a false progress signal
-    # propagates as testimony. Emitted here rather than inside `briefing.py`: the
-    # notice belongs to the deliberately invoked command, and the same renderer
-    # also serves the SessionStart hot path, where this must NOT fire.
-    notice = _buildplan_refs().unticked_committed_chunk_notice(project_dir)
+    # The preview's Resume line names the first open chunk, so a chunk that is
+    # built and not yet reviewed is worth naming beside it — this preview is what
+    # a session hands the next one. Emitted here rather than inside `briefing.py`:
+    # the notice belongs to the deliberately invoked command (it walks git), and
+    # the same renderer also serves the SessionStart hot path, where it must NOT
+    # fire.
+    notice = plan_status.built_not_done_notice(project_dir)
     if notice:
         print(notice, file=sys.stderr)
 
@@ -7471,23 +7471,10 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     else:
         summary = f"{open_count} of {len(rows)} open"
     print(f"{rel} ({scope_text}): {summary}")
-    if not rows:
-        return 0
-    table = [("chunk", "state", "fact", "date", "tags")] + [
-        (
-            r["id"], r["state"], r["fact_id"] or "-", r["date"] or "-",
-            ", ".join(t for t in ("imported", "built") if r[t]) or "-",
-        )
-        for r in rows
-    ]
-    widths = [max(len(row[i]) for row in table) for i in range(4)]
-    for index, row in enumerate(table):
-        line = "  " + "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row[:4]))
-        line += "  " + row[4]
-        print(line.rstrip())
-        reason = rows[index - 1]["reason"] if index else None
-        if reason:
-            print(f"      {reason}")
+    # The one renderer (`plan_status.render_table`), which the `/clear` handoff
+    # and the PR payload print too.
+    for line in plan_status.render_table(states, built=built):
+        print(f"  {line}")
     return 0
 
 
@@ -7987,7 +7974,7 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
         print(f"plan check-claims: unexpected argument {positionals[0]!r}\n{_PLAN_HELP}", file=sys.stderr)
         return 2
     prawduct_dir = get_prawduct_dir(project_dir)
-    declarations, unreadable = _work_unit()._live_declarations(
+    declarations, unreadable = _work_unit().live_declarations(
         prawduct_dir, prawduct_dir / "artifacts"
     )
     local = _gitstate().local_branches(project_dir)

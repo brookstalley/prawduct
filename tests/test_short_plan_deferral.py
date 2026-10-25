@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 
 from conftest import SHAPED_REFLECTION
-from lib import buildplan_refs, critic_mode, evidence, gates, work_unit
+from lib import critic_mode, evidence, gates, plan_index, work_unit
 from lib.critic_mode import infer_mode
 from test_critic_mode_inference import (
     _checkout_new_branch,
@@ -277,9 +277,14 @@ class TestEligiblePlanDefers:
         _tick_in_working_tree(prawduct, "02")
         plan_path = work_unit.resolve(tmp_path).plan_path
         # Precondition: the two trees really disagree, so the subject is reached.
-        assert buildplan_refs.resolve_chunk_progress(tmp_path, plan_path).complete == 2
-        head = buildplan_refs.committed_chunk_progress(tmp_path, plan_path)
-        assert head is not None and head.complete == 1
+        # (Counted here directly; the box readers this used are deleted, #1051.)
+        rel = plan_path.resolve().relative_to(tmp_path.resolve()).as_posix()
+        head_text = _git(tmp_path, "show", f"HEAD:{rel}").stdout
+        ticks = [
+            sum(checked for checked, _t in plan_index.iter_status_section_items(text))
+            for text in (plan_path.read_text(encoding="utf-8"), head_text)
+        ]
+        assert ticks == [2, 1], ticks
         d = _deferral(tmp_path)
         assert d.defers, d.reason
         assert d.last_chunk is False
@@ -457,25 +462,6 @@ class TestProseCarriesTheConstant:
         multi = next(l for l in heuristic.splitlines() if l.startswith("- **Multi-chunk plan**"))
         assert "unless the plan is short" in single, single
         assert "unless the plan is short" in multi, multi
-
-
-class TestStatusChunkIds:
-    """The exporter the predicate reads the roster through — the answer, not
-    the walker (BLD-7K3Q's structural guard has no exception for it)."""
-
-    def test_returns_every_chunk_id_in_order_ticked_or_not(self):
-        content = (
-            "# Plan\n\n## Status\n\n"
-            "- [x] Chunk 01: done\n"
-            "- [ ] Chunk 02: open\n"
-            "- [ ] Not a chunk item\n"
-            "- [ ] Chunk 1.2 (ID) — dotted\n\n"
-            "## Chunk 01: done\n"
-        )
-        assert buildplan_refs.status_chunk_ids(content) == ["01", "02", "1.2"]
-
-    def test_no_status_section_is_empty(self):
-        assert buildplan_refs.status_chunk_ids("# Plan\n\nno roster\n") == []
 
 
 # ---------------------------------------------------------------------------

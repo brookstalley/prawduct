@@ -255,7 +255,7 @@ def resolve(project_dir: Path, *, branch: str | None = None) -> Binding:
 
     prawduct_dir = project_dir / ".prawduct"
     artifacts_dir = prawduct_dir / "artifacts"
-    declarations, unreadable = _live_declarations(prawduct_dir, artifacts_dir)
+    declarations, unreadable = live_declarations(prawduct_dir, artifacts_dir)
 
     if unreadable:
         faults = "; ".join(
@@ -359,7 +359,7 @@ def _legacy(prawduct_dir: Path, artifacts_dir: Path, branch: str) -> Binding:
     if not plan_index.is_build_plan(content):
         return _unbound(unserved, _dangling_pointer_reason(prawduct_dir, pointer, branch))
     if plan_index.parse_build_plan_frontmatter_branch(content) is not None:
-        # Unreachable while `_live_declarations` saw this file; kept so the
+        # Unreachable while `live_declarations` saw this file; kept so the
         # rule holds even for a plan the walk did not yield.
         return _unbound("no-claim", f"no live plan claims `{branch}`")
     _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
@@ -398,7 +398,7 @@ def _dangling_pointer_reason(prawduct_dir: Path, pointer: Path | None, branch: s
     )
 
 
-def _live_declarations(
+def live_declarations(
     prawduct_dir: Path, artifacts_dir: Path
 ) -> tuple[list[_Declaration], list[_Unreadable]]:
     """Every live plan's identity, claim and working branches — and every live
@@ -469,6 +469,12 @@ def _live_declarations(
             )
         )
     return declarations, unreadable
+
+
+# The pre-#1051 private name, kept one release for any out-of-tree caller that
+# imported it (the hook's `plan check-claims` reads `live_declarations`). Delete
+# in the release after 3.7.x.
+_live_declarations = live_declarations
 
 
 def _frontmatter_unterminated(content: str) -> bool:
