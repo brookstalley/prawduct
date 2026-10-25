@@ -160,6 +160,23 @@ one release, the fact keeps `chunk` = first element for old readers, `chunks` an
   `_cmd_plan_status`) — move it into `plan_status` as the one home and call it from both;
   `_count_build_plan_chunks`'s docstring lists three callers (the function dies in 06). Red shown
   by swapping each owned module back to its pre-chunk version: 29 tests red, return codes read.
+- Chunk 05 as built (delegate D, 2026-10-25, merged 58b90eaf). NF3 measured, cited from the
+  budget tests: `session-digest.md` 1911→1883 tokens (9494→9423 chars; wall 10,000);
+  `templates/build-plan.md` 2605→2394 tokens; injected footprint framework 3108→3080, product
+  2226→2198; ceilings lowered with the trims (building 5316→5294, critic SKILL 3113→3096,
+  review-cycle 7702→7699, cross-checks 3391→3387, footprint 3109/2227→3081/2199). One declared
+  increase: `planning.md` +75 tokens, now the rule's only home and a read-on-demand file. The
+  `test_a_status_tick_has_one_pinned_meaning` pin became
+  `test_chunk_state_has_one_home_and_the_others_point_at_it` (five mutants red, one intended
+  survivor). Calls accepted: the template keeps its cadence paragraph minus the tick clause; the
+  commit-subject guidance went with the `## Status` block; `data-model.md` gained two small
+  amendments beyond the brief, both witnessed by D1 (the derived-views ruling no longer calls the
+  block hand-authored state; "can never satisfy 'all boxes ticked'" → "whose work stopped can
+  never be finished"), with the 2026-08-11 ruling kept verbatim and tagged "Carrier amended
+  2026-10-24, below". Four stale `doctor/SKILL.md` lines outside D's grant (~37, ~72, ~101, ~105)
+  routed to B. The C/D phrase seam (`inferred as the plan's first open chunk`) closed at merge:
+  the two-surface test passes on the integrated tree. D's ten forward-true sentences are the
+  checklist Chunk 06 verifies at integration before the cumulative.
 
 **Level:** High for § 3's reader and the Stop/inference callers (every site is enumerated below
 from a 2026-10-25 inventory, with its callers). Medium for two things, each raised by one read
