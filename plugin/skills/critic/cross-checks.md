@@ -157,9 +157,9 @@ in place of one; the prefixes below are the exceptions.
 
 `goals-1-3.md` carries this same rule for the modes that read only that file; the two must agree.
 
-**`chunk_graded` and `plan_graded`** name whose deliverables were checked — which chunk, of which
-plan file. A zero count is an answer about that chunk of that plan; if either is `null`, nothing was
-checked at all.
+**`chunks_graded` and `plan_graded`** name whose deliverables were checked — every chunk the review
+names, of which plan file (`chunk_graded`: the one id, else `null`). A zero count is an answer
+about those chunks of that plan.
 
 **A `null` count is not a zero.** Each entry in `counts` is an integer when the check ran and `null`
 when it produced no answer. Read alike, they are opposite facts: zeros are a clean check, nulls are
