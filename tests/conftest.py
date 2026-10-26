@@ -12,7 +12,6 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -168,7 +167,6 @@ def write_scope_record(config, scope: str, why: str | None) -> Path | None:
         "v": 1,
         "scope": scope,
         "report": str(report),
-        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     if why:
         record["why"] = why
