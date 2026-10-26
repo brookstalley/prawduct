@@ -266,8 +266,12 @@ The order matters, and the first refusal wins with nothing written.
      scope. It belongs to the next release.
    - The classification is consulted only when non-held fragments exist. A re-run whose only
      leftovers are held fragments, or only a headline file, needs no release plan.
-   - **A lingering `.prawduct/release-headline.md` is removed only if its stripped text occurs
-     verbatim in the release file.** That means it is the headline this cut already published. A
+   - **A lingering `.prawduct/release-headline.md` is removed only if it is the headline this cut
+     already published.** It is compared line by line, not as raw text: the file's lines, each
+     with line endings and trailing whitespace stripped and with leading and trailing blank lines
+     dropped, must occur as a consecutive run of the release file's lines. That is the form
+     `render_section` wrote them in. So a CRLF or trailing-space headline file still matches the
+     text it produced. A
      headline file whose text is not in the release file is someone's headline for the *next*
      release. It is kept, and the output says so.
    - The result has `cut == []`. The cut is applied when `cleanup` or `headline_file` is
@@ -404,7 +408,9 @@ the real banner parser.
 - **`tests/test_plugin_version_banner.py::test_changelog_has_current_version_entry`** gets the
   CD15 contract:
   - a released version must have its section, with a non-empty headline;
-  - a prerelease version must have no section naming its release.
+  - a prerelease version must have no section for its **base** release, neither the `-dev`
+    heading nor the final one. This is a base-version match of the test's own, not
+    `names_release`, which is exact (A5) and would catch neither.
 
   Red is shown both ways, by fixture, not against the live file.
 - **`tests/test_suite_at_boundary.py`.** `_corpus`'s `CHANGELOG.md#unreleased` slice reads the
@@ -483,7 +489,7 @@ check and A5 narrows one.
 | CD6 | each layout; by-type default and declared maps; type missing from the map; multi-line bullets; `{{` and `}}` (`test_consumer_digest.py`) |
 | CD3, CD9 | release file text equals the dry-run block; release file plus changelog plus archive all-or-nothing, with an injected write failure leaving all three untouched (`test_change_cut.py`) |
 | CD7, A3, A5 | each code, with nothing written and the fragments present; a published `## v1.4.0-rc.1` does not block the `v1.4.0` cut (`test_change_cut.py`) |
-| CD8 | every row of the re-run table, run through `cut_cmd`, not only `plan_cut`, so reachability is pinned: a removal failure injected on a fragment and on the headline file; a later fragment reusing a cut scope's name refuses and is still on disk; a next-release headline file survives (`test_change_cut.py`) |
+| CD8 | every row of the re-run table, run through `cut_cmd`, not only `plan_cut`, so reachability is pinned: a removal failure injected on a fragment and on the headline file; a later fragment reusing a cut scope's name refuses and is still on disk; a next-release headline file survives; a CRLF and trailing-space headline file that was published is still removed (`test_change_cut.py`) |
 | CD10 | the undeclared line names the key; the legacy line (`test_change_cut.py`) |
 | CD11 | the golden pair, captured from today's code (`test_change_cut.py`). Today's starting state: a `## v9.9.9` section, already renamed as the runbook does before the cut, holding one headline line, then `## v9.9.8` below. Two fragments, one `none:`. The new starting state: no `## v9.9.9` section, the same headline in `.prawduct/release-headline.md`, the same fragments. The resulting `plugin/CHANGELOG.md` bytes are equal |
 | write path | an injected failure after the changelog write restores a CRLF + BOM changelog byte for byte (`test_core` or `test_change_cut.py`) |
@@ -517,10 +523,12 @@ test is shown red by a test-only writer that uses `"\n".join`.
 
 - `plugin/lib/core.py`: `read_yaml_block` (trims indentation, so nested maps cannot be read),
   `strip_scalar_comment` (a quoted `#` is data), `unquote_scalar`, `write_all_or_none`.
-- `plugin/lib/release_readiness.py`: `scopes_tagged_for`, `_history_entries` (the archive witness
-  CD8 reads), `normalize_version`, `_resolve_version`, and the digest call site.
+- `plugin/lib/release_readiness.py`: `normalize_version`, `_resolve_version`, and the digest call
+  site.
 - `plugin/lib/change_log_archive.py`: `archive_would_be_ignored` (its tracked-record half becomes
-  `record_is_tracked`).
+  `record_is_tracked`); `Block.key` and `_compose_bucket`'s dedupe by it. That key is the entry
+  identity CD8's new `holds_entry` reads. A scope-name lookup such as `scopes_tagged_for` is
+  deliberately not used, because scope names are reused.
 - `plugin/lib/change_fragments.py`: `TYPES`, `Fragment` (`scope`, `type`, `date`, `title`,
   `consumer_text`), `render_entry` (archive entries carry `scope=` and `release=` tags),
   `render_consumer_section`.
