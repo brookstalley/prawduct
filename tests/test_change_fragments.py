@@ -251,21 +251,21 @@ class TestRenderEntry:
             cf.render_entry(self.fragment(), release="unreleased")
 
 
-class TestConsumerSection:
+class TestNoneReasons:
+    """The note order the release section uses is `consumer_digest.ordered_notes`'s,
+    tested there; what stays here is the operator's list of `none:` notes."""
+
     def make(self, scope, when, note):
         text = fragment_text({**FRONT, "scope": scope, "date": when}, note=note)
         return cf.parse_fragment(text, filename=f"{scope}.md")
 
-    def test_newest_first_then_scope_and_none_notes_are_left_out(self):
+    def test_each_none_note_is_listed_with_its_reason_and_others_are_not(self):
         fragments = [
             self.make("b-scope", "2026-10-17", "B note."),
-            self.make("a-scope", "2026-10-17", "A note."),
-            self.make("newer", "2026-10-18", "Newer note."),
             self.make("internal", "2026-10-19", "none: test-only"),
+            self.make("another", "2026-10-18", "none: refactor"),
         ]
-        section = cf.render_consumer_section(fragments)
-        assert section == "**`newer`**: Newer note.\n\n**`a-scope`**: A note.\n\n**`b-scope`**: B note."
-        assert cf.none_reasons(fragments) == [("internal", "test-only")]
+        assert cf.none_reasons(fragments) == [("another", "refactor"), ("internal", "test-only")]
 
 
 def problems_of(text, filename="backlog-file-path.md"):
