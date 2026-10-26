@@ -184,6 +184,39 @@ def atomic_write_text(
     os.replace(tmp, path)
 
 
+def _read_exact(path: Path) -> str:
+    """``path``'s text with its line endings untouched (no universal-newline read)."""
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+class RollbackIncomplete(OSError):
+    """A :func:`write_all_or_none` write failed, and the rollback left files changed.
+
+    ``unrestored`` names the files that kept their new content. Its message is
+    the original failure's, and ``__cause__`` is that failure.
+    """
+
+    def __init__(self, cause: BaseException, unrestored: "list[Path]") -> None:
+        super().__init__(str(cause))
+        self.unrestored = unrestored
+
+
+def write_failure_outcome(exc: BaseException) -> str:
+    """What a failed :func:`write_all_or_none` left behind, as a sentence for the refusal.
+
+    The one place a caller learns whether "every file was restored" is true, so
+    no caller reports a restore that did not happen.
+    """
+    if isinstance(exc, RollbackIncomplete):
+        names = ", ".join(str(path) for path in exc.unrestored)
+        return (
+            f"The rollback could not restore {names}, which kept its new content while the "
+            "rest were restored; do not re-run until it is reconciled by hand."
+        )
+    return "Every file was restored; re-run when the cause is fixed."
+
+
 def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     """Write every ``(path, text)`` pair, or leave every one of them untouched.
 
@@ -204,9 +237,12 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     Rollback is best-effort by construction: if restoring also fails there is
     nothing left to try, and the original exception is the one worth raising, so
     an ``OSError`` from a restore does not mask it — but it is NOT silent: every
-    path the rollback could not restore is named on stderr, because the pair is
-    then half-applied and the documented recovery (run it again) would duplicate
-    every moved entry into an append-only file. Only ``OSError`` is caught there
+    path the rollback could not restore is named on stderr, and an ordinary
+    failure is raised as :class:`RollbackIncomplete` carrying those paths, so
+    the caller's message comes from that state (:func:`write_failure_outcome`).
+    The pair is then half-applied, and the documented recovery (run it again)
+    would duplicate every moved entry into an append-only file. An interrupt is
+    still re-raised unchanged. Only ``OSError`` is caught there
     — anything else escaping a restore is a bug in this function, not a disk
     that filled, and swallowing it would hide it forever.
 
@@ -218,29 +254,40 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     replaces is exactly the half-applied pair this function exists to prevent,
     and it is not an error in the ordinary sense — but it is still the moment to
     restore, and the interrupt is re-raised unchanged.
+
+    **Text goes through byte for byte, both ways.** Every write and every
+    restore uses ``newline=""``, and every prior is read the same way, so
+    neither direction translates line endings. A caller's ``\n`` is written as
+    ``\n`` and a CRLF file it rewrites keeps its ``\r\n``. A universal-newline
+    read of the prior would quietly turn a product's CRLF file into LF on the one
+    path meant to leave it as it was: the rollback.
     """
     priors: list[str | None] = []
     for path, _text in writes:
-        priors.append(path.read_text(encoding="utf-8") if path.exists() else None)
+        priors.append(_read_exact(path) if path.exists() else None)
     written: list[tuple[Path, str | None]] = []
     try:
         for (path, text), prior in zip(writes, priors):
-            atomic_write_text(path, text)
+            atomic_write_text(path, text, newline="")
             written.append((path, prior))
-    except BaseException:
+    except BaseException as exc:
+        unrestored: list[Path] = []
         for path, prior in reversed(written):
             try:
                 if prior is None:
                     path.unlink(missing_ok=True)
                 else:
-                    atomic_write_text(path, prior)
+                    atomic_write_text(path, prior, newline="")
             except OSError as restore_exc:
+                unrestored.append(path)
                 print(
                     f"ROLLBACK FAILED for {path}: {restore_exc} — this file kept its NEW "
                     "content while the others were restored; do not re-run until it is "
                     "reconciled by hand",
                     file=sys.stderr,
                 )
+        if unrestored and isinstance(exc, Exception):
+            raise RollbackIncomplete(exc, unrestored) from exc
         raise
 
 

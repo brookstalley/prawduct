@@ -59,6 +59,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import consumer_digest
 from . import waivers
 from .core import read_str_yaml_key
 
@@ -279,7 +280,11 @@ def _key_word(phrase: str) -> str:
     return max(phrase.split(), key=len)
 
 
-def _is_history(rel: str, backlog_frozen: bool) -> bool:
+def _is_history(rel: str, backlog_frozen: bool, digest: "consumer_digest.Declaration | None" = None) -> bool:
+    # What the release cut writes is history by what it is, not by its name:
+    # a declared changelog called NEWS.md is as append-only as CHANGELOG.md.
+    if consumer_digest.is_history(rel, digest):
+        return True
     lowered = rel.lower()
     name = lowered.rsplit("/", 1)[-1]
     if "/archive/" in f"/{lowered}" or "change-log-archive/" in lowered:
@@ -361,8 +366,10 @@ def _search_files(
     if rels is None:
         return [], f"{CHECK} unchecked — git could not search the tracked files"
     findings: list[dict] = []
+    # An invalid declaration names no file the cut writes, so only release files are history.
+    digest, _invalid = consumer_digest.read_declaration(project_dir)
     for rel in sorted(rels):
-        if _is_history(rel, backlog_frozen):
+        if _is_history(rel, backlog_frozen, digest):
             continue
         try:
             text = (project_dir / rel).read_text(encoding="utf-8", errors="replace")

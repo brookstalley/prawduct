@@ -8,6 +8,10 @@ last_verified: 2026-09-13   # steps 0-22 executed end to end at the v3.5.0 cut, 
                             # Steps 1-5 and 10 were REWRITTEN on 2026-10-19 for change fragments
                             # (#1012) and have not run in a real cut: the cut ran only on a copy of
                             # this repo. The next cut is their first execution.
+                            # Phase 0's digest lines and steps 1-5, 10, 12, 20 and 22 were REWRITTEN
+                            # on 2026-10-26 for the release-file model (#733): step 10's rename and
+                            # step 22's open section are gone. They are unexecuted until the v3.8.0
+                            # cut.
 verified_by: brookstalley
 ---
 
@@ -142,13 +146,14 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    number to read is the last one, and it is `0 unclassifiable` on every run that gets this far,
    because a non-zero one refuses instead.
 
-   Beneath it, `digest headline: '…' in ## vX.Y.Z-dev.N` — the section's first non-empty line,
-   printed back verbatim because that is the line the version-delta banner shows every repo
-   crossing this version, and the whole failure mode is a line nobody looked at. Then
-   `digest coverage: N of M release-pending scope(s) named in …`. It counts only pending
-   **legacy** change-log entries, so in this repo it reads `0 of 0`: a fragment carries its own
-   required consumer note, which the cut writes into the digest, and Phase 1 step 2's `none:` review
-   is that check for fragments. Where these lines are absent, the `NOTE:` below says why.
+   Beneath it, `digest headline: '…' (.prawduct/release-headline.md → plugin/CHANGELOG.md)` — the
+   pending headline's first line, printed back verbatim. The cut puts it directly under this
+   release's heading, which makes it the line the version-delta banner shows every repo crossing
+   this version, and the whole failure mode is a line nobody looked at. Until Phase 1 step 2 writes
+   it, this reads `digest headline: none`. After the cut it reads `digest: vX.Y.Z already cut (…)`:
+   the release file exists and there is nothing left to ask. There is no coverage line: the cut
+   writes each fragment's own consumer note, and Phase 1 step 2's `none:` review is that check.
+   Where the line is absent, the `NOTE:` below says why.
 
    Last, `suite: green — <which evidence vouched>`. Read what it actually claims: the saved run
    is recorded green and current **as of now**. It is not a statement about the tree you will
@@ -236,32 +241,34 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      entry carrying several `prawduct:` tag lines that disagree — merge them and resolve the
      conflict. The message names the entry and its line number.
 
-   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=` · `WARNING: could not find
-   release-pending scope=… in the open plugin/CHANGELOG.md section`
+   `WARNING: … has no build-plan file` · `WARNING: duplicate scope=`
    - **Advisory, not a stop.** The first says work is shipping with no plan describing it (worth a
      look, not worth blocking a release); the second says two plans declare one scope, so
-     scope→plan resolution is decided by sort order. The third fires only for a pending legacy
-     entry (the box above), because a fragment's note is written by the cut: it says this
-     release's notes never mention that scope. It matches the scope's name, so work the notes
-     describe in other words reads as absent. Open the section and look. None of the three
-     changes the exit code.
+     scope→plan resolution is decided by sort order. Neither changes the exit code.
 
-   `WARNING: the open plugin/CHANGELOG.md section (…) has no headline` · `WARNING: … still leads
-   with the seeded placeholder`
-   - **Advisory, not a stop** — and it fires on a correct release, once. Step 22 of the last cut
-     opened this section with a seeded one-liner, and **Phase 1 step 2 is where you replace it**;
-     this warning is that step arriving early, while you are still reading Phase 0 output and the
-     notes are cheap to write. It is not a refusal because Phase 0 runs *before* the step that
-     fixes it. Both shapes have shipped: v2.1.6 was tagged with no headline at all, and v3.4.0
-     went out still leading with the seed after eight weeks of good notes had accumulated
-     underneath it — a section full of good notes reads as a finished section.
+   `WARNING: … .prawduct/release-headline.md is absent` · `… is empty` · `… starts with a heading`
+   · `… cannot be read`
+   - **Advisory, not a stop**. "Absent" fires on a correct release, once: **Phase 1 step 2 writes
+     the file**, and this warning is that step arriving early, while you are still reading Phase 0
+     output and the headline is cheap to write. It is not a refusal because Phase 0 runs *before*
+     the step that fixes it; the cut itself refuses `no-headline` without it. A headline that
+     starts with a heading would give the banner nothing to show. Both failures have shipped:
+     v2.1.6 was tagged with no headline at all, and v3.4.0 went out leading with a placeholder.
 
-   `NOTE: digest coverage not checked: …`
-   - The digest exists but could not be read, or holds no `## ` section, so **no scope was checked
-     for a note at all**. Not a refusal, and not a pass either — the coverage question simply went
-     unasked. Fix the file and re-run before you trust a clean Phase 0 on this point. (In a repo
-     that publishes no digest the check has no subject and says nothing; this line means yours
-     does and it could not be read.)
+   `WARNING: plugin/CHANGELOG.md already has a section for vX.Y.Z`
+   - The cut writes the release's section itself and refuses `release-in-changelog` while one
+     exists, so a section written by hand (or one left by the procedure before v3.8.0) is reported
+     here first. **Remove it, or move its first paragraph into `.prawduct/release-headline.md` if
+     it was the headline.**
+
+   `NOTE: … the declared consumer digest, cannot be read / is not a file` · `NOTE: no --release
+   given` · `NOTE: vX.Y.Z is already cut`
+   - The first two mean a check did not run: fix the file (the cut refuses `digest-unreadable` or
+     `digest-missing` until you do), or pass `--release`. The third is the ordinary state after
+     Phase 1 step 3: the release file exists, so both digest checks step aside rather than ask
+     about a section the cut wrote. A `WARNING: consumer_digest: …; the consumer digest checks did
+     not run` means `.prawduct/project-state.yaml`'s declaration is invalid or unreadable: fix
+     what it names.
 
    `unproven-suite:`
    - Nothing has said this code passes. Four states reach this one line and the message names
@@ -333,9 +340,12 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
    **Expected:** exit 0 and `cut-change-log (dry-run): N fragment(s) ship in vX.Y.Z: <scopes>`,
    then `archive: YYYY-MM.md` naming the month buckets the entries will join,
-   `consumer notes: N added under '## vX.Y.Z-dev…'`, one `none: <scope> — <reason>` line per
-   fragment that gives consumers nothing, `kept pending (withheld): …` on a pruned release, and
-   `Re-run with --apply to write. Nothing was written.`
+   `consumer notes: N to be written to plugin/CHANGELOG.md as a new section at line L (release
+   file .prawduct/releases/vX.Y.Z.md)`, one `none: <scope> — <reason>` line per fragment that gives
+   consumers nothing, `kept pending (withheld): …` on a pruned release, then the section itself
+   between `--- section (as written to .prawduct/releases/vX.Y.Z.md) ---` and `--- end ---`, and
+   `Re-run with --apply to write. Nothing was written.` That block is exactly what step 3 writes
+   and what step 20 publishes; read it as the release notes.
 
    The cut reads the same pending set and the same `## Release classification` table Phase 0
    step 0 graded: every file in `.prawduct/changes/` is release-pending, a `ships` row is cut and
@@ -358,15 +368,27 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
      `scope-in-both-shapes:`); its remedy rows say how to fix them.
 
    `no-headline:`
-   - The open `## ` section of `plugin/CHANGELOG.md` has no first line, or there is no `## `
-     section at all. The cut inserts the notes under the headline and never writes one. **Do step 2
+   - `.prawduct/release-headline.md` is absent, empty or unreadable, and prawduct's declaration
+     (`consumer_digest:` in `.prawduct/project-state.yaml`) requires a headline. **Do step 2
      first**, then re-run this step.
 
-   `wrong-section:`
-   - The top `## ` section of `plugin/CHANGELOG.md` is not this release's (`## vX.Y.Z-dev…` or
-     `## vX.Y.Z`): usually the last release's section, because step 22 of that cut never opened a
-     new one. Writing there would add these notes to notes already published. **Open
-     `## vX.Y.Z-dev` above it with a one-line first line, as step 22 does**, then re-run this step.
+   `release-in-changelog:`
+   - `plugin/CHANGELOG.md` already has a section naming vX.Y.Z (the message gives its line). The cut
+     writes that section itself, as a new section, so one already there would be published twice or
+     edited. **Remove it, or move its first paragraph into `.prawduct/release-headline.md` if it was
+     the headline**, then re-run.
+
+   `release-already-cut:`
+   - `.prawduct/releases/vX.Y.Z.md` exists, so this release is cut, and a fragment it does not hold
+     is pending. That fragment belongs to the next release. **Classify it `withheld`** (or leave it
+     for the next cut), then re-run.
+
+   `digest-declaration-invalid:` · `digest-missing:` · `digest-unreadable:` · `marker-missing:` ·
+   `releases-ignored:`
+   - The declaration, the changelog it names, or the release directory is not usable: an invalid
+     or unreadable `consumer_digest:` block, a declared changelog that is not a file or not UTF-8,
+     a declared marker line not in it, or git ignoring `.prawduct/releases/`. **Fix what the message
+     names**, then re-run.
 
    `archive-ignored:`
    - git would ignore `.prawduct/change-log-archive/`, so the commit would carry the fragments'
@@ -384,17 +406,18 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    step 1. Fragments that `migrate-change-log` converted from the legacy log say so in their
    reason; those were never decided by anyone.
 
-   Then make the first non-empty line of the open `## vX.Y.Z-dev` section in
-   `plugin/CHANGELOG.md` this release's headline, replacing the seeded placeholder step 22 left
-   there. Write it from step 1's shipping list and its notes, as **one long unwrapped line**.
+   Then write this release's headline into `.prawduct/release-headline.md`. Write it from step 1's
+   shipping list and its notes, as **one long unwrapped line**. The cut puts it directly under the
+   release's heading, then removes the file.
 
    **Expected:** `./plugin/bin/prawduct-hook check-releasability --release vX.Y.Z` prints your line
-   back as `digest headline: '…'`, with no warning that the section has no headline or still leads
-   with the seeded placeholder.
+   back as `digest headline: '…' (.prawduct/release-headline.md → plugin/CHANGELOG.md)`, with no
+   headline warning, and step 1's preview shows it under `## vX.Y.Z`.
 
-   > *Why the headline comes before the notes: the cut inserts each note after the section's first
-   > paragraph, so whatever line is first when you apply is the line the notes sit under — and the
-   > version-delta banner shows exactly that line to every repo crossing this version.*
+   > *Why the headline comes before the cut: the cut writes the release's section once, from this
+   > file, and refuses `no-headline` without it. A headline added afterwards would be an edit to a
+   > section already written, and the version-delta banner shows that line to every repo crossing
+   > this version.*
 
    > *Why one unwrapped line: the banner reads the first physical line, so a bold lead-in wrapped
    > across two ships an unpaired `**` (the v3.5.0 defect step 11a records).*
@@ -405,23 +428,34 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ./plugin/bin/prawduct-hook cut-change-log --release vX.Y.Z --apply
    ```
 
-   **Expected:** step 1's summary again, ending
-   `removed N fragment(s); commit the archive, digest and removals together.`
+   **Expected:** step 1's summary again, with `written` where the preview said `to be written`,
+   ending `removed N fragment(s); commit the archive, release file, changelog and removals
+   together.`
 
    It renders each shipping fragment into its month bucket under `.prawduct/change-log-archive/`
-   as an entry tagged `release=vX.Y.Z`, inserts the consumer notes under step 2's headline, and
-   removes the shipping fragments. Withheld fragments are not touched, so they stay pending for
-   the next release.
+   as an entry tagged `release=vX.Y.Z`, writes the release's section to
+   `.prawduct/releases/vX.Y.Z.md`, inserts that section into `plugin/CHANGELOG.md` above the newest
+   release, and removes the shipping fragments and `.prawduct/release-headline.md`. Withheld
+   fragments are not touched, so they stay pending for the next release.
 
-   **If it prints `refused: write-failed:`:** every file was restored. Fix the cause it names and
-   re-run.
-   **If it prints `refused: removal-failed:`:** the archive and the notes are written, and some
-   fragments are still on disk. Re-run the same command. It finds the entries and notes already
-   present, adds nothing twice, and removes the rest.
+   **If it prints `refused: write-failed:`:** it says whether every file was restored. If so, fix
+   the cause it names and re-run. If it names a file the rollback could not restore, do not re-run:
+   restore that file from `HEAD` by hand (or delete it, if it is new) first.
+   **If it prints `refused: removal-failed:`:** the archive, release file and changelog are
+   written, and some fragments (or the headline file) are still on disk. Re-run the same command.
+   The release file exists, so it writes nothing and removes what the archive and the release
+   already hold.
 
-   > *Nothing here is pushed or committed yet. To undo the whole cut before step 12, restore
-   > `.prawduct/change-log-archive/` and `.prawduct/changes/` from `HEAD`, and delete the
-   > `**`<scope>`**:` paragraphs the cut added to `plugin/CHANGELOG.md`.*
+   > *Nothing here is pushed or committed yet. To undo the whole cut before step 12, in this order:
+   > 1. Recover the headline, which was never committed, so the release file holds its only copy:
+   >    `sed -n 3p .prawduct/releases/vX.Y.Z.md > .prawduct/release-headline.md` (line 3 is the
+   >    one-line headline step 2 asks for).
+   > 2. Restore `.prawduct/change-log-archive/`, `.prawduct/changes/` and `plugin/CHANGELOG.md`
+   >    from `HEAD`.
+   > 3. Delete any month file step 5 shows as `??`. Restoring does not remove a new file, and a
+   >    re-cut would add its entries a second time.
+   > 4. Delete `.prawduct/releases/vX.Y.Z.md`. The release file must go too, because while it
+   >    exists the cut treats vX.Y.Z as already cut.*
 
 4. Confirm the pending set shrank to exactly what you withheld:
 
@@ -447,28 +481,33 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 5. Confirm the cut's writes are the whole change:
 
    ```
-   git status --short .prawduct/change-log-archive .prawduct/changes plugin/CHANGELOG.md
+   git status --short .prawduct/change-log-archive .prawduct/changes .prawduct/releases .prawduct/release-headline.md plugin/CHANGELOG.md
    ```
 
    **Expected:** one `M` (or `??` for a month with no file yet) per bucket step 1 named under
-   `archive:`, ` M plugin/CHANGELOG.md`, and one ` D .prawduct/changes/<scope>.md` per shipping
-   fragment. Nothing else.
+   `archive:`, `?? .prawduct/releases/vX.Y.Z.md`, ` M plugin/CHANGELOG.md`, and one
+   ` D .prawduct/changes/<scope>.md` per shipping fragment. Nothing else. That includes no line for
+   `.prawduct/release-headline.md`: it was never committed, so once the cut removes it git has
+   nothing to show. A `??` line for it means the cut did not remove it.
 
-6. Confirm each shipping scope's build plan is actually closed out — every
-   `## Status` box ticked for the chunks this release carries.
+6. Confirm each shipping scope's build plan is actually closed out:
 
-   **Expected:** no unticked boxes on a plan whose scope the cut just shipped — **except a chunk whose
-   own acceptance is this release**, which cannot be ticked here by construction. A plan carrying a
-   "Phases 0–3 complete" chunk is unticked *because* you are at Phase 1; that is the one `[ ]` this
-   step expects, and it ticks after Phase 3. Record which plan it is, so the next reader can tell it
-   from a real miss.
+   ```
+   ./plugin/bin/prawduct-hook plan status <each shipping scope's plan>
+   ```
 
-   **If not:** a `[ ]` at release means that chunk was never closed out by the
-   session that built it. **Do not tick it here.** The boxes are hand-authored
-   state the Stop hook's gates read, only a session with the work in context can
-   say whether a chunk is done, and a release-prep tick is a claim made by
-   whoever happens to be cutting the release. Ask the chunk's author, or ship
-   knowing the plan says the work is incomplete.
+   **Expected:** every chunk `done` or `dropped`, **except a chunk whose own acceptance is this
+   release**, which cannot be done here by construction. A plan carrying a "Phases 0–3 complete"
+   chunk is open *because* you are at Phase 1; that is the one open chunk this step expects, and its
+   review lands after Phase 3. Record which plan it is, so the next reader can tell it from a real
+   miss.
+
+   **If not:** an open chunk at release means no review certified it. Chunk state is derived from
+   review facts, never hand-edited, and only a session with the work in context can say whether the
+   chunk is finished. Ask the chunk's author, or ship knowing the plan says the work is incomplete.
+   (Until #1072 is fixed, a `final` review run mid-plan can certify later chunks it never reviewed,
+   so `done` is weaker evidence than it reads: check the certifying review's chunk set when a
+   result looks too clean.)
 
 7. In `plugin/VERSION`, replace the old number with the new one, without the `v` — `3.2.0`
    for a `v3.2.0` release.
@@ -484,19 +523,11 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > *Adjudicated, not derived: the file's own comment asks for this bump;
    > `documentation/release-process.md` step 2 didn't name it until v3.1.1.*
 
-10. In `plugin/CHANGELOG.md`, **rename the open `## vX.Y.Z-dev` section to `## vX.Y.Z`** — the
-    prerelease section step 22 opened at the last cut. It now holds step 2's headline and the notes
-    step 3 inserted under it.
-
-    > *Why rename rather than add: on any release that was dogfooded the section already exists
-    > under the prerelease heading. Adding a second leaves the `-dev` section in the public digest
-    > permanently, a consumer crossing the version gets two highlights for one release, and the
-    > banner reads whichever it finds first.*
-
-    **On a minor or major bump — not a patch — also refresh `README.md`'s `## Recent
-    Changes`** so the current line is represented there. Check it the same way: a release that
-    was dogfooded on `develop` already has its section under the prerelease heading, so rename and
-    bring that one up to date rather than adding a second. Rewrite the section; do not append a
+10. **On a minor or major bump — not a patch — refresh `README.md`'s `## Recent Changes`** so the
+    current line is represented there. (`plugin/CHANGELOG.md` needs nothing here: step 3 wrote its
+    `## vX.Y.Z` section, and `develop` carries no open `-dev` section to rename.) If the README
+    already has a section for this line under a prerelease heading, bring that one up to date
+    rather than adding a second. Rewrite the section; do not append a
     per-release bullet. A patch has nothing to say on that surface, so skipping it is the correct
     outcome and not an omission.
 
@@ -557,10 +588,11 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     > moving; `git mv` it into `archive/` and it leaves the live scan. *"cannot read …"* →
     > fix the file's encoding by hand first; nothing can converge a plan it cannot decode.
 
-    > *"…Status roster"* / *"…still unticked"* → **the one reason `archive-plan` does NOT
+    > *"…N of M chunks not done (Chunk …)"* → **the one reason `archive-plan` does NOT
     > share** (v3.3.1, #634). The sweep cannot tell a dead plan from live work whose scope
-    > shipped partially, so it hands you the call: tick the chunks if they shipped, or
-    > `archive-plan <path> --state superseded --superseded-by "…"` if the work stopped.
+    > shipped partially, so it hands you the call. If the chunks shipped, a review must certify
+    > them: chunk state is derived from review facts and is never hand-edited. If the work
+    > stopped, run `archive-plan <path> --state superseded --superseded-by "…"`.
 
     Once each named plan has had its own remedy, re-run and expect exit 0 — **except where a
     completeness refusal was answered with an explicit `archive-plan`**, which removes the plan
@@ -614,9 +646,15 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
     ```
 
     **Expected:** `[develop <sha>] release: prep v3.2.0`, and the summary lists the archive
-    bucket(s), `plugin/CHANGELOG.md` and a `delete mode` line per shipped fragment. The three go
-    in one commit: the fragments' removal without the archive drops the record, and the archive
-    without the removal leaves the scopes pending for the next release too.
+    bucket(s), `plugin/CHANGELOG.md`, a `create mode` line for `.prawduct/releases/vX.Y.Z.md`, and a
+    `delete mode` line per shipped fragment. The headline file has no line, because it was never
+    committed. They go in one
+    commit: the fragments' removal without the archive drops the record, the archive without the
+    removal leaves the scopes pending for the next release too, and the release file is what tells
+    a re-run the release is cut.
+
+    > *`commit -am` stages modifications and deletions but not the new release file. Stage it
+    > first: `git add .prawduct/releases/vX.Y.Z.md`.*
 
 13. Push it:
 
@@ -732,19 +770,19 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 
     **Expected:** a line ending `main -> main`.
 
-20. Publish the GitHub Release, using step 10's whole CHANGELOG section as the notes.
-    **This step is also what creates the tag** — do not tag separately first:
+20. Publish the GitHub Release, using the release's whole section from its release file as the
+    notes. **This step is also what creates the tag** — do not tag separately first:
 
     ```
-    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+    tail -n +3 .prawduct/releases/vX.Y.Z.md > /tmp/notes-vX.Y.Z.md   # the section without its heading
     gh release create vX.Y.Z --target "$(git rev-parse main)" \
       --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
     ```
 
     **Expected:** one line — the release URL, ending `/releases/tag/vX.Y.Z`.
-    **If the notes look truncated or carry the previous release's text:** the `awk`
-    boundary missed. Check that `## vX.Y.Z` is on its own line in `plugin/CHANGELOG.md`
-    with nothing trailing it, then re-run with `gh release edit` rather than `create`.
+    **If the notes look wrong:** `.prawduct/releases/vX.Y.Z.md` is the section the cut wrote and
+    step 1 previewed, so fix the notes there and in `plugin/CHANGELOG.md` alike, then re-run with
+    `gh release edit` rather than `create`.
     **If it reports the tag already exists:** something tagged ahead of this step. Confirm
     `git rev-parse vX.Y.Z` is the commit you just pushed, then re-run without `--target`
     to attach the Release to the tag that is already there.
@@ -833,9 +871,8 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
 
 22. On `develop`, bump the three version files (`plugin/VERSION`,
     `plugin/.claude-plugin/plugin.json`, `pyproject.toml`) to the next **patch** plus a
-    `-dev` suffix — after cutting `v3.4.0`, write `3.4.1-dev` — **and in the same commit
-    open a `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md`** with a non-empty
-    first line, plus a `.prawduct/changes/release-vX.Y.Z.md` fragment recording the cut (copy
+    `-dev` suffix — after cutting `v3.4.0`, write `3.4.1-dev` — plus, in the same commit, a
+    `.prawduct/changes/release-vX.Y.Z.md` fragment recording the cut (copy
     `plugin/templates/change-fragment.md`; `type: chore`, and a `none:` consumer note, because
     release mechanics tell consumers nothing).
 
@@ -852,13 +889,12 @@ the by-hand blocker check — `main`'s tree is a deliberately chosen subset of `
     > already decided to be a minor or major, that decision is what licenses the higher
     > number; record it, don't assume it.
 
-    > **The CHANGELOG section is not bookkeeping — omit it and `develop` goes red.**
-    > `test_changelog_has_current_version_entry` requires a `## v<plugin.json version>`
-    > section with a non-empty headline, so the three version files and the public digest
-    > move together or the suite fails on the next push. "The change record" reads as the
-    > fragment alone, which is why this step names both files.
-    > Seed it with one headline line and nothing else — consumer notes live in each change
-    > fragment, and `cut-change-log` writes them under this headline at the release.
+    > **Do not open a `## vX.Y.Z-dev` section in `plugin/CHANGELOG.md`.** The next cut writes
+    > that release's section itself, so a `-dev` section would ship in the released changelog
+    > beside it, and `test_changelog_matches_the_current_version` fails on a prerelease that has
+    > one. Pending
+    > notes live in each change fragment and the next headline in `.prawduct/release-headline.md`,
+    > written at the next cut's Phase 1 step 2.
 
     > *Why develop never reads as the released version: the verdict cache keys on the
     > plugin version (`verdict_cache._key`), so a prerelease codebase reporting the
@@ -888,17 +924,13 @@ own `Done when`: the content-identity check below can never pass there, and if i
 mean the withheld work shipped.*
 
 - After `git fetch origin`, `git diff --stat origin/main origin/develop` prints **only what the
-  reopen commit carries** — at minimum step 22's five files: `plugin/VERSION`,
-  `plugin/.claude-plugin/plugin.json`, `pyproject.toml`, `plugin/CHANGELOG.md` and the
+  reopen commit carries** — at minimum step 22's four files: `plugin/VERSION`,
+  `plugin/.claude-plugin/plugin.json`, `pyproject.toml` and the
   `.prawduct/changes/release-vX.Y.Z.md` fragment. Post-cut bookkeeping folded into the same commit is expected beside
   them and is not a Phase 2 failure: the v3.5.0 cut added the release plan's `Status:` line and this
   runbook's own step 11a, for seven files. **What makes the difference readable is step 17**, which
   proved content identity *before* the promotion; anything appearing here arrived after it, on
   `develop` only. If you skipped step 17, you cannot tell the two apart from this line alone.
-
-  > `plugin/CHANGELOG.md` is in the list because step 10 renames `## vX.Y.Z-dev` → `## vX.Y.Z`
-  > on the tree `main` is set from, and step 22 then opens `## vX.Y.Z+1-dev` above it on
-  > `develop` only — so the two branches' digests differ by exactly that new heading.
 
   > **This bullet used to say "prints nothing", and Phase 3 is what changed it.** Content
   > identity is the expected outcome of Phase 2, and step 22 deliberately advances `develop`

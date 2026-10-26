@@ -416,15 +416,21 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `moved`, `pinned_bytes`, `buckets{YYYY-MM: count}`, `written[]`.
   `cut-change-log --release vX.Y.Z [--scope S]... [--apply]` (mutating with `--apply`) ships
   pending change fragments: the release plan's `ships` rows, or exactly the named scopes. It
-  renders each into the archive's month bucket tagged `release=`, writes its consumer note under
-  the open `plugin/CHANGELOG.md` section's headline (never the headline itself), and removes it;
-  a `withheld` fragment stays. The dry run lists every `none:` consumer note with its reason.
+  renders each into the archive's month bucket tagged `release=` and removes it; a `withheld`
+  fragment stays. Where the repo declares `consumer_digest:` (`plugin/lib/consumer_digest.py`), it
+  also renders the shipping consumer notes, under a generated heading and
+  `.prawduct/release-headline.md`'s headline, into `.prawduct/releases/vX.Y.Z.md`, and inserts that
+  section into the declared changelog above the newest release, changing no other byte. The dry
+  run prints that section verbatim and lists every `none:` consumer note with its reason.
   Exit 0 when it ran or had nothing to cut; **1 `refused: <code>:`** with nothing written
   (`bad-version`, `no-change-log`, `invalid-pending-set`, `archive-ignored`, `unknown-scope`,
-  `no-release-plan`, `bad-release-plan`, `unclassified-fragment`, `no-headline`, `wrong-section`
-  (the top section is not this release's), `write-failed`),
-  or `removal-failed` after the archive and notes are written, which a re-run completes without
-  duplicating; 2 on a usage error. No `--json`.
+  `no-release-plan`, `bad-release-plan`, `unclassified-fragment`, `digest-declaration-invalid`,
+  `digest-missing`, `digest-unreadable`, `marker-missing`, `release-in-changelog`, `no-headline`,
+  `releases-ignored`, `release-already-cut`, `write-failed`), or `removal-failed` after the writes
+  landed, which a re-run completes without duplicating because the release file marks the release
+  cut; 2 on a usage error. No `--json`. *2026-10-26 (#733): `wrong-section` retired with the
+  open-section model it guarded. This is a Repo-lifecycle command, not the stable tier, so the
+  code set may change at a minor.*
   `migrate-change-log [--apply]` (mutating with `--apply`) converts the legacy log's
   release-pending entries into fragments and removes them from the log; shipped and untagged
   entries stay. Exit 0 when it ran or had nothing to convert; **1 `refused: <code>:`** with

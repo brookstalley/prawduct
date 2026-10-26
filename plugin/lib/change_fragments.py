@@ -590,20 +590,6 @@ def render_entry(fragment: Fragment, *, release: str | None = None) -> str:
     )
 
 
-def render_consumer_section(fragments: list[Fragment]) -> str:
-    """The `plugin/CHANGELOG.md` paragraphs for ``fragments`` that have consumer text.
-
-    Newest first, ties broken by scope, so the output is stable. ``none:`` notes
-    contribute nothing here; :func:`none_reasons` lists them for the operator.
-    """
-    with_text = [f for f in fragments if f.consumer_text]
-    # Two stable sorts: scope ascending, then date descending, so same-day scopes
-    # read alphabetically under the newest-first order.
-    ordered = sorted(with_text, key=lambda f: f.scope or "")
-    ordered = sorted(ordered, key=lambda f: f.date or "", reverse=True)
-    return "\n\n".join(f"**`{f.scope}`**: {f.consumer_text}" for f in ordered)
-
-
 def none_reasons(fragments: list[Fragment]) -> list[tuple[str, str]]:
     """``(scope, reason)`` for every fragment whose consumer note is ``none:``."""
     return sorted(

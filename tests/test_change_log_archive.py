@@ -421,3 +421,85 @@ class TestCommand:
 
     def test_unknown_argument_is_a_usage_error(self, tmp_path: Path) -> None:
         assert _cli(_repo(tmp_path, VERSIONED), "--force").returncode == 2
+
+
+def _git(root: Path, *args: str) -> None:
+    env = {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+           "HOME": str(root.parent), "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin"}
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=str(root),
+                   check=True, capture_output=True, env=env)
+
+
+class TestRecordIsTracked:
+    """The one body of "does git commit this repo's change record", which the
+    archive check and the cut's release-file check both ask."""
+
+    def test_untracked_without_git(self, tmp_path: Path) -> None:
+        _repo(tmp_path, VERSIONED)
+        assert cla.record_is_tracked(tmp_path) is False
+
+    def test_a_tracked_live_log_is_the_record(self, tmp_path: Path) -> None:
+        _repo(tmp_path, VERSIONED)
+        _git(tmp_path, "init", "-q", "-b", "main")
+        assert cla.record_is_tracked(tmp_path) is False
+        _git(tmp_path, "add", ".prawduct/change-log.md")
+        _git(tmp_path, "commit", "-q", "-m", "init")
+        assert cla.record_is_tracked(tmp_path) is True
+
+    def test_a_tracked_fragment_directory_is_the_record(self, tmp_path: Path) -> None:
+        changes = tmp_path / ".prawduct" / "changes"
+        changes.mkdir(parents=True)
+        (changes / "alpha.md").write_text("x\n", encoding="utf-8")
+        _git(tmp_path, "init", "-q", "-b", "main")
+        assert cla.record_is_tracked(tmp_path) is False
+        _git(tmp_path, "add", ".prawduct/changes/alpha.md")
+        _git(tmp_path, "commit", "-q", "-m", "init")
+        assert cla.record_is_tracked(tmp_path) is True
+
+    def test_the_archive_check_asks_it(self, tmp_path: Path, monkeypatch) -> None:
+        # Git would ignore the archive here, so only the record answer decides.
+        _repo(tmp_path, VERSIONED)
+        (tmp_path / ".gitignore").write_text(".prawduct/change-log-archive/\n", encoding="utf-8")
+        _git(tmp_path, "init", "-q", "-b", "main")
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "init")
+        assert cla.archive_would_be_ignored(tmp_path) is True
+        monkeypatch.setattr(cla, "record_is_tracked", lambda root: False)
+        assert cla.archive_would_be_ignored(tmp_path) is False
+
+
+class TestHoldsEntry:
+    """Entry identity, never scope name: scope names are reused across releases."""
+
+    def _block(self, text: str) -> cla.Block:
+        return cla.split(text)[1][0]
+
+    def test_an_archived_entry_is_held_wherever_it_sits_in_its_month_file(self, tmp_path: Path) -> None:
+        prawduct = _repo(tmp_path, VERSIONED)
+        _run(prawduct)
+        archived = _archive(prawduct)
+        assert archived, "the fixture must archive something to look up"
+        seen = 0
+        for name, text in archived.items():
+            for block in cla.split(text)[1]:
+                assert cla.holds_entry(prawduct, block), (name, block.entry.title)
+                seen += 1
+        assert seen >= 2, "a first, a middle or a last block: position changes a block's text"
+
+    def test_a_new_entry_reusing_an_archived_scope_name_is_not_held(self, tmp_path: Path) -> None:
+        prawduct = _repo(tmp_path, VERSIONED)
+        _run(prawduct)
+        held = self._block(_entry("2026-09-01", "released recent", "scope=beta | release=v1.2.0"))
+        assert cla.holds_entry(prawduct, held) is True
+        later = self._block(_entry("2026-09-28", "a later change", "scope=beta | release=v1.3.0"))
+        assert later.bucket == held.bucket and later.entry.tags["scope"] == held.entry.tags["scope"]
+        assert cla.holds_entry(prawduct, later) is False
+
+    def test_no_month_file_or_an_unreadable_one_holds_nothing(self, tmp_path: Path) -> None:
+        prawduct = _repo(tmp_path, VERSIONED)
+        block = self._block(_entry("2026-09-01", "released recent", "scope=beta | release=v1.2.0"))
+        assert cla.holds_entry(prawduct, block) is False
+        _run(prawduct)
+        assert cla.holds_entry(prawduct, block) is True
+        (prawduct / cla.ARCHIVE_DIR_NAME / "2026-09.md").write_bytes(b"\xff\xfe not utf-8")
+        assert cla.holds_entry(prawduct, block) is False

@@ -75,6 +75,8 @@ prawduct/
 │   ├── changes/                       # one fragment per release-pending scope (<scope>.md); the cut removes shipped ones
 │   ├── change-log.md                  # shipped history from before fragments, with release= tags
 │   ├── change-log-archive/            # shipped entries by month: moved verbatim (archive-change-log) or cut from fragments (cut-change-log)
+│   ├── releases/                      # one file per release since v3.8.0: the section the cut inserted into plugin/CHANGELOG.md
+│   ├── release-headline.md            # the next release's headline, until the cut consumes it (absent between)
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
 │   ├── runbooks/                      # operational procedures (release cut, pruned promotion)
@@ -103,6 +105,8 @@ my-product/
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
 │   ├── changes/                       # the change record: one fragment per change, all release-pending
 │   ├── change-log-archive/            # shipped history by month, written by the release cut
+│   ├── releases/                      # with `consumer_digest:` declared: one file per release, the section the cut inserted into the changelog
+│   ├── release-headline.md            # with `consumer_digest:` declared: the next release's headline, until the cut consumes it
 │   ├── change-log.md                  # repos onboarded before fragments: the legacy log, until `migrate-change-log`
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
