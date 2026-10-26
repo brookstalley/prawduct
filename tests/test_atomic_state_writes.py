@@ -462,3 +462,36 @@ class TestWriteAllOrNone:
             core.write_all_or_none([(a, "new A"), (b, "new B")])
 
         assert seen["n"] >= 3, "the restore was never attempted — branch ungraded"
+
+    def test_crlf_and_a_bom_go_through_byte_for_byte(self, tmp_path):
+        """A product's CRLF file written through here keeps its bytes (#733)."""
+        core = self._core()
+        a = tmp_path / "CHANGELOG.md"
+        text = "\ufeff# C\r\n\r\n## v1.0.0\r\n"
+        core.write_all_or_none([(a, text)])
+        assert a.read_bytes() == b"\xef\xbb\xbf# C\r\n\r\n## v1.0.0\r\n"
+
+    def test_a_rollback_restores_a_crlf_file_byte_for_byte(self, tmp_path, monkeypatch):
+        """The restore is the path meant to leave a file as it was.
+
+        A universal-newline read of the prior turns ``\\r\\n`` into ``\\n``, so a
+        failed write would hand a CRLF product file back re-line-ended (#733).
+        """
+        core = self._core()
+        a, b = tmp_path / "CHANGELOG.md", tmp_path / "b.md"
+        prior = b"\xef\xbb\xbf# C\r\n\r\n## v1.0.0\r\nOld.\r\n"
+        a.write_bytes(prior)
+        real = core.atomic_write_text
+        seen = {"n": 0}
+
+        def _explode(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 2:
+                raise OSError("disk full")
+            return real(path, text, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode)
+        with pytest.raises(OSError):
+            core.write_all_or_none([(a, "\ufeff# C\r\n\r\n## v1.1.0\r\n\r\n## v1.0.0\r\nOld.\r\n"), (b, "B")])
+        assert seen["n"] >= 3, "the restore was never attempted"
+        assert a.read_bytes() == prior

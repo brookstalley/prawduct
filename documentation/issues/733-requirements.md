@@ -156,8 +156,8 @@ MUST unless marked SHOULD.
   | `marker` | a literal line the section is inserted directly below | none |
 
   Any of these makes the declaration invalid:
-  - a missing `path`, or one that does not resolve inside the repo, or resolves under `.git/` or
-    `.prawduct/` (amendment A1);
+  - a missing `path`, or one that does not resolve inside the repo, or that has a `.git` component
+    anywhere or `.prawduct` first, compared case-folded (amendment A1);
   - a field given twice (A1);
   - an unknown enum value or placeholder;
   - a heading template that does not start with `## `;

@@ -184,6 +184,12 @@ def atomic_write_text(
     os.replace(tmp, path)
 
 
+def _read_exact(path: Path) -> str:
+    """``path``'s text with its line endings untouched (no universal-newline read)."""
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
 def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     """Write every ``(path, text)`` pair, or leave every one of them untouched.
 
@@ -218,14 +224,21 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     replaces is exactly the half-applied pair this function exists to prevent,
     and it is not an error in the ordinary sense — but it is still the moment to
     restore, and the interrupt is re-raised unchanged.
+
+    **Text goes through byte for byte, both ways.** Every write and every
+    restore uses ``newline=""``, and every prior is read the same way, so
+    neither direction translates line endings. A caller's ``\n`` is written as
+    ``\n`` and a CRLF file it rewrites keeps its ``\r\n``. A universal-newline
+    read of the prior would quietly turn a product's CRLF file into LF on the one
+    path meant to leave it as it was: the rollback.
     """
     priors: list[str | None] = []
     for path, _text in writes:
-        priors.append(path.read_text(encoding="utf-8") if path.exists() else None)
+        priors.append(_read_exact(path) if path.exists() else None)
     written: list[tuple[Path, str | None]] = []
     try:
         for (path, text), prior in zip(writes, priors):
-            atomic_write_text(path, text)
+            atomic_write_text(path, text, newline="")
             written.append((path, prior))
     except BaseException:
         for path, prior in reversed(written):
@@ -233,7 +246,7 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
                 if prior is None:
                     path.unlink(missing_ok=True)
                 else:
-                    atomic_write_text(path, prior)
+                    atomic_write_text(path, prior, newline="")
             except OSError as restore_exc:
                 print(
                     f"ROLLBACK FAILED for {path}: {restore_exc} — this file kept its NEW "

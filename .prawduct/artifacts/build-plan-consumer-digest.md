@@ -77,6 +77,23 @@ file per PR. Its existing history stays untouched.
   version-file bumps, and integration with external release tools.
 
 **Decisions made mid-build:** (appended while building)
+- Chunk 02, write path (2026-10-26). `core.write_all_or_none` is widened, not given a bytes
+  sibling. Every prior is read and every write and restore is made with `newline=""`, so the
+  rollback no longer re-line-ends a CRLF file. Settled by Architecture's "every fact has one home":
+  one transaction body. `ChangelogText.render` returns `str` accordingly, where the design had
+  `bytes`; the design is updated. The forward-write test cannot go red on POSIX, which never
+  translates `\n` on write; the rollback test is the one that does, and it was shown red against a
+  `read_text` prior.
+- Chunk 02, declaration validity (2026-10-26). Two refusals the design lacked, both added to the
+  design's table:
+  - a `heading` that does not lead with the version, because the next cut could not recognise its
+    sections;
+  - an `entry` without `{note}`, because the notes would be dropped.
+
+  Settled by "authority fails closed".
+- Chunk 02, scope (2026-10-26). `ordered_notes` lands in `consumer_digest.py`.
+  `change_fragments.render_consumer_section` and its test are deleted in Chunk 04, when the cut
+  stops calling it, so no chunk leaves the cut broken.
 
 **Level:** High. The model is chosen by the owner and its prior art read in source, every code
 site is read, and the one hard problem (locating a section) is removed rather than solved. What

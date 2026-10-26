@@ -344,3 +344,68 @@ class TestAFragmentsOnlyRepo:
         assert [(i["scope"], i["release"]) for i in shipped] == [("alpha", "v3.8.0")]
         assert record_lint._scope_declared_in_change_log(project / ".prawduct", "alpha") is True
         assert record_lint._scope_declared_in_change_log(project / ".prawduct", "nope") is False
+
+
+# ---------------------------------------------------------------------------
+# Prawduct's own changelog result is pinned byte for byte (#733, CD11)
+# ---------------------------------------------------------------------------
+
+#: Captured 2026-10-26 from the cut as it stood before the release-file model
+#: (change_cut at 4d544b03), run on `_golden_fragments` against a
+#: `plugin/CHANGELOG.md` whose `## v3.8.0` section held only `HEADLINE`. An
+#: absolute value on purpose: it is the shipped format every upgrading repo's
+#: banner reads, so a test derived from the renderer could not catch the
+#: renderer drifting.
+GOLDEN_PRAWDUCT_CHANGELOG = (
+    b"# Changelog\n\nPreamble.\n\n## v3.8.0\n\n"
+    b"**This release does three things.** And says so in one line.\n\n"
+    b"**`gamma`**: The gamma change, for users.\n\n"
+    b"**`alpha`**: The alpha change, for users.\nIt spans two lines.\n\n"
+    b"## v3.7.1\n\nOld.\n"
+)
+
+
+def _golden_fragments() -> dict[str, str]:
+    return {
+        "alpha": _fragment("alpha", note="The alpha change, for users.\nIt spans two lines."),
+        "beta": _fragment("beta", note="none: internal only", date="2026-10-20").replace("type: fix", "type: chore"),
+        "gamma": _fragment("gamma", date="2026-10-21").replace("type: fix", "type: feature"),
+    }
+
+
+_GOLDEN_TABLE = "| alpha | ships | |\n| beta | ships | |\n| gamma | ships | |\n"
+
+
+class TestPrawductGolden:
+    def test_the_section_flow_produces_the_golden(self, tmp_path):
+        """Today's starting state: the open section, already renamed, holding the headline.
+
+        This starting state stops being valid when the cut moves onto the
+        release file, where a section already naming the release is refused
+        (`release-in-changelog`). The golden bytes outlive it, and the release-file
+        test below must reproduce them.
+        """
+        project = _project(
+            tmp_path, fragments=_golden_fragments(), table=_GOLDEN_TABLE,
+            digest=f"# Changelog\n\nPreamble.\n\n## v3.8.0\n\n{HEADLINE}\n\n## v3.7.1\n\nOld.\n",
+        )
+        result = _cut(project, "--release", "v3.8.0", "--apply")
+        assert result.returncode == 0, result.stderr
+        assert (project / DIGEST).read_bytes() == GOLDEN_PRAWDUCT_CHANGELOG
+
+    @pytest.mark.skip(reason="the release-file cut lands in Chunk 04 of build-plan-consumer-digest")
+    def test_the_release_file_flow_produces_the_same_bytes(self, tmp_path):
+        """The new starting state: no section, the headline in its file, prawduct's declaration."""
+        project = _project(
+            tmp_path, fragments=_golden_fragments(), table=_GOLDEN_TABLE,
+            digest="# Changelog\n\nPreamble.\n\n## v3.7.1\n\nOld.\n",
+        )
+        _write(
+            project / ".prawduct" / "project-state.yaml",
+            'consumer_digest:\n  path: plugin/CHANGELOG.md\n  heading: "## {version}"\n'
+            "  headline: required\n  layout: paragraphs\n",
+        )
+        _write(project / ".prawduct" / "release-headline.md", HEADLINE + "\n")
+        result = _cut(project, "--release", "v3.8.0", "--apply")
+        assert result.returncode == 0, result.stderr
+        assert (project / DIGEST).read_bytes() == GOLDEN_PRAWDUCT_CHANGELOG

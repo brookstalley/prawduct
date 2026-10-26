@@ -63,7 +63,7 @@ def read_declaration(project_dir: Path) -> tuple[Declaration | None, str | None]
 |---|---|
 | `path` is absent or empty | the field |
 | `path` is absolute, contains a `..` segment, or does not resolve under `project_dir.resolve()` | the path, and that it must stay inside the repo |
-| `path` resolves under `.git/` or `.prawduct/` | the path |
+| `path` has a `.git` component anywhere, or `.prawduct` as its first, compared case-folded (on a case-insensitive filesystem `.Git/config` is `.git/config`, and a nested repo's config is as executable as the top one's) | the path |
 | a field is not one of the seven | the field |
 | a field appears twice | the field (stricter than the repo's other readers, because this one drives a writer) |
 | `headline` or `layout` holds an unknown value | the field and the allowed values |
@@ -73,6 +73,8 @@ def read_declaration(project_dir: Path) -> tuple[Declaration | None, str | None]
 | `types` is set without `layout: by-type` | the conflict |
 | `types` does not parse, or names a type outside `change_fragments.TYPES` | the item |
 | `marker` is empty after unquoting | the field |
+| `heading`, rendered with a sample version, does not lead with it (`heading_version` is `None`) | that the next cut could not recognise its sections, so releases would stack out of order and a second cut would not be refused |
+| `entry` lacks `{note}` | that the notes would be dropped |
 
 Placeholders are validated with `string.Formatter().parse`. Formatting uses `str.format_map`, so
 `{{` and `}}` render as literal braces.
@@ -121,8 +123,8 @@ def names_release(line: str, version: str) -> bool: ...
 class ChangelogText:
     bom: bool
     eol: str                 # "\r\n" or "\n": the first line ending in the file, else "\n"
-    lines: list[str]         # str.splitlines(keepends=True): each line keeps its own ending
-    def render(self) -> bytes: ...
+    lines: tuple[str, ...]   # each line keeps its own terminator (\r\n, \n or \r)
+    def render(self) -> str: ...   # BOM restored as U+FEFF; written with newline="" it is the original bytes
 
 def read_changelog(path: Path) -> ChangelogText: ...      # raises DigestUnreadable
 def insert_section(text: ChangelogText, index: int, section: list[str]) -> ChangelogText: ...
@@ -308,7 +310,7 @@ Chunk 02 settles this one of two ways:
   writes and restores bytes;
 - widening the function, with the same priors-as-bytes rule.
 
-Either way, the cut passes every write through it, archive and release file included, so there is
+**Settled in Chunk 02:** neither. `atomic_write_text` already takes `newline=""`, which writes a `str` through untranslated, so `write_all_or_none` reads every prior with `newline=""` and writes and restores with `newline=""`. The changelog stays a `str` (`ChangelogText.render`), and the round trip is byte-exact with no bytes API. The cut passes every write through it, archive and release file included, so there is
 one transaction rather than two. Its test injects a failure after the changelog write and
 compares the restored file byte for byte. Chunk 02 records which option it took in the plan's
 Decisions.
@@ -491,7 +493,7 @@ check and A5 narrows one.
 | CD7, A3, A5 | each code, with nothing written and the fragments present; a published `## v1.4.0-rc.1` does not block the `v1.4.0` cut (`test_change_cut.py`) |
 | CD8 | every row of the re-run table, run through `cut_cmd`, not only `plan_cut`, so reachability is pinned: a removal failure injected on a fragment and on the headline file; a later fragment reusing a cut scope's name refuses and is still on disk; a next-release headline file survives; a CRLF and trailing-space headline file that was published is still removed (`test_change_cut.py`) |
 | CD10 | the undeclared line names the key; the legacy line (`test_change_cut.py`) |
-| CD11 | the golden pair, captured from today's code (`test_change_cut.py`). Today's starting state: a `## v9.9.9` section, already renamed as the runbook does before the cut, holding one headline line, then `## v9.9.8` below. Two fragments, one `none:`. The new starting state: no `## v9.9.9` section, the same headline in `.prawduct/release-headline.md`, the same fragments. The resulting `plugin/CHANGELOG.md` bytes are equal |
+| CD11 | `TestPrawductGolden` in `test_change_cut.py`: `GOLDEN_PRAWDUCT_CHANGELOG`, captured from the section-flow cut, must also be what the release-file flow produces from the same fragments with the headline in `.prawduct/release-headline.md` and no section |
 | write path | an injected failure after the changelog write restores a CRLF + BOM changelog byte for byte (`test_core` or `test_change_cut.py`) |
 | CD12, A4 | each warning; exit code unchanged on pass and on fail; undeclared prints nothing new (`test_release_readiness.py`) |
 | CD13 | grep pin that the deleted names are absent from `plugin/lib` (`test_release_readiness.py`) |
