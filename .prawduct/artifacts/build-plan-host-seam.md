@@ -108,7 +108,22 @@ unchanged (scope-out).
   docstring.
 - Boundary review: the unknown-host block is recorded as gate `host` (`unknown-host`, since
   3.8.0), so it is the same countable fact as every other Stop block.
-- Chunk 03: linked worktrees are skipped, not cloned. Their git dir is shared, so a copy would
+- Pre-switch pass (the owner asked for high confidence before the live plugin moved to this
+  branch):
+  - The sweep now covers linked worktrees (each copied with its repository's git dir, the two
+    re-pointed at each other; the real repo checked byte-identical after a run) and governed
+    directories without git. It runs the hooks under any interpreter (`--python`).
+  - All 50 directories with a `.prawduct/` matched under Python 3.9.6, 3.11, 3.12 and 3.14, as
+    did 18 ungoverned repos. A real `claude -p --plugin-dir` session per plugin matched byte for
+    byte.
+  - An independent adversarial review found no difference with a matched script and
+    `CLAUDE_PLUGIN_ROOT`. It reproduced the mixed-version window: an old script with a new
+    `lib`, or the reverse, loses the Stop deferrals (fails closed) and can drop one
+    clear-verdict block. That happens only while a checkout is swapping files, so switch the live
+    checkout while no session is mid-Stop.
+  - `PRAWDUCT_HOST` became case-insensitive, because `Claude` blocking every Stop is a footgun.
+  - The digest now names an unresolvable project directory as that, not as a seam failure.
+- Chunk 03 (superseded by the pre-switch pass): linked worktrees were skipped, not cloned. Their git dir is shared, so a copy would
   write the Stop gate's evidence into the real repo. The sweep covers each repo's primary checkout.
 
 **Level:** High — the sites are enumerated by grep, the behaviour is pinned by goldens before any

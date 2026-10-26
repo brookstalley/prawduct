@@ -40,7 +40,8 @@ rather than a patch at each site. Claude Code's behaviour is unchanged.
   seam; that is #1038's work.
 - `PRAWDUCT_HOST` names the host and defaults to `claude`. A host adapter's hook registration sets
   it, rather than prawduct detecting the host, because Codex exports `CLAUDE_PLUGIN_ROOT` for
-  compatibility. An unknown value blocks `stop`, with a reason that names the variable, and records
+  compatibility. Case is not significant. An unknown value blocks `stop`, with a reason that
+  names the variable, and records
   the block like any gate's (gate `host`, registered as `unknown-host` since 3.8.0). The hooks
   that cannot block (`clear --session-start`, `subagent-stop`, the banner, the digest) print a note
   and do nothing.
@@ -66,6 +67,19 @@ rather than a patch at each site. Claude Code's behaviour is unchanged.
   `tools/host-seam-parity.py --work <dir> --base b9d9489d --head 17f84cd6`. A run
   against a plugin 25 commits older reports its banner, digest and briefing differences, so a clean
   result is not the tool going blind.
+- A second pass before the owner's live plugin switched to the branch widened the sweep:
+  - Linked worktrees are swept by copying them together with their repository's git dir, and
+    re-pointing the two at each other. A check showed the real repository byte-identical after
+    a run.
+  - Governed directories without git are swept too.
+  - `--python` runs the hooks under another interpreter.
+  - On 2026-10-26, every directory with a `.prawduct/` beside this checkout, plus 18 ungoverned
+    sibling repos, matched on all ten events under Python 3.9.6, 3.11, 3.12 and 3.14. One
+    3-million-file repo was swept as a clone of its tracked tree carrying its real `.prawduct/`
+    state. Head hook time was no higher than base under any interpreter.
+  - One real headless Claude Code session per plugin (`claude -p --plugin-dir`, a session that
+    writes a file and so meets the Stop gate) produced byte-identical SessionStart output and
+    blocking Stop output.
 - The sweep names its noise instead of hiding it. The Stop gate's working-tree id and the backlog
   snapshot's age vary with the clock. In a repo whose `.gitignore` misses `.advisories.json`, the
   hooks' second-resolution timestamps land in the working tree. Those two facts are normalized,

@@ -16,9 +16,15 @@ Both plugin trees are exported from git (`git archive`), so both are committed
 code and neither is a working tree (which would put a provenance segment in
 one banner only). Copies are made with `cp -cRp` (APFS clonefile, mtimes
 kept), so a large repo costs metadata, not disk; the hooks write their state into the copies,
-never the real repo. Two kinds of repo are skipped, and the report says which:
-a linked worktree, whose git dir lives in another repo, so a copy would write
-the Stop gate's evidence into the real one; and a repo over `--max-gb`.
+never the real repo. A linked worktree is copied with its repository's git dir
+and the two are re-pointed at each other, so the Stop gate's evidence lands in
+the copy too. A directory that is not a git repo is swept as well (the hooks run
+there too, and a copy of one reaches nothing). A repo over `--max-gb` is
+skipped, and the report says so.
+
+`--python` runs the hooks under another interpreter (the harness runs them as
+`python3`, which may not be the one running this tool). Each side's total hook
+time is reported, so a slower Stop path shows up as a number.
 
 Each step's output is compared after replacing four run facts, each a fact of
 WHEN or WHERE a side ran rather than of what its code does:
@@ -50,6 +56,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 from pathlib import Path
 
 CHECKOUT = Path(__file__).resolve().parent.parent
@@ -108,11 +115,8 @@ def size_gb(repo: Path) -> float:
 
 
 def skip_reason(repo: Path, max_gb: float) -> str | None:
-    git = repo / ".git"
-    if git.is_file():
-        return "linked worktree: its git dir is shared, so a copy would write into the real repo"
-    if not git.is_dir():
-        return "not a git repository"
+    if not repo.is_dir():
+        return "not a directory"
     gb = size_gb(repo)
     if gb > max_gb:
         return f"{gb:.0f} GB, over --max-gb {max_gb:g}"
@@ -132,18 +136,49 @@ def clone_copy(repo: Path, dest: Path) -> None:
     raise RuntimeError(f"copy of {repo} failed: {result.stderr.strip()}")
 
 
+def copy_repo(repo: Path, dest: Path) -> None:
+    """Copy `repo` to `dest`. A linked worktree takes its repository's git dir
+    along, as `<dest>.repo/.git`, and the copies are re-pointed at each other,
+    so no git write from the copy reaches the real repository."""
+    clone_copy(repo, dest)
+    if not (repo / ".git").is_file():
+        return
+    try:
+        common = Path(_git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=repo))
+        own = Path(_git("rev-parse", "--path-format=absolute", "--git-dir", cwd=repo))
+    except subprocess.CalledProcessError:
+        # A worktree whose git dir is gone: git fails in the copy exactly as in
+        # the original, and its dangling link cannot reach a repository.
+        return
+    common_copy = dest.parent / f"{dest.name}.repo" / ".git"
+    clone_copy(common, common_copy)
+    own_copy = common_copy / "worktrees" / own.name
+    (dest / ".git").write_text(f"gitdir: {own_copy}\n")
+    (own_copy / "gitdir").write_text(f"{dest / '.git'}\n")
+
+
+#: The interpreter the hooks run under (`--python`).
+PYTHON = sys.executable
+
+
 def run_step(plugin: Path, copy: Path, argv: list[str], payload: dict | None) -> dict:
     env = dict(os.environ)
     env.pop("PRAWDUCT_HOST", None)
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin)
     env["CLAUDE_PROJECT_DIR"] = str(copy)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    started = time.monotonic()
     proc = subprocess.run(
-        [sys.executable, str(plugin / argv[0]), *argv[1:]],
+        [PYTHON, str(plugin / argv[0]), *argv[1:]],
         input=json.dumps(payload) if payload is not None else "",
         capture_output=True, text=True, env=env, cwd=str(copy), timeout=600,
     )
+    TIMINGS[plugin] = TIMINGS.get(plugin, 0.0) + time.monotonic() - started
     return {"exit": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr}
+
+
+#: Total hook seconds per plugin tree, across every step of every repo.
+TIMINGS: dict[Path, float] = {}
 
 
 _TREE_ID = re.compile(r"(→ |to )[0-9a-f]{12}\b")
@@ -151,9 +186,13 @@ _SNAPSHOT_AGE = re.compile(r"snapshot (just now|\d+[smhd] old)")
 
 
 def normalize(result: dict, copy: Path, plugin: Path) -> dict:
+    """`copy`'s parent is the side's copies directory: a worktree's relocated
+    repository lives beside it, so the whole directory is the run fact."""
+    root = copy.parent
+
     def fix(text: str) -> str:
-        for spelling in {str(copy.resolve()), str(copy)}:
-            text = text.replace(spelling, "<REPO>")
+        for spelling in {str(root.resolve()), str(root)}:
+            text = text.replace(spelling, "<COPIES>")
         for spelling in {str(plugin.resolve()), str(plugin)}:
             text = text.replace(spelling, "<PLUGIN>")
         text = _TREE_ID.sub(r"\1<TREE>", text)
@@ -166,7 +205,7 @@ def compare_repo(repo: Path, plugins: dict[str, Path], work: Path) -> dict[str, 
     """The differences between the two sides, by step label."""
     copies = {side: work / "copies" / side / repo.name for side in plugins}
     for copy in copies.values():
-        clone_copy(repo, copy)
+        copy_repo(repo, copy)
     diffs: dict[str, str] = {}
     for label, argv, payload in STEPS:
         results = {
@@ -202,8 +241,11 @@ def main() -> int:
     parser.add_argument("--base", default=None, help="base ref (default: merge-base with develop)")
     parser.add_argument("--head", default="HEAD", help="head ref (default: HEAD)")
     parser.add_argument("--max-gb", type=float, default=20.0, help="skip repos larger than this")
+    parser.add_argument("--python", default=sys.executable, help="interpreter to run the hooks")
     parser.add_argument("--keep", action="store_true", help="keep the copies after the sweep")
     args = parser.parse_args()
+    global PYTHON
+    PYTHON = args.python
 
     base = args.base or _git("merge-base", "develop", args.head)
     refs = {side: _git("rev-parse", "--short", ref) for side, ref in (("base", base), ("head", args.head))}
@@ -235,7 +277,8 @@ def main() -> int:
         finally:
             if not args.keep:
                 for side in plugins:
-                    shutil.rmtree(args.work / "copies" / side / repo.name, ignore_errors=True)
+                    for name in (repo.name, f"{repo.name}.repo"):
+                        shutil.rmtree(args.work / "copies" / side / name, ignore_errors=True)
         if diffs:
             differing[repo.name] = diffs
             print(f"DIFF  {repo.name}")
@@ -247,8 +290,11 @@ def main() -> int:
 
     print(
         f"\n{len(same)} identical, {len(differing)} differing, {len(skipped)} skipped "
-        f"(of {len(repos)} repos; {len(STEPS)} steps each)"
+        f"(of {len(repos)} repos; {len(STEPS)} steps each; hooks under {PYTHON})"
     )
+    print("hook time: " + ", ".join(
+        f"{side} {TIMINGS.get(plugins[side], 0.0):.1f}s" for side in plugins
+    ))
     if differing:
         return 1
     if not same:

@@ -140,9 +140,14 @@ def main() -> int:
     # cmd_stop, which already gate on .prawduct/).
     try:
         unknown = _host().unknown_host_reason()
-        governed = in_prawduct_repo()
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- a digest failure must never break session start
         print(f"NOTE: Prawduct could not load its host seam: {exc}", file=sys.stderr)
+        return 0
+    try:
+        governed = in_prawduct_repo()
+    except OSError as exc:
+        # The project directory could not be resolved (a deleted cwd, say).
+        print(f"NOTE: Prawduct could not locate the project directory: {exc}", file=sys.stderr)
         return 0
     if not governed:
         return 0

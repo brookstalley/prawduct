@@ -343,9 +343,10 @@ class TestUnknownHost:
 
     def test_stop_control_runs_the_gates_as_claude(self, tmp_path):
         """Control: the same clean repo passes the Stop gate as Claude, named
-        or by default, so the block above is the host check and nothing else."""
+        in any case or by default, so the block above is the host check and
+        nothing else."""
         repo = _governed_repo(tmp_path)
-        for value in (None, "claude"):
+        for value in (None, "", "claude", "Claude", " CLAUDE "):
             result = _run([str(HOOK), "stop"], repo, tmp_path, value)
             assert result.returncode == 0, result.stderr
             assert "PRAWDUCT_HOST" not in result.stderr
@@ -386,6 +387,25 @@ class TestUnknownHost:
         plain.mkdir()
         result = _run([str(PLUGIN / "hooks" / "digest.py")], plain, tmp_path, "bogus")
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+    def test_digest_names_an_unresolvable_project_dir_as_that(self, tmp_path):
+        """With no project variable and a deleted working directory, the
+        digest says the project directory could not be located — not that its
+        host seam failed to load, which would send the reader the wrong way."""
+        gone = tmp_path / "gone"
+        gone.mkdir()
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(tmp_path),
+               "PYTHONDONTWRITEBYTECODE": "1"}
+        script = (
+            f'cd "{gone}" && rmdir "{gone}" && '
+            f'exec "{sys.executable}" "{PLUGIN / "hooks" / "digest.py"}"'
+        )
+        result = subprocess.run(["/bin/sh", "-c", script], capture_output=True, text=True,
+                                env=env, cwd=str(tmp_path), timeout=60)
+        assert result.returncode == 0
+        assert result.stdout == ""
+        assert "could not locate the project directory" in result.stderr
+        assert "host seam" not in result.stderr
 
     @pytest.mark.parametrize("script", ["banner.py", "digest.py"])
     def test_session_start_scripts_note_it_and_print_nothing(self, tmp_path, script):

@@ -9,13 +9,17 @@ These cases run it against a throwaway governed repo:
   version, digest, briefing), so it must exit 1 and print DIFF;
 * the commit before the seam and the seam's commit must match (exit 0);
 * one commit given twice, two commits carrying one plugin tree, or only
-  unrunnable repos, compare nothing: exit 2.
+  paths that are not directories, compare nothing: exit 2;
+* a governed directory without git is compared, since the hooks run there;
+* a linked worktree is compared without one byte of its real repository or
+  worktree changing, though the Stop gate writes evidence into the git dir.
 
 The refs are this repo's history, so the file needs it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 from pathlib import Path
@@ -50,10 +54,12 @@ def _governed_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _sweep(tmp_path: Path, base: str, head: str, *repos: Path) -> subprocess.CompletedProcess:
+def _sweep(
+    tmp_path: Path, base: str, head: str, *repos: Path, extra: tuple[str, ...] = ()
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, str(TOOL), "--work", str(tmp_path / "work"),
-         "--base", base, "--head", head, *map(str, repos)],
+         "--base", base, "--head", head, *extra, *map(str, repos)],
         capture_output=True, text=True, timeout=600, cwd=str(REPO_ROOT),
     )
 
@@ -92,9 +98,48 @@ def test_two_commits_with_one_plugin_tree_compare_nothing(tmp_path):
 
 
 def test_only_skipped_repos_compare_nothing(tmp_path):
+    """Renegotiated: a directory that is not a git repo used to be the skip
+    case, but the hooks run in such directories too, so the sweep now compares
+    them (next test). A path that is not a directory is what is skipped."""
+    missing = tmp_path / "missing"
+    result = _sweep(tmp_path, BEFORE_SEAM, SEAM, missing)
+    assert result.returncode == 2
+    assert "SKIP  missing: not a directory" in result.stdout
+    assert "nothing was compared" in result.stderr
+
+
+def test_a_governed_directory_without_git_is_compared(tmp_path):
     plain = tmp_path / "plain"
     (plain / ".prawduct").mkdir(parents=True)
     result = _sweep(tmp_path, BEFORE_SEAM, SEAM, plain)
-    assert result.returncode == 2
-    assert "SKIP  plain: not a git repository" in result.stdout
-    assert "nothing was compared" in result.stderr
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "SAME  plain" in result.stdout
+
+
+def _tree_digest(root: Path) -> str:
+    """Every file under `root`, path and content, as one digest."""
+    digest = hashlib.sha256()
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        digest.update(str(path.relative_to(root)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def test_a_linked_worktree_is_compared_without_touching_the_real_repo(tmp_path):
+    repo = _governed_repo(tmp_path)
+    worktree = tmp_path / "wt"
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "wt", str(worktree)],
+                   cwd=str(repo), check=True, capture_output=True)
+    (worktree / ".prawduct").mkdir(exist_ok=True)
+    (worktree / "app.py").write_text("x = 2\n")  # judgeable work, so the Stop gate blocks
+    before = (_tree_digest(repo / ".git"), _tree_digest(worktree))
+    result = _sweep(tmp_path, BEFORE_SEAM, SEAM, worktree, extra=("--keep",))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "SAME  wt" in result.stdout
+    assert "hooks under " in result.stdout and "hook time: base " in result.stdout
+    # Writes did happen — the Stop gate recorded its block in the COPY's git
+    # dir — so the real repo being unchanged below is a real result.
+    for side in ("base", "head"):
+        copied_git = tmp_path / "work" / "copies" / side / "wt.repo" / ".git"
+        assert (copied_git / "prawduct" / "evidence.jsonl").is_file()
+    assert (_tree_digest(repo / ".git"), _tree_digest(worktree)) == before

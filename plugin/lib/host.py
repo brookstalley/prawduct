@@ -72,8 +72,10 @@ _TASK_LABEL_CHARS = 80
 
 
 def host_name() -> str:
-    """The host this process runs under: ``PRAWDUCT_HOST``, or ``claude``."""
-    return os.environ.get(HOST_VARIABLE, "").strip() or DEFAULT_HOST
+    """The host this process runs under: ``PRAWDUCT_HOST``, or ``claude``.
+    Case is not significant: ``Claude`` names the same host, and a value that
+    blocks every Stop should not turn on capitalisation."""
+    return os.environ.get(HOST_VARIABLE, "").strip().lower() or DEFAULT_HOST
 
 
 def unknown_host_reason() -> str | None:
