@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import re
 import string
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -169,14 +170,29 @@ def _validated_path(raw: str, project_dir: Path) -> tuple[str, str | None]:
     if resolved != root and root not in resolved.parents:
         return "", f"{DECLARATION_KEY}: path {raw!r} resolves outside the repo ({resolved})"
     inside = resolved.relative_to(root).parts
-    # Compared case-folded: resolve() keeps the spelling it was given, and on a
-    # case-insensitive filesystem (macOS, Windows) `.Git/config` IS `.git/config`.
     # A `.git` anywhere refuses, because a nested repository's config is as
     # executable as the top one's (a `core.fsmonitor` line runs on `git status`).
-    folded = [part.casefold() for part in inside]
-    if not inside or ".git" in folded or folded[0] == ".prawduct":
+    if not inside or any(_names_dir(part, ".git") for part in inside) or _names_dir(inside[0], ".prawduct"):
         return "", f"{DECLARATION_KEY}: path {raw!r} names a location the cut must not write"
     return raw, None
+
+
+def _names_dir(part: str, name: str) -> bool:
+    """Whether path component ``part`` may name the directory ``name`` on some filesystem.
+
+    ``resolve()`` keeps the spelling it was given, so equivalence is decided
+    here, the way git's own `.git` checks decide it: case-folded (macOS and
+    Windows are case-insensitive), with format characters HFS+ ignored removed,
+    with the trailing dots and spaces NTFS drops removed, and with NTFS's 8.3
+    short name (`GIT~1`, `PRAWDU~1`) counted as the name.
+    """
+    # HFS+ ignored the Unicode format characters (category Cf: zero-width
+    # joiners, direction marks, U+FEFF), so `.g\u200cit` named `.git`.
+    folded = "".join(ch for ch in part if unicodedata.category(ch) != "Cf").rstrip(". ").casefold()
+    if folded == name:
+        return True
+    short = name.lstrip(".")[:6]
+    return re.fullmatch(re.escape(short) + r"~\d+", folded) is not None
 
 
 def _placeholders(template: str) -> list[str]:

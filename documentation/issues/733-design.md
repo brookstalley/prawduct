@@ -63,7 +63,7 @@ def read_declaration(project_dir: Path) -> tuple[Declaration | None, str | None]
 |---|---|
 | `path` is absent or empty | the field |
 | `path` is absolute, contains a `..` segment, or does not resolve under `project_dir.resolve()` | the path, and that it must stay inside the repo |
-| `path` has a `.git` component anywhere, or `.prawduct` as its first, compared case-folded (on a case-insensitive filesystem `.Git/config` is `.git/config`, and a nested repo's config is as executable as the top one's) | the path |
+| `path` has a component naming `.git` anywhere, or `.prawduct` first, under any filesystem's equivalence: case-folded, HFS+'s ignored format characters removed, NTFS's trailing dots and spaces removed, and NTFS 8.3 short names (`GIT~1`) counted, as git's own `.git` checks do (a nested repo's config is as executable as the top one's) | the path |
 | a field is not one of the seven | the field |
 | a field appears twice | the field (stricter than the repo's other readers, because this one drives a writer) |
 | `headline` or `layout` holds an unknown value | the field and the allowed values |
@@ -468,8 +468,9 @@ These are applied to `733-requirements.md` in the same commit as this document. 
 amendments made in design, not owner rulings, and the owner can veto any of them. A4 retires a
 check and A5 narrows one.
 
-- **A1 (CD1).** `path` must resolve inside the repo, outside `.git/` and `.prawduct/`. A field
-  that appears twice is invalid.
+- **A1 (CD1).** `path` must resolve inside the repo, and no component may name `.git` (anywhere)
+  or `.prawduct` (first) under any filesystem's equivalence (Section 1's table). A field that
+  appears twice is invalid.
 - **A2 (CD3).** The release file is LF and newline-terminated. The changelog receives the same
   lines in its own line-ending style, with blank-line separation (Section 3). "Exactly the text"
   means the same lines.

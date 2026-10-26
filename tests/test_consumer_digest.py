@@ -96,6 +96,13 @@ class TestDeclaration:
             # A nested repository's config is as executable as the top one's.
             ("  path: vendor/lib/.git/config", "must not write"),
             ("  path: .", "must not write"),
+            # Spellings some filesystem reads as `.git` / `.prawduct`, as git itself refuses.
+            ("  path: .g\u200cit/config", "must not write"),
+            ("  path: .git./config", "must not write"),
+            ("  path: GIT~1/config", "must not write"),
+            ("  path: vendor/git~2/config", "must not write"),
+            ("  path: .prawduct./CHANGELOG.md", "must not write"),
+            ("  path: PRAWDU~1/CHANGELOG.md", "must not write"),
             ("  path: CHANGELOG.md\n  path: OTHER.md", "given twice"),
             ("  path: CHANGELOG.md\n  colour: blue", "unknown field"),
             ("  path: CHANGELOG.md\n  layout: table", "layout"),
@@ -273,6 +280,11 @@ class TestRendering:
         decl = self._decl(layout="paragraphs")
         out = cd.render_section(decl, "v1.0.0", "2026-10-25", None, [_fragment("s", note="Line one.  \nLine two.")])
         assert out[-2:] == ["**`s`**: Line one.  ", "Line two."]
+
+    def test_a_headline_is_kept_verbatim_inside_its_trimmed_edges(self):
+        decl = self._decl(headline="required")
+        out = cd.render_section(decl, "v1.0.0", "2026-10-25", "\n**Big.** Line one.  \nLine two.\n\n", [])
+        assert out == ["## v1.0.0 - 2026-10-25", "", "**Big.** Line one.  ", "Line two."]
 
     def test_bullets_keep_a_multi_line_note_one_item(self):
         decl = self._decl()
