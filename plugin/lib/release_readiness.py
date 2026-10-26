@@ -37,15 +37,12 @@ from pathlib import Path
 from . import buildplan_refs
 from . import change_fragments
 from . import change_log as change_log_mod
+from . import consumer_digest
 from . import gates
 from . import plan_index
 
 _BACKLOG_REL_PATH = ".prawduct/backlog.md"
 _ARTIFACTS_REL_DIR = ".prawduct/artifacts"
-#: The consumer-facing digest. It ships *inside* the plugin and never lands in
-#: a consuming repo, so downstream this path cannot exist and the check that
-#: reads it has no subject — see :func:`_ships_the_plugin_tree`.
-_DIGEST_REL_PATH = "plugin/CHANGELOG.md"
 
 #: Recognised dispositions in the classification table.
 SHIPS = "ships"
@@ -55,20 +52,6 @@ _HEADING_RE = re.compile(r"^##\s+Release classification\s*$", re.IGNORECASE)
 _NEXT_HEADING_RE = re.compile(r"^#{1,6}\s+")
 #: A backlog id: 2-4 uppercase letters, hyphen, 4 alphanumerics (PFX-XXXX).
 _ITEM_ID_RE = re.compile(r"\b([A-Z]{2,4}-[A-Z0-9]{4})\b")
-#: A digest version section header. Loose on purpose — see
-#: :func:`_open_digest_section` for why a stricter match would let an
-#: unparseable heading fail to delimit.
-_DIGEST_SECTION_RE = re.compile(r"^##\s+\S")
-
-#: The seeded prerelease headline. Every cut ends by opening a fresh
-#: ``## vX.Y.Z-dev`` section carrying a one-line seed, and the NEXT cut is meant
-#: to replace that seed with the release's real headline. It reached consumers
-#: once already: the v3.4.0 section still led with the seed after eight weeks of
-#: notes had accumulated underneath it, because a section full of good notes
-#: reads as a finished section. Matched on the opening words rather than the
-#: whole sentence, so rewording the seed's trailing clause cannot silently
-#: retire the check.
-_SEEDED_HEADLINE = "prerelease under test"
 
 #: What "this file cannot be read" means, for every read in this module.
 #: ``read_text`` raises ``UnicodeDecodeError`` — a ``ValueError``, not an
@@ -532,12 +515,9 @@ def _ships_the_plugin_tree(project_dir: Path) -> bool:
     message is the shape that lets the next such message be written without
     one, which is how this became a class rather than a slip.
 
-    **It suppresses the arm rather than rewording it.** A repo that publishes no
-    consumer digest has no digest to be *missing*: there is no degraded state to
-    report, only a subject that does not exist, and "advice fails soft is not
-    advice fails silent" governs a check that ran and could not answer — not one
-    that was never about this repo. Where the subject does exist, every degraded
-    path still says so.
+    **It drops the ``plugin/…`` clause rather than rewording it.** The product's
+    remedy (pass ``--release``) is the same sentence without it, so there is
+    nothing to say in its place.
 
     ``plugin/VERSION`` is the evidence because it is prawduct's version source
     and the file :func:`_resolve_version` already treats as the tell.
@@ -545,240 +525,156 @@ def _ships_the_plugin_tree(project_dir: Path) -> bool:
     return (project_dir / "plugin" / "VERSION").exists()
 
 
-def _read_digest(project_dir: Path) -> tuple[list[str], str | None]:
-    """The consumer digest's lines, or ``([], reason)`` when it cannot be read.
+def _release_headline(project_dir: Path) -> tuple[str | None, str | None]:
+    """``(first non-empty line, problem)`` of the pending headline file.
 
-    Reading is kept apart from sectioning and judging so no one function
-    becomes the place where all three live. The reason is a
-    phrase, not a verdict: every caller here reports rather than refuses, so the
-    only thing a failed read must produce is a sentence saying what went unread.
+    The line comes back stripped and otherwise verbatim, markers and all,
+    because the emission prints it back and what the operator needs to see is
+    the line as they wrote it. ``problem`` is a phrase naming why there is no
+    line — the file is absent, holds nothing, or cannot be read — and is
+    ``None`` whenever a line was found.
     """
+    path = project_dir / consumer_digest.HEADLINE_FILE_REL
     try:
-        return (project_dir / _DIGEST_REL_PATH).read_text(encoding="utf-8").splitlines(), None
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None, "is absent"
     except _UNREADABLE as exc:
-        return [], f"cannot read {_DIGEST_REL_PATH}: {exc}"
+        return None, f"cannot be read ({exc})"
+    for line in text.splitlines():
+        if line.strip():
+            return line.strip(), None
+    return None, "is empty"
 
 
-def _open_digest_section(lines: list[str]) -> tuple[str, list[str]] | None:
-    """The topmost ``## `` section as ``(heading, body)``; ``None`` if there is none.
+def _headline_warnings(
+    decl: consumer_digest.Declaration, headline: str | None, problem: str | None
+) -> list[str]:
+    """What is wrong with the headline a ``headline: required`` digest will get.
 
-    **The open section is identified by position, not by version.** The digest
-    states its own convention — the cut writes each fragment's consumer note
-    under the top heading and renames it to the release number — so "topmost" is what
-    "the section this release is being written into" means, and it stays true
-    across the rename that a version match would have to be taught about.
+    Two failures: a release with no headline at all, and one whose first line
+    the banner cannot show. The cut refuses an absent or empty headline file
+    (``no-headline``); a headline that opens on a heading it writes as given,
+    so this is the only place that one is caught before a consumer's session
+    banner shows nothing.
 
-    The heading pattern is correspondingly loose (``## `` plus any non-space).
-    A stricter semver match would let a heading it cannot parse fail to
-    *delimit*, silently merging the section below into this one and reporting
-    the previous release's notes as coverage for this one — a false pass, from a
-    check whose whole job is to notice absence.
+    **Advisory, because of the moment rather than the stakes.** Phase 0 runs
+    before the step that writes the headline, so on a correct release this
+    fires once and is then fixed; a refusal here would block a release for a
+    condition it is on its way to fixing.
     """
-    start: int | None = None
-    for i, line in enumerate(lines):
-        if not _DIGEST_SECTION_RE.match(line):
-            continue
-        if start is None:
-            start = i
-            continue
-        return lines[start].strip(), lines[start + 1 : i]
-    if start is None:
-        return None
-    return lines[start].strip(), lines[start + 1 :]
-
-
-def _digest_mentions(section_text: str, scope: str) -> bool:
-    """Whether the open section names a scope — as its slug, or as its words.
-
-    Prose spells a slug out: the work tagged ``scope=branch-claim-multiplicity``
-    is described in the digest as "a build plan can declare the branch it
-    governs", carrying neither the slug nor its words. Testing the slug alone
-    would therefore report nearly every scope as uncovered; testing both forms
-    narrows that without pretending to read prose.
-
-    **Bounded, not substring.** A bare ``in`` test passes a short slug on any
-    longer word containing it, and that error runs the wrong way: it reports a
-    scope as COVERED that the digest never mentioned, which is the silent pass
-    this whole check exists to prevent. A false alarm costs a reader ten
-    seconds; a false all-clear is how the v3.4.0 cut shipped a scope with no
-    notes. So the match is bounded on both ends.
-
-    **The hyphen counts as part of a name, not as a boundary.** Slugs compose —
-    ``delegation`` and ``adhoc-delegation`` are two scopes shipping different
-    work — and a plain word boundary breaks on the hyphen, so a digest naming
-    only the longer one would mark the shorter one covered. That is the same
-    false all-clear one character narrower, so the boundary excludes ``-`` as
-    well as word characters.
-
-    **What it still cannot see is the point of the WARNING's wording.** A scope
-    described in words its slug does not contain reads as absent here, so the
-    message asks the reader to look rather than asserting the note is missing —
-    an advisory that overstates its own certainty is how a fuzzy check gets
-    promoted to a blocking one.
-    """
-    lowered = scope.lower()
-    return any(
-        re.search(rf"(?<![\w-]){re.escape(form)}(?![\w-])", section_text)
-        for form in (lowered, lowered.replace("-", " "))
-    )
-
-
-def _section_headline(body: list[str]) -> str | None:
-    """The line the version-delta banner shows for this section, or ``None``.
-
-    The banner's rule restated: the first non-empty line that is not itself a
-    markdown heading, and a heading reached first ends the search rather than
-    being read as the headline. It is restated rather than imported because the
-    banner is a hook and ``lib/`` never imports from a hook — so the coupling is
-    held by a test fixing the property that matters (a section the banner
-    renders blank is a section this check warns about) rather than by a shared
-    body, which is the honest thing to pin: what the operator needs is that the
-    two agree about *emptiness*, not that they strip emphasis alike.
-
-    Returned verbatim, markers and all, because the emission prints it back and
-    what the operator needs to see is the line as they wrote it.
-    """
-    for line in body:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        return None if stripped.startswith("#") else stripped
-    return None
-
-
-def _headline_advisory(heading: str, body: list[str]) -> tuple[list[str], str]:
-    """Whether this release's section carries a consumer-facing headline.
-
-    Two failures, one message each, and both have shipped. v2.1.6 was tagged
-    and version-bumped with no section at all — which left `develop` red on
-    ``test_changelog_has_current_version_entry`` from the release onward, i.e.
-    the release shipped on a red suite and the redness was the only complaint.
-    v3.4.0 had its section and still led with the seed the previous cut wrote,
-    so every upgrading repo was shown "Prerelease under test" as the news.
-
-    **Advisory, and the reason is the moment rather than the stakes.** Phase 0
-    runs *before* the step that writes the headline, so on a correct release
-    this fires exactly once and is then fixed — a refusal here would block a
-    release for a condition the release is on its way to fixing. What the
-    warning buys is that the operator meets the reminder while reading the
-    gate's output, instead of meeting it eight weeks later in a consumer's
-    session banner.
-
-    Returns ``(warnings, emission)``. The emission prints the headline itself
-    rather than a verdict about it: the whole failure mode is a line nobody
-    looked at, so the control's yield is putting that line in front of somebody.
-    """
-    headline = _section_headline(body)
-    if headline is None:
+    headline_rel = consumer_digest.HEADLINE_FILE_REL
+    if problem is not None:
         return [
-            f"the open {_DIGEST_REL_PATH} section ({heading}) has no headline — "
-            f"its first non-empty line is what the version-delta banner shows "
-            f"every repo crossing this version, so consumers would meet this "
-            f"release with nothing said about it."
-        ], f"digest headline: none in {heading} of {_DIGEST_REL_PATH}"
-    if _SEEDED_HEADLINE in headline.lower():
+            f"the consumer digest declares `headline: required`, and {headline_rel} "
+            f"{problem} — write this release's one-line headline there. The cut "
+            f"puts it at the top of the release's section in {decl.path}, where "
+            f"the version-delta banner shows it to every upgrading repo, and "
+            f"refuses `no-headline` without it."
+        ]
+    if headline is not None and headline.startswith("#"):
         return [
-            f"the open {_DIGEST_REL_PATH} section ({heading}) still leads with "
-            f"the seeded placeholder ({headline!r}) — the banner shows that line "
-            f"verbatim to every upgrading repo, so replace it with this "
-            f"release's headline before the cut."
-        ], f"digest headline: {headline!r} (still the seed) in {heading}"
-    return [], f"digest headline: {headline!r} in {heading}"
+            f"{headline_rel} starts with a heading ({headline!r}) — the cut puts "
+            f"it under the release's heading in {decl.path}, and the version-delta "
+            f"banner reads no headline from a section whose first line is a "
+            f"heading, so consumers would be shown nothing. Make the first line "
+            f"the headline itself."
+        ]
+    return []
 
 
-def _coverage_advisory(
-    heading: str, body: list[str], pending: list[str]
-) -> tuple[list[str], str]:
-    """Release-pending scopes the open digest section does not mention.
+def _release_section_check(
+    project_dir: Path, decl: consumer_digest.Declaration, version: str | None
+) -> tuple[list[str], str | None]:
+    """``(warnings, note)``: does the changelog already name this release?
 
-    A scope can reach the tag with zero consumer-facing notes and nothing asks.
-    It happened at the v3.4.0 cut: ``scope=tactical-efficiency`` carried nine
-    ``release=v3.4.0`` entries and no mention in the digest, and the notes were
-    hand-written at cut time because somebody happened to notice. The failure is
-    asymmetric — a section full of good notes reads as finished, so the missing
-    scope is invisible exactly when the digest looks healthiest.
+    The cut writes the release's section itself and refuses
+    ``release-in-changelog`` while one exists, so a section written by hand is
+    reported here, while it is still cheap to move. The match is the cut's own
+    (:func:`consumer_digest.names_release`): exact, prerelease included, so a
+    published ``-rc.1`` section is history and does not fire for the release
+    it previewed.
 
-    **Reported, and it never touches the exit code.** Its subject is prose and
-    its instrument is a name match, so it is advice by construction; the
-    authority gate beside it refuses on state it cannot evaluate, and an
-    unmentioned scope is not that — the release stays perfectly evaluable, it
-    just may ship under-described. A known false positive is live in this repo
-    today, which is the argument settled rather than a defect outstanding.
-
-    The emission is the control's yield, printed whether or not it found
-    anything, because a control heard from only when it fires cannot be retired
-    on evidence — the only honest argument for dropping this later is a run of
-    it finding nothing, and that argument needs the denominator it was measured
-    against.
+    A changelog that cannot be read, or a run with no release to look for,
+    leaves a note saying the check did not run: a check that skips itself
+    quietly is indistinguishable from one that passed.
     """
-    section_text = "\n".join(body).lower()
+    path = project_dir / decl.path
+    if not path.is_file():
+        return [], (
+            f"{decl.path}, the declared consumer digest, is not a file, so it was "
+            f"not checked for a section already naming this release — and the "
+            f"cut refuses `digest-missing` until it exists."
+        )
+    try:
+        text = consumer_digest.read_changelog(path)
+    except consumer_digest.DigestUnreadable as exc:
+        return [], (
+            f"{decl.path}, the declared consumer digest, cannot be read ({exc}), "
+            f"so it was not checked for a section already naming this release — "
+            f"and the cut refuses `digest-unreadable` until it can be."
+        )
+    if version is None:
+        return [], (
+            f"no --release given, so {decl.path} was not checked for a section "
+            f"already naming the release the cut will refuse "
+            f"(`release-in-changelog`). Pass --release vX.Y.Z to have it checked."
+        )
     warnings = [
-        f"could not find release-pending scope={scope!r} in the open "
-        f"{_DIGEST_REL_PATH} section ({heading}) — if it ships in this release, "
-        f"consumers get no note about it. The match is on the scope name, so "
-        f"work described in other words reads as absent: check the section."
-        for scope in pending
-        if not _digest_mentions(section_text, scope)
+        f"{decl.path} already has a section for {version} (line {number}: "
+        f"{line.strip()!r}) — the cut writes this release's section itself and "
+        f"refuses `release-in-changelog` while one exists. Remove it, or move "
+        f"its text to {consumer_digest.HEADLINE_FILE_REL}."
+        for number, line in enumerate(text.lines, start=1)
+        if consumer_digest.names_release(line, version)
     ]
-    emission = (
-        f"digest coverage: {len(pending) - len(warnings)} of {len(pending)} "
-        f"release-pending scope(s) named in {heading} of {_DIGEST_REL_PATH}"
-    )
-    return warnings, emission
+    return warnings, None
 
 
 def _digest_advisories(
-    project_dir: Path, pending: list[str]
+    project_dir: Path, release: str | None
 ) -> tuple[list[str], str | None, list[str]]:
-    """Everything the consumer digest can be asked at Phase 0, from one read.
+    """What Phase 0 can ask of the declared consumer digest, before the cut does.
 
-    Two questions with one subject: does this release's section carry a
-    headline, and does it name each scope shipping in the release. They share a
-    function because they share the section — reading the file twice would let
-    the two answer about different states of it, and would double the degraded
-    note into two sentences saying the same thing happened.
+    The subject is the ``consumer_digest:`` declaration, read through the one
+    reader the cut also calls, so the two can never disagree about which file
+    or whether a headline is owed. Two questions: does the release have a
+    headline the banner can show, and has a section for it already been
+    written into the changelog. Each is a condition the cut refuses on (or, for
+    a headline that leads with a heading, writes faithfully into a blank
+    banner), asked here while it is still cheap to fix.
 
-    Returns ``(warnings, note, emissions)`` — all three empty-or-``None`` in a
-    repo that publishes no digest, where neither question has a subject at all.
-    The note is non-``None`` exactly when a digest that should exist could not
-    be read or held no section, and it names the consequence rather than only
-    the cause: **advice fails soft is not advice fails silent**, and a check
-    that skips itself quietly is indistinguishable from one that passed.
+    ``release`` is the operator's ``--release`` argument, or ``None``. Never
+    the ``plugin/VERSION`` fallback: that names a ``-dev`` marker guessed low,
+    not a release, and looking for a section under it would answer about the
+    wrong version.
 
-    **Why both questions stay prawduct-only, rather than taking a declared path
-    the way the version files do.** A product forgets its release notes exactly
-    the way this repo did, so the appetite is real and the declaration precedent
-    exists. What is missing is not a path but a *convention*: these checks ask
-    about the section this release is being written into, and "the topmost
-    ``## ``, renamed to the release number at the cut" is prawduct's own release
-    procedure rather than a property of changelogs. A declaration carrying only
-    a path would silently impose that procedure on every product that set it,
-    and the failure would be a false all-clear — the shape both checks exist to
-    prevent. Generalizing therefore means designing the keying rule as a stated
-    requirement, which is a piece of work rather than a parameter, and it is
-    filed as one instead of guessed at here.
+    Returns ``(warnings, note, emissions)``, all empty-or-``None`` in a repo
+    that declares no digest, where neither question has a subject. An invalid
+    declaration is a warning, never silence: an operator who wrote the key
+    meant something, and the checks they asked for did not run. None of this
+    changes the exit code.
     """
-    if not _ships_the_plugin_tree(project_dir):
+    decl, invalid = consumer_digest.read_declaration(project_dir)
+    if invalid is not None:
+        return [f"{invalid}; the consumer digest checks did not run"], None, []
+    if decl is None:
         return [], None, []
-    lines, reason = _read_digest(project_dir)
-    section = None if reason is not None else _open_digest_section(lines)
-    if section is None:
-        reason = reason or f"{_DIGEST_REL_PATH} has no `## ` section to read"
-        return [], (
-            f"digest coverage not checked: {reason}. No release-pending scope "
-            f"was tested for a consumer-facing note, so one shipping with "
-            f"nothing written about it would not be reported here — and the "
-            f"headline every upgrading repo is shown went unread with it."
-        ), []
 
-    heading, body = section
-    headline_warnings, headline_emission = _headline_advisory(heading, body)
-    coverage_warnings, coverage_emission = _coverage_advisory(heading, body, pending)
-    return (
-        headline_warnings + coverage_warnings,
-        None,
-        [headline_emission, coverage_emission],
+    headline, problem = _release_headline(project_dir)
+    warnings = _headline_warnings(decl, headline, problem) if decl.headline == "required" else []
+    version = normalize_version(release) if release else None
+    section_warnings, note = _release_section_check(project_dir, decl, version)
+    # Printed whether or not anything is wrong, and whatever `headline:` says,
+    # because the cut uses a present headline file either way: the failure
+    # this guards is a line nobody looked at.
+    emission = (
+        f"digest headline: {headline!r} "
+        f"({consumer_digest.HEADLINE_FILE_REL} → {decl.path})"
+        if headline is not None
+        else "digest headline: none"
     )
+    return warnings + section_warnings, note, [emission]
 
 
 def _suite_verdict(project_dir: Path) -> tuple[bool, str]:
@@ -997,7 +893,6 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     # READ fine, so this is not the unreadable-subject case — it is the work
     # that is unclassifiable.
     pending_entries = pending_set.pending_entries
-    legacy_pending = pending_set.legacy_scopes
     # A fragment that fails validation, or a scope in both shapes, is refused
     # here, before any verdict, for the reason a malformed tag is: it is exactly
     # what would make the pending set wrong.
@@ -1055,18 +950,13 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     for warning in _plan_coverage_warnings(project_dir, pending):
         print(f"WARNING: {warning}", file=sys.stderr)
 
-    # Coverage of the consumer digest, beside the coverage of build plans: both
-    # ask whether the pending set is described somewhere a reader will look, and
-    # neither is a releasability verdict. Emitted BEFORE the version resolves,
-    # so a repo whose release plan does not exist yet — the state this one is in
-    # while the notes are still being written — still gets the advice while it
-    # is still actionable.
-    # Only legacy-shaped scopes are asked about: a fragment carries a required
-    # consumer note, and the cut writes the digest from it, so matching its
-    # scope name against digest prose would be a fuzzy check of an exact one.
-    digest_warnings, digest_note, digest_emissions = _digest_advisories(
-        project_dir, legacy_pending
-    )
+    # The declared consumer digest, beside the coverage of build plans: both ask
+    # whether what ships will be described where a reader looks, and neither is
+    # a releasability verdict. Emitted BEFORE the version resolves, so a repo
+    # whose release plan does not exist yet — the state it is in while the
+    # headline is still being written — gets the advice while it is still
+    # actionable. It gets the raw `--release`, never the VERSION fallback.
+    digest_warnings, digest_note, digest_emissions = _digest_advisories(project_dir, release)
     for warning in digest_warnings:
         print(f"WARNING: {warning}", file=sys.stderr)
     if digest_note:
@@ -1104,9 +994,8 @@ def check_releasability(project_dir: Path, release: str | None = None) -> int:
     if version is None:
         # Telling a product user to "make plugin/VERSION readable" names a path
         # that cannot exist in their repo — an instruction they can only fail.
-        # The predicate is shared with the digest checks rather than repeated
-        # here, so one answer suppresses every message that would otherwise
-        # name prawduct's own layout.
+        # One predicate answers for every message that would otherwise name
+        # prawduct's own layout, so the next such message has it to hand.
         hint = (
             " or make plugin/VERSION readable"
             if _ships_the_plugin_tree(project_dir)
