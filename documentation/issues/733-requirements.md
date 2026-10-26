@@ -1,240 +1,336 @@
-# Issue #733 — Governance: Let a Product Declare Its Consumer Release Digest: Requirements
+# Issue #733 — Release Notes: One Declared Changelog, Read at Phase 0 and Written at the Cut: Requirements
 
-`status: draft · stage: requirements · area: governance · added: 2026-09-03 · source:
-scheduled backlog session · issue: https://github.com/brookstalley/prawduct/issues/733`
+`status: revised · stage: requirements · area: release-tooling · added: 2026-09-03 · revised:
+2026-10-25 (folds #1069; ships in v3.8.0) · issue: https://github.com/brookstalley/prawduct/issues/733`
 
-Related: #576 / `release_version_files:` (the declaration-shape precedent this item follows and
-departs from), #259 and #702 (prawduct-side digest checks — explicitly out of scope here), PR
-#734 / `fix/release-gate-blindness` (shipped the two prawduct-only checks this item generalizes).
+Related: #1069 (folded into this item 2026-10-25, owner's call: the cut's write path), #576 /
+`release_version_files:` (the declaration-shape precedent), #259 and #702 (prawduct-side digest
+checks, out of scope), PR #734 (shipped the two prawduct-only Phase 0 checks this item
+generalizes). Prior art studied: changie (changie.dev, v1.26.0, source read 2026-10-25).
+
+**Revision note.** The 2026-09-03 draft covered only the Phase 0 reader and kept prawduct's own
+path hard-coded beside a new declared one. #1069 showed the larger gap: the cut is the half that
+delivers notes, and it was prawduct-only too. This revision makes one declaration serve both the
+reader and the writer, moves prawduct onto it, and replaces the `open-heading-pattern` strategy
+with `release-heading` (Decision 2). DIG1, DIG3, DIG5 and DIG8 keep their ids and meaning; DIG2,
+DIG4, DIG6 and DIG7 are restated; the CDW requirements are new.
 
 ## Problem
 
-`check_releasability`'s two digest checks — does the release's open section carry a real
-headline, and does it name every shipping scope — are prawduct-only. `_DIGEST_REL_PATH` is
-literally `plugin/CHANGELOG.md`, and both checks are gated behind `_ships_the_plugin_tree`
-(`plugin/lib/release_readiness.py:415-438`), which is true only for prawduct's own repo. A
-governed product gets the suite verdict and the build-plan coverage check, but nothing verifies
-its own consumer-facing release notes — exactly the gap prawduct itself shipped through twice
-(v2.1.6: tagged with no digest section at all; v3.4.0: section present but still carrying the
-previous cut's placeholder headline — both named in `_headline_advisory`'s docstring).
+Every product on change fragments must write a `## Consumer note` per scope. The PR probe refuses
+a fragment without one, and the PR reviewer flags a `none:` on work a user would notice. The
+template promises the payoff: "Where the repo publishes release notes, the release cut copies
+this text into them" (`plugin/templates/change-fragment.md`). That holds only in prawduct's own
+repo. Everywhere else, the note is written, reviewed and then filed in
+`.prawduct/change-log-archive/` where no consumer reads it. The product's changelog never
+receives it. The channel is produced and never consumed.
 
-The fix is not a new path parameter. `release_version_files:` (#576) already proves a product can
-declare a **path**; what a consumer digest needs in addition is a **keying rule** — a way of
-saying "this is the section of the file currently being written for the next release" — because
-prawduct's own procedure ("the topmost `## ` heading, renamed to the release number at the cut")
-is one specific editorial convention, not a property every changelog has. A declaration that
-named only a path would silently impose that convention on a product that doesn't follow it, and
-the failure mode is a **false all-clear**: the check would locate the wrong section, find it has
-a real (old) headline and real (old) scope mentions, and report the release ready when the actual
-pending section — wherever it really lives in the file — was never examined at all. That is the
-exact shape both existing checks exist to catch, just moved one layer up.
+Three hard-coded facts make this prawduct-only:
+
+1. **Which file.** `release_readiness._DIGEST_REL_PATH = "plugin/CHANGELOG.md"`, used by the
+   Phase 0 reader and by the cut's writer (`change_cut._digest_write`).
+2. **Which section.** The reader takes the topmost `## ` heading unconditionally. The writer takes
+   the topmost and also requires it to name the release (`_names_release`: `vX.Y.Z` or
+   `vX.Y.Z-dev…`), refusing `wrong-section` otherwise. Both are prawduct's editorial procedure,
+   not a property of changelogs.
+3. **What goes in it.** The writer refuses a section with no headline (`no-headline`) and renders
+   every note as a `**`scope`**: text` paragraph. A Keep a Changelog file wants `- text` bullets
+   under `### Added` / `### Fixed`.
+
+A fourth fact makes the gap hard to see. Two different predicates answer "does this repo have a
+digest": `_ships_the_plugin_tree` (is `plugin/VERSION` present) for the reader, and
+`plugin/CHANGELOG.md` being a file for the writer. Neither reads anything a product declares.
+
+**The motivating case** (#1069): a high-throughput monorepo product with one root `CHANGELOG.md`.
+About 1,000 of its commits in 30 days touched that file, which makes it a merge-conflict hotspot.
+It wants per-PR fragments composed into that durable file at release, which is what the fragment
+model was built to give it.
 
 ## Grounding facts
 
-Re-verified against the current tree (v3.4.1-dev, 2026-09-03):
+Re-verified against `develop` at `0964afa1` (v3.8.0-dev, 2026-10-25):
 
-- **The two checks and their subject, precisely.** `_headline_advisory` (`release_readiness.py:
-  542-579`) flags an open section with no non-heading, non-empty first line, or one still
-  carrying `_SEEDED_HEADLINE` (the scaffold placeholder). `_coverage_advisory` (`:582-620`) flags
-  a release-pending scope whose slug (or de-hyphenated words) does not appear in the open
-  section's text (`_digest_mentions`, `:483-516` — deliberately bounded matching, not substring,
-  because a false *pass* here is the failure this whole mechanism exists to prevent). Both read
-  from one call to `_read_digest` + `_open_digest_section` (`:441-480`), so the shared subject is
-  a single `(heading, body)` pair — "the open section" — not two independent reads.
-- **"The open section" is found by pure position today, and the module's own docstring already
-  names the generalization gap.** `_open_digest_section` returns the **topmost** `## ` heading
-  found, full stop (`:455-480`) — no check that the heading is *unshipped* rather than a stale
-  leftover. `_digest_advisories`'s docstring states the reason this stayed prawduct-only outright:
-  *"these checks ask about the section this release is being written into, and 'the topmost `## `,
-  renamed to the release number at the cut' is prawduct's own release procedure rather than a
-  property of changelogs. A declaration carrying only a path would silently impose that procedure
-  on every product that set it, and the failure would be a false all-clear"* (`:641-652`). This
-  item's whole job is answering the question that docstring poses.
-- **Prawduct's own convention is self-verifying in a way pure position is not, and the mechanism
-  is visible in the file today.** `plugin/CHANGELOG.md`'s open heading currently reads `##
-  v3.4.1-dev.2` — the `-dev.N` suffix is what marks it *not yet cut*; the heading a release
-  actually ships under has no such suffix (confirmed against the file's own second line: "this
-  section is renamed to the release number at the cut"). The current code does not check this
-  suffix at all — it trusts positional-topmost unconditionally — but the suffix is the latent
-  signal that makes prawduct's own case safe in practice: a repo that forgets to rename at cut
-  would show a `-dev.N`-suffixed heading in a *tagged* release, which is a different, detectable
-  defect (out of scope here — #702/#259 own prawduct-side checks).
-- **`release_version_files:` is the shape precedent, and its own module explains exactly why
-  "declare a path" was sufficient there but is not sufficient here.**
-  `plugin/lib/release_verification.py:69-90` (`VersionFile` NamedTuple: `path`, `fmt` — a
-  *structural shape*, `bare`/`json`/`toml` — plus `key`, a dotted path descended literally).
-  Version files need no keying rule because the value being checked (a version string) is
-  identified by *structure* (a key path into a parsed document) — there is no "which of several
-  candidate sections is the live one" question, because a version file has exactly one version
-  field at a time. A changelog has exactly the opposite shape: one file, many headings, and the
-  question is which one is *live right now* — structure alone (path + format) cannot answer that,
-  which is the keying rule this item must add on top of the path.
-- **The declaration is read from the release's own tree for version files, and the same rule
-  must govern the digest declaration for the same reason.**
-  `release_verification.py:14-24`: "what a release shipped is a fact about the tree that release
-  names… that rule governs the `release_version_files:` declaration too... so the declaration is
-  read from `<tag>:.prawduct/project-state.yaml`." A digest-keying declaration is exactly the same
-  kind of fact — which convention a *given release* followed — so it must be read the same way:
-  from the release's own tree, not the working tree, with an undeclared-at-that-tag release
-  falling back to "unverifiable" rather than guessed.
-- **A live false positive is already recorded and is informative, not disqualifying.** Issue
-  comment (2026-09-01): against prawduct's own repo, the coverage check reports 1 of 14 scopes
-  covered, and one of the 13 "misses" is a scope (`release-gate-blindness`) whose notes exist but
-  don't contain the slug or its words — the documented fuzzy-match limitation
-  (`_digest_mentions`'s own docstring), tolerable only because the check is advisory and never
-  touches the exit code. This item's generalized version inherits the same advisory posture and
-  the same known limitation — it is not asked to fix fuzzy matching, only to let another product
-  opt in to the same imperfect-but-useful check.
-- **No declaration mechanism exists today.** `project-state.yaml` has no key for this; the two
-  checks are reachable only through the hardcoded `_DIGEST_REL_PATH` + `_ships_the_plugin_tree`
-  gate. This is greenfield wiring onto the `release_version_files:` precedent, not a rework of an
-  existing declaration reader.
+- **The cut is silent about the gap, but not entirely mute.** On a repo without
+  `plugin/CHANGELOG.md`, `cut-change-log` prints `consumer notes: this repo publishes no consumer
+  digest; the notes stay in the archive entries` and exits 0 (`change_cut.cut_cmd`). #1069's "no
+  warning" is accurate in effect: the line names no way to change it, and the template says the
+  opposite.
+- **The writer normalizes line endings.** `_digest_write` reads with `read_text`, splits with
+  `splitlines()` and joins with `"\n"`. On a CRLF changelog every line would change, which hides
+  the real edit in a whole-file rewrite (hook-surface.md, "Preserve line endings"). This is
+  harmless on prawduct's LF file and a defect for any CRLF product.
+- **Idempotency today is a text search.** The writer skips a fragment when the section already
+  contains `**`<scope>`**:`. That marker exists only in the paragraphs rendering. A bullets
+  rendering has no such marker, so the text search cannot carry idempotency beyond prawduct's
+  format.
+- **The archive is a format-independent witness.** The cut writes the archive month file and the
+  digest in one all-or-nothing write (`core.write_all_or_none`), then removes fragments. So after
+  any successful write, the archive holds an entry for each scope tagged `release=<version>`, and
+  the digest holds its note. A re-run after a removal failure can read "this scope already has an
+  archive entry for this release" and skip its note. That answer holds whatever the rendered note
+  looks like.
+- **Phase 0 coverage is already legacy-only.** `check_releasability` passes `legacy_pending` to
+  `_digest_advisories`: a fragment's note is required and written by the cut, so matching its
+  scope name against prose would be a fuzzy check of an exact fact. For a product on fragments
+  the coverage advisory has nothing to ask. The headline advisory is the reader check that
+  matters to them.
+- **The reader runs before the version resolves, but the release is known.**
+  `_digest_advisories` is called before `_resolve_version`, deliberately, so the advice arrives
+  while the notes can still be written. The `--release` argument is already parsed at that point.
+- **The plugin banner is a different reader of a different file.** `plugin/hooks/banner.py` parses
+  the *bundled* `CHANGELOG.md` at the installed plugin's root, to show upgrading repos prawduct's
+  own headlines. It never reads a product's changelog, and nothing here changes it. Prawduct's
+  `plugin/CHANGELOG.md` format stays what the banner parses.
+- **changie's model** (source: `cmd/merge.go`, v1.26.0). `changie batch <version>` renders the
+  unreleased fragments into a per-version file (`.changes/v1.2.3.md`) that can be edited, then
+  deletes the fragments. `changie merge` then **regenerates** the whole changelog: `os.Create`
+  truncates it, then writes the header file, then every version file newest first. It also has
+  kinds (each with its own section header and format), per-entry `changeFormat` templates, a
+  `--dry-run` that prints the output, `--include-unreleased` to preview pending fragments, and
+  `projects` for one changelog per monorepo package.
 
 ## Decisions
 
-**1. The keying rule is a declared strategy, not an inferred one — and "positional topmost" is
-not offered as a general strategy.** Two named strategies, because two real conventions were
-found in the wild during grounding, and both are checkable without parsing prose:
+**1. One declaration, one owner, both halves.** `consumer_digest:` in `project-state.yaml` answers
+"which file, which section, what shape" for the Phase 0 reader and for the cut's writer, and one
+reader function parses it. Prawduct declares its own `plugin/CHANGELOG.md` through it.
+`_DIGEST_REL_PATH` and the digest's use of `_ships_the_plugin_tree` are deleted, leaving one
+predicate. *Reverses the 2026-09-03 Decision 2* (keep prawduct's path hard-coded beside the new
+one). That draft kept two parallel paths to protect prawduct's release from the change, and two
+paths answering one question is the shape #1069 found. Prawduct's protection is now a pinned
+byte-for-byte test of its cut output instead (CDW9). `[DECISION: prawduct moves onto its own
+declaration | one owner for "which file, which section" (#1069 acceptance); risk carried by a
+golden test, not by a second code path | owner can veto]`
 
-   - **`sentinel-heading`** — the product declares a fixed heading text (e.g. `## [Unreleased]`,
-     the Keep a Changelog convention) that is never renamed; the open section is whatever
-     currently sits under the first heading matching that text (case-insensitive, exact after
-     stripping the `## ` marker). This is self-verifying by construction: the sentinel text is
-     reserved and can never coincide with a shipped version heading, so there is no position for a
-     stale section to hide in — either the sentinel exists (an open section is unambiguously
-     found) or it does not (falls through to the existing "no section to read" NOTE path,
-     `_digest_advisories:658`).
-   - **`open-heading-pattern`** — the product declares a regex that only an *unshipped* heading
-     satisfies (prawduct's own case, generalized: `-dev\.\d+$` or similar), and the open section is
-     the **topmost** heading matching that pattern. This generalizes prawduct's own convention
-     correctly *because* the pattern itself is the self-verifying signal the current code lacks —
-     the positional topmost-heading behavior stays prawduct's own hardcoded path (Decision 2
-     below), but a product opting in through this strategy gets the same shape with its check made
-     structural instead of assumed.
+**2. Two keying strategies: `sentinel-heading` and `release-heading`.** Plain
+"topmost heading" is still not offered, for the false all-clear reason the 2026-09-03 draft gave.
+`release-heading` replaces `open-heading-pattern`:
 
-   Plain positional-topmost with **no** distinguishing pattern is not offered as a declarable
-   option: it is exactly the shape the problem statement rejects, since nothing would stop it from
-   silently keying onto an already-shipped section the moment a product's editorial discipline
-   lapses even once.
+- **`sentinel-heading`**: a fixed heading text that is never renamed, such as Keep a Changelog's
+  `## [Unreleased]` or `## Unreleased`. The open section is the first heading matching it. It
+  needs no version to locate, and it is the strategy that works alongside an external tool that
+  dates or renames the section after the cut (Decision 6).
+- **`release-heading`**: the open section is the topmost `## ` heading that names the release
+  being prepared. It names the release when the heading's first version-shaped token equals the
+  release, with an optional `v` prefix and optional `[ ]` brackets, and with or without a `-dev…` /
+  pre-release suffix. That covers prawduct (`## v3.8.0-dev.4`, renamed `## v3.8.0`), Keep a
+  Changelog with the version written in advance (`## [1.4.0] - 2026-10-25`), and
+  `## 1.4.0 (unreleased)`. It locks out stale sections by construction: last release's section
+  names a different version.
 
-**2. Prawduct's own checks are unchanged, per the issue's own acceptance criterion.** The
-hardcoded `_DIGEST_REL_PATH` / `_ships_the_plugin_tree` path stays exactly as it is — it is not
-migrated onto the new declaration mechanism, so prawduct's own release process carries zero risk
-from this change. This item is additive: a *second*, declaration-driven path that other products
-opt into; "declaring gets both checks; others unchanged" (the issue's own acceptance bullet) is
-satisfied literally, not just in spirit.
+*Why not `open-heading-pattern`.* It asked the operator for a regex that "only an unshipped heading
+satisfies", and put that regex's correctness outside the checks. Prawduct's own writer has never
+keyed on its `-dev` suffix. It keys on the version name, because the runbook renames the section
+before the cut. A pattern strategy would therefore not reproduce prawduct's own behavior. It also
+cannot say whether a match is *this* release's section, which is what the writer must know before
+adding notes to it. `release-heading` makes that check structural and needs no regex, so Decision
+3 of the design (an uncompilable pattern) disappears with it. `[DECISION: replace
+open-heading-pattern with release-heading | a writer must know the section is this release's, and
+the version is the self-verifying signal prawduct already uses | owner can veto]`
 
-**3. The declaration lives in `project-state.yaml`, keyed and read the same way
-`release_version_files:` is — from the release's own tree, not the working tree.** Shape:
+**3. Insert, don't regenerate (changie's split, not its merge).** The cut writes rendered notes
+into the declared section of the existing file and changes no byte outside the inserted span. It
+does not rebuild the file from per-version sources the way `changie merge` does. A product
+arriving with a monolithic changelog (the motivating case) has no per-version source files for
+its history. Regenerating would force a migration, and every hand edit outside the generator's
+sources would be lost at the next cut. What we take from changie instead:
 
-   ```yaml
-   consumer_digest:
-     path: CHANGELOG.md
-     keying: sentinel-heading        # or: open-heading-pattern
-     heading: "Unreleased"           # sentinel-heading: literal text (marker stripped, case-insensitive)
-     pattern: '-dev\.\d+$'           # open-heading-pattern: regex tested against the heading text
-   ```
+- rendering is a pure function of (shipping fragments, declaration), so a dry run can print the
+  exact bytes;
+- a per-entry format template (changie's `changeFormat`);
+- kinds rendered as subsections (changie's kinds and `kindFormat`): our fragment `type`, mapped to
+  headings;
+- a preview of what the pending fragments would render (changie's `--include-unreleased` /
+  `batch --dry-run`).
 
-   Exactly one of `heading` / `pattern` is required, matching the declared `keying` value; the
-   other is rejected as a conflicting declaration rather than silently ignored (an operator who
-   sets both meant something, and guessing which one wins is how a keying rule quietly stops
-   matching what the operator thought they declared). Read via `<tag>:.prawduct/project-state.yaml`
-   for a specific release, mirroring `release_verification.py`'s existing rule exactly (Grounding
-   facts) — a release cut before the key existed reports the digest checks as unverifiable for
-   that release, never guessed.
+Per-version release-notes files are left for later (Scope-out), because no consumer for them
+exists yet (core.md: name the consumer when adding the producer).
 
-**4. Coverage and headline logic are reused verbatim; only section-location changes.**
-`_headline_advisory` and `_coverage_advisory` (and `_digest_mentions`, `_section_headline`) take
-`(heading, body)` today and stay unaware of how that pair was found — a declared product's
-`(heading, body)` is produced by a new locator function selected on `keying`, not by a rewritten
-copy of the existing checks. This is the same "don't reinvent the containment guard" posture the
-715 (artifacts-dir) work applies to `plan_archive`'s guard — reuse the already-correct logic,
-change only what genuinely varies.
+**4. The archive is the idempotency witness.** A shipping scope gets no note if the archive
+already holds its entry tagged `release=<version>` from an earlier run of this cut. The text
+search for `**`scope`**:` retires. One owner, independent of rendering, and it survives an
+operator rewording the note in the changelog after the cut.
 
-**5. An undeclared product gets exactly what it gets today: nothing, silently.** No `NOTE` fires
-for a product that never sets `consumer_digest:` — this is opt-in, and the issue's problem
-statement is that the check should *exist* for a product that wants it, not that every product
-must have consumer notes. `_ships_the_plugin_tree`'s prawduct-only gate is replaced, for the
-generalized path, by "declaration present" as the equivalent gate — the same "no subject, no
-check" shape, just keyed on a config presence test instead of a hardcoded file existence test.
+**5. A declared changelog is a contract; an undeclared one is unchanged and says so usefully.**
+A declared path that is missing, holds no locatable section, or has an invalid declaration makes
+the cut **refuse** with a named code. It is never a silent skip. The reader still **advises**,
+because Phase 0 checks never touch the exit code (2026-09-03 draft, DIG1). With no declaration,
+the cut writes nothing to any changelog, as today. Its output line names the `consumer_digest:`
+key, and the template stops promising unconditionally.
+
+**6. Coexist with an external release tool by documented order, not by integration.** Where a
+product uses another tool to date the section or bump versions (release-please, changie,
+semantic-release, a script), the order is: the cut writes the notes into the declared section,
+then the external tool renames or dates it. Under `sentinel-heading` the cut never needs a rename
+it does not own. Prawduct does not invoke or detect the other tool.
+
+**7. Writing a product's changelog needs an owner ruling on a binding norm (pending).**
+`architecture.md` § Direction: "The plugin writes nothing into a governed repo except its own
+`.prawduct/` state, the shared evidence store, and the files it must reconcile — `.gitignore`,
+`.claude/settings*.json`, and `CLAUDE.md`'s governance anchor — never framework files." A
+product's declared changelog is in none of those classes, so CDW1 is a new write. The case for
+allowing it uses the norm's own reasoning: the carve-out turns on "the *product's own* file, which
+the plugin edits at a declared seam rather than authors wholesale". A declared changelog is the
+product's own file. The seam is the section the product declared. Nothing is written until the
+product opts in with `consumer_digest:` and an operator runs `cut-change-log --apply`. In
+prawduct's own repo the file is the framework's own, so there is nothing to rule on there. The
+builder cannot supply this authority (core.md), so the clause stays as ratified and the build
+does not start until the owner rules. `[DECISION: pending owner ruling | read a declared
+consumer_digest: path as a product-owned file edited at a declared seam, written only by an
+operator-run cut | owner rules]`
 
 ## Requirements
 
 MUST unless marked SHOULD.
 
-- **DIG1** `project-state.yaml` supports a `consumer_digest:` mapping: `path` (repo-relative),
-  `keying` (`sentinel-heading` | `open-heading-pattern`), and exactly one of `heading` / `pattern`
-  matching the declared `keying`. Both required fields absent, or `keying` naming neither
-  supported strategy → the declaration is invalid; invalid is reported (a WARNING at the point the
-  digest checks would otherwise run), never silently treated as "undeclared."
-- **DIG2** The declaration is read from the **release's own tree** — `<tag-or-candidate-ref>:
-  .prawduct/project-state.yaml` — the same rule `release_verification.py` already applies to
-  `release_version_files:`, not the working tree. A release cut before `consumer_digest:` existed
-  reports the digest checks as **unverifiable** for that release, never inferred from the current
-  declaration.
-- **DIG3** A `sentinel-heading` locator finds the first `## `-prefixed heading whose stripped text
-  matches the declared `heading` (case-insensitive, exact match after stripping the marker and
-  surrounding whitespace) and returns `(heading, body)` for everything up to the next `## `
-  heading or end of file — same shape `_open_digest_section` already returns, so downstream logic
-  is untouched. No match → treated identically to today's "no `## ` section to read" case (a NOTE,
-  not a crash, not a false pass).
-- **DIG4** An `open-heading-pattern` locator finds the **topmost** `## `-prefixed heading whose
-  stripped text matches the declared `pattern` (a regex, applied to the whole heading text) and
-  returns the same `(heading, body)` shape. No match → same "no section to read" NOTE.
-- **DIG5** `_headline_advisory` and `_coverage_advisory` are called unchanged (same function
-  signatures, same `(heading, body)` input) for a declared product's located section — no
-  duplicated or forked copy of either check.
-- **DIG6** Prawduct's own `_DIGEST_REL_PATH` / `_ships_the_plugin_tree` path is untouched by this
-  item — verified by the existing test suite for `release_readiness.py` passing unmodified.
-- **DIG7** No declaration shape can cause the checks to silently examine the wrong section: an
-  invalid or conflicting declaration (DIG1) refuses to run the checks and says why, rather than
-  falling back to a guess; a `sentinel-heading` declaration can never match a shipped version
-  heading (the sentinel text is a fixed literal, disjoint from any version string by construction);
-  an `open-heading-pattern` declaration is the operator's own assertion of which headings are
-  "still open," so its correctness is the operator's to get right when they write the pattern — the
-  same trust boundary `VersionFile.key` already accepts for `release_version_files:`.
-- **DIG8** A product with no `consumer_digest:` declared sees no new advisory output — behavior is
-  byte-identical to today for every repo that has not opted in.
+### Declaration
+
+- **DIG1** `project-state.yaml` supports a `consumer_digest:` mapping with these fields:
+  - `path` (repo-relative, required);
+  - `keying` (`sentinel-heading` | `release-heading`, required);
+  - `heading` (required with `sentinel-heading`, refused with `release-heading`);
+  - `headline` (`required` | `none`, default `none`);
+  - `layout` (`paragraphs` | `bullets` | `by-type`, default `bullets`);
+  - `entry` (an entry template, optional, CDW4);
+  - `types` (optional, `by-type` only, CDW5).
+
+  A missing required field, an unknown `keying` / `layout` / `headline` value, a field that
+  conflicts with the declared strategy or layout, or an `entry` naming an unknown placeholder makes
+  the declaration **invalid**. Invalid is reported, never treated as undeclared.
+- **DIG2** One function reads the declaration, and both the Phase 0 reader and the cut call it.
+  Both read the working tree's `.prawduct/project-state.yaml`: the cut runs on the candidate tree,
+  and Phase 0 runs before any tag exists (`733-design.md` Decision 1). An unreadable or absent
+  state file reads as undeclared.
+- **DIG8** A repo with no `consumer_digest:` sees no new Phase 0 output, and its cut writes no
+  changelog (CDW8 for what the cut prints).
+
+### Locating the open section
+
+- **DIG3** `sentinel-heading` finds the first `## ` heading whose text, with the marker and
+  surrounding whitespace stripped, equals `heading` case-insensitively. The section runs to the
+  next `## ` heading or end of file.
+- **DIG4** `release-heading` finds the topmost `## ` heading whose first version-shaped token names
+  the release being prepared, as Decision 2 defines it. The token is compared after stripping one
+  leading `v` and enclosing `[ ]`. A `-dev…` or other pre-release suffix still names its base
+  release. The reader takes the release from `--release`, or from the version fallback where one
+  exists. With no release known, it notes that the digest was not checked and why, and does not
+  guess.
+- **DIG7** No declaration can make either half read or write a section other than the one it
+  names. Each strategy's match is self-verifying (a sentinel is a reserved literal; a release
+  heading names this release), and an invalid declaration stops the reader's checks with a
+  warning and the writer with a refusal.
+
+### Phase 0 reader
+
+- **DIG5** The headline and coverage advisories run, unforked, on the section the declaration
+  locates, with every message naming the declared path. The headline advisory runs only when
+  `headline: required`. Coverage stays legacy-scopes-only, as today.
+- **DIG6** Prawduct's own Phase 0 output is unchanged for its normal state (top section names the
+  release being prepared). One deliberate change: when the top section names a *different*
+  version, the reader now notes "no section for vX.Y.Z" instead of judging the stale section.
+
+### The cut's write
+
+- **CDW1** For a declared changelog, the cut writes every shipping fragment's consumer text
+  (fragments whose note is `none:` contribute nothing, as today) into the located section, in one
+  all-or-nothing write with the archive. The cut's result names the file, the section heading and
+  the scopes written.
+- **CDW2** The cut refuses before writing anything, with a named code:
+  - `digest-declaration-invalid`: the reason from DIG1;
+  - `digest-missing`: the declared path is not a file;
+  - `digest-no-section`: no section matches the keying, and the detail says what to add;
+  - `digest-no-headline`: `headline: required` and the section has no first line.
+- **CDW3** Bytes outside the inserted span are unchanged: the line-ending style (LF or CRLF), a
+  UTF-8 BOM, the trailing-newline state, and every line before and after. Pinned with a CRLF
+  fixture and a byte-equality check outside the span.
+- **CDW4** Each note is rendered by an entry template with the placeholders `{note}`, `{scope}`,
+  `{type}` and `{title}`. A literal brace is written doubled. Each layout has a default:
+  `paragraphs` → `**`{scope}`**: {note}`, the bullet layouts → `- {note}`. A multi-line note
+  under a bullet layout continues indented beneath its bullet, so the list stays one item per
+  note.
+- **CDW5** Placement by layout:
+  - `paragraphs`: after the headline paragraph when `headline: required`, otherwise at the top of
+    the section.
+  - `bullets`: one list at the top of the section, above existing content.
+  - `by-type`: under `### <heading>` subsections, one per fragment type, using the `types` map
+    (default: `feature`→`Added`, `fix`→`Fixed`, all other types→`Changed`). An existing
+    subsection with the mapped heading receives the bullets at its top. A missing one is created
+    in the order the map lists them, placed before the section's other `###` subsections.
+
+  Within a layout, entries are ordered newest first, ties broken by scope (today's
+  `render_consumer_section` order).
+- **CDW6** Idempotency is witnessed by the archive (Decision 4). A scope whose archive entry for
+  this release already exists before this run gets no note, and a re-run after any failure adds
+  nothing twice. The `**`scope`**:` text search is removed.
+- **CDW7** The dry run (no `--apply`) prints the exact text it would insert, with the file and the
+  heading it goes under. A release PR can paste that output as the notes preview. No fragment is
+  touched and nothing is written.
+- **CDW8** With no declaration, the cut's output says the notes stay in the archive, and names
+  `consumer_digest:` in `.prawduct/project-state.yaml` as the way to have them written to a
+  changelog. `plugin/templates/change-fragment.md` says the copy happens where the repo declares
+  `consumer_digest:`.
+- **CDW9** Prawduct's own cut, run on its declaration (`path: plugin/CHANGELOG.md`, `keying:
+  release-heading`, `headline: required`, `layout: paragraphs`), produces output byte-identical to
+  today's for the same fragments and file. Pinned by a golden test captured before the change.
+- **CDW10** The two refusals today's writer encodes for prawduct carry over under the
+  declaration. `wrong-section` becomes a case of `digest-no-section` (no heading names the
+  release). `no-headline` becomes `digest-no-headline`, which fires only when the declaration
+  asks for a headline.
+
+### Documentation
+
+- **CDOC1** `plugin/templates/project-state.yaml` carries a commented `# CONSUMER DIGEST (opt-in)`
+  block after `# RELEASE VERSION FILES`, with one example per strategy, the layouts, and the
+  external-tool order (Decision 6). It does not show an invalid combination.
+- **CDOC2** `documentation/release-process.md` and the cut-and-publish runbook describe the cut in
+  terms of the declaration rather than `plugin/CHANGELOG.md`, and prawduct's own procedure as one
+  declared value.
+- **CDOC3** `plugin/docs/project-state-keys.md` (the key registry) lists `consumer_digest:`.
 
 ## Acceptance
 
-- [ ] The keying rule is stated as a requirement (discovery) before any code — this document
-      (Decision 1, DIG1/DIG3/DIG4).
-- [ ] Declaring gets both checks; others unchanged (Decision 2/5, DIG5/DIG6/DIG8).
-- [ ] No declaration shape can yield a false all-clear (Decision 1/3, DIG1/DIG2/DIG7).
+- [ ] One declaration and one reader serve both halves; prawduct declares its own (Decision 1,
+      DIG1, DIG2). Shared with #1069's first acceptance bullet.
+- [ ] A declared, present changelog receives every shipping fragment's consumer note at the cut
+      (CDW1, CDW4, CDW5).
+- [ ] A declared path that is missing, unlocatable or invalid refuses with a named reason (CDW2).
+- [ ] Re-running the cut adds nothing twice, and bytes outside the written span are unchanged
+      (CDW3, CDW6).
+- [ ] The documented order with an external release tool works without the cut renaming a heading
+      (Decision 6, DIG3, CDOC1).
+- [ ] Undeclared products are unchanged except for a more useful line, and prawduct's own cut
+      output is byte-identical (DIG8, CDW8, CDW9).
+- [ ] No declaration shape can yield a false all-clear or a write into the wrong section (DIG7).
+- [ ] Ships in v3.8.0: listed as a release requirement in `.prawduct/artifacts/release-plan-v3.8.0.md`.
 
 ## Scope-out (this item)
 
-- The prawduct-side checks themselves (#702, #259) — not touched, per the issue's own scope-out.
-- Any code — this item is requirements only, per the issue's own acceptance bullet ("no code ahead
-  of the requirement").
-- A third keying strategy beyond the two named in Decision 1. If a product's convention fits
-  neither `sentinel-heading` nor `open-heading-pattern`, that is new discovery for a future item,
-  not a gap this one silently papers over with a catch-all "positional" fallback.
-- Retiring `_coverage_advisory`'s fuzzy-match false-positive rate — inherited as-is (Grounding
-  facts), tracked separately per the linked issue comment's own framing ("retirable on its own
-  emitted evidence").
-- Validating an `open-heading-pattern` declaration's regex against the product's actual history at
-  declaration time (e.g., "does this pattern ever match more than the intended headings") — DIG7
-  places that correctness burden on the operator, the same way `release_version_files:`'s `key`
-  path already does; a linting pass over the declared pattern is a reasonable follow-on, not
-  required here.
+- **Regenerating the changelog from per-version files** (changie `merge`). Decision 3. Revisit
+  when a product asks for a fully derived changelog, or a consumer appears for per-version notes
+  files. The most likely one is the GitHub Release body, which prawduct extracts today with `awk`
+  from `plugin/CHANGELOG.md` (release-process.md).
+- **More than one changelog per repo** (changie `projects`). A product has one `consumer_digest:`.
+  Revisit when a monorepo asks for per-package changelogs. The mapping shape leaves room for a
+  list form later.
+- **Creating a missing section.** The cut refuses `digest-no-section` with the heading to add. It
+  does not invent one (changie's `versionFormat`). Revisit if operators report the refusal as
+  friction.
+- **Version-file bumping** (`release_version_files:`, #576 owns it) and **any integration with an
+  external release tool** beyond the documented order.
+- **Prawduct-side digest checks** (#702, #259), and the coverage advisory's fuzzy-match
+  false-positive rate (inherited, tracked separately).
 
 ## Evidence / references
 
-- `plugin/lib/release_readiness.py:415-438` (`_ships_the_plugin_tree`), `:441-480`
-  (`_read_digest`, `_open_digest_section`), `:483-620` (`_digest_mentions`, `_section_headline`,
-  `_headline_advisory`, `_coverage_advisory`), `:623-659` (`_digest_advisories`, whose own
-  docstring states the keying-rule gap this item resolves).
-- `plugin/lib/release_verification.py:1-100` — `VersionFile`, `_DECLARATION_KEY`
-  (`release_version_files`), and the module docstring's rule that a release's declaration is read
-  from that release's own tagged tree — the precedent DIG2 copies directly.
-- `plugin/CHANGELOG.md:1-19` — confirms prawduct's live convention in the current tree (`##
-  v3.4.1-dev.2`, "this section is renamed to the release number at the cut") and the latent
-  `-dev.N` distinguishing signal Decision 1's `open-heading-pattern` strategy generalizes.
-- Issue #733, comment 2026-09-01 — the live 1-of-14 coverage baseline and the one documented
-  false positive, carried into Scope-out as inherited, not fixed, behavior.
-- Issue #576 / `release_version_files:` — the shape precedent (`path` + structural descriptor)
-  this item extends with a keying field, and the reason the extension is a new field rather than
-  reusing `fmt`/`key` unchanged (a changelog's "which section" question has no analog in a
-  version file's "which key" question).
+- `plugin/lib/release_readiness.py`: `_DIGEST_REL_PATH`, `_ships_the_plugin_tree`, `_read_digest`,
+  `_open_digest_section`, `_headline_advisory`, `_coverage_advisory`, `_digest_advisories`, and
+  `check_releasability`'s digest call site (passes `legacy_pending`, before `_resolve_version`).
+- `plugin/lib/change_cut.py`: `_names_release`, `_digest_write` (refusals, text-marker
+  idempotency, `"\n".join` rewrite), `plan_cut`, `cut_cmd`'s undeclared line.
+- `plugin/lib/change_fragments.py`: `TYPES`, `consumer_text`, `render_consumer_section`.
+- `plugin/templates/change-fragment.md`, "Consumer note".
+- `plugin/hooks/banner.py`: the bundled-changelog reader, unaffected.
+- changie v1.26.0 `cmd/merge.go` (`mergeProject`: `os.Create`, header, version files, optional
+  unreleased); changie.dev `/config/` (kinds, `changeFormat`, `kindFormat`, `projects`,
+  `replacements`); `/cli/changie_batch/`, `/cli/changie_merge/`.
+- #1069 body (motivating case, proposed changes 1–5, acceptance), folded here 2026-10-25.
