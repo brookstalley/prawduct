@@ -770,6 +770,63 @@ class TestProposeChunks:
         scoped = plan_status.chunk_proposal(plan, _facts(), ["a.txt", "b.txt"], mode, repo_dir=repo)
         assert (scoped.chunks, scoped.notes) == (["02"], ())
 
+    def test_1081_bare_deliverables_and_plain_prefix_subjects_are_proposed(self, repo):
+        """#1081's repro: Deliverables backtick bare names and the subjects read
+        `<scope> chunk NN: …`. A boundary cumulative proposed nothing, so the
+        default certified nothing and the plans archived as unbuilt. The subject
+        names the chunk, and a subject that begins with the plan's scope as a
+        plain prefix carries that scope."""
+        plan = _plan(repo, ("01", "02"), deliverables={"01": "`page.js`", "02": "`util.js`"})
+        _commit(repo, "src/page.js", "x\n", "unit chunk 01: the page")
+        _commit(repo, "src/util.js", "x\n", "unit chunk 02: the helper")
+        diff = ["src/page.js", "src/util.js"]
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, "cumulative", repo_dir=repo)
+        assert (proposal.chunks, proposal.notes) == (["01", "02"], ())
+
+    @pytest.mark.parametrize("subject", [
+        "feat(unit): land it (chunk 02)",
+        "feat(unit): chunk 02 — land it",
+        "feat(unit): close chunk 02",
+        "feat(unit): CHUNK 02: land it",
+        "unit: chunk 02: land it",
+    ])
+    def test_a_chunk_id_is_carried_in_any_case(self, repo, subject):
+        plan = _plan(repo, ("01", "02"))
+        _commit(repo, "a.txt", "x\n", subject)
+        assert plan_status.propose_chunks(plan, _facts(), ["a.txt"], "cumulative", repo_dir=repo) == ["02"]
+
+    @pytest.mark.parametrize("subject", [
+        "feat(unit): carried to chunk 02 later",
+        "unitary chunk 02: not this plan's scope",
+    ])
+    def test_a_chunk_mentioned_in_prose_is_not_carried(self, repo, subject):
+        """No anchored form and no colon after the id: prose, not a claim. The
+        last one starts with a word that merely begins with the scope, so it is
+        not a plain-prefix scope either (an unscoped subject is noted, not
+        proposed)."""
+        plan = _plan(repo, ("01", "02"))
+        _commit(repo, "a.txt", "x\n", subject)
+        assert plan_status.propose_chunks(plan, _facts(), ["a.txt"], "cumulative", repo_dir=repo) == []
+
+    def test_a_chunk_whose_deliverables_are_all_bare_names_is_said_when_unproposed(self, repo):
+        """#1081: the record lint skips a bare name, and no repo-relative diff
+        path can equal one, so such a chunk is findable only by a subject naming
+        it — said, so the author writes paths from the repo root. A bare name
+        that IS a root-level file is a repo-relative path and matches (control),
+        and a chunk with one matchable path says nothing."""
+        (repo / "README.md").write_text("x\n")
+        plan = _plan(repo, ("01", "02", "03"), deliverables={
+            "01": "`page.js` and `util.js`",
+            "02": "`README.md`",
+            "03": "`page.js` and `src/c03.py`",
+        })
+        diff = ["src/page.js", "README.md"]
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, "chunk", repo_dir=repo)
+        assert proposal.chunks == ["02"]
+        (note,) = proposal.notes
+        assert note.startswith("chunk 01 not proposed")
+        assert "`page.js`, `util.js`" in note and "repo root" in note
+
     def test_a_plan_declaring_no_scope_counts_every_subject(self, repo):
         plan = _plan(repo, ("01", "02"))
         plan.write_text(plan.read_text().replace("scope: unit\n", ""))

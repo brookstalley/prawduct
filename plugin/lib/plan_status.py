@@ -910,7 +910,9 @@ def chunk_proposal(
     touch inside the review's interval is already the diff's answer. When git
     cannot say, the diff's answer stands alone: naming fewer leaves a chunk
     open, which keeps every gate armed — and a note says so, as one does for a
-    chunk only an unscoped subject names. Any other mode proposes nothing.
+    chunk only an unscoped subject names. A chunk left out whose Deliverables
+    are all bare names (:func:`_bare_only`) is noted in every mode, because only
+    a subject can find it. Any other mode proposes nothing.
     ``repo_dir`` defaults to the work tree that holds the plan's
     ``.prawduct/``.
 
@@ -957,7 +959,28 @@ def chunk_proposal(
                     f"(`<type>({walk.plan.scope}): …`), and an unscoped subject may be "
                     "another plan's; pass --chunks if they are this plan's work"
                 )
+    for c in open_ids:
+        if c in touched:
+            continue
+        bare = _bare_only(deliverable_paths(content, c), repo_dir)
+        if bare:
+            notes.append(
+                f"chunk {c} not proposed: its Deliverables name only bare file names "
+                f"({', '.join(f'`{b}`' for b in bare)}), which no path in the diff can equal "
+                "and the record lint does not check — write them from the repo root, or "
+                "pass --chunks if it is this review's work"
+            )
     return ChunkProposal([c for c in open_ids if c in touched], tuple(notes))
+
+
+def _bare_only(deliverables: "list[str]", repo_dir: Path) -> "list[str]":
+    """``deliverables`` when every one is a bare name (no ``/``) naming no file
+    at the repo root, else ``[]``. Such a chunk can be found only by a commit
+    subject naming it: a diff path is repo-relative, and a root-level file is
+    the one bare name that is also a path (#1081)."""
+    if deliverables and all("/" not in d and not (repo_dir / d).exists() for d in deliverables):
+        return deliverables
+    return []
 
 
 def _repo_of(plan_path: Path) -> Path:
@@ -967,12 +990,14 @@ def _repo_of(plan_path: Path) -> Path:
     return plan_path.resolve().parent
 
 
-# A subject CARRIES a chunk in one of three anchored forms — never a mention
-# anywhere in it ("…carried to Chunk 04" is prose), and digits-and-dots only, so
-# "close Chunk work" names no id. Which subjects count has two answers, by what
-# a wrong one costs. A review proposal, which certifies, counts only subjects
-# carrying the plan's scope when it declares one: another plan's `Chunk N` on the
-# branch must not certify this plan's. The render tag counts a scoped plan's
+# A subject CARRIES a chunk in one of four anchored forms, in any case — never a
+# mention anywhere in it ("…carried to Chunk 04" is prose), and digits-and-dots
+# only, so "close Chunk work" names no id. `chunk 01:` (the id then a colon) is a
+# form because `<scope> chunk 01: …` is how products write it (#1081). Which
+# subjects count has two answers, by what a wrong one costs. A review proposal,
+# which certifies, counts only subjects carrying the plan's scope when it
+# declares one — as `<type>(<scope>):` or as the subject's first word — because
+# another plan's `Chunk N` on the branch must not certify this plan's. The render tag counts a scoped plan's
 # scoped subjects too, but when none carries the scope (scope tags are a
 # convention, and drift), every subject — a misread table tag is cheap. A plan
 # with no scope counts every subject in both. `_walk_branch` is the rules' one home.
@@ -980,8 +1005,20 @@ _CHUNK_COMMIT_RE = re.compile(
     r"\(Chunk\s+(\d+(?:\.\d+)*)\)"
     r"|:\s*Chunk\s+(\d+(?:\.\d+)*)\b"
     r"|\bclos(?:e|es|ed)\s+Chunk\s+(\d+(?:\.\d+)*)\b"
+    r"|\bChunk\s+(\d+(?:\.\d+)*)\s*:",
+    re.IGNORECASE,
 )
 _COMMIT_SCOPE_RE = re.compile(r"^\w+\(([^)]+)\)!?:")
+
+
+def _carries_scope(subject: str, scope: str) -> bool:
+    """Whether ``subject`` carries ``scope``: as a conventional commit's
+    ``<type>(<scope>):``, or as its whole first word (``<scope> chunk 01: …``,
+    ``<scope>: …``) — never a word that merely starts with it."""
+    m = _COMMIT_SCOPE_RE.match(subject)
+    if m:
+        return m.group(1).strip() == scope
+    return re.match(rf"{re.escape(scope)}(?::|\s)", subject) is not None
 #: Opens each commit's subject line in the log; file names follow it. Not a
 #: control character: `str.strip` treats \x1c-\x1f as whitespace.
 _COMMIT_MARK = "@@prawduct-commit@@ "
@@ -1076,7 +1113,7 @@ def _walk_branch(
     if plan.scope:
         scoped = [
             s for s in subjects
-            if (m := _COMMIT_SCOPE_RE.match(s)) and m.group(1).strip() == plan.scope
+            if _carries_scope(s, plan.scope)
         ]
         scoped_named = names(scoped)
         named = scoped_named if scoped else all_named
