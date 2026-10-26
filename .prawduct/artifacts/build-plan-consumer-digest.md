@@ -18,7 +18,9 @@ partition: >-
   01 and 02 serial (coordinator; 02 fixes the shared module's signatures every later chunk calls).
   03 and 04 delegated after 02 commits, two isolated worktrees with disjoint files — A (03):
   plugin/lib/release_readiness.py, tests/test_release_readiness.py, .prawduct/project-state.yaml;
-  B (04): plugin/lib/change_cut.py, tests/test_change_cut.py. The coordinator owns
+  B (04): plugin/lib/change_cut.py, plugin/lib/change_log_archive.py, plugin/lib/change_fragments.py
+  and their tests. Seam owner: A deletes release_readiness's digest symbols, and B stops importing
+  them. The coordinator owns
   plugin/lib/consumer_digest.py; a delegate needing a change there reports it rather than making
   it. 05–07 serial: 05 changes prawduct's own procedure on top of 03 and 04, 06 describes it, 07
   integrates.
