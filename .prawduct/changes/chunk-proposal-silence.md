@@ -28,6 +28,10 @@ causes, and each is fixed.
   reached the main agent. Now, when a `final` or `cumulative` review certifies no chunk while the
   plan has open ones, `critic-consolidate` ends the relayed `NEXT-ACTION:` line, and its copy in
   `.critic-findings.json`, by naming those chunks and the `--chunks` remedy.
+- **A slow scan, fixed in passing.** `retired_claims`' inline-`Retires:` test was a regex that
+  re-scanned each line from every non-space start, quadratic on a long line. It took 3.2s of the
+  repo's own retired-claims scan, which then timed out under load. It is now a one-pass check,
+  verified to give the same answers on every tracked line that carries the field.
 
 ### Chunk 02: this change record
 

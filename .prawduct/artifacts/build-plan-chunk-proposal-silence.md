@@ -65,6 +65,12 @@ That needs a design decision from the owner.
   bare and absent at the root. 202 of 1278 tokens in this repo's plans are bare, many of them
   symbols, so firing on any bare token would be noise. Only the all-bare chunk is invisible to
   the diff.
+- Chunk 01, *not settled by the goals*: the boundary suite failed in
+  `test_retired_claims::TestThisRepoIsClean` on its 30s timeout at load average ~45.
+  `retired_claims._INLINE_RETIRES_RE` was quadratic on long lines (3.2s of the scan). It is
+  replaced by the linear `_has_inline_retires`, checked equal on every tracked line that carries
+  `Retires:`; the scan's declaration read drops from 3.24s to 0.03s. Fixed here under the
+  no-pre-existing-exception rule, because it fails this branch's suite.
 - Chunk 01: `feat(unit): Chunk 02 work moved` already counted under the `: Chunk N` form. That
   is unchanged; only prose without a colon after the id stays uncounted.
 
