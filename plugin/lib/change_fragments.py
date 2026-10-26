@@ -244,6 +244,13 @@ class Fragment:
         return match.group(1).strip() if match else None
 
     @property
+    def unwritten(self) -> bool:
+        """Neither the narrative nor the consumer note is written — the state
+        ``plan new`` mints a fragment in. A title alone does not count, since
+        ``plan new --title`` fills it at mint time."""
+        return not self.narrative and not (self.consumer_note or "").strip()
+
+    @property
     def consumer_text(self) -> str | None:
         """The note's text for consumers, or ``None`` when it is absent or ``none:``."""
         if self.consumer_note is None or not self.consumer_note.strip():
@@ -535,6 +542,23 @@ def check_fragment_text(
     return FragmentFile(
         path, fragment, tuple(validate_fragment(fragment, plan_scopes=plan_scopes, root=root))
     )
+
+
+def is_fragment_path(rel: str) -> bool:
+    """Whether repo-relative ``rel`` names a fragment: a ``*.md`` file directly
+    under :data:`FRAGMENT_DIR_REL`."""
+    parent, _, name = rel.rpartition("/")
+    return parent == FRAGMENT_DIR_REL and name.endswith(".md")
+
+
+def is_unwritten_stub(text: str) -> bool:
+    """Whether fragment ``text`` is still the stub ``plan new`` mints
+    (:attr:`Fragment.unwritten`). Text that does not parse is not one —
+    ``plan new`` never writes such a file, so someone else did."""
+    try:
+        return parse_fragment(text, filename="stub.md").unwritten
+    except FragmentError:
+        return False
 
 
 def read_fragment_file(

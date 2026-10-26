@@ -1730,9 +1730,12 @@ def extension_deferral_owed(
          the stored one (``hook-surface.md``: observable beats stored).
          **Fail-open, accepted (coordinator, 2026-10-25):** a chunk whose
          Deliverables name no path-shaped token can never be proposed, so new
-         work on it reads as a fix and defers. That widens the next review's
-         interval and loses no coverage, because the later review still
-         starts at the covered frontier (condition 4) and spans this work.
+         work on it reads as a fix and defers. So does pending work that is
+         only a change fragment still the ``plan new`` stub, or deleted
+         (``plan_status._work_paths``: neither is any chunk's work). That
+         widens the next review's interval and loses no coverage, because the
+         later review still starts at the covered frontier (condition 4) and
+         spans this work.
        - **(1b) nothing on the plan can certify them** (a legacy-window
          binding: the plan declares no ``branch:``, so review facts complete
          nothing and only boxes and imports do): the reviewed chunk is the
@@ -1903,10 +1906,12 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     ways. The rule: an earlier chunk's review is the boundary ``cumulative``,
     so the chunk is COMMITTED and left for it — nothing is ticked, because the
     boundary review names every open chunk that is built (``plan_status``:
-    ``propose_chunks`` in ``cumulative`` mode) and its fact closes them all.
-    Inference sees a committed chunk as ``built`` (:func:`short_plan_deferral`,
-    ``read_built``) when its subject names it or its diff touches the chunk's
-    Deliverables paths — hence "naming it in the subject" — so the boundary is
+    ``chunk_proposal`` in ``cumulative`` mode) and its fact closes them all.
+    That proposal counts a subject's chunk only when the subject carries the
+    plan's scope, hence the scoped form the text gives. Inference sees a
+    committed chunk as ``built`` (:func:`short_plan_deferral`, ``read_built``)
+    when its subject names it or its diff touches the chunk's Deliverables
+    paths — hence "naming it in the subject" — so the boundary is
     inferred as soon as one chunk is left
     neither done nor committed on a clean tree, whether or not that last chunk
     is built — so the text says to build it first.
@@ -1917,7 +1922,8 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
         f" (open now: {', '.join(deferral.unticked)})" if deferral.unticked else ""
     )
     return (
-        "commit this chunk, naming it in the subject (`… (Chunk <id>)`) — a "
+        "commit this chunk, naming it in the subject under the plan's scope "
+        "(`<type>(<scope>): … (Chunk <id>)`, `<scope>` being the plan's `scope:`) — a "
         f"deferred chunk's review is the boundary's, so it waits for none{named}. "
         "Then build the last chunk before asking for review: `/prawduct:critic` "
         "infers the boundary `cumulative` once one chunk is left uncommitted and "

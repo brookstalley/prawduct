@@ -166,12 +166,16 @@ class TestNewMintsWhatTheReadersAccept:
         # The stub is not shippable as written — the narrative and the consumer
         # note are the author's — and nothing ELSE is wrong with it.
         assert sorted(p.code for p in item.problems) == ["empty-consumer-note", "empty-narrative"]
+        # And it is what the chunk-progress readers leave out as no chunk's work
+        # (#1075), titled or not — the title is filled at mint time.
+        assert change_fragments.is_unwritten_stub(result.fragment_path.read_text())
 
         text = result.fragment_path.read_text().replace(
             "---\n\n", "---\nWhat changed and why.\n", 1
         ).rstrip("\n") + "\nnone: internal\n"
         filled = change_fragments.check_fragment_text(text, result.fragment_path)
         assert filled.ok, filled.problems  # filled in, it validates against its own plan
+        assert not change_fragments.is_unwritten_stub(text)
 
     def test_an_absent_title_is_left_for_the_author_not_invented(self, tmp_path):
         repo = _repo(tmp_path)
