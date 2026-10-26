@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "",
+  "stderr": "\nGATES DEFERRED — 1 background task(s) in flight; the diff isn't final and the session can't end yet, so the gate(s) below are deferred to the next Stop (NOT skipped — they fire once the work lands):\n  · workflow:review-changes\n  deferred: [prawduct v<VERSION> · gate: reflection]\n"
+}
