@@ -42,7 +42,8 @@ be taken back. Chunk state (#1051) ships in v3.8.0, so every governed product wo
   and the retraction travels to other clones.
 
 **Out of scope (the issue's scope-out):** the `built` hot-path rule. `chunk_states` stays free of
-git walks (NF1). `built_report`'s matching rule is reused unchanged.
+git walks (NF1). `built_report`'s matching rule is unchanged; its subject half is shared with the
+proposal through one `git log` reader, and its path half is not used for certification.
 
 **Inferences (flagged for the boundary review):**
 - *What whole-plan modes propose.* The open chunks the interval's diff touches through their
@@ -54,7 +55,7 @@ git walks (NF1). `built_report`'s matching rule is reused unchanged.
   to name such a chunk in a commit subject precisely so that it reads as built, so the boundary review
   has to name it. `chunk` mode is unchanged: it uses the diff only, because it reviews a dirty tree
   and `extension_deferral_owed` calls it on the Stop path, where a git walk is not allowed.
-- *When `built_report` cannot answer,* the proposal falls back to the diff alone. Naming too few
+- *When the branch walk cannot answer,* the proposal falls back to the diff alone. Naming too few
   chunks fails closed: an open chunk keeps every gate armed. Naming too many is the defect this plan
   fixes.
 - *A retraction targets one (fact, chunk) pair,* not the chunk as a whole (**owner-confirmed
@@ -117,7 +118,7 @@ it is filed as its own backlog item.
   bump. An older reader keeps the unknown kind in its digest, and in that older reader the retracted
   chunk stays done: the `chunk-imported` precedent (`evidence.py` comment). The other norms
   (derived views, terminal state, backlog titles, two stores, backlog store) are **inapplicable**.
-- `nonfunctional-requirements.md` "Review wall-clock is P0" — **conforms**. The `built_report` walk
+- `nonfunctional-requirements.md` "Review wall-clock is P0" — **conforms**. The subject walk
   runs once per `final`/`cumulative` dispatch, not on Stop. The other norms (proportionality,
   growth advisory, stage-keyed rigor) are **inapplicable**.
 
@@ -130,7 +131,8 @@ it is filed as its own backlog item.
 - **Depends on:** none
 - **Deliverables:**
   - `plugin/lib/plan_status.py`: in `propose_chunks`, whole-plan modes propose the open chunks the
-    diff touches or `built_report` reads as built. The "every open chunk" rule is retired, along with
+    diff touches or a commit subject in the review's range names (see Decisions; not `built_report`'s
+    path rule). The "every open chunk" rule is retired, along with
     its docstring and the module docstring's line.
   - `plugin/lib/critic_consolidate.py`: the `_proposed_chunks` and `begin_review` docstrings.
   - `plugin/lib/critic_mode.py`: the docstrings that claim a cumulative names every open chunk.
@@ -141,7 +143,7 @@ it is filed as its own backlog item.
     It is red against the pre-fix code.
   - a `cumulative` names a chunk built only by a commit subject that names it.
   - an unbuilt later chunk is not proposed.
-  - when `built_report` is unavailable, the proposal is the diff's alone.
+  - when the branch walk is unavailable, the proposal is the diff's alone.
 - **Acceptance criteria:**
   - a mid-plan `final` review proposes only the touched chunks (#1072 acceptance 1);
   - a short plan's end-of-plan `cumulative` still names every built chunk.
