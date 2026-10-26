@@ -13,9 +13,14 @@ pins that over every ``lib`` module and the hook.
   here answering "finished");
 - :func:`current_chunks` — the ``open`` chunks, in plan order, real ids only
   (the fail-closed entries below are left out; see :attr:`ChunkState.synthetic`);
-- :func:`built_chunks` — a RENDERING convenience, the one git-walking function
-  here; no gate reads it and :func:`chunk_states` never calls it;
+- :func:`built_chunks` — a RENDERING convenience; no gate reads it and
+  :func:`chunk_states` never calls it;
+- :func:`subject_named_chunks` — the chunks a commit subject names, for a
+  whole-plan review's proposal; it and :func:`built_chunks` are the two
+  git-walking functions here, sharing one ``git log`` reader;
 - :func:`propose_chunks` — the chunk set a review dispatch proposes (ST8);
+- :func:`retraction_target` — whether a fact's certification of a chunk can be
+  withdrawn, the one check ``plan retract`` writes behind;
 - :func:`render_table` — the ``plan status`` table, the one renderer the CLI,
   the ``/clear`` handoff and the PR payload print;
 - :func:`built_not_done_notice` — the bound plan's chunks that are built and
@@ -33,6 +38,12 @@ which is where their commits went (:class:`_Reachability`, #1065). Mode labels d
 written by the MG2 migration) is ``done`` too, tagged ``imported``. Until a plan
 is migrated, each ticked ``## Status`` box reads exactly as such a fact would —
 in memory, nothing written (MG1).
+
+**Retracted** is a ``chunk-retracted`` fact naming this plan's scope, a chunk
+and the fact that certified it: that fact no longer certifies that chunk, and
+the chunk says so in its ``reason`` while it stays open. Only that pair is
+withdrawn — the fact's other chunks stay done, and a later fact naming the
+chunk certifies it again. A box read in memory has no fact to retract.
 
 **dropped** is a frontmatter declaration, hand-written on purpose and never
 inferred: a block sequence under ``dropped:`` whose items read ``- <id>:
@@ -86,6 +97,12 @@ DROPPED_KEY = "dropped"
 #: The fact kind the MG2 migration writes for a ticked ``## Status`` box.
 IMPORTED_KIND = "chunk-imported"
 
+#: The fact kind ``plan retract`` writes: ``{scope, chunk, fact_id, reason,
+#: retracted_at}`` withdraws one fact's certification of one chunk. A fact is
+#: never edited, so a wrong certification is answered by a new fact; it can
+#: only reopen a chunk, never close one.
+RETRACTED_KIND = "chunk-retracted"
+
 #: The key :func:`chunk_states` answers under when the plan file itself cannot
 #: be read — one open entry, so the answer is "not finished" rather than the
 #: empty mapping a plan with no chunks gives.
@@ -95,7 +112,8 @@ UNREADABLE_PLAN = "?"
 #: ``dispositions.finding_state`` returns for a passing ``resolution`` fact.
 _PASSING = frozenset({dispositions.STATE_FIXED, dispositions.STATE_WAIVED})
 
-#: Review modes that propose every open chunk; ``chunk`` proposes by diff.
+#: Review modes whose proposal also counts the chunks a commit subject names;
+#: ``chunk`` proposes by diff alone (:func:`propose_chunks`).
 _WHOLE_PLAN_MODES = frozenset({"final", "cumulative"})
 
 _DROPPED_ID_RE = re.compile(r"^\w+(?:\.\w+)*$")
@@ -280,6 +298,25 @@ def fact_chunks(body: dict) -> list[str]:
     if isinstance(chunk, (str, int)) and str(chunk).strip():
         return [str(chunk)]
     return []
+
+
+def retractions(store: dict, scope: "str | None") -> dict[tuple[str, str], str]:
+    """``(fact id, normalized chunk id) → reason`` for this scope's
+    ``chunk-retracted`` facts. An entry missing its fact id, chunk or reason
+    withdraws nothing: what cannot be read must not reopen a chunk on a guess
+    either, and the writer refuses all three."""
+    if not scope:
+        return {}
+    pairs: dict[tuple[str, str], str] = {}
+    for fact in evidence.facts_of_kind(store, RETRACTED_KIND):
+        body = fact.get("body") or {}
+        fact_id, chunk, reason = body.get("fact_id"), body.get("chunk"), body.get("reason")
+        if body.get("scope") != scope or not all(
+            isinstance(v, str) and v.strip() for v in (fact_id, chunk, reason)
+        ):
+            continue
+        pairs.setdefault((fact_id, _norm(chunk)), reason.strip())
+    return pairs
 
 
 def _date(value: object) -> str | None:
@@ -476,13 +513,22 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
     # runs only for a chunk they leave open (NF1). Imports: a `chunk-imported`
     # fact, then — MG1 — a box not yet migrated, read exactly as the fact MG2
     # would write, in memory. Then the hand-written `dropped:` declaration.
+    retracted = retractions(store, plan.scope)
+
+    def withdrawn(fact_id: str, norm_id: str, what: str) -> bool:
+        reason = retracted.get((fact_id, norm_id))
+        if reason is None:
+            return False
+        note(norm_id, f"{what} {fact_id} names it, but it was retracted: {reason}")
+        return True
+
     if plan.scope:
         for fact in evidence.facts_of_kind(store, IMPORTED_KIND):
             body = fact.get("body") or {}
             if body.get("scope") != plan.scope or not isinstance(fact.get("id"), str):
                 continue
             n = _norm(body.get("chunk")) if body.get("chunk") is not None else None
-            if n is not None and still_open(n):
+            if n is not None and still_open(n) and not withdrawn(fact["id"], n, "import"):
                 states[by_norm[n]] = ChunkState(
                     "done",
                     fact["id"],
@@ -504,7 +550,10 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             body = fact.get("body") or {}
             if body.get("scope") != plan.scope or not isinstance(fact.get("id"), str):
                 continue
-            named = [n for n in dict.fromkeys(_norm(c) for c in fact_chunks(body)) if still_open(n)]
+            named = [
+                n for n in dict.fromkeys(_norm(c) for c in fact_chunks(body))
+                if still_open(n) and not withdrawn(fact["id"], n, "review")
+            ]
             if named:
                 candidates.append((fact, body, named))
         verdicts = _blocking_clear(store, [f["id"] for f, _b, _n in candidates])
@@ -545,6 +594,123 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             synthetic=True,
         )
     return states
+
+
+@dataclass(frozen=True)
+class RetractionTarget:
+    """:func:`retraction_target`'s answer.
+
+    ``status`` is ``"ok"`` (write it), ``"already"`` (this pair is already
+    withdrawn; write nothing) or a refusal code — ``no-scope``,
+    ``unknown-chunk``, ``box-import``, ``not-certified``, ``unknown-fact``,
+    ``other-scope``, ``not-named`` — with ``detail`` saying why and what to do.
+    ``chunk`` is the id as the plan prints it, ``fact_id`` the fact to withdraw.
+    """
+
+    status: str
+    detail: str
+    scope: "str | None" = None
+    chunk: "str | None" = None
+    fact_id: "str | None" = None
+
+
+def retraction_target(
+    plan_path: Path, facts: object, chunk: str, fact_id: "str | None" = None, *, repo_dir: Path
+) -> RetractionTarget:
+    """Whether ``fact_id``'s certification of ``chunk`` can be withdrawn, and
+    the exact pair to record — the one check ``plan retract`` writes behind.
+
+    ``fact_id`` omitted: the fact that certifies the chunk now. Given: a
+    ``review`` or ``chunk-imported`` fact of this plan's scope that names the
+    chunk — the chunk need not read ``done`` (a fact blocked today may certify
+    tomorrow, once its blocker resolves). A chunk whose ``## Status`` box is
+    ticked is refused whatever the fact: the box certifies it in memory after
+    any withdrawal, so unticking it comes first. ``fact_id`` omitted on a chunk
+    whose certification is already withdrawn answers ``already``, so a re-run
+    is idempotent.
+    """
+    try:
+        content = Path(plan_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return RetractionTarget("unknown-chunk", f"the plan cannot be read ({exc})")
+    plan = _read_plan(content)
+    if not plan.scope:
+        return RetractionTarget(
+            "no-scope", "the plan declares no `scope:`, so no fact certifies its chunks"
+        )
+    states = chunk_states(plan_path, facts, repo_dir=repo_dir)
+    key = next(
+        (k for k, st in states.items() if not st.synthetic and _norm(k) == _norm(chunk)), None
+    )
+    if key is None:
+        return RetractionTarget(
+            "unknown-chunk", f"`{chunk}` is not a chunk of this plan", plan.scope
+        )
+    state = states[key]
+    store = _store(facts)
+    if _norm(key) in plan.ticked:
+        # Read after every fact (MG1), a ticked box re-certifies the chunk
+        # whatever is withdrawn, and a later `import-status --apply` would mint
+        # an import no retraction names.
+        return RetractionTarget(
+            "box-import",
+            f"chunk {key}'s `## Status` box is ticked, and a ticked box certifies it "
+            "whatever fact is withdrawn — untick the box first",
+            plan.scope, key, fact_id,
+        )
+    withdrawn = [fid for (fid, n) in retractions(store, plan.scope) if n == _norm(key)]
+    if fact_id is None:
+        if state.fact_id is None and withdrawn:
+            return RetractionTarget(
+                "already",
+                f"chunk {key} is {state.state}; its certification by {', '.join(withdrawn)} "
+                "is already retracted",
+                plan.scope, key, withdrawn[-1],
+            )
+        if state.fact_id is None:
+            return RetractionTarget(
+                "not-certified",
+                f"chunk {key} is {state.state} and no fact certifies it, so there is "
+                "nothing to retract (name one with `--fact` to withdraw it before it can certify)",
+                plan.scope, key,
+            )
+        fact_id = state.fact_id
+    fact = next(
+        (f for kind in ("review", IMPORTED_KIND) for f in evidence.facts_of_kind(store, kind)
+         if f.get("id") == fact_id),
+        None,
+    )
+    if fact is None:
+        return RetractionTarget(
+            "unknown-fact",
+            f"no review or chunk-imported fact `{fact_id}` is in the evidence store",
+            plan.scope, key, fact_id,
+        )
+    body = fact.get("body") or {}
+    if body.get("scope") != plan.scope:
+        return RetractionTarget(
+            "other-scope",
+            f"`{fact_id}` is a fact of scope `{body.get('scope')}`, not this plan's "
+            f"`{plan.scope}`, so it certifies nothing here",
+            plan.scope, key, fact_id,
+        )
+    named = (
+        fact_chunks(body) if fact.get("kind") == "review"
+        else ([str(body["chunk"])] if body.get("chunk") is not None else [])
+    )
+    if _norm(key) not in {_norm(c) for c in named}:
+        return RetractionTarget(
+            "not-named",
+            f"`{fact_id}` does not name chunk {key} (it names "
+            f"{', '.join(named) or 'no chunk'}), so it certifies nothing to retract",
+            plan.scope, key, fact_id,
+        )
+    if (fact_id, _norm(key)) in retractions(store, plan.scope):
+        return RetractionTarget(
+            "already", f"`{fact_id}`'s certification of chunk {key} is already retracted",
+            plan.scope, key, fact_id,
+        )
+    return RetractionTarget("ok", "", plan.scope, key, fact_id)
 
 
 def is_finished(
@@ -643,28 +809,52 @@ def propose_chunks(
     mode: str,
     *,
     repo_dir: Path | None = None,
+    since: "str | None" = None,
 ) -> list[str]:
     """The chunks a review dispatched in ``mode`` proposes to name (ST8).
 
+    A mode sets a review's depth, never its reach: every mode proposes only
+    chunks there is work for, because the proposal is what the fact certifies
+    when the builder declares nothing, and a certified chunk is never reviewed
+    again.
+
     ``chunk`` mode: the open chunks whose Deliverables paths intersect
     ``diff_paths`` (repo-relative; a deliverable directory matches what is
-    under it). ``final`` / ``cumulative``: every open chunk. Any other mode
+    under it). ``final`` / ``cumulative``: those, and the open chunks a commit
+    subject in the review's own commit range names (:func:`subject_named_chunks`
+    over ``since..branch``, ``since`` being the interval's base commit; the
+    plan's whole branch when the caller has none) — so a mid-plan ``final``
+    names nothing built before its interval, while the boundary ``cumulative``,
+    whose interval starts at the merge-base, spans every chunk built so far,
+    including one whose
+    Deliverables name no path and which reads as built only by its subject.
+    Never :func:`built_report`'s path rule: a later chunk's Deliverable that an
+    earlier commit touched (the change fragment ``plan new`` stubs is one)
+    reads as built there before anyone builds it. A touch inside the review's
+    interval is already the diff's answer. When git cannot say, the diff's
+    answer stands alone: naming fewer leaves a chunk open, which keeps every
+    gate armed. Any other mode
     proposes nothing. Plan order. ``repo_dir`` defaults to the work tree that
     holds the plan's ``.prawduct/``.
+
+    Only the whole-plan modes walk git (one ``git log``), and they are asked
+    only at a review's dispatch; ``chunk`` mode is also asked on the Stop path
+    (``critic_mode.extension_deferral_owed``) and stays walk-free.
     """
+    if mode != "chunk" and mode not in _WHOLE_PLAN_MODES:
+        return []
     if repo_dir is None:
         repo_dir = _repo_of(Path(plan_path))
     open_ids = current_chunks(plan_path, facts, repo_dir=repo_dir)
-    if mode in _WHOLE_PLAN_MODES:
-        return open_ids
-    if mode != "chunk":
-        return []
     try:
         content = Path(plan_path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return []
     changed = {str(p) for p in diff_paths}
-    return [c for c in open_ids if _touches(deliverable_paths(content, c), changed)]
+    touched = {c for c in open_ids if _touches(deliverable_paths(content, c), changed)}
+    if mode in _WHOLE_PLAN_MODES and open_ids:
+        touched |= subject_named_chunks(Path(plan_path), Path(repo_dir), since=since)
+    return [c for c in open_ids if c in touched]
 
 
 def _repo_of(plan_path: Path) -> Path:
@@ -705,29 +895,49 @@ class BuiltReport:
     unavailable: "str | None" = None
 
 
-def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
-    """Chunks with work committed on the plan's branch — render-only, git-walking.
+@dataclass(frozen=True)
+class _BranchWalk:
+    """One ``git log base..branch`` over a plan's branch, read once for both
+    of its answers: which chunks a subject names, and which paths changed."""
 
-    A chunk is built when a commit on ``base..branch`` names it in its subject
-    (:data:`_CHUNK_COMMIT_RE`'s three anchored forms and the scope filter above
-    it) or touches one of its Deliverables paths. ``branch`` is the plan's ``branch:``
-    when that ref resolves, else ``HEAD``; ``base`` is the plan's ``base:``
-    (``origin/<b>`` preferred), else the repo's. A declared ``base:`` that
-    resolves to no ref is a cause, never a fallback to the repo's base: that
-    would walk a different interval and answer as though it were this one.
-    Returns the ids as the plan prints them. No gate reads it.
+    content: str
+    plan: _Plan
+    named: "set[str]"  # normalized ids a scoped subject names
+    changed: "set[str]"  # every path a commit on the branch touched
+
+
+def _walk_branch(
+    plan_path: Path, repo_dir: Path, since: "str | None" = None
+) -> "_BranchWalk | str | None":
+    """The walk :func:`built_report` and :func:`subject_named_chunks` answer
+    from; a cause string when git or the plan cannot answer; ``None`` for a
+    plan with no chunks, which has nothing to walk for.
+
+    ``branch`` is the plan's ``branch:`` when that ref resolves, else ``HEAD``;
+    ``base`` is ``since`` when given (a full commit id: a review interval's
+    base), else the plan's ``base:`` (``origin/<b>`` preferred), else the
+    repo's. A declared ``base:`` that resolves to no ref is a cause, never a
+    fallback to the repo's base: that would walk a different interval and
+    answer as though it were this one. A subject counts when it carries a
+    chunk in one of :data:`_CHUNK_COMMIT_RE`'s anchored forms, filtered by
+    scope as that pattern's comment says.
     """
     try:
         content = Path(plan_path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return BuiltReport(set(), f"the plan cannot be read ({exc})")
+        return f"the plan cannot be read ({exc})"
     repo_dir = Path(repo_dir)
     plan = _read_plan(content)
     if not plan.chunks:
-        return BuiltReport(set())
-    base, cause = _resolve_base(repo_dir, content)
+        return None
+    if since is not None:
+        if not gitstate.is_object_id(since):
+            return f"the interval's base {since!r} is not a commit id"
+        base, cause = since, None
+    else:
+        base, cause = _resolve_base(repo_dir, content)
     if base is None:
-        return BuiltReport(set(), cause)
+        return cause
     head = plan.branch if plan.branch and coverage._git_ref_exists(repo_dir, plan.branch) else "HEAD"
     rc, out, err = evidence.run_git(
         repo_dir, "log", f"--format={_COMMIT_MARK}%s", "--name-only", f"{base}..{head}", "--",
@@ -735,9 +945,7 @@ def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
     )
     if rc != 0:
         detail = (err or "").strip().splitlines()
-        return BuiltReport(
-            set(), f"`git log {base}..{head}` failed ({detail[0] if detail else f'exit {rc}'})"
-        )
+        return f"`git log {base}..{head}` failed ({detail[0] if detail else f'exit {rc}'})"
     commits: list[tuple[str, set[str]]] = []
     for line in out.splitlines():
         if line.startswith(_COMMIT_MARK):
@@ -759,10 +967,41 @@ def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
         for m in _CHUNK_COMMIT_RE.finditer(s)
     }
     changed = set().union(*(files for _s, files in commits)) if commits else set()
+    return _BranchWalk(content, plan, named, changed)
+
+
+def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
+    """Chunks with work committed on the plan's branch — render-only, git-walking.
+
+    A chunk is built when a commit on ``base..branch`` names it in its subject
+    or touches one of its Deliverables paths (:func:`_walk_branch` says which
+    commits and subjects count). Returns the ids as the plan prints them. No
+    gate reads it, and no review proposal does either: a Deliverables path
+    another chunk's commit touched first reads as built here, which a table tag
+    can afford and a certification cannot (:func:`propose_chunks`).
+    """
+    walk = _walk_branch(plan_path, repo_dir)
+    if walk is None:
+        return BuiltReport(set())
+    if isinstance(walk, str):
+        return BuiltReport(set(), walk)
     return BuiltReport({
-        c for c in plan.chunks
-        if _norm(c) in named or _touches(deliverable_paths(content, c), changed)
+        c for c in walk.plan.chunks
+        if _norm(c) in walk.named or _touches(deliverable_paths(walk.content, c), walk.changed)
     })
+
+
+def subject_named_chunks(
+    plan_path: Path, repo_dir: Path, *, since: "str | None" = None
+) -> "set[str]":
+    """The chunks a commit subject on ``since..branch`` names (the plan's
+    whole branch when ``since`` is ``None``), as the plan prints them —
+    ``set()`` when none does or git cannot say (a proposal that names fewer
+    fails closed). Git-walking, so asked only at a review's dispatch."""
+    walk = _walk_branch(plan_path, repo_dir, since)
+    if not isinstance(walk, _BranchWalk):
+        return set()
+    return {c for c in walk.plan.chunks if _norm(c) in walk.named}
 
 
 def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:

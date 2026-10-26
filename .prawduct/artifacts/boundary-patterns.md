@@ -70,7 +70,7 @@ The store is a fallback, asked after the worktree's own record declines;
 among its candidates (that record included) the newest run that met the tree decides it.
 **Sweep rule:** a kind joining `OBSERVATIONAL_KINDS` is a claim that `coverage_algebra` never
 reads it — `tests/test_test_run_facts.py` derives the read set from the module's own `fact.get("kind")`
-comparisons, so check that test before adding one. `chunk-imported` (#1051) joined on that claim.
+comparisons, so check that test before adding one. `chunk-imported` (#1051) and `chunk-retracted` (#1072) joined on that claim.
 
 ### `.claude/rules/learnings/` — the rules layout
 

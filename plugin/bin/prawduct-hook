@@ -7309,6 +7309,8 @@ _PLAN_HELP = (
     "         (<path> omitted: the plan this checkout is bound to)\n"
     "       prawduct-hook plan import-status <path> [--apply] [--remove-block] [--json]\n"
     "         (ticked Status boxes -> chunk-imported facts; a preview without --apply)\n"
+    "       prawduct-hook plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]\n"
+    "         (withdraw a fact's certification of a chunk; --fact omitted: the one certifying it)\n"
     "       prawduct-hook plan check-claims [--json]"
 )
 
@@ -7666,6 +7668,20 @@ PLAN_REFUSED_EXIT = 1
 PLAN_CHECK_CLAIMS_UNREADABLE_EXIT = 3
 
 
+def _plan_is_archived(project_dir: Path, plan_path: Path) -> bool:
+    """Whether ``plan_path`` is an archived plan of this repo: under
+    ``.prawduct/artifacts/`` and not live by ``work_unit.is_live_plan_file``,
+    the one home of that rule — which sees an ``archive`` component at any
+    depth, as ``plan_archive`` writes a nested plan's. A plan outside
+    ``artifacts/`` is no archived plan of this repo."""
+    artifacts = get_prawduct_dir(project_dir) / "artifacts"
+    try:
+        plan_path.resolve().relative_to(artifacts.resolve())
+    except ValueError:
+        return False
+    return plan_path.is_file() and not _work_unit().is_live_plan_file(plan_path, artifacts)
+
+
 def _plan_refuse(op: str, code: str, detail: str, as_json: bool) -> int:
     """Print one refusal as ``refused: <code>: <detail>`` (stderr) and, under
     ``--json``, as ``{"status": "refused", "code", "detail"}`` on stdout."""
@@ -7810,7 +7826,7 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
         print(f"plan import-status: {what}\n{_PLAN_HELP}", file=sys.stderr)
         return 2
     apply, remove, as_json = "--apply" in seen, "--remove-block" in seen, "--json" in seen
-    import uuid  # noqa: PLC0415 — only this writer mints fact ids here
+    import uuid  # noqa: PLC0415 — lazy; only the fact writers need it
 
     plan_status = _plan_status()
     from lib import evidence, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
@@ -7828,13 +7844,7 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
         print(f"plan import-status: {positionals[0]} is not a build plan\n{_PLAN_HELP}", file=sys.stderr)
         return 2
     rel = _plan_rel(project_dir, plan_path)
-    try:
-        under_artifacts = plan_path.resolve().relative_to(
-            (get_prawduct_dir(project_dir) / "artifacts").resolve()
-        ).parts
-    except ValueError:  # outside `.prawduct/artifacts/`: not an archived plan of this repo
-        under_artifacts = ()
-    if under_artifacts[:1] == ("archive",):
+    if _plan_is_archived(project_dir, plan_path):
         return _plan_refuse(
             "import-status", "archived-plan",
             f"{rel} is archived — its boxes are history and are not imported", as_json,
@@ -8120,15 +8130,149 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
     return 0 if ok else PLAN_REFUSED_EXIT
 
 
+def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
+    """``plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]``.
+
+    Withdraws one fact's certification of one chunk by appending a
+    ``chunk-retracted`` fact (``{scope, chunk, fact_id, reason,
+    retracted_at}``): facts are never edited, so a review that certified a
+    chunk nobody built is answered by a new fact. ``--fact`` omitted names the
+    fact certifying the chunk now; the plan defaults to the one this checkout
+    is bound to. Which pair, and whether it may be withdrawn, is
+    ``plan_status.retraction_target``'s answer; this writes behind it. A
+    retraction can only reopen a chunk — it arms gates, never disarms them —
+    so it asks no authority beyond the reason it records. Like an import, the
+    fact is also attached as a note on HEAD so it travels to other clones.
+
+    Exit 0 written, or already retracted (nothing written); 1 ``refused:
+    <code>`` for ``no-plan``, ``archived-plan``, ``store-unreadable``, the
+    codes ``retraction_target`` returns, and ``fact-append-failed``; 2 usage
+    or a path that is not a build plan. After writing it prints what the chunk
+    reads now — another fact may still certify it.
+    """
+    parsed = _parse_plan_args(
+        "retract", argv, frozenset({"--fact", "--reason", "--plan"}), frozenset({"--json"})
+    )
+    if isinstance(parsed, int):
+        return parsed
+    positionals, values, seen = parsed
+    if len(positionals) != 1:
+        what = "name the chunk to retract" if not positionals else f"unexpected argument {positionals[1]!r}"
+        print(f"plan retract: {what}\n{_PLAN_HELP}", file=sys.stderr)
+        return 2
+    reason = values.get("--reason", "").strip()
+    if not reason:
+        print(f"plan retract: --reason is required — say why the certification is wrong\n{_PLAN_HELP}",
+              file=sys.stderr)
+        return 2
+    as_json = "--json" in seen
+    import uuid  # noqa: PLC0415 — lazy; only the fact writers need it
+
+    plan_status = _plan_status()
+    from lib import evidence, evidence_notes, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
+
+    if "--plan" in values:
+        plan_path = Path(values["--plan"])
+        if not plan_path.is_absolute():
+            plan_path = project_dir / plan_path
+        try:
+            content = plan_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"plan retract: cannot read {values['--plan']} ({exc})\n{_PLAN_HELP}", file=sys.stderr)
+            return 2
+        if not plan_index.is_build_plan(content):
+            print(f"plan retract: {values['--plan']} is not a build plan\n{_PLAN_HELP}", file=sys.stderr)
+            return 2
+    else:
+        binding = _work_unit().resolve(project_dir)
+        if binding.state != "bound" or binding.plan_path is None:
+            return _plan_refuse(
+                "retract", "no-plan",
+                f"{binding.state}: no plan resolves for this checkout"
+                f"{' — ' + binding.reason if binding.reason else ''}; name one with --plan",
+                as_json,
+            )
+        plan_path = Path(binding.plan_path)
+    rel = _plan_rel(project_dir, plan_path)
+    if _plan_is_archived(project_dir, plan_path):
+        return _plan_refuse(
+            "retract", "archived-plan",
+            f"{rel} is archived — its chunk states are history and are not reopened", as_json,
+        )
+    facts = evidence.read_facts(project_dir)
+    if facts.get("status") == "error":
+        return _plan_refuse(
+            "retract", "store-unreadable",
+            f"the evidence store cannot be read ({facts.get('reason')}), so which fact "
+            "certifies the chunk cannot be told",
+            as_json,
+        )
+    target = plan_status.retraction_target(
+        plan_path, facts, positionals[0], values.get("--fact"), repo_dir=project_dir
+    )
+    if target.status not in ("ok", "already"):
+        return _plan_refuse("retract", target.status, f"{rel}: {target.detail}", as_json)
+
+    retraction_id = None
+    if target.status == "ok":
+        now = datetime.now(timezone.utc)
+        retraction_id = "chunk-retracted-{}-{}".format(now.strftime("%Y%m%dT%H%M%SZ"), uuid.uuid4().hex[:8])
+        body = {
+            "scope": target.scope,
+            "chunk": target.chunk,
+            "fact_id": target.fact_id,
+            "reason": reason,
+            "retracted_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        appended = evidence.append_fact(project_dir, plan_status.RETRACTED_KIND, retraction_id, body)
+        if appended.get("status") != "appended":
+            return _plan_refuse(
+                "retract", "fact-append-failed",
+                f"chunk {target.chunk}: {appended.get('reason', 'unknown')}", as_json,
+            )
+        retraction_id = appended.get("id", retraction_id)
+        rc, out, _err = evidence.run_git(project_dir, "rev-parse", "HEAD")
+        noted = evidence_notes.attach(project_dir, appended.get("envelope") or {}, out if rc == 0 else None)
+        if noted.get("status") not in ("attached", "present"):
+            print(
+                f"NOTE: plan retract: the retraction is recorded, but its git note was not "
+                f"written ({noted.get('reason')}) — it stays in this clone's store and does "
+                "not travel to other clones.",
+                file=sys.stderr,
+            )
+        facts = evidence.read_facts(project_dir)
+
+    after = plan_status.chunk_states(plan_path, facts, repo_dir=project_dir).get(target.chunk)
+    if as_json:
+        print(json.dumps({
+            "status": "ok",
+            "action": "retracted" if target.status == "ok" else "already-retracted",
+            "plan_path": rel,
+            "scope": target.scope,
+            "chunk": target.chunk,
+            "fact_id": target.fact_id,
+            "retraction_id": retraction_id,
+            "state": after.state if after else None,
+            "certified_by": after.fact_id if after else None,
+        }, sort_keys=True))
+        return 0
+    verb = "retracted" if target.status == "ok" else "already retracted"
+    print(f"{rel} (scope `{target.scope}`): {verb} {target.fact_id}'s certification of chunk {target.chunk}")
+    if after is not None:
+        by = f" (certified by {after.fact_id} — retract that too if it is also wrong)" if after.fact_id else ""
+        print(f"  chunk {target.chunk} now reads: {after.state}{by}")
+    return 0
+
+
 def cmd_plan(project_dir: Path, argv: list[str]) -> int:
-    """``plan new|bind|resolve|status|import-status|check-claims`` — a work
-    unit's identity, its binding, its chunk table, the MG2 import and the BR3
-    claim check.
+    """``plan new|bind|resolve|status|import-status|retract|check-claims`` — a
+    work unit's identity, its binding, its chunk table, the MG2 import, the
+    retraction of a wrong certification and the BR3 claim check.
 
     ``resolve``, ``status``, ``check-claims`` and a preview ``import-status``
     are reads (allowed in a harness scratch worktree); ``new`` and ``bind``
     write a plan (and ``new`` a change fragment), and ``import-status --apply``
-    writes facts (and the plan), so the ephemeral guard refuses them there — a
+    and ``retract`` write facts, so the ephemeral guard refuses them there — a
     claim minted in a scratch tree governs nothing and is discarded with it.
     """
     op = argv[0] if argv else None
@@ -8140,6 +8284,8 @@ def cmd_plan(project_dir: Path, argv: list[str]) -> int:
         return _cmd_plan_import_status(project_dir, argv[1:])
     if op == "check-claims":
         return _cmd_plan_check_claims(project_dir, argv[1:])
+    if op == "retract":
+        return _cmd_plan_retract(project_dir, argv[1:])
     if op == "new":
         return _cmd_plan_new(project_dir, argv[1:])
     if op == "bind":
@@ -10540,6 +10686,10 @@ def _ephemeral_command_writes(command: str, argv: list[str], project_dir: Path) 
         # rewrites the plan's `## Status` section when the block flag is given —
         # both governance writes made against a tree that is discarded.
         return "--apply" in argv
+    if command == "plan" and _first_positional(argv) == "retract":
+        # Appends a `chunk-retracted` fact to the clone-shared store and its
+        # note to the HEAD of a tree that is discarded.
+        return True
 
     read_only_ops = _EPHEMERAL_READ_ONLY_OPS.get(command)
     if read_only_ops is not None:

@@ -26,8 +26,8 @@ surrounding whitespace.
 **The commit is a locator, the tree is the fact.** A note hangs on the fact's
 anchor: a review's ``head_commit``, or its ``dispatch_commit`` when it reviewed
 a dirty tree (``head_commit`` null); a resolution rides on the anchor of the
-review that verified it; a ``chunk-imported`` fact on the HEAD it was written
-at. Verdicts still compose by the tree ids inside each fact, so a squash or
+review that verified it; a ``chunk-imported`` or ``chunk-retracted`` fact on
+the HEAD it was written at. Verdicts still compose by the tree ids inside each fact, so a squash or
 rebase that makes the anchor unreachable loses no verdict — it only takes the
 note out of a later bounded ingest.
 
@@ -323,8 +323,8 @@ def unattached(project_dir: Path, *, known=None, refs: "list[str] | None" = None
     A fact is this branch's when its anchor is in the bound :func:`ingest`
     reads. The anchor is the writer's: a review's :func:`evidence.review_anchor`;
     a resolution's ``verified_by`` review's anchor (a resolution whose review
-    is not in the store has none). A ``chunk-imported`` fact does not record
-    the HEAD it was attached on, so it counts as this branch's when its
+    is not in the store has none). A ``chunk-imported`` or ``chunk-retracted``
+    fact does not record the HEAD it was attached on, so it counts as this branch's when its
     ``actor.branch`` is the checked-out branch, as missing only when no note in
     the bound holds it, and is re-attached on HEAD — a descendant of the commit
     it was written at, so the same branch carries it.

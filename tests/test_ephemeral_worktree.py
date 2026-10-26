@@ -1276,6 +1276,24 @@ class TestPlanImportStatusUnderTheGuard:
         assert (wt / rel).read_bytes() == before
 
 
+class TestPlanRetractUnderTheGuard:
+    """`plan retract` appends a `chunk-retracted` fact to the clone-shared
+    store, so a scratch tree is refused it; `plan status` stays a read there.
+    The refusal is the guard's, before any argument is checked."""
+
+    def test_retract_is_refused_and_status_proceeds(self, tmp_path):
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        TestPlanImportStatusUnderTheGuard()._plan(primary)
+        wt = _agent_worktree(primary)
+        refused = _run(wt, "plan", "retract", "01", "--reason", "x")
+        assert refused.returncode == 1
+        assert "BLOCKED: refusing `plan`" in refused.stderr
+        status = _run(wt, "plan", "status", ".prawduct/artifacts/build-plan-unit.md")
+        assert "BLOCKED" not in status.stderr
+        assert status.returncode == 0, status.stdout + status.stderr
+
+
 # ---------------------------------------------------------------------------
 # `evidence`: one read set decides both pre-dispatch guards
 # ---------------------------------------------------------------------------

@@ -108,12 +108,12 @@ by every worktree of a clone), so it is uncommitted by construction and shared a
 An absent file is the empty store.
 
 **Reach beyond the clone.** The kinds in `evidence.TRANSPORTED_KINDS` — `review`, `resolution`,
-`chunk-imported` — are also written, as their store lines with the actor's locator fields
+`chunk-imported`, `chunk-retracted` — are also written, as their store lines with the actor's locator fields
 reduced (the worktree's basename, or `.claude/worktrees/<name>` for a harness scratch tree; no
 session; never the path above it), into a note on
 `refs/notes/prawduct` on the fact's anchor commit (a review's `head_commit`, or its
-`dispatch_commit` for a dirty tree; a resolution on its verifying review's anchor; an import on
-the HEAD it was written at). `evidence ingest` appends note lines this store lacks, deduplicated by
+`dispatch_commit` for a dirty tree; a resolution on its verifying review's anchor; an import or
+a retraction on the HEAD it was written at). `evidence ingest` appends note lines this store lacks, deduplicated by
 `(kind, id)`, bounded to the branch's commits from the merge base unless `--all`; a schema-ahead
 line is appended verbatim so the receiving clone blocks on it exactly as the writer's would.
 `evidence sync` fetches, merges (`cat_sort_uniq`), ingests and pushes the ref. A note is a copy
@@ -124,7 +124,7 @@ clone that wrote it.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start`, `chunk-imported` today; `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start`, `chunk-imported`, `chunk-retracted` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
@@ -229,6 +229,17 @@ clone that wrote it.
   yet dropping one un-completes a chunk and re-arms the plan it belongs to as unfinished, so it is
   droppable only once the plan it names is archived — the archive renders its own history and
   reads no facts. Nothing drops one yet (no compaction).
+- **Chunk-retracted fact `body`** — that one fact's certification of one chunk is **withdrawn**
+  (#1072): a review that named a chunk nobody built certified it, and a fact is never edited, so
+  the correction is a new fact. Carries `scope`, `chunk` (the id as the plan prints it),
+  `fact_id` (the `review` or `chunk-imported` fact withdrawn), `reason` and `retracted_at`.
+  Written by `prawduct-hook plan retract` behind `plan_status.retraction_target`'s check;
+  `plan_status.chunk_states` then skips that one (fact, chunk) pair — the fact's other chunks stay
+  done, a later fact naming the chunk certifies it again, and the open chunk's `reason` quotes the
+  retraction. It can only reopen a chunk, so it needs no authority beyond its reason; an entry
+  missing its fact id, chunk or reason withdraws nothing. Observational for coverage, like an
+  import, and transported. **Droppability:** dropping one re-certifies a chunk, so it is droppable
+  only with the fact it withdraws, or once the plan it names is archived. Nothing drops one yet.
 - **Session-start fact `body`** — empty: the envelope (`ts`, `actor.session`, `actor.plugin`) is the
   record. One per session boundary (startup or `/clear`; a resume, compact or fork is a continuation
   and records none), written by `evidence.append_session_start` from `cmd_clear`. It is the

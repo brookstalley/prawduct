@@ -103,6 +103,13 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # trees, so the coverage verdict never sees it. Added as a kind, not a schema
 # bump: an older reader keeps an unknown kind in the digest and lets it coexist,
 # never satisfy a gate (build-plan-chunk-status.md, Level item 2).
+#
+# ``chunk-retracted`` withdraws one fact's certification of one chunk
+# (``{scope, chunk, fact_id, reason, retracted_at}``, written by ``plan
+# retract``): facts are never edited, so a wrong certification is answered by a
+# new one. Same reader and same footing as ``chunk-imported``; an older reader
+# keeps it in the digest and goes on reading the chunk as done, which is what
+# that reader did before the retraction existed.
 KNOWN_KINDS = frozenset(
     {
         "review",
@@ -112,6 +119,7 @@ KNOWN_KINDS = frozenset(
         "test-run",
         "session-start",
         "chunk-imported",
+        "chunk-retracted",
     }
 )
 
@@ -120,17 +128,18 @@ KNOWN_KINDS = frozenset(
 #: ``coverage_algebra.coverage_verdict``'s inputs — review edges and the
 #: resolution index — and a kind joins only if that function cannot see it.
 OBSERVATIONAL_KINDS = frozenset(
-    {"guard-refusal", "test-run", "session-start", "chunk-imported"}
+    {"guard-refusal", "test-run", "session-start", "chunk-imported", "chunk-retracted"}
 )
 
 #: Kinds whose facts travel between clones on ``refs/notes/prawduct``
 #: (:mod:`evidence_notes`). ``review`` and ``resolution`` are what the coverage
-#: verdict composes; ``chunk-imported`` rides too because an import made in one
-#: clone is otherwise invisible to every other, and ``plan_status.chunk_states``
-#: reads it as ``done``. Every other kind is about the clone that wrote it (a
+#: verdict composes; ``chunk-imported`` and ``chunk-retracted`` ride too because
+#: ``plan_status.chunk_states`` reads them, and one made in one clone is
+#: otherwise invisible to every other — an unseen retraction leaves those clones
+#: certifying the chunk it withdrew. Every other kind is about the clone that wrote it (a
 #: suite run, a session boundary, a guard firing, a builder's disposition) and
 #: stays in that clone's store.
-TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported"})
+TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported", "chunk-retracted"})
 
 
 def review_anchor(body: object) -> "str | None":

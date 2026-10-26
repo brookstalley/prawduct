@@ -89,7 +89,7 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
   behind that explicit flag, never from the briefing or a hook; and `lib/evidence_sync.py`,
   behind `prawduct-hook evidence sync` (2026-10-25): `git fetch` and `git push` of
   `refs/notes/prawduct` to the product's own push remote. It does carry product content — the
-  store's review, resolution and chunk-imported facts, findings text and file paths included,
+  store's review, resolution, chunk-imported and chunk-retracted facts (a retraction's reason too), findings text and file paths included,
   though never the writer's machine path or session: the note line carries the worktree's basename
   (or `.claude/worktrees/<name>` for a harness scratch tree) only —
   but only to the remote the branch already goes to, and only inside `/prawduct:pr create|update`

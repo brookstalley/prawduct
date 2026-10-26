@@ -1156,7 +1156,10 @@ LAST_MEASURED_TOKENS = {
     # narrowed to `evidence status*` and `evidence list*`, because `evidence ingest` is a store
     # write a reviewer must not reach — four grants where two stood. Not paid by trimming: the
     # grant line is the reviewer boundary, and no prose in this file restates another's.
-    "skills/critic/SKILL.md": 3107,
+    # -7 on 2026-10-26 (final-review-chunks, #1072): step 4's proposal sentence points to
+    # `plan_status.propose_chunks` instead of restating a per-mode rule that changed (whole-plan
+    # modes propose what the interval built, not every open chunk). A READING; the ceiling follows it down.
+    "skills/critic/SKILL.md": 3100,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1416,7 +1419,10 @@ LAST_MEASURED_TOKENS = {
     # +15 on 2026-10-25 (merged-plan-chunk-state, #1065): the chunk-state sentence names where
     # a review's commit is placed once the merge has deleted the branch (its base). A RAISE:
     # the rule's one home gains the clause; nothing elsewhere restates it.
-    "methodology/planning.md": 5811,
+    # +23 on 2026-10-26 (final-review-chunks, #1072): the chunk-state rule says a wrong
+    # certification is withdrawn with `plan retract`, never edited. A RAISE: the rule's one home
+    # gains the clause, and it is the only place a builder learns a certification can be undone.
+    "methodology/planning.md": 5834,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -5930,7 +5936,8 @@ class TestCriticSkillRoutesByMode:
         # RATCHETED 3113 -> 3096 (chunk-status, 2026-10-25) with the reading.
         # RAISED 3096 -> 3108 (evidence-transport, 2026-10-25): the `evidence` grant narrowed
         # to `status`/`list` — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3108, f"SKILL.md is ~{tokens} tokens, should be <3108"
+        # LOWERED 3108 -> 3101 (final-review-chunks, 2026-10-26) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3101, f"SKILL.md is ~{tokens} tokens, should be <3101"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
