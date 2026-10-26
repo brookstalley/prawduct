@@ -825,9 +825,10 @@ def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
     return out
 
 
-def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
+def background_tasks_in_flight(event) -> tuple[bool, list[str]]:
     """Decide whether harness-tracked background work is still in flight, from
-    the Stop-hook ``background_tasks`` array (Claude Code v2.1.145+; STH-3W7F).
+    the Stop event's ``background_tasks`` labels (``lib/host.read_event``;
+    STH-3W7F).
 
     When a coordinating agent launches a background ``Workflow``/``Task`` and
     yields, the Stop hook fires while the diff is still being produced — the
@@ -840,42 +841,23 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
     taken ONLY on a clearly-present, non-empty list; every uncertain case falls
     to the blocking default (fail-closed for a gate = keep blocking):
 
-      - ``background_tasks`` ABSENT (older client, registry unreachable, no
-        stdin) → ``(False, [])`` — behave exactly as without the signal.
-      - present & EMPTY (genuinely idle) → ``(False, [])`` — block as today.
-      - present & NON-EMPTY → ``(True, [labels])`` — defer.
-      - any malformed shape (non-dict input, non-list value, list with no
-        usable entries) → ``(False, [])`` — never defer on garbage.
+      - no ``background_tasks`` in the payload (older client, registry
+        unreachable, no stdin), or not an event at all → ``(False, [])`` —
+        behave exactly as without the signal.
+      - present but labelling nothing (genuinely idle, or a malformed array
+        with no usable entry) → ``(False, [])`` — block as today; never defer
+        on garbage.
+      - one or more labels → ``(True, [labels])`` — defer.
 
-    ``labels`` summarize each in-flight task as ``<type>:<name|id>`` for the
+    The labels (``<type>:<name|id>``, see ``host.read_event``) feed the
     deferral note. No filtering by task type: a session with any live tracked
     task is "paused waiting" anyway, and the deferral re-arms every Stop, so
     over-deferral is cheap (the gate fires the instant the array empties).
     """
-    if not isinstance(stop_input, dict):
-        return False, []
-    tasks = stop_input.get("background_tasks")
-    if not isinstance(tasks, list) or not tasks:
-        return False, []
-    labels: list[str] = []
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        ttype = task.get("type")
-        ttype = ttype.strip() if isinstance(ttype, str) and ttype.strip() else "task"
-        # Prefer the human-meaningful identifier per type, fall back to id.
-        ident = None
-        for key in ("name", "agent_type", "description", "command", "id"):
-            val = task.get(key)
-            if isinstance(val, str) and val.strip():
-                ident = val.strip()
-                break
-        label = f"{ttype}:{ident}" if ident else ttype
-        # Keep the note compact — a description/command can be long.
-        labels.append(label[:80])
+    labels = getattr(event, "background_tasks", None)
     if not labels:
         return False, []
-    return True, labels
+    return True, list(labels)
 
 
 #: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
@@ -885,18 +867,16 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
 
 
-def _last_message(stop_input) -> str | None:
-    """The Stop payload's ``last_assistant_message``, or ``None`` when the
-    payload is not a dict or the field is absent, non-string or blank."""
-    if not isinstance(stop_input, dict):
-        return None
-    message = stop_input.get("last_assistant_message")
+def _last_message(event) -> str | None:
+    """The Stop event's last assistant message, or ``None`` when it is not an
+    event or the message is absent, non-string or blank."""
+    message = getattr(event, "last_assistant_message", None)
     if not isinstance(message, str) or not message.strip():
         return None
     return message
 
 
-def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
+def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     """Decide whether the turn that just ended told the user NOT to end the
     session, from the Stop-hook ``last_assistant_message`` field.
 
@@ -935,7 +915,7 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
         disposition, or one other than ``RUNNING`` → ``(False, None)``;
       - ``RUNNING`` with ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
     """
-    message = _last_message(stop_input)
+    message = _last_message(event)
     if message is None:
         return False, None
     verdict = standing_block.clear_verdict(message)
@@ -947,7 +927,7 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
     return False, None
 
 
-def turn_contradicts_its_verdict(stop_input) -> str | None:
+def turn_contradicts_its_verdict(event) -> str | None:
     """The disposition a turn hands the session over with while also saying
     ``DO NOT CLEAR`` — ``YOUR TURN`` or ``COMPLETE`` — or ``None``.
 
@@ -960,13 +940,13 @@ def turn_contradicts_its_verdict(stop_input) -> str | None:
     (``standing_block.contradiction``); a missing field or an ambiguous block
     returns ``None``, because the caller blocks on it.
     """
-    message = _last_message(stop_input)
+    message = _last_message(event)
     if message is None:
         return None
     return standing_block.contradiction(message)
 
 
-def turn_cites_itself_as_record(stop_input) -> str | None:
+def turn_cites_itself_as_record(event) -> str | None:
     """The phrase by which a turn closing ``SAFE TO CLEAR`` gives itself as the
     record (``standing_block.self_citation``), or ``None``.
 
@@ -976,15 +956,15 @@ def turn_cites_itself_as_record(stop_input) -> str | None:
     :func:`turn_contradicts_its_verdict`: a missing field or an unclear block
     returns ``None``, because the caller blocks on it.
     """
-    match = turn_self_citation(stop_input)
+    match = turn_self_citation(event)
     return match[0] if match else None
 
 
-def turn_self_citation(stop_input) -> "tuple[str, str] | None":
+def turn_self_citation(event) -> "tuple[str, str] | None":
     """:func:`turn_cites_itself_as_record` with the citation's kind beside the
     phrase (``standing_block.self_citation_match``) — the kind is what the gate
     records, since the phrase is the turn's own words."""
-    message = _last_message(stop_input)
+    message = _last_message(event)
     if message is None:
         return None
     return standing_block.self_citation_match(message)

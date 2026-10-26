@@ -8,13 +8,12 @@ lives in the plugin and is read on demand through the ``/prawduct:*`` reader
 skills; this digest is the session-start reminder, not a replacement for the
 authoritative rules in the repo's instruction files).
 
-Output contract (verified against the Claude Code hooks reference, 2026-06-01):
-a SessionStart hook injects context by printing
-``{"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": "…"}}``
-to stdout. Multiple SessionStart hooks compose — the banner (plain stdout) and
-the ``prawduct-hook clear`` briefing (plain stdout) still render alongside this
-JSON form. additionalContext over ~10,000 characters is spilled to a file by
-Claude Code, so the digest is deliberately kept well under that.
+Output: the host's session-context shape, written by
+``host.emit_session_context`` (``lib/host.py`` owns every hook response shape).
+Multiple SessionStart hooks compose — the banner (plain stdout) and the
+``prawduct-hook clear`` briefing (plain stdout) still render alongside it.
+Context over ~10,000 characters is spilled to a file by Claude Code, so the
+digest is deliberately kept well under that.
 
 The same output carries ``reloadSkills`` — but only when the governed repo is
 the checkout this plugin ships from (``ships_from_this_repo``). Skill bodies are
@@ -24,15 +23,15 @@ while believing it tests the new one. Product repos never edit the plugin, so
 they pay nothing for the re-scan.
 
 Governing invariant (design §2): the plugin ships immutable, read-only code.
-This script reads ONLY the plugin-bundled digest via ``${CLAUDE_PLUGIN_ROOT}``
-(the whole plugin tree is copied into the cache on install, so a plugin-root
-file resolves there) and writes nothing. All mutable, per-repo state lives in
-``${CLAUDE_PROJECT_DIR}/.prawduct/`` and is not touched here.
+This script reads ONLY the plugin-bundled digest under the plugin root
+(``host.plugin_root``; the whole plugin tree is copied into the cache on
+install, so a plugin-root file resolves there) and writes nothing. All mutable,
+per-repo state lives in the governed repo's ``.prawduct/`` and is not touched
+here.
 """
 from __future__ import annotations
 
-import json
-import os
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -49,17 +48,33 @@ from pathlib import Path
 DIGEST_RELPATH = ("methodology", "session-digest.md")
 
 
-def plugin_root() -> Path:
-    """Resolve the plugin root.
+def _host():
+    """The host seam (``lib/host.py``), which owns every read of the host's
+    environment and every hook response shape. Loaded by file path, because
+    this script runs before ``lib`` is importable; it imports nothing from
+    ``lib``."""
+    module = sys.modules.get("prawduct_host")
+    if module is None:
+        path = Path(__file__).resolve().parent.parent / "lib" / "host.py"
+        spec = importlib.util.spec_from_file_location("prawduct_host", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["prawduct_host"] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            # A half-built module must not be what the next caller gets.
+            del sys.modules["prawduct_host"]
+            raise
+    return module
 
-    Prefers ``CLAUDE_PLUGIN_ROOT`` (set by Claude Code when the hook fires, and
-    exported to hook subprocesses). Falls back to the parent of this file's
-    directory (``hooks/`` -> root) so the script is runnable directly in tests.
+
+def plugin_root() -> Path:
+    """Resolve the plugin root: ``host.plugin_root``, the host's plugin-root
+    variable (set by Claude Code when the hook fires, and exported to hook
+    subprocesses), else the plugin tree this script sits in, so it is runnable
+    directly in tests.
     """
-    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if env_root:
-        return Path(env_root)
-    return Path(__file__).resolve().parent.parent
+    return Path(_host().plugin_root())
 
 
 def read_digest(root: Path) -> str:
@@ -68,9 +83,10 @@ def read_digest(root: Path) -> str:
 
 
 def project_dir() -> Path:
-    """The governed repo — ``CLAUDE_PROJECT_DIR`` (Claude Code sets it for every
-    hook), falling back to cwd for direct invocation."""
-    return Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
+    """The governed repo — the host's launch dir (``host.project_dir_hint``;
+    Claude Code sets ``CLAUDE_PROJECT_DIR`` for every hook), falling back to cwd
+    for direct invocation."""
+    return Path(_host().project_dir_hint() or ".").resolve()
 
 
 def in_prawduct_repo() -> bool:
@@ -121,7 +137,16 @@ def main() -> int:
     # (and write nothing) everywhere else. Without this the user-scoped plugin
     # injects governance context into every repo the user opens (see banner.py /
     # cmd_stop, which already gate on .prawduct/).
-    if not in_prawduct_repo():
+    try:
+        unknown = _host().unknown_host_reason()
+        governed = in_prawduct_repo()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a digest failure must never break session start
+        print(f"NOTE: Prawduct could not load its host seam: {exc}", file=sys.stderr)
+        return 0
+    if not governed:
+        return 0
+    if unknown:
+        print(f"NOTE: Prawduct session digest did nothing: {unknown}", file=sys.stderr)
         return 0
     try:
         digest = read_digest(plugin_root())
@@ -130,17 +155,9 @@ def main() -> int:
         return 0
     if not digest:
         return 0
-    hook_output = {
-        "hookEventName": "SessionStart",
-        "additionalContext": digest,
-    }
-    if ships_from_this_repo():
-        # Re-scan the skill directories so an edited skill body is the one this
-        # session's forks load. Additive and ignored by any Claude Code that
-        # does not know the key, so an older harness degrades to today's
-        # behaviour rather than failing.
-        hook_output["reloadSkills"] = True
-    print(json.dumps({"hookSpecificOutput": hook_output}))
+    # Ask for a skill re-scan only here, so an edited skill body is the one this
+    # session's forks load (see `ships_from_this_repo`).
+    _host().emit_session_context(digest, reload_skills=ships_from_this_repo())
     return 0
 
 

@@ -593,7 +593,11 @@ files to touch previews first. That framing is descriptive — the binding rule 
   and — for the hook subcommands — a JSON event payload on **stdin** (e.g. `stop` reads
   `background_tasks` and `last_assistant_message`, the second only for the turn's closing block — its
   clear verdict and disposition;
-  `subagent-stop` reads `cwd`/`agent_type`).
+  `subagent-stop` reads `cwd`/`agent_type`). Every payload key, host environment variable and
+  hook response shape is read or written in one module, `plugin/lib/host.py`, chosen by
+  `PRAWDUCT_HOST` (unset means `claude`, the only host implemented). An unknown value blocks
+  `stop` (exit 2, naming the variable) and makes the SessionStart and SubagentStop hooks note it
+  on stderr and do nothing.
 - **Human-readable output:** most subcommands print prefixed text (see Error Model). Skills consume
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with

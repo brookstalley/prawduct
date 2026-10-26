@@ -42,27 +42,51 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+def _host():
+    """The host seam (``lib/host.py``): every host payload read, environment
+    read and hook response write goes through it.
+
+    Loaded by file path from the ``lib/`` beside this script rather than as
+    ``lib.host``, because it is what says where ``lib`` is — so it must load
+    before ``sys.path`` is seeded, and it cannot fail on a broken ``lib``
+    elsewhere. It imports nothing from ``lib``."""
+    module = sys.modules.get("prawduct_host")
+    if module is None:
+        import importlib.util  # noqa: PLC0415 — lazy keeps top-level cheap
+
+        path = Path(__file__).resolve().parent.parent / "lib" / "host.py"
+        spec = importlib.util.spec_from_file_location("prawduct_host", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["prawduct_host"] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            # A half-built module must not be what the next caller gets.
+            del sys.modules["prawduct_host"]
+            raise
+    return module
+
+
 def get_project_dir() -> Path:
     """Resolve the project dir to the session's active git worktree.
 
-    Was ``CLAUDE_PROJECT_DIR`` (or cwd). The harness pins ``CLAUDE_PROJECT_DIR``
-    to the launch dir, but a session that moves into a git worktree operates —
+    Was the host's launch dir (``host.project_dir_hint``, Claude Code's
+    ``CLAUDE_PROJECT_DIR``) or cwd. The harness pins that to the launch dir, but a session that moves into a git worktree operates —
     and writes ``.prawduct/`` state — from the worktree; resolving against the
     worktree keeps the hooks reading the same state the agent wrote (STH-4K7N).
     Delegates to the shared resolver so bin and lib agree; the resolver fails
-    open to ``CLAUDE_PROJECT_DIR``/cwd so non-worktree sessions are unchanged.
+    open to the launch dir/cwd so non-worktree sessions are unchanged.
 
     Bootstrap-resilient: this runs before command dispatch, so a broken/absent
     plugin ``lib/`` must not crash here — fall back to the env/cwd behavior and
     let the command that actually needs ``lib`` surface the import error with its
     own handling (e.g. ``coverage-scaffold``)."""
+    hint = _host().project_dir_hint()
     try:
         gitstate = _gitstate()
     except ImportError:
-        return Path(os.environ.get("CLAUDE_PROJECT_DIR", ".")).resolve()
-    return gitstate.resolve_project_dir(
-        os.environ.get("CLAUDE_PROJECT_DIR"), Path.cwd()
-    )
+        return Path(hint or ".").resolve()
+    return gitstate.resolve_project_dir(hint, Path.cwd())
 
 
 def get_prawduct_dir(project_dir: Path) -> Path:
@@ -72,17 +96,15 @@ def get_prawduct_dir(project_dir: Path) -> Path:
 def _plugin_root() -> str:
     """Resolve the plugin root for importing the bundled governance ``lib/``.
 
-    Prefers ``CLAUDE_PLUGIN_ROOT`` (exported by Claude Code into the hook
-    process and the Bash tool env while the plugin is enabled). Falls back to
-    the parent of this script's dir (``bin/`` -> root) so the hook is runnable
-    directly (tests, ``--plugin-dir`` probes) without the env var. Returns a
-    ``str`` for ``sys.path`` insertion; ``from lib import …`` then resolves to
-    ``${root}/lib`` (design §11: plugin Python must seed ``sys.path`` itself).
+    ``host.plugin_root``: the host's plugin-root variable (Claude Code exports
+    ``CLAUDE_PLUGIN_ROOT`` into the hook process and the Bash tool env while
+    the plugin is enabled), else the plugin tree this script sits in, so the
+    hook is runnable directly (tests, ``--plugin-dir`` probes) without it.
+    Returns a ``str`` for ``sys.path`` insertion; ``from lib import …`` then
+    resolves to ``${root}/lib`` (design §11: plugin Python must seed
+    ``sys.path`` itself).
     """
-    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if env_root:
-        return env_root
-    return str(Path(__file__).resolve().parent.parent)
+    return _host().plugin_root()
 
 
 def _gitstate():
@@ -246,35 +268,34 @@ def _cumulative_final_last_chunk(project_dir: Path, prawduct_dir: Path, binding)
 DEFERRED_REVIEW_TOKEN = "deferred-boundary-review"
 
 
-def _deliver_stop_advisories(advisories: list[str], *, blocking: bool) -> None:
-    """Deliver the Stop gate's non-blocking advisories — the one owner, called
-    at every exit of ``cmd_stop`` once ``stop_advisories`` is declared.
+def _deliver_stop_advisories(advisories: list[str]) -> None:
+    """Deliver the Stop gate's non-blocking advisories at an exit-0 Stop — the
+    one owner, called at every clean exit of ``cmd_stop`` once
+    ``stop_advisories`` is declared. A blocking Stop carries them in its block
+    reason instead (:func:`_stop_advisories_in_block`).
 
-    What reaches whom differs by exit code, and this says what is true:
-
-    - ``blocking=True`` (exit 2): stderr is the block reason, which reaches the
-      model and the user both. The advisories print there, after the blockers,
-      under ``ADVISORIES (not blocking):``.
-    - ``blocking=False`` (exit 0): reaches the USER only. Plain stdout/stderr at
-      exit 0 is logged and reaches nobody, so a ``{"systemMessage": ...}``
-      object is printed as the whole of stdout and shown in the transcript.
-      Stop has no channel that puts text in the model's context without
-      starting another turn (``hookSpecificOutput.additionalContext``
-      continues the conversation, under the same continuation cap as a
-      block), so none is used: the advisory's remedy reaches the model where
-      the gate blocks. The text is mirrored on stderr for the log.
+    At exit 0 they reach the USER only (``host.emit_stop_advisory``): plain
+    stdout/stderr at exit 0 is logged and reaches nobody, and Stop has no
+    channel that puts text in the model's context without starting another
+    turn, so none is used — the advisory's remedy reaches the model where the
+    gate blocks. The text is mirrored on stderr for the log.
     """
     if not advisories:
-        return
-    if blocking:
-        print("ADVISORIES (not blocking):", file=sys.stderr)
-        for advisory in advisories:
-            print(advisory, file=sys.stderr)
         return
     for advisory in advisories:
         print("", file=sys.stderr)
         print(advisory, file=sys.stderr)
-    print(json.dumps({"systemMessage": "\n\n".join(advisories)}))
+    _host().emit_stop_advisory("\n\n".join(advisories))
+
+
+def _stop_advisories_in_block(advisories: list[str]) -> list[str]:
+    """The block-reason lines carrying the Stop's advisories: after the
+    blockers, under ``ADVISORIES (not blocking):``. The block reason reaches
+    the model and the user both, so at a blocking Stop this is where the
+    advisories are read."""
+    if not advisories:
+        return []
+    return ["ADVISORIES (not blocking):", *advisories]
 
 
 def _record_lint():
@@ -1762,6 +1783,16 @@ def cmd_clear(project_dir: Path, argv: list[str] | None = None) -> int:
     if not prawduct_dir.is_dir():
         return 0
 
+    # A SessionStart under a host this plugin cannot answer does nothing: the
+    # briefing would speak a format the host may not read, and the boundary
+    # acts would run on a session event it cannot vouch for. Noted, never
+    # blocking — session start must not break.
+    if "--session-start" in argv:
+        unknown = _host().unknown_host_reason()
+        if unknown:
+            print(f"NOTE: session start did nothing: {unknown}", file=sys.stderr)
+            return 0
+
     # Critic-active session-mutation guard (CRT-3X9D). cmd_clear is destructive
     # (it archives/deletes .session-reflected, rewrites .session-start, recaptures
     # the git baseline). An independent reviewer must never mutate the session it
@@ -2670,31 +2701,35 @@ def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     session-end-guaranteed. That backstop is why CRT-2J8N degraded silently
     rather than losing reviews outright.
 
-    ``stop_input`` is the parsed SubagentStop stdin: ``cwd`` locates the project
-    (the reviewer's cwd is the project root), ``agent_type`` is the dispatched
-    agent name (scoped ``prawduct:critic-reviewer`` for a plugin agent). The
-    matcher already scopes us to critic-reviewer; the ``agent_type`` check is
-    defense-in-depth against matcher-config drift.
+    ``stop_input`` is the parsed SubagentStop stdin, read through
+    ``host.read_event``: its ``cwd`` locates the project (the reviewer's cwd is
+    the project root), its ``agent_type`` is the dispatched agent name (scoped
+    ``prawduct:critic-reviewer`` for a plugin agent). The matcher already
+    scopes us to critic-reviewer; the ``agent_type`` check is defense-in-depth
+    against matcher-config drift.
+
+    An unknown ``PRAWDUCT_HOST`` is noted on stderr and nothing runs: this hook
+    never blocks, and consolidating from a payload it cannot read would act on
+    a guess.
     """
-    stop_input = stop_input or {}
+    host = _host()
+    unknown = host.unknown_host_reason()
+    if unknown:
+        print(f"NOTE: subagent-stop did nothing: {unknown}", file=sys.stderr)
+        return 0
+    event = host.read_event("subagent_stop", stop_input or {})
 
     # Prefer the payload cwd (the subagent ran in the project root); fall back to
     # the dispatched project_dir. get_prawduct_dir then walks up to find .prawduct.
-    cwd = stop_input.get("cwd")
-    if isinstance(cwd, str) and cwd.strip():
-        candidate = Path(cwd)
+    if event.cwd:
+        candidate = Path(event.cwd)
         if candidate.is_dir():
             project_dir = candidate
 
     # Defensive agent-type gate: if the payload names an agent that is not a
     # critic-reviewer, there is nothing for us to consolidate. Accept both the
     # bare name and the plugin-scoped `prawduct:critic-reviewer` form.
-    agent_type = stop_input.get("agent_type")
-    if (
-        isinstance(agent_type, str)
-        and agent_type.strip()
-        and not agent_type.strip().endswith("critic-reviewer")
-    ):
+    if event.agent_type and not event.agent_type.endswith("critic-reviewer"):
         return 0
 
     lib_root = _plugin_root()
@@ -2745,10 +2780,11 @@ def _read_stop_stdin() -> dict:
 
 def _worktree_redirect_note(project_dir: Path) -> str | None:
     """One-line Stop-path signal when ``.prawduct/`` resolution was REDIRECTED
-    to a git-worktree toplevel that differs from ``CLAUDE_PROJECT_DIR``.
+    to a git-worktree toplevel that differs from the host's launch dir
+    (``host.project_dir_hint``; Claude Code's ``CLAUDE_PROJECT_DIR``).
 
     ``get_project_dir()`` follows the session into a worktree: the harness pins
-    ``CLAUDE_PROJECT_DIR`` to the launch dir, but a session that moved into a
+    its launch dir, but a session that moved into a
     worktree writes — and the Stop gates must read — that worktree's state
     (STH-4K7N). That redirect otherwise fails safe but *silently*; surfacing it
     makes the tree the gates below evaluate observable, and makes a wrong
@@ -2758,7 +2794,7 @@ def _worktree_redirect_note(project_dir: Path) -> str | None:
     Returns ``None`` — no note, no noise — when the env pin is unset or already
     equals the resolved dir (the common single-checkout / launched-in-worktree
     case: no redirect happened). Observational only; never contributes a blocker."""
-    env_raw = os.environ.get("CLAUDE_PROJECT_DIR")
+    env_raw = _host().project_dir_hint()
     if not env_raw:
         return None
     try:
@@ -2829,7 +2865,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     ``stop_input`` is the parsed Stop-hook stdin payload (the dispatch passes
     ``_read_stop_stdin()``); ``None`` defaults to ``{}`` so direct callers and
-    tests keep working. Its ``background_tasks`` array (Claude Code v2.1.145+)
+    tests keep working. It is read once, through ``host.read_event``, and an
+    unknown ``PRAWDUCT_HOST`` blocks before any gate runs. Its
+    ``background_tasks`` array (Claude Code v2.1.145+)
     drives the STH-3W7F deferral: while harness-tracked background work is in
     flight, the would-be blockers are DEFERRED to the next Stop rather than
     blocking now (the session can't end anyway — the harness re-wakes it). The
@@ -2846,15 +2884,22 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     gate, ``lib/gates.turn_self_citation``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
-    stop_input = stop_input or {}
 
     # Skip if no .prawduct directory
     if not prawduct_dir.is_dir():
         return 0
 
+    # A host this plugin cannot read or answer fails closed: the Stop blocks,
+    # naming the variable to fix, rather than running gates on a guess.
+    host = _host()
+    unknown = host.unknown_host_reason()
+    if unknown:
+        return host.block(f"BLOCKED — {unknown}\n")
+    event = host.read_event("stop", stop_input or {})
+
     # STH-3R8K: make STH-4K7N's silent worktree redirect observable. When the
     # session moved into a git worktree, get_project_dir() resolved .prawduct/ to
-    # that worktree's toplevel rather than CLAUDE_PROJECT_DIR — announce it here
+    # that worktree's toplevel rather than the host's launch dir — announce it here
     # so the tree the gates below evaluate is never a mystery (SessionStart ran
     # in the launch dir and could not see a mid-cycle move). Informational only.
     _redirect_note = _worktree_redirect_note(project_dir)
@@ -2872,13 +2917,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # When so, defer the session-end blockers (return 0 + a note) instead of
     # blocking — the gate re-arms on the next Stop once the work lands. Computed
     # once here; used to skip the PR network probe and to convert blockers below.
-    defer_active, in_flight_tasks = _gates().background_tasks_in_flight(stop_input)
+    defer_active, in_flight_tasks = _gates().background_tasks_in_flight(event)
     # The turn's own clear verdict: a turn saying RUNNING and closing on DO NOT
     # CLEAR has told the user it is still working, so the SESSION-END gates
     # (reflection, Critic) defer through the same path below. Unlike the
     # in-flight deferral above it defers only those gates — every other blocker
     # still blocks on such a turn.
-    verdict_defer, turn_verdict = _gates().turn_declares_in_flight(stop_input)
+    verdict_defer, turn_verdict = _gates().turn_declares_in_flight(event)
     # A turn that hands the session over while saying DO NOT CLEAR contradicts
     # itself, and its reader may not see it for days. Held apart from
     # `blockers` so neither deferral below can swallow it: it is a fault in the
@@ -2900,7 +2945,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             gate_id, reason, observed,
         )
 
-    handed_over = _gates().turn_contradicts_its_verdict(stop_input)
+    handed_over = _gates().turn_contradicts_its_verdict(event)
     if handed_over:
         from lib import standing_block  # noqa: PLC0415 — lazy keeps top-level cheap
 
@@ -2927,7 +2972,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # the turn itself, which is exactly what a clear deletes. Its own gate id,
     # so its firings count apart from the pair check's. It records the
     # citation's kind, never the phrase, which is the turn's own words.
-    self_citation = _gates().turn_self_citation(stop_input)
+    self_citation = _gates().turn_self_citation(event)
     if self_citation:
         self_cited, citation_kind = self_citation
         clear_blockers.append(_attributed("clear-reason",
@@ -4001,7 +4046,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # First line of each blocker names the gate — enough to show what's pending.
             print(f"  deferred: {blocker.splitlines()[0]}", file=sys.stderr)
         if not clear_blockers:
-            _deliver_stop_advisories(stop_advisories, blocking=False)
+            _deliver_stop_advisories(stop_advisories)
             return 0
         blockers = []
 
@@ -4033,32 +4078,30 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             # and a self-citation needs SAFE TO CLEAR where this needs DO NOT
             # CLEAR. So `clear_blockers` is empty on this path.
             if not blockers:
-                _deliver_stop_advisories(stop_advisories, blocking=False)
+                _deliver_stop_advisories(stop_advisories)
                 return 0
 
     blockers.extend(clear_blockers)
 
-    # Report blockers or exit clean
+    # Report blockers or exit clean. The block reason is assembled whole and
+    # handed to the host, which owns how a Stop blocks.
     if blockers:
-        print("", file=sys.stderr)
-        print("BLOCKED — resolve before ending session:", file=sys.stderr)
-        print("", file=sys.stderr)
-        for blocker in blockers:
-            print(blocker, file=sys.stderr)
+        reason = ["", "BLOCKED — resolve before ending session:", ""]
+        reason.extend(blockers)
         _footer = _waiver_footer(
             [getattr(b, "gate", None) for b in blockers], abandoned_critic, waivers
         )
         if _footer:
-            print(_footer, file=sys.stderr)
-        _deliver_stop_advisories(stop_advisories, blocking=True)
-        # Include canary findings in stderr so model sees them alongside blockers
+            reason.append(_footer)
+        reason.extend(_stop_advisories_in_block(stop_advisories))
+        # Include canary findings so the model sees them alongside blockers
         if canary_findings:
-            print("COMPLIANCE CANARY (address if possible):", file=sys.stderr)
-            for f in canary_findings:
-                print(f"  {f}", file=sys.stderr)
-            print("", file=sys.stderr)
+            reason.append("COMPLIANCE CANARY (address if possible):")
+            reason.extend(f"  {f}" for f in canary_findings)
+            reason.append("")
+        exit_code = _host().block("".join(f"{line}\n" for line in reason))
         _record_stop_block(project_dir, blockers)
-        return 2
+        return exit_code
 
     # No blockers — print canary to stderr (visible in verbose mode only)
     if canary_findings:
@@ -4067,7 +4110,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         for f in canary_findings:
             print(f"  {f}", file=sys.stderr)
 
-    _deliver_stop_advisories(stop_advisories, blocking=False)
+    _deliver_stop_advisories(stop_advisories)
     return 0
 
 

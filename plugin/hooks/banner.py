@@ -52,8 +52,8 @@ project context (e.g. a bare unit test) never mutates whatever repo is cwd.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
-import os
 import re
 import subprocess
 import sys
@@ -69,38 +69,51 @@ _GIT_TIMEOUT_SECONDS = 5
 _SHA_CHARS = 7
 
 
-def plugin_root() -> Path:
-    """Resolve the plugin root.
+def _host():
+    """The host seam (``lib/host.py``), which owns every read of the host's
+    environment and every hook response shape. Loaded by file path, because
+    this script runs before ``lib`` is importable; it imports nothing from
+    ``lib``."""
+    module = sys.modules.get("prawduct_host")
+    if module is None:
+        path = Path(__file__).resolve().parent.parent / "lib" / "host.py"
+        spec = importlib.util.spec_from_file_location("prawduct_host", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["prawduct_host"] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            # A half-built module must not be what the next caller gets.
+            del sys.modules["prawduct_host"]
+            raise
+    return module
 
-    Prefers ``CLAUDE_PLUGIN_ROOT`` (set by Claude Code when the hook fires).
-    Falls back to the parent of this file's directory (``hooks/`` -> root) so
-    the script is also runnable directly, e.g. from tests.
+
+def plugin_root() -> Path:
+    """Resolve the plugin root: ``host.plugin_root``, the host's plugin-root
+    variable (set by Claude Code when the hook fires), else the plugin tree
+    this script sits in, so it is also runnable directly, e.g. from tests.
     """
-    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if env_root:
-        return Path(env_root)
-    return Path(__file__).resolve().parent.parent
+    return Path(_host().plugin_root())
 
 
 def project_dir() -> Path | None:
-    """The consuming repo, from ``CLAUDE_PROJECT_DIR``.
+    """The consuming repo, from the host's launch dir (``host.project_dir_hint``;
+    Claude Code's ``CLAUDE_PROJECT_DIR``).
 
     Returns ``None`` when unset. Deliberately does NOT fall back to cwd: the
     marker write must never land in an unexpected repo just because the script
     was run without project context.
     """
-    env_proj = os.environ.get("CLAUDE_PROJECT_DIR")
-    return Path(env_proj) if env_proj else None
+    hint = _host().project_dir_hint()
+    return Path(hint) if hint else None
 
 
 def managed_plugin_home() -> Path:
-    """Claude Code's managed plugin directory (``~/.claude/plugins``).
-
-    Honors ``CLAUDE_CONFIG_DIR`` so an alternate config home resolves correctly.
+    """Claude Code's managed plugin directory (``~/.claude/plugins``), under
+    ``host.config_home`` so an alternate config home resolves correctly.
     """
-    cfg = os.environ.get("CLAUDE_CONFIG_DIR")
-    base = Path(cfg) if cfg else Path.home() / ".claude"
-    return base / "plugins"
+    return _host().config_home() / "plugins"
 
 
 def is_managed_install(root: Path) -> bool:
@@ -418,6 +431,15 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
 
 
 def main() -> int:
+    # A host this plugin cannot answer gets no banner: noted, never blocking.
+    try:
+        unknown = _host().unknown_host_reason()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a banner failure must never break session start
+        print(f"NOTE: Prawduct banner could not load its host seam: {exc}", file=sys.stderr)
+        return 0
+    if unknown:
+        print(f"NOTE: Prawduct banner did nothing: {unknown}", file=sys.stderr)
+        return 0
     try:
         root = plugin_root()
         version = read_version(root)

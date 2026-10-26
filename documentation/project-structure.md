@@ -21,7 +21,8 @@ prawduct/
 │   ├── hooks/hooks.json               # SessionStart (banner + briefing + digest), Stop (Critic + reflection gates), SubagentStop
 │   ├── bin/prawduct-hook              # the runtime: every gate, probe and state writer (Python, one file)
 │   ├── lib/                           # the bodies the hook reaches lazily (init_product, migrate_plugin, core,
-│   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …)
+│   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …);
+│   │                                  #   host.py is the one seam to the host harness (payloads, roots, responses)
 │   ├── skills/                        # framework skills → /prawduct:* (critic, pr, backlog, doctor, janitor,
 │   │   │                              #   methodology, migrate, onboard, report-bug, runbook, advisory, …)
 │   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,

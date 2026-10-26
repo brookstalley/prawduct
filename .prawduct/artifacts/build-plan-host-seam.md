@@ -67,7 +67,27 @@ unchanged (scope-out).
   Claude injects as context. The issue's response-shape list does not name it, so it is not routed
   here; #1038's briefing work decides its shape. Noted on #1037 at the boundary.
 
-**Decisions made mid-build:** *(appended while building)*
+**Decisions made mid-build:**
+- Chunk 01: the goldens normalize five exact run facts, not two: the temp path, plugin root, plugin
+  version, the checkout's `ref@sha[+dirty]`, and the digest text. No output carries a timestamp. The
+  test's docstring lists them. Settled by "do it right": without `+dirty`, every run during
+  development fails; without the version, a release bump rewrites every golden. (Not settled by
+  the goals; the issue named two normalizations.)
+- Chunk 01: a session-start case with a populated `CLAUDE_CONFIG_DIR` was added and recorded before
+  the refactor (Critic O-4), because the config readers otherwise only ever saw an empty home. Its
+  control showed the worktree reading active from its fresh reflog, so the reflog is backdated and
+  the transcript is the only recent signal.
+- Chunk 02: test fixtures that copy the hook binary into a fake plugin tree now copy `lib/host.py`
+  beside it, as every real plugin tree has. A fallback for a missing seam was rejected: it would
+  have to read the host's variables outside the seam. Settled by R-2.
+- Chunk 02: `banner.managed_plugin_home` now expands `~` in `CLAUDE_CONFIG_DIR`, like the other two
+  readers already did, because all three now ask `host.config_home`. The only visible difference
+  is for a literal `~` in the variable. Settled by "one home".
+  `plugin_activation.DEFAULT_PLUGINS_FILE` is gone: it was a second spelling of `~/.claude`.
+- Chunk 02: `test_short_plan_deferral`'s exit pin matched the literal `return 2`. It is renegotiated
+  in its docstring: the blocking exit returns what `host.block` gave, and it still has to deliver
+  the advisories. The gate tests that passed raw dicts now route them through `host.read_event`,
+  the path production takes, with every assertion unchanged.
 
 **Level:** High — the sites are enumerated by grep, the behaviour is pinned by goldens before any
 refactor, and no foreign API is touched.

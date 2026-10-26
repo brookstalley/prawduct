@@ -36,7 +36,7 @@ from pathlib import Path
 import pytest
 
 from conftest import SHAPED_REFLECTION
-from lib import gates, standing_block
+from lib import gates, host, standing_block
 from test_plugin_runtime import _make_session_start, run_plugin_hook
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
@@ -309,9 +309,15 @@ class TestSelfCitation:
 # ---------------------------------------------------------------------------
 
 
+def _on_event(gate, payload):
+    """Ask ``gate`` as the Stop hook does: the raw payload, garbage included,
+    read through the host seam (``host.read_event``) first."""
+    return gate(host.read_event("stop", payload))
+
+
 class TestTurnDeclaresInFlight:
     def test_dnc_turn_defers(self):
-        assert gates.turn_declares_in_flight(json.loads(_payload(DNC_TURN))) == (
+        assert _on_event(gates.turn_declares_in_flight, json.loads(_payload(DNC_TURN))) == (
             True, "DO NOT CLEAR",
         )
 
@@ -335,7 +341,7 @@ class TestTurnDeclaresInFlight:
              "your-turn-dnc", "complete-dnc", "dnc-no-disposition"],
     )
     def test_everything_else_blocks(self, stop_input):
-        assert gates.turn_declares_in_flight(stop_input) == (False, None)
+        assert _on_event(gates.turn_declares_in_flight, stop_input) == (False, None)
 
     @pytest.mark.parametrize(
         ("stop_input", "expected"),
@@ -352,7 +358,7 @@ class TestTurnDeclaresInFlight:
              "empty", "str"],
     )
     def test_contradiction_ladder(self, stop_input, expected):
-        assert gates.turn_contradicts_its_verdict(stop_input) == expected
+        assert _on_event(gates.turn_contradicts_its_verdict, stop_input) == expected
 
     @pytest.mark.parametrize(
         ("stop_input", "expected"),
@@ -369,7 +375,7 @@ class TestTurnDeclaresInFlight:
         ids=["self-citing", "your-turn-safe", "your-turn-dnc", "null", "empty", "str"],
     )
     def test_self_citation_ladder(self, stop_input, expected):
-        assert gates.turn_cites_itself_as_record(stop_input) == expected
+        assert _on_event(gates.turn_cites_itself_as_record, stop_input) == expected
 
     def test_transcript_is_not_a_fallback(self, tmp_path):
         """With the field absent, a transcript that DOES close on DO NOT CLEAR is
@@ -379,7 +385,7 @@ class TestTurnDeclaresInFlight:
             "type": "assistant",
             "message": {"content": [{"type": "text", "text": DNC_TURN}]},
         }) + "\n")
-        assert gates.turn_declares_in_flight({"transcript_path": str(transcript)}) == (
+        assert _on_event(gates.turn_declares_in_flight, {"transcript_path": str(transcript)}) == (
             False, None,
         )
 

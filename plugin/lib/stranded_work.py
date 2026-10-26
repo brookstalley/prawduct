@@ -55,7 +55,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from . import evidence, gitstate
+from . import evidence, gitstate, host
 
 #: Any signal this recent means an agent is plausibly working there now.
 ACTIVE_WITHIN_SECONDS = 30 * 60
@@ -154,25 +154,16 @@ def encode_project_dir(path: str | Path) -> str:
 def config_roots(
     env: dict | None = None, home: Path | None = None, *, holding: str = "projects"
 ) -> list[Path]:
-    """Every Claude config root holding a ``holding`` directory (transcripts
-    live under ``projects``, plugin caches under ``plugins``):
-    ``$CLAUDE_CONFIG_DIR``, ``~/.claude`` and each ``~/.claude-*``.
-    Deduplicated by resolved path, because ``$CLAUDE_CONFIG_DIR`` usually points
-    at one of the others. A home that cannot be resolved yields no roots, not an
-    exception."""
-    env = os.environ if env is None else env
+    """Every host config root holding a ``holding`` directory (transcripts
+    live under ``projects``, plugin caches under ``plugins``), from the
+    candidates ``host.config_roots`` names. Deduplicated by resolved path,
+    because the configured override usually points at one of the others. A home
+    that cannot be resolved yields no roots, not an exception."""
     try:
         home = Path.home() if home is None else home
     except (RuntimeError, KeyError, OSError):
         return []
-    candidates: list[Path] = []
-    if env.get("CLAUDE_CONFIG_DIR"):
-        candidates.append(Path(env["CLAUDE_CONFIG_DIR"]).expanduser())
-    candidates.append(home / ".claude")
-    try:
-        candidates.extend(sorted(home.glob(".claude-*")))
-    except OSError:
-        pass
+    candidates = host.config_roots(env, home)
     roots: list[Path] = []
     seen: set[str] = set()
     for root in candidates:
