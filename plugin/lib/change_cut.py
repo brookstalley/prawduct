@@ -1,32 +1,42 @@
 """The release cut: shipping change fragments into the archive and the release notes.
 
 A fragment (`lib/change_fragments.py`) records one scope's change while it is
-pending. At a release the cut does three things to every fragment that ships,
-and nothing to the rest:
+pending. At a release the cut does this to the fragments that ship, and
+nothing to the rest:
 
-1. renders it into the change-log archive's month file as an entry tagged
+1. renders each into the change-log archive's month file as an entry tagged
    ``release=vX.Y.Z``, in the archive's existing grammar;
-2. writes its consumer note under the open section's headline in the consumer
-   digest (`plugin/CHANGELOG.md`), when the repo publishes one;
-3. removes the fragment, so the fragment directory is exactly the pending set.
+2. where the repo declares ``consumer_digest:`` (`lib/consumer_digest.py`),
+   renders the release's section — heading, the headline from
+   ``.prawduct/release-headline.md``, the consumer notes — writes it to the
+   release file ``.prawduct/releases/vX.Y.Z.md``, and inserts the same lines
+   into the declared changelog as a new section, changing no other byte;
+3. removes the fragments and the headline file, so the fragment directory is
+   exactly the pending set.
 
 What ships is decided by the release plan's classification table, or by
-naming the scopes. Everything is
-validated before anything is written, the writes are all-or-nothing, and the
-fragments are removed last, so a run that fails part-way can simply be re-run:
-the archive composer skips an entry it already holds, and a note already in the
-digest is not added twice.
+naming the scopes. The changelog is written, never searched for a section to
+write into: a release is its release file, and that file's existence is the
+record that the release was cut. Everything is validated before anything is
+written, the writes are one all-or-nothing transaction, and the removals come
+last. A run that fails while removing is completed by running it again: with
+the release file present, a fragment whose own archive entry is already held
+is removed and nothing is written, and any other fragment belongs to the next
+release, so the cut refuses rather than add it to a release already published.
 """
 
 from __future__ import annotations
 
 import sys
 from dataclasses import dataclass, field
+from datetime import date as date_cls
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import change_fragments
 from . import change_log as change_log_mod
 from . import change_log_archive
+from . import consumer_digest
 from . import core
 from . import release_readiness
 
@@ -41,7 +51,7 @@ class CutRefused(Exception):
 
 
 class FragmentRemovalFailed(OSError):
-    """The archive and digest were written, but a cut fragment could not be removed."""
+    """Every file was written, but a fragment or the headline file could not be removed."""
 
 
 @dataclass
@@ -54,29 +64,29 @@ class CutPlan:
     writes: list[tuple[Path, str]] = field(default_factory=list)
     buckets: list[str] = field(default_factory=list)
     notes_added: list[str] = field(default_factory=list)
+    #: The declared changelog's repo-relative path; ``None`` when undeclared.
     digest: str | None = None
     none_reasons: list[tuple[str, str]] = field(default_factory=list)
+    release_file: Path | None = None
+    #: The release file's text, which is also the dry run's preview.
+    section_text: str | None = None
+    #: The 1-based changelog line the section's heading lands on.
+    insert_line: int | None = None
+    #: Fragments a cut of this release already archived, to be removed only.
+    cleanup: list[change_fragments.FragmentFile] = field(default_factory=list)
+    #: The headline file, when this cut consumes it.
+    headline_file: Path | None = None
+    #: A headline file left in place because it is not this release's.
+    headline_kept: Path | None = None
+    #: Pending legacy scopes that ship; they carry no consumer note.
+    legacy_shipping: list[str] = field(default_factory=list)
+
+    @property
+    def has_work(self) -> bool:
+        return bool(self.cut or self.cleanup or self.headline_file)
 
 
-def _selected_scopes(
-    project_dir: Path, version: str, fragment_scopes: list[str], scopes: list[str] | None
-) -> tuple[list[str], list[str]]:
-    """``(cut, kept)`` among the pending fragment scopes.
-
-    Named scopes are cut exactly. Otherwise the release plan decides: ``ships``
-    is cut, ``withheld`` is kept, and a fragment the table does not classify
-    refuses the cut, because skipping it silently would publish a release that
-    leaves work behind with no record of why.
-    """
-    if scopes:
-        unknown = sorted(set(scopes) - set(fragment_scopes))
-        if unknown:
-            raise CutRefused(
-                "unknown-scope",
-                f"no pending fragment for {', '.join(unknown)} in {change_fragments.FRAGMENT_DIR_REL}/",
-            )
-        return [s for s in fragment_scopes if s in scopes], [s for s in fragment_scopes if s not in scopes]
-
+def _classification(project_dir: Path, version: str) -> tuple[Path, dict[str, tuple[str, str | None]]]:
     plan_path = release_readiness._find_release_plan(project_dir, version)
     if plan_path is None:
         raise CutRefused(
@@ -88,6 +98,37 @@ def _selected_scopes(
     )
     if errors:
         raise CutRefused("bad-release-plan", "; ".join(errors))
+    return plan_path, classification
+
+
+def _check_named(fragment_scopes: list[str], scopes: list[str]) -> None:
+    unknown = sorted(set(scopes) - set(fragment_scopes))
+    if unknown:
+        raise CutRefused(
+            "unknown-scope",
+            f"no pending fragment for {', '.join(unknown)} in {change_fragments.FRAGMENT_DIR_REL}/",
+        )
+
+
+def _selected_scopes(
+    project_dir: Path,
+    version: str,
+    fragment_scopes: list[str],
+    scopes: list[str] | None,
+    legacy_scopes: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """``(cut, kept, legacy shipping)`` among the pending scopes.
+
+    Named scopes are cut exactly. Otherwise the release plan decides: ``ships``
+    is cut, ``withheld`` is kept, and a fragment the table does not classify
+    refuses the cut, because skipping it silently would publish a release that
+    leaves work behind with no record of why.
+    """
+    if scopes:
+        _check_named(fragment_scopes, scopes)
+        return [s for s in fragment_scopes if s in scopes], [s for s in fragment_scopes if s not in scopes], []
+
+    plan_path, classification = _classification(project_dir, version)
     unclassified = [s for s in fragment_scopes if s not in classification]
     if unclassified:
         raise CutRefused(
@@ -96,69 +137,188 @@ def _selected_scopes(
         )
     cut = [s for s in fragment_scopes if classification[s][0] == release_readiness.SHIPS]
     kept = [s for s in fragment_scopes if classification[s][0] != release_readiness.SHIPS]
-    return cut, kept
+    legacy = [s for s in legacy_scopes if classification.get(s, ("",))[0] == release_readiness.SHIPS]
+    return cut, kept, legacy
 
 
-def _names_release(heading: str, version: str) -> bool:
-    """Whether a ``## `` heading is this release's section, open or already renamed."""
-    words = heading[2:].split()
-    return bool(words) and (words[0] == version or words[0].startswith(f"{version}-dev"))
+def _entry_block(fragment: change_fragments.Fragment, version: str) -> change_log_archive.Block:
+    _preamble, blocks = change_log_archive.split(change_fragments.render_entry(fragment, release=version))
+    return blocks[0]
 
 
-def _digest_write(
-    project_dir: Path, fragments: list[change_fragments.Fragment], version: str
-) -> tuple[tuple[Path, str] | None, list[str], str | None]:
-    """``(write or None, scopes noted, the digest's open heading)``.
+def _headline_lines(text: str) -> list[str]:
+    lines = [line.rstrip() for line in text.splitlines()]
+    while lines and not lines[0]:
+        lines.pop(0)
+    while lines and not lines[-1]:
+        lines.pop()
+    return lines
 
-    Notes go under the open section's headline, which the cut never writes, and
-    only when that section is this release's:
-    the headline is the release's one-sentence judgement, and the banner shows
-    it to every repo that crosses this version. A section with no headline is
-    refused rather than given one. A repo that publishes no digest gets no
-    write and no refusal: there is nothing for the notes to join.
+
+def _published_headline(headline_text: str, release_text: str) -> bool:
+    """Whether the headline file's lines occur, consecutively, in the release file.
+
+    Compared line by line with trailing whitespace and line endings dropped on
+    both sides, so a CRLF or trailing-space headline file still matches the
+    section the cut rendered from it.
     """
-    path = project_dir / release_readiness._DIGEST_REL_PATH
-    if not path.is_file():
-        return None, [], None
-    text = path.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    section = release_readiness._open_digest_section(lines)
-    if section is None:
-        raise CutRefused("no-headline", f"{release_readiness._DIGEST_REL_PATH} has no `## ` section to write into")
-    heading, body = section
-    # The release gate finds the open section by position, which is right for a
-    # reader. A writer must also know the section is this release's: when the
-    # last release's section is still on top, position alone would add these
-    # notes to notes that are already published.
-    if not _names_release(heading, version):
+    want = _headline_lines(headline_text)
+    have = [line.rstrip() for line in release_text.splitlines()]
+    return any(have[i : i + len(want)] == want for i in range(len(have) - len(want) + 1))
+
+
+def _plan_rerun(
+    project_dir: Path,
+    version: str,
+    scopes: list[str] | None,
+    fragment_scopes: list[str],
+    release_file: Path,
+    decl: consumer_digest.Declaration,
+) -> CutPlan:
+    """The cut of a release whose release file already exists: complete it, write nothing."""
+    if scopes:
+        _check_named(fragment_scopes, scopes)
+    prawduct_dir = project_dir / ".prawduct"
+    files = [f for f in change_fragments.load_pending(project_dir) if f.ok]
+    cleanup = [f for f in files if change_log_archive.holds_entry(prawduct_dir, _entry_block(f.fragment, version))]
+    held = {f.fragment.scope for f in cleanup}
+    unheld = [s for s in fragment_scopes if s not in held]
+
+    withheld: set[str] = set()
+    if unheld:
+        if scopes:
+            withheld = {s for s in unheld if s not in scopes}
+        else:
+            # With no release plan nothing is withheld, and every unheld
+            # fragment is refused below rather than read as kept.
+            if release_readiness._find_release_plan(project_dir, version) is not None:
+                _path, classification = _classification(project_dir, version)
+                withheld = {
+                    s for s in unheld if s in classification and classification[s][0] != release_readiness.SHIPS
+                }
+    late = [s for s in unheld if s not in withheld]
+    rel = consumer_digest.release_file_rel(version)
+    if late:
         raise CutRefused(
-            "wrong-section",
-            f"the top section of {release_readiness._DIGEST_REL_PATH} is {heading!r}, not {version}'s; "
-            f"open `## {version}-dev` with its headline before cutting",
+            "release-already-cut",
+            f"{rel} exists, so {version} is already cut, and {', '.join(late)} is pending but not in it; "
+            "a fragment written after the cut belongs to the next release, so cut it under that version",
         )
-    start = next(i for i, line in enumerate(lines) if line.strip() == heading)
-    headline_offset = next((i for i, line in enumerate(body) if line.strip()), None)
-    if headline_offset is None:
+
+    result = CutPlan(version=version, cut=[], kept=sorted(withheld), cleanup=cleanup, digest=decl.path)
+    result.release_file = release_file
+    headline = project_dir / consumer_digest.HEADLINE_FILE_REL
+    if headline.is_file():
+        try:
+            published = _published_headline(
+                headline.read_text(encoding="utf-8"), release_file.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError):
+            published = False
+        if published:
+            result.headline_file = headline
+        else:
+            result.headline_kept = headline
+    return result
+
+
+def _today(today: date_cls | str | None) -> str:
+    if today is None:
+        return datetime.now(timezone.utc).date().isoformat()
+    return today if isinstance(today, str) else today.isoformat()
+
+
+def _release_writes(
+    project_dir: Path,
+    decl: consumer_digest.Declaration,
+    version: str,
+    fragments: list[change_fragments.Fragment],
+    result: CutPlan,
+    today: date_cls | str | None,
+) -> None:
+    """Validate the declared changelog and add the release file and the insert to ``result``.
+
+    Each check refuses before anything is written, in the order the operator
+    can act on them: where the release file would go, the changelog itself, a
+    section already there, the headline, the marker.
+    """
+    rel = consumer_digest.release_file_rel(version)
+    if change_log_archive.record_is_tracked(project_dir) and _git_ignores(project_dir, f"{consumer_digest.RELEASES_DIR_REL}/0000.md"):
+        raise CutRefused(
+            "releases-ignored",
+            f"git would ignore {consumer_digest.RELEASES_DIR_REL}/; un-ignore it so the release file the cut writes is committed",
+        )
+    changelog = project_dir / decl.path
+    if not changelog.is_file():
+        raise CutRefused(
+            "digest-missing",
+            f"consumer_digest: declares {decl.path}, which is not a file; create it, or correct the path",
+        )
+    try:
+        text = consumer_digest.read_changelog(changelog)
+    except consumer_digest.DigestUnreadable as exc:
+        raise CutRefused("digest-unreadable", f"{decl.path}: {exc}") from exc
+    for number, line in enumerate(text.lines, start=1):
+        if consumer_digest.names_release(line, version):
+            raise CutRefused(
+                "release-in-changelog",
+                f"{decl.path} line {number} ({line.strip()!r}) is already a section for {version}; the cut writes "
+                f"that section itself, so remove it, or move its first paragraph into "
+                f"{consumer_digest.HEADLINE_FILE_REL} if it was the headline",
+            )
+
+    headline_path = project_dir / consumer_digest.HEADLINE_FILE_REL
+    headline: str | None = None
+    if headline_path.is_file():
+        try:
+            headline = headline_path.read_text(encoding="utf-8").strip() or None
+        except (OSError, UnicodeDecodeError) as exc:
+            raise CutRefused(
+                "no-headline", f"{consumer_digest.HEADLINE_FILE_REL} cannot be read as UTF-8 text ({exc})"
+            ) from exc
+        result.headline_file = headline_path
+    if decl.headline == "required" and headline is None:
         raise CutRefused(
             "no-headline",
-            f"the open section {heading!r} has no headline; write its first line before cutting",
+            f"consumer_digest: requires a headline and {consumer_digest.HEADLINE_FILE_REL} is absent or blank; "
+            f"write the release's one-line judgement there, and the cut puts it under the heading in {decl.path}",
         )
-    section_text = "\n".join(body)
-    fresh = [f for f in fragments if f.consumer_text and f"**`{f.scope}`**:" not in section_text]
-    if not fresh:
-        return None, [], heading
-    # The headline is a paragraph; notes start after its blank line.
-    insert_at = start + 1 + headline_offset
-    while insert_at < len(lines) and lines[insert_at].strip():
-        insert_at += 1
-    notes = change_fragments.render_consumer_section(fresh)
-    new_lines = lines[:insert_at] + ["", *notes.splitlines()] + lines[insert_at:]
-    new_text = "\n".join(new_lines) + ("\n" if text.endswith("\n") else "")
-    return (path, new_text), [f.scope or "" for f in fresh], heading
+    try:
+        index = consumer_digest.insertion_index(text, decl.marker)
+    except consumer_digest.MarkerMissing as exc:
+        raise CutRefused(
+            "marker-missing",
+            f"consumer_digest: inserts below the marker {decl.marker!r}, and no line of {decl.path} is exactly that",
+        ) from exc
+
+    section = consumer_digest.render_section(decl, version, _today(today), headline, fragments)
+    result.section_text = "\n".join(section) + "\n"
+    result.release_file = project_dir / rel
+    lead = 1 if index > 0 and text.lines[index - 1].strip() else 0
+    result.insert_line = index + lead + 1
+    result.writes.append((result.release_file, result.section_text))
+    result.writes.append((changelog, consumer_digest.insert_section(text, index, section).render()))
+    result.notes_added = [f.scope or "" for f in consumer_digest.ordered_notes(fragments)]
 
 
-def plan_cut(project_dir: Path, release: str, scopes: list[str] | None = None) -> CutPlan:
-    """Everything the cut would write, validated. Raises :class:`CutRefused`."""
+def _git_ignores(project_dir: Path, rel: str) -> bool:
+    from . import gitstate  # noqa: PLC0415 — lazy; git is only asked on the write path
+
+    return gitstate.git_path_is_ignored(project_dir, rel)
+
+
+def plan_cut(
+    project_dir: Path,
+    release: str,
+    scopes: list[str] | None = None,
+    *,
+    today: date_cls | str | None = None,
+) -> CutPlan:
+    """Everything the cut would write, validated. Raises :class:`CutRefused`.
+
+    ``today`` dates the release section (``YYYY-MM-DD``); it defaults to the
+    current UTC date.
+    """
     version = release_readiness.normalize_version(release)
     if not change_log_mod.RELEASE_VALUE_RE.match(version):
         raise CutRefused("bad-version", f"{release!r} is not a version like v1.2.3")
@@ -167,8 +327,19 @@ def plan_cut(project_dir: Path, release: str, scopes: list[str] | None = None) -
         raise CutRefused("no-change-log", pending.read_error)
     if pending.refusals:
         raise CutRefused("invalid-pending-set", "; ".join(pending.refusals))
+
+    decl, reason = consumer_digest.read_declaration(project_dir)
+    if reason is not None:
+        raise CutRefused("digest-declaration-invalid", reason)
+    # Ahead of every "nothing to cut" return: a run that failed while removing
+    # is completed from here, and by then nothing is left to cut.
+    if decl is not None:
+        release_file = project_dir / consumer_digest.release_file_rel(version)
+        if release_file.exists():
+            return _plan_rerun(project_dir, version, scopes, pending.fragment_scopes, release_file, decl)
+
     if not pending.fragment_scopes and not scopes:
-        return CutPlan(version=version, cut=[], kept=[])
+        return CutPlan(version=version, cut=[], kept=[], legacy_shipping=list(pending.legacy_scopes))
     # A repo that tracks its fragments but would ignore the archive would commit
     # the fragments' removal and silently drop the history they moved to.
     if change_log_archive.archive_would_be_ignored(project_dir):
@@ -176,23 +347,21 @@ def plan_cut(project_dir: Path, release: str, scopes: list[str] | None = None) -
             "archive-ignored",
             f"git would ignore {change_log_archive.ARCHIVE_DIR_REL}/; un-ignore it so the history the cut writes is committed",
         )
-    cut_scopes, kept = _selected_scopes(project_dir, version, pending.fragment_scopes, scopes)
+    cut_scopes, kept, legacy = _selected_scopes(
+        project_dir, version, pending.fragment_scopes, scopes, pending.legacy_scopes
+    )
 
     files = {f.fragment.scope: f for f in change_fragments.load_pending(project_dir) if f.ok}
     cut = [files[s] for s in cut_scopes]
     fragments = [f.fragment for f in cut]
-    result = CutPlan(version=version, cut=cut, kept=kept)
+    result = CutPlan(version=version, cut=cut, kept=kept, legacy_shipping=legacy)
     if not cut:
         return result
 
-    prawduct_dir = project_dir / ".prawduct"
-    archive_dir = prawduct_dir / change_log_archive.ARCHIVE_DIR_NAME
+    archive_dir = project_dir / ".prawduct" / change_log_archive.ARCHIVE_DIR_NAME
     by_bucket: dict[str, list[change_log_archive.Block]] = {}
     for fragment in fragments:
-        _preamble, blocks = change_log_archive.split(
-            change_fragments.render_entry(fragment, release=version)
-        )
-        block = blocks[0]
+        block = _entry_block(fragment, version)
         by_bucket.setdefault(block.bucket or "undated", []).append(block)
     for bucket, blocks in sorted(by_bucket.items()):
         path = archive_dir / f"{bucket}.md"
@@ -200,31 +369,54 @@ def plan_cut(project_dir: Path, release: str, scopes: list[str] | None = None) -
         result.writes.append((path, change_log_archive._compose_bucket(existing, blocks, bucket)))
         result.buckets.append(bucket)
 
-    digest_write, noted, heading = _digest_write(project_dir, fragments, version)
-    if digest_write is not None:
-        result.writes.append(digest_write)
-    result.notes_added = noted
-    result.digest = heading
+    if decl is not None:
+        result.digest = decl.path
+        _release_writes(project_dir, decl, version, fragments, result, today)
     result.none_reasons = change_fragments.none_reasons(fragments)
     return result
 
 
 def apply_cut(plan: CutPlan) -> None:
-    """Write the plan's files all-or-nothing, then remove the cut fragments.
+    """Write the plan's files all-or-nothing, then remove what the cut consumed.
 
-    The fragments go last: a failure while writing leaves every file as it was
-    and every fragment pending, and a failure while removing leaves fragments
-    the archive already holds, which a re-run finds and removes without
-    duplicating anything.
+    The removals go last, cut fragments, then fragments a previous run already
+    archived, then the headline file: a failure while writing leaves every file
+    as it was and every fragment pending, and a failure while removing leaves
+    only things the written files already hold, which a re-run finds through the
+    release file and removes without writing anything.
     """
+    for parent in {path.parent for path, _text in plan.writes}:
+        parent.mkdir(parents=True, exist_ok=True)
     if plan.writes:
-        plan.writes[0][0].parent.mkdir(parents=True, exist_ok=True)
         core.write_all_or_none(plan.writes)
-    for item in plan.cut:
+    removals = [item.path for item in (*plan.cut, *plan.cleanup)]
+    if plan.headline_file is not None:
+        removals.append(plan.headline_file)
+    for path in removals:
         try:
-            item.path.unlink()
+            path.unlink()
         except OSError as exc:
             raise FragmentRemovalFailed(str(exc)) from exc
+
+
+def _rel(project_dir: Path, path: Path) -> str:
+    try:
+        return path.relative_to(project_dir).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _print_headline_kept(project_dir: Path, cut_plan: CutPlan) -> None:
+    if cut_plan.headline_kept is not None and cut_plan.release_file is not None:
+        print(
+            f"  headline file: kept {_rel(project_dir, cut_plan.headline_kept)}; its text is not in "
+            f"{_rel(project_dir, cut_plan.release_file)}, so it is the next release's headline"
+        )
+
+
+def _print_legacy(cut_plan: CutPlan) -> None:
+    if cut_plan.legacy_shipping:
+        print("  legacy entries carry no consumer note; /prawduct:doctor offers the move to fragments")
 
 
 def cut_cmd(project_dir: Path, argv: list[str]) -> int:
@@ -259,23 +451,52 @@ def cut_cmd(project_dir: Path, argv: list[str]) -> int:
         print(f"refused: {exc.code}: {exc.detail}. Nothing was written.", file=sys.stderr)
         return 1
     mode = "apply" if apply else "dry-run"
-    if not cut_plan.cut:
+    if not cut_plan.has_work:
         print(f"cut-change-log ({mode}): no fragment ships in {cut_plan.version}; nothing to do.")
+        _print_headline_kept(project_dir, cut_plan)
+        _print_legacy(cut_plan)
         return 0
-    print(
-        f"cut-change-log ({mode}): {len(cut_plan.cut)} fragment(s) ship in {cut_plan.version}: "
-        + ", ".join(item.fragment.scope for item in cut_plan.cut)
-    )
-    print(f"  archive: {', '.join(f'{b}.md' for b in cut_plan.buckets)}")
-    if cut_plan.digest is None:
-        print("  consumer notes: this repo publishes no consumer digest; the notes stay in the archive entries")
+    if cut_plan.cut:
+        print(
+            f"cut-change-log ({mode}): {len(cut_plan.cut)} fragment(s) ship in {cut_plan.version}: "
+            + ", ".join(item.fragment.scope for item in cut_plan.cut)
+        )
+        print(f"  archive: {', '.join(f'{b}.md' for b in cut_plan.buckets)}")
+        if cut_plan.digest is None:
+            print(
+                "  consumer notes: this repo declares no consumer_digest:, so the notes stay in the archive "
+                "entries. Declare consumer_digest: in .prawduct/project-state.yaml to have the cut write them "
+                "to your changelog"
+            )
+        else:
+            print(
+                f"  consumer notes: {len(cut_plan.notes_added)} written to {cut_plan.digest} as a new section "
+                f"at line {cut_plan.insert_line} (release file {_rel(project_dir, cut_plan.release_file)})"
+            )
     else:
-        print(f"  consumer notes: {len(cut_plan.notes_added)} added under {cut_plan.digest!r}")
+        print(f"cut-change-log ({mode}): {cut_plan.version} is already cut; completing that cut.")
+        print(
+            f"  consumer notes: the release file exists; removing {len(cut_plan.cleanup)} fragment(s) "
+            "the archive already holds, writing nothing"
+        )
+    if cut_plan.cleanup and cut_plan.cut:
+        print(f"  already archived, removing: {', '.join(item.fragment.scope for item in cut_plan.cleanup)}")
+    if not cut_plan.cut and cut_plan.headline_file is not None:
+        print(
+            f"  headline file: removing {_rel(project_dir, cut_plan.headline_file)}, which "
+            f"{_rel(project_dir, cut_plan.release_file)} already holds"
+        )
+    _print_headline_kept(project_dir, cut_plan)
+    _print_legacy(cut_plan)
     for scope, reason in cut_plan.none_reasons:
         print(f"  none: {scope} — {reason}")
     if cut_plan.kept:
         print(f"  kept pending (withheld): {', '.join(cut_plan.kept)}")
     if not apply:
+        if cut_plan.section_text is not None:
+            print(f"--- section (as written to {_rel(project_dir, cut_plan.release_file)}) ---")
+            sys.stdout.write(cut_plan.section_text)
+            print("--- end ---")
         print("  Re-run with --apply to write. Nothing was written.")
         return 0
     try:
@@ -283,13 +504,19 @@ def cut_cmd(project_dir: Path, argv: list[str]) -> int:
     except FragmentRemovalFailed as exc:
         print(
             f"refused: removal-failed: {exc}. The archive and notes are written; re-run to remove "
-            "the remaining fragments, which adds nothing twice.",
+            "what remains, which writes nothing.",
             file=sys.stderr,
         )
         return 1
     except OSError as exc:
         print(f"refused: write-failed: {exc}. Every file was restored; re-run when the cause is fixed.", file=sys.stderr)
         return 1
-    shipped = len(cut_plan.cut)
-    print(f"  removed {shipped} fragment(s); commit the archive, digest and removals together.")
+    removed = len(cut_plan.cut) + len(cut_plan.cleanup)
+    extra = " and the headline file" if cut_plan.headline_file is not None else ""
+    if cut_plan.cut and cut_plan.digest is not None:
+        print(f"  removed {removed} fragment(s){extra}; commit the archive, release file, changelog and removals together.")
+    elif cut_plan.cut:
+        print(f"  removed {removed} fragment(s); commit the archive and removals together.")
+    else:
+        print(f"  removed {removed} fragment(s){extra}; nothing was written.")
     return 0

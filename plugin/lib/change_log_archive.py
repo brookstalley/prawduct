@@ -330,25 +330,54 @@ def _with_pointer(preamble: str) -> str:
     return preamble.rstrip("\n") + "\n\n" + ARCHIVE_POINTER + "\n\n"
 
 
-def archive_would_be_ignored(project_root: Path) -> bool:
-    """True when git tracks the change record but would ignore the archive.
+def record_is_tracked(project_root: Path) -> bool:
+    """True when git tracks the change record: the live log or the fragment directory.
 
-    The record is the live log or the fragment directory, whichever this repo
-    commits. A repo that commits only that out of an ignored ``.prawduct/`` would
-    commit the entries' or fragments' REMOVAL and silently drop the archive they
-    moved to — history leaving git with no error. Asked before writing, so the
-    run can refuse instead. Where neither is tracked, nothing is committed on
-    either side and there is nothing to lose.
+    A repo that commits its record commits a cut's or a move's removals from it,
+    so whatever those removals are written into must be committed too, or
+    history leaves git with no error. Where neither is tracked, nothing is
+    committed on either side and there is nothing to lose. A git that cannot be
+    asked counts as untracked, the answer a repo without git gives.
     """
     from . import change_fragments  # noqa: PLC0415 — lazy; change_fragments imports this module
     from . import gitstate  # noqa: PLC0415 — lazy; git is only asked on the write path
 
-    if not any(
+    return any(
         gitstate.git_path_is_tracked(project_root, rel) is True
         for rel in (change_log.CHANGE_LOG_REL_PATH, change_fragments.FRAGMENT_DIR_REL)
-    ):
+    )
+
+
+def archive_would_be_ignored(project_root: Path) -> bool:
+    """True when git tracks the change record but would ignore the archive.
+
+    A repo that commits only its record out of an ignored ``.prawduct/`` would
+    commit the entries' or fragments' REMOVAL and silently drop the archive they
+    moved to. Asked before writing, so the run can refuse instead.
+    """
+    from . import gitstate  # noqa: PLC0415 — lazy; git is only asked on the write path
+
+    if not record_is_tracked(project_root):
         return False
     return gitstate.git_path_is_ignored(project_root, f"{ARCHIVE_DIR_REL}/0000-00.md")
+
+
+def holds_entry(prawduct_dir: Path, block: Block) -> bool:
+    """Whether ``block``'s entry is already in its month file of the archive.
+
+    Identity is the entry's :attr:`Block.key`, the identity
+    :func:`_compose_bucket` dedupes by, and never its scope name: scope names are
+    reused from release to release, so a name lookup would call a new change
+    shipped. A month file that cannot be read proves nothing is held, so a
+    caller never removes a fragment on the strength of a file it could not read.
+    """
+    path = prawduct_dir / ARCHIVE_DIR_NAME / f"{block.bucket or 'undated'}.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    _preamble, blocks = split(text)
+    return any(held.key == block.key for held in blocks)
 
 
 def apply(prawduct_dir: Path, selection: Selection) -> list[Path]:
