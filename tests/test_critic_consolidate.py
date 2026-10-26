@@ -9441,6 +9441,85 @@ class TestTheReviewNamesItsChunks:
         assert any("no build plan resolves for this review" in n for n in result["notes"]), result["notes"]
 
 
+class TestTheDispatchProposalLeavesOutTheStubAndSaysWhyItNamedFewer:
+    """#1075 at the dispatch: `critic-begin` hands the proposal the tree its
+    diff ends at, and prints the proposal's notes."""
+
+    _STUB = (
+        "---\nschema: 1\ntype: fix\nscope: cs\ndate: 2026-10-26\ntitle: t\n---\n\n"
+        "## Consumer note\n"
+    )
+
+    def _repo(self, tmp_path: Path) -> Path:
+        """`plan new`'s commit on the branch — the plan and the fragment stub,
+        which Chunk 04 lists — then Chunk 01's commit. A clean tree with no
+        review behind it starts a `chunk` interval at the merge-base, so the
+        stub is in it (#733's Chunk 01 review)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/one.py", "one = 0\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        (repo / ".prawduct/changes").mkdir(parents=True)
+        (repo / ".prawduct/changes/cs.md").write_text(self._STUB)
+        _git(repo, "add", ".prawduct/changes/cs.md")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", _ST8_PLAN + (
+            "\n### Chunk 04: record\n\n- **Deliverables:** `.prawduct/changes/cs.md`\n"
+        ), "docs(cs): build plan")
+        _commit_file(repo, "src/one.py", "one = 1\n", "feat(cs): Chunk 01 — one")
+        assert not _git(repo, "status", "--porcelain").stdout.strip()
+        return repo
+
+    def test_a_chunk_01_review_over_the_plan_commit_does_not_propose_the_change_record(self, tmp_path):
+        repo = self._repo(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, result.stderr
+        manifest = _st8_manifest(repo)
+        assert ".prawduct/changes/cs.md" in manifest["files_changed"]  # the stub IS in the interval
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01"]
+
+    def test_the_fragment_is_read_at_the_tree_the_diff_ends_at(self, tmp_path):
+        """The dispatch's snapshot, never whatever the working tree holds by the
+        time the proposal reads it."""
+        repo = self._repo(tmp_path)
+        stub_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        assert cc._proposed_chunks(  # the stub at its own tree, as the dispatch reads it
+            repo, repo / ".prawduct/artifacts/build-plan-cs.md", lambda: evidence.read_facts(repo),
+            [".prawduct/changes/cs.md"], "chunk", None, None, stub_tree,
+        ) == ([], ())
+        (repo / ".prawduct/changes/cs.md").write_text(
+            self._STUB.replace("---\n\n", "---\nWhat changed.\n", 1)
+        )
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        files = [".prawduct/changes/cs.md"]
+        read = lambda: evidence.read_facts(repo)  # noqa: E731
+        at_tree = cc._proposed_chunks(repo, plan, read, files, "chunk", None, None, stub_tree)
+        assert at_tree == ([], ())
+        # Control: with no tree, the working tree's written fragment is read.
+        assert cc._proposed_chunks(repo, plan, read, files, "chunk") == (["04"], ())
+
+    def test_a_whole_plan_proposal_git_cannot_walk_says_so_in_the_dispatch_notes(
+        self, tmp_path, monkeypatch
+    ):
+        """When the subject walk cannot run, a chunk named only by its subject is
+        not proposed, and the dispatch's notes (which `critic-begin` prints) say
+        why. Control: the walk running names 02 from its subject, silently."""
+        from lib import plan_status
+
+        repo = self._repo(tmp_path)
+        _commit_file(repo, "notes.txt", "x\n", "docs(cs): the docs (Chunk 02)")
+        assert cc.begin_review(repo, "cumulative", force=True)["manifest"]["chunks_proposed"] == ["01", "02"]
+        _abandon(repo)
+        monkeypatch.setattr(plan_status, "_walk_branch", lambda *a, **k: "`git log` failed (boom)")
+        result = cc.begin_review(repo, "cumulative", force=True)
+        assert result["status"] == "ok", result
+        assert result["manifest"]["chunks_proposed"] == ["01"]  # the diff's answer alone
+        assert (
+            "no chunk named only by a commit subject is proposed: `git log` failed (boom)"
+            in result["notes"]
+        ), result["notes"]
+
+
 class TestRecordLintGradesTheChunksTheFactNames:
     """Record-lint runs AFTER the chunk set is resolved, so the deliverables it
     grades are the chunks the review fact will certify — every one of them, not

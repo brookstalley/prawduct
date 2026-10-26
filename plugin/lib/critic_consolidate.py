@@ -2842,13 +2842,15 @@ def _proposed_chunks(
     mode_token: str,
     verify_anchor: "dict | None" = None,
     base_commit: "str | None" = None,
-) -> list[str]:
-    """The chunk set this dispatch proposes to name: ``files_changed`` is the
-    interval, ``read_store`` the dispatch's one store read. ``[]`` with no plan
-    bound, or when the store cannot be read (the proposal is advice beside a
-    declaration; a store that cannot be read certifies nothing).
+    head_tree: "str | None" = None,
+) -> "tuple[list[str], tuple[str, ...]]":
+    """The chunk set this dispatch proposes to name, and the proposal's notes
+    for the dispatch to print: ``files_changed`` is the interval, ending at
+    ``head_tree``, ``read_store`` the dispatch's one store read. ``[]`` with no
+    plan bound, or when the store cannot be read (the proposal is advice beside
+    a declaration; a store that cannot be read certifies nothing).
 
-    ``chunk``/``final``/``cumulative``: :func:`plan_status.propose_chunks`.
+    ``chunk``/``final``/``cumulative``: :func:`plan_status.chunk_proposal`.
     ``verify-resolutions`` resolves findings of the review it is anchored to
     (``verify_anchor``), so its proposal is THAT review's chunks — the newest
     naming fact on the anchor's chain (``critic_mode.chain_named_chunks``),
@@ -2858,17 +2860,17 @@ def _proposed_chunks(
     restore it. A verify pass naming the same set is then silent, and one
     naming a new chunk still warns. ``base_commit`` is the interval's base,
     which bounds a whole-plan mode's subject walk to the commits this review
-    covers (:func:`plan_status.propose_chunks`, ``since``)."""
+    covers (:func:`plan_status.chunk_proposal`, ``since``)."""
     if plan_path is None:
-        return []
+        return [], ()
     from . import plan_status  # noqa: PLC0415 — lazy; pulls the plan readers
 
     store = read_store()
     if store.get("status") == "error":
-        return []
+        return [], ()
     if mode_token == "verify-resolutions":
         if verify_anchor is None:
-            return []
+            return [], ()
         from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
         chain = critic_mode.review_chain(store.get("facts") or [], verify_anchor)
@@ -2880,7 +2882,7 @@ def _proposed_chunks(
         try:
             content = Path(plan_path).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
-            return []
+            return [], ()
         _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
         chain_ids = {f.get("id") for f in chain}
         named -= {
@@ -2890,11 +2892,13 @@ def _proposed_chunks(
         return [
             k for k, s in roster.items()
             if not s.synthetic and buildplan_refs._normalize_chunk_id(k) in named
-        ]
-    return plan_status.propose_chunks(
+        ], ()
+    proposal = plan_status.chunk_proposal(
         Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir),
         since=base_commit if gitstate.is_object_id(base_commit) else None,
+        head_tree=head_tree if gitstate.is_object_id(head_tree) else None,
     )
+    return proposal.chunks, proposal.notes
 
 
 def begin_review(
@@ -2912,13 +2916,14 @@ def begin_review(
     **Which chunks the review names (ST8, #1051).** ``chunks`` is the declared
     set; ``chunk`` is its one-element alias for one release (``chunks is None``
     and ``chunk`` given → ``[chunk]``). The code-derived proposal,
-    ``chunks_proposed``, is :func:`plan_status.propose_chunks` over this
+    ``chunks_proposed``, is :func:`plan_status.chunk_proposal` over this
     dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
     Deliverables it touches; ``final``/``cumulative``: those and the open
-    chunks the plan's branch has built — a mode sets depth, never reach;
-    ``verify-resolutions``: the chunks the review it verifies names, inherited
-    along that review's chain). With nothing declared, the declared set IS
-    the proposal. A declared id the reviewed plan does not declare is refused
+    chunks a scoped commit subject in the interval names — a mode sets depth,
+    never reach; ``verify-resolutions``: the chunks the review it verifies
+    names, inherited along that review's chain). The proposal's own notes —
+    why it named fewer than a reader might expect — join ``notes``. With
+    nothing declared, the declared set IS the proposal. A declared id the reviewed plan does not declare is refused
     (``{"status": "error", "kind": "unknown-chunk"}``, exit 1 through the CLI's
     error path) before the tree is captured; a declared set that leaves the
     proposal is recorded as declared, with a ``WARNING:`` note, so the edit is
@@ -3672,10 +3677,11 @@ def begin_review(
     # proposal is recorded as declared, and said: `chunks_proposed` sits beside
     # it on the fact, so the edit is visible on the record. Resolved BEFORE
     # record-lint, so the deliverables it grades are the chunks the fact names.
-    chunks_proposed = _proposed_chunks(
+    chunks_proposed, proposal_notes = _proposed_chunks(
         project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor,
-        base_commit,
+        base_commit, head_tree,
     )
+    notes.extend(proposal_notes)
     if declared_chunks is None:
         declared_chunks = list(chunks_proposed)
         chunk = declared_chunks[0] if declared_chunks else None

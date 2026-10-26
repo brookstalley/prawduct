@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib import evidence, gitstate, plan_status  # noqa: E402
+from lib import change_fragments, evidence, gitstate, plan_status  # noqa: E402
 
 TS = "2026-10-25T10:00:00Z"
 
@@ -691,15 +691,17 @@ class TestProposeChunks:
 
     @pytest.mark.parametrize("mode", ["final", "cumulative"])
     def test_a_later_chunks_deliverable_touched_early_is_not_read_as_built(self, repo, mode):
-        """The #1072 plan itself: `plan new`'s first commit stubs the change
-        fragment, a Deliverable of the LAST chunk. A path touched outside the
-        review's interval is not that chunk's work — only a subject naming it,
-        or the interval's own diff, makes it so. Control: the same history read
-        by `built_report`, which a table tag may afford, does tag 04."""
+        """#1072: a Deliverable of the LAST chunk — here the change fragment,
+        drafted before its chunk — written in an early commit. A path touched
+        outside the review's interval is not that chunk's work — only a subject
+        naming it, or the interval's own diff, makes it so. Control: the same
+        history read by `built_report`, which a table tag may afford, does tag
+        04. (The unwritten stub `plan new` mints touches nothing on either path:
+        :class:`TestAStubIsNoChunksWork`.)"""
         plan = _plan(repo, ("01", "02", "03", "04"), deliverables={
             "04": "`.prawduct/changes/unit.md` (the change record)",
         })
-        _commit(repo, ".prawduct/changes/unit.md", "stub\n", "docs(unit): build plan")
+        _commit(repo, ".prawduct/changes/unit.md", _fragment("Drafted early."), "docs(unit): build plan")
         head = _commit(repo, "src/c01.py", "x\n", "feat(unit): Chunk 01 — first")
         done01 = _facts(_review("R1", head, chunks=["01"]))
         _commit(repo, "src/c02.py", "x\n", "feat(unit): Chunk 02 — the keystone")
@@ -733,15 +735,145 @@ class TestProposeChunks:
         plan = _plan(repo, ("01", "02"), claim=("branch: feature/unit", "base: no-such-base"))
         _commit(repo, "notes.txt", "x\n", "feat(unit): Chunk 02 — second")
         assert plan_status.built_report(plan, repo).unavailable
-        assert plan_status.propose_chunks(plan, _facts(), ["src/c01.py"], "cumulative", repo_dir=repo) == ["01"]
+        unavailable = plan_status.chunk_proposal(plan, _facts(), ["src/c01.py"], "cumulative", repo_dir=repo)
+        assert unavailable.chunks == ["01"]
+        # #1075 (R-11): naming fewer is said, with git's cause — else 02 drops
+        # out silently and `--chunks 02` warns as if it overreached.
+        (note,) = unavailable.notes
+        assert "no chunk named only by a commit subject is proposed" in note
+        assert "no-such-base" in note
         resolving = _plan(repo, ("01", "02"))
-        assert plan_status.propose_chunks(resolving, _facts(), ["src/c01.py"], "cumulative", repo_dir=repo) == [
-            "01", "02"
-        ]
+        resolved = plan_status.chunk_proposal(resolving, _facts(), ["src/c01.py"], "cumulative", repo_dir=repo)
+        assert (resolved.chunks, resolved.notes) == (["01", "02"], ())
+        # `chunk` mode walks nothing, so it has nothing to say either way.
+        assert plan_status.chunk_proposal(plan, _facts(), ["src/c01.py"], "chunk", repo_dir=repo).notes == ()
 
     def test_another_mode_proposes_nothing(self, repo):
         plan = _plan(repo)
         assert plan_status.propose_chunks(plan, _facts(), ["src/c01.py"], "verify-resolutions", repo_dir=repo) == []
+
+    @pytest.mark.parametrize("mode", ["final", "cumulative"])
+    def test_an_unscoped_subject_certifies_nothing_and_is_said(self, repo, mode):
+        """#1075 (R-4): when no subject carries the plan's scope, the render tag
+        falls back to every subject — but `feat(other): … (Chunk 02)` may be
+        another plan's, and the proposal certifies. It is not proposed, and a
+        note names it so a builder whose tags drifted can declare it."""
+        plan = _plan(repo, ("01", "02"))
+        _commit(repo, "a.txt", "x\n", "feat(other): land it (Chunk 02)")
+        assert plan_status.built_report(plan, repo).built == {"02"}  # the render fallback
+        proposal = plan_status.chunk_proposal(plan, _facts(), ["a.txt"], mode, repo_dir=repo)
+        assert proposal.chunks == []
+        (note,) = proposal.notes
+        assert note.startswith("chunk(s) 02 not proposed") and "`unit`" in note
+        # Control: the same work under this plan's scope is proposed, silently.
+        _commit(repo, "b.txt", "x\n", "feat(unit): land it (Chunk 02)")
+        scoped = plan_status.chunk_proposal(plan, _facts(), ["a.txt", "b.txt"], mode, repo_dir=repo)
+        assert (scoped.chunks, scoped.notes) == (["02"], ())
+
+    def test_a_plan_declaring_no_scope_counts_every_subject(self, repo):
+        plan = _plan(repo, ("01", "02"))
+        plan.write_text(plan.read_text().replace("scope: unit\n", ""))
+        _commit(repo, "a.txt", "x\n", "feat(other): land it (Chunk 02)")
+        proposal = plan_status.chunk_proposal(plan, _facts(), ["a.txt"], "cumulative", repo_dir=repo)
+        assert (proposal.chunks, proposal.notes) == (["02"], ())
+
+
+def _fragment(narrative: str = "", note: str = "") -> str:
+    """A change fragment as `plan new` mints it (``narrative`` and ``note``
+    empty — `change_fragments.render_fragment` is the minting call), or written."""
+    return change_fragments.render_fragment(
+        kind="fix", scope="unit", date="2026-10-26", title="The unit",
+        narrative=narrative, consumer_note=note,
+    )
+
+
+class TestAStubIsNoChunksWork:
+    """#1075: `plan new` commits the change-fragment stub with the plan, and the
+    change-record chunk lists that fragment under Deliverables — so the plan
+    commit read as that chunk built, and a Chunk 01 `chunk` review, whose
+    interval holds the stub, proposed (and so certified) it."""
+
+    FRAGMENT = ".prawduct/changes/unit.md"
+    PLAN = ".prawduct/artifacts/build-plan-unit.md"
+
+    def _stubbed(self, repo: Path) -> Path:
+        plan = _plan(repo, ("01", "02", "03"), deliverables={
+            "03": f"`{self.FRAGMENT}` (the change record)",
+        })
+        (repo / ".prawduct" / "changes").mkdir(parents=True)
+        (repo / self.FRAGMENT).write_text(_fragment())
+        _git(repo, "add", ".prawduct")
+        _git(repo, "commit", "-qm", "docs(unit): build plan")
+        return plan
+
+    def test_right_after_plan_new_no_chunk_is_built(self, repo):
+        plan = self._stubbed(repo)
+        assert plan_status.built_report(plan, repo) == plan_status.BuiltReport(set())
+
+    @pytest.mark.parametrize("mode", ["chunk", "final", "cumulative"])
+    def test_a_chunk_01_review_over_the_stub_does_not_propose_the_change_record(self, repo, mode):
+        plan = self._stubbed(repo)
+        (repo / "src").mkdir()
+        (repo / "src" / "c01.py").write_text("x\n")
+        diff = [self.PLAN, self.FRAGMENT, "src/c01.py"]
+        assert plan_status.propose_chunks(plan, _facts(), diff, mode, repo_dir=repo) == ["01"]
+        # At the review's own tree too: the dispatch passes the tree its diff ends at.
+        tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        assert plan_status.propose_chunks(plan, _facts(), diff, mode, repo_dir=repo, head_tree=tree) == ["01"]
+
+    def test_a_commit_writing_the_fragment_builds_the_change_record(self, repo):
+        plan = self._stubbed(repo)
+        _commit(repo, self.FRAGMENT, _fragment("What changed.", "none: internal"),
+                "docs(unit): change record")
+        assert plan_status.built_report(plan, repo).built == {"03"}
+        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+
+    def test_the_fragment_is_read_at_the_tree_the_caller_judges(self, repo):
+        """`built_report` reads committed work at the branch head, so an
+        uncommitted edit builds nothing there; the proposal reads ``head_tree``
+        when given (the dispatch's snapshot), else the working tree."""
+        plan = self._stubbed(repo)
+        stub_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        (repo / self.FRAGMENT).write_text(_fragment("What changed."))
+        assert plan_status.built_report(plan, repo).built == set()
+        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        assert plan_status.propose_chunks(
+            plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo, head_tree=stub_tree
+        ) == []
+        _git(repo, "commit", "-qam", "docs(unit): change record")
+        written_tree = _git(repo, "rev-parse", "HEAD^{tree}")
+        (repo / self.FRAGMENT).write_text(_fragment())
+        assert plan_status.built_report(plan, repo).built == {"03"}
+        assert plan_status.propose_chunks(
+            plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo, head_tree=written_tree
+        ) == ["03"]
+
+    def test_an_unreadable_fragment_is_no_work_and_an_unparseable_one_is(self, repo):
+        """A deleted fragment cannot be read at the tree: naming fewer fails
+        closed. Text that does not parse is not `plan new`'s, so it counts."""
+        plan = self._stubbed(repo)
+        (repo / self.FRAGMENT).unlink()
+        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == []
+        (repo / self.FRAGMENT).write_text("hand-written, no frontmatter\n")
+        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+
+    def test_a_head_tree_that_is_not_an_object_id_never_reaches_git(self, repo, monkeypatch):
+        """Read as unreadable — naming fewer — rather than handed to `git show`
+        as an option. Control: the same written fragment with no tree is read."""
+        plan = self._stubbed(repo)
+        (repo / self.FRAGMENT).write_text(_fragment("What changed."))
+        assert plan_status.propose_chunks(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo) == ["03"]
+        propose = plan_status.propose_chunks  # the spy stubs the module's built_chunks only
+        spy = _Spy(monkeypatch)
+        assert propose(plan, _facts(), [self.FRAGMENT], "chunk", repo_dir=repo, head_tree="--output=/tmp/x") == []
+        assert not [c for c in spy.calls if any("--output" in a for a in c)]
+
+    def test_only_a_fragment_path_is_read_as_a_stub(self, repo):
+        """An empty-bodied file elsewhere is a Deliverable like any other."""
+        plan = _plan(repo, ("01",), deliverables={"01": "`docs/empty.md`"})
+        (repo / "docs").mkdir()
+        (repo / "docs" / "empty.md").write_text(_fragment())
+        assert plan_status.propose_chunks(plan, _facts(), ["docs/empty.md"], "chunk", repo_dir=repo) == ["01"]
 
 
 class TestBuiltChunks:

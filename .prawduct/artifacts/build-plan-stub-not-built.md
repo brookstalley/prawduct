@@ -62,7 +62,19 @@ genuinely writes another chunk's Deliverable early still reads as touching it.
 - *R-11's channel.* The proposal's notes ride `begin_review`'s existing `notes`, which the CLI
   prints at dispatch. The proposal list keeps its type for its callers.
 
-**Decisions made mid-build:** *(one line each)*
+**Decisions made mid-build:**
+- Chunk 01: `built_chunks` was documented as "render-only; no gate reads it", but
+  `critic_mode.short_plan_deferral`'s `read_built` arms a short plan's last-chunk block from it.
+  So the stub also made a two-chunk short plan's Stop gate demand the boundary review during
+  Chunk 01. The claim now says a gate may read it only to arm, and every "render-only" copy was
+  corrected. Settled by "do it right": the fix removes a false arm, and a written fragment still
+  arms.
+- Chunk 01: at dispatch, the subject walk always receives the interval's base commit, so `base:`
+  is never consulted there. R-11's note fires when `git log` itself fails. Its dispatch test
+  injects that failure, and `plan_status`'s own test covers the unresolvable-`base:` cause.
+- Chunk 01: `head_tree` is guarded by `gitstate.is_object_id` inside the public function, as
+  `since` is. A malformed value reads every fragment as unreadable (naming fewer), never a git
+  argv.
 
 ## Norm reconciliation (`governed_by`)
 
@@ -102,6 +114,9 @@ genuinely writes another chunk's Deliverable early still reads as touching it.
     exist or not, and the render tag keeps its fallback;
   - an unresolvable `base:` → the whole-plan proposal's notes name the cause.
 - **Acceptance criteria:** #1075's three acceptance boxes, plus R-4 and R-11 above.
+- **Critic mode:** chunk
+  <!-- Opts this short plan back into per-chunk review: Chunk 01's dispatch is the fix's
+       live check (it must not propose 02 off this plan's own stub). -->
 - **Done when:**
   1. Tests pass.
   2. No surface describing the built rule or the proposal contradicts it (sweep: "touches",

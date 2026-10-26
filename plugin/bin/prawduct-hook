@@ -7445,7 +7445,7 @@ def _cmd_plan_status(project_dir: Path, argv: list[str]) -> int:
     checkout is bound to (``work_unit.resolve``). Each row: chunk id, state
     (``open``/``done``/``dropped``), the certifying fact id, its date, and the
     tags ``imported`` (a box, migrated or read in memory) and ``built`` (work
-    committed on the branch — render-only, ``plan_status.built_chunks``).
+    committed on the branch — ``plan_status.built_chunks``, which certifies nothing).
     A ``lifecycle: <state>[ <release>] — <reason>`` line follows the summary:
     ``plan_lifecycle.observe``'s answer, read off the archive stamp, the change
     record and git, offline unless ``--probe-pr`` lets it ask ``gh`` whether a

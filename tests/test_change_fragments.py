@@ -218,6 +218,34 @@ class TestLoadPending:
         assert loaded[1].problems[0].code == "no-frontmatter"
 
 
+class TestUnwrittenStub:
+    """The stub ``plan new`` mints is no chunk's work (#1075): both chunk-progress
+    readers ask :func:`cf.is_unwritten_stub` before a fragment path counts."""
+
+    def test_a_stub_is_unwritten_with_or_without_a_title(self):
+        assert cf.is_unwritten_stub(fragment_text(narrative="", note=""))
+        assert cf.is_unwritten_stub(fragment_text(with_("title", ""), narrative="", note=""))
+        assert cf.is_unwritten_stub(fragment_text(narrative="", note_heading=False))
+
+    def test_either_half_written_makes_it_written(self):
+        assert not cf.is_unwritten_stub(fragment_text())
+        assert not cf.is_unwritten_stub(fragment_text(narrative=""))
+        assert not cf.is_unwritten_stub(fragment_text(note=""))
+        assert not cf.is_unwritten_stub(fragment_text(narrative="", note="none: internal"))
+
+    def test_text_that_does_not_parse_is_not_a_stub(self):
+        """``plan new`` never writes one, so someone else did."""
+        assert not cf.is_unwritten_stub("no frontmatter here\n")
+        assert not cf.is_unwritten_stub("")
+
+    def test_a_fragment_path_is_a_markdown_file_directly_in_the_directory(self):
+        assert cf.is_fragment_path(".prawduct/changes/unit.md")
+        assert not cf.is_fragment_path(".prawduct/changes/.gitkeep")
+        assert not cf.is_fragment_path(".prawduct/changes/sub/unit.md")
+        assert not cf.is_fragment_path("x/.prawduct/changes/unit.md")
+        assert not cf.is_fragment_path("unit.md")
+
+
 class TestRenderEntry:
     def fragment(self, **front):
         text = fragment_text({**FRONT, **front})

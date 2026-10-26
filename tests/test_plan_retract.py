@@ -323,9 +323,10 @@ class TestNoProposalRestoresARetraction:
         assert _run(repo, capsys, "03", "--fact", "R1", "--reason", "unbuilt")[0] == 0
         read = evidence.read_facts(repo)
         (anchor,) = [f for f in evidence.facts_of_kind(read, "review") if f["id"] == "R1"]
-        proposed = cc._proposed_chunks(
+        proposed, notes = cc._proposed_chunks(
             repo, repo / REL, lambda: read, [], "verify-resolutions", anchor,
         )
+        assert notes == ()
         assert proposed == ["01", "02"]
 
     def test_a_mid_plan_final_reads_subjects_in_its_own_interval_only(self, tmp_path, capsys):

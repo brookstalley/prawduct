@@ -513,7 +513,7 @@ def stale_status_reports(artifacts_dir: Path) -> list[dict]:
     most this may do.
 
     The chunks named are the ones ``plan_status.built_chunks`` sees work for on
-    the plan's branch (render-only, git-walking) whose state is still ``open``:
+    the plan's branch (git-walking; it certifies nothing) whose state is still ``open``:
     committed work no review has certified. An open chunk with nothing built is
     simply future work and is not named.
 
