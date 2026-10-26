@@ -1546,17 +1546,25 @@ class TestPrawductDeclaresItsOwnDigest:
     def test_the_deleted_section_machinery_stays_deleted(self):
         """CD13: the coverage check and the open-section reader have no subject.
 
-        Bounded to this module, the one this change owns; `change_cut` drops
-        its last uses of the old reader separately.
+        Scanned across every lib module and the hook, not only this one: a
+        copy of the old reader or a second path constant reappearing anywhere
+        is the two-homes shape #733 removed (the cut kept one until it moved
+        onto `consumer_digest`).
         """
-        source = (ROOT / "lib" / "release_readiness.py").read_text(encoding="utf-8")
+        sources = {p: p.read_text(encoding="utf-8") for p in sorted((ROOT / "lib").glob("*.py"))}
+        sources[ROOT / "bin" / "prawduct-hook"] = (ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        assert len(sources) > 20, "the control: the scan reads the real tree"
         for name in (
             "_DIGEST_REL_PATH", "_DIGEST_SECTION_RE", "_read_digest", "_open_digest_section",
             "_section_headline", "_headline_advisory", "_coverage_advisory", "_digest_mentions",
             "_SEEDED_HEADLINE", "legacy_pending",
+            "_names_release", "_digest_write", "render_consumer_section",
         ):
-            assert not re.search(rf"\b{name}\b", source), f"{name} is back in release_readiness.py"
-        assert "_digest_advisories" in source, "the control: the scan reads the real module"
+            hits = [p.name for p, text in sources.items() if re.search(rf"\b{name}\b", text)]
+            assert not hits, f"{name} is back in {hits}"
+        assert "_digest_advisories" in sources[ROOT / "lib" / "release_readiness.py"], (
+            "the control: the scan reads the real module"
+        )
 
 
 class TestTheSuiteMustBeProvenGreen:

@@ -278,7 +278,8 @@ def _release_writes(
     headline: str | None = None
     if headline_path.is_file():
         try:
-            headline = headline_path.read_text(encoding="utf-8").strip() or None
+            raw_headline = headline_path.read_text(encoding="utf-8")
+            headline = raw_headline if consumer_digest.headline_lines(raw_headline) else None
         except (OSError, UnicodeDecodeError) as exc:
             raise CutRefused(
                 "no-headline", f"{consumer_digest.HEADLINE_FILE_REL} cannot be read as UTF-8 text ({exc})"
@@ -486,11 +487,9 @@ def cut_cmd(project_dir: Path, argv: list[str]) -> int:
             f"  consumer notes: the release file exists; {removing} {len(cut_plan.cleanup)} fragment(s) "
             "the archive already holds, writing nothing"
         )
-    if cut_plan.cleanup and cut_plan.cut:
-        print(f"  already archived, removing: {', '.join(item.fragment.scope for item in cut_plan.cleanup)}")
     if not cut_plan.cut and cut_plan.headline_file is not None:
         print(
-            f"  headline file: removing {_rel(project_dir, cut_plan.headline_file)}, which "
+            f"  headline file: {'removing' if apply else 'would remove'} {_rel(project_dir, cut_plan.headline_file)}, which "
             f"{_rel(project_dir, cut_plan.release_file)} already holds"
         )
     _print_headline_kept(project_dir, cut_plan)

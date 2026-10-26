@@ -433,9 +433,14 @@ def headline_lines(headline: str | None) -> list[str]:
 
 
 def headline_published(headline: str, release_text: str) -> bool:
-    """Whether ``headline``'s rendered lines occur, consecutively, in a release file's text."""
-    want = headline_lines(headline)
-    have = release_text.splitlines()
+    """Whether ``headline``'s rendered lines occur, consecutively, in a release file's text.
+
+    Trailing whitespace is ignored on both sides: the release file is committed,
+    and an editor or a pre-commit hook that trims it would otherwise turn a
+    published headline into one the cut keeps as the next release's.
+    """
+    want = [line.rstrip() for line in headline_lines(headline)]
+    have = [line.rstrip() for line in release_text.splitlines()]
     return bool(want) and any(have[i : i + len(want)] == want for i in range(len(have) - len(want) + 1))
 
 

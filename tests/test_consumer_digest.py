@@ -350,6 +350,9 @@ class TestSharedAnswers:
         assert cd.headline_published(headline, release)
         assert not cd.headline_published("A different headline.", release)
         assert not cd.headline_published("", release)
+        # A committed release file an editor trimmed still holds the published headline.
+        trimmed = "\n".join(line.rstrip() for line in release.splitlines()) + "\n"
+        assert trimmed != release and cd.headline_published(headline, trimmed)
 
     def test_the_release_file_text_is_lf_terminated(self):
         assert cd.release_file_text(["## v1.0.0", "", "- n"]) == "## v1.0.0\n\n- n\n"

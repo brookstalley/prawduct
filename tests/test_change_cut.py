@@ -322,6 +322,9 @@ REFUSALS = [
     # A headline file that is not UTF-8 cannot be put in the release; it refuses
     # under the same code, naming why.
     ("no-headline", {"headline": b"\xff\xfe not utf-8\n"}, ()),
+    # ...in either mode: under `headline: none` a present file is still used.
+    ("no-headline", {"headline": b"\xff\xfe not utf-8\n",
+                     "decl": PRAWDUCT_DECL.replace("headline: required", "headline: none")}, ()),
 ]
 
 
@@ -959,3 +962,19 @@ class TestOutputDerivedFromState:
         assert out.returncode == 0, out.stderr
         assert "cannot be read" in out.stdout and "next release's headline" not in out.stdout
         assert (project / HEADLINE_FILE).exists()
+
+
+def test_a_rerun_dry_run_says_what_it_would_remove(tmp_path):
+    """The re-run's lines report a dry run as a dry run (#733 review)."""
+    project = _declared(tmp_path, fragments=_ONE, table=_ONE_TABLE)
+    plan = change_cut.plan_cut(project, "v3.8.0")
+    for path, _text in plan.writes:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    core.write_all_or_none(plan.writes)  # the cut's writes landed; its removals never ran
+    dry = _cut(project, "--release", "v3.8.0")
+    assert dry.returncode == 0, dry.stderr
+    assert "would remove 1 fragment(s)" in dry.stdout
+    assert "headline file: would remove" in dry.stdout
+    assert "removing" not in dry.stdout
+    applied = _cut(project, "--release", "v3.8.0", "--apply")
+    assert "headline file: removing" in applied.stdout

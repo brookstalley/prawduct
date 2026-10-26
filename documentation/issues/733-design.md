@@ -304,8 +304,9 @@ answer, and the cut asks rather than computing it again:
   section)`. `place_section` owns the blank-line rule, so it also owns the line the heading lands
   on.
 - On a re-run, the headline check is `headline_published(headline, release_text)`. That function
-  and `render_section` both use `headline_lines`, so "published" means exactly "rendered from
-  this file".
+  and `render_section` both use `headline_lines`, so "published" means "rendered from this file".
+  Trailing whitespace is ignored on both sides, so a release file an editor or a hook trimmed
+  after commit still holds its published headline.
 
 `core.write_all_or_none` takes `(Path, str)`, and it captures each prior with `read_text`, whose
 universal-newline decoding turns `\r\n` into `\n`. So a rollback would re-line-end a CRLF
