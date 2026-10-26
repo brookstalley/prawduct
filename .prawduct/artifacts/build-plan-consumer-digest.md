@@ -139,7 +139,7 @@ remains is mechanical: rendering, byte-preserving insertion, refusals.
 - **Description:**
   - **Golden first.** A test runs today's `cut-change-log --apply` on a prawduct-shaped fixture and
     pins the resulting `plugin/CHANGELOG.md` bytes. The fixture has two fragments (one `none:`) and
-    a `## v9.9.9-dev.1` section with a headline. The test passes on the unmodified code, and its
+    a `## v9.9.9` section (already renamed, as the runbook does before the cut) holding a headline. The test passes on the unmodified code, and its
     red is shown by mutating one expected byte. A second, new-model fixture is kept skipped until
     Chunk 04 un-skips it: the same fragments, the headline in `.prawduct/release-headline.md`, and
     no section.

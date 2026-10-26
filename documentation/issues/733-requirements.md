@@ -155,9 +155,15 @@ MUST unless marked SHOULD.
   | `types` | map of fragment type to subheading; `by-type` only | CD6 |
   | `marker` | a literal line the section is inserted directly below | none |
 
-  A missing `path`, an unknown enum value, an unknown placeholder, a heading template that does not
-  start with `## `, or `types` without `by-type` makes the declaration invalid. An invalid
-  declaration is reported. It is never treated as undeclared.
+  Any of these makes the declaration invalid:
+  - a missing `path`, or one that does not resolve inside the repo, or resolves under `.git/` or
+    `.prawduct/` (amendment A1);
+  - a field given twice (A1);
+  - an unknown enum value or placeholder;
+  - a heading template that does not start with `## `;
+  - `types` without `by-type`.
+
+  An invalid declaration is reported. It is never treated as undeclared.
 - **CD2** Exactly one function reads the declaration, from the working tree. Phase 0 and the cut
   both call it. An absent or unreadable state file reads as undeclared.
 
@@ -169,9 +175,11 @@ MUST unless marked SHOULD.
   - `.prawduct/releases/<version>.md`;
   - the changelog, with that file's text inserted.
 
-  The release file holds exactly the text inserted into the changelog. In order: the rendered
-  heading, the headline paragraph when present, and the notes. Fragments whose note is `none:`
-  contribute no note, as today.
+  The release file holds the same lines that are inserted into the changelog. In order: the
+  rendered heading, the headline paragraph when present, and the notes. The release file is
+  LF-terminated. The changelog receives those lines in its own line-ending style, separated from
+  its neighbours by blank lines (amendment A2, `733-design.md` § 3). Fragments whose note is
+  `none:` contribute no note, as today.
 - **CD4** The inserted section goes directly below `marker` when one is declared. Otherwise it goes
   directly above the first `## ` heading that names a version, meaning its first token is
   version-shaped after stripping `[ ]` and a leading `v`. With no version heading in the file, it
@@ -197,17 +205,22 @@ MUST unless marked SHOULD.
   |---|---|
   | `digest-declaration-invalid` | the declaration fails CD1 |
   | `digest-missing` | the declared path is not a file |
+  | `digest-unreadable` | the declared changelog is not valid UTF-8 (amendment A3) |
   | `marker-missing` | a declared `marker` is not in the file |
-  | `release-in-changelog` | the changelog already has a `## ` heading naming this release, any prerelease suffix included; the detail says to remove it or move its text to the headline file |
+  | `release-in-changelog` | the changelog already has a `## ` heading naming exactly this version, prerelease included, so a published `-rc.1` section never blocks a later cut (amendment A5); the detail says to remove it or move its text to the headline file |
   | `no-headline` | `headline: required` and `.prawduct/release-headline.md` is absent or empty |
   | `releases-ignored` | git would ignore `.prawduct/releases/` (same check as `archive-ignored`) |
   | `release-already-cut` | see CD8 |
 
-- **CD8** Re-runs. When `.prawduct/releases/<version>.md` already exists, the cut writes nothing.
-  - Any shipping fragment whose archive entry for this release already exists is removed. This
-    completes a run that failed during removal, and adds nothing twice.
-  - Any other shipping fragment refuses `release-already-cut`, naming it. It belongs to the next
-    release.
+- **CD8** Re-runs. When `.prawduct/releases/<version>.md` already exists, the cut writes nothing,
+  and this is decided before any "nothing to cut" early return.
+  - A pending fragment whose own archive entry, the entry it renders to for this release, is
+    already in the archive is removed. This completes a run that failed during removal, and adds
+    nothing twice. Identity is the entry, not the scope name, because scope names are reused.
+  - Any other pending fragment that is not withheld refuses `release-already-cut`, naming it. That
+    includes a later fragment reusing a cut scope's name. It belongs to the next release.
+  - A leftover `.prawduct/release-headline.md` is removed only when its text appears in the
+    release file. Otherwise it is the next release's headline and is kept.
 - **CD9** The dry run (without `--apply`) prints the release file's exact text, the changelog path,
   and the line it would be inserted at. Nothing is written or removed. A release PR can paste this
   output as its notes preview.
@@ -224,8 +237,9 @@ MUST unless marked SHOULD.
 
 ### Phase 0
 
-- **CD12** Under `headline: required`, Phase 0 warns when `.prawduct/release-headline.md` is absent,
-  empty, or still carries a seeded placeholder. It also warns when the changelog already has a
+- **CD12** Under `headline: required`, Phase 0 warns when `.prawduct/release-headline.md` is absent
+  or empty, or when its first non-empty line is a heading, which the banner would not show
+  (amendment A4: nothing seeds the file, so the seeded-placeholder check retires). It also warns when the changelog already has a
   section naming the release (the CD7 `release-in-changelog` condition, reported early). Messages
   name the declared path. Neither warning changes the exit code. An invalid declaration warns. An
   undeclared repo sees no new output.
@@ -246,8 +260,9 @@ MUST unless marked SHOULD.
   stated here so the change is not read as a weakened test. The new contract has two parts:
   - A released version (no prerelease suffix) must have its section and a non-empty headline,
     unchanged.
-  - A prerelease version must have **no** section naming its release, because CD7's
-    `release-in-changelog` would refuse the cut.
+  - A prerelease version must have **no** section for its release, neither its `-dev` heading nor
+    the final one. This is prawduct's guard against a leftover open section, which the product
+    predicate no longer catches (amendment A5).
 
   Consequence: develop-pinned consumers see the version move without a highlight. The banner
   already degrades this way.
