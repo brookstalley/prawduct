@@ -16,8 +16,8 @@ the requirement. The cut does not decide it.
 
 - **`consumer-digest`**: #733, which #1069 folded into (owner, 2026-10-25). One declared
   changelog, read at Phase 0 and written at the cut, so a governed product's consumer notes reach
-  its own changelog. Requirements: `documentation/issues/733-requirements.md`. The build plan
-  lives on `feature/733-consumer-digest`.
+  its own changelog. Requirements: `documentation/issues/733-requirements.md`. Build plan:
+  `.prawduct/artifacts/build-plan-consumer-digest.md`, kept live until this release.
 - **`final-review-chunks`**: #1072 (owner, 2026-10-26). A `final` or `cumulative` review run
   partway through a plan certifies every open chunk, built or not, because
   `plan_status.propose_chunks` proposes them all and `critic-begin` certifies the proposal. Chunk
