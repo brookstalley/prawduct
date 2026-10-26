@@ -428,7 +428,8 @@ the real banner parser.
 - **`plugin/CHANGELOG.md`.** Remove the `## v3.8.0-dev` section. Its text is the "Rolling notes"
   placeholder, not a headline, so nothing moves. Phase 0 will warn about the missing headline file
   until v3.8.0's headline is written.
-- **`tests/test_plugin_version_banner.py::test_changelog_has_current_version_entry`** gets the
+- **`tests/test_plugin_version_banner.py::test_changelog_has_current_version_entry`**, renamed
+  `test_changelog_matches_the_current_version`, gets the
   CD15 contract:
   - a released version must have its section, with a non-empty headline;
   - a prerelease version must have no section for its **base** release, neither the `-dev`

@@ -35,6 +35,41 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 PLUGIN_VERSION = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
 
 
+def _changelog_problem(version: str, changelog: str, banner) -> str | None:
+    """Why ``changelog`` does not fit plugin ``version``, else ``None`` (CD15)."""
+    if "-" not in version:
+        pairs = dict(_parse_text(banner, changelog))
+        if version not in pairs:
+            return f"CHANGELOG.md must carry the released version {version}"
+        if not pairs[version]:
+            return f"the {version} section's headline must be non-empty"
+        return None
+    # The cut's own heading recogniser, so this test and the cut agree on what
+    # a version heading is (three- and four-part versions alike).
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from lib import consumer_digest
+
+    base = version.split("-", 1)[0]
+    for line in changelog.splitlines():
+        found = consumer_digest.heading_version(line)
+        if found is not None and found.split("-", 1)[0] == base:
+            return (
+                f"prerelease {version} must have no section for {base} (found {line!r}): the cut writes "
+                "the release's section itself and refuses release-in-changelog while one exists"
+            )
+    return None
+
+
+def _parse_text(banner, changelog: str):
+    """``banner.parse_changelog`` over text rather than a plugin root."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        Path(tmp, "CHANGELOG.md").write_text(changelog, encoding="utf-8")
+        return banner.parse_changelog(Path(tmp))
+
+
 @pytest.fixture(scope="module")
 def banner():
     """Import hooks/banner.py as a module (its main() runs only under __main__)."""
@@ -78,19 +113,38 @@ def _repo(tmp_path: Path) -> Path:
 
 
 class TestBundledData:
-    def test_changelog_has_current_version_entry(self, banner):
-        """The shipped version's headline must exist, keyed by the EXACT manifest
-        string — a prerelease included.
+    def test_changelog_matches_the_current_version(self, banner):
+        """A released version has its section and headline; a prerelease has none.
 
-        Not the release it is a prerelease of. `develop` runs on `X.Y.Z-dev.N` and
-        opens `## vX.Y.Z-dev.N` with a headline; the cut writes that cycle's fragment
-        notes under it and renames it to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
-        a release that has not happened, and would pass on a file carrying no notes
-        for the build actually running.
+        Renegotiated with #733's release-file model (CD15), not relaxed. The cut
+        now writes a release's section itself, as a new section, and refuses
+        `release-in-changelog` while one already names the release. So `develop`
+        carries no open `## vX.Y.Z-dev` section: the pending notes live in
+        `.prawduct/changes/` and the headline in `.prawduct/release-headline.md`.
+        What still holds, unchanged, is that a released version's section
+        exists with a headline the banner can show. What is new is that a
+        prerelease must NOT have one. A leftover `-dev` section would ship in the
+        released changelog beside the section the cut writes, and a hand-written
+        final `## vX.Y.Z` section would make the cut refuse `release-in-changelog`.
         """
-        pairs = dict(banner.parse_changelog(ROOT))
-        assert PLUGIN_VERSION in pairs, f"CHANGELOG.md must carry the current version {PLUGIN_VERSION}"
-        assert pairs[PLUGIN_VERSION], "the current version's changelog headline must be non-empty"
+        problem = _changelog_problem(PLUGIN_VERSION, CHANGELOG.read_text(encoding="utf-8"), banner)
+        assert problem is None, problem
+
+    @pytest.mark.parametrize(
+        ("version", "changelog", "bad"),
+        [
+            ("3.8.0", "# C\n\n## v3.8.0\n\nHeadline.\n\n## v3.7.2\n\nOld.\n", False),
+            ("3.8.0", "# C\n\n## v3.7.2\n\nOld.\n", True),                       # released, no section
+            ("3.8.0", "# C\n\n## v3.8.0\n\n## v3.7.2\n\nOld.\n", True),        # released, no headline
+            ("3.8.0-dev", "# C\n\n## v3.7.2\n\nOld.\n", False),
+            ("3.8.0-dev.2", "# C\n\n## v3.8.0-dev.2\n\nRolling.\n\n## v3.7.2\n", True),  # leftover open section
+            ("3.8.0-dev", "# C\n\n## v3.8.0\n\nToo early.\n\n## v3.7.2\n", True),        # final section before the cut
+            ("3.7.1.1-dev", "# C\n\n## v3.7.1.1-dev\n\nRolling.\n\n## v3.7.1\n", True),  # four-part leftover
+            ("3.7.1.1-dev", "# C\n\n## v3.7.1\n\nOld.\n", False),                          # its base's parent is history
+        ],
+    )
+    def test_the_contract_both_ways(self, banner, version, changelog, bad):
+        assert (_changelog_problem(version, changelog, banner) is not None) is bad
 
     def test_gates_json_well_formed(self):
         data = json.loads(GATES_JSON.read_text())
@@ -123,11 +177,12 @@ class TestVersionMath:
     def test_version_tuple_orders_a_dev_prerelease(self, banner):
         """`develop` carries `X.Y.Z-dev`; the cut promotes it to `X.Y.Z`.
 
-        Asserted directly because nothing else does. The only incidental coverage
-        of this path is `test_changelog_has_current_version_entry`, and that
-        coverage **evaporates at every release cut** — the version is bare again,
-        so the released plugin ships this branch untested by construction. That
-        is exactly backwards from what the suffix is for.
+        Asserted directly because nothing else does: no other test parses a
+        `-dev` version through the banner. Coverage that came incidentally from
+        the live manifest's version would **evaporate at every release cut**,
+        when the version is bare again, so the released plugin would ship this
+        branch untested by construction. That is exactly backwards from what the
+        suffix is for.
 
         Both directions, and the trailing sentinel is the reason both are needed:
         before it, any prerelease collapsed to the malformed `(-1,)`, which sorts

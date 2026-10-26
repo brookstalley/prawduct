@@ -46,18 +46,17 @@ and you dogfood nothing while believing otherwise. Keep `develop` on a prereleas
 is heading for — `3.4.1-dev.2` — bumping the `.N` as you promote work into it. The release then sets
 the final version in the same three files (below), which is a new cache key again.
 
-**An intra-cycle `.N` bump moves FOUR files, not three** — rename the open `## vX.Y.Z-dev.N`
-heading in `plugin/CHANGELOG.md` in the same commit. `test_changelog_has_current_version_entry`
-requires a section keyed by the **exact** manifest string, prerelease suffix included, so bumping
-the three version files alone turns `develop` red on the next push. This is the one version move
+**An intra-cycle `.N` bump moves the three version files and nothing else.** `plugin/CHANGELOG.md`
+carries no section for a prerelease: the cut writes the release's section itself, and
+`test_changelog_matches_the_current_version` fails on a prerelease that has one. This is the one version move
 the runbook does not cover: it has the cut (Phase 1 step 10) and the reopen (Phase 3 step 22), and
 the bump between them happens here.
 
 **The bump rides the work PR that promotes the work — never a PR of its own.** Commit it on the
 work branch as `chore: develop opens X.Y.Z-dev.N for <branch>` (or `moves to` within an open
-cycle), so the work PR's review covers the four-line diff. A standalone bump PR costs a full
+cycle), so the work PR's review covers the three-line diff. A standalone bump PR costs a full
 cumulative Critic round for a change whose correctness is already machine-checked
-(`test_version_is_semver`, `test_changelog_has_current_version_entry`, `release_verification`'s
+(`test_version_is_semver`, `test_changelog_matches_the_current_version`, `release_verification`'s
 declared-carrier checks); the coverage ruling in `coverage_algebra.is_judgeable_path` deliberately
 does not exempt it.
 
@@ -157,7 +156,7 @@ When `develop` is ready to release as `vX.Y.Z`:
 
 **The numbering below is the checklist's order, not the running order.** Every prep item in it —
 the version bump across the three files, the change-record cut and
-the plan sweep (plus, on a repo still on the deprecated `active_build_plan` scalar, its clear), the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
+the plan sweep (plus, on a repo still on the deprecated `active_build_plan` scalar, its clear), the release section the cut writes into `plugin/CHANGELOG.md` — is committed on `develop` **before**
 the promotion, not edited onto `main` after it; the reason is in the ordering note that closes
 "Step 1 mechanics" below. `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 is the
 same set in executable running order, and is the document to work from when actually cutting.
@@ -181,11 +180,14 @@ same set in executable running order, and is the document to work from when actu
    prawduct-hook cut-change-log --release vX.Y.Z --apply
    ```
    For each shipping fragment it writes an entry tagged `release=vX.Y.Z` into
-   `.prawduct/change-log-archive/YYYY-MM.md`, adds the fragment's consumer note under the open
-   `plugin/CHANGELOG.md` section's headline, and removes the fragment. A `withheld` fragment stays
-   in the directory and is still pending at the next release. The cut writes nothing on any
-   refusal, and a re-run adds nothing twice. It never writes the headline, so write that first
-   (step 5): a section with no headline is refused as `no-headline`. The dry run also lists every
+   `.prawduct/change-log-archive/YYYY-MM.md`, then removes the fragment. It renders the shipping
+   notes, under a `## vX.Y.Z` heading and `.prawduct/release-headline.md`'s headline, into
+   `.prawduct/releases/vX.Y.Z.md`, and inserts that section into `plugin/CHANGELOG.md` above the
+   newest release. Prawduct declares this as `consumer_digest:` in `.prawduct/project-state.yaml`,
+   the same key a governed product sets. A `withheld` fragment stays in the directory and is still
+   pending at the next release. The cut writes nothing on any refusal, and once the release file
+   exists a re-run writes nothing and only finishes removals. Write the headline first (step 5): the
+   cut refuses `no-headline` without it. The dry run prints the exact section and lists every
    fragment whose note is `none: <reason>`, so read those reasons before applying.
 
    Which scopes ship is the release plan's decision, not the cut's: a pending fragment the table
@@ -253,9 +255,10 @@ same set in executable running order, and is the document to work from when actu
 
 5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
    `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
-   **minor or major bump only**. In the CHANGELOG, the cut (step 3) writes each shipping scope's
-   note from its fragment; you write the headline, the section's first line, which the
-   version-delta banner shows every repo crossing this version. Both files are written at **Phase 1** of
+   **minor or major bump only**. The cut (step 3) writes the whole CHANGELOG section from the
+   fragments' notes; you write the headline in `.prawduct/release-headline.md` before it runs. The
+   headline becomes the section's first line, which the version-delta banner shows every repo
+   crossing this version. Both files are written at **Phase 1** of
    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this checklist names them rather
    than restating them, because the README went eight releases stale precisely while no release
    document named it at all.
@@ -264,7 +267,7 @@ same set in executable running order, and is the document to work from when actu
    every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
 
    ```
-   awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+   tail -n +3 .prawduct/releases/vX.Y.Z.md > /tmp/notes-vX.Y.Z.md   # the section without its heading
    gh release create vX.Y.Z --target "$(git rev-parse main)" \
      --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
    ```
@@ -297,18 +300,16 @@ same set in executable running order, and is the document to work from when actu
    gate newly active in the range.
 
 10. **Reopen `develop` at the next `-dev` version.** Bump the same three files from step 2 to the
-    next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), open a
-    `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md` with a non-empty first line, and
-    add a change fragment for the release itself (`.prawduct/changes/release-vX.Y.Z.md`) — all in
-    one commit on `develop`.
+    next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), and add a
+    change fragment for the release itself (`.prawduct/changes/release-vX.Y.Z.md`), in one commit
+    on `develop`. Open no `plugin/CHANGELOG.md` section: the next cut writes it.
 
     > **Why `develop` must never report the released number:** the verdict cache keys on the
     > plugin version, so a prerelease codebase reporting the released number replays `covered`
     > verdicts across a judgeability change; and a consumer pinned to the `develop` ref can only
     > tell which plugin it is running if the banner says so. `-dev` and `-dev.N` are the only
-    > suffixes `test_version_is_semver` permits. The CHANGELOG section is not optional —
-    > `test_changelog_has_current_version_entry` requires one for the current version, so the
-    > version files and the digest move together or `develop` goes red.
+    > suffixes `test_version_is_semver` permits. A prerelease has no CHANGELOG section, and
+    > `test_changelog_matches_the_current_version` fails on one that does.
 
     > **Guess low.** A prerelease sorts just below its own release, so from `3.4.1-dev` every
     > possible next cut is a forward move; from a high guess like `3.5.0-dev` a patch cut is a
@@ -413,7 +414,7 @@ git diff --stat origin/develop HEAD          # MUST be empty — this shape only
 git push origin main
 
 # One call creates the tag AND the Release — see below for why not `git tag` first.
-awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+tail -n +3 .prawduct/releases/vX.Y.Z.md > /tmp/notes-vX.Y.Z.md
 gh release create vX.Y.Z --target "$(git rev-parse main)" \
   --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
 git fetch origin --tags                            # the tag was created on the remote

@@ -114,6 +114,15 @@ file per PR. Its existing history stays untouched.
 - Integration, delegation mechanics (2026-10-26): delegate B's isolated worktree was created from
   `main`, not this branch. It noticed `consumer_digest.py` was missing and reset to `4c77faff`
   itself. Verified by `merge-base --is-ancestor` before merging.
+- Chunk 05 (2026-10-26):
+  - `.prawduct/artifacts/api-contract.md`'s `cut-change-log` entry is updated here, not in
+    Chunk 06. It is the contract describing the cut, owned by no chunk until Chunk 05's review
+    found it.
+  - `wrong-section` is retired. The command is in the Repo-lifecycle group, not the stable tier.
+  - The unreleased-claims scan reads only fragments' `## Consumer note`, the part the cut
+    publishes, so a narrative describing a removal can quote what it removed.
+- Also fixed in Chunk 05's runbook pass, beyond #733: step 6 and the sweep-refusal text still
+  described #1051's retired `## Status` boxes.
 - #1072 mitigation: this plan's chunk states are wrong. Chunk 02's `final` review certified 02–07,
   a framework bug. Every review here passes an explicit `--chunks`, and `plan status` is not
   trusted for this plan.

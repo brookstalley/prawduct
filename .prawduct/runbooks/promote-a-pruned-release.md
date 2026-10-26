@@ -280,10 +280,11 @@ amended 2026-07-29). Step 10 is that test.
 14. Extract the notes — **and edit them before publishing**:
 
     ```
-    awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+    tail -n +3 .prawduct/releases/vX.Y.Z.md > /tmp/notes-vX.Y.Z.md   # the section without its heading
     ```
 
-    **Expected:** a file whose first line is the release headline.
+    **Expected:** a file whose first line is the release headline. `.prawduct/releases/vX.Y.Z.md`
+    is the section the cut wrote, so it holds exactly what `plugin/CHANGELOG.md` received.
 
     > *Why the whole section and not just the headline: `plugin/CHANGELOG.md` ships inside the
     > plugin, so the Releases page is its only public copy. A pushed tag lands on `/tags` and
@@ -291,8 +292,7 @@ amended 2026-07-29). Step 10 is that test.
 
     > ⚠️ **This is a pruned release. Open `/tmp/notes-vX.Y.Z.md` and delete every paragraph
     > describing withheld work or collateral.** The cut wrote notes only for the fragments it
-    > shipped, but the headline, and any note written into the section by hand, were written
-    > against all of `develop`. Publishing them verbatim announces a feature that is not in the
+    > shipped, but the headline was written against all of `develop`. Publishing them verbatim announces a feature that is not in the
     > tree.
 
     > *Take as long as this needs. No tag exists yet, so nothing is watching — which is the
