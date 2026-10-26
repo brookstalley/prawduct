@@ -46,10 +46,23 @@ class TestDeclaration:
     def test_undeclared_is_none_none(self, tmp_path):
         assert cd.parse_declaration("project: x\n", tmp_path) == (None, None)
 
-    def test_an_absent_or_unreadable_state_file_reads_as_undeclared(self, tmp_path):
+    def test_an_absent_state_file_reads_as_undeclared(self, tmp_path):
         assert cd.read_declaration(tmp_path) == (None, None)
+
+    def test_an_unreadable_state_file_is_not_undeclared(self, tmp_path):
+        """It may hold a declaration; reading it as none would ship a release with no section.
+
+        Renegotiated from "absent or unreadable reads as undeclared" (#733 review):
+        an unreadable file can be told apart from an absent one, and the cut is
+        the writer that would act on the wrong answer.
+        """
         (tmp_path / ".prawduct" / "project-state.yaml").mkdir(parents=True)  # a directory: unreadable
-        assert cd.read_declaration(tmp_path) == (None, None)
+        decl, reason = cd.read_declaration(tmp_path)
+        assert decl is None and reason and "cannot be read" in reason
+        (tmp_path / ".prawduct" / "project-state.yaml").rmdir()
+        (tmp_path / ".prawduct" / "project-state.yaml").write_bytes(b"consumer_digest:\n  path: \xff\n")
+        decl, reason = cd.read_declaration(tmp_path)
+        assert decl is None and reason and "cannot be read" in reason
 
     def test_the_minimal_declaration_takes_every_default(self, tmp_path):
         decl, reason = _parse(tmp_path, "  path: CHANGELOG.md")
@@ -207,7 +220,7 @@ class TestTextModel:
 
     def _insert(self, data: bytes, section: list[str], marker: str | None = None) -> bytes:
         text = cd.parse_changelog(data)
-        return cd.insert_section(text, cd.insertion_index(text, marker), section).render().encode("utf-8")
+        return cd.place_section(text, cd.insertion_index(text, marker), section)[0].render().encode("utf-8")
 
     def test_insert_above_the_newest_release_leaves_every_other_byte(self):
         data = b"\xef\xbb\xbf# Changelog\r\n\r\n## [Unreleased]\r\n\r\n## [1.3.0] - 2026-09-01\r\n- old\r\n"
@@ -356,3 +369,49 @@ class TestSharedAnswers:
 
     def test_the_release_file_text_is_lf_terminated(self):
         assert cd.release_file_text(["## v1.0.0", "", "- n"]) == "## v1.0.0\n\n- n\n"
+
+
+class TestTheHeadlineFileReader:
+    def _with(self, tmp_path, data: bytes | None) -> cd.HeadlineRead:
+        if data is not None:
+            (tmp_path / ".prawduct").mkdir(exist_ok=True)
+            (tmp_path / ".prawduct" / "release-headline.md").write_bytes(data)
+        return cd.read_headline(tmp_path)
+
+    def test_each_state(self, tmp_path):
+        assert self._with(tmp_path / "a", None) == cd.HeadlineRead(None, "is absent")
+        (tmp_path / "b").mkdir()
+        assert self._with(tmp_path / "b", b"\n  \n") == cd.HeadlineRead(None, "is empty")
+        (tmp_path / "c").mkdir()
+        bad = self._with(tmp_path / "c", b"\xff\xfe\n")
+        assert bad.unreadable and bad.text is None and bad.problem.startswith("cannot be read")
+        (tmp_path / "d").mkdir()
+        good = self._with(tmp_path / "d", b"\n  **Big.** Line one.  \r\nTwo.\r\n")
+        assert not good.unreadable and good.problem is None and good.first_line == "**Big.** Line one."
+
+    def test_release_sections_are_exact(self):
+        text = cd.parse_changelog(b"# C\n\n## v1.4.0-rc.1\n\n## v1.4.0\n\n### v1.4.0\n")
+        assert cd.release_sections(text, "v1.4.0") == [(5, "## v1.4.0")]
+
+
+def test_the_declaration_has_one_reader():
+    """CD2: Phase 0 and the cut read `consumer_digest:` only through `read_declaration`.
+
+    A second reader (say, one parsing the key straight from a tag's tree, as
+    `release_verification` does for its own key) would reopen the two-homes split
+    #733 closed, under a name the deleted-names pin cannot know.
+    """
+    import re as _re
+
+    lib = _PLUGIN / "lib"
+    sources = {p.name: p.read_text(encoding="utf-8") for p in sorted(lib.glob("*.py"))}
+    sources["prawduct-hook"] = (_PLUGIN / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+    # This key, spelled as a literal or through the module's constant; another
+    # module's own `_DECLARATION_KEY` names a different key.
+    reader = _re.compile(
+        r"read_(?:yaml_block|str_yaml_key|block_sequence)\([^)]*(?:[\"']consumer_digest[\"']|(?<![\w])DECLARATION_KEY)"
+    )
+    hits = sorted(name for name, text in sources.items() if reader.search(text))
+    assert hits == ["consumer_digest.py"], hits
+    users = sorted(name for name, text in sources.items() if "consumer_digest.read_declaration(" in text)
+    assert users == ["change_cut.py", "release_readiness.py"], users

@@ -135,7 +135,7 @@ hand-written open section mentioned each pending scope. Under Decisions 2 and 4 
 exists: fragment notes reach the changelog exactly, and legacy entries carry no consumer note to
 write. With no subject, the check is deleted rather than kept with nothing to check (the
 proportionality norm in `nonfunctional-requirements.md`). Legacy products are pointed at fragments
-instead (CDW8). *Inferred, owner can veto.*
+instead (CD10). *Inferred, owner can veto.*
 
 ## Requirements
 
@@ -165,7 +165,9 @@ MUST unless marked SHOULD.
 
   An invalid declaration is reported. It is never treated as undeclared.
 - **CD2** Exactly one function reads the declaration, from the working tree. Phase 0 and the cut
-  both call it. An absent or unreadable state file reads as undeclared.
+  both call it, and a test pins that no other reader exists. An absent state file reads as
+  undeclared. A state file that exists but cannot be read is invalid, not undeclared, because it
+  may hold a declaration (amendment A6).
 
 ### The cut
 
@@ -237,12 +239,23 @@ MUST unless marked SHOULD.
 
 ### Phase 0
 
-- **CD12** Under `headline: required`, Phase 0 warns when `.prawduct/release-headline.md` is absent
-  or empty, or when its first non-empty line is a heading, which the banner would not show
-  (amendment A4: nothing seeds the file, so the seeded-placeholder check retires). It also warns when the changelog already has a
-  section naming the release (the CD7 `release-in-changelog` condition, reported early). Messages
-  name the declared path. Neither warning changes the exit code. An invalid declaration warns. An
-  undeclared repo sees no new output.
+- **CD12** Phase 0 checks the pending headline file:
+  - under `headline: required`, it warns when the file is absent or empty;
+  - in either mode, it warns when a present file cannot be read, or its first non-empty line is a
+    heading, which the banner would not show. The cut uses a present file in either mode
+    (amendment A6).
+
+  Nothing seeds the file, so the seeded-placeholder check retires (amendment A4).
+
+  Phase 0 also warns when the changelog already has a section naming the release, the CD7
+  `release-in-changelog` condition reported early.
+
+  When the release file for `--release` already exists, the release is cut, and both checks step
+  aside with a note: asking again would tell the operator to remove the section the cut just
+  wrote (A6).
+
+  Messages name the declared path, and no warning changes the exit code. An invalid declaration
+  warns. An undeclared repo sees no new output.
 - **CD13** `_coverage_advisory` and `_digest_mentions` are deleted (Decision 8), along with
   `_open_digest_section` and the section-reading machinery that only they and the headline
   advisory used.

@@ -282,7 +282,17 @@ remains is mechanical: rendering, byte-preserving insertion, refusals.
   (`grep -rn "\-dev" ` over `tests/` and the runbook for changelog headings) before editing.
 - **Depends on:** Chunks 03, 04
 - **Artifacts consumed:** `tests/test_plugin_version_banner.py`; `documentation/release-process.md`; `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`
-- **Deliverables:** prawduct's changelog without an open section; the banner test's new contract; procedure text for bumps, reopen and the release body
+- **Deliverables:** prawduct's changelog without an open section; the banner test's new contract;
+  CDOC3 in full. Chunks 03 and 04 falsified the runbook before this chunk, so the list is
+  enumerated now:
+  - `.prawduct/runbooks/cut-and-publish-a-plugin-release.md`'s Phase 0 output lines: `digest
+    headline: … in ## vX.Y.Z-dev.N`, `digest coverage: N of M`, `digest coverage not checked`;
+  - the cut's expected output (`consumer notes: N added under …`) and its refusal list
+    (`no-headline`, `wrong-section`);
+  - step 2 (the headline goes to the headline file), step 10 (the rename), step 20 (`awk` → the
+    release file), and step 22 (no reopen section);
+  - the same steps in `.prawduct/runbooks/promote-a-pruned-release.md` and
+    `documentation/release-process.md`.
 - **Tests:** the banner test under CD15, with its red shown both ways (a dev section present on a
   dev version fails; a released version with no section fails); the full release-tooling test
   files.

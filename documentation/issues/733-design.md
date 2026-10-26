@@ -42,8 +42,9 @@ def read_declaration(project_dir: Path) -> tuple[Declaration | None, str | None]
 ```
 
 **Three outcomes.**
-- `(None, None)`: undeclared. That covers an absent key, and also an absent or unreadable
-  `.prawduct/project-state.yaml`, which cannot be told apart from one that never declared.
+- `(None, None)`: undeclared. That covers an absent key, or no `.prawduct/project-state.yaml` at
+  all (`FileNotFoundError`). A state file that exists but cannot be read (`OSError`,
+  `UnicodeDecodeError`) is invalid, because it may hold a declaration (A6).
 - `(None, reason)`: invalid.
 - `(decl, None)`: valid.
 
@@ -127,7 +128,7 @@ class ChangelogText:
     def render(self) -> str: ...   # BOM restored as U+FEFF; written with newline="" it is the original bytes
 
 def read_changelog(path: Path) -> ChangelogText: ...      # raises DigestUnreadable
-def insert_section(text: ChangelogText, index: int, section: list[str]) -> ChangelogText: ...
+def place_section(text: ChangelogText, index: int, section: list[str]) -> tuple[ChangelogText, int]: ...  # also returns the heading's 1-based line
 ```
 
 - **Reading.** `read_changelog` reads bytes and strips a leading `\xef\xbb\xbf` into `bom`. It
@@ -135,7 +136,7 @@ def insert_section(text: ChangelogText, index: int, section: list[str]) -> Chang
   `digest-unreadable` (requirement amendment A3). It splits with `keepends=True`, so every existing
   line keeps its own terminator. A file mixing line endings keeps each line's own, and only the
   inserted lines use `eol`.
-- **Inserting.** `insert_section` splices before `lines[index]`; `index == len(lines)` means the
+- **Inserting.** `place_section` splices before `lines[index]`; `index == len(lines)` means the
   end. `section` arrives as lines without endings, and is terminated with `eol` and separated by
   blank lines:
   - **Before:** if the line before the insertion point is not blank, one blank line goes in
@@ -388,13 +389,20 @@ never gets the `plugin/VERSION` fallback, which is prawduct's path and carries a
 
 - undeclared → `([], None, [])`.
 - invalid → `([f"{reason}; the consumer digest checks did not run"], None, [])`.
-- When the declaration asks for a headline, an absent or blank headline file → a warning naming
-  `.prawduct/release-headline.md` and `decl.path`. The release section's first non-empty line is
-  what the version-delta banner shows, and the cut refuses `no-headline` without it.
-- A headline file whose first non-empty line starts with `#` → a warning. The banner reads no
-  headline from a section whose first line is a heading.
-- With `release` known, any changelog line with `names_release` → a warning, the CD7
-  `release-in-changelog` condition reported early. With `release` unknown, a note that this check
+- `--release` known and `.prawduct/releases/<version>.md` existing → no checks, only a note that
+  the release is already cut, and the emission `digest: <version> already cut (<release file> →
+  <decl.path>)`. After the cut the headline file is consumed and the section is the cut's own;
+  checking again would tell the operator to remove that section, and a re-cut would not restore
+  it (A6).
+- The headline file is read once, through `consumer_digest.read_headline`, the one reader the cut
+  also uses:
+  - unreadable → a warning in either mode, because the cut refuses `no-headline` on it either way;
+  - absent or blank → a warning only under `headline: required`;
+  - first non-empty line a heading → a warning in either mode, because the cut uses a present
+    file either way, and the banner reads no headline from a section that opens on a heading.
+- With `release` known, any heading `consumer_digest.release_sections` finds → a warning, the CD7
+  `release-in-changelog` condition reported early, ending in the same
+  `RELEASE_IN_CHANGELOG_REMEDY` the cut's refusal uses. With `release` unknown, a note that this check
   did not run.
 - Emissions: `digest headline: '<first line>' (.prawduct/release-headline.md → <decl.path>)`, or
   `digest headline: none`.
@@ -490,6 +498,11 @@ check and A5 narrows one.
 - **A3 (CD7).** A new refusal, `digest-unreadable`: the declared changelog is not valid UTF-8.
 - **A4 (CD12).** The "seeded placeholder" clause is dropped, because nothing seeds the headline
   file. New warning: the headline's first line is a heading.
+- **A6 (CD2, CD12), from Chunk 03's review.** An unreadable state file is invalid, not undeclared.
+  A present headline file is checked in either mode, with absence owed only under `required`.
+  Phase 0 steps aside once the release file exists. `read_headline`, `release_sections` and
+  `RELEASE_IN_CHANGELOG_REMEDY` join `consumer_digest`, so neither caller restates them, and
+  `insert_section` (which only tests called) gives way to `place_section`.
 - **A5 (CD7, CD12).** `release-in-changelog` matches the exact version, prerelease included, so a
   published prerelease section never blocks a later cut. Prawduct's leftover-`-dev`-section guard
   moves to its own banner test (CD15).

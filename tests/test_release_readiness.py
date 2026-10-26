@@ -277,6 +277,14 @@ class TestGateBlocks:
         assert release_readiness.check_releasability(project) == 1
         assert "no-change-log" in capsys.readouterr().err
 
+    def test_a_mis_encoded_change_log_refuses_with_its_named_reason(self, tmp_path, capsys):
+        """`check_releasability` promises every failure path returns 1 with a named
+        reason; a traceback is neither."""
+        project = _make_project(tmp_path, entries=_entry("A", "alpha"), classification="| alpha | ships | |\n")
+        (project / ".prawduct" / "change-log.md").write_bytes(b"# Change Log\n\n\xff\xfe\n")
+        assert release_readiness.check_releasability(project) == 1
+        assert "no-change-log:" in capsys.readouterr().err
+
     def test_duplicate_classification_blocks(self, tmp_path, capsys):
         project = _make_project(
             tmp_path,
@@ -1321,6 +1329,64 @@ class TestTheHeadlineFileIsChecked:
         out = capsys.readouterr()
         assert _digest_warnings(out.err, "release-headline.md") == []
         assert "  digest headline: none." in out.out, "the yield prints whatever the mode"
+
+
+class TestAPresentHeadlineFileIsCheckedInEitherMode:
+    """The cut uses a present headline file whatever `headline:` says, so Phase 0
+    checks one whatever it says; only its absence is owed solely under `required`."""
+
+    _NONE = "consumer_digest:\n  path: CHANGELOG.md\n  headline: none\n"
+
+    def test_a_heading_first_headline_warns_under_none(self, tmp_path, capsys):
+        project = _declared_project(tmp_path, declaration=self._NONE, headline="# Big news\n")
+        release_readiness.check_releasability(project, release="v1.4.0")
+        [warning] = _digest_warnings(capsys.readouterr().err, "release-headline.md")
+        assert "starts with a heading" in warning
+
+    def test_an_unreadable_headline_file_warns_under_none(self, tmp_path, capsys):
+        project = _declared_project(tmp_path, declaration=self._NONE)
+        (project / ".prawduct" / "release-headline.md").write_bytes(b"\xff\xfe not utf-8\n")
+        release_readiness.check_releasability(project, release="v1.4.0")
+        [warning] = _digest_warnings(capsys.readouterr().err, "release-headline.md")
+        assert "cannot be read" in warning and "no-headline" in warning
+
+
+class TestAnAlreadyCutReleaseAsksNothing:
+    """After the cut, the release file exists, the headline file is consumed and
+    the section is the cut's own. Asking again would tell the operator to remove
+    the section the cut just wrote, which a re-cut would not restore."""
+
+    def test_the_checks_step_aside_with_a_note(self, tmp_path, capsys):
+        project = _declared_project(
+            tmp_path, headline=None,
+            changelog="# Changelog\n\n## [1.4.0] - 2026-10-25\n\n- New.\n\n## [1.3.0]\n\n- Old.\n",
+        )
+        _write(project / ".prawduct" / "releases" / "v1.4.0.md", "## [1.4.0] - 2026-10-25\n\n- New.\n")
+        assert release_readiness.check_releasability(project, release="v1.4.0") == 0
+        out = capsys.readouterr()
+        assert _digest_warnings(out.err, "release-headline.md") == []
+        assert _digest_warnings(out.err, "already has a section") == []
+        assert any("v1.4.0 is already cut" in line for line in _notes(out.err)), out.err
+        assert "  digest: v1.4.0 already cut (.prawduct/releases/v1.4.0.md → CHANGELOG.md)." in out.out
+
+    def test_without_the_release_file_the_same_state_warns(self, tmp_path, capsys):
+        """The control: the warnings the step-aside suppresses do fire without it."""
+        project = _declared_project(
+            tmp_path, headline=None,
+            changelog="# Changelog\n\n## [1.4.0] - 2026-10-25\n\n- New.\n",
+        )
+        release_readiness.check_releasability(project, release="v1.4.0")
+        err = capsys.readouterr().err
+        assert _digest_warnings(err, "release-headline.md") and _digest_warnings(err, "already has a section")
+
+
+class TestAnUnreadableStateFileIsNotUndeclared:
+    def test_it_warns_rather_than_falling_silent(self, tmp_path, capsys):
+        project = _declared_project(tmp_path, declaration=None)
+        (project / ".prawduct" / "project-state.yaml").mkdir()
+        assert release_readiness.check_releasability(project, release="v1.4.0") == 0
+        [warning] = [l for l in capsys.readouterr().err.splitlines() if "cannot be read" in l and "project-state" in l]
+        assert "did not run" in warning
 
 
 class TestASectionForTheReleaseIsReportedEarly:

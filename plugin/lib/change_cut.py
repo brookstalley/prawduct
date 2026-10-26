@@ -206,15 +206,19 @@ def _plan_rerun(
     result.release_file = release_file
     headline = project_dir / consumer_digest.HEADLINE_FILE_REL
     if headline.is_file():
-        try:
-            published = consumer_digest.headline_published(
-                headline.read_text(encoding="utf-8"), release_file.read_text(encoding="utf-8")
-            )
-        except (OSError, UnicodeDecodeError) as exc:
+        read = consumer_digest.read_headline(project_dir)
+        unknown: str | None = f"it {read.problem}" if read.unreadable else None
+        published = False
+        if unknown is None and read.text is not None:
+            try:
+                published = consumer_digest.headline_published(read.text, release_file.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError) as exc:
+                unknown = f"{rel} cannot be read ({exc})"
+        if unknown is not None:
             # Unreadable is not "unpublished": the cut cannot tell which it is,
             # so it keeps the file and says why rather than guessing.
             result.headline_kept = headline
-            result.headline_kept_reason = f"it cannot be read ({exc}), so the cut cannot tell whether it was published"
+            result.headline_kept_reason = f"{unknown}, so the cut cannot tell whether it was published"
         else:
             if published:
                 result.headline_file = headline
@@ -265,25 +269,19 @@ def _release_writes(
         text = consumer_digest.read_changelog(changelog)
     except consumer_digest.DigestUnreadable as exc:
         raise CutRefused("digest-unreadable", f"{decl.path}: {exc}") from exc
-    for number, line in enumerate(text.lines, start=1):
-        if consumer_digest.names_release(line, version):
-            raise CutRefused(
-                "release-in-changelog",
-                f"{decl.path} line {number} ({line.strip()!r}) is already a section for {version}; the cut writes "
-                f"that section itself, so remove it, or move its first paragraph into "
-                f"{consumer_digest.HEADLINE_FILE_REL} if it was the headline",
-            )
+    for number, heading in consumer_digest.release_sections(text, version):
+        raise CutRefused(
+            "release-in-changelog",
+            f"{decl.path} line {number} ({heading!r}) is already a section for {version}; "
+            f"{consumer_digest.RELEASE_IN_CHANGELOG_REMEDY}",
+        )
 
     headline_path = project_dir / consumer_digest.HEADLINE_FILE_REL
-    headline: str | None = None
+    read = consumer_digest.read_headline(project_dir)
+    if read.unreadable:
+        raise CutRefused("no-headline", f"{consumer_digest.HEADLINE_FILE_REL} {read.problem}")
+    headline = read.text
     if headline_path.is_file():
-        try:
-            raw_headline = headline_path.read_text(encoding="utf-8")
-            headline = raw_headline if consumer_digest.headline_lines(raw_headline) else None
-        except (OSError, UnicodeDecodeError) as exc:
-            raise CutRefused(
-                "no-headline", f"{consumer_digest.HEADLINE_FILE_REL} cannot be read as UTF-8 text ({exc})"
-            ) from exc
         result.headline_file = headline_path
     if decl.headline == "required" and headline is None:
         raise CutRefused(

@@ -525,38 +525,15 @@ def _ships_the_plugin_tree(project_dir: Path) -> bool:
     return (project_dir / "plugin" / "VERSION").exists()
 
 
-def _release_headline(project_dir: Path) -> tuple[str | None, str | None]:
-    """``(first non-empty line, problem)`` of the pending headline file.
+def _headline_warnings(decl: consumer_digest.Declaration, read: consumer_digest.HeadlineRead) -> list[str]:
+    """What is wrong with the headline the cut will put in the release section.
 
-    The line comes back stripped and otherwise verbatim, markers and all,
-    because the emission prints it back and what the operator needs to see is
-    the line as they wrote it. ``problem`` is a phrase naming why there is no
-    line — the file is absent, holds nothing, or cannot be read — and is
-    ``None`` whenever a line was found.
-    """
-    path = project_dir / consumer_digest.HEADLINE_FILE_REL
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return None, "is absent"
-    except _UNREADABLE as exc:
-        return None, f"cannot be read ({exc})"
-    for line in text.splitlines():
-        if line.strip():
-            return line.strip(), None
-    return None, "is empty"
-
-
-def _headline_warnings(
-    decl: consumer_digest.Declaration, headline: str | None, problem: str | None
-) -> list[str]:
-    """What is wrong with the headline a ``headline: required`` digest will get.
-
-    Two failures: a release with no headline at all, and one whose first line
-    the banner cannot show. The cut refuses an absent or empty headline file
-    (``no-headline``); a headline that opens on a heading it writes as given,
-    so this is the only place that one is caught before a consumer's session
-    banner shows nothing.
+    Three failures. A headline file that exists but cannot be read, which the
+    cut refuses (``no-headline``) in either ``headline:`` mode. A headline that
+    opens on a heading, which the cut writes as given into a section whose
+    banner then shows nothing; it is checked in either mode, because the cut
+    uses a present headline file either way, and this is the only place it is
+    caught. And, only where the declaration owes one, no headline at all.
 
     **Advisory, because of the moment rather than the stakes.** Phase 0 runs
     before the step that writes the headline, so on a correct release this
@@ -564,17 +541,25 @@ def _headline_warnings(
     condition it is on its way to fixing.
     """
     headline_rel = consumer_digest.HEADLINE_FILE_REL
-    if problem is not None:
+    if read.unreadable:
+        return [
+            f"{headline_rel} {read.problem} — the cut refuses `no-headline` until it can be read, "
+            f"because it cannot put the file's text in the release's section in {decl.path}."
+        ]
+    if read.text is None:
+        if decl.headline != "required":
+            return []
         return [
             f"the consumer digest declares `headline: required`, and {headline_rel} "
-            f"{problem} — write this release's one-line headline there. The cut "
+            f"{read.problem} — write this release's one-line headline there. The cut "
             f"puts it at the top of the release's section in {decl.path}, where "
             f"the version-delta banner shows it to every upgrading repo, and "
             f"refuses `no-headline` without it."
         ]
-    if headline is not None and headline.startswith("#"):
+    first = read.first_line or ""
+    if first.startswith("#"):
         return [
-            f"{headline_rel} starts with a heading ({headline!r}) — the cut puts "
+            f"{headline_rel} starts with a heading ({first!r}) — the cut puts "
             f"it under the release's heading in {decl.path}, and the version-delta "
             f"banner reads no headline from a section whose first line is a "
             f"heading, so consumers would be shown nothing. Make the first line "
@@ -621,12 +606,9 @@ def _release_section_check(
             f"(`release-in-changelog`). Pass --release vX.Y.Z to have it checked."
         )
     warnings = [
-        f"{decl.path} already has a section for {version} (line {number}: "
-        f"{line.strip()!r}) — the cut writes this release's section itself and "
-        f"refuses `release-in-changelog` while one exists. Remove it, or move "
-        f"its text to {consumer_digest.HEADLINE_FILE_REL}."
-        for number, line in enumerate(text.lines, start=1)
-        if consumer_digest.names_release(line, version)
+        f"{decl.path} already has a section for {version} (line {number}: {heading!r}) — "
+        f"the cut refuses `release-in-changelog` while one exists: {consumer_digest.RELEASE_IN_CHANGELOG_REMEDY}."
+        for number, heading in consumer_digest.release_sections(text, version)
     ]
     return warnings, None
 
@@ -661,9 +643,22 @@ def _digest_advisories(
     if decl is None:
         return [], None, []
 
-    headline, problem = _release_headline(project_dir)
-    warnings = _headline_warnings(decl, headline, problem) if decl.headline == "required" else []
     version = normalize_version(release) if release else None
+    if version is not None:
+        release_file = consumer_digest.release_file_rel(version)
+        if (project_dir / release_file).is_file():
+            # After the cut both questions are answered: the headline file was
+            # consumed and the section is the cut's own. Asking them again would
+            # tell the operator to remove the section the cut just wrote, and a
+            # re-cut would not restore it, because the release file says done.
+            return [], (
+                f"{version} is already cut ({release_file} exists), so the headline "
+                f"and section checks of {decl.path} have nothing left to ask."
+            ), [f"digest: {version} already cut ({release_file} → {decl.path})"]
+
+    read = consumer_digest.read_headline(project_dir)
+    headline = read.first_line
+    warnings = _headline_warnings(decl, read)
     section_warnings, note = _release_section_check(project_dir, decl, version)
     # Printed whether or not anything is wrong, and whatever `headline:` says,
     # because the cut uses a present headline file either way: the failure

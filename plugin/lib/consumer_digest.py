@@ -86,15 +86,19 @@ class Declaration:
 def read_declaration(project_dir: Path) -> tuple[Declaration | None, str | None]:
     """``(declaration, invalid_reason)`` from the working tree's project state.
 
-    ``(None, None)`` is undeclared — an absent key, and equally an absent or
-    unreadable state file, which cannot be told apart from one that never
-    declared. ``(None, reason)`` is a declaration this reader refuses, and it is
-    never read as undeclared: an operator who wrote the key meant something.
+    ``(None, None)`` is undeclared: an absent key, or no state file at all.
+    ``(None, reason)`` is a declaration this reader refuses, and it is never
+    read as undeclared: an operator who wrote the key meant something. A state
+    file that exists but cannot be read is the second kind, because it may hold
+    a declaration; reading it as "undeclared" would have the cut ship a release
+    with no section and say the repo declares none.
     """
     try:
         text = (project_dir / STATE_FILE_REL).read_text(encoding="utf-8")
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return None, None
+    except (OSError, UnicodeDecodeError) as exc:
+        return None, f"{DECLARATION_KEY}: {STATE_FILE_REL} exists but cannot be read ({exc}), so whether it declares a digest is unknown"
     return parse_declaration(text, project_dir)
 
 
@@ -372,9 +376,53 @@ def insertion_index(text: ChangelogText, marker: str | None) -> int:
     return len(text.lines)
 
 
-def insert_section(text: ChangelogText, index: int, section: list[str]) -> ChangelogText:
-    """``text`` with ``section`` spliced in; :func:`place_section` without the line."""
-    return place_section(text, index, section)[0]
+#: What to do about a section already naming the release being cut. One
+#: sentence for Phase 0's early warning and the cut's refusal alike.
+RELEASE_IN_CHANGELOG_REMEDY = (
+    f"the cut writes that section itself, so remove it, or move its first paragraph into "
+    f"{HEADLINE_FILE_REL} if it was the headline"
+)
+
+
+def release_sections(text: ChangelogText, version: str) -> list[tuple[int, str]]:
+    """``(1-based line, heading)`` for every heading already naming ``version`` exactly."""
+    return [
+        (number, line.strip())
+        for number, line in enumerate(text.lines, start=1)
+        if names_release(line, version)
+    ]
+
+
+@dataclass(frozen=True)
+class HeadlineRead:
+    """The pending headline file as read: its text, or why there is none.
+
+    ``problem`` is a phrase for a message (``is absent``, ``is empty``,
+    ``cannot be read (…)``), and ``text`` is ``None`` whenever it is set.
+    ``unreadable`` is the one state the cut refuses in either ``headline:``
+    mode, because a file that exists but cannot be read cannot go in the
+    release; callers branch on it, never on the phrase.
+    """
+
+    text: str | None
+    problem: str | None = None
+    unreadable: bool = False
+
+    @property
+    def first_line(self) -> str | None:
+        lines = headline_lines(self.text)
+        return lines[0].strip() if lines else None
+
+
+def read_headline(project_dir: Path) -> HeadlineRead:
+    """The one reader of ``.prawduct/release-headline.md``."""
+    try:
+        raw = (project_dir / HEADLINE_FILE_REL).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return HeadlineRead(None, "is absent")
+    except (OSError, UnicodeDecodeError) as exc:
+        return HeadlineRead(None, f"cannot be read ({exc})", unreadable=True)
+    return HeadlineRead(raw) if headline_lines(raw) else HeadlineRead(None, "is empty")
 
 
 def place_section(text: ChangelogText, index: int, section: list[str]) -> tuple[ChangelogText, int]:

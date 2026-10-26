@@ -978,3 +978,15 @@ def test_a_rerun_dry_run_says_what_it_would_remove(tmp_path):
     assert "removing" not in dry.stdout
     applied = _cut(project, "--release", "v3.8.0", "--apply")
     assert "headline file: removing" in applied.stdout
+
+
+def test_an_unreadable_state_file_refuses_rather_than_shipping_no_section(tmp_path):
+    """It may hold a declaration; reading it as none would archive the fragments,
+    write no release section and say the repo declares none (#733 review)."""
+    project = _declared(tmp_path, fragments=_ONE, table=_ONE_TABLE)
+    (project / ".prawduct" / "project-state.yaml").write_bytes(b"consumer_digest:\n  path: \xff\n")
+    before = _snapshot(project)
+    result = _cut(project, "--release", "v3.8.0", "--apply")
+    assert result.returncode == 1, result.stdout
+    assert "refused: digest-declaration-invalid:" in result.stderr and "cannot be read" in result.stderr
+    assert _snapshot(project) == before
