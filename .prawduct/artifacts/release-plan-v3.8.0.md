@@ -18,6 +18,12 @@ the requirement. The cut does not decide it.
   changelog, read at Phase 0 and written at the cut, so a governed product's consumer notes reach
   its own changelog. Requirements: `documentation/issues/733-requirements.md`. The build plan
   lives on `feature/733-consumer-digest`.
+- **`final-review-chunks`**: #1072 (owner, 2026-10-26). A `final` or `cumulative` review run
+  partway through a plan certifies every open chunk, built or not, because
+  `plan_status.propose_chunks` proposes them all and `critic-begin` certifies the proposal. Chunk
+  state ships in this release, so without the fix every product inherits wrong `plan status`
+  answers and a Stop gate that stops asking for reviews. The fix's build plan and fragment must
+  use the scope `final-review-chunks`, which is what the row below matches.
 
 **How this is enforced, not just stated.** Each requirement has a `ships` row in the table below
 before its work merges. Until the scope's fragment reaches `develop`, `check-releasability
@@ -32,3 +38,4 @@ Every row must account for one release-pending scope. Phase 1 adds the rest.
 | Scope | Disposition | Blocker |
 |---|---|---|
 | consumer-digest | ships | |
+| final-review-chunks | ships | |
