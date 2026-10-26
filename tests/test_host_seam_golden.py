@@ -251,6 +251,29 @@ class TestSessionStart:
         result = _run([str(HOOK), "clear", "--session-start"], _hook_env(tmp_path, repo), repo)
         _check("clear_session_start", result, tmp_path)
 
+    def test_clear_reads_transcripts_under_the_config_home(self, tmp_path):
+        """`CLAUDE_CONFIG_DIR` is where the briefing's worktree scan looks for
+        session transcripts: a fresh one for a sibling worktree reads as an
+        agent active there. Control: the same repo without the variable has no
+        such line, so the line is the config home's doing."""
+        repo = _repo(tmp_path)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "state")
+        worktree = tmp_path / "wt"
+        _git(repo, "worktree", "add", "-q", "-b", "wt", str(worktree))
+        encoded = "".join(c if c.isalnum() else "-" for c in str(worktree.resolve()))
+        transcripts = tmp_path / "config" / "projects" / encoded
+        transcripts.mkdir(parents=True)
+        (transcripts / "session.jsonl").write_text("{}\n")
+        control = _run(
+            [str(HOOK), "clear", "--session-start", "--brief-only"], _hook_env(tmp_path, repo), repo
+        )
+        assert "agent active" not in control["stdout"]
+        env = _hook_env(tmp_path, repo, CLAUDE_CONFIG_DIR=str(tmp_path / "config"))
+        result = _run([str(HOOK), "clear", "--session-start", "--brief-only"], env, repo)
+        assert "agent active" in result["stdout"]
+        _check("clear_brief_only_config_home", result, tmp_path)
+
     def test_clear_session_start_brief_only(self, tmp_path):
         repo = _repo(tmp_path)
         result = _run(
