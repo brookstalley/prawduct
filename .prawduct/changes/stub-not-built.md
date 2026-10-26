@@ -32,8 +32,14 @@ lists that fragment under Deliverables. So the plan commit read as that chunk bu
   note appears when the subject walk could not run, or when a chunk was left out because only an
   unscoped subject names it. Before this, either case dropped the chunk silently, and a later
   `--chunks` naming it warned as if it overreached.
+- The extension deferral (the Stop gate and `cost-of-commit`) now also defers pending work that
+  is only a stub fragment, or a deleted one, since neither is any chunk's work. That widens the
+  next review's interval and loses no coverage.
 - The `built` tag was documented as "render-only; no gate reads it". In fact the short-plan Stop
-  gate reads it to arm its last-chunk block. The docstrings now say a gate may read it only to arm.
+  gate reads it to arm its last-chunk block. The docstrings, `api-contract.md`, `planning.md`'s
+  chunk-state rule and the cross-cutting-concerns row now say a gate may read it only to arm.
+- The short-plan Stop gate's next-step advice now asks for the scoped subject form
+  `<type>(<scope>): … (Chunk <id>)`, which is the only form the boundary proposal counts.
 
 ### Chunk 02: change record
 
