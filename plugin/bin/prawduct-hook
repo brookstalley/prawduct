@@ -10076,7 +10076,8 @@ def cmd_jurisdiction(project_dir: Path, argv: list[str]) -> int:
 #
 # Posture follows what the command produces (architecture.md § Direction):
 # a governance WRITE fails closed, everything else degrades to a loud note.
-# Neither is silent, which is the entire point.
+# Neither is silent, which is the entire point — and harness hooks, which can
+# act on neither, say it once per session at SessionStart (below).
 
 SKEW_MARKER = "plugin-binary-skew"
 
@@ -10086,15 +10087,28 @@ SKEW_MARKER = "plugin-binary-skew"
 # not a mistake. A refusal here is also unactionable: a hook cannot be told to
 # invoke a repo-local binary. Refusing would return 1 from every SessionStart in
 # every framework checkout — no briefing, no session reset, no marker sweep —
-# so these get the loud note and nothing else. `stop` and `subagent-stop` are
-# here even though `stop`'s abandoned-review self-heal DOES write a fact: who
-# invokes it decides whether refusing is even possible, and only then does what
-# it writes decide the severity of saying so.
+# so these never refuse. `stop` and `subagent-stop` are here even though
+# `stop`'s abandoned-review self-heal DOES write a fact: who invokes it decides
+# whether refusing is even possible, and only then does what it writes decide
+# the severity of saying so.
 _HARNESS_INVOKED_COMMANDS = frozenset({
     "clear",
     "subagent-stop",
     "stop",
 })
+
+# The ONE harness entry point that reports the skew: SessionStart's
+# `clear --session-start`. The skew is a property of the session (which plugin
+# the harness loaded), not of a turn, so it is said once, on STDOUT — the
+# channel a SessionStart hook's output reaches the agent's context through
+# (`cmd_clear`'s briefing rides it too); stderr at exit 0 is only logged. Keyed
+# on the flag, not the verb: an agent may run `clear` itself, and that caller
+# can act on the ordinary agent-side note. Stop and SubagentStop stay quiet:
+# they fire every turn, and the agent-side note's remedy (re-run with
+# $CLAUDE_PLUGIN_ROOT unset) is one no hook can apply.
+# `tests/test_binary_skew_guard.py` pins this to what every hooks.json
+# SessionStart entry runs, and to nothing the other events run.
+_SKEW_REPORTING_HOOK = ("clear", "--session-start")
 
 # Agent-invoked, state-mutating governance writes. A wrong-version write here
 # does not merely misreport — it corrupts or silently omits a persisted fact
@@ -10687,8 +10701,13 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
 def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None" = None) -> int:
     """0 to proceed; 1 when a data-plane write must refuse.
 
-    Emits on stderr either way — the failure this closes was defined by its
-    silence, so a quiet pass would reproduce it one severity down.
+    Emits on stderr for every command but the harness's — the failure this
+    closes was defined by its silence, so a quiet pass would reproduce it one
+    severity down. The skew is a property of the session, so SessionStart
+    (`_SKEW_REPORTING_HOOK`) says it once, in hook terms and on stdout, and the
+    `stop`/`subagent-stop` verbs stay silent whoever invokes them, rather than
+    repeat it every turn. A lib-only skew under `--session-start` is not a hook
+    (a hook runs its own plugin's script and lib), so it gets the ordinary note.
     """
     skew = _binary_skew(project_dir)
     kind = "binary"
@@ -10705,6 +10724,36 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
         else f"running this repo's script but importing lib/ from {running} "
              "($CLAUDE_PLUGIN_ROOT)"
     )
+    reporter, flag = _SKEW_REPORTING_HOOK
+    if kind == "binary" and command == reporter and flag in (argv or []):
+        # SessionStart: report once per session, with the remedies a session
+        # actually has, on the channel that reaches the agent. Both rosters are
+        # rendered from the sets the guard decides by, so the note cannot claim
+        # a write is guarded that is not, or omit a hook that writes unguarded.
+        hooks = ", ".join(f"`{c}`" for c in sorted(_HARNESS_INVOKED_COMMANDS))
+        guarded = ", ".join(
+            [f"`{c}`" for c in sorted(_DATA_PLANE_COMMANDS)]
+            + [f"`{c} {op}`" for c, ops in sorted(_DATA_PLANE_WRITE_OPS.items())
+               for op in sorted(ops)]
+        )
+        print(
+            f"NOTE: {SKEW_MARKER}: this session's hooks are running {running}, "
+            f"not the plugin this repo carries ({repo_plugin}). Hooks always run "
+            "the installed plugin, so this is expected while you work on the "
+            f"framework, and the hooks ({hooks}) write governance state with that "
+            "plugin's code, unguarded: `subagent-stop` consolidates a "
+            "three-reviewer Critic review and `stop` can record an abandoned "
+            f"one. Commands you run yourself are guarded: {guarded} refuse on a "
+            f"foreign binary and name `python3 {local}`. To have this checkout's "
+            "code do the hooks' writes too, start the session with "
+            f"`claude --plugin-dir {repo_plugin}`. Said once per session start; "
+            "Stop and SubagentStop do not repeat it."
+        )
+        return 0
+    if command in _HARNESS_INVOKED_COMMANDS - {reporter}:
+        # Never refuse (see the set's comment), and never repeat what
+        # SessionStart already said: these fire every turn.
+        return 0
     detail = (
         f"{SKEW_MARKER}: {what}, but this repo carries {repo_plugin}. "
         f"Run `python3 {local}` with $CLAUDE_PLUGIN_ROOT unset or pointed here. "

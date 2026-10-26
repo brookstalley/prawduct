@@ -194,10 +194,10 @@ def observe(
             UNKNOWN, f"git could not list this repo's refs ({err or f'exit {code}'})"
         )
     refs = _exact_refs(out)
-    branch_refs = {r: sha for r, sha in refs.items() if _names(r, branch)}
+    branch_refs = {r: sha for r, sha in refs.items() if gitstate.ref_is_branch(r, branch)}
     base_shas = {
         r: sha for r, sha in sorted(refs.items())
-        if (r in fallback if not declared_base else _names(r, declared_base))
+        if (r in fallback if not declared_base else gitstate.ref_is_branch(r, declared_base))
     }
     base_refs = list(base_shas)
     if declared_base and not base_refs:
@@ -336,12 +336,6 @@ def _exact_refs(out: str) -> dict[str, str]:
         if gitstate.is_object_id(sha) and ref:
             refs[ref] = sha
     return refs
-
-
-def _names(ref: str, branch: str) -> bool:
-    """Whether ``ref`` is exactly ``branch``, local or on one remote — the rule
-    :func:`gitstate.ref_is_branch` owns, shared with the chunk-state probe."""
-    return gitstate.ref_is_branch(ref, branch)
 
 
 def _contained_in(repo_dir: Path, commit: str, base_refs: list[str]) -> str | None | bool:

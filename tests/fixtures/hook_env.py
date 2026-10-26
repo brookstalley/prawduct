@@ -14,8 +14,10 @@ filtering their lines out of stderr would also hide a regression that prints
 them where they do not belong. So this helper removes their cause instead: the
 project resolves to a directory the test owns, and the plugin root is pinned.
 
-Use it for any test that asserts on all of stderr. A test that asserts only that
-a given string is or is not in stderr doesn't need it.
+Use it for any test that asserts on all of stderr, and on all of stdout of
+``clear --session-start``: that one call prints the skew notice on stdout, the
+channel SessionStart injects into the agent's context. A test that asserts only
+that a given string is or is not in a stream doesn't need it.
 """
 
 from __future__ import annotations

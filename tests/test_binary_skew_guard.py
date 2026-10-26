@@ -25,7 +25,9 @@ different messages because they have different fixes.
 Posture follows what the command produces (`architecture.md` § Direction —
 authority fails closed, advice fails soft): a governance **write** refuses, and
 everything else degrades to a loud stderr note. Neither is silent, which is the
-whole point.
+whole point. Harness-invoked hooks run the installed plugin by design and can act
+on neither, so they never refuse and the skew is said once per session, by
+SessionStart's `clear`, in hook terms; Stop and SubagentStop stay silent on it.
 
 Product repos legitimately run the installed binary, so they must be entirely
 unaffected — that is the over-fire case, and the one a careless fix breaks. A
@@ -249,6 +251,10 @@ class TestFrameworkCheckoutSkew:
             "it must still SAY the binary is foreign — silence here is the "
             "defect one severity down"
         )
+        assert "$CLAUDE_PLUGIN_ROOT unset" in result.stderr, (
+            "an agent CAN re-invoke the repo-local binary, so its note keeps "
+            "the remedy the hook note drops"
+        )
 
     @pytest.mark.parametrize(
         "op", [("ingest",), ("sync",), ("configure", "--apply")], ids=["ingest", "sync", "configure"]
@@ -295,7 +301,13 @@ class TestHarnessInvokedHooksNeverRefuse:
     inside a framework checkout is foreign BY DESIGN. Refusing there returns 1
     from every SessionStart in every such repo (no briefing, no session reset,
     no marker sweep) and is unactionable besides: a hook cannot be told to run
-    a repo-local binary. They get the note; they never refuse.
+    a repo-local binary. They never refuse.
+
+    And they report the skew ONCE, at SessionStart, in words a hook can carry.
+    The note used to fire on every harness hook and prescribe re-running the
+    command with $CLAUDE_PLUGIN_ROOT unset — a remedy no hook can apply,
+    repeated on every Stop: a channel produced and never consumed, which the
+    framework repo's sessions saw as a stop-hook storm.
     """
 
     def test_session_start_clear_does_not_refuse(self, tmp_path):
@@ -312,20 +324,6 @@ class TestHarnessInvokedHooksNeverRefuse:
         result = _run(repo, "subagent-stop", binary=foreign)
         assert "BLOCKED: refusing `subagent-stop`" not in result.stderr
 
-    def test_harness_hook_still_says_it_is_foreign(self, tmp_path):
-        """Positive assertion for "neither is silent".
-
-        The exclusion tests all check that a refusal is ABSENT, which cannot
-        distinguish "noted and proceeded" from "said nothing at all" — and
-        saying nothing is precisely the defect #227 is about, one severity down.
-        """
-        repo = _make_framework_checkout(tmp_path / "fw")
-        foreign = _install_binary_at(tmp_path / "installed")
-        result = _run(repo, "subagent-stop", binary=foreign)
-        assert _SKEW_MARKER in result.stderr, (
-            "a harness hook must still report the skew even though it proceeds"
-        )
-
     def test_stop_does_not_refuse(self, tmp_path):
         """`stop` writes a fact via the abandoned-review self-heal, and is
         still harness-invoked — who invokes it decides whether refusing is
@@ -334,6 +332,104 @@ class TestHarnessInvokedHooksNeverRefuse:
         foreign = _install_binary_at(tmp_path / "installed")
         result = _run(repo, "stop", binary=foreign)
         assert "BLOCKED: refusing `stop`" not in result.stderr
+
+    def test_session_start_reports_the_skew_once_in_hook_words(self, tmp_path):
+        """Positive assertion for "neither is silent", on the one hook that speaks.
+
+        Both SessionStart shapes (`startup|clear` and `resume|compact|fork`)
+        run `clear --session-start`, so both must carry it. On STDOUT: that is
+        how a SessionStart hook's output reaches the agent's context, while
+        stderr at exit 0 is only logged — moving the note from Stop to a
+        SessionStart stderr line would have moved it where nobody reads. The
+        note must not prescribe the agent-side remedy — a hook cannot be re-run
+        with an env var unset — and must name what the reader CAN do.
+        """
+        repo = _make_framework_checkout(tmp_path / "fw")
+        foreign = _install_binary_at(tmp_path / "installed")
+        for args in (("--session-start",), ("--session-start", "--brief-only")):
+            result = _run(repo, "clear", *args, binary=foreign)
+            assert result.stdout.count(_SKEW_MARKER) == 1, (
+                f"`clear {' '.join(args)}` must report the skew exactly once, on "
+                f"stdout; stdout was: {result.stdout!r}"
+            )
+            assert _SKEW_MARKER not in result.stderr, (
+                "stderr at exit 0 is logged, not read — the note belongs on stdout"
+            )
+            note = next(l for l in result.stdout.splitlines() if _SKEW_MARKER in l)
+            assert "$CLAUDE_PLUGIN_ROOT unset" not in note, (
+                "a hook cannot be re-run with an env var unset — that remedy is "
+                "the agent's, and printing it here is unactionable"
+            )
+            assert f"--plugin-dir {(repo / 'plugin').resolve()}" in note, (
+                "the hook note must name the remedy that IS available: loading "
+                "this checkout's plugin for the session"
+            )
+            hook = _hook_module()
+            for command in sorted(hook._DATA_PLANE_COMMANDS):
+                assert f"`{command}`" in note, (
+                    f"the note says which writes are guarded; `{command}` refuses "
+                    "on a foreign binary and must be named"
+                )
+            for command, ops in hook._DATA_PLANE_WRITE_OPS.items():
+                for op in ops:
+                    assert f"`{command} {op}`" in note
+            for command in sorted(hook._HARNESS_INVOKED_COMMANDS):
+                assert f"`{command}`" in note, (
+                    f"`{command}` is a hook, so it writes with the installed "
+                    "plugin unguarded; a note naming only the guarded writes "
+                    "reads as if no foreign code can write, while SubagentStop "
+                    "consolidates the agent's own reviews"
+                )
+            assert "unguarded" in note
+
+    def test_lib_skew_under_session_start_gets_the_agent_note(self, tmp_path):
+        """A hook runs its own plugin's script AND lib, so a lib-only skew under
+        `--session-start` is someone running the repo script by hand. The hook
+        wording ("hooks always run the installed plugin") would contradict the
+        lib wording in the same line, so that caller gets the ordinary note,
+        on stderr, naming LIB."""
+        repo = _make_framework_checkout(tmp_path / "fw")
+        local = _install_binary_at(repo / "plugin")
+        _install_binary_at(tmp_path / "installed")
+        result = _run(
+            repo, "clear", "--session-start", "--brief-only",
+            binary=local, plugin_root=str(tmp_path / "installed"),
+        )
+        # The fixture's "installed" plugin has no lib/, so `clear` itself fails
+        # after the guard; the guard's verdict is what this test is about.
+        assert "BLOCKED: refusing `clear`" not in result.stderr
+        assert _SKEW_MARKER not in result.stdout
+        assert _SKEW_MARKER in result.stderr and "importing lib/ from" in result.stderr
+        assert "Hooks always run the installed plugin" not in result.stderr
+
+    def test_agent_invoked_clear_gets_the_agent_note(self, tmp_path):
+        """The carve-out keys on `--session-start`, not on the verb: an agent
+        running `clear` itself CAN re-invoke the repo-local binary, so it gets
+        the ordinary note with that remedy, not the hook wording."""
+        repo = _make_framework_checkout(tmp_path / "fw")
+        foreign = _install_binary_at(tmp_path / "installed")
+        result = _run(repo, "clear", binary=foreign)
+        assert "BLOCKED: refusing `clear`" not in result.stderr
+        assert _SKEW_MARKER not in result.stdout
+        assert "$CLAUDE_PLUGIN_ROOT unset" in result.stderr
+
+    def test_stop_and_subagent_stop_are_silent_on_skew(self, tmp_path):
+        """The storm itself: every Stop repeated the SessionStart note.
+
+        The control (`version`, agent-invoked, same binary, same repo) must
+        still speak, so silence here is the harness carve-out and not a
+        fixture in which no skew exists.
+        """
+        repo = _make_framework_checkout(tmp_path / "fw")
+        foreign = _install_binary_at(tmp_path / "installed")
+        control = _run(repo, "version", binary=foreign)
+        assert _SKEW_MARKER in control.stderr, "fixture has no skew — proves nothing"
+        for command in ("stop", "subagent-stop"):
+            result = _run(repo, command, binary=foreign)
+            assert _SKEW_MARKER not in result.stderr, (
+                f"`{command}` must not repeat the skew note SessionStart already "
+                "gave — it fires every turn and offers nothing to act on"
+            )
 
 
 class TestProductRepoUnaffected:
@@ -470,12 +566,13 @@ class TestCommandSetsAgreeWithTheirSourceOfTruth:
     checkout. Derived from the file rather than restated.
     """
 
-    def _hook_commands(self) -> set[str]:
+    def _hook_invocations(self) -> dict[str, list[list[str]]]:
+        """Per hooks.json event, each prawduct-hook call as [verb, *args]."""
         import json as _json
 
         data = _json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-        found = set()
-        for entries in data.get("hooks", {}).values():
+        found: dict[str, list[list[str]]] = {}
+        for event, entries in data.get("hooks", {}).items():
             for entry in entries:
                 for hook in entry.get("hooks", []):
                     cmd = hook.get("command", "")
@@ -485,9 +582,16 @@ class TestCommandSetsAgreeWithTheirSourceOfTruth:
                     parts = cmd.split()
                     for idx, tok in enumerate(parts):
                         if "prawduct-hook" in tok and idx + 1 < len(parts):
-                            found.add(parts[idx + 1].strip('"'))
+                            found.setdefault(event, []).append(
+                                [t.strip('"') for t in parts[idx + 1:]]
+                            )
                             break
         return found
+
+    def _hook_commands(self) -> set[str]:
+        return {
+            call[0] for calls in self._hook_invocations().values() for call in calls
+        }
 
     def test_every_hooks_json_entry_point_is_exempt_from_refusal(self):
         import re as _re
@@ -507,3 +611,26 @@ class TestCommandSetsAgreeWithTheirSourceOfTruth:
             "A hook cannot be told to run a repo-local binary, so refusing there "
             "breaks SessionStart in every framework checkout."
         )
+
+    def test_the_skew_reporting_hook_is_a_session_start_entry_point(self):
+        """The one harness call allowed to report skew must be what EVERY
+        SessionStart entry runs — and nothing the other events run. Renaming
+        the verb or dropping the flag would silence the report everywhere, the
+        defect one severity down; pointing it at `stop` would bring the storm
+        back."""
+        hook = _hook_module()
+        verb, flag = hook._SKEW_REPORTING_HOOK
+        assert verb in hook._HARNESS_INVOKED_COMMANDS
+        by_event = self._hook_invocations()
+        session_start = by_event.get("SessionStart")
+        assert session_start, "parsed no SessionStart call — the test is blind"
+        for call in session_start:
+            assert call[0] == verb and flag in call, (
+                f"SessionStart runs {call}, which would not report the skew"
+            )
+        others = [c for e, calls in by_event.items() if e != "SessionStart" for c in calls]
+        assert others, "parsed no other event's call — the test is blind"
+        for call in others:
+            assert not (call[0] == verb and flag in call), (
+                f"{call} would repeat the SessionStart skew note every turn"
+            )
