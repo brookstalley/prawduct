@@ -196,7 +196,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the freshness fallback neither vouches nor denies by it. `test-status` prints its verdict line
   first, then one line per scratch worktree's newest narrowed run (at most 10); its exit code is
   unchanged.
-- **Evidence transport** — `review`, `resolution` and `chunk-imported` facts travel between clones
+- **Evidence transport** — `review`, `resolution`, `chunk-imported` and `chunk-retracted` facts travel between clones
   as their store lines in notes on `refs/notes/prawduct` (`data-model.md` § Evidence Store).
   `evidence ingest [--all] [--json]` (mutating) appends the note lines the store lacks, bounded to
   the branch's commits from the merge base, or every note with `--all`; it prints how many records
@@ -388,6 +388,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `status-block-undelimited`, `status-block-trailing-comment`, `fact-append-failed`,
   `plan-write-failed`; 2 usage or a path that is not a build plan. The preview is allowed inside a
   scratch worktree; `--apply` is a governance write and is refused there.
+  `plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]` (mutating) withdraws one
+  fact's certification of one chunk by appending a `chunk-retracted` fact (`{scope, chunk,
+  fact_id, reason, retracted_at}`), attached as a note on HEAD like an import. `--fact` omitted
+  names the fact certifying the chunk now; `--plan` omitted, the bound plan. It can only reopen a
+  chunk, so it needs no authority beyond the reason it records. Exit 0 written or already
+  retracted (nothing written; `--json` `action` is `retracted` | `already-retracted`, beside
+  `plan_path`, `scope`, `chunk`, `fact_id`, `retraction_id`, and `state` / `certified_by` — what the
+  chunk reads after); 1 `refused: <code>` for `no-plan`, `archived-plan`, `store-unreadable`,
+  `no-scope`, `unknown-chunk`, `box-import` (a box read in memory: untick it), `not-certified`,
+  `unknown-fact`, `other-scope`, `not-named`, `fact-append-failed`; 2 usage or a path that is not
+  a build plan. Refused inside a scratch worktree.
   `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
   `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per
   claim, each reported distinctly and carried in `--json` as `outcome`: `exists` (nothing printed);

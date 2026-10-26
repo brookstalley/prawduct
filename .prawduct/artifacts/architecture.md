@@ -214,7 +214,7 @@ CRT-8L3Q.
 - **The evidence store is shared across all worktrees of a clone**, because it lives inside the
   shared `.git` common dir. Every worktree appends to and reads the same log, so review coverage
   composes across worktrees. The store itself never leaves its clone; its verdict-bearing kinds
-  (`review`, `resolution`, `chunk-imported`) also ride `refs/notes/prawduct` as notes on the
+  (`review`, `resolution`, `chunk-imported`, `chunk-retracted`) also ride `refs/notes/prawduct` as notes on the
   commit each fact anchors to. `/prawduct:pr create|update` pushes that ref with the branch
   (`evidence sync`), session start ingests the branch's notes, and another clone then composes
   the same verdict from the same facts — wherever it holds the trees they name. A review of an
@@ -261,7 +261,7 @@ the plugin no longer places them.
 | Tier | Where | Holds | Sharing |
 |------|-------|-------|---------|
 | Ledger (source of truth) | `<git-common-dir>/prawduct/` (inside `.git`) | evidence facts | shared by all worktrees of a clone; never committed |
-| Ledger transport (copies, never truth) | `refs/notes/prawduct` (inside `.git`), plus its fetch refspec and `notes.rewriteRef` in the clone's `.git/config` | the store lines of every `review`, `resolution` and `chunk-imported` fact, as notes on each fact's anchor commit. A receiving clone ingests them into its own ledger, deduplicated by fact id; gates read only the ledger | per clone until pushed — `/prawduct:pr create\|update` runs `evidence sync` (fetch, merge, reconcile, ingest, push) against the product's own remote; the config keys are written only by `evidence configure --apply`; never committed |
+| Ledger transport (copies, never truth) | `refs/notes/prawduct` (inside `.git`), plus its fetch refspec and `notes.rewriteRef` in the clone's `.git/config` | the store lines of every `review`, `resolution`, `chunk-imported` and `chunk-retracted` fact, as notes on each fact's anchor commit. A receiving clone ingests them into its own ledger, deduplicated by fact id; gates read only the ledger | per clone until pushed — `/prawduct:pr create\|update` runs `evidence sync` (fetch, merge, reconcile, ingest, push) against the product's own remote; the config keys are written only by `evidence configure --apply`; never committed |
 | Local-only undo | `<git-common-dir>/prawduct/learnings-backup/<UTC stamp>/` (inside `.git`) | the byte-verified copy of a legacy learnings corpus that `learnings-migrate --local` deleted — for a repo that keeps its learnings out of git, the **only** copy, since no commit holds it. Never read by prawduct; an operator restores from it by hand | shared by all worktrees of a clone (the common dir survives `git worktree remove`); never committed |
 | Derived cache (never truth) | `<git-common-dir>/prawduct/` (inside `.git`) | the optional backlog read-through store and the briefing-counts snapshot — **the same directory as the ledger above, and a different tier**: the provider is the home of every fact here, nothing originates, and a drop-and-rebuild is the mechanical proof of it. Discarded on any schema mismatch rather than migrated | shared by all worktrees of a clone; never committed |
 | Session/gate state | `.prawduct/.*` (gitignored) | markers, partials, caches, session baselines, advisories | per-worktree |

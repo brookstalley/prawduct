@@ -540,6 +540,61 @@ class _Spy:
         monkeypatch.setattr(plan_status, "built_chunks", no_built)
 
 
+def _retracted(fact_id: str, target: str, chunk: str, *, scope: str = "unit",
+               reason: "str | None" = "unbuilt") -> dict:
+    body = {"scope": scope, "chunk": chunk, "fact_id": target, "reason": reason,
+            "retracted_at": "2026-10-26T12:00:00Z"}
+    return _envelope(plan_status.RETRACTED_KIND, fact_id, body)
+
+
+class TestRetraction:
+    """#1072: a `chunk-retracted` fact withdraws one (fact, chunk) pair. The CLI
+    that writes it is `tests/test_plan_retract.py`; these pin the reader."""
+
+    def test_only_the_retracted_pair_reopens(self, repo):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo)
+        facts = _facts(_review("R1", head, chunks=["01", "02", "03"]), _retracted("X1", "R1", "02"))
+        states = plan_status.chunk_states(plan, facts, repo_dir=repo)
+        assert {k: s.state for k, s in states.items()} == {"01": "done", "02": "open", "03": "done"}
+        assert states["02"].reason == "review R1 names it, but it was retracted: unbuilt"
+        assert not plan_status.is_finished(plan, facts, repo_dir=repo, states=states)
+
+    def test_another_scopes_retraction_and_an_unreadable_one_withdraw_nothing(self, repo):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo)
+        facts = _facts(
+            _review("R1", head, chunks=["01", "02"]),
+            _retracted("X1", "R1", "01", scope="other"),
+            _retracted("X2", "R1", "02", reason="  "),
+            _envelope(plan_status.RETRACTED_KIND, "X3", {"scope": "unit", "chunk": "02"}),
+        )
+        assert _states(plan, facts, repo) == {"01": "done", "02": "done", "03": "open"}
+
+    def test_a_retracted_import_falls_to_the_next_answer(self, repo):
+        """A chunk-imported fact is withdrawn the same way; with no box left
+        to read in memory the chunk is open."""
+        plan = _plan(repo)
+        facts = _facts(_imported("I1", "01"), _retracted("X1", "I1", "01"))
+        states = plan_status.chunk_states(plan, facts, repo_dir=repo)
+        assert states["01"].state == "open"
+        assert states["01"].reason == "import I1 names it, but it was retracted: unbuilt"
+
+    def test_a_retraction_costs_no_subprocess(self, repo, monkeypatch):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo, ("01",))
+        facts = _facts(_review("R1", head, chunks=["01"]), _retracted("X1", "R1", "01"))
+        spy = _Spy(monkeypatch)
+        assert _states(plan, facts, repo) == {"01": "open"}
+        assert spy.calls == []
+
+    def test_a_chunk_id_written_unnormalized_still_matches(self, repo):
+        head = _commit(repo, "src/c01.py", "x\n", "work")
+        plan = _plan(repo)
+        facts = _facts(_review("R1", head, chunks=["01", "02"]), _retracted("X1", "R1", "Chunk 2"))
+        assert _states(plan, facts, repo)["02"] == "open"
+
+
 class TestNoGitWalk:
     def test_no_certifying_fact_costs_no_subprocess(self, repo, monkeypatch):
         head = _commit(repo, "src/c01.py", "x\n", "work")

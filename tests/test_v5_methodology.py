@@ -1419,7 +1419,10 @@ LAST_MEASURED_TOKENS = {
     # +15 on 2026-10-25 (merged-plan-chunk-state, #1065): the chunk-state sentence names where
     # a review's commit is placed once the merge has deleted the branch (its base). A RAISE:
     # the rule's one home gains the clause; nothing elsewhere restates it.
-    "methodology/planning.md": 5811,
+    # +23 on 2026-10-26 (final-review-chunks, #1072): the chunk-state rule says a wrong
+    # certification is withdrawn with `plan retract`, never edited. A RAISE: the rule's one home
+    # gains the clause, and it is the only place a builder learns a certification can be undone.
+    "methodology/planning.md": 5834,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

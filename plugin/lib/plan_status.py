@@ -19,6 +19,8 @@ pins that over every ``lib`` module and the hook.
   whole-plan review's proposal; it and :func:`built_chunks` are the two
   git-walking functions here, sharing one ``git log`` reader;
 - :func:`propose_chunks` — the chunk set a review dispatch proposes (ST8);
+- :func:`retraction_target` — whether a fact's certification of a chunk can be
+  withdrawn, the one check ``plan retract`` writes behind;
 - :func:`render_table` — the ``plan status`` table, the one renderer the CLI,
   the ``/clear`` handoff and the PR payload print;
 - :func:`built_not_done_notice` — the bound plan's chunks that are built and
@@ -36,6 +38,12 @@ which is where their commits went (:class:`_Reachability`, #1065). Mode labels d
 written by the MG2 migration) is ``done`` too, tagged ``imported``. Until a plan
 is migrated, each ticked ``## Status`` box reads exactly as such a fact would —
 in memory, nothing written (MG1).
+
+**Retracted** is a ``chunk-retracted`` fact naming this plan's scope, a chunk
+and the fact that certified it: that fact no longer certifies that chunk, and
+the chunk says so in its ``reason`` while it stays open. Only that pair is
+withdrawn — the fact's other chunks stay done, and a later fact naming the
+chunk certifies it again. A box read in memory has no fact to retract.
 
 **dropped** is a frontmatter declaration, hand-written on purpose and never
 inferred: a block sequence under ``dropped:`` whose items read ``- <id>:
@@ -88,6 +96,12 @@ DROPPED_KEY = "dropped"
 
 #: The fact kind the MG2 migration writes for a ticked ``## Status`` box.
 IMPORTED_KIND = "chunk-imported"
+
+#: The fact kind ``plan retract`` writes: ``{scope, chunk, fact_id, reason,
+#: retracted_at}`` withdraws one fact's certification of one chunk. A fact is
+#: never edited, so a wrong certification is answered by a new fact; it can
+#: only reopen a chunk, never close one.
+RETRACTED_KIND = "chunk-retracted"
 
 #: The key :func:`chunk_states` answers under when the plan file itself cannot
 #: be read — one open entry, so the answer is "not finished" rather than the
@@ -286,6 +300,25 @@ def fact_chunks(body: dict) -> list[str]:
     return []
 
 
+def retractions(store: dict, scope: "str | None") -> dict[tuple[str, str], str]:
+    """``(fact id, normalized chunk id) → reason`` for this scope's
+    ``chunk-retracted`` facts. An entry missing its fact id, chunk or reason
+    withdraws nothing: what cannot be read must not reopen a chunk on a guess
+    either, and the writer refuses all three."""
+    if not scope:
+        return {}
+    pairs: dict[tuple[str, str], str] = {}
+    for fact in evidence.facts_of_kind(store, RETRACTED_KIND):
+        body = fact.get("body") or {}
+        fact_id, chunk, reason = body.get("fact_id"), body.get("chunk"), body.get("reason")
+        if body.get("scope") != scope or not all(
+            isinstance(v, str) and v.strip() for v in (fact_id, chunk, reason)
+        ):
+            continue
+        pairs.setdefault((fact_id, _norm(chunk)), reason.strip())
+    return pairs
+
+
 def _date(value: object) -> str | None:
     return value[:10] if isinstance(value, str) and len(value) >= 10 else None
 
@@ -480,13 +513,22 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
     # runs only for a chunk they leave open (NF1). Imports: a `chunk-imported`
     # fact, then — MG1 — a box not yet migrated, read exactly as the fact MG2
     # would write, in memory. Then the hand-written `dropped:` declaration.
+    retracted = retractions(store, plan.scope)
+
+    def withdrawn(fact_id: str, norm_id: str, what: str) -> bool:
+        reason = retracted.get((fact_id, norm_id))
+        if reason is None:
+            return False
+        note(norm_id, f"{what} {fact_id} names it, but it was retracted: {reason}")
+        return True
+
     if plan.scope:
         for fact in evidence.facts_of_kind(store, IMPORTED_KIND):
             body = fact.get("body") or {}
             if body.get("scope") != plan.scope or not isinstance(fact.get("id"), str):
                 continue
             n = _norm(body.get("chunk")) if body.get("chunk") is not None else None
-            if n is not None and still_open(n):
+            if n is not None and still_open(n) and not withdrawn(fact["id"], n, "import"):
                 states[by_norm[n]] = ChunkState(
                     "done",
                     fact["id"],
@@ -508,7 +550,10 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             body = fact.get("body") or {}
             if body.get("scope") != plan.scope or not isinstance(fact.get("id"), str):
                 continue
-            named = [n for n in dict.fromkeys(_norm(c) for c in fact_chunks(body)) if still_open(n)]
+            named = [
+                n for n in dict.fromkeys(_norm(c) for c in fact_chunks(body))
+                if still_open(n) and not withdrawn(fact["id"], n, "review")
+            ]
             if named:
                 candidates.append((fact, body, named))
         verdicts = _blocking_clear(store, [f["id"] for f, _b, _n in candidates])
@@ -549,6 +594,109 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             synthetic=True,
         )
     return states
+
+
+@dataclass(frozen=True)
+class RetractionTarget:
+    """:func:`retraction_target`'s answer.
+
+    ``status`` is ``"ok"`` (write it), ``"already"`` (this pair is already
+    withdrawn; write nothing) or a refusal code — ``no-scope``,
+    ``unknown-chunk``, ``box-import``, ``not-certified``, ``unknown-fact``,
+    ``other-scope``, ``not-named`` — with ``detail`` saying why and what to do.
+    ``chunk`` is the id as the plan prints it, ``fact_id`` the fact to withdraw.
+    """
+
+    status: str
+    detail: str
+    scope: "str | None" = None
+    chunk: "str | None" = None
+    fact_id: "str | None" = None
+
+
+def retraction_target(
+    plan_path: Path, facts: object, chunk: str, fact_id: "str | None" = None, *, repo_dir: Path
+) -> RetractionTarget:
+    """Whether ``fact_id``'s certification of ``chunk`` can be withdrawn, and
+    the exact pair to record — the one check ``plan retract`` writes behind.
+
+    ``fact_id`` omitted: the fact that certifies the chunk now. Given: a
+    ``review`` or ``chunk-imported`` fact of this plan's scope that names the
+    chunk — the chunk need not read ``done`` (a fact blocked today may certify
+    tomorrow, once its blocker resolves). A chunk done by a box read in memory
+    has no fact: unticking the box is the retraction.
+    """
+    try:
+        content = Path(plan_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return RetractionTarget("unknown-chunk", f"the plan cannot be read ({exc})")
+    plan = _read_plan(content)
+    if not plan.scope:
+        return RetractionTarget(
+            "no-scope", "the plan declares no `scope:`, so no fact certifies its chunks"
+        )
+    states = chunk_states(plan_path, facts, repo_dir=repo_dir)
+    key = next(
+        (k for k, st in states.items() if not st.synthetic and _norm(k) == _norm(chunk)), None
+    )
+    if key is None:
+        return RetractionTarget(
+            "unknown-chunk", f"`{chunk}` is not a chunk of this plan", plan.scope
+        )
+    state = states[key]
+    if fact_id is None:
+        if state.fact_id is None:
+            if state.state == "done" and state.imported:
+                return RetractionTarget(
+                    "box-import",
+                    f"chunk {key} is done by a ticked `## Status` box read in memory, which "
+                    "no fact records — untick the box to reopen it",
+                    plan.scope, key,
+                )
+            return RetractionTarget(
+                "not-certified",
+                f"chunk {key} is {state.state} and no fact certifies it, so there is "
+                "nothing to retract (name one with `--fact` to withdraw it before it can certify)",
+                plan.scope, key,
+            )
+        fact_id = state.fact_id
+    store = _store(facts)
+    fact = next(
+        (f for kind in ("review", IMPORTED_KIND) for f in evidence.facts_of_kind(store, kind)
+         if f.get("id") == fact_id),
+        None,
+    )
+    if fact is None:
+        return RetractionTarget(
+            "unknown-fact",
+            f"no review or chunk-imported fact `{fact_id}` is in the evidence store",
+            plan.scope, key, fact_id,
+        )
+    body = fact.get("body") or {}
+    if body.get("scope") != plan.scope:
+        return RetractionTarget(
+            "other-scope",
+            f"`{fact_id}` is a fact of scope `{body.get('scope')}`, not this plan's "
+            f"`{plan.scope}`, so it certifies nothing here",
+            plan.scope, key, fact_id,
+        )
+    named = (
+        fact_chunks(body) if fact.get("kind") == "review"
+        else ([str(body["chunk"])] if body.get("chunk") is not None else [])
+    )
+    if _norm(key) not in {_norm(c) for c in named}:
+        return RetractionTarget(
+            "not-named",
+            f"`{fact_id}` does not name chunk {key} (it names "
+            f"{', '.join(named) or 'no chunk'}), so it certifies nothing to retract",
+            plan.scope, key, fact_id,
+        )
+    if (fact_id, _norm(key)) in retractions(store, plan.scope):
+        return RetractionTarget(
+            "already", f"`{fact_id}`'s certification of chunk {key} is already retracted",
+            plan.scope, key, fact_id,
+        )
+    return RetractionTarget("ok", "", plan.scope, key, fact_id)
 
 
 def is_finished(
