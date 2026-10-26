@@ -57,7 +57,8 @@ git walks (NF1). `built_report`'s matching rule is reused unchanged.
 - *When `built_report` cannot answer,* the proposal falls back to the diff alone. Naming too few
   chunks fails closed: an open chunk keeps every gate armed. Naming too many is the defect this plan
   fixes.
-- *A retraction targets one (fact, chunk) pair,* not the chunk as a whole, so a later honest review
+- *A retraction targets one (fact, chunk) pair,* not the chunk as a whole (**owner-confirmed
+  2026-10-26:** retractions need no sign-off), so a later honest review
   of the same chunk still certifies it. It needs no owner authority, because it can only reopen a
   chunk. That arms gates and never disarms them, so the governed party still cannot certify itself
   (`data-model.md`'s ledger norm, Why).
