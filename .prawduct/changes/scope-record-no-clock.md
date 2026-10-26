@@ -18,3 +18,10 @@ cacheable.
 - The contract keeps `at` as an optional field, so the reader still quotes it from producers that
   write it. The contract's worked pytest producer drops it, and the field row says why.
 - A writer test pins that the record carries no `at`.
+
+## Consumer note
+The worked pytest producer in `docs/test-report-contract.md` no longer writes the optional `at`
+field, and the contract now says why. A clock read in `pytest_configure` happens outside any test,
+so a result cache that refuses to reuse clock-reading tests charges it to every test in the run. If
+you copied the producer, you can drop `at` from yours too: the JUnit report's own `timestamp` says
+when the run happened. Records that still carry `at` read exactly as before.
