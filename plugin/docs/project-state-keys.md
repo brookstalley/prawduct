@@ -150,6 +150,78 @@ release_version_files:
     key: package.version
 ```
 
+## consumer_digest (opt-in)
+
+Your changelog, so `prawduct-hook cut-change-log` writes each release's notes into it. Every
+fragment's `## Consumer note` is required. Without this key, those notes stay in
+`.prawduct/change-log-archive/` and reach no consumer.
+
+**What the cut does with it.** At `--apply`, it renders the shipping notes into a new file,
+`.prawduct/releases/<version>.md`: a heading, your headline, then the notes. It then inserts that
+section into your changelog:
+- directly below `marker` if you declare one;
+- otherwise above the first `## ` heading that *leads with* a version (`## 1.4.0`, `## v1.4.0`,
+  `## [1.4.0] - …`), as `heading` must, so `## [Unreleased]` or `## Contents` stays on top;
+- with no such heading at all, at the end.
+
+If your history spells headings another way (`## Release 1.4.0`), none of them leads with a
+version, so the first cut would land at the bottom of the file. Declare a `marker` line above
+your newest release to place it instead.
+
+No other byte changes: line endings, a BOM, and the trailing newline are kept. The cut never
+searches for an open section and never renames one. The release file is also the record that the
+release is cut, so a re-run writes nothing twice. Commit it, along with `.prawduct/changes/` and
+the archive.
+
+**The headline** is the release's one-line judgement, kept in `.prawduct/release-headline.md`
+before the cut. The cut puts it under the heading and removes the file. With `headline: required`,
+the cut refuses `no-headline` without it, and Phase 0 (`check-releasability`) warns first.
+
+**Refusals**, each with nothing written:
+- `digest-declaration-invalid`: the block below is malformed, or `project-state.yaml` cannot be
+  read;
+- `digest-missing`, `digest-unreadable`: the changelog is not a file, or not UTF-8;
+- `marker-missing`: the declared marker line is not in the changelog;
+- `release-in-changelog`: a section already names this release (remove it, or move its first
+  paragraph into the headline file);
+- `no-headline`;
+- `releases-ignored`: git ignores `.prawduct/releases/`;
+- `release-already-cut`: a fragment the release file doesn't hold is pending; it belongs to the
+  next release.
+
+The dry run prints the exact section, which you can paste into a release PR as the notes preview.
+
+| Field | Values | Default |
+|---|---|---|
+| `path` | the changelog, repo-relative; must stay in the repo, outside `.git/` and `.prawduct/` | required |
+| `heading` | quoted template: `{version}` (`v1.4.0`), `{version_no_prefix}` (`1.4.0`), `{date}` (your local date, `YYYY-MM-DD`); must start `## ` and lead with the version | `"## {version} - {date}"` |
+| `headline` | `required` or `none` | `none` |
+| `layout` | `paragraphs`, `bullets`, or `by-type` (a `### ` subsection per fragment type) | `bullets` |
+| `entry` | quoted per-note template: `{note}` (required), `{scope}`, `{type}`, `{title}`; `{{` `}}` for literal braces | `"- {note}"`, or `` "**`{scope}`**: {note}" `` for `paragraphs` |
+| `types` | `by-type` only, one flow mapping on one line: `{feature: Added, fix: Fixed}` | `feature`→Added, `fix`→Fixed, others→Changed |
+| `marker` | a literal line; the section is inserted directly below it | none |
+
+Quote `heading` and `entry`: YAML reads an unquoted `#` as the start of a comment.
+
+**With another release tool** (release-please, semantic-release, a script that dates or tags), run
+the cut first and the tool after it. The cut writes a finished section and never needs a heading
+renamed.
+
+```yaml
+# Keep a Changelog
+consumer_digest:
+  path: CHANGELOG.md
+  heading: "## [{version_no_prefix}] - {date}"
+  layout: by-type
+
+# prawduct's own
+consumer_digest:
+  path: plugin/CHANGELOG.md
+  heading: "## {version}"
+  headline: required
+  layout: paragraphs
+```
+
 ## coverage_required (opt-in, default false)
 
 When true, the Critic requires every changed file the verifier can judge to appear in

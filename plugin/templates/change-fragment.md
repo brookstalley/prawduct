@@ -27,6 +27,7 @@ Replace this text with what changed and why, naming every chunk this scope shipp
 for subheadings, because `##` starts a new entry once the fragment is archived.
 
 ## Consumer note
-What someone using this product needs to know about this change. Where the repo publishes release
-notes, the release cut copies this text into them. When there is nothing to tell them (release
+What someone using this product needs to know about this change. Where the repo declares
+`consumer_digest:` in `.prawduct/project-state.yaml`, the release cut writes this text into its
+changelog; otherwise it stays in the change-log archive. When there is nothing to tell them (release
 mechanics, test-only or repo-internal work), write exactly one line instead: `none: <reason>`.

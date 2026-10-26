@@ -282,9 +282,12 @@ MUST unless marked SHOULD.
 
 ### Documentation
 
-- **CDOC1** `plugin/templates/project-state.yaml` carries a commented `# CONSUMER DIGEST (opt-in)`
-  block. It has a Keep a Changelog example (`heading: "## [{version_no_prefix}] - {date}"`,
-  `layout: by-type`) and a minimal one, and states the external-tool order (Decision 6).
+- **CDOC1** `plugin/templates/project-state.yaml` carries a commented hint for `consumer_digest:`
+  among its optional keys. Following that file's convention, enforced by
+  `test_project_state_keys_reference`, the full explanation lives in
+  `plugin/docs/project-state-keys.md`: the fields, a Keep a Changelog example and prawduct's own,
+  the refusals, and the external-tool order (Decision 6). The template's size ceiling
+  (`test_scaffolded_state_file_leaves_room_for_discovery`) allowed only the key and its shape.
 - **CDOC2** `plugin/templates/change-fragment.md` says the cut copies the note where the repo
   declares `consumer_digest:`. `plugin/docs/project-state-keys.md` lists the key.
 - **CDOC3** `documentation/release-process.md` and

@@ -31,15 +31,26 @@ def _pending_fragments() -> list[Path]:
     return sorted((PLUGIN.parent / ".prawduct" / "changes").glob("*.md"))
 
 
-def _consumer_note(fragment_text: str) -> str:
+def _consumer_note(path: Path) -> str:
     """A fragment's `## Consumer note`, the part the cut publishes.
 
-    The narrative above it stays in the archive and may quote a retired phrase
+    Read through `change_fragments.parse_fragment`, the format's one reader. The
+    narrative above the note stays in the archive and may quote a retired phrase
     while describing its removal; only the note reaches consumers.
     """
-    marker = "\n## Consumer note"
-    index = fragment_text.find(marker)
-    return fragment_text[index + len(marker):] if index != -1 else ""
+    import sys
+
+    if str(PLUGIN) not in sys.path:
+        sys.path.insert(0, str(PLUGIN))
+    from lib import change_fragments
+
+    text = path.read_text(encoding="utf-8")
+    try:
+        return change_fragments.parse_fragment(text, filename=path.name).consumer_note or ""
+    except change_fragments.FragmentError:
+        # Unparseable frontmatter: the release gate refuses this fragment, so
+        # scan all of it rather than let a malformed file hide a retired phrase.
+        return text
 
 class TestTheBuilderIsToldWhenTheSuiteIsOwed:
     def test_the_ceiling_paragraph_moves_the_suite_to_the_boundary(self):
@@ -143,7 +154,7 @@ class TestNoCarrierStillAsksForAPerChunkRun:
         # pending fragments' consumer notes and the pending headline, which the
         # cut turns into the next release's section.
         for fragment in _pending_fragments():
-            corpus[f"changes#{fragment.stem}"] = _consumer_note(fragment.read_text(encoding="utf-8"))
+            corpus[f"changes#{fragment.stem}"] = _consumer_note(fragment)
         headline = PLUGIN.parent / ".prawduct" / "release-headline.md"
         if headline.is_file():
             corpus["release-headline"] = headline.read_text(encoding="utf-8")
