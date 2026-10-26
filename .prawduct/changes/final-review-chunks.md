@@ -38,16 +38,22 @@ certification could not be taken back.
   `plan_status.chunk_states` stops counting that one fact for that one chunk. The chunk reads open
   with the retraction's reason, the fact's other chunks stay done, and a later review of the chunk
   certifies it again.
-- `--fact` omitted means the fact certifying the chunk now.
+- `--fact` omitted means the fact certifying the chunk now, and the same command re-run is a
+  no-op (exit 0).
 - `plan_status.retraction_target` owns the check behind the write. Its refusals: `no-scope`,
-  `unknown-chunk`, `box-import` (untick the box), `not-certified`, `unknown-fact`, `other-scope`,
-  `not-named`.
+  `unknown-chunk`, `box-import` (a ticked `## Status` box certifies the chunk after any
+  withdrawal, so untick it first), `not-certified`, `unknown-fact`, `other-scope`, `not-named`.
 - The command needs no owner authority, because a retraction can only reopen a chunk. That arms
   gates and never disarms them.
 - The kind is known, observational (the coverage verdict never reads it) and transported. A
   retraction is attached as a note on HEAD like an import, so other clones stop certifying the
   chunk too. An older plugin keeps the kind in its digest and goes on reading the chunk as done.
-- The command is refused in a scratch worktree.
+- The command is refused in a scratch worktree, and on an archived plan at any depth. `plan
+  import-status` now uses the same archived-plan rule (`work_unit.is_live_plan_file`); its copy
+  missed a nested plan's archive.
+- No later proposal restores a retraction. A `verify-resolutions` pass no longer inherits a
+  chunk retracted from a fact on its chain. A whole-plan review reads commit subjects only in its
+  own commit range, so a mid-plan `final` names nothing built before its interval.
 
 Noticed and left out: #1075. The same Deliverables overlap still tags a chunk `built` in `plan
 status` and in `chunk`-mode proposals.

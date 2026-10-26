@@ -65,8 +65,9 @@ git walks (NF1). `built_report`'s matching rule is reused unchanged.
   like `chunk-imported`: a retraction that other clones never see leaves those clones certifying the
   chunk. They are observational: the coverage verdict never reads them, because a retraction changes
   chunk state, not tree coverage.
-- *A box read in memory (MG1) has no fact to retract,* so the remedy is to untick the box. The
-  command refuses with that remedy.
+- *A ticked `## Status` box certifies its chunk in memory (MG1) after any withdrawal,* so the
+  remedy is to untick the box. The command refuses any retraction of that chunk with that remedy,
+  whether a fact certifies it or not.
 
 **Noticed, not fixed here:** the issue's second symptom. A Chunk 01 `chunk` review proposed Chunk 07
 because `plan new` stubs the change fragment, which is one of Chunk 07's Deliverables, into Chunk
@@ -74,6 +75,11 @@ because `plan new` stubs the change fragment, which is one of Chunk 07's Deliver
 it is filed as its own backlog item.
 
 **Decisions made mid-build:**
+- Boundary review: whole-plan proposals read commit subjects only in the review's own commit range
+  (`since` = the interval's base). A verify pass drops chunks retracted from facts on its chain, and
+  a ticked box refuses any retraction of its chunk. Settled by the cumulative's R-1/R-2/R-5: three
+  routes by which a retracted chunk came back as done. The class is "a proposal or a certification
+  copied from somewhere that never asked about retractions".
 - Chunk 01: whole-plan modes add only subject-named chunks to the diff's answer, not `built_report`'s
   touched-path rule. Settled by the Chunk 01 review's blocking finding, which reproduced the #1072
   repro on the consumer-digest plan's own history. #1075 tracks the same overlap on `built_report`
@@ -162,8 +168,8 @@ it is filed as its own backlog item.
   - The artifacts naming the transported or known kinds: `data-model.md` (kind list, transport,
     a body bullet), `api-contract.md` (the `plan retract` entry, transport), `architecture.md`,
     `security-model.md`.
-  - `plugin/bin/prawduct-hook`: `plan retract <chunk> --fact <id> --reason <text> [--plan <path>]
-    [--json]`, plus its guards and `_PLAN_HELP`.
+  - `plugin/bin/prawduct-hook`: `plan retract <chunk> --reason <text> [--fact <id>] [--plan <path>]
+    [--json]` (`--fact` omitted: the fact certifying the chunk now), plus its guards and `_PLAN_HELP`.
   - `plugin/methodology/planning.md` "Chunk state": how a wrong certification is undone.
   - `.prawduct/changes/final-review-chunks.md`.
 - **Tests:**

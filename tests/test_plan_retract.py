@@ -125,12 +125,15 @@ class TestRetract:
         assert rc == 0
         assert "chunk 02 now reads: done (certified by R2 — retract that too" in out
 
-    def test_a_rerun_writes_nothing_again(self, tmp_path, capsys):
+    @pytest.mark.parametrize("again", [["--fact", "R1"], []], ids=["fact-named", "same-command"])
+    def test_a_rerun_writes_nothing_again(self, tmp_path, capsys, again):
+        """The literal re-run — `--fact` omitted, so no fact certifies the
+        chunk any more — is idempotent too, not `not-certified`."""
         repo = _repo(tmp_path)
         _review(repo, "R1", ["01", "02"])
         assert _run(repo, capsys, "02", "--reason", "unbuilt")[0] == 0
-        rc, out, _err = _run(repo, capsys, "02", "--fact", "R1", "--reason", "unbuilt")
-        assert rc == 0
+        rc, out, err = _run(repo, capsys, "02", *again, "--reason", "unbuilt")
+        assert rc == 0, err
         assert "already retracted R1's certification of chunk 02" in out
         assert len(_retractions(repo)) == 1
 
@@ -215,7 +218,25 @@ class TestRefusals:
         plan = _PLAN.replace("## Build Chunks", "## Status\n\n- [x] Chunk 01: one\n\n## Build Chunks")
         repo = _repo(tmp_path, plan)
         err = self._refused(repo, capsys, "box-import", "01", "--reason", "x")
-        assert "untick the box" in err
+        assert "untick the box first" in err
+
+    @pytest.mark.parametrize("certifier", ["import", "review"])
+    def test_a_ticked_box_refuses_any_facts_withdrawal(self, tmp_path, capsys, certifier):
+        """The box is read after every fact, so withdrawing the fact would
+        exit 0 and leave the chunk done — and a later `import-status --apply`
+        would mint an import no retraction names. Control: unticked, the same
+        withdrawal is written."""
+        plan = _PLAN.replace("## Build Chunks", "## Status\n\n- [x] Chunk 01: one\n\n## Build Chunks")
+        repo = _repo(tmp_path, plan)
+        if certifier == "import":
+            body = {"scope": "unit", "chunk": "01", "source": "status-box",
+                    "imported_at": "2026-10-26T00:00:00Z"}
+            evidence.append_fact(repo, plan_status.IMPORTED_KIND, "F1", body)
+        else:
+            _review(repo, "F1", ["01"])
+        self._refused(repo, capsys, "box-import", "01", "--fact", "F1", "--reason", "x")
+        (repo / REL).write_text(plan.replace("- [x] Chunk 01", "- [ ] Chunk 01"))
+        assert _run(repo, capsys, "01", "--fact", "F1", "--reason", "x")[0] == 0
 
     def test_a_fact_not_in_the_store(self, tmp_path, capsys):
         repo = _repo(tmp_path)
@@ -247,6 +268,18 @@ class TestRefusals:
         self._refused(repo, capsys, "archived-plan", "01", "--plan",
                       ".prawduct/artifacts/archive/build-plan-unit.md", "--reason", "x")
 
+    def test_a_nested_archived_plan(self, tmp_path, capsys):
+        """`plan_archive` writes a nested plan's archive beside it, so the
+        `archive` component can sit at any depth (`work_unit.is_live_plan_file`)."""
+        repo = _repo(tmp_path)
+        nested = repo / ".prawduct" / "artifacts" / "plans" / "u" / "archive" / "build-plan-unit.md"
+        nested.parent.mkdir(parents=True)
+        (repo / REL).rename(nested)
+        self._refused(repo, capsys, "archived-plan", "01", "--plan",
+                      str(nested.relative_to(repo)), "--reason", "x")
+        rc = _hook.cmd_plan(repo, ["import-status", str(nested.relative_to(repo)), "--apply"])
+        assert rc == 1 and "refused: archived-plan:" in capsys.readouterr().err
+
     def test_an_append_failure(self, tmp_path, capsys, monkeypatch):
         """Without the kind registered the store refuses it — the state of any
         plugin that predates the kind."""
@@ -275,3 +308,44 @@ class TestRefusals:
 def test_the_help_names_the_op(capsys):
     assert _hook.cmd_plan(Path("."), ["--help"]) == 0
     assert "plan retract <chunk> --reason R" in capsys.readouterr().out
+
+
+class TestNoProposalRestoresARetraction:
+    """A retraction withdraws a certification; a later dispatch that copies a
+    chunk set forward without asking about it would restore it. Each route a
+    proposal is derived by is pinned here."""
+
+    def test_a_verify_pass_does_not_inherit_a_retracted_chunk(self, tmp_path, capsys):
+        from lib import critic_consolidate as cc
+
+        repo = _repo(tmp_path)
+        _review(repo, "R1", ["01", "02", "03"])
+        assert _run(repo, capsys, "03", "--fact", "R1", "--reason", "unbuilt")[0] == 0
+        read = evidence.read_facts(repo)
+        (anchor,) = [f for f in evidence.facts_of_kind(read, "review") if f["id"] == "R1"]
+        proposed = cc._proposed_chunks(
+            repo, repo / REL, lambda: read, [], "verify-resolutions", anchor,
+        )
+        assert proposed == ["01", "02"]
+
+    def test_a_mid_plan_final_reads_subjects_in_its_own_interval_only(self, tmp_path, capsys):
+        """Chunk 01 was built and its certification retracted; Chunk 02 is
+        built after. A `final` whose interval starts after 01's commit must
+        not name 01 by its subject. Control: with the plan's whole branch
+        (`since` omitted), 01's subject is read."""
+        repo = _repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "feature")
+        (repo / ".prawduct" / "artifacts" / "build-plan-unit.md").write_text(
+            _PLAN.replace("branch: main", "branch: feature\nbase: main"))
+        _git(repo, "commit", "-qam", "claim")
+        (repo / "one.txt").write_text("1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "feat(unit): Chunk 01 — one")
+        frontier = _git(repo, "rev-parse", "HEAD")
+        (repo / "two.txt").write_text("2\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "feat(unit): Chunk 02 — two")
+        facts = evidence.read_facts(repo)
+        plan = repo / REL
+        assert plan_status.propose_chunks(plan, facts, [], "final", repo_dir=repo, since=frontier) == ["02"]
+        assert plan_status.propose_chunks(plan, facts, [], "final", repo_dir=repo) == ["01", "02"]

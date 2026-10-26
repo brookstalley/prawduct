@@ -7668,6 +7668,20 @@ PLAN_REFUSED_EXIT = 1
 PLAN_CHECK_CLAIMS_UNREADABLE_EXIT = 3
 
 
+def _plan_is_archived(project_dir: Path, plan_path: Path) -> bool:
+    """Whether ``plan_path`` is an archived plan of this repo: under
+    ``.prawduct/artifacts/`` and not live by ``work_unit.is_live_plan_file``,
+    the one home of that rule — which sees an ``archive`` component at any
+    depth, as ``plan_archive`` writes a nested plan's. A plan outside
+    ``artifacts/`` is no archived plan of this repo."""
+    artifacts = get_prawduct_dir(project_dir) / "artifacts"
+    try:
+        plan_path.resolve().relative_to(artifacts.resolve())
+    except ValueError:
+        return False
+    return plan_path.is_file() and not _work_unit().is_live_plan_file(plan_path, artifacts)
+
+
 def _plan_refuse(op: str, code: str, detail: str, as_json: bool) -> int:
     """Print one refusal as ``refused: <code>: <detail>`` (stderr) and, under
     ``--json``, as ``{"status": "refused", "code", "detail"}`` on stdout."""
@@ -7812,7 +7826,7 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
         print(f"plan import-status: {what}\n{_PLAN_HELP}", file=sys.stderr)
         return 2
     apply, remove, as_json = "--apply" in seen, "--remove-block" in seen, "--json" in seen
-    import uuid  # noqa: PLC0415 — only this writer mints fact ids here
+    import uuid  # noqa: PLC0415 — lazy; only the fact writers need it
 
     plan_status = _plan_status()
     from lib import evidence, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
@@ -7830,13 +7844,7 @@ def _cmd_plan_import_status(project_dir: Path, argv: list[str]) -> int:
         print(f"plan import-status: {positionals[0]} is not a build plan\n{_PLAN_HELP}", file=sys.stderr)
         return 2
     rel = _plan_rel(project_dir, plan_path)
-    try:
-        under_artifacts = plan_path.resolve().relative_to(
-            (get_prawduct_dir(project_dir) / "artifacts").resolve()
-        ).parts
-    except ValueError:  # outside `.prawduct/artifacts/`: not an archived plan of this repo
-        under_artifacts = ()
-    if under_artifacts[:1] == ("archive",):
+    if _plan_is_archived(project_dir, plan_path):
         return _plan_refuse(
             "import-status", "archived-plan",
             f"{rel} is archived — its boxes are history and are not imported", as_json,
@@ -8158,7 +8166,7 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
               file=sys.stderr)
         return 2
     as_json = "--json" in seen
-    import uuid  # noqa: PLC0415 — only this writer and the import mint fact ids here
+    import uuid  # noqa: PLC0415 — lazy; only the fact writers need it
 
     plan_status = _plan_status()
     from lib import evidence, evidence_notes, plan_index  # noqa: PLC0415 — lazy; _plan_status() seeded sys.path
@@ -8186,13 +8194,7 @@ def _cmd_plan_retract(project_dir: Path, argv: list[str]) -> int:
             )
         plan_path = Path(binding.plan_path)
     rel = _plan_rel(project_dir, plan_path)
-    try:
-        under_artifacts = plan_path.resolve().relative_to(
-            (get_prawduct_dir(project_dir) / "artifacts").resolve()
-        ).parts
-    except ValueError:  # outside `.prawduct/artifacts/`: not an archived plan of this repo
-        under_artifacts = ()
-    if under_artifacts[:1] == ("archive",):
+    if _plan_is_archived(project_dir, plan_path):
         return _plan_refuse(
             "retract", "archived-plan",
             f"{rel} is archived — its chunk states are history and are not reopened", as_json,

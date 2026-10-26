@@ -393,10 +393,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   fact_id, reason, retracted_at}`), attached as a note on HEAD like an import. `--fact` omitted
   names the fact certifying the chunk now; `--plan` omitted, the bound plan. It can only reopen a
   chunk, so it needs no authority beyond the reason it records. Exit 0 written or already
-  retracted (nothing written; `--json` `action` is `retracted` | `already-retracted`, beside
+  retracted (nothing written — the same command re-run included; `--json` `action` is `retracted` | `already-retracted`, beside
   `plan_path`, `scope`, `chunk`, `fact_id`, `retraction_id`, and `state` / `certified_by` — what the
   chunk reads after); 1 `refused: <code>` for `no-plan`, `archived-plan`, `store-unreadable`,
-  `no-scope`, `unknown-chunk`, `box-import` (a box read in memory: untick it), `not-certified`,
+  `no-scope`, `unknown-chunk`, `box-import` (the chunk's `## Status` box is ticked, and certifies it
+  after any withdrawal: untick it first), `not-certified`,
   `unknown-fact`, `other-scope`, `not-named`, `fact-append-failed`; 2 usage or a path that is not
   a build plan. Refused inside a scratch worktree.
   `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
