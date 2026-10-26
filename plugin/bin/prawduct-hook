@@ -43,8 +43,9 @@ from pathlib import Path
 
 
 def _host():
-    """The host seam (``lib/host.py``): every host payload read, environment
-    read and hook response write goes through it.
+    """The host seam (``lib/host.py``): every host payload read, host
+    environment read and structured hook response goes through it (what it
+    does not yet own is listed in its docstring).
 
     Loaded by file path from the ``lib/`` beside this script rather than as
     ``lib.host``, because it is what says where ``lib`` is — so it must load
@@ -4098,7 +4099,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     blockers.extend(clear_blockers)
 
     # Report blockers or exit clean. The block reason is assembled whole and
-    # handed to the host, which owns how a Stop blocks.
+    # handed to the host seam, which writes it and picks the blocking exit;
+    # the notes printed above it are still written here (see `lib/host.py`).
     if blockers:
         reason = ["", "BLOCKED — resolve before ending session:", ""]
         reason.extend(blockers)

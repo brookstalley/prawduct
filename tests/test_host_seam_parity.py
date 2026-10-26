@@ -8,7 +8,8 @@ These cases run it against a throwaway governed repo:
 * a plugin from well before the seam differs from the seam's commit (banner
   version, digest, briefing), so it must exit 1 and print DIFF;
 * the commit before the seam and the seam's commit must match (exit 0);
-* one commit given twice, or only unrunnable repos, compare nothing: exit 2.
+* one commit given twice, two commits carrying one plugin tree, or only
+  unrunnable repos, compare nothing: exit 2.
 
 The refs are this repo's history, so the file needs it.
 """
@@ -28,6 +29,8 @@ TOOL = REPO_ROOT / "tools" / "host-seam-parity.py"
 #: The commit the seam branched from, and the seam's own commit.
 BEFORE_SEAM = "b9d9489d"
 SEAM = "17f84cd6"
+#: The commit after the seam's, which changed nothing under `plugin/`.
+SEAM_TESTS_ONLY = "5aa0d02b"
 #: Far enough back that the banner version and the digest text differ.
 LONG_BEFORE = "377411d4"
 
@@ -74,7 +77,18 @@ def test_one_commit_twice_compares_nothing(tmp_path):
     repo = _governed_repo(tmp_path)
     result = _sweep(tmp_path, SEAM, SEAM, repo)
     assert result.returncode == 2
-    assert "compare a plugin with itself" in result.stderr
+    assert "same plugin tree" in result.stderr
+
+
+def test_two_commits_with_one_plugin_tree_compare_nothing(tmp_path):
+    """The seam's commit and the next one differ only outside `plugin/`
+    (tests, the parity tool, the change record), so their plugins are one
+    tree and the sweep refuses, rather than calling the plugin equal to
+    itself."""
+    repo = _governed_repo(tmp_path)
+    result = _sweep(tmp_path, SEAM, SEAM_TESTS_ONLY, repo)
+    assert result.returncode == 2
+    assert "same plugin tree" in result.stderr
 
 
 def test_only_skipped_repos_compare_nothing(tmp_path):

@@ -9,7 +9,8 @@ skills; this digest is the session-start reminder, not a replacement for the
 authoritative rules in the repo's instruction files).
 
 Output: the host's session-context shape, written by
-``host.emit_session_context`` (``lib/host.py`` owns every hook response shape).
+``host.emit_session_context`` (``lib/host.py`` owns the structured hook
+responses).
 Multiple SessionStart hooks compose — the banner (plain stdout) and the
 ``prawduct-hook clear`` briefing (plain stdout) still render alongside it.
 Context over ~10,000 characters is spilled to a file by Claude Code, so the
@@ -50,7 +51,7 @@ DIGEST_RELPATH = ("methodology", "session-digest.md")
 
 def _host():
     """The host seam (``lib/host.py``), which owns every read of the host's
-    environment and every hook response shape. Loaded by file path, because
+    environment and every structured hook response. Loaded by file path, because
     this script runs before ``lib`` is importable; it imports nothing from
     ``lib``."""
     module = sys.modules.get("prawduct_host")

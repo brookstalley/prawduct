@@ -202,10 +202,11 @@ def main() -> int:
 
     base = args.base or _git("merge-base", "develop", args.head)
     refs = {"base": _git("rev-parse", "--short", base), "head": _git("rev-parse", "--short", args.head)}
-    if _git("rev-parse", base) == _git("rev-parse", args.head):
+    if _git("rev-parse", f"{base}:plugin") == _git("rev-parse", f"{args.head}:plugin"):
         print(
-            f"base and head are both {refs['head']}: the sweep would compare a plugin with "
-            "itself. Pass --base and --head (after a merge, the default base is HEAD).",
+            f"base {refs['base']} and head {refs['head']} carry the same plugin tree: the "
+            "sweep would compare a plugin with itself. Pass --base and --head (after a merge, "
+            "the default base is HEAD).",
             file=sys.stderr,
         )
         return 2

@@ -71,7 +71,7 @@ _SHA_CHARS = 7
 
 def _host():
     """The host seam (``lib/host.py``), which owns every read of the host's
-    environment and every hook response shape. Loaded by file path, because
+    environment and every structured hook response. Loaded by file path, because
     this script runs before ``lib`` is importable; it imports nothing from
     ``lib``."""
     module = sys.modules.get("prawduct_host")
