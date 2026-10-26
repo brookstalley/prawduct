@@ -83,16 +83,19 @@ _RETIRES_FIELD_RE = re.compile(r"^\s*(?:>\s?)*\s*(?:\*{1,2}|_{1,2})?Retires:")
 _RETIRES_WORD_RE = re.compile(r"\bRetires:")
 
 
+
 def _has_inline_retires(text: str) -> bool:
     """Whether ``text`` has ``Retires:`` after other text on the same line —
-    the inline form, not read. One pass: the regex this replaced
-    (``\S.*?…\bRetires:``) re-scanned the line from every non-space start,
-    quadratic in a long line without the field."""
+    the inline form, not read. One pass: the lazy regex this replaced
+    re-scanned the line from every non-space start, quadratic in a long line
+    without the field (``TestTheInlineFormTestIsLinear`` keeps it as the
+    oracle)."""
     for m in _RETIRES_WORD_RE.finditer(text):
         line_start = text.rfind("\n", 0, m.start()) + 1
         if text[line_start:m.start()].strip():
             return True
     return False
+
 
 #: Sentinel phrases for a declaration that names nothing searchable. Each is
 #: reported at its record instead of searched, so an inert field is visible.

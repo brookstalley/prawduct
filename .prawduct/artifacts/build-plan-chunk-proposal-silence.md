@@ -35,8 +35,8 @@ causes:
 - When a whole-plan review certifies no chunk while the plan has open ones, the relayed
   `NEXT-ACTION:` line says so, names the open chunks and the `--chunks` remedy.
 - The proposer and the record lint agree that a bare name is a Deliverable path only when that
-  file exists at the repo root. An unproposed chunk whose Deliverables include other bare names
-  gets a dispatch note telling the author to write repo-relative paths.
+  file exists at the repo root. At a whole-plan review, an unproposed chunk whose Deliverables are
+  all such other bare names gets a dispatch note telling the author to write repo-relative paths.
 - Subjects naming a chunk match case-insensitively, and `chunk NN:` (a chunk id followed by a
   colon) is a carrying form. A subject that begins with the plan's scope as a plain prefix
   (`<scope> chunk 01: …`) carries that scope.

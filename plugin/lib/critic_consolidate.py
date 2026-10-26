@@ -5253,23 +5253,20 @@ def _uncertified_open_chunks(
     certified no chunk while its plan still has open ones, else ``None``.
 
     Read after the fact is appended, so it asks the same store every gate does.
-    The plan is the one the dispatch graded: the review's scope when it named
-    one, else the checkout's binding, as ``begin_review`` resolves it. ``None``
+    The plan is the one the dispatch graded, resolved as ``begin_review``
+    resolves it (the review's scope, else the checkout's binding). ``None``
     on any failure: this is advice, and advice that cannot be derived keeps the
     line as it was."""
-    from . import buildplan_refs, plan_status, work_unit  # noqa: PLC0415 — lazy, as this module's other lib imports are
+    from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
     body = fact.get("body") or {}
     mode = mode_token_of(body.get("mode"))
     if mode not in plan_status._WHOLE_PLAN_MODES or body.get("chunks"):
         return None
     try:
-        scope = body.get("scope")
-        plan = (
-            buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path
-            if scope
-            else work_unit.resolve(project_dir).plan_path
-        )
+        plan = buildplan_refs.resolve_reviewed_plan(
+            project_dir, prawduct_dir, body.get("scope")
+        ).path
         if plan is None:
             return None
         open_ids = plan_status.current_chunks(plan, store, repo_dir=project_dir)

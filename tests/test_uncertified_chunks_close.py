@@ -36,10 +36,22 @@ PLAN = (
 )
 
 
-def _close(tmp_path: Path, *begin_args: str) -> "tuple[str, dict]":
+def _review(repo: Path, *begin_args: str):
+    begin = _run_begin(repo, *begin_args)
+    assert begin.returncode == 0, begin.stderr
+    manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+    _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[])
+    done = _run_consolidate(repo)
+    assert done.returncode == 0, done.stderr
+    return done
+
+
+def _close(
+    tmp_path: Path, *begin_args: str, first: "tuple[str, ...] | None" = None
+) -> "tuple[str, dict]":
     """Both chunks' work committed under subjects that name no chunk, so no
-    proposal finds it; reviewed with ``begin_args``. Returns the NEXT-ACTION
-    line and the findings cache."""
+    proposal finds it; reviewed with ``begin_args`` (after a ``first`` review,
+    when given). Returns the NEXT-ACTION line and the findings cache."""
     repo = tmp_path / "r"
     _init_repo(repo)
     _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -48,12 +60,9 @@ def _close(tmp_path: Path, *begin_args: str) -> "tuple[str, dict]":
     _git(repo, "checkout", "-b", "feat/work", "--quiet")
     _commit_file(repo, "src/app.py", "x = 2\n", "feat(work): the first part")
     _commit_file(repo, "src/more.py", "y = 1\n", "feat(work): the second part")
-    begin = _run_begin(repo, *begin_args)
-    assert begin.returncode == 0, begin.stderr
-    manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
-    _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[])
-    done = _run_consolidate(repo)
-    assert done.returncode == 0, done.stderr
+    if first:
+        _review(repo, *first)
+    done = _review(repo, *begin_args)
     line = next(l for l in done.stdout.splitlines() if l.startswith("NEXT-ACTION:"))
     cache = json.loads((repo / ".prawduct" / ".critic-findings.json").read_text())
     return line, cache
@@ -74,6 +83,18 @@ def test_a_cumulative_that_certifies_a_chunk_says_nothing(tmp_path):
     """Control: the same history with the chunk declared. Something was
     certified, so the default did not silently drop the plan's work."""
     line, cache = _close(tmp_path, "--mode", "cumulative", "--chunks", "01")
+    assert CLAUSE not in line and CLAUSE not in cache["next_action"]
+
+
+def test_a_cumulative_with_nothing_left_open_says_nothing(tmp_path):
+    """The ordinary boundary: chunk reviews already certified every chunk, then
+    the cumulative runs without `--chunks` and certifies none, because none is
+    open. The clause there would send the builder to pass `--chunks` for work
+    already certified."""
+    line, cache = _close(
+        tmp_path, "--mode", "cumulative",
+        first=("--mode", "final", "--chunks", "01,02"),
+    )
     assert CLAUSE not in line and CLAUSE not in cache["next_action"]
 
 

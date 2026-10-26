@@ -821,11 +821,15 @@ class TestProposeChunks:
             "03": "`page.js` and `src/c03.py`",
         })
         diff = ["src/page.js", "README.md"]
-        proposal = plan_status.chunk_proposal(plan, _facts(), diff, "chunk", repo_dir=repo)
+        proposal = plan_status.chunk_proposal(plan, _facts(), diff, "cumulative", repo_dir=repo)
         assert proposal.chunks == ["02"]
         (note,) = proposal.notes
         assert note.startswith("chunk 01 not proposed")
         assert "`page.js`, `util.js`" in note and "repo root" in note
+        # A `chunk` review mid-plan has every unbuilt later chunk open; noting
+        # each on every dispatch would be noise, so it says nothing.
+        chunk_mode = plan_status.chunk_proposal(plan, _facts(), diff, "chunk", repo_dir=repo)
+        assert (chunk_mode.chunks, chunk_mode.notes) == (["02"], ())
 
     def test_a_plan_declaring_no_scope_counts_every_subject(self, repo):
         plan = _plan(repo, ("01", "02"))

@@ -911,8 +911,8 @@ def chunk_proposal(
     cannot say, the diff's answer stands alone: naming fewer leaves a chunk
     open, which keeps every gate armed — and a note says so, as one does for a
     chunk only an unscoped subject names. A chunk left out whose Deliverables
-    are all bare names (:func:`_bare_only`) is noted in every mode, because only
-    a subject can find it. Any other mode proposes nothing.
+    are all bare names (:func:`_bare_only`) is noted in those modes, because
+    only a subject can find it. Any other mode proposes nothing.
     ``repo_dir`` defaults to the work tree that holds the plan's
     ``.prawduct/``.
 
@@ -959,7 +959,9 @@ def chunk_proposal(
                     f"(`<type>({walk.plan.scope}): …`), and an unscoped subject may be "
                     "another plan's; pass --chunks if they are this plan's work"
                 )
-    for c in open_ids:
+    # Whole-plan modes only: a `chunk` review mid-plan has every later, unbuilt
+    # chunk open, and would note each one on every dispatch.
+    for c in open_ids if mode in _WHOLE_PLAN_MODES else ():
         if c in touched:
             continue
         bare = _bare_only(deliverable_paths(content, c), repo_dir)
@@ -1019,6 +1021,7 @@ def _carries_scope(subject: str, scope: str) -> bool:
     if m:
         return m.group(1).strip() == scope
     return re.match(rf"{re.escape(scope)}(?::|\s)", subject) is not None
+
 #: Opens each commit's subject line in the log; file names follow it. Not a
 #: control character: `str.strip` treats \x1c-\x1f as whitespace.
 _COMMIT_MARK = "@@prawduct-commit@@ "
