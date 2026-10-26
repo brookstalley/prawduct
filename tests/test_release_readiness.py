@@ -1365,7 +1365,7 @@ class TestAnAlreadyCutReleaseAsksNothing:
         assert release_readiness.check_releasability(project, release="v1.4.0") == 0
         out = capsys.readouterr()
         assert _digest_warnings(out.err, "release-headline.md") == []
-        assert _digest_warnings(out.err, "already has a section") == []
+        assert _digest_warnings(out.err, "is already a section") == []
         assert any("v1.4.0 is already cut" in line for line in _notes(out.err)), out.err
         assert "  digest: v1.4.0 already cut (.prawduct/releases/v1.4.0.md → CHANGELOG.md)." in out.out
 
@@ -1377,7 +1377,7 @@ class TestAnAlreadyCutReleaseAsksNothing:
         )
         release_readiness.check_releasability(project, release="v1.4.0")
         err = capsys.readouterr().err
-        assert _digest_warnings(err, "release-headline.md") and _digest_warnings(err, "already has a section")
+        assert _digest_warnings(err, "release-headline.md") and _digest_warnings(err, "is already a section")
 
 
 class TestAnUnreadableStateFileIsNotUndeclared:
@@ -1387,6 +1387,31 @@ class TestAnUnreadableStateFileIsNotUndeclared:
         assert release_readiness.check_releasability(project, release="v1.4.0") == 0
         [warning] = [l for l in capsys.readouterr().err.splitlines() if "cannot be read" in l and "project-state" in l]
         assert "did not run" in warning
+
+
+class TestEveryCutRefusalIsWarnedAboutFirst:
+    """Phase 0 warns on each condition `consumer_digest.preflight` finds, the
+    same list the cut refuses from, so it cannot fall behind the cut. These two
+    were refusals Phase 0 once had no copy of."""
+
+    def test_a_missing_marker_warns(self, tmp_path, capsys):
+        project = _declared_project(
+            tmp_path, declaration=_PRODUCT_DECLARATION + "  marker: <!-- releases below -->\n"
+        )
+        assert release_readiness.check_releasability(project, release="v1.4.0") == 0
+        [warning] = _digest_warnings(capsys.readouterr().err, "`marker-missing`")
+        _assert_names_the_declared_path(warning)
+
+    def test_release_files_git_would_ignore_warn(self, tmp_path, capsys):
+        project = _declared_project(tmp_path)
+        _write(project / ".gitignore", ".prawduct/releases/\n")
+        for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "base"]):
+            subprocess.run(
+                ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+                cwd=str(project), capture_output=True, check=True, timeout=15,
+            )
+        assert release_readiness.check_releasability(project, release="v1.4.0") == 0
+        assert _digest_warnings(capsys.readouterr().err, "`releases-ignored`")
 
 
 class TestASectionForTheReleaseIsReportedEarly:
@@ -1412,12 +1437,12 @@ class TestASectionForTheReleaseIsReportedEarly:
         changelog = f"# Changelog\n\n{heading}\n\nWritten by hand.\n\n## v1.3.0\n\nOld news.\n"
         project = _declared_project(tmp_path, changelog=changelog)
         assert release_readiness.check_releasability(project, release="v1.4.0") == 0
-        warnings = _digest_warnings(capsys.readouterr().err, "already has a section")
+        warnings = _digest_warnings(capsys.readouterr().err, "is already a section")
         if not fires:
             assert warnings == []
             return
         [warning] = warnings
-        assert f"for v1.4.0 (line 3: {heading!r})" in warning
+        assert f"line 3 ({heading!r}) is already a section for v1.4.0" in warning
         assert "release-in-changelog" in warning
         assert "release-headline.md" in warning, "the remedy names where the text can go"
         _assert_names_the_declared_path(warning)
@@ -1425,13 +1450,13 @@ class TestASectionForTheReleaseIsReportedEarly:
     def test_a_bare_release_number_is_normalized(self, tmp_path, capsys):
         project = _declared_project(tmp_path, changelog="# Changelog\n\n## v1.4.0\n\nHand.\n")
         release_readiness.check_releasability(project, release="1.4.0")
-        assert len(_digest_warnings(capsys.readouterr().err, "already has a section for v1.4.0")) == 1
+        assert len(_digest_warnings(capsys.readouterr().err, "is already a section for v1.4.0")) == 1
 
     def test_no_release_is_a_note_that_the_check_did_not_run(self, tmp_path, capsys):
         project = _declared_project(tmp_path, changelog="# Changelog\n\n## v1.4.0\n\nHand.\n")
         release_readiness.check_releasability(project)
         err = capsys.readouterr().err
-        assert _digest_warnings(err, "already has a section") == []
+        assert _digest_warnings(err, "is already a section") == []
         # Bound to the digest's own note: without `plugin/VERSION` there is no
         # fallback NOTE here, but the sibling test below has one, and both say
         # "no --release given".
@@ -1451,24 +1476,25 @@ class TestASectionForTheReleaseIsReportedEarly:
         release_readiness.check_releasability(project)
         err = capsys.readouterr().err
         assert "falling back to plugin/VERSION (v1.4.0)" in err, "the fixture must reach the fallback"
-        assert _digest_warnings(err, "already has a section") == []
+        assert _digest_warnings(err, "is already a section") == []
         [note] = [n for n in _notes(err) if "release-in-changelog" in n]
         assert "no --release given" in note, "the fallback's own NOTE must not stand in for this one"
 
-    def test_a_missing_changelog_is_a_note_naming_the_refusal(self, tmp_path, capsys):
+    def test_a_missing_changelog_warns_naming_the_refusal(self, tmp_path, capsys):
+        """A condition the cut refuses on is a warning, like every other one."""
         project = _declared_project(tmp_path, changelog=None)
         assert release_readiness.check_releasability(project, release="v1.4.0") == 0
-        [note] = [n for n in _notes(capsys.readouterr().err) if "declared consumer digest" in n]
-        assert "is not a file" in note and "digest-missing" in note
-        _assert_names_the_declared_path(note)
+        [warning] = _digest_warnings(capsys.readouterr().err, "is not a file")
+        assert "`digest-missing`" in warning
+        _assert_names_the_declared_path(warning)
 
-    def test_an_unreadable_changelog_is_a_note_not_a_traceback(self, tmp_path, capsys):
+    def test_an_unreadable_changelog_warns_rather_than_crashing(self, tmp_path, capsys):
         project = _declared_project(tmp_path)
         (project / "CHANGELOG.md").write_bytes(b"# Changelog\n\n## v1.4.0\n\n\xff\xfe\n")
         assert release_readiness.check_releasability(project, release="v1.4.0") == 0
-        [note] = [n for n in _notes(capsys.readouterr().err) if "declared consumer digest" in n]
-        assert "cannot be read" in note and "digest-unreadable" in note
-        _assert_names_the_declared_path(note)
+        [warning] = _digest_warnings(capsys.readouterr().err, "cannot be read")
+        assert "`digest-unreadable`" in warning
+        _assert_names_the_declared_path(warning)
 
 
 class TestTheDeclarationGatesTheChecks:
@@ -1514,7 +1540,7 @@ class TestTheDeclarationGatesTheChecks:
         assert "layout: 'sideways'" in warning
         assert warning.endswith("; the consumer digest checks did not run")
         assert _digest_warnings(out.err, "release-headline.md") == []
-        assert _digest_warnings(out.err, "already has a section") == []
+        assert _digest_warnings(out.err, "is already a section") == []
         assert "digest headline:" not in out.out
 
 
@@ -1538,7 +1564,7 @@ class TestTheDigestAdvisoryNeverMovesTheVerdict:
         assert release_readiness.check_releasability(noisy, release="v1.4.0") == 0
         out = capsys.readouterr()
         assert _digest_warnings(out.err, "release-headline.md"), "the fixture must fire"
-        assert _digest_warnings(out.err, "already has a section"), "the fixture must fire"
+        assert _digest_warnings(out.err, "is already a section"), "the fixture must fire"
         assert "releasable: v1.4.0" in out.out
 
     def test_an_invalid_declaration_leaves_a_pass_a_pass(self, tmp_path, capsys):

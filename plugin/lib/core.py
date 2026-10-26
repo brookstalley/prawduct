@@ -190,6 +190,33 @@ def _read_exact(path: Path) -> str:
         return handle.read()
 
 
+class RollbackIncomplete(OSError):
+    """A :func:`write_all_or_none` write failed, and the rollback left files changed.
+
+    ``unrestored`` names the files that kept their new content. Its message is
+    the original failure's, and ``__cause__`` is that failure.
+    """
+
+    def __init__(self, cause: BaseException, unrestored: "list[Path]") -> None:
+        super().__init__(str(cause))
+        self.unrestored = unrestored
+
+
+def write_failure_outcome(exc: BaseException) -> str:
+    """What a failed :func:`write_all_or_none` left behind, as a sentence for the refusal.
+
+    The one place a caller learns whether "every file was restored" is true, so
+    no caller reports a restore that did not happen.
+    """
+    if isinstance(exc, RollbackIncomplete):
+        names = ", ".join(str(path) for path in exc.unrestored)
+        return (
+            f"The rollback could not restore {names}, which kept its new content while the "
+            "rest were restored; do not re-run until it is reconciled by hand."
+        )
+    return "Every file was restored; re-run when the cause is fixed."
+
+
 def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     """Write every ``(path, text)`` pair, or leave every one of them untouched.
 
@@ -210,9 +237,12 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     Rollback is best-effort by construction: if restoring also fails there is
     nothing left to try, and the original exception is the one worth raising, so
     an ``OSError`` from a restore does not mask it — but it is NOT silent: every
-    path the rollback could not restore is named on stderr, because the pair is
-    then half-applied and the documented recovery (run it again) would duplicate
-    every moved entry into an append-only file. Only ``OSError`` is caught there
+    path the rollback could not restore is named on stderr, and an ordinary
+    failure is raised as :class:`RollbackIncomplete` carrying those paths, so
+    the caller's message comes from that state (:func:`write_failure_outcome`).
+    The pair is then half-applied, and the documented recovery (run it again)
+    would duplicate every moved entry into an append-only file. An interrupt is
+    still re-raised unchanged. Only ``OSError`` is caught there
     — anything else escaping a restore is a bug in this function, not a disk
     that filled, and swallowing it would hide it forever.
 
@@ -240,7 +270,8 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
         for (path, text), prior in zip(writes, priors):
             atomic_write_text(path, text, newline="")
             written.append((path, prior))
-    except BaseException:
+    except BaseException as exc:
+        unrestored: list[Path] = []
         for path, prior in reversed(written):
             try:
                 if prior is None:
@@ -248,12 +279,15 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
                 else:
                     atomic_write_text(path, prior, newline="")
             except OSError as restore_exc:
+                unrestored.append(path)
                 print(
                     f"ROLLBACK FAILED for {path}: {restore_exc} — this file kept its NEW "
                     "content while the others were restored; do not re-run until it is "
                     "reconciled by hand",
                     file=sys.stderr,
                 )
+        if unrestored and isinstance(exc, Exception):
+            raise RollbackIncomplete(exc, unrestored) from exc
         raise
 
 

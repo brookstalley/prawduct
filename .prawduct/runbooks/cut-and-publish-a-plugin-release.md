@@ -438,17 +438,24 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    release, and removes the shipping fragments and `.prawduct/release-headline.md`. Withheld
    fragments are not touched, so they stay pending for the next release.
 
-   **If it prints `refused: write-failed:`:** every file was restored. Fix the cause it names and
-   re-run.
+   **If it prints `refused: write-failed:`:** it says whether every file was restored. If so, fix
+   the cause it names and re-run. If it names a file the rollback could not restore, do not re-run:
+   restore that file from `HEAD` by hand (or delete it, if it is new) first.
    **If it prints `refused: removal-failed:`:** the archive, release file and changelog are
    written, and some fragments (or the headline file) are still on disk. Re-run the same command.
    The release file exists, so it writes nothing and removes what the archive and the release
    already hold.
 
-   > *Nothing here is pushed or committed yet. To undo the whole cut before step 12, restore
-   > `.prawduct/change-log-archive/`, `.prawduct/changes/`, `.prawduct/release-headline.md` and
-   > `plugin/CHANGELOG.md` from `HEAD`, and delete `.prawduct/releases/vX.Y.Z.md`. The release
-   > file must go too: while it exists, the cut treats vX.Y.Z as already cut.*
+   > *Nothing here is pushed or committed yet. To undo the whole cut before step 12, in this order:
+   > 1. Recover the headline, which was never committed, so the release file holds its only copy:
+   >    `sed -n 3p .prawduct/releases/vX.Y.Z.md > .prawduct/release-headline.md` (line 3 is the
+   >    one-line headline step 2 asks for).
+   > 2. Restore `.prawduct/change-log-archive/`, `.prawduct/changes/` and `plugin/CHANGELOG.md`
+   >    from `HEAD`.
+   > 3. Delete any month file step 5 shows as `??`. Restoring does not remove a new file, and a
+   >    re-cut would add its entries a second time.
+   > 4. Delete `.prawduct/releases/vX.Y.Z.md`. The release file must go too, because while it
+   >    exists the cut treats vX.Y.Z as already cut.*
 
 4. Confirm the pending set shrank to exactly what you withheld:
 
@@ -478,9 +485,10 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    ```
 
    **Expected:** one `M` (or `??` for a month with no file yet) per bucket step 1 named under
-   `archive:`, `?? .prawduct/releases/vX.Y.Z.md`, ` M plugin/CHANGELOG.md`,
-   ` D .prawduct/release-headline.md`, and one ` D .prawduct/changes/<scope>.md` per shipping
-   fragment. Nothing else.
+   `archive:`, `?? .prawduct/releases/vX.Y.Z.md`, ` M plugin/CHANGELOG.md`, and one
+   ` D .prawduct/changes/<scope>.md` per shipping fragment. Nothing else. That includes no line for
+   `.prawduct/release-headline.md`: it was never committed, so once the cut removes it git has
+   nothing to show. A `??` line for it means the cut did not remove it.
 
 6. Confirm each shipping scope's build plan is actually closed out:
 
@@ -639,7 +647,8 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
     **Expected:** `[develop <sha>] release: prep v3.2.0`, and the summary lists the archive
     bucket(s), `plugin/CHANGELOG.md`, a `create mode` line for `.prawduct/releases/vX.Y.Z.md`, and a
-    `delete mode` line per shipped fragment and for `.prawduct/release-headline.md`. They go in one
+    `delete mode` line per shipped fragment. The headline file has no line, because it was never
+    committed. They go in one
     commit: the fragments' removal without the archive drops the record, the archive without the
     removal leaves the scopes pending for the next release too, and the release file is what tells
     a re-run the release is cut.

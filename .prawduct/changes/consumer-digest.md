@@ -58,6 +58,15 @@ section, and changes no other byte. The release file is the record that the rele
 - **Chunk 07:** an end-to-end run on a scratch product with a CRLF, BOM-prefixed Keep a
   Changelog file (two releases, a re-run and a late fragment), and prawduct's own cut run on a
   throwaway copy of this repo.
+- **Boundary review fixes:**
+  - The cut's changelog refusals are one list, `consumer_digest.preflight`. The cut raises from
+    it and Phase 0 warns on all of it, so Phase 0 now also warns on `marker-missing` and
+    `releases-ignored`.
+  - `retired-claim-survives` treats release files and the declared changelog as history.
+  - `write_all_or_none` reports a rollback it could not complete, and every caller's refusal
+    says so rather than claiming every file was restored.
+  - A release that ships nothing says it kept the headline file.
+  - The release runbook treats the headline file as never committed.
 
 ## Consumer note
 **Release notes now reach your own changelog.** Declare `consumer_digest:` with your changelog's

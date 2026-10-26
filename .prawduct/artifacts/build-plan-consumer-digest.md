@@ -149,6 +149,29 @@ file per PR. Its existing history stays untouched.
 - #1072 mitigation: this plan's chunk states are wrong. Chunk 02's `final` review certified 02–07,
   a framework bug. Every review here passes an explicit `--chunks`, and `plan status` is not
   trusted for this plan.
+- Boundary review fixes (2026-10-26, `rev-20261026T110035Z-2427f488`, one forced round the owner
+  chose over raising the budget):
+  - R-2: the cut's changelog refusals are one list, `consumer_digest.preflight`. The cut raises
+    the first problem and Phase 0 warns on each, so Phase 0 now also warns on `marker-missing`
+    and `releases-ignored`, which it had no copy of. `consumer_digest.already_cut` is the one
+    "is it cut" test (`is_file`; the cut had used `exists`). Missing and unreadable changelogs
+    are now Phase 0 warnings, not notes, like every other refusal (design amendment A7).
+  - R-5: `retired_claims` exempts what the cut writes by what it is: `consumer_digest.is_history`
+    covers release files and the declared changelog, whatever it is named.
+  - R-6: the headline file is never committed. The runbook's status, commit and undo steps now
+    say so, and the undo recovers the headline from the release file before deleting it.
+  - R-1: a release that ships nothing says it kept the headline file.
+  - R-8: `write_all_or_none` raises `RollbackIncomplete` naming the files it could not restore,
+    and all five callers report through `core.write_failure_outcome`. Before this, each caller
+    said "every file was restored" unconditionally.
+  - R-7, a caller sweep for the Chunk 02 `newline=""` widening. `change_log_archive.apply`,
+    `change_migrate` (two sites) and `plan_mint` write files under `.prawduct/` from text they
+    composed or read with `read_text`. On POSIX their bytes are unchanged and their rollbacks are
+    now exact. On Windows, where Git-for-Windows checkouts are installed (README) but CI does not
+    run (`ubuntu-latest` only), a CRLF archive month or `change-log.md` that one of those commands
+    rewrites now comes out LF where it used to stay CRLF. Under `core.autocrlf` git normalizes it
+    on add. Accepted here, and filed as #1073: those readers should read with `newline=""` as
+    the cut does.
 
 **Level:** High. The model is chosen by the owner and its prior art read in source, every code
 site is read, and the one hard problem (locating a section) is removed rather than solved. What

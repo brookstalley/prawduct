@@ -13,10 +13,14 @@ any other byte. It writes nothing. The release cut, which writes, and the
 Phase 0 check, which advises, are meant to ask it rather than keep a path or
 a heading rule of their own.
 
-Everything here is pure except three reads of the filesystem:
-:func:`read_declaration` and :func:`read_changelog` read one file each, and
+It also owns the list of conditions the cut refuses on (:func:`preflight`),
+which the cut raises and Phase 0 warns about, so neither keeps a copy.
+
+Everything here is pure except reads: :func:`read_declaration`,
+:func:`read_changelog` and :func:`read_headline` read one file each,
 declaration validation resolves the declared path to check where it really
-points.
+points, and :func:`preflight` reads through those and asks git whether it
+would ignore the release files.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ import re
 import string
 import unicodedata
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from . import change_fragments
 from .core import YAML_ABSENT, YAML_UNPARSEABLE, read_yaml_block, unquote_scalar
@@ -425,6 +429,106 @@ def read_headline(project_dir: Path) -> HeadlineRead:
     return HeadlineRead(raw) if headline_lines(raw) else HeadlineRead(None, "is empty")
 
 
+def already_cut(project_dir: Path, version: str) -> bool:
+    """Whether ``version`` is cut: its release file exists. Asked by the cut and Phase 0 alike."""
+    return (project_dir / release_file_rel(version)).is_file()
+
+
+@dataclass(frozen=True)
+class Problem:
+    """A condition the cut refuses on: ``code`` is its refusal code."""
+
+    code: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class Preflight:
+    """What the cut would refuse on for one release, and what it read to decide.
+
+    ``text`` is ``None`` when the changelog is missing or unreadable, and
+    ``index`` also when the marker is missing; with no problems both are set.
+    """
+
+    problems: tuple[Problem, ...]
+    text: ChangelogText | None
+    headline: HeadlineRead
+    index: int | None
+
+
+def preflight(project_dir: Path, decl: Declaration, version: str | None) -> Preflight:
+    """Every condition the cut refuses on for this declaration, before anything is written.
+
+    **The one list of them.** The cut refuses on the first problem and Phase 0
+    warns on each, so a refusal added here is warned about ahead of time with
+    no second edit, and the two can never name different conditions. Ordered
+    as the operator can act on them: where the release file would go, the
+    changelog itself, a section already there, the headline, the marker.
+
+    ``version`` is ``None`` when Phase 0 has no release to look for, and then
+    no section is checked. Reads the changelog and the headline file, and asks
+    git whether it would ignore the release files.
+    """
+    from . import change_log_archive  # noqa: PLC0415 — lazy; only this check needs git
+    from . import gitstate  # noqa: PLC0415
+
+    problems: list[Problem] = []
+    if change_log_archive.record_is_tracked(project_dir) and gitstate.git_path_is_ignored(
+        project_dir, f"{RELEASES_DIR_REL}/0000.md"
+    ):
+        problems.append(Problem(
+            "releases-ignored",
+            f"git would ignore {RELEASES_DIR_REL}/; un-ignore it so the release file the cut writes is committed",
+        ))
+    text: ChangelogText | None = None
+    changelog = project_dir / decl.path
+    if not changelog.is_file():
+        problems.append(Problem(
+            "digest-missing",
+            f"consumer_digest: declares {decl.path}, which is not a file; create it, or correct the path",
+        ))
+    else:
+        try:
+            text = read_changelog(changelog)
+        except DigestUnreadable as exc:
+            problems.append(Problem("digest-unreadable", f"{decl.path} cannot be read: {exc}"))
+    if text is not None and version is not None:
+        problems += [
+            Problem(
+                "release-in-changelog",
+                f"{decl.path} line {number} ({heading!r}) is already a section for {version}; "
+                f"{RELEASE_IN_CHANGELOG_REMEDY}",
+            )
+            for number, heading in release_sections(text, version)
+        ]
+
+    headline = read_headline(project_dir)
+    if headline.unreadable:
+        # In either `headline:` mode: a present file is used either way.
+        problems.append(Problem(
+            "no-headline",
+            f"{HEADLINE_FILE_REL} {headline.problem}, so its text cannot go in the release's section in {decl.path}",
+        ))
+    elif decl.headline == "required" and headline.text is None:
+        problems.append(Problem(
+            "no-headline",
+            f"consumer_digest: requires a headline and {HEADLINE_FILE_REL} {headline.problem}; write the "
+            f"release's one-line headline there, and the cut puts it at the top of the release's section "
+            f"in {decl.path}, where the version-delta banner shows it to every upgrading repo",
+        ))
+
+    index: int | None = None
+    if text is not None:
+        try:
+            index = insertion_index(text, decl.marker)
+        except MarkerMissing:
+            problems.append(Problem(
+                "marker-missing",
+                f"consumer_digest: inserts below the marker {decl.marker!r}, and no line of {decl.path} is exactly that",
+            ))
+    return Preflight(tuple(problems), text, headline, index)
+
+
 def place_section(text: ChangelogText, index: int, section: list[str]) -> tuple[ChangelogText, int]:
     """``(text with section spliced in before lines[index], 1-based line its heading lands on)``.
 
@@ -596,3 +700,16 @@ def render_section(
 def release_file_rel(version: str) -> str:
     """The release file's repo-relative path for the normalized ``version``."""
     return f"{RELEASES_DIR_REL}/{version}.md"
+
+
+def is_history(rel: str, decl: Declaration | None) -> bool:
+    """Whether the repo-relative ``rel`` is release history the cut writes.
+
+    A release file, or the declared changelog: each holds text that shipped
+    and is never edited afterwards, whatever the file is named. ``decl`` is
+    the repo's declaration, or ``None`` where it declares none.
+    """
+    path = PurePosixPath(rel)
+    if path.parent == PurePosixPath(RELEASES_DIR_REL):
+        return True
+    return decl is not None and path == PurePosixPath(decl.path)

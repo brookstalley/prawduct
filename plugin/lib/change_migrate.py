@@ -202,7 +202,7 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
             try:
                 core.write_all_or_none(writes)
             except OSError as exc:
-                print(f"refused: write-failed: {exc}. Every file was restored.", file=sys.stderr)
+                print(f"refused: write-failed: {exc}. {core.write_failure_outcome(exc)}", file=sys.stderr)
                 return 1
             print("  wrote it; commit it.")
         else:
@@ -229,7 +229,7 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
     try:
         core.write_all_or_none(writes)
     except OSError as exc:
-        print(f"refused: write-failed: {exc}. Every file was restored.", file=sys.stderr)
+        print(f"refused: write-failed: {exc}. {core.write_failure_outcome(exc)}", file=sys.stderr)
         return 1
     print(
         f"  wrote {len(fragments)} fragment(s) and removed their entries from "

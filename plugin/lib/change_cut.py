@@ -249,67 +249,43 @@ def _release_writes(
 ) -> None:
     """Validate the declared changelog and add the release file and the insert to ``result``.
 
-    Each check refuses before anything is written, in the order the operator
-    can act on them: where the release file would go, the changelog itself, a
-    section already there, the headline, the marker.
+    Refuses on the first problem :func:`consumer_digest.preflight` finds, so
+    the conditions refused here and the ones Phase 0 warns about are one list.
     """
-    rel = consumer_digest.release_file_rel(version)
-    if change_log_archive.record_is_tracked(project_dir) and _git_ignores(project_dir, f"{consumer_digest.RELEASES_DIR_REL}/0000.md"):
-        raise CutRefused(
-            "releases-ignored",
-            f"git would ignore {consumer_digest.RELEASES_DIR_REL}/; un-ignore it so the release file the cut writes is committed",
-        )
-    changelog = project_dir / decl.path
-    if not changelog.is_file():
-        raise CutRefused(
-            "digest-missing",
-            f"consumer_digest: declares {decl.path}, which is not a file; create it, or correct the path",
-        )
-    try:
-        text = consumer_digest.read_changelog(changelog)
-    except consumer_digest.DigestUnreadable as exc:
-        raise CutRefused("digest-unreadable", f"{decl.path}: {exc}") from exc
-    for number, heading in consumer_digest.release_sections(text, version):
-        raise CutRefused(
-            "release-in-changelog",
-            f"{decl.path} line {number} ({heading!r}) is already a section for {version}; "
-            f"{consumer_digest.RELEASE_IN_CHANGELOG_REMEDY}",
-        )
-
+    check = consumer_digest.preflight(project_dir, decl, version)
+    if check.problems:
+        raise CutRefused(check.problems[0].code, check.problems[0].detail)
+    text, index = check.text, check.index
+    assert text is not None and index is not None, "preflight sets both when it finds no problem"
     headline_path = project_dir / consumer_digest.HEADLINE_FILE_REL
-    read = consumer_digest.read_headline(project_dir)
-    if read.unreadable:
-        raise CutRefused("no-headline", f"{consumer_digest.HEADLINE_FILE_REL} {read.problem}")
-    headline = read.text
     if headline_path.is_file():
         result.headline_file = headline_path
-    if decl.headline == "required" and headline is None:
-        raise CutRefused(
-            "no-headline",
-            f"consumer_digest: requires a headline and {consumer_digest.HEADLINE_FILE_REL} is absent or blank; "
-            f"write the release's one-line judgement there, and the cut puts it under the heading in {decl.path}",
-        )
-    try:
-        index = consumer_digest.insertion_index(text, decl.marker)
-    except consumer_digest.MarkerMissing as exc:
-        raise CutRefused(
-            "marker-missing",
-            f"consumer_digest: inserts below the marker {decl.marker!r}, and no line of {decl.path} is exactly that",
-        ) from exc
+    rel = consumer_digest.release_file_rel(version)
 
-    section = consumer_digest.render_section(decl, version, _today(today), headline, fragments)
+    section = consumer_digest.render_section(decl, version, _today(today), check.headline.text, fragments)
     result.section_text = consumer_digest.release_file_text(section)
     result.release_file = project_dir / rel
     placed, result.insert_line = consumer_digest.place_section(text, index, section)
     result.writes.append((result.release_file, result.section_text))
-    result.writes.append((changelog, placed.render()))
+    result.writes.append((project_dir / decl.path, placed.render()))
     result.notes_added = [f.scope or "" for f in consumer_digest.ordered_notes(fragments)]
 
 
-def _git_ignores(project_dir: Path, rel: str) -> bool:
-    from . import gitstate  # noqa: PLC0415 — lazy; git is only asked on the write path
+def _nothing_ships(project_dir: Path, decl: consumer_digest.Declaration | None, result: CutPlan) -> CutPlan:
+    """``result`` for a release that ships nothing, saying so of a waiting headline file.
 
-    return gitstate.git_path_is_ignored(project_dir, rel)
+    No section is written, so a headline written for this release stays, and
+    the next cut would publish it under that release's heading. Kept, not
+    removed: the cut cannot tell this release's headline from the next one's.
+    """
+    headline = project_dir / consumer_digest.HEADLINE_FILE_REL
+    if decl is not None and headline.is_file():
+        result.headline_kept = headline
+        result.headline_kept_reason = (
+            f"no fragment ships in {result.version}, so no section was written, and the next cut "
+            "puts it under that release's heading; remove it if it was this release's"
+        )
+    return result
 
 
 def plan_cut(
@@ -339,12 +315,16 @@ def plan_cut(
     # Ahead of every "nothing to cut" return: a run that failed while removing
     # is completed from here, and by then nothing is left to cut.
     if decl is not None:
-        release_file = project_dir / consumer_digest.release_file_rel(version)
-        if release_file.exists():
+        if consumer_digest.already_cut(project_dir, version):
+            release_file = project_dir / consumer_digest.release_file_rel(version)
             return _plan_rerun(project_dir, version, scopes, pending.fragment_scopes, release_file, decl)
 
     if not pending.fragment_scopes and not scopes:
-        return CutPlan(version=version, cut=[], kept=[], legacy_shipping=_legacy_shipping(project_dir, version, pending.legacy_scopes))
+        return _nothing_ships(
+            project_dir,
+            decl,
+            CutPlan(version=version, cut=[], kept=[], legacy_shipping=_legacy_shipping(project_dir, version, pending.legacy_scopes)),
+        )
     # A repo that tracks its fragments but would ignore the archive would commit
     # the fragments' removal and silently drop the history they moved to.
     if change_log_archive.archive_would_be_ignored(project_dir):
@@ -361,7 +341,7 @@ def plan_cut(
     fragments = [f.fragment for f in cut]
     result = CutPlan(version=version, cut=cut, kept=kept, legacy_shipping=legacy)
     if not cut:
-        return result
+        return _nothing_ships(project_dir, decl, result)
 
     archive_dir = project_dir / ".prawduct" / change_log_archive.ARCHIVE_DIR_NAME
     by_bucket: dict[str, list[change_log_archive.Block]] = {}
@@ -386,7 +366,8 @@ def apply_cut(plan: CutPlan) -> None:
 
     The removals go last, cut fragments, then fragments a previous run already
     archived, then the headline file: a failure while writing leaves every file
-    as it was and every fragment pending, and a failure while removing leaves
+    as it was and every fragment pending (unless the rollback fails too, when
+    :class:`core.RollbackIncomplete` names what it left), and a failure while removing leaves
     only things the written files already hold, which a re-run finds through the
     release file and removes without writing anything.
     """
@@ -513,7 +494,7 @@ def cut_cmd(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
     except OSError as exc:
-        print(f"refused: write-failed: {exc}. Every file was restored; re-run when the cause is fixed.", file=sys.stderr)
+        print(f"refused: write-failed: {exc}. {core.write_failure_outcome(exc)}", file=sys.stderr)
         return 1
     removed = len(cut_plan.cut) + len(cut_plan.cleanup)
     extra = " and the headline file" if cut_plan.headline_file is not None else ""

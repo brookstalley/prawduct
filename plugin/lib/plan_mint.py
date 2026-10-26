@@ -261,7 +261,7 @@ def new(
     try:
         core.write_all_or_none([(plan_path, plan_text), (fragment_path, fragment_text)])
     except OSError as exc:
-        raise PlanMintRefused("write-failed", f"{exc}; every file was restored") from exc
+        raise PlanMintRefused("write-failed", f"{exc}. {core.write_failure_outcome(exc)}") from exc
 
     if start_point is not None:
         code, _out, err = gitstate._git_text(project_dir, "switch", "-c", target, start_point)

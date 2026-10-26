@@ -166,18 +166,21 @@ section into your changelog:
 
 If your history spells headings another way (`## Release 1.4.0`), none of them leads with a
 version, so the first cut would land at the bottom of the file. Declare a `marker` line above
-your newest release to place it instead.
+your newest release to place it instead. Do the same if you file patch releases as `### [1.0.1]`
+under a minor's `## ` heading: only `## ` headings count, so the new section would land below
+those patches.
 
 No other byte changes: line endings, a BOM, and the trailing newline are kept. The cut never
 searches for an open section and never renames one. The release file is also the record that the
 release is cut, so a re-run writes nothing twice. Commit it, along with `.prawduct/changes/` and
-the archive.
+the archive, and keep every one: release files are permanent history, never pruned.
 
 **The headline** is the release's one-line judgement, kept in `.prawduct/release-headline.md`
 before the cut. The cut puts it under the heading and removes the file. With `headline: required`,
 the cut refuses `no-headline` without it, and Phase 0 (`check-releasability`) warns first.
 
-**Refusals**, each with nothing written:
+**Refusals**, each with nothing written. `check-releasability` warns ahead of the cut about every
+one from `digest-missing` to `releases-ignored`:
 - `digest-declaration-invalid`: the block below is malformed, or `project-state.yaml` cannot be
   read;
 - `digest-missing`, `digest-unreadable`: the changelog is not a file, or not UTF-8;

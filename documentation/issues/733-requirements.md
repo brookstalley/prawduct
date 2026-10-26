@@ -321,6 +321,10 @@ MUST unless marked SHOULD.
 - **Version-file bumping** (`release_version_files:`, #576) and any integration with external
   release tools beyond the documented order.
 - **Prawduct-side digest checks** (#702, #259).
+- **Version headings below `## `.** A history that files patch releases as `### [1.0.1]` under a
+  minor's `## ` heading needs `marker`, because only a `## ` heading is recognised as a release
+  (CD4). That way a past release's `###` subsections cannot attract the insert. Revisit if a
+  product on that layout asks.
 
 ## Evidence / references
 

@@ -207,6 +207,19 @@ class TestHistoryAndDeclarationsAreNotSurvivors:
         )
         assert _found(_lint(repo)) == [("docs/live.md", 1)]
 
+    def test_what_the_release_cut_writes_is_history_whatever_its_name(self, tmp_path):
+        """A release file and the declared changelog hold text that shipped and
+        is never edited, so a retired phrase quoted there is history. The same
+        name undeclared is an ordinary doc, and still reports."""
+        quoted = "The release retired " + PHRASE + ".\n"
+        files = {".prawduct/releases/v1.4.0.md": quoted, "docs/NEWS.md": quoted, "NOTES.md": quoted}
+        declared = _make_repo(
+            tmp_path / "declared", files, state="consumer_digest:\n  path: docs/NEWS.md\n"
+        )
+        assert _found(_lint(declared)) == [("NOTES.md", 1)]
+        undeclared = _make_repo(tmp_path / "undeclared", files)
+        assert _found(_lint(undeclared)) == [("NOTES.md", 1), ("docs/NEWS.md", 1)]
+
     def test_a_retires_line_outside_a_direction_section_declares_nothing(self, tmp_path):
         """The field is read on Direction norm entries only. A `Retires:` in a
         plan's prose or a section of notes is ordinary text."""

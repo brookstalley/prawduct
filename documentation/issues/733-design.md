@@ -394,16 +394,14 @@ never gets the `plugin/VERSION` fallback, which is prawduct's path and carries a
   <decl.path>)`. After the cut the headline file is consumed and the section is the cut's own;
   checking again would tell the operator to remove that section, and a re-cut would not restore
   it (A6).
-- The headline file is read once, through `consumer_digest.read_headline`, the one reader the cut
-  also uses:
-  - unreadable → a warning in either mode, because the cut refuses `no-headline` on it either way;
-  - absent or blank → a warning only under `headline: required`;
-  - first non-empty line a heading → a warning in either mode, because the cut uses a present
-    file either way, and the banner reads no headline from a section that opens on a heading.
-- With `release` known, any heading `consumer_digest.release_sections` finds → a warning, the CD7
-  `release-in-changelog` condition reported early, ending in the same
-  `RELEASE_IN_CHANGELOG_REMEDY` the cut's refusal uses. With `release` unknown, a note that this check
-  did not run.
+- Every problem `consumer_digest.preflight` finds → a warning (A7). That is the list the cut
+  refuses from, so it includes `no-headline` for an unreadable headline file in either mode and
+  for an absent or blank one under `headline: required`. It also includes `release-in-changelog`
+  when `release` is known, ending in the same `RELEASE_IN_CHANGELOG_REMEDY` the cut's refusal
+  uses. With `release` unknown and the changelog readable, a note that no section was looked for.
+- A headline whose first non-empty line is a heading → a warning in either mode. The cut does not
+  refuse this: it uses a present file either way, but the banner reads no headline from a section
+  that opens on a heading.
 - Emissions: `digest headline: '<first line>' (.prawduct/release-headline.md → <decl.path>)`, or
   `digest headline: none`.
 
@@ -504,6 +502,14 @@ check and A5 narrows one.
   Phase 0 steps aside once the release file exists. `read_headline`, `release_sections` and
   `RELEASE_IN_CHANGELOG_REMEDY` join `consumer_digest`, so neither caller restates them, and
   `insert_section` (which only tests called) gives way to `place_section`.
+- **A7 (CD7, CD12), from the boundary review.** The cut's changelog refusals are one list,
+  `consumer_digest.preflight(project_dir, decl, version)`. It runs in order: `releases-ignored`,
+  `digest-missing` or `digest-unreadable`, `release-in-changelog` (skipped when `version` is
+  `None`), `no-headline`, `marker-missing`. The cut raises the first problem, and Phase 0 warns on
+  every one as `<detail> — the cut refuses `<code>` until this is fixed.` So a missing or
+  unreadable changelog is a warning, not the note Section 7 first gave it, and a refusal added to
+  the list is warned about without a second edit. Section 6's steps 5–9 are that list.
+  `consumer_digest.already_cut` (`is_file`) is the one "already cut" test for both callers.
 - **A5 (CD7, CD12).** `release-in-changelog` matches the exact version, prerelease included, so a
   published prerelease section never blocks a later cut. Prawduct's leftover-`-dev`-section guard
   moves to its own banner test (CD15).

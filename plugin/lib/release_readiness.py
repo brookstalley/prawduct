@@ -525,92 +525,24 @@ def _ships_the_plugin_tree(project_dir: Path) -> bool:
     return (project_dir / "plugin" / "VERSION").exists()
 
 
-def _headline_warnings(decl: consumer_digest.Declaration, read: consumer_digest.HeadlineRead) -> list[str]:
-    """What is wrong with the headline the cut will put in the release section.
+def _heading_first_warning(decl: consumer_digest.Declaration, read: consumer_digest.HeadlineRead) -> list[str]:
+    """A headline that opens on a heading, which the cut writes as given.
 
-    Three failures. A headline file that exists but cannot be read, which the
-    cut refuses (``no-headline``) in either ``headline:`` mode. A headline that
-    opens on a heading, which the cut writes as given into a section whose
-    banner then shows nothing; it is checked in either mode, because the cut
-    uses a present headline file either way, and this is the only place it is
-    caught. And, only where the declaration owes one, no headline at all.
-
-    **Advisory, because of the moment rather than the stakes.** Phase 0 runs
-    before the step that writes the headline, so on a correct release this
-    fires once and is then fixed; a refusal here would block a release for a
-    condition it is on its way to fixing.
+    The one headline condition the cut does not refuse: it writes the file
+    into a section whose banner then shows nothing. Checked in either
+    ``headline:`` mode, because the cut uses a present headline file either
+    way, and this is the only place it is caught.
     """
-    headline_rel = consumer_digest.HEADLINE_FILE_REL
-    if read.unreadable:
-        return [
-            f"{headline_rel} {read.problem} — the cut refuses `no-headline` until it can be read, "
-            f"because it cannot put the file's text in the release's section in {decl.path}."
-        ]
-    if read.text is None:
-        if decl.headline != "required":
-            return []
-        return [
-            f"the consumer digest declares `headline: required`, and {headline_rel} "
-            f"{read.problem} — write this release's one-line headline there. The cut "
-            f"puts it at the top of the release's section in {decl.path}, where "
-            f"the version-delta banner shows it to every upgrading repo, and "
-            f"refuses `no-headline` without it."
-        ]
     first = read.first_line or ""
-    if first.startswith("#"):
-        return [
-            f"{headline_rel} starts with a heading ({first!r}) — the cut puts "
-            f"it under the release's heading in {decl.path}, and the version-delta "
-            f"banner reads no headline from a section whose first line is a "
-            f"heading, so consumers would be shown nothing. Make the first line "
-            f"the headline itself."
-        ]
-    return []
-
-
-def _release_section_check(
-    project_dir: Path, decl: consumer_digest.Declaration, version: str | None
-) -> tuple[list[str], str | None]:
-    """``(warnings, note)``: does the changelog already name this release?
-
-    The cut writes the release's section itself and refuses
-    ``release-in-changelog`` while one exists, so a section written by hand is
-    reported here, while it is still cheap to move. The match is the cut's own
-    (:func:`consumer_digest.names_release`): exact, prerelease included, so a
-    published ``-rc.1`` section is history and does not fire for the release
-    it previewed.
-
-    A changelog that cannot be read, or a run with no release to look for,
-    leaves a note saying the check did not run: a check that skips itself
-    quietly is indistinguishable from one that passed.
-    """
-    path = project_dir / decl.path
-    if not path.is_file():
-        return [], (
-            f"{decl.path}, the declared consumer digest, is not a file, so it was "
-            f"not checked for a section already naming this release — and the "
-            f"cut refuses `digest-missing` until it exists."
-        )
-    try:
-        text = consumer_digest.read_changelog(path)
-    except consumer_digest.DigestUnreadable as exc:
-        return [], (
-            f"{decl.path}, the declared consumer digest, cannot be read ({exc}), "
-            f"so it was not checked for a section already naming this release — "
-            f"and the cut refuses `digest-unreadable` until it can be."
-        )
-    if version is None:
-        return [], (
-            f"no --release given, so {decl.path} was not checked for a section "
-            f"already naming the release the cut will refuse "
-            f"(`release-in-changelog`). Pass --release vX.Y.Z to have it checked."
-        )
-    warnings = [
-        f"{decl.path} already has a section for {version} (line {number}: {heading!r}) — "
-        f"the cut refuses `release-in-changelog` while one exists: {consumer_digest.RELEASE_IN_CHANGELOG_REMEDY}."
-        for number, heading in consumer_digest.release_sections(text, version)
+    if not first.startswith("#"):
+        return []
+    return [
+        f"{consumer_digest.HEADLINE_FILE_REL} starts with a heading ({first!r}) — the cut puts "
+        f"it under the release's heading in {decl.path}, and the version-delta "
+        f"banner reads no headline from a section whose first line is a "
+        f"heading, so consumers would be shown nothing. Make the first line "
+        f"the headline itself."
     ]
-    return warnings, None
 
 
 def _digest_advisories(
@@ -619,20 +551,26 @@ def _digest_advisories(
     """What Phase 0 can ask of the declared consumer digest, before the cut does.
 
     The subject is the ``consumer_digest:`` declaration, read through the one
-    reader the cut also calls, so the two can never disagree about which file
-    or whether a headline is owed. Two questions: does the release have a
-    headline the banner can show, and has a section for it already been
-    written into the changelog. Each is a condition the cut refuses on (or, for
-    a headline that leads with a heading, writes faithfully into a blank
-    banner), asked here while it is still cheap to fix.
+    reader the cut also calls. Every condition the cut refuses on comes from
+    :func:`consumer_digest.preflight`, the list the cut itself raises from, and
+    each is a warning here, so a refusal the cut gains is warned about with no
+    edit to this module. The one thing added is a headline that opens on a
+    heading, which the cut writes faithfully into a blank banner.
+
+    **Advisory, because of the moment rather than the stakes.** Phase 0 runs
+    before the step that writes the headline, so on a correct release a
+    headline warning fires once and is then fixed; a refusal here would block a
+    release for a condition it is on its way to fixing.
 
     ``release`` is the operator's ``--release`` argument, or ``None``. Never
     the ``plugin/VERSION`` fallback: that names a ``-dev`` marker guessed low,
     not a release, and looking for a section under it would answer about the
-    wrong version.
+    wrong version. With no release, no section is looked for, and a note says
+    so: a check that skips itself quietly is indistinguishable from one that
+    passed.
 
     Returns ``(warnings, note, emissions)``, all empty-or-``None`` in a repo
-    that declares no digest, where neither question has a subject. An invalid
+    that declares no digest, where no question has a subject. An invalid
     declaration is a warning, never silence: an operator who wrote the key
     meant something, and the checks they asked for did not run. None of this
     changes the exit code.
@@ -644,22 +582,28 @@ def _digest_advisories(
         return [], None, []
 
     version = normalize_version(release) if release else None
-    if version is not None:
+    if version is not None and consumer_digest.already_cut(project_dir, version):
         release_file = consumer_digest.release_file_rel(version)
-        if (project_dir / release_file).is_file():
-            # After the cut both questions are answered: the headline file was
-            # consumed and the section is the cut's own. Asking them again would
-            # tell the operator to remove the section the cut just wrote, and a
-            # re-cut would not restore it, because the release file says done.
-            return [], (
-                f"{version} is already cut ({release_file} exists), so the headline "
-                f"and section checks of {decl.path} have nothing left to ask."
-            ), [f"digest: {version} already cut ({release_file} → {decl.path})"]
+        # After the cut every question is answered: the headline file was
+        # consumed and the section is the cut's own. Asking again would tell
+        # the operator to remove the section the cut just wrote, and a re-cut
+        # would not restore it, because the release file says done.
+        return [], (
+            f"{version} is already cut ({release_file} exists), so the headline "
+            f"and section checks of {decl.path} have nothing left to ask."
+        ), [f"digest: {version} already cut ({release_file} → {decl.path})"]
 
-    read = consumer_digest.read_headline(project_dir)
-    headline = read.first_line
-    warnings = _headline_warnings(decl, read)
-    section_warnings, note = _release_section_check(project_dir, decl, version)
+    check = consumer_digest.preflight(project_dir, decl, version)
+    warnings = [f"{p.detail} — the cut refuses `{p.code}` until this is fixed." for p in check.problems]
+    warnings += _heading_first_warning(decl, check.headline)
+    note = None
+    if version is None and check.text is not None:
+        note = (
+            f"no --release given, so {decl.path} was not checked for a section "
+            f"already naming the release the cut will refuse "
+            f"(`release-in-changelog`). Pass --release vX.Y.Z to have it checked."
+        )
+    headline = check.headline.first_line
     # Printed whether or not anything is wrong, and whatever `headline:` says,
     # because the cut uses a present headline file either way: the failure
     # this guards is a line nobody looked at.
@@ -669,7 +613,7 @@ def _digest_advisories(
         if headline is not None
         else "digest headline: none"
     )
-    return warnings + section_warnings, note, [emission]
+    return warnings, note, [emission]
 
 
 def _suite_verdict(project_dir: Path) -> tuple[bool, str]:

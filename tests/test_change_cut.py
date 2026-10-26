@@ -203,6 +203,20 @@ class TestApply:
         assert "nothing to do" in result.stdout
         assert _snapshot(project) == before
 
+    @pytest.mark.parametrize(
+        "fragments,table",
+        [({}, None), ({"alpha": _fragment("alpha")}, "| alpha | withheld | BKL-6J2X |\n")],
+        ids=["nothing-pending", "all-withheld"],
+    )
+    def test_a_release_that_ships_nothing_says_it_kept_the_headline(self, tmp_path, fragments, table):
+        """No section is written, so the headline waits, and the next cut would
+        publish it under that release's heading. The operator is told."""
+        project = _declared(tmp_path, fragments=fragments, table=table)
+        result = _cut(project, "--release", "v3.8.0", "--apply")
+        assert result.returncode == 0, result.stderr
+        assert f"headline file: kept {HEADLINE_FILE}; no fragment ships in v3.8.0" in result.stdout
+        assert (project / HEADLINE_FILE).exists()
+
     def test_a_headline_file_is_used_and_consumed_when_the_declaration_does_not_require_one(self, tmp_path):
         project = _declared(
             tmp_path, fragments={"alpha": _fragment("alpha")}, table="| alpha | ships | |\n",

@@ -9251,7 +9251,7 @@ def cmd_archive_change_log(project_dir: Path, argv: list[str]) -> int:
         try:
             written = change_log_archive.apply(prawduct_dir, selection)
         except (OSError, UnicodeDecodeError) as exc:
-            print(f"refused: could not write the archive, and every file was restored: {exc}",
+            print(f"refused: could not write the archive: {exc}. {core.write_failure_outcome(exc)}",
                   file=sys.stderr)
             return 1
 

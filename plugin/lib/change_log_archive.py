@@ -35,7 +35,8 @@ log the run would leave is re-read by ``release_readiness``'s own predicates: th
 release-pending and unclassifiable sets must be identical and no tag diagnostic may
 appear. Any difference refuses the run. The move is then written all-or-nothing
 across every file it touches (:func:`core.write_all_or_none`), so an interrupted
-run leaves the log as it was rather than entries in two places.
+run leaves the log as it was rather than entries in two places, or, if the
+rollback itself fails, names the files it could not restore.
 """
 
 from __future__ import annotations
@@ -383,8 +384,9 @@ def holds_entry(prawduct_dir: Path, block: Block) -> bool:
 def apply(prawduct_dir: Path, selection: Selection) -> list[Path]:
     """Write the move, all-or-nothing across the live log and every month file.
 
-    Returns the files written. Raises ``OSError`` with every file restored when any
-    write fails (:func:`core.write_all_or_none`).
+    Returns the files written. Raises ``OSError`` when any write fails, with every
+    file restored, or :class:`core.RollbackIncomplete` naming those the rollback
+    could not restore (:func:`core.write_all_or_none`).
     """
     if not selection.moved:
         return []

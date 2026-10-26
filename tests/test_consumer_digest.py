@@ -395,7 +395,8 @@ class TestTheHeadlineFileReader:
 
 
 def test_the_declaration_has_one_reader():
-    """CD2: Phase 0 and the cut read `consumer_digest:` only through `read_declaration`.
+    """CD2: Phase 0, the cut and the retired-claims check read `consumer_digest:`
+    only through `read_declaration`.
 
     A second reader (say, one parsing the key straight from a tag's tree, as
     `release_verification` does for its own key) would reopen the two-homes split
@@ -414,4 +415,5 @@ def test_the_declaration_has_one_reader():
     hits = sorted(name for name, text in sources.items() if reader.search(text))
     assert hits == ["consumer_digest.py"], hits
     users = sorted(name for name, text in sources.items() if "consumer_digest.read_declaration(" in text)
-    assert users == ["change_cut.py", "release_readiness.py"], users
+    # retired_claims asks which file is the declared changelog, to treat it as history.
+    assert users == ["change_cut.py", "release_readiness.py", "retired_claims.py"], users
