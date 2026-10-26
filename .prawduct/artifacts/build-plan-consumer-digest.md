@@ -123,6 +123,29 @@ file per PR. Its existing history stays untouched.
     publishes, so a narrative describing a removal can quote what it removed.
 - Also fixed in Chunk 05's runbook pass, beyond #733: step 6 and the sweep-refusal text still
   described #1051's retired `## Status` boxes.
+- Chunk 07 verification (2026-10-26), with the repo-local binary:
+  - **Scratch product.** A git repo outside this one, with no `plugin/`, holding a BOM + CRLF Keep
+    a Changelog file with `## [Unreleased]`, a `by-type` declaration, three fragments (one
+    `none:`) and a release plan.
+    - Phase 0 printed `digest headline: none` and no digest warning.
+    - The dry run printed the section with `### Added` / `### Fixed` and the line it lands on
+      (7).
+    - `--apply` wrote it there. The lines before and after are byte-identical, the inserted
+      lines are all CRLF, the section equals the release file line for line, and the BOM is
+      kept.
+    - A second `--apply` reported nothing to do.
+    - A fragment written after the cut was refused `release-already-cut` under v1.4.0, then
+      shipped in v1.5.0 above [1.4.0] and below [Unreleased].
+  - **Prawduct's own cut** on a throwaway copy of this tree inserted `## v3.8.0` at line 13 in
+    today's paragraphs format, with the prefix and suffix unchanged, the section equal to the
+    release file, and the headline file consumed.
+  - **Deletions promised by the Architecture goal**, counted with `git grep -c` over `plugin/lib`
+    and `plugin/bin`, before → after:
+    - `_DIGEST_REL_PATH` 12 → 0;
+    - `_open_digest_section` 4 → 0;
+    - `_coverage_advisory`, `_digest_mentions`, `_section_headline`, `_headline_advisory`,
+      `_SEEDED_HEADLINE`, `_read_digest`, `_DIGEST_SECTION_RE`, `_names_release`,
+      `_digest_write` and `render_consumer_section`, 2 → 0 each.
 - #1072 mitigation: this plan's chunk states are wrong. Chunk 02's `final` review certified 02–07,
   a framework bug. Every review here passes an explicit `--chunks`, and `plan status` is not
   trusted for this plan.
