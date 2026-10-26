@@ -781,6 +781,9 @@ class TestBoxFreeShortPlanReadsBuilt:
         assert mode == critic_mode.MODE_DEFERRED, why
         assert why.startswith("short-plan deferral:"), why
         assert "naming it in the subject" in why and "tick" not in why, why
+        # The boundary proposal counts only a subject carrying the plan's scope
+        # (#1075), so the advice gives that form.
+        assert "(`<type>(<scope>): … (Chunk <id>)`" in why, why
 
     def test_inference_walks_built_only_for_a_short_plan(self, tmp_path, monkeypatch):
         """The one place inference may call ``built_chunks`` is the short-plan
@@ -832,6 +835,42 @@ class TestBoxFreeShortPlanReadsBuilt:
         assert result.returncode == 0, result.stderr
         assert "deferred-boundary-review" in result.stderr
         assert _GENERIC_BLOCK not in result.stderr
+
+    _STUB = (
+        "---\nschema: 1\ntype: fix\nscope: short\ndate: 2026-10-26\ntitle: t\n---\n\n"
+        "## Consumer note\n"
+    )
+
+    def _record_chunk_plan(self, tmp_path: Path, fragment: str) -> Path:
+        """A two-chunk box-free plan whose change-record chunk 02 lists the
+        fragment, committed on the branch as `plan new` commits it, with Chunk
+        01 in flight."""
+        prawduct = _box_free_short_plan(tmp_path, 2, ())
+        plan = prawduct / "artifacts" / "build-plan-short.md"
+        plan.write_text(plan.read_text().replace(
+            "### Chunk 02: step 2\n\n- **Type:** code\n- **Deliverables:** stuff",
+            "### Chunk 02: step 2\n\n- **Type:** code\n- **Deliverables:** `.prawduct/changes/short.md`",
+        ))
+        _write(tmp_path, ".prawduct/changes/short.md", fragment)
+        _commit(tmp_path, "docs(short): build plan")
+        _write(tmp_path, "src/wip.py", "# chunk 01 in flight\n")
+        _arm_stop(prawduct)
+        return prawduct
+
+    def test_a_committed_fragment_stub_does_not_arm_the_last_chunk(self, tmp_path):
+        """#1075: the stub `plan new` commits is no chunk's work, so with Chunk
+        01 in flight the gate warns mid-plan rather than blocking for the
+        boundary review a chunk early. Control: the same history with the
+        fragment written reads 02 as built, and the gate arms."""
+        self._record_chunk_plan(tmp_path / "stub", self._STUB)
+        warned = _run_stop(tmp_path / "stub")
+        assert warned.returncode == 0, warned.stderr
+        assert "deferred-boundary-review" in warned.stderr
+
+        self._record_chunk_plan(
+            tmp_path / "written", self._STUB.replace("---\n\n", "---\nWhat changed.\n", 1)
+        )
+        assert _run_stop(tmp_path / "written").returncode == 2
 
     def test_built_arms_the_last_chunk_the_boxes_do_not(self, tmp_path):
         """A Status block whose boxes are all unticked (three open) and commits

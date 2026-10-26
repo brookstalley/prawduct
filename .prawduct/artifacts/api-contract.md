@@ -366,8 +366,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `base:` naming no ref, `git log` failing — and the table ends with `built: unavailable (<cause>)`)
   and `chunks`, a list in plan order of `{id, state (open|done|dropped), fact_id, date, imported,
   built, reason}`; `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
-  `## Status` tick read in memory, `built` is render-only (a commit naming the chunk or touching its
-  deliverables) and `reason` says why an entry that looked like an answer was not one (an
+  `## Status` tick read in memory, `built` is git-derived and certifies nothing (a commit naming the
+  chunk in its subject or touching its deliverables, a change fragment still the `plan new` stub
+  touching nothing; the short-plan Stop gate reads it only to arm its last-chunk block) and `reason` says why an entry that looked like an answer was not one (an
   unreadable `dropped:` line, a fact whose anchor is not in the branch's history). It also
   prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
   `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,

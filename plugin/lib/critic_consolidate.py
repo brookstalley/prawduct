@@ -2896,7 +2896,7 @@ def _proposed_chunks(
     proposal = plan_status.chunk_proposal(
         Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir),
         since=base_commit if gitstate.is_object_id(base_commit) else None,
-        head_tree=head_tree if gitstate.is_object_id(head_tree) else None,
+        head_tree=head_tree,  # chunk_proposal guards it: a malformed id names fewer
     )
     return proposal.chunks, proposal.notes
 
