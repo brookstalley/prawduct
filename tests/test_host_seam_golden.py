@@ -40,6 +40,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -261,7 +262,11 @@ class TestSessionStart:
         _git(repo, "commit", "-q", "-m", "state")
         worktree = tmp_path / "wt"
         _git(repo, "worktree", "add", "-q", "-b", "wt", str(worktree))
-        encoded = "".join(c if c.isalnum() else "-" for c in str(worktree.resolve()))
+        # Its reflog would read as fresh activity on its own; backdate it so the
+        # transcript is the only recent signal.
+        month_ago = time.time() - 30 * 86400
+        os.utime(repo / ".git" / "worktrees" / "wt" / "logs" / "HEAD", (month_ago, month_ago))
+        encoded ="".join(c if c.isalnum() else "-" for c in str(worktree.resolve()))
         transcripts = tmp_path / "config" / "projects" / encoded
         transcripts.mkdir(parents=True)
         (transcripts / "session.jsonl").write_text("{}\n")
@@ -269,6 +274,7 @@ class TestSessionStart:
             [str(HOOK), "clear", "--session-start", "--brief-only"], _hook_env(tmp_path, repo), repo
         )
         assert "agent active" not in control["stdout"]
+        assert "1 idle" in control["stdout"]
         env = _hook_env(tmp_path, repo, CLAUDE_CONFIG_DIR=str(tmp_path / "config"))
         result = _run([str(HOOK), "clear", "--session-start", "--brief-only"], env, repo)
         assert "agent active" in result["stdout"]
