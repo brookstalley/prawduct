@@ -1422,7 +1422,10 @@ LAST_MEASURED_TOKENS = {
     # +23 on 2026-10-26 (final-review-chunks, #1072): the chunk-state rule says a wrong
     # certification is withdrawn with `plan retract`, never edited. A RAISE: the rule's one home
     # gains the clause, and it is the only place a builder learns a certification can be undone.
-    "methodology/planning.md": 5834,
+    # +23 on 2026-10-26 (stub-not-built, #1075): "no gate reads that view" was false — the
+    # short-plan Stop gate reads the `built` tag to arm. A CORRECTION, not a raise to spend: the
+    # sentence now says no gate certifies from it and names the one arming reader.
+    "methodology/planning.md": 5857,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -4891,7 +4894,8 @@ class TestOtherMethodology:
             "an unquoted ` #` starts a YAML comment",
             "never merged or released",
             "`prawduct-hook plan status`",
-            "no gate reads that view",
+            "no gate certifies from it",
+            "only to arm",
             "arms on the branch's binding",
             "no box to tick and no last-box exception",
         ):
