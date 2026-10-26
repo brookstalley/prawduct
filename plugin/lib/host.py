@@ -12,8 +12,16 @@ than a patch at every call site:
 - **Roots.** :func:`plugin_root`, :func:`project_dir_hint`, :func:`config_home`
   and :func:`config_roots` are the only readers of the host's environment.
 - **Responses.** :func:`emit_session_context`, :func:`emit_stop_advisory` and
-  :func:`block` are the only writers of host response shapes and of the Stop
-  hook's blocking exit.
+  :func:`block` are the only writers of structured hook responses and of the
+  Stop hook's blocking exit.
+
+Not yet here: plain text the entry points print in place. That is the
+``clear --session-start`` briefing and the banner on stdout, and the notes
+``cmd_stop`` writes to stderr ahead of its block (the worktree redirect,
+waivers, deferrals, the Critic-mode and learnings notes). Claude Code reads
+both channels — SessionStart stdout is context, and a blocking Stop's whole
+stderr is its reason — so for Claude they are response text too. A host that
+reads them differently moves them into this module (#1038).
 
 ``PRAWDUCT_HOST`` names the host, ``claude`` when unset. A host adapter's hook
 registration sets it explicitly rather than prawduct detecting the host from
@@ -95,7 +103,10 @@ class HostEvent:
 
     ``None`` means the payload did not carry the field, or carried it in a shape
     that says nothing; ``fields_present`` keeps the difference between a field
-    that was absent and one that was sent as ``null`` or garbage.
+    that was absent and one that was sent as ``null`` or garbage. No Claude path
+    reads it: it is for a host adapter, which has to report which signals its
+    host's payload actually carries (#1038's doctor detection), and a gate
+    reads an absent and a null message the same way.
 
     ``background_tasks`` is the in-flight harness tasks as ``<type>:<ident>``
     labels: ``None`` when the payload had no such field, empty when it had one

@@ -71,16 +71,21 @@ def get_project_dir() -> Path:
     """Resolve the project dir to the session's active git worktree.
 
     Was the host's launch dir (``host.project_dir_hint``, Claude Code's
-    ``CLAUDE_PROJECT_DIR``) or cwd. The harness pins that to the launch dir, but a session that moves into a git worktree operates —
-    and writes ``.prawduct/`` state — from the worktree; resolving against the
-    worktree keeps the hooks reading the same state the agent wrote (STH-4K7N).
+    ``CLAUDE_PROJECT_DIR``) or cwd. The harness pins that to the launch dir,
+    but a session that moves into a git worktree operates — and writes
+    ``.prawduct/`` state — from the worktree; resolving against the worktree
+    keeps the hooks reading the same state the agent wrote (STH-4K7N).
     Delegates to the shared resolver so bin and lib agree; the resolver fails
     open to the launch dir/cwd so non-worktree sessions are unchanged.
 
-    Bootstrap-resilient: this runs before command dispatch, so a broken/absent
-    plugin ``lib/`` must not crash here — fall back to the env/cwd behavior and
-    let the command that actually needs ``lib`` surface the import error with its
-    own handling (e.g. ``coverage-scaffold``)."""
+    Bootstrap-resilient against the ``lib`` this process imports: this runs
+    before command dispatch, so a broken/absent ``lib/`` at the plugin root
+    must not crash here — fall back to the launch-dir/cwd behavior and let the
+    command that actually needs ``lib`` surface the import error with its own
+    handling (e.g. ``coverage-scaffold``). The host seam is the exception: it
+    is loaded from beside this script, not from that ``lib``, and a tree
+    without it is not a plugin, so its absence fails here (``main``'s error
+    floor reports it; a Stop then exits 1 and does not block)."""
     hint = _host().project_dir_hint()
     try:
         gitstate = _gitstate()
@@ -2890,11 +2895,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         return 0
 
     # A host this plugin cannot read or answer fails closed: the Stop blocks,
-    # naming the variable to fix, rather than running gates on a guess.
+    # naming the variable to fix, rather than running gates on a guess. The
+    # block is recorded like any gate's, so a misconfigured adapter shows up
+    # in `prawduct-hook stats` rather than only in one transcript.
     host = _host()
     unknown = host.unknown_host_reason()
     if unknown:
-        return host.block(f"BLOCKED — {unknown}\n")
+        blocker = _GateMessage(
+            f"{_gate_attribution('host', _load_gate_registry(), _plugin_manifest_version())}\n"
+            f"HOST: {unknown}\n",
+            "host",
+        )
+        exit_code = host.block(f"\nBLOCKED — resolve before ending session:\n\n{blocker}\n")
+        _record_stop_block(project_dir, [blocker])
+        return exit_code
     event = host.read_event("stop", stop_input or {})
 
     # STH-3R8K: make STH-4K7N's silent worktree redirect observable. When the

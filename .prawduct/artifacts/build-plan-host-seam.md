@@ -63,9 +63,11 @@ unchanged (scope-out).
 - *Exit 2 scope.* "`block()` is the only writer of exit 2" is read as the hook *block* response.
   Exit 2 is also the CLI's usage-error code (`_reject_unknown_args`, `_check_argument_shape`), which
   is not a host response shape and stays where it is.
-- *Plain-stdout briefing.* `clear --session-start` prints its briefing as plain stdout, which
-  Claude injects as context. The issue's response-shape list does not name it, so it is not routed
-  here; #1038's briefing work decides its shape. Noted on #1037 at the boundary.
+- *Plain-text response lines.* `clear --session-start` prints its briefing as plain stdout, which
+  Claude injects as context, and `cmd_stop` writes notes to stderr ahead of its block. On Claude,
+  a blocking Stop's whole stderr is the reason. The issue's response-shape list names neither, so
+  neither is routed here, and `host.py`'s docstring says so. #1038's briefing work decides their
+  shape. To be noted on #1037/#1038 with the PR.
 
 **Decisions made mid-build:**
 - Chunk 01: the goldens normalize five exact run facts, not two: the temp path, plugin root, plugin
@@ -95,6 +97,17 @@ unchanged (scope-out).
   which are untracked but not gitignored in repos whose `.gitignore` has drifted. A
   same-plugin control was tried first and dropped: it is flaky by construction, because two
   runs inside one second match.
+- Boundary review: `fields_present` (and `HostEvent.event`) has no production reader yet. That
+  is the same "produced, never consumed" rule that cut `session_boundary`. The asymmetry is
+  deliberate: #1037 asks for null to be kept apart from absent, and `session_boundary` was the
+  plan's own addition. Its reader is named in the docstring: #1038's doctor detection.
+  Owner can veto.
+- Boundary review: if `host.py` fails to load, the Stop hook exits 1 through `main`'s error floor,
+  and Claude Code reads that as non-blocking. A tree without its seam is not a plugin; the
+  rejected fallback would read host variables outside the seam. Stated in `get_project_dir`'s
+  docstring.
+- Boundary review: the unknown-host block is recorded as gate `host` (`unknown-host`, since
+  3.8.0), so it is the same countable fact as every other Stop block.
 - Chunk 03: linked worktrees are skipped, not cloned. Their git dir is shared, so a copy would
   write the Stop gate's evidence into the real repo. The sweep covers each repo's primary checkout.
 

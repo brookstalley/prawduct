@@ -178,7 +178,9 @@ def test_get_project_dir_delegates_to_resolver(tmp_path, gitstate, monkeypatch):
 def test_get_project_dir_falls_back_when_lib_unimportable(tmp_path, monkeypatch):
     """Bootstrap resilience: get_project_dir runs before command dispatch, so a
     broken/absent plugin lib/ must not crash it — it falls back to the env/cwd
-    behavior, letting the command that needs lib surface its own import error."""
+    behavior, letting the command that needs lib surface its own import error.
+    The host seam beside the script is not part of that lib (the binary loads it
+    from its own tree), so this case keeps it."""
     primary = tmp_path / "primary"
     _init_repo(primary)
     hook = _load_hook()

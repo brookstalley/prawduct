@@ -827,18 +827,20 @@ def test_every_attributed_gate_id_has_a_registry_row():
     which is the one thing the registry exists to prevent. Three did (the
     learnings cutover and budget gates), found by a Critic review; this makes
     the set the code attributes the thing the registry is checked against.
-    The ids come from the source (the `_attributed("...")` literals) plus the
-    one dynamic site, record-lint's budget checks, which `cmd_stop` passes
-    through `_attributed(_check, ...)`.
+    The ids come from the source (the `_attributed("...")` literals, and the
+    `_gate_attribution('...')` literal of the unknown-host block, which runs
+    before `_attributed` exists) plus the one dynamic site, record-lint's
+    budget checks, which `cmd_stop` passes through `_attributed(_check, ...)`.
     """
     hook = (ROOT / "bin" / "prawduct-hook").read_text()
     literal_ids = set(re.findall(r'_attributed\("([a-z-]+)"', hook))
+    literal_ids |= set(re.findall(r"""_gate_attribution\(['"]([a-z-]+)['"]""", hook))
     sys.path.insert(0, str(ROOT))
     from lib import record_lint  # noqa: PLC0415 — the dynamic site's id set
 
     attributed = literal_ids | set(record_lint._BUDGET_CHECKS)
     # Reachability: the scan must have found the sites it exists to check.
-    assert {"reflection", "critic", "learnings-unmigrated", "learnings-over-budget"} <= attributed
+    assert {"reflection", "critic", "learnings-unmigrated", "learnings-over-budget", "host"} <= attributed
     registered = {g["id"] for g in json.loads(GATES_JSON.read_text())["gates"]}
     missing = sorted(attributed - registered)
     assert not missing, (

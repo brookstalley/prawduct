@@ -60,6 +60,12 @@
       "name": "clear-reason",
       "since": "3.7.1",
       "summary": "a `SAFE TO CLEAR` reason must point at something a clear leaves behind (notes, a commit, a file, an issue), never at the turn itself (\"the questions are in this message\")"
+    },
+    {
+      "id": "host",
+      "name": "unknown-host",
+      "since": "3.8.0",
+      "summary": "a Stop under a `PRAWDUCT_HOST` this plugin does not implement blocks until the variable names a known host or is unset"
     }
   ]
 }

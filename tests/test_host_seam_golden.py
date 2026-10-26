@@ -118,16 +118,21 @@ def _repo(tmp: Path) -> Path:
     return repo
 
 
+#: An uncommitted broad except: the compliance canary reads the session's
+#: uncommitted changes, so this is what makes it report.
+_BROAD_EXCEPT = "try:\n    x = 3\nexcept Exception:\n    pass\n"
+
+
 def _change_code(repo: Path) -> None:
     (repo / "code.py").write_text("x = 2\n")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "c2")
 
 
-def _plan_repo(tmp: Path) -> Path:
-    """Judgeable code changed on a branch a build plan claims, reflection
-    written and the Critic waived: the Stop gate passes at exit 0, and the
-    missing forward note is its advisory."""
+def _plan_repo(tmp: Path, *, reflected: bool = True) -> Path:
+    """Judgeable code changed on a branch a build plan claims, and the Critic
+    waived. Reflected, the Stop gate passes at exit 0 and the missing forward
+    note is its advisory; unreflected, the same advisory rides the block."""
     repo = _repo(tmp)
     _git(repo, "checkout", "-q", "-b", "feature/x")
     artifacts = repo / ".prawduct" / "artifacts"
@@ -142,7 +147,8 @@ def _plan_repo(tmp: Path) -> Path:
     (prawduct / ".session-git-baseline").write_text(_git(repo, "status", "--porcelain"))
     (prawduct / ".session-base-tree").write_text(_git(repo, "rev-parse", "HEAD^{tree}"))
     _change_code(repo)
-    (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+    if reflected:
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
     (prawduct / ".gates-waived").write_text(json.dumps({"critic": "golden fixture"}))
     return repo
 
@@ -322,6 +328,25 @@ class TestStop:
     def test_advisory_at_exit_zero(self, tmp_path, payload):
         repo = _plan_repo(tmp_path)
         _check(f"stop_advisory_{payload}", _stop(tmp_path, repo, _STOP_PAYLOADS[payload]), tmp_path)
+
+    def test_a_block_carries_its_advisories_and_canary(self, tmp_path):
+        """The block reason's later sections, in order: the advisories (here
+        the missing forward note) and the compliance canary (a broad except)."""
+        repo = _plan_repo(tmp_path, reflected=False)
+        (repo / "code.py").write_text(_BROAD_EXCEPT)
+        result = _stop(tmp_path, repo, {})
+        assert result["exit"] == 2
+        assert "ADVISORIES (not blocking):" in result["stderr"]
+        assert "COMPLIANCE CANARY (address if possible):" in result["stderr"]
+        _check("stop_block_advisory_canary", result, tmp_path)
+
+    def test_a_clean_stop_reports_its_canary(self, tmp_path):
+        repo = _plan_repo(tmp_path)
+        (repo / "code.py").write_text(_BROAD_EXCEPT)
+        result = _stop(tmp_path, repo, {})
+        assert result["exit"] == 0
+        assert "COMPLIANCE CANARY (informational):" in result["stderr"]
+        _check("stop_advisory_canary", result, tmp_path)
 
     def test_garbage_stdin_reads_as_no_payload(self, tmp_path):
         repo = _repo(tmp_path)

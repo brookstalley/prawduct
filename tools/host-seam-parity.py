@@ -31,7 +31,10 @@ WHEN or WHERE a side ran rather than of what its code does:
   untracked file is part of the tree, so two runs a second apart name two trees;
 - the backlog snapshot's age (`snapshot just now` / `snapshot 1m old`).
 
-A difference that survives is printed in full. Network: the Stop gate's
+A difference that survives is printed in full. Exit 0 means at least one repo
+was compared and none differed; 1 means a difference; 2 means nothing was
+compared (every repo skipped, or BASE and HEAD are one commit), which proves
+nothing either way. Network: the Stop gate's
 `gh pr list` and the briefing's backlog-cache refresh are reads, made once per
 side. Nothing is sent anywhere else.
 """
@@ -116,12 +119,16 @@ def skip_reason(repo: Path, max_gb: float) -> str | None:
 
 
 def clone_copy(repo: Path, dest: Path) -> None:
+    """Copy-on-write where the filesystem offers it (`cp -c`, APFS), else a
+    plain copy, which costs the repo's size in disk."""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
-        shutil.rmtree(dest)
-    result = subprocess.run(["cp", "-cRp", str(repo), str(dest)], capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"copy of {repo} failed: {result.stderr.strip()}")
+    for argv in (["cp", "-cRp"], ["cp", "-Rp"]):
+        if dest.exists():
+            shutil.rmtree(dest)
+        result = subprocess.run([*argv, str(repo), str(dest)], capture_output=True, text=True)
+        if result.returncode == 0:
+            return
+    raise RuntimeError(f"copy of {repo} failed: {result.stderr.strip()}")
 
 
 def run_step(plugin: Path, copy: Path, argv: list[str], payload: dict | None) -> dict:
@@ -195,6 +202,13 @@ def main() -> int:
 
     base = args.base or _git("merge-base", "develop", args.head)
     refs = {"base": _git("rev-parse", "--short", base), "head": _git("rev-parse", "--short", args.head)}
+    if _git("rev-parse", base) == _git("rev-parse", args.head):
+        print(
+            f"base and head are both {refs['head']}: the sweep would compare a plugin with "
+            "itself. Pass --base and --head (after a merge, the default base is HEAD).",
+            file=sys.stderr,
+        )
+        return 2
     plugins = {side: export_plugin(ref, args.work / "plugins" / side) for side, ref in refs.items()}
     print(f"base {refs['base']} vs head {refs['head']}, {len(STEPS)} steps per repo")
 
@@ -229,7 +243,12 @@ def main() -> int:
         f"\n{len(same)} identical, {len(differing)} differing, {len(skipped)} skipped "
         f"(of {len(repos)} repos; {len(STEPS)} steps each)"
     )
-    return 1 if differing else 0
+    if differing:
+        return 1
+    if not same:
+        print("nothing was compared, so this run shows nothing either way", file=sys.stderr)
+        return 2
+    return 0
 
 
 if __name__ == "__main__":

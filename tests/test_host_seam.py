@@ -329,6 +329,18 @@ class TestUnknownHost:
         assert result.returncode == 2
         assert "PRAWDUCT_HOST='bogus'" in result.stderr
 
+    def test_the_unknown_host_block_is_recorded_as_a_gate_block(self, tmp_path):
+        """Like every Stop block, it leaves one countable fact, under its own
+        gate id, so a misconfigured adapter is a query and not a transcript."""
+        from lib import evidence
+
+        repo = _governed_repo(tmp_path)
+        result = _run([str(HOOK), "stop"], repo, tmp_path, "bogus")
+        assert result.returncode == 2
+        assert "[prawduct v" in result.stderr and "gate: unknown-host]" in result.stderr
+        facts = evidence.facts_of_kind(evidence.read_facts(repo), "guard-refusal")
+        assert [f["body"].get("guard") for f in facts] == ["stop-gate:host"]
+
     def test_stop_control_runs_the_gates_as_claude(self, tmp_path):
         """Control: the same clean repo passes the Stop gate as Claude, named
         or by default, so the block above is the host check and nothing else."""

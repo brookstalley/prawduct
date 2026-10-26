@@ -33,10 +33,15 @@ rather than a patch at each site. Claude Code's behaviour is unchanged.
   payload shape too.
 - `host.plugin_root`, `project_dir_hint`, `config_home` and `config_roots` are the only readers of
   `CLAUDE_*` variables. `host.emit_session_context`, `emit_stop_advisory` and `block` are the only
-  writers of hook response shapes and of the Stop hook's blocking exit.
+  writers of structured hook responses and of the Stop hook's blocking exit.
+- Plain text the hooks print in place is not routed yet: the briefing and the banner on stdout,
+  and the notes the Stop writes to stderr ahead of its block. Claude Code reads both channels, so
+  this text is part of its response too. A host that reads them differently moves them into the
+  seam; that is #1038's work.
 - `PRAWDUCT_HOST` names the host and defaults to `claude`. A host adapter's hook registration sets
   it, rather than prawduct detecting the host, because Codex exports `CLAUDE_PLUGIN_ROOT` for
-  compatibility. An unknown value blocks `stop`, with a reason that names the variable. The hooks
+  compatibility. An unknown value blocks `stop`, with a reason that names the variable, and records
+  the block like any gate's (gate `host`, registered as `unknown-host` since 3.8.0). The hooks
   that cannot block (`clear --session-start`, `subagent-stop`, the banner, the digest) print a note
   and do nothing.
 - The entry points load the seam by file path from their own plugin tree, before `lib` is
@@ -57,7 +62,8 @@ rather than a patch at each site. Claude Code's behaviour is unchanged.
   git), and compares every step's output.
 - Run on 2026-10-26 against the owner's machine (`b9d9489d` against `17f84cd6`): every repo it
   could copy matched on all ten events. It skipped linked worktrees, directories that aren't git
-  repos, and one repo over 20 GB. Re-derive with `tools/host-seam-parity.py --work <dir>`. A run
+  repos, and one repo over 20 GB. Re-derive with
+  `tools/host-seam-parity.py --work <dir> --base b9d9489d --head 17f84cd6`. A run
   against a plugin 25 commits older reports its banner, digest and briefing differences, so a clean
   result is not the tool going blind.
 - The sweep names its noise instead of hiding it. The Stop gate's working-tree id and the backlog
