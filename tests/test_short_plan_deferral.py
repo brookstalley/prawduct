@@ -546,8 +546,8 @@ class TestStopGateOnShortPlans:
 
         Renegotiated for #1037: the blocking exit used to be a literal
         `return 2` with the advisories printed beside it; the host seam now
-        owns how a Stop blocks, so that exit returns what `host.block` gave
-        it. Still four exits, still each one delivering."""
+        writes the block reason and picks the blocking exit, so that exit
+        returns what `host.block` gave it. Still four exits, still each one delivering."""
         src = HOOK.read_text()
         body = src[src.index("def cmd_stop("):]
         body = body[: body.index("\ndef ", 1)]

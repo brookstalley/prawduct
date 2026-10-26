@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Do two plugin versions' hooks answer identically on real governed repos?
 
-#1037 moved every host payload read, root read and hook response write into
+#1037 moved every host payload read, root read and structured hook response into
 `plugin/lib/host.py` and promised Claude's behaviour would not move (#928 R-3).
 The goldens pin that on fixtures; this pins it on the repos the hooks actually
 govern. For each repo it makes two copy-on-write copies, runs the same sequence
@@ -33,7 +33,7 @@ WHEN or WHERE a side ran rather than of what its code does:
 
 A difference that survives is printed in full. Exit 0 means at least one repo
 was compared and none differed; 1 means a difference; 2 means nothing was
-compared (every repo skipped, or BASE and HEAD are one commit), which proves
+compared (every repo skipped, or BASE and HEAD carry the same `plugin/` tree), which proves
 nothing either way. Network: the Stop gate's
 `gh pr list` and the briefing's backlog-cache refresh are reads, made once per
 side. Nothing is sent anywhere else.
@@ -70,7 +70,8 @@ STEPS: list[tuple[str, list[str], dict | None]] = [
     ("stop running-turn", ["bin/prawduct-hook", "stop"], {"last_assistant_message": _RUNNING_TURN}),
     ("stop tasks", ["bin/prawduct-hook", "stop"],
      {"background_tasks": [{"type": "workflow", "name": "parity", "id": "wf_1"}]}),
-    ("subagent-stop other", ["bin/prawduct-hook", "subagent-stop"], {"agent_type": "general-purpose"}),
+    ("subagent-stop other", ["bin/prawduct-hook", "subagent-stop"],
+     {"agent_type": "general-purpose"}),
     ("subagent-stop reviewer", ["bin/prawduct-hook", "subagent-stop"],
      {"agent_type": "prawduct:critic-reviewer"}),
     ("clear --session-start", ["bin/prawduct-hook", "clear", "--session-start"], None),
@@ -169,7 +170,9 @@ def compare_repo(repo: Path, plugins: dict[str, Path], work: Path) -> dict[str, 
     diffs: dict[str, str] = {}
     for label, argv, payload in STEPS:
         results = {
-            side: normalize(run_step(plugins[side], copies[side], argv, payload), copies[side], plugins[side])
+            side: normalize(
+                run_step(plugins[side], copies[side], argv, payload), copies[side], plugins[side]
+            )
             for side in plugins
         }
         base, head = results["base"], results["head"]
@@ -193,7 +196,9 @@ def compare_repo(repo: Path, plugins: dict[str, Path], work: Path) -> dict[str, 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("repos", nargs="*", type=Path, help="repos to sweep (default: siblings)")
-    parser.add_argument("--work", type=Path, required=True, help="scratch dir for plugins and copies")
+    parser.add_argument(
+        "--work", type=Path, required=True, help="scratch dir for plugins and copies"
+    )
     parser.add_argument("--base", default=None, help="base ref (default: merge-base with develop)")
     parser.add_argument("--head", default="HEAD", help="head ref (default: HEAD)")
     parser.add_argument("--max-gb", type=float, default=20.0, help="skip repos larger than this")
@@ -201,7 +206,7 @@ def main() -> int:
     args = parser.parse_args()
 
     base = args.base or _git("merge-base", "develop", args.head)
-    refs = {"base": _git("rev-parse", "--short", base), "head": _git("rev-parse", "--short", args.head)}
+    refs = {side: _git("rev-parse", "--short", ref) for side, ref in (("base", base), ("head", args.head))}
     if _git("rev-parse", f"{base}:plugin") == _git("rev-parse", f"{args.head}:plugin"):
         print(
             f"base {refs['base']} and head {refs['head']} carry the same plugin tree: the "

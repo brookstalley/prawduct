@@ -1,7 +1,7 @@
 """The hook entry points' exact output, recorded before the host seam moved them.
 
 #1037 moves every host payload read, every ``CLAUDE_*`` root read and every
-hook response write into one module. Claude's behaviour must not move with them
+structured hook response into one module. Claude's behaviour must not move with them
 (#928 R-3), and "it still looks right" is not a check, so this file runs the real
 entry points as the harness does, one subprocess per case, and compares stdout,
 stderr and the exit code byte for byte against goldens recorded from the code
