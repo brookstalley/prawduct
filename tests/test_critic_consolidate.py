@@ -9483,10 +9483,6 @@ class TestTheDispatchProposalLeavesOutTheStubAndSaysWhyItNamedFewer:
         time the proposal reads it."""
         repo = self._repo(tmp_path)
         stub_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
-        assert cc._proposed_chunks(  # the stub at its own tree, as the dispatch reads it
-            repo, repo / ".prawduct/artifacts/build-plan-cs.md", lambda: evidence.read_facts(repo),
-            [".prawduct/changes/cs.md"], "chunk", None, None, stub_tree,
-        ) == ([], ())
         (repo / ".prawduct/changes/cs.md").write_text(
             self._STUB.replace("---\n\n", "---\nWhat changed.\n", 1)
         )

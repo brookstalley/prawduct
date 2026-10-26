@@ -1730,9 +1730,12 @@ def extension_deferral_owed(
          the stored one (``hook-surface.md``: observable beats stored).
          **Fail-open, accepted (coordinator, 2026-10-25):** a chunk whose
          Deliverables name no path-shaped token can never be proposed, so new
-         work on it reads as a fix and defers. That widens the next review's
-         interval and loses no coverage, because the later review still
-         starts at the covered frontier (condition 4) and spans this work.
+         work on it reads as a fix and defers. So does pending work that is
+         only a change fragment still the ``plan new`` stub, or deleted
+         (``plan_status._work_paths``: neither is any chunk's work). That
+         widens the next review's interval and loses no coverage, because the
+         later review still starts at the covered frontier (condition 4) and
+         spans this work.
        - **(1b) nothing on the plan can certify them** (a legacy-window
          binding: the plan declares no ``branch:``, so review facts complete
          nothing and only boxes and imports do): the reviewed chunk is the
