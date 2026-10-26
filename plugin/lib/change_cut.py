@@ -78,6 +78,7 @@ class CutPlan:
     headline_file: Path | None = None
     #: A headline file left in place because it is not this release's.
     headline_kept: Path | None = None
+    headline_kept_reason: str = ""
     #: Pending legacy scopes that ship; they carry no consumer note.
     legacy_shipping: list[str] = field(default_factory=list)
 
@@ -146,25 +147,21 @@ def _entry_block(fragment: change_fragments.Fragment, version: str) -> change_lo
     return blocks[0]
 
 
-def _headline_lines(text: str) -> list[str]:
-    lines = [line.rstrip() for line in text.splitlines()]
-    while lines and not lines[0]:
-        lines.pop(0)
-    while lines and not lines[-1]:
-        lines.pop()
-    return lines
+def _legacy_shipping(project_dir: Path, version: str, legacy_scopes: list[str]) -> list[str]:
+    """The legacy scopes this release's plan ships, when nothing else is pending.
 
-
-def _published_headline(headline_text: str, release_text: str) -> bool:
-    """Whether the headline file's lines occur, consecutively, in the release file.
-
-    Compared line by line with trailing whitespace and line endings dropped on
-    both sides, so a CRLF or trailing-space headline file still matches the
-    section the cut rendered from it.
+    Read only to say whether the legacy line applies. With no fragment to cut
+    there is nothing to refuse, so a missing or unreadable release plan means
+    no scope is known to ship, and the line stays quiet rather than claiming
+    every pending legacy scope ships.
     """
-    want = _headline_lines(headline_text)
-    have = [line.rstrip() for line in release_text.splitlines()]
-    return any(have[i : i + len(want)] == want for i in range(len(have) - len(want) + 1))
+    if not legacy_scopes:
+        return []
+    try:
+        _plan_path, classification = _classification(project_dir, version)
+    except (CutRefused, OSError, UnicodeDecodeError):
+        return []
+    return [s for s in legacy_scopes if classification.get(s, ("",))[0] == release_readiness.SHIPS]
 
 
 def _plan_rerun(
@@ -210,15 +207,22 @@ def _plan_rerun(
     headline = project_dir / consumer_digest.HEADLINE_FILE_REL
     if headline.is_file():
         try:
-            published = _published_headline(
+            published = consumer_digest.headline_published(
                 headline.read_text(encoding="utf-8"), release_file.read_text(encoding="utf-8")
             )
-        except (OSError, UnicodeDecodeError):
-            published = False
-        if published:
-            result.headline_file = headline
-        else:
+        except (OSError, UnicodeDecodeError) as exc:
+            # Unreadable is not "unpublished": the cut cannot tell which it is,
+            # so it keeps the file and says why rather than guessing.
             result.headline_kept = headline
+            result.headline_kept_reason = f"it cannot be read ({exc}), so the cut cannot tell whether it was published"
+        else:
+            if published:
+                result.headline_file = headline
+            else:
+                result.headline_kept = headline
+                result.headline_kept_reason = (
+                    f"its text is not in {rel}, so it is the next release's headline"
+                )
     return result
 
 
@@ -295,12 +299,11 @@ def _release_writes(
         ) from exc
 
     section = consumer_digest.render_section(decl, version, _today(today), headline, fragments)
-    result.section_text = "\n".join(section) + "\n"
+    result.section_text = consumer_digest.release_file_text(section)
     result.release_file = project_dir / rel
-    lead = 1 if index > 0 and text.lines[index - 1].strip() else 0
-    result.insert_line = index + lead + 1
+    placed, result.insert_line = consumer_digest.place_section(text, index, section)
     result.writes.append((result.release_file, result.section_text))
-    result.writes.append((changelog, consumer_digest.insert_section(text, index, section).render()))
+    result.writes.append((changelog, placed.render()))
     result.notes_added = [f.scope or "" for f in consumer_digest.ordered_notes(fragments)]
 
 
@@ -342,7 +345,7 @@ def plan_cut(
             return _plan_rerun(project_dir, version, scopes, pending.fragment_scopes, release_file, decl)
 
     if not pending.fragment_scopes and not scopes:
-        return CutPlan(version=version, cut=[], kept=[], legacy_shipping=list(pending.legacy_scopes))
+        return CutPlan(version=version, cut=[], kept=[], legacy_shipping=_legacy_shipping(project_dir, version, pending.legacy_scopes))
     # A repo that tracks its fragments but would ignore the archive would commit
     # the fragments' removal and silently drop the history they moved to.
     if change_log_archive.archive_would_be_ignored(project_dir):
@@ -410,11 +413,8 @@ def _rel(project_dir: Path, path: Path) -> str:
 
 
 def _print_headline_kept(project_dir: Path, cut_plan: CutPlan) -> None:
-    if cut_plan.headline_kept is not None and cut_plan.release_file is not None:
-        print(
-            f"  headline file: kept {_rel(project_dir, cut_plan.headline_kept)}; its text is not in "
-            f"{_rel(project_dir, cut_plan.release_file)}, so it is the next release's headline"
-        )
+    if cut_plan.headline_kept is not None:
+        print(f"  headline file: kept {_rel(project_dir, cut_plan.headline_kept)}; {cut_plan.headline_kept_reason}")
 
 
 def _print_legacy(cut_plan: CutPlan) -> None:
@@ -472,14 +472,18 @@ def cut_cmd(project_dir: Path, argv: list[str]) -> int:
                 "to your changelog"
             )
         else:
+            # The dry run is pasted into a release PR as the notes preview, so it
+            # must not claim a write that has not happened.
+            verb = "written" if apply else "to be written"
             print(
-                f"  consumer notes: {len(cut_plan.notes_added)} written to {cut_plan.digest} as a new section "
+                f"  consumer notes: {len(cut_plan.notes_added)} {verb} to {cut_plan.digest} as a new section "
                 f"at line {cut_plan.insert_line} (release file {_rel(project_dir, cut_plan.release_file)})"
             )
     else:
         print(f"cut-change-log ({mode}): {cut_plan.version} is already cut; completing that cut.")
+        removing = "removing" if apply else "would remove"
         print(
-            f"  consumer notes: the release file exists; removing {len(cut_plan.cleanup)} fragment(s) "
+            f"  consumer notes: the release file exists; {removing} {len(cut_plan.cleanup)} fragment(s) "
             "the archive already holds, writing nothing"
         )
     if cut_plan.cleanup and cut_plan.cut:

@@ -331,3 +331,25 @@ class TestRendering:
 
     def test_release_file_rel(self):
         assert cd.release_file_rel("v1.4.0") == ".prawduct/releases/v1.4.0.md"
+
+
+
+class TestSharedAnswers:
+    """The answers the cut asks for instead of computing again (#733 review)."""
+
+    def test_place_section_reports_the_line_its_heading_lands_on(self):
+        for data, expected in ((b"# C\n## v1.0.0\n", 3), (b"# C\n\n## v1.0.0\n", 3), (b"## v1.0.0\n", 1), (b"# C", 3)):
+            text = cd.parse_changelog(data)
+            placed, line = cd.place_section(text, cd.insertion_index(text, None), ["## v1.1.0"])
+            assert placed.render().splitlines()[line - 1] == "## v1.1.0", data
+
+    def test_a_headline_is_published_exactly_when_its_rendered_lines_are_in_the_release(self):
+        decl = cd.Declaration(path="CHANGELOG.md", headline="required")
+        headline = "\r\n**Big.** Line one.  \r\nLine two.\r\n"
+        release = cd.release_file_text(cd.render_section(decl, "v1.0.0", "2026-10-25", headline, []))
+        assert cd.headline_published(headline, release)
+        assert not cd.headline_published("A different headline.", release)
+        assert not cd.headline_published("", release)
+
+    def test_the_release_file_text_is_lf_terminated(self):
+        assert cd.release_file_text(["## v1.0.0", "", "- n"]) == "## v1.0.0\n\n- n\n"

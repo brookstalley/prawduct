@@ -373,7 +373,16 @@ def insertion_index(text: ChangelogText, marker: str | None) -> int:
 
 
 def insert_section(text: ChangelogText, index: int, section: list[str]) -> ChangelogText:
-    """``text`` with ``section`` (lines without endings) spliced in before ``lines[index]``.
+    """``text`` with ``section`` spliced in; :func:`place_section` without the line."""
+    return place_section(text, index, section)[0]
+
+
+def place_section(text: ChangelogText, index: int, section: list[str]) -> tuple[ChangelogText, int]:
+    """``(text with section spliced in before lines[index], 1-based line its heading lands on)``.
+
+    ``section`` is lines without endings. The line number is this function's
+    to give because the blank line it may add before the section moves it; a
+    caller computing it again would be a second copy of that rule.
 
     Every existing line is kept byte for byte. Blank lines separate the section
     from its neighbours when they are not blank already. The one byte added
@@ -393,7 +402,8 @@ def insert_section(text: ChangelogText, index: int, section: list[str]) -> Chang
         body.append(eol)
     if unterminated_end and body:
         body[-1] = body[-1][: -len(eol)]
-    return ChangelogText(bom=text.bom, eol=eol, lines=tuple(before + lead + body + after))
+    placed = ChangelogText(bom=text.bom, eol=eol, lines=tuple(before + lead + body + after))
+    return placed, len(before) + len(lead) + 1
 
 
 # --- rendering -----------------------------------------------------------------
@@ -409,6 +419,34 @@ def ordered_notes(fragments: list[change_fragments.Fragment]) -> list[change_fra
     with_text = [f for f in fragments if f.consumer_text]
     ordered = sorted(with_text, key=lambda f: f.scope or "")
     return sorted(ordered, key=lambda f: f.date or "", reverse=True)
+
+
+def headline_lines(headline: str | None) -> list[str]:
+    """The lines a headline contributes to a release section, exactly as rendered.
+
+    Outer blank lines and outer whitespace go; inner lines stay verbatim,
+    trailing spaces included, since those can be a Markdown hard break. The
+    one home of that rule: :func:`render_section` writes these lines and
+    :func:`headline_published` looks for them, so the two cannot drift.
+    """
+    return headline.strip().splitlines() if headline and headline.strip() else []
+
+
+def headline_published(headline: str, release_text: str) -> bool:
+    """Whether ``headline``'s rendered lines occur, consecutively, in a release file's text."""
+    want = headline_lines(headline)
+    have = release_text.splitlines()
+    return bool(want) and any(have[i : i + len(want)] == want for i in range(len(have) - len(want) + 1))
+
+
+def release_file_text(section: list[str]) -> str:
+    """A release file's text for ``section``: its lines, LF-terminated.
+
+    Always LF, whatever the changelog uses: the file is prawduct's own state
+    under ``.prawduct/``, and the changelog receives the same lines in its own
+    style (:func:`place_section`).
+    """
+    return "\n".join(section) + "\n"
 
 
 def type_headings(decl: Declaration) -> list[tuple[str, str]]:
@@ -465,8 +503,9 @@ def render_section(
     """
     fields = {"version": version, "version_no_prefix": _bare(version), "date": date}
     out = [decl.heading.format_map(fields)]
-    if headline and headline.strip():
-        out += ["", *headline.strip().splitlines()]
+    lines = headline_lines(headline)
+    if lines:
+        out += ["", *lines]
     notes = ordered_notes(fragments)
     if not notes:
         return out

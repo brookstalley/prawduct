@@ -105,6 +105,8 @@ file per PR. Its existing history stays untouched.
     with no release plan.
   - The legacy line fires for legacy scopes classified `ships`.
   - `insert_line` is the line where the heading lands.
+  - The old section-flow golden test became a `release-in-changelog` refusal test, because its
+    starting state is refused under the release-file model. The golden bytes are unchanged.
 - Integration, release date (2026-10-26): the default `{date}` is the operator's local date, not
   UTC. A release date is the maintainer's calendar day (changie dates by local time too), and UTC
   dated an evening cut west of Greenwich tomorrow. The Goals' inference and the design are
@@ -247,7 +249,8 @@ remains is mechanical: rendering, byte-preserving insertion, refusals.
 - **Artifacts consumed:** `documentation/issues/733-design.md` cut section; `plugin/lib/change_log_archive.py` (`archive_would_be_ignored`); `plugin/lib/core.py` (`write_all_or_none`)
 - **Deliverables:** the release-file cut in `plugin/lib/change_cut.py`, tests
 - **Tests:**
-  - both golden fixtures produce identical bytes;
+  - the release-file flow reproduces `GOLDEN_PRAWDUCT_CHANGELOG`; the section-flow fixture's
+    starting state now refuses `release-in-changelog` (renegotiated in the open; see Decisions);
   - each CD7 code leaves nothing written and the fragments present;
   - a CRLF + BOM Keep a Changelog fixture with `## [Unreleased]` on top gets the section below
     Unreleased, byte-equal elsewhere;

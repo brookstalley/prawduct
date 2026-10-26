@@ -291,14 +291,21 @@ The order matters, and the first refusal wins with nothing written.
    paragraph into `.prawduct/release-headline.md` if it was a headline.
 8. `no-headline`: `decl.headline == "required"`, and `.prawduct/release-headline.md` is absent or
    has no non-blank line. Otherwise the headline is that file's text, stripped. It is still used
-   when present under `headline: none`.
+   when present under `headline: none`. A headline file that is not valid UTF-8 refuses
+   `no-headline` too, with that detail, in either mode, because it cannot go in the release.
 9. `marker-missing` comes from `insertion_index`.
 
 After those checks, the cut renders `section = render_section(...)` and adds two writes to
-`result.writes` beside the archive buckets:
-- `(releases/<version>.md, "\n".join(section) + "\n")`. The release file is always LF and
+`result.writes` beside the archive buckets. Every rule behind them is `consumer_digest`'s to
+answer, and the cut asks rather than computing it again:
+- `(releases/<version>.md, release_file_text(section))`. The release file is always LF and
   newline-terminated, and its text is the section.
-- `(decl.path, insert_section(...).render())`.
+- `(decl.path, placed.render())`, where `placed, insert_line = place_section(text, index,
+  section)`. `place_section` owns the blank-line rule, so it also owns the line the heading lands
+  on.
+- On a re-run, the headline check is `headline_published(headline, release_text)`. That function
+  and `render_section` both use `headline_lines`, so "published" means exactly "rendered from
+  this file".
 
 `core.write_all_or_none` takes `(Path, str)`, and it captures each prior with `read_text`, whose
 universal-newline decoding turns `\r\n` into `\n`. So a rollback would re-line-end a CRLF
@@ -322,7 +329,12 @@ The existing fields stay, and these are added:
 - `section_text: str | None` (the release file's text);
 - `insert_line: int | None` (1-based, for the preview);
 - `cleanup: list[FragmentFile]`;
-- `headline_file: Path | None`.
+- `headline_file: Path | None`;
+- `headline_kept: Path | None` and `headline_kept_reason: str`: a re-run's headline file that is
+  kept, and why (the next release's headline, or unreadable, so unknown);
+- `legacy_shipping: list[str]`: the legacy scopes this release's plan ships. With nothing else
+  pending, the plan is read only for this, and a missing plan means none ship;
+- `has_work` (property): any cut, cleanup or headline removal.
 
 `digest` now carries `decl.path` rather than a heading. `notes_added` keeps its meaning.
 

@@ -319,6 +319,9 @@ REFUSALS = [
     # headline now lives in its own file, so its absence is what refuses.
     ("no-headline", {"headline": None}, ()),
     ("no-headline", {"headline": "\n  \n\n"}, ()),
+    # A headline file that is not UTF-8 cannot be put in the release; it refuses
+    # under the same code, naming why.
+    ("no-headline", {"headline": b"\xff\xfe not utf-8\n"}, ()),
 ]
 
 
@@ -904,3 +907,55 @@ def test_the_default_release_date_is_the_operators_local_date(monkeypatch):
 
     monkeypatch.setattr(change_cut, "datetime", _Evening)
     assert change_cut._today(None) == "2026-10-25"
+
+
+
+class TestOutputDerivedFromState:
+    """Each cut_cmd line reports the state it names, not the common case (#733 review)."""
+
+    def test_a_marker_cut_reports_the_line_its_heading_landed_on(self, tmp_path):
+        # The marker line is never blank, so the cut adds a blank line before the
+        # section; the reported line must count it.
+        project = _declared(
+            tmp_path, fragments=_ONE, table=_ONE_TABLE,
+            digest="# Changelog\n<!-- releases -->\n## v3.7.1\n\nOld.\n",
+            decl=PRAWDUCT_DECL + "  marker: <!-- releases -->\n",
+        )
+        out = _cut(project, "--release", "v3.8.0", "--apply")
+        assert out.returncode == 0, out.stderr
+        reported = int(out.stdout.split("as a new section at line ")[1].split()[0])
+        lines = (project / DIGEST).read_text().splitlines()
+        assert lines[reported - 1] == "## v3.8.0"
+        assert lines[reported - 2] == "" and lines[reported - 3] == "<!-- releases -->"
+
+    def test_the_dry_run_does_not_claim_a_write(self, tmp_path):
+        project = _declared(tmp_path, fragments=_ONE, table=_ONE_TABLE)
+        dry = _cut(project, "--release", "v3.8.0")
+        assert dry.returncode == 0, dry.stderr
+        assert "1 to be written to plugin/CHANGELOG.md" in dry.stdout
+        assert "written to plugin/CHANGELOG.md" not in dry.stdout.replace("to be written to", "")
+        applied = _cut(project, "--release", "v3.8.0", "--apply")
+        assert "1 written to plugin/CHANGELOG.md" in applied.stdout
+
+    def test_the_legacy_line_with_nothing_else_pending_names_only_what_ships(self, tmp_path):
+        legacy = "# Change Log\n\n## 2026-10-18: legacy thing\n\n<!-- prawduct: type=fix | scope=oldway -->\n\nBody.\n"
+        line = "  legacy entries carry no consumer note; /prawduct:doctor offers the move to fragments"
+        for name, table, expected in (
+            ("ships", "| oldway | ships | |\n", True),
+            ("withheld", "| oldway | withheld | BKL-6J2X |\n", False),
+            ("no-plan", None, False),
+        ):
+            project = _declared(tmp_path / name, fragments={}, table=table)
+            _write(project / ".prawduct" / "change-log.md", legacy)
+            out = _cut(project, "--release", "v3.8.0")
+            assert out.returncode == 0, (name, out.stderr)
+            assert (line in out.stdout.splitlines()) is expected, (name, out.stdout)
+
+    def test_an_unreadable_headline_file_on_a_rerun_is_kept_and_not_called_the_next_release(self, tmp_path):
+        project = _declared(tmp_path, fragments=_ONE, table=_ONE_TABLE)
+        assert _cut(project, "--release", "v3.8.0", "--apply").returncode == 0
+        (project / HEADLINE_FILE).write_bytes(b"\xff\xfe not utf-8\n")
+        out = _cut(project, "--release", "v3.8.0", "--apply")
+        assert out.returncode == 0, out.stderr
+        assert "cannot be read" in out.stdout and "next release's headline" not in out.stdout
+        assert (project / HEADLINE_FILE).exists()
