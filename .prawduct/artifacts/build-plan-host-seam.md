@@ -88,6 +88,15 @@ unchanged (scope-out).
   in its docstring: the blocking exit returns what `host.block` gave, and it still has to deliver
   the advisories. The gate tests that passed raw dicts now route them through `host.read_event`,
   the path production takes, with every assertion unchanged.
+- Chunk 03: the sweep normalizes two clock facts besides the copy path and the plugin root: the
+  working-tree id in the Stop gate's coverage line, and the backlog snapshot's age. A
+  same-plugin-on-both-sides run reproduced the tree-id difference, and diffing the kept copies
+  traced it to second-resolution timestamps in `.prawduct/.session-start` and `.advisories.json`,
+  which are untracked but not gitignored in repos whose `.gitignore` has drifted. A
+  same-plugin control was tried first and dropped: it is flaky by construction, because two
+  runs inside one second match.
+- Chunk 03: linked worktrees are skipped, not cloned. Their git dir is shared, so a copy would
+  write the Stop gate's evidence into the real repo. The sweep covers each repo's primary checkout.
 
 **Level:** High — the sites are enumerated by grep, the behaviour is pinned by goldens before any
 refactor, and no foreign API is touched.
