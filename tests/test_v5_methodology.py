@@ -1156,7 +1156,10 @@ LAST_MEASURED_TOKENS = {
     # narrowed to `evidence status*` and `evidence list*`, because `evidence ingest` is a store
     # write a reviewer must not reach — four grants where two stood. Not paid by trimming: the
     # grant line is the reviewer boundary, and no prose in this file restates another's.
-    "skills/critic/SKILL.md": 3107,
+    # -7 on 2026-10-26 (final-review-chunks, #1072): step 4's proposal sentence points to
+    # `plan_status.propose_chunks` instead of restating a per-mode rule that changed (whole-plan
+    # modes propose what the interval built, not every open chunk). A READING; the ceiling follows it down.
+    "skills/critic/SKILL.md": 3100,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -5930,7 +5933,8 @@ class TestCriticSkillRoutesByMode:
         # RATCHETED 3113 -> 3096 (chunk-status, 2026-10-25) with the reading.
         # RAISED 3096 -> 3108 (evidence-transport, 2026-10-25): the `evidence` grant narrowed
         # to `status`/`list` — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3108, f"SKILL.md is ~{tokens} tokens, should be <3108"
+        # LOWERED 3108 -> 3101 (final-review-chunks, 2026-10-26) — see LAST_MEASURED_TOKENS.
+        assert tokens < 3101, f"SKILL.md is ~{tokens} tokens, should be <3101"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

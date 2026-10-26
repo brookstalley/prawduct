@@ -13,8 +13,11 @@ pins that over every ``lib`` module and the hook.
   here answering "finished");
 - :func:`current_chunks` — the ``open`` chunks, in plan order, real ids only
   (the fail-closed entries below are left out; see :attr:`ChunkState.synthetic`);
-- :func:`built_chunks` — a RENDERING convenience, the one git-walking function
-  here; no gate reads it and :func:`chunk_states` never calls it;
+- :func:`built_chunks` — a RENDERING convenience; no gate reads it and
+  :func:`chunk_states` never calls it;
+- :func:`subject_named_chunks` — the chunks a commit subject names, for a
+  whole-plan review's proposal; it and :func:`built_chunks` are the two
+  git-walking functions here, sharing one ``git log`` reader;
 - :func:`propose_chunks` — the chunk set a review dispatch proposes (ST8);
 - :func:`render_table` — the ``plan status`` table, the one renderer the CLI,
   the ``/clear`` handoff and the PR payload print;
@@ -95,7 +98,8 @@ UNREADABLE_PLAN = "?"
 #: ``dispositions.finding_state`` returns for a passing ``resolution`` fact.
 _PASSING = frozenset({dispositions.STATE_FIXED, dispositions.STATE_WAIVED})
 
-#: Review modes that propose every open chunk; ``chunk`` proposes by diff.
+#: Review modes whose proposal also counts the chunks a commit subject names;
+#: ``chunk`` proposes by diff alone (:func:`propose_chunks`).
 _WHOLE_PLAN_MODES = frozenset({"final", "cumulative"})
 
 _DROPPED_ID_RE = re.compile(r"^\w+(?:\.\w+)*$")
@@ -646,25 +650,44 @@ def propose_chunks(
 ) -> list[str]:
     """The chunks a review dispatched in ``mode`` proposes to name (ST8).
 
+    A mode sets a review's depth, never its reach: every mode proposes only
+    chunks there is work for, because the proposal is what the fact certifies
+    when the builder declares nothing, and a certified chunk is never reviewed
+    again.
+
     ``chunk`` mode: the open chunks whose Deliverables paths intersect
     ``diff_paths`` (repo-relative; a deliverable directory matches what is
-    under it). ``final`` / ``cumulative``: every open chunk. Any other mode
+    under it). ``final`` / ``cumulative``: those, and the open chunks a commit
+    subject on the plan's branch names (:func:`subject_named_chunks`) — the
+    boundary review spans every chunk built so far, including one whose
+    Deliverables name no path and which reads as built only by its subject.
+    Never :func:`built_report`'s path rule: a later chunk's Deliverable that an
+    earlier commit touched (the change fragment ``plan new`` stubs is one)
+    reads as built there before anyone builds it. A touch inside the review's
+    interval is already the diff's answer. When git cannot say, the diff's
+    answer stands alone: naming fewer leaves a chunk open, which keeps every
+    gate armed. Any other mode
     proposes nothing. Plan order. ``repo_dir`` defaults to the work tree that
     holds the plan's ``.prawduct/``.
+
+    Only the whole-plan modes walk git (one ``git log``), and they are asked
+    only at a review's dispatch; ``chunk`` mode is also asked on the Stop path
+    (``critic_mode.extension_deferral_owed``) and stays walk-free.
     """
+    if mode != "chunk" and mode not in _WHOLE_PLAN_MODES:
+        return []
     if repo_dir is None:
         repo_dir = _repo_of(Path(plan_path))
     open_ids = current_chunks(plan_path, facts, repo_dir=repo_dir)
-    if mode in _WHOLE_PLAN_MODES:
-        return open_ids
-    if mode != "chunk":
-        return []
     try:
         content = Path(plan_path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return []
     changed = {str(p) for p in diff_paths}
-    return [c for c in open_ids if _touches(deliverable_paths(content, c), changed)]
+    touched = {c for c in open_ids if _touches(deliverable_paths(content, c), changed)}
+    if mode in _WHOLE_PLAN_MODES and open_ids:
+        touched |= subject_named_chunks(Path(plan_path), Path(repo_dir))
+    return [c for c in open_ids if c in touched]
 
 
 def _repo_of(plan_path: Path) -> Path:
@@ -705,29 +728,41 @@ class BuiltReport:
     unavailable: "str | None" = None
 
 
-def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
-    """Chunks with work committed on the plan's branch — render-only, git-walking.
+@dataclass(frozen=True)
+class _BranchWalk:
+    """One ``git log base..branch`` over a plan's branch, read once for both
+    of its answers: which chunks a subject names, and which paths changed."""
 
-    A chunk is built when a commit on ``base..branch`` names it in its subject
-    (:data:`_CHUNK_COMMIT_RE`'s three anchored forms and the scope filter above
-    it) or touches one of its Deliverables paths. ``branch`` is the plan's ``branch:``
-    when that ref resolves, else ``HEAD``; ``base`` is the plan's ``base:``
-    (``origin/<b>`` preferred), else the repo's. A declared ``base:`` that
-    resolves to no ref is a cause, never a fallback to the repo's base: that
-    would walk a different interval and answer as though it were this one.
-    Returns the ids as the plan prints them. No gate reads it.
+    content: str
+    plan: _Plan
+    named: "set[str]"  # normalized ids a scoped subject names
+    changed: "set[str]"  # every path a commit on the branch touched
+
+
+def _walk_branch(plan_path: Path, repo_dir: Path) -> "_BranchWalk | str | None":
+    """The walk :func:`built_report` and :func:`subject_named_chunks` answer
+    from; a cause string when git or the plan cannot answer; ``None`` for a
+    plan with no chunks, which has nothing to walk for.
+
+    ``branch`` is the plan's ``branch:`` when that ref resolves, else ``HEAD``;
+    ``base`` is the plan's ``base:`` (``origin/<b>`` preferred), else the
+    repo's. A declared ``base:`` that resolves to no ref is a cause, never a
+    fallback to the repo's base: that would walk a different interval and
+    answer as though it were this one. A subject counts when it carries a
+    chunk in one of :data:`_CHUNK_COMMIT_RE`'s anchored forms, filtered by
+    scope as that pattern's comment says.
     """
     try:
         content = Path(plan_path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
-        return BuiltReport(set(), f"the plan cannot be read ({exc})")
+        return f"the plan cannot be read ({exc})"
     repo_dir = Path(repo_dir)
     plan = _read_plan(content)
     if not plan.chunks:
-        return BuiltReport(set())
+        return None
     base, cause = _resolve_base(repo_dir, content)
     if base is None:
-        return BuiltReport(set(), cause)
+        return cause
     head = plan.branch if plan.branch and coverage._git_ref_exists(repo_dir, plan.branch) else "HEAD"
     rc, out, err = evidence.run_git(
         repo_dir, "log", f"--format={_COMMIT_MARK}%s", "--name-only", f"{base}..{head}", "--",
@@ -735,9 +770,7 @@ def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
     )
     if rc != 0:
         detail = (err or "").strip().splitlines()
-        return BuiltReport(
-            set(), f"`git log {base}..{head}` failed ({detail[0] if detail else f'exit {rc}'})"
-        )
+        return f"`git log {base}..{head}` failed ({detail[0] if detail else f'exit {rc}'})"
     commits: list[tuple[str, set[str]]] = []
     for line in out.splitlines():
         if line.startswith(_COMMIT_MARK):
@@ -759,10 +792,39 @@ def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
         for m in _CHUNK_COMMIT_RE.finditer(s)
     }
     changed = set().union(*(files for _s, files in commits)) if commits else set()
+    return _BranchWalk(content, plan, named, changed)
+
+
+def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
+    """Chunks with work committed on the plan's branch — render-only, git-walking.
+
+    A chunk is built when a commit on ``base..branch`` names it in its subject
+    or touches one of its Deliverables paths (:func:`_walk_branch` says which
+    commits and subjects count). Returns the ids as the plan prints them. No
+    gate reads it, and no review proposal does either: a Deliverables path
+    another chunk's commit touched first reads as built here, which a table tag
+    can afford and a certification cannot (:func:`propose_chunks`).
+    """
+    walk = _walk_branch(plan_path, repo_dir)
+    if walk is None:
+        return BuiltReport(set())
+    if isinstance(walk, str):
+        return BuiltReport(set(), walk)
     return BuiltReport({
-        c for c in plan.chunks
-        if _norm(c) in named or _touches(deliverable_paths(content, c), changed)
+        c for c in walk.plan.chunks
+        if _norm(c) in walk.named or _touches(deliverable_paths(walk.content, c), walk.changed)
     })
+
+
+def subject_named_chunks(plan_path: Path, repo_dir: Path) -> "set[str]":
+    """The chunks a commit subject on the plan's branch names, as the plan
+    prints them — ``set()`` when none does or git cannot say (a proposal that
+    names fewer fails closed). Git-walking, so asked only at a review's
+    dispatch."""
+    walk = _walk_branch(plan_path, repo_dir)
+    if not isinstance(walk, _BranchWalk):
+        return set()
+    return {c for c in walk.plan.chunks if _norm(c) in walk.named}
 
 
 def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:

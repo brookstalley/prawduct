@@ -1666,9 +1666,10 @@ def _open_blocker_on_chain(facts: list[dict], chain: list[dict]) -> bool:
 def boundary_review_on_chain(chain: list[dict]) -> bool:
     """Whether a ``cumulative`` sits on ``chain`` — the builder is at the boundary.
 
-    A ``cumulative`` spans every chunk built so far and names every chunk open
-    at its dispatch (``plan_status.propose_chunks``), so after one an open chunk
-    cannot say whether it is still to be built or was left out of that set; on
+    A ``cumulative`` spans every chunk built so far and names every chunk built
+    and open at its dispatch (``plan_status.propose_chunks``), so after one an
+    open chunk cannot say whether it is still to be built or was left out of
+    that set; on
     a plan with ``## Status`` boxes, a box awaiting its tick reads the same as
     one still to build. The review's mode can: a ``cumulative`` is the
     end-of-plan or pre-PR review, so no later chunk review is coming to carry
@@ -1901,7 +1902,7 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
     and the last-chunk block) compose this, so the rule cannot be stated two
     ways. The rule: an earlier chunk's review is the boundary ``cumulative``,
     so the chunk is COMMITTED and left for it — nothing is ticked, because the
-    boundary review names every chunk still open (``plan_status``:
+    boundary review names every open chunk that is built (``plan_status``:
     ``propose_chunks`` in ``cumulative`` mode) and its fact closes them all.
     Inference sees a committed chunk as ``built`` (:func:`short_plan_deferral`,
     ``read_built``) when its subject names it or its diff touches the chunk's
@@ -1920,8 +1921,8 @@ def short_plan_next_step(deferral: ShortPlanDeferral) -> str:
         f"deferred chunk's review is the boundary's, so it waits for none{named}. "
         "Then build the last chunk before asking for review: `/prawduct:critic` "
         "infers the boundary `cumulative` once one chunk is left uncommitted and "
-        "the tree is clean, and that review names every chunk still open and "
-        "closes them together"
+        "the tree is clean, and that review names every chunk built and still "
+        "open, and closes them together"
     )
 
 

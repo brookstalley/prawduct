@@ -2896,7 +2896,8 @@ def begin_review(
     and ``chunk`` given → ``[chunk]``). The code-derived proposal,
     ``chunks_proposed``, is :func:`plan_status.propose_chunks` over this
     dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
-    Deliverables it touches; ``final``/``cumulative``: every open chunk;
+    Deliverables it touches; ``final``/``cumulative``: those and the open
+    chunks the plan's branch has built — a mode sets depth, never reach;
     ``verify-resolutions``: the chunks the review it verifies names, inherited
     along that review's chain). With nothing declared, the declared set IS
     the proposal. A declared id the reviewed plan does not declare is refused

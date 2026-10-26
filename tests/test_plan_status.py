@@ -496,7 +496,7 @@ class TestImportedAndDropped:
         # Not a chunk id: never handed out as one (a fact's `chunks` comes from these).
         assert plan_status.current_chunks(plan, _facts(), repo_dir=repo) == ["01"]
         for mode in ("final", "cumulative"):
-            assert plan_status.propose_chunks(plan, _facts(), [], mode, repo_dir=repo) == ["01"]
+            assert plan_status.propose_chunks(plan, _facts(), ["src/c01.py"], mode, repo_dir=repo) == ["01"]
 
     def test_held_states_answer_without_a_second_walk(self, repo, monkeypatch):
         plan = _plan(repo, ("01",), status={"01": True})
@@ -622,13 +622,67 @@ class TestProposeChunks:
         assert plan_status.propose_chunks(plan, _facts(), diff, "chunk", repo_dir=repo) == ["02"]
 
     @pytest.mark.parametrize("mode", ["final", "cumulative"])
-    def test_whole_plan_modes_propose_every_open_chunk(self, repo, mode):
-        head = _commit(repo, "src/c01.py", "x\n", "work")
-        plan = _plan(repo)
+    def test_a_mid_plan_whole_plan_review_proposes_only_the_chunks_built(self, repo, mode):
+        """#1072: a keystone `final` on Chunk 02 (planning.md's override) named
+        02–07 and so certified four chunks nobody had built. Mode sets depth,
+        not reach: the unbuilt 03 and 04 are not proposed."""
+        head = _commit(repo, "src/c01.py", "x\n", "feat(unit): Chunk 01 — first")
+        plan = _plan(repo, ("01", "02", "03", "04"))
         done01 = _facts(_review("R1", head, chunks=["01"]))
-        assert plan_status.propose_chunks(plan, done01, [], mode, repo_dir=repo) == ["02", "03"]
+        _commit(repo, "src/c02.py", "x\n", "feat(unit): Chunk 02 — the keystone")
+        assert plan_status.propose_chunks(plan, done01, ["src/c02.py"], mode, repo_dir=repo) == ["02"]
         # repo_dir omitted: derived from the plan's `.prawduct/` ancestor.
-        assert plan_status.propose_chunks(plan, done01, [], mode) == ["02", "03"]
+        assert plan_status.propose_chunks(plan, done01, ["src/c02.py"], mode) == ["02"]
+
+    @pytest.mark.parametrize("mode", ["final", "cumulative"])
+    def test_a_later_chunks_deliverable_touched_early_is_not_read_as_built(self, repo, mode):
+        """The #1072 plan itself: `plan new`'s first commit stubs the change
+        fragment, a Deliverable of the LAST chunk. A path touched outside the
+        review's interval is not that chunk's work — only a subject naming it,
+        or the interval's own diff, makes it so. Control: the same history read
+        by `built_report`, which a table tag may afford, does tag 04."""
+        plan = _plan(repo, ("01", "02", "03", "04"), deliverables={
+            "04": "`.prawduct/changes/unit.md` (the change record)",
+        })
+        _commit(repo, ".prawduct/changes/unit.md", "stub\n", "docs(unit): build plan")
+        head = _commit(repo, "src/c01.py", "x\n", "feat(unit): Chunk 01 — first")
+        done01 = _facts(_review("R1", head, chunks=["01"]))
+        _commit(repo, "src/c02.py", "x\n", "feat(unit): Chunk 02 — the keystone")
+        assert plan_status.propose_chunks(plan, done01, ["src/c02.py"], mode, repo_dir=repo) == ["02"]
+        assert "04" in plan_status.built_report(plan, repo).built
+
+    def test_the_end_of_plan_cumulative_still_names_every_built_chunk(self, repo):
+        """The boundary review is every open chunk's review once all are built —
+        a short plan finishes on it — including a chunk whose Deliverables name
+        no path, which reads as built only through a subject naming it (the
+        commit `short_plan_next_step` tells the builder to make)."""
+        plan = _plan(repo, ("01", "02", "03"), deliverables={"03": "the operator docs, revised"})
+        _commit(repo, "src/c01.py", "x\n", "feat(unit): Chunk 01 — first")
+        _commit(repo, "src/c02.py", "x\n", "feat(unit): Chunk 02 — second")
+        _commit(repo, "notes.txt", "x\n", "docs(unit): the docs (Chunk 03)")
+        diff = ["src/c01.py", "src/c02.py", "notes.txt"]
+        assert plan_status.propose_chunks(plan, _facts(), diff, "cumulative", repo_dir=repo) == [
+            "01", "02", "03"
+        ]
+
+    def test_uncommitted_work_in_the_interval_is_proposed_too(self, repo):
+        """A dirty-tree `final` reviews work no commit carries yet: the diff
+        reaches it even though `built_report` (commits only) cannot."""
+        plan = _plan(repo, ("01", "02"))
+        assert plan_status.propose_chunks(plan, _facts(), ["src/c01.py"], "final", repo_dir=repo) == ["01"]
+
+    def test_when_git_cannot_say_what_is_built_the_proposal_is_the_diffs_alone(self, repo):
+        """Naming fewer fails closed (an open chunk keeps every gate armed);
+        naming more is the defect. Control: the same commits with a base that
+        resolves name 02 by its subject."""
+        plan = _plan(repo, ("01", "02"), claim=("branch: feature/unit", "base: no-such-base"))
+        _commit(repo, "notes.txt", "x\n", "feat(unit): Chunk 02 — second")
+        assert plan_status.built_report(plan, repo).unavailable
+        assert plan_status.propose_chunks(plan, _facts(), ["src/c01.py"], "cumulative", repo_dir=repo) == ["01"]
+        resolving = _plan(repo, ("01", "02"))
+        assert plan_status.propose_chunks(resolving, _facts(), ["src/c01.py"], "cumulative", repo_dir=repo) == [
+            "01", "02"
+        ]
 
     def test_another_mode_proposes_nothing(self, repo):
         plan = _plan(repo)

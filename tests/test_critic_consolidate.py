@@ -9370,10 +9370,15 @@ class TestTheReviewNamesItsChunks:
         assert manifest["chunk"] == "01"
         assert "WARNING: declared chunk" not in result.stderr
 
-    def test_final_proposes_every_open_chunk(self, tmp_path):
+    def test_final_proposes_the_chunks_its_interval_built_not_every_open_one(self, tmp_path):
+        """#1072: a `final` once proposed every open chunk, so a mid-plan keystone
+        review certified 02, which nothing in the interval touches and no commit
+        names. A mode sets depth, not reach: the proposal, and so the fact, is
+        what the interval built — here the uncommitted work on 01 and 03."""
         repo = _st8_repo(tmp_path)
         assert cc.begin_review(repo, "final")["status"] == "ok"
-        assert _st8_manifest(repo)["chunks"] == ["01", "02", "03"]
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
 
     def test_the_chunk_alias_is_one_element_and_normalized_to_the_plan(self, tmp_path):
         """`--chunk 1` against a plan printing `01`: recorded as the plan prints it."""

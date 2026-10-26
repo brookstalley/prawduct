@@ -46,8 +46,11 @@ git walks (NF1). `built_report`'s matching rule is reused unchanged.
 
 **Inferences (flagged for the boundary review):**
 - *What whole-plan modes propose.* The open chunks the interval's diff touches through their
-  Deliverables, plus the open chunks `built_report` reads as built on the plan's branch. The diff
-  alone would drop a chunk whose Deliverables name no path. `short_plan_next_step` tells the builder
+  Deliverables, plus the open chunks a commit subject on the plan's branch names. Not
+  `built_report`'s path rule (Chunk 01 review): a later chunk's Deliverable that an earlier commit
+  touched, such as the fragment `plan new` stubs, reads as built there before anyone builds it. A
+  table tag can afford that error; a certification cannot. The diff alone would drop a chunk whose
+  Deliverables name no path. `short_plan_next_step` tells the builder
   to name such a chunk in a commit subject precisely so that it reads as built, so the boundary review
   has to name it. `chunk` mode is unchanged: it uses the diff only, because it reviews a dirty tree
   and `extension_deferral_owed` calls it on the Stop path, where a git walk is not allowed.
@@ -70,7 +73,18 @@ because `plan new` stubs the change fragment, which is one of Chunk 07's Deliver
 01's diff. That is a Deliverables-overlap false positive in `chunk` mode, independent of reach, and
 it is filed as its own backlog item.
 
-**Decisions made mid-build:** *(one line each)*
+**Decisions made mid-build:**
+- Chunk 01: whole-plan modes add only subject-named chunks to the diff's answer, not `built_report`'s
+  touched-path rule. Settled by the Chunk 01 review's blocking finding, which reproduced the #1072
+  repro on the consumer-digest plan's own history. #1075 tracks the same overlap on `built_report`
+  and `chunk` mode.
+- Chunk 01: `planning.md` needed no edit. Its short-plan and keystone lines do not state the
+  proposal rule, and both are true under the fix (the keystone override is now safe). The
+  clause I first added was reverted: the reader has nothing to reason past.
+- Chunk 01's review was dispatched with `--chunks 01`. `plan_status.py` is a Deliverable of both
+  chunks, so the `chunk`-mode proposal named 01 and 02. That is the overlap #1075 records, not reach.
+- `plan retract` is guarded like `plan import-status --apply`: refused in a scratch worktree, and not
+  under the binary-skew guard, which today covers no `plan` op.
 
 ## Norm reconciliation (`governed_by`)
 
@@ -130,7 +144,7 @@ it is filed as its own backlog item.
      not one token: "every open chunk", "names every chunk", "closes them all".
   3. `/prawduct:critic` run and blocking findings resolved — the plan touches risk surfaces
      (`plugin/skills/`, `plugin/bin/*hook*`), so it is not a short plan and this chunk gets its own
-     review; the proposal it dispatches must name `01` alone.
+     review, certifying `01` alone (`--chunks 01`; see Decisions).
   4. Committed.
 
 ### Chunk 02: A recorded retraction
@@ -143,7 +157,11 @@ it is filed as its own backlog item.
     pair and gives the reason in the chunk's row.
   - `plugin/lib/evidence.py`: `KNOWN_KINDS`, `OBSERVATIONAL_KINDS`, `TRANSPORTED_KINDS` and their
     comments.
-  - `plugin/lib/evidence_notes.py`: the `chunk-imported` anchor rule, extended to retractions.
+  - `plugin/lib/evidence_notes.py`: the docstrings naming the HEAD-anchored kind. Its `missing`
+    branch already treats every non-review, non-resolution transported kind alike.
+  - The artifacts naming the transported or known kinds: `data-model.md` (kind list, transport,
+    a body bullet), `api-contract.md` (the `plan retract` entry, transport), `architecture.md`,
+    `security-model.md`.
   - `plugin/bin/prawduct-hook`: `plan retract <chunk> --fact <id> --reason <text> [--plan <path>]
     [--json]`, plus its guards and `_PLAN_HELP`.
   - `plugin/methodology/planning.md` "Chunk state": how a wrong certification is undone.
@@ -159,4 +177,5 @@ it is filed as its own backlog item.
 - **Done when:**
   1. Tests pass, and the declared suite is recorded green.
   2. Committed, then `/prawduct:critic cumulative` is run and blocking findings are resolved. That
-     review is dispatched through the fixed proposal, so it must name exactly 01 and 02.
+     review is dispatched through the fixed proposal, and its fact must certify 02, so
+     `plan status` finishes.

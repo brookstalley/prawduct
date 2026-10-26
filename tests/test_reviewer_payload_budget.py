@@ -211,7 +211,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # spellings) narrowed to `evidence status*`/`evidence list*`, so the reviewer side cannot reach
     # `evidence ingest`, a store write. Priced against the SUM: 12 tokens per review, the cost of
     # the grant line naming the two reads it admits rather than a prefix that admits a write.
-    "single-pass-inner": 5795,
+    # -7 on 2026-10-26 (final-review-chunks, #1072): the Critic skill's step 4 proposal sentence
+    # stopped restating the per-mode rule (whole-plan modes no longer propose every open chunk)
+    # and points to `plan_status.propose_chunks`, the rule's one home. Ceiling lowered with it.
+    "single-pass-inner": 5788,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -267,7 +270,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # spellings) narrowed to `evidence status*`/`evidence list*`, so the reviewer side cannot reach
     # `evidence ingest`, a store write. Priced against the SUM: 12 tokens per review, the cost of
     # the grant line naming the two reads it admits rather than a prefix that admits a write.
-    "single-pass-full": 11527,
+    # -7 on 2026-10-26 (final-review-chunks, #1072): the Critic skill's step 4 proposal sentence
+    # stopped restating the per-mode rule (whole-plan modes no longer propose every open chunk)
+    # and points to `plan_status.propose_chunks`, the rule's one home. Ceiling lowered with it.
+    "single-pass-full": 11520,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -384,14 +390,17 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # spellings) narrowed to `evidence status*`/`evidence list*`, so the reviewer side cannot reach
     # `evidence ingest`, a store write. Priced against the SUM: 12 tokens per review, the cost of
     # the grant line naming the two reads it admits rather than a prefix that admits a write.
-    "coordinator-fork": 12121,
+    # -7 on 2026-10-26 (final-review-chunks, #1072): the Critic skill's step 4 proposal sentence
+    # stopped restating the per-mode rule (whole-plan modes no longer propose every open chunk)
+    # and points to `plan_status.propose_chunks`, the rule's one home. Ceiling lowered with it.
+    "coordinator-fork": 12114,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5796,
-    "single-pass-full": 11528,
+    "single-pass-inner": 5789,
+    "single-pass-full": 11521,
     "dispatched-reviewer": 10991,
-    "coordinator-fork": 12122,
+    "coordinator-fork": 12115,
 }
 
 
