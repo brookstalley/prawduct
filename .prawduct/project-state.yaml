@@ -172,6 +172,23 @@ release_version_files:
     format: toml
     key: project.version
 
+# The consumer-facing changelog, read by `lib/consumer_digest.py` for both the
+# release cut (which writes the release's section into it) and Phase 0 (which
+# warns, ahead of the cut, about what the cut would refuse). Prawduct declares
+# its own for the reason it declares its version files: it is a product like
+# any other, and the declared path is then exercised here on every release.
+#
+# These values reproduce the sections prawduct has always written: a bare
+# `## vX.Y.Z` heading (the version-delta banner parses exactly that), a
+# required one-line headline taken from `.prawduct/release-headline.md`, and
+# one `**`scope`**: note` paragraph per fragment. `heading` is quoted because
+# an unquoted `## …` reads as a comment.
+consumer_digest:
+  path: plugin/CHANGELOG.md
+  heading: "## {version}"
+  headline: required
+  layout: paragraphs
+
 # =============================================================================
 # CLASSIFICATION — structural characteristics (methodology/discovery.md)
 # =============================================================================
