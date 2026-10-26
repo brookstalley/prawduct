@@ -890,3 +890,17 @@ class TestPrawductGolden:
         result = _cut(project, "--release", "v3.8.0", "--apply")
         assert result.returncode == 0, result.stderr
         assert (project / DIGEST).read_bytes() == GOLDEN_PRAWDUCT_CHANGELOG
+
+
+def test_the_default_release_date_is_the_operators_local_date(monkeypatch):
+    """An evening cut west of UTC is dated the day it was cut, not tomorrow."""
+    from datetime import datetime as real_datetime
+
+    class _Evening(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            utc_instant = real_datetime(2026, 10, 26, 3, 30)  # 03:30 UTC
+            return utc_instant if tz is not None else real_datetime(2026, 10, 25, 20, 30)  # 20:30 local
+
+    monkeypatch.setattr(change_cut, "datetime", _Evening)
+    assert change_cut._today(None) == "2026-10-25"

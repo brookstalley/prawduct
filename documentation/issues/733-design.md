@@ -160,7 +160,7 @@ def render_section(decl: Declaration, version: str, date: str,
 Output is lines without endings, in this order:
 
 1. The heading, formatted from `decl.heading` with `version` as normalized `vX.Y.Z`,
-   `version_no_prefix` (no `v`) and `date`. `date` is `YYYY-MM-DD`, the cut's UTC date; `plan_cut`
+   `version_no_prefix` (no `v`) and `date`. `date` is `YYYY-MM-DD`, the operator's local date (an evening cut west of UTC must not be dated tomorrow); `plan_cut`
    takes `today: date | None = None` so tests can fix it.
 2. A blank line, then the headline text if one is present, verbatim and stripped, possibly several
    lines.

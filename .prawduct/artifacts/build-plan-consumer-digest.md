@@ -74,7 +74,8 @@ file per PR. Its existing history stays untouched.
   - The coverage check retires (Decision 8), because it has no subject under this model.
   - The `by-type` default map is `feature`→Added, `fix`→Fixed, every other type→Changed, Keep a
     Changelog's vocabulary as changie's defaults use it.
-  - The default heading is `## {version} - {date}`, with the date taken as the cut's UTC date.
+  - The default heading is `## {version} - {date}`, with the date taken as the operator's local date
+    (changed from UTC at integration; see Decisions).
 - *Scope not taken:* regeneration, backfilling release files, several changelogs per repo,
   version-file bumps, and integration with external release tools.
 
@@ -96,6 +97,24 @@ file per PR. Its existing history stays untouched.
 - Chunk 02, scope (2026-10-26). `ordered_notes` lands in `consumer_digest.py`.
   `change_fragments.render_consumer_section` and its test are deleted in Chunk 04, when the cut
   stops calling it, so no chunk leaves the cut broken.
+- Chunk 04, as built by delegate B and accepted at integration (2026-10-26):
+  - The headline match strips trailing whitespace on both sides, because `render_section` keeps
+    the headline's inner lines verbatim (the design was wrong here).
+  - A headline file that is not valid UTF-8 refuses `no-headline` with that detail, not a new code.
+  - After a cut, a fragment that is neither held nor withheld refuses `release-already-cut`, even
+    with no release plan.
+  - The legacy line fires for legacy scopes classified `ships`.
+  - `insert_line` is the line where the heading lands.
+- Integration, release date (2026-10-26): the default `{date}` is the operator's local date, not
+  UTC. A release date is the maintainer's calendar day (changie dates by local time too), and UTC
+  dated an evening cut west of Greenwich tomorrow. The Goals' inference and the design are
+  updated, and a test pins it, shown red against UTC.
+- Integration, delegation mechanics (2026-10-26): delegate B's isolated worktree was created from
+  `main`, not this branch. It noticed `consumer_digest.py` was missing and reset to `4c77faff`
+  itself. Verified by `merge-base --is-ancestor` before merging.
+- #1072 mitigation: this plan's chunk states are wrong. Chunk 02's `final` review certified 02–07,
+  a framework bug. Every review here passes an explicit `--chunks`, and `plan status` is not
+  trusted for this plan.
 
 **Level:** High. The model is chosen by the owner and its prior art read in source, every code
 site is read, and the one hard problem (locating a section) is removed rather than solved. What

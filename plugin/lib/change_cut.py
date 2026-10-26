@@ -30,7 +30,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from datetime import date as date_cls
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from . import change_fragments
@@ -223,8 +223,11 @@ def _plan_rerun(
 
 
 def _today(today: date_cls | str | None) -> str:
+    # The operator's local calendar date, not UTC: a release section's date is
+    # the day its maintainer cut it, and UTC would date an evening cut west of
+    # Greenwich tomorrow.
     if today is None:
-        return datetime.now(timezone.utc).date().isoformat()
+        return datetime.now().date().isoformat()
     return today if isinstance(today, str) else today.isoformat()
 
 
@@ -317,7 +320,7 @@ def plan_cut(
     """Everything the cut would write, validated. Raises :class:`CutRefused`.
 
     ``today`` dates the release section (``YYYY-MM-DD``); it defaults to the
-    current UTC date.
+    operator's local date.
     """
     version = release_readiness.normalize_version(release)
     if not change_log_mod.RELEASE_VALUE_RE.match(version):
