@@ -22,7 +22,9 @@ hidden, and it is judged against the branch's diff, which a test runner cannot s
   a final `<failure>`, so that test failed every attempt and stays failed.
 - `flaky` is capped and sorted, and omitted when nothing flaked. It is carried by the record and
   a restamp, and by a scratch worktree's narrowed `test-run` fact, whose flakes `test-status`
-  lists under that delegate's run. It is kept out of the evidence schema, as `failed_tests` is: it
+  lists under that delegate's run as `that tree's flake:` lines — never `flaky:`, which the Critic
+  and `/prawduct:pr` read as this checkout's run, since each was judged against that worktree's
+  diff. It is kept out of the evidence schema, as `failed_tests` is: it
   is printed and carried, and a malformed value never moves a verdict.
 - The record line prints `passed only on retry:`. `test-status` prints one `flaky:` line per
   flake after its verdict, and the exit code is unchanged.

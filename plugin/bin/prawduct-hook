@@ -4570,7 +4570,9 @@ def _rerun_failures(
 
     ``commands`` are the declared commands (``[None]`` for the fallback pytest
     path, which needs no template: the hook built that argv itself, so it can
-    build the rerun's)."""
+    build the rerun's, under the run's own interpreter — a retry under another
+    Python is not the same test, and its pass would record a real failure as a
+    flake)."""
     import tempfile  # noqa: PLC0415 — lazy, as in cmd_test_evidence
     import xml.etree.ElementTree as ET  # noqa: PLC0415
 
@@ -4630,7 +4632,7 @@ def _rerun_failures(
             argv = (
                 _rerun_argv(template, junit, nodes)
                 if command is not None
-                else [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *options, *nodes]
+                else [_fallback_pytest_python(), "-m", "pytest", f"--junit-xml={junit}", "-q", *options, *nodes]
             )
             try:
                 try:
@@ -6918,7 +6920,10 @@ def _narrowed_run_lines(project_dir: Path) -> list[str]:
         ceiling = body.get("ceiling") if isinstance(body.get("ceiling"), str) else "(not recorded)"
         flag = " DEGRADED" if isinstance(body.get("degraded"), str) and body["degraded"] else ""
         lines.append(f"  {tree} {fact.get('ts') or '(no time)'}{more}: {counts}{flag} — ceiling: {ceiling}")
-        lines.extend(_gates().flaky_lines(body.get("flaky"), prefix="    flaky: "))
+        # Not `flaky:`: each was judged against that worktree's diff, and the
+        # Critic's and /prawduct:pr's flake rules read `flaky:` lines as this
+        # checkout's run.
+        lines.extend(_gates().flaky_lines(body.get("flaky"), prefix="    that tree's flake: "))
     if len(ordered) > _NARROWED_RUNS_SHOWN:
         lines.append(f"  … and {len(ordered) - _NARROWED_RUNS_SHOWN} older worktree(s)")
     return lines

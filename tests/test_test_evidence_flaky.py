@@ -16,6 +16,7 @@ final ``<failure>``, and a test that failed every attempt as
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -470,6 +471,43 @@ class TestPytestNodeIds:
         assert self._resolve(tmp_path, "", "t", []) == (None, None)
 
 
+class TestFallbackRetryInterpreter:
+    """The fallback run launches pytest under ``_fallback_pytest_python()`` —
+    after a Python-floor re-exec, the interpreter the caller invoked, not the
+    hook's. A retry under the hook's interpreter instead could pass a test that
+    really fails under the project's and record it as a flake."""
+
+    def test_the_retry_runs_under_the_runs_interpreter(self, tmp_path, monkeypatch):
+        import importlib.machinery
+        import importlib.util
+        import xml.etree.ElementTree as ET
+        hook = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        loader = importlib.machinery.SourceFileLoader("_hook_for_retry_python", str(hook))
+        spec = importlib.util.spec_from_loader("_hook_for_retry_python", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "tests" / "test_x.py").write_text("")
+        launched = []
+
+        def fake_run(argv, cwd=None):
+            launched.append(argv)
+            junit = next(a.split("=", 1)[1] for a in argv if a.startswith("--junit-xml="))
+            Path(junit).write_text(
+                '<testsuite><testcase classname="tests.test_x" name="test_z"/></testsuite>'
+            )
+            return subprocess.CompletedProcess(argv, 0)
+
+        monkeypatch.setattr(mod, "_fallback_pytest_python", lambda: "/project/.venv/bin/python3")
+        monkeypatch.setattr(mod.subprocess, "run", fake_run)
+        case = ET.fromstring(
+            '<testcase classname="tests.test_x" name="test_z"><failure message="boom"/></testcase>'
+        )
+        out = mod._rerun_failures(tmp_path, [(0, case)], 1, [None], [None], 1)
+        assert [argv[0] for argv in launched] == ["/project/.venv/bin/python3"]
+        assert [f["id"] for _, f in out["flaked"]] == ["tests.test_x::test_z"]
+
+
 _REAL_FLAKY_TEST = '''
 from pathlib import Path
 import pytest
@@ -728,12 +766,16 @@ class TestTheCriticRuleMatchesWhatIsPrinted:
         ]
         for name in ("goals-1-3.md", "review-protocol.md"):
             text = (root / name).read_text()
-            (rule,) = [ln for ln in text.splitlines() if "A `flaky:` line" in ln]
-            token = re.findall(r"`([^`]+)`", rule.split("A `flaky:` line", 1)[1])[0]
+            anchor = "A line starting `flaky:`"
+            (rule,) = [ln for ln in text.splitlines() if anchor in ln]
+            token = re.findall(r"`([^`]+)`", rule.split(anchor, 1)[1])[0]
             assert token in gates._FLAKY_OUTCOME_TEXT["warn"], (name, token)
             for other in others:
                 assert token not in other, (name, token, other)
             assert "**WARNING** at the boundary" in rule, name
+            # and it excludes, by the prefix the hook prints, the delegate lines
+            # judged against another worktree's diff
+            assert "`that tree's flake:`" in rule, name
 
 
 class TestFlakesReachTheHandoffAndThePrPayload:
@@ -909,7 +951,10 @@ class TestNarrowedRunsListTheirFlakes:
         lines = _run_in(repo, "test-status").stdout.splitlines()
         i = next(k for k, ln in enumerate(lines) if ln.startswith("delegate runs"))
         assert lines[i + 2] == (
-            "    flaky: tests.test_net::test_timeout — passed on the recorder's retry after "
-            "1 failure(s) [touched by this branch; flaky_policy: warn]"
+            "    that tree's flake: tests.test_net::test_timeout — passed on the recorder's "
+            "retry after 1 failure(s) [touched by this branch; flaky_policy: warn]"
         ), lines
+        # The Critic's and /prawduct:pr's flake rules read `flaky:` lines as
+        # this checkout's run; another worktree's warn flake must not match them.
+        assert not any("flaky:" in ln for ln in lines), lines
 
