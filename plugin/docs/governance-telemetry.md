@@ -98,7 +98,8 @@ All three nest under a `learning` key, under the same envelope:
   it.
 - **The span is the session's work, not its uncommitted work.** The Stop hook
   reaches `learning.written` off `gates.session_work_span`, which diffs the
-  session's base tree against the working tree — so a rule written and
+  session's base tree against the working tree, less history a pull, merge or
+  branch switch brought in — so a rule written and
   committed in one turn is still counted at that turn's Stop. Without the
   marker there is no base to diff, and then nothing is recorded and the Stop
   hook says so on stderr; that one missing state is also why the budget check
