@@ -283,10 +283,12 @@ test_rerun_command: uv run pytest --junit-xml={junit_xml} -q {pytest_node_ids}
 **`flaky_policy:`** (`accept` | `warn` | `block`, default `warn`) — what a flake earns when this
 branch touched it. A flake is a test that passed only on retry, whether the recorder's
 `--rerun-failed` or a runner that reports it (`<flakyFailure>`). Each flake is judged at record
-time against the branch's changed files, and one whose file cannot be found counts as touched.
-`accept` notes it; `warn` also has the boundary Critic warn; `block` leaves it failed, so the
-record stays red. A flake the branch did not touch is noted under every policy. An unknown value
-is refused.
+time against the branch's changed files. The test file comes from the report, or from the
+classname (pytest's module path, or the class's own file in any language). One whose file or
+diff cannot be read counts as touched, and its status line says why. The policy's answer is
+decided then and printed with the flake: `accept` notes it; `warn` has the boundary Critic warn;
+`block` leaves it failed, so the record stays red. A flake outside the branch's diff is noted
+under every policy. An unknown value is refused.
 
 **`tests_dirs:`** — whitespace-separated test trees for the coverage verifier (default: `tests`).
 One verifier run unions discovery across all of them.

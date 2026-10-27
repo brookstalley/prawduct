@@ -105,19 +105,34 @@ and a runner that reports its own flakes is read instead (part 2) | owner can ve
 
 **Decisions made mid-build:**
 - Chunk 02: the rerun runs after the run's failures are classified and before the
-  unexplained-exit check, so a command whose every failure passed on retry takes its last
-  rerun's exit status. A non-test failure such as a coverage threshold still exits nonzero and is
-  refused as before. Settled by "authority fails closed".
-- Chunk 03: `block` adds its own nonzero exit status, because each command may have exited 0
-  after its retry passed. A restamp carries entries judged at record time and is not judged
+  unexplained-exit check. A command whose every failure passed on retry takes its last rerun's
+  exit status only when its own was 1 (tests failed, for pytest and testament). Any other
+  status stands and is refused. Corrected at the boundary review, which found that the first
+  version let a passing retry clear any status. A non-test failure that also exits 1
+  (pytest-cov's threshold) is still indistinguishable by status; that residual is recorded in
+  the code. Settled by "authority fails closed".
+- Chunk 03: under `block` both exits return 1 for the policy's red, because each command may
+  have exited 0 after its retry passed. This replaced appending a made-up status to the
+  per-command list (boundary review). A restamp carries entries judged at record time and is not judged
   again, since its reused counts already hold the policy's answer. Settled by "do it right".
 - Chunk 03: the untouched tag reads `[outside this branch's diff]`, not `[not touched by this
-  branch]`. The Critic's rule quotes `touched by this branch`, and that phrase sits inside the
-  negative form, so a reviewer matching the rule would warn on an untouched flake. Caught by the
-  test that pins the rule's quoted tags against the printed ones.
-- Chunk 03: the Critic clause is a declared payload raise of about 28 tokens per review
+  branch]`, because the negative form contains the positive phrase. At the boundary review the
+  policy's answer moved to record time as each flake's printed `outcome`. The Critic rule now
+  keys on `flaky_policy: warn` alone, so `accept` really silences it (the review found the
+  reviewer could not see the policy).
+- Chunk 03: the flake's file is resolved to a repo-relative path or reported unknown with a
+  reason. An absolute or rootdir-relative report path, and a non-Python class path (Surefire),
+  are resolved; an unreadable diff is named on stderr and on each flake. Boundary review: the
+  first version read a non-matching path as untouched (lenient), and every Surefire flake as
+  unknown.
+- Chunk 03: the Critic clause is a declared payload raise of 18 tokens per review
   (`tests/test_reviewer_payload_budget.py`), compressed in place first. Settled by
   nonfunctional-requirements "Review wall-clock": priced, not paid silently.
+- Chunk 02 product verification: the acceptance run on this repo needs a `test_rerun_commands:`
+  declaration this repo does not have, and adding one is the owner's call. The real-pytest tests
+  (`TestAgainstRealPytest`: a declared command with a template, the fallback path, and the
+  fallback keeping the run's pytest arguments) run the same path end to end against real pytest,
+  and stand in for it. Recorded at the boundary review.
 
 **Level:** Medium-High. The recorder is well understood, and the foreign formats are verified.
 What would raise it: Chunk 02 run once on this repo with a forced failure that passes on rerun.
@@ -129,12 +144,18 @@ Its consumers' questions, which are its requirements:
    any of them? (Critic: WARNING under `warn`.)
 2. The handoff and the PR body: which flakes should reach the backlog?
 3. `run_refusal`: never consulted. Only `block` moves a verdict, and it does so at record time.
-4. Another worktree reusing a `test-run` fact: the same flake list, so a reused green carries
-   its flakes.
+4. ~~Another worktree reusing a `test-run` fact~~. Descoped at the boundary review: a worktree
+   the store vouches for reads only its own record, so a plain fact's flakes had no reader, and
+   a channel nothing consumes is a defect. Only a scratch worktree's narrowed fact carries them,
+   because that fact is the run's only write; `test-status` lists them under the delegate's run.
+   Revisit if a store-vouched green ever needs its flakes in the vouching worktree, which would
+   mean `_store_run_vouching` returning the fact that decided.
 
 Shape, capped at 20 entries, sorted by id: `{"id", "first_failure", "attempts", "source":
-"rerun"|"junit", "file"?, "touched": true|false|null}`. `attempts` counts the failures before the
-pass.
+"rerun"|"junit", "file"?, "touched": true|false|null, "touched_why"?, "outcome":
+"noted"|"accepted"|"warn"|"blocked"}`. `attempts` counts the failures before the pass;
+`touched_why` is present only when `touched` is null; `outcome` is the policy's answer, decided
+at record time.
 
 ## Governing norms
 
@@ -216,7 +237,8 @@ pass.
   - `test_rerun_commands` length mismatch, or a missing placeholder → exit 2 before running;
   - `--rerun-failed` with `--from-junit` → exit 2;
   - a tree edit during the rerun → no `evidence_tree`;
-  - node-id resolution: `tests.test_x.TestY` + `test_z[a]` → `tests/test_x.py::TestY::test_z[a]`.
+  - node-id resolution: a dotted classname plus a parametrized name maps to the file's path,
+    its classes and the name, joined by `::` (the cases are in `TestPytestNodeIds`).
 - **Acceptance criteria:** tests pass. On this repo, a forced flaky test run through a temporary
   `test_rerun_command` records green with one flake (product verification).
 - **Done when:**

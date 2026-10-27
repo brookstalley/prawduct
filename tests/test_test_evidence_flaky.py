@@ -71,9 +71,11 @@ class TestJunitFlakesAreRecorded:
             "first_failure": "Timeout after 5s",
             "attempts": 1,
             "source": "junit",
-            "file": "tests/test_net.py",
-            # judged against the branch: the fixture never changed this file
-            "touched": False,
+            # the report names a file this repo does not have, so the branch
+            # judgment cannot be made — and unknown is the strict answer
+            "touched": None,
+            "touched_why": "the report's file tests/test_net.py matches no file here",
+            "outcome": "warn",
         }]
         # the plugin's own validator accepts what the plugin produced
         assert _run_in(tmp_path / "flaky", "validate-evidence").returncode == 0
@@ -143,12 +145,16 @@ class TestJunitFlakesAreRecorded:
         ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
         assert [e["id"] for e in ev["flaky"]] == ["tests.test_net.TestPool::test_timeout"]
 
-    def test_the_test_run_fact_carries_the_flakes(self, tmp_path):
+    def test_the_test_run_fact_carries_no_flakes(self, tmp_path):
+        """Nothing reads a plain fact's flakes — a worktree the store vouches
+        for reads its own record — so the fact does not carry them. A scratch
+        worktree's narrowed fact does: it is that run's only write
+        (``TestNarrowedRunsListTheirFlakes``)."""
         repo = _repo(tmp_path)
         _record(repo, _FLAKY_CASE)
         (fact,) = evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
-        body = fact["body"]
-        assert [e["id"] for e in body["flaky"]] == ["tests.test_net.TestPool::test_timeout"]
+        assert fact["body"]["passed"] == 2
+        assert "flaky" not in fact["body"]
 
 
 class TestFlakesArePrinted:
@@ -170,7 +176,8 @@ class TestFlakesArePrinted:
         assert lines[0].startswith(("current", "stale"))
         assert lines[1] == (
             "flaky: tests.test_net.TestPool::test_timeout — passed on the runner's "
-            "retry after 1 failure(s) [outside this branch's diff]; first: Timeout after 5s"
+            "retry after 1 failure(s) [branch touch unknown — the report's file "
+            "tests/test_net.py matches no file here; flaky_policy: warn]; first: Timeout after 5s"
         )
 
     def test_a_malformed_flaky_value_changes_nothing(self, tmp_path):
@@ -238,7 +245,7 @@ for node, outcomes in plan.items():
 Path(junit).write_text(
     '<?xml version="1.0"?><testsuites><testsuite name="s" time="1">'
     + "".join(cases) + "</testsuite>" + summary + "</testsuites>")
-sys.exit(1 if bad else 0)
+sys.exit((2 if "--exit-two" in args else 1) if bad else 0)
 '''
 
 _RUN = "python3 runner.py --junit-xml {junit_xml}"
@@ -292,6 +299,7 @@ class TestRerunFailed:
             "file": "tests/test_x.py",
             # judged against the branch: the fixture never changed this file
             "touched": False,
+            "outcome": "noted",
         }]
         # the rerun ran only the failure, by node id
         assert [a for a in _calls(repo)[1] if "::" in a] == [_FLAKE]
@@ -513,6 +521,7 @@ class TestAgainstRealPytest:
             "file": "tests/test_x.py",
             # judged against the branch: the fixture never changed this file
             "touched": False,
+            "outcome": "noted",
         }]
         assert "timed out under load" in ev["flaky"][0]["first_failure"]
         # the run, then a rerun of the one test alone
@@ -531,6 +540,28 @@ class TestAgainstRealPytest:
         repo = self._repo(tmp_path, "")
         res, ev = _rerun_record(repo, "--rerun-failed", "--", "-p", "no:cacheprovider")
         self._assert_one_flake(repo, res, ev)
+
+    def test_the_fallback_retry_keeps_the_runs_pytest_arguments(self, tmp_path):
+        """A retry under different options than the run is not the same test:
+        here the test can only pass with the option the run was given."""
+        repo = self._repo(tmp_path, "")
+        (repo / "conftest.py").write_text(
+            "def pytest_addoption(parser):\n"
+            "    parser.addoption('--mode', default='default')\n"
+        )
+        (repo / "tests" / "test_x.py").write_text(_REAL_FLAKY_TEST + '''
+
+def test_needs_mode(request):
+    assert _attempt("mode") > 1, "first attempt fails"
+    assert request.config.getoption("--mode") == "chosen"
+''')
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "mode")
+        res, ev = _rerun_record(repo, "--rerun-failed", "--", "-p", "no:cacheprovider", "--mode=chosen")
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert {e["id"] for e in ev["flaky"]} == {
+            "tests.test_x.TestPool::test_timeout[a-b]", "tests.test_x::test_needs_mode",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -579,7 +610,7 @@ class TestFlakesAreJudgedAgainstTheBranch:
         assert res.returncode == 0, res.stderr  # warn is the default: still green
         (entry,) = ev["flaky"]
         assert (entry["file"], entry["touched"]) == ("tests/test_net.py", True)
-        assert "blocked" not in entry
+        assert entry["outcome"] == "warn"
 
     def test_a_flake_in_a_file_the_branch_left_alone_is_not(self, tmp_path):
         _, ev = _record(_branch_repo(tmp_path, touch=False), _NET_FLAKE)
@@ -593,9 +624,10 @@ class TestFlakesAreJudgedAgainstTheBranch:
 
     def test_test_status_tags_each_judgment(self, tmp_path):
         for touch, xml, tag in (
-            (True, _NET_FLAKE, "[touched by this branch]"),
+            (True, _NET_FLAKE, "[touched by this branch; flaky_policy: warn]"),
             (False, _NET_FLAKE, "[outside this branch's diff]"),
-            (False, _UNKNOWN_FLAKE, "[branch touch unknown]"),
+            (False, _UNKNOWN_FLAKE,
+             "[branch touch unknown — no file here matches com.example.NetTest; flaky_policy: warn]"),
         ):
             sub = tmp_path / f"{touch}-{tag[1:4]}"
             sub.mkdir()
@@ -612,7 +644,7 @@ class TestFlakyPolicy:
         assert res.returncode == 1
         assert (ev["passed"], ev["failed"]) == (1, 1)
         assert ev["failed_tests"] == ["tests.test_net::test_timeout"]
-        assert ev["flaky"][0]["blocked"] is True
+        assert ev["flaky"][0]["outcome"] == "blocked"
         assert "BLOCKED by flaky_policy" in _run_in(tmp_path / "flaky", "test-status").stdout
 
     def test_block_leaves_an_unknown_flake_failed(self, tmp_path):
@@ -624,7 +656,7 @@ class TestFlakyPolicy:
         res, ev = _record(_branch_repo(tmp_path, touch=False, policy="block"), _NET_FLAKE)
         assert res.returncode == 0, res.stderr
         assert ev["failed"] == 0
-        assert "blocked" not in ev["flaky"][0]
+        assert ev["flaky"][0]["outcome"] == "noted"
 
     def test_accept_and_warn_credit_a_touched_flake(self, tmp_path):
         for policy in ("accept", "warn"):
@@ -681,24 +713,26 @@ class TestFlakyPolicy:
 
 
 class TestTheCriticRuleMatchesWhatIsPrinted:
-    """The Critic rates a touched flake from the ``test-status`` line, so the
-    tags the rule quotes must be the tags printed, in both files that carry the
-    rule — a reword in one is a rule the other reviewer route never applies."""
+    """The Critic rates a flake from its printed line, so the token the rule
+    quotes must be the one printed for ``warn``, and for nothing else, in both
+    files that carry the rule — a reword in one is a rule the other reviewer
+    route never applies."""
 
-    def test_both_carriers_quote_the_printed_tags(self):
+    def test_both_carriers_quote_the_printed_warn_outcome(self):
         import re
         from lib import gates
         root = Path(__file__).resolve().parent.parent / "plugin" / "skills" / "critic"
+        others = [
+            *(v for k, v in gates._FLAKY_OUTCOME_TEXT.items() if k != "warn"),
+            *gates._FLAKY_TOUCH_TEXT.values(),
+        ]
         for name in ("goals-1-3.md", "review-protocol.md"):
             text = (root / name).read_text()
-            (rule,) = [ln for ln in text.splitlines() if "flaky_policy: warn" in ln]
-            quoted = re.findall(r"`([^`]+)`", rule.split("A `flaky:` line", 1)[1])
-            touched_tag, unknown_tag = quoted[0], quoted[1]
-            assert touched_tag in gates._FLAKY_TOUCH_TAGS[(True, False)], name
-            assert unknown_tag in gates._FLAKY_TOUCH_TAGS[(None, False)], name
-            # and neither matches the line for a flake the branch left alone
-            assert touched_tag not in gates._FLAKY_TOUCH_TAGS[(False, False)], name
-            assert unknown_tag not in gates._FLAKY_TOUCH_TAGS[(False, False)], name
+            (rule,) = [ln for ln in text.splitlines() if "A `flaky:` line" in ln]
+            token = re.findall(r"`([^`]+)`", rule.split("A `flaky:` line", 1)[1])[0]
+            assert token in gates._FLAKY_OUTCOME_TEXT["warn"], (name, token)
+            for other in others:
+                assert token not in other, (name, token, other)
             assert "**WARNING** at the boundary" in rule, name
 
 
@@ -714,7 +748,7 @@ class TestFlakesReachTheHandoffAndThePrPayload:
         section = text.split("## Flaky Tests (passed only on retry)\n", 1)[1].split("\n## ", 1)[0]
         assert section.startswith(
             "- tests.test_net::test_timeout — passed on the runner's retry after 1 failure(s) "
-            "[touched by this branch]"
+            "[touched by this branch; flaky_policy: warn]"
         ), section
 
     def test_a_clean_run_adds_no_handoff_section(self, tmp_path):
@@ -731,7 +765,7 @@ class TestFlakesReachTheHandoffAndThePrPayload:
         lines = body.splitlines()
         assert lines[0].startswith("test-status: ")
         assert any(
-            ln.startswith("flaky: tests.test_net::test_timeout") and "[touched by this branch]" in ln
+            ln.startswith("flaky: tests.test_net::test_timeout") and "flaky_policy: warn]" in ln
             for ln in lines
         ), body
 
@@ -740,3 +774,142 @@ class TestFlakesReachTheHandoffAndThePrPayload:
         repo = _branch_repo(tmp_path, touch=True)
         _record(repo, '<testcase classname="m" name="ok"/>')
         assert "flaky:" not in pr_payload._section_test_evidence(repo).body
+
+
+class TestTheFlakeFileIsResolvedForTheJudgment:
+    """The touched judgment compares a repo-relative path against the
+    branch's changed files, so a reported file has to be turned into one — or
+    be unknown, never a path that silently matches nothing and reads
+    'outside this branch's diff'."""
+
+    def _flake(self, file_attr: str = "", classname: str = "tests.test_net") -> str:
+        attr = f' file="{file_attr}"' if file_attr else ""
+        return f"""
+<testcase classname="{classname}" name="test_timeout"{attr}>
+  <flakyFailure message="Timeout"><stackTrace>t</stackTrace></flakyFailure>
+</testcase>
+"""
+
+    def test_an_absolute_report_path_inside_the_repo_is_made_relative(self, tmp_path):
+        repo = _branch_repo(tmp_path, touch=True)
+        _, ev = _record(repo, self._flake(str(repo / "tests" / "test_net.py"), classname="x"))
+        assert (ev["flaky"][0]["file"], ev["flaky"][0]["touched"]) == ("tests/test_net.py", True)
+
+    def test_a_path_relative_to_a_subdirectory_rootdir_is_found(self, tmp_path):
+        repo = _branch_repo(tmp_path, touch=True)
+        _, ev = _record(repo, self._flake("test_net.py", classname="x"))
+        assert (ev["flaky"][0]["file"], ev["flaky"][0]["touched"]) == ("tests/test_net.py", True)
+
+    def test_a_reported_file_this_repo_lacks_is_unknown_and_blocks(self, tmp_path):
+        repo = _branch_repo(tmp_path, touch=False, policy="block")
+        res, ev = _record(repo, self._flake("elsewhere/test_net.py", classname="x"))
+        (entry,) = ev["flaky"]
+        assert entry["touched"] is None and "file" not in entry
+        assert "elsewhere/test_net.py" in entry["touched_why"]
+        assert res.returncode == 1 and ev["failed"] == 1
+
+    def test_an_absolute_path_outside_the_repo_is_unknown(self, tmp_path):
+        repo = _branch_repo(tmp_path, touch=True)
+        _, ev = _record(repo, self._flake("/elsewhere/tests/test_net.py", classname="x"))
+        assert ev["flaky"][0]["touched"] is None
+        assert "outside this repo" in ev["flaky"][0]["touched_why"]
+
+    def _java_repo(self, tmp_path: Path, touch: bool) -> Path:
+        repo = _repo(tmp_path)
+        java = repo / "src" / "test" / "java" / "com" / "example"
+        java.mkdir(parents=True)
+        (java / "NetTest.java").write_text("class NetTest {}\n")
+        (repo / "Other.java").write_text("class Other {}\n")
+        (repo / ".gitignore").write_text("report.xml\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "base")
+        _git(repo, "checkout", "-b", "feature")
+        target = (java / "NetTest.java") if touch else (repo / "Other.java")
+        target.write_text(target.read_text() + "// edited\n")
+        _git(repo, "commit", "-am", "branch work")
+        return repo
+
+    def test_a_surefire_flake_is_judged_by_its_class_file(self, tmp_path):
+        """Surefire names no file; the class's own path does, in any language."""
+        for touch in (True, False):
+            sub = tmp_path / str(touch)
+            sub.mkdir()
+            repo = self._java_repo(sub, touch)
+            _, ev = _record(repo, self._flake(classname="com.example.NetTest$Inner"))
+            (entry,) = ev["flaky"]
+            assert entry["file"] == "src/test/java/com/example/NetTest.java", entry
+            assert entry["touched"] is touch, entry
+
+    def test_an_unreadable_diff_says_so_on_every_flake(self, tmp_path):
+        """One commit on a branch with no base: nothing to diff against. The
+        flake reads as touched, and the reason is the diff's, not the file's."""
+        repo = tmp_path / "solo"
+        repo.mkdir()
+        (repo / ".prawduct").mkdir()
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_net.py").write_text("def test_timeout():\n    pass\n")
+        (repo / ".gitignore").write_text("report.xml\n")
+        _git(repo, "init", "-b", "solo")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "only")
+        res, ev = _record(repo, self._flake())
+        (entry,) = ev["flaky"]
+        assert entry["file"] == "tests/test_net.py"
+        assert entry["touched"] is None
+        assert "diff" in entry["touched_why"] or "base" in entry["touched_why"], entry
+        assert "every flake reads as touched" in res.stderr
+
+    def test_a_malformed_judgment_does_not_take_the_status_line_down(self, tmp_path):
+        repo = _repo(tmp_path)
+        _record(repo, '<testcase classname="m" name="ok"/>')
+        path = repo / ".prawduct" / ".test-evidence.json"
+        before = _run_in(repo, "test-status").returncode
+        for bad in ([], {}, "yes", 1):
+            ev = json.loads(path.read_text())
+            ev["flaky"] = [{"id": "m::t", "attempts": 1, "touched": bad, "outcome": ["warn"]}]
+            path.write_text(json.dumps(ev))
+            res = _run_in(repo, "test-status")
+            assert res.returncode == before, (bad, res.stderr)
+            assert "Traceback" not in res.stderr
+            (line,) = [ln for ln in res.stdout.splitlines() if ln.startswith("flaky:")]
+            assert "[" not in line, (bad, line)  # read as never judged
+
+
+class TestARetryClearsOnlyATestFailure:
+    def test_a_run_that_exited_other_than_1_is_not_cleared_by_its_retry(self, tmp_path):
+        """Exit 2 names a failure outside the tests (testament's infra code,
+        pytest's interrupted run). A retry of the failing ids alone would not
+        repeat it, so its passing retry must not turn the run green."""
+        state = (
+            "test_command: python3 runner.py --junit-xml {junit_xml} --exit-two\n"
+            f"test_rerun_command: {_RERUN}\n"
+        )
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "pass"]}, state)
+        res, _ = _rerun_record(repo, "--rerun-failed")
+        assert len(_calls(repo)) == 2  # it did retry
+        assert res.returncode == 2, res.stdout + res.stderr
+        assert "exited 2, not 1" in res.stderr
+        assert "refusing to record" in res.stderr
+
+
+class TestNarrowedRunsListTheirFlakes:
+    def test_a_delegate_run_lists_its_flakes_under_its_line(self, tmp_path):
+        """A scratch worktree's narrowed fact is that run's only write, so the
+        coordinator's `test-status` is where its flakes surface."""
+        repo = _repo(tmp_path)
+        _record(repo, '<testcase classname="m" name="ok"/>')
+        appended = evidence.append_test_run(repo, {
+            "tree": "0" * 40, "passed": 2, "failed": 0, "skipped": 0,
+            "duration_seconds": 1.0, "source": "run", "narrowed": True,
+            "ceiling": "pytest tests/test_net.py",
+            "flaky": [{"id": "tests.test_net::test_timeout", "attempts": 1, "source": "rerun",
+                       "touched": True, "outcome": "warn"}],
+        })
+        assert appended.get("status") == "appended", appended
+        lines = _run_in(repo, "test-status").stdout.splitlines()
+        i = next(k for k, ln in enumerate(lines) if ln.startswith("delegate runs"))
+        assert lines[i + 2] == (
+            "    flaky: tests.test_net::test_timeout — passed on the recorder's retry after "
+            "1 failure(s) [touched by this branch; flaky_policy: warn]"
+        ), lines
+

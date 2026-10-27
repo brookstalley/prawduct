@@ -195,11 +195,12 @@ def name_flaky_tests(value: object) -> str:
     return ", ".join(parts) + (f" (+{rest} more in .prawduct/.test-evidence.json)" if rest else "")
 
 
-def flaky_lines(value: object) -> list[str]:
+def flaky_lines(value: object, *, prefix: str = "flaky: ") -> list[str]:
     """One line per flake for a status surface: what passed only on retry, how
-    often it failed first, the first failure's text, and where it came from.
-    Every surface that lists flakes renders them through this, so the handoff,
-    ``test-status`` and the PR payload say the same thing about the same run."""
+    often it failed first, the branch judgment and the policy's outcome, and
+    the first failure's text. Every surface that lists flakes renders them
+    through this, so the handoff, ``test-status`` and the PR payload say the
+    same thing about the same run; each surface picks its own ``prefix``."""
     lines = []
     for e in flaky_entries(value):
         attempts = e.get("attempts")
@@ -207,38 +208,56 @@ def flaky_lines(value: object) -> list[str]:
         via = "the runner's retry" if e.get("source") == "junit" else "the recorder's retry"
         first = e.get("first_failure") if isinstance(e.get("first_failure"), str) else ""
         lines.append(
-            f"flaky: {e['id']} — passed on {via} after {n} failure(s)"
-            + (
-                _FLAKY_TOUCH_TAGS.get((e["touched"], e.get("blocked") is True), "")
-                if "touched" in e
-                else ""
-            )
+            f"{prefix}{e['id']} — passed on {via} after {n} failure(s)"
+            + _flake_judgment_tag(e)
             + (f"; first: {first}" if first else "")
         )
     return lines
 
 
-#: What a flake's branch judgment adds to its status line, keyed by
-#: ``(touched, blocked)``. A record written before the judgment existed has no
-#: ``touched`` key at all and gets no tag, which is not the same claim as
-#: ``null`` (judged, and the answer could not be found). The Critic's rule for
-#: ``flaky_policy`` matches the two tags that mean "treat as touched".
-_FLAKY_TOUCH_TAGS = {
-    (True, False): " [touched by this branch]",
-    (None, False): " [branch touch unknown]",
-    (True, True): " [touched by this branch; BLOCKED by flaky_policy, counted as failed]",
-    (None, True): " [branch touch unknown; BLOCKED by flaky_policy, counted as failed]",
-    (False, False): " [outside this branch's diff]",
+#: The printed judgment, by ``touched``. A record written before the judgment
+#: existed has no ``touched`` key and gets no tag, which is not the same claim
+#: as ``null``: judged, and the answer could not be found.
+_FLAKY_TOUCH_TEXT = {
+    True: "touched by this branch",
+    False: "outside this branch's diff",
+    None: "branch touch unknown",
+}
+
+#: The policy's answer, decided at record time and printed with the flake, so
+#: the Critic reads it rather than re-deriving it from a policy that may have
+#: changed since. Its rule matches ``flaky_policy: warn`` and nothing else.
+_FLAKY_OUTCOME_TEXT = {
+    "warn": "; flaky_policy: warn",
+    "accepted": "; accepted by flaky_policy",
+    "blocked": "; BLOCKED by flaky_policy, counted as failed",
 }
 
 
-def saved_flaky_lines(project_dir: Path) -> list[str]:
+def _flake_judgment_tag(entry: dict) -> str:
+    """`` [<touch>[ — why][; <outcome>]]``, or ``""`` when never judged. A
+    value of the wrong type is read as not judged: these fields are printed,
+    never a verdict, so a malformed one must not take the status line down."""
+    touched = entry.get("touched", "absent")
+    if not (touched is None or isinstance(touched, bool)):
+        return ""
+    why = entry.get("touched_why") if touched is None else ""
+    outcome = entry.get("outcome")
+    return (
+        f" [{_FLAKY_TOUCH_TEXT[touched]}"
+        + (f" — {why}" if isinstance(why, str) and why else "")
+        + (_FLAKY_OUTCOME_TEXT.get(outcome, "") if isinstance(outcome, str) else "")
+        + "]"
+    )
+
+
+def saved_flaky_lines(project_dir: Path, *, prefix: str = "flaky: ") -> list[str]:
     """:func:`flaky_lines` for the saved run, whatever its freshness — the one
     answer ``test-status``, the session handoff and the PR payload print. A
     record that cannot be read or fails its schema has no flakes to report;
     its other readers say why."""
     record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
-    return flaky_lines((record or {}).get("flaky"))
+    return flaky_lines((record or {}).get("flaky"), prefix=prefix)
 
 
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":

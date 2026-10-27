@@ -4521,6 +4521,7 @@ def _rerun_failures(
     commands: list,
     templates: list,
     attempts_max: int,
+    options: "list[str] | None" = None,
 ) -> dict:
     """Retry a live run's failing tests, by node id, through each command's
     rerun template, up to ``attempts_max`` times; say why any was not retried.
@@ -4539,6 +4540,7 @@ def _rerun_failures(
     import xml.etree.ElementTree as ET  # noqa: PLC0415
 
     out: dict = {"flaked": [], "rc": {}, "notes": []}
+    options = options or []
     if failed_total > _RERUN_MAX_FAILED:
         out["notes"].append(
             f"not retried: {failed_total} tests failed, more than {_RERUN_MAX_FAILED} — "
@@ -4593,7 +4595,7 @@ def _rerun_failures(
             argv = (
                 _rerun_argv(template, junit, nodes)
                 if command is not None
-                else [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *nodes]
+                else [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *options, *nodes]
             )
             try:
                 try:
@@ -4643,42 +4645,124 @@ def _rerun_failures(
 _FLAKY_POLICIES = ("accept", "warn", "block")
 
 
+def _flake_test_file(
+    entry: dict, project_dir: Path, files: "set[str]"
+) -> "tuple[str | None, str]":
+    """``(repo-relative test file, "")`` for a flake, or ``(None, why not)``.
+
+    The file the touched judgment compares against the branch's changed set,
+    so it must be a path in that set's terms — repo-relative — or nothing. A
+    report's ``file`` is taken when it names a file here: as given, made
+    relative when absolute, or, for a runner whose rootdir is a subdirectory,
+    the one file here that ends with it. Without one, the classname names it:
+    pytest's dotted module path, or for any other runner the class's own path
+    (``com.example.NetTest`` → a unique ``…/com/example/NetTest.<ext>``), so a
+    Surefire flake is judged by its file like a pytest one. ``files`` is the
+    repo's tracked and unignored files. A path that matches nothing, or more
+    than one file, is unknown, never guessed: a wrong file would answer
+    "untouched", the lenient answer."""
+    reported = (entry.get("file") or "").strip()
+    if reported:
+        path = Path(reported)
+        if path.is_absolute():
+            try:
+                rel = path.resolve().relative_to(project_dir.resolve()).as_posix()
+            except ValueError:
+                return None, f"the report names {reported}, outside this repo"
+        else:
+            rel = path.as_posix()
+        if rel in files:
+            return rel, ""
+        hits = sorted(f for f in files if f.endswith("/" + rel))
+        if len(hits) == 1:
+            return hits[0], ""
+        return None, (
+            f"the report's file {reported} matches "
+            + ("no file here" if not hits else f"{len(hits)} files here")
+        )
+    classname, _, name = entry["id"].rpartition("::")
+    if not classname:
+        return None, "the report names no class or file for it"
+    import xml.etree.ElementTree as ET  # noqa: PLC0415 — lazy, as in cmd_test_evidence
+    _, test_file = _pytest_node_id(
+        ET.Element("testcase", {"classname": classname, "name": name}), project_dir
+    )
+    if test_file:
+        return test_file, ""
+    stem = classname.split("$", 1)[0].replace(".", "/")
+    hits = sorted(
+        f for f in files
+        if "." in f.rsplit("/", 1)[-1]
+        and (f.rsplit(".", 1)[0] == stem or f.rsplit(".", 1)[0].endswith("/" + stem))
+    )
+    if len(hits) == 1:
+        return hits[0], ""
+    return None, (
+        f"no file here matches {classname}" if not hits
+        else f"{classname} matches {len(hits)} files here"
+    )
+
+
 def _judge_flakes(project_dir: Path, flaky: list[dict], policy: str) -> list[dict]:
     """Mark each flake ``touched`` — did this branch change its test file? —
-    and, under ``block``, ``blocked``; return the entries that policy leaves
-    failed.
+    and give it the policy's ``outcome``; return the entries the policy
+    leaves failed.
 
     Judged here, at record time, against the base and changed-file set the
     coverage verifier scores, because a runner cannot see the diff and this
     command can. The record is bound to the tree it ran on, so a judgment made
     now cannot be overtaken by a later edit: that edit makes the record stale.
-    ``touched`` is ``null`` when the file is unknown or the diff cannot be
-    read, and every policy reads ``null`` as touched — an unknown case gets
-    the strict answer, never the lenient one."""
+
+    ``touched`` is ``null`` when the file or the diff cannot be read, with
+    ``touched_why`` saying which, and every policy treats ``null`` as touched —
+    an unknown case gets the strict answer, never the lenient one.
+
+    ``outcome`` is the policy's answer, decided here once and printed with the
+    flake, so no reader has to find the policy and apply it again: ``noted``
+    for a flake outside the branch's diff under every policy, else the
+    policy's own — ``accepted``, ``warn`` (the Critic rates it) or
+    ``blocked`` (counted as failed)."""
     cov = _coverage()
-    changed = None
-    base, _ = cov._coverage_resolve_base(project_dir)
+    changed: "set[str] | None" = None
+    base, base_why = cov._coverage_resolve_base(project_dir)
+    diff_why = ""
     if base:
         try:
             changed = set(cov._coverage_changed_files(project_dir, base))
-        except (RuntimeError, OSError, subprocess.SubprocessError):
-            changed = None
+        except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+            diff_why = f"the branch's diff could not be read ({exc})"
+    else:
+        diff_why = f"the branch has no base to diff against ({base_why or 'none resolved'})"
+    if diff_why:
+        print(
+            f"note: {diff_why}, so every flake reads as touched by this branch",
+            file=sys.stderr,
+        )
+    files: "set[str]" = set()
+    from lib import evidence as _evidence_mod  # noqa: PLC0415 — lazy keeps top-level cheap
+    rc, out, _ = _evidence_mod.run_git(
+        project_dir, "ls-files", "--cached", "--others", "--exclude-standard"
+    )
+    if rc == 0:
+        files = {line for line in out.splitlines() if line}
     blocked = []
     for entry in flaky:
-        test_file = entry.get("file")
-        if not test_file:
-            # A runner's report seldom names the file; pytest's classname does.
-            import xml.etree.ElementTree as ET  # noqa: PLC0415 — lazy, as in cmd_test_evidence
-            classname, _, name = entry["id"].rpartition("::")
-            _, test_file = _pytest_node_id(
-                ET.Element("testcase", {"classname": classname, "name": name}), project_dir
-            )
-            if test_file:
-                entry["file"] = test_file
-        entry["touched"] = (test_file in changed) if test_file and changed is not None else None
-        if policy == "block" and entry["touched"] is not False:
-            entry["blocked"] = True
-            blocked.append(entry)
+        test_file, file_why = _flake_test_file(entry, project_dir, files)
+        if test_file:
+            entry["file"] = test_file
+        else:
+            entry.pop("file", None)
+        if changed is not None and test_file:
+            entry["touched"] = test_file in changed
+        else:
+            entry["touched"] = None
+            entry["touched_why"] = diff_why or file_why
+        if entry["touched"] is False:
+            entry["outcome"] = "noted"
+        else:
+            entry["outcome"] = {"accept": "accepted", "warn": "warn", "block": "blocked"}[policy]
+            if policy == "block":
+                blocked.append(entry)
     return blocked
 
 
@@ -4722,6 +4806,7 @@ def _record_narrowed_run(
     source: str,
     degraded_reason: "str | None",
     run_returncodes: list[int],
+    policy_red: bool = False,
 ) -> int:
     """DG2: record a scratch worktree's run into the shared store only.
 
@@ -4734,7 +4819,8 @@ def _record_narrowed_run(
     passed, failed, skipped = record["passed"], record["failed"], record["skipped"]
     counts = f"{passed} passed, {failed} failed, {skipped} skipped in {record['duration_seconds']}s"
     suite_rc = (
-        (0 if all(rc == 0 for rc in run_returncodes) else 1)
+        1 if policy_red  # flaky_policy: block's red, which no command reported
+        else (0 if all(rc == 0 for rc in run_returncodes) else 1)
         if run_returncodes
         else (0 if failed == 0 else 1)
     )
@@ -4763,6 +4849,8 @@ def _record_narrowed_run(
     if degraded_reason:
         run_fact["degraded"] = degraded_reason
     if record.get("flaky"):
+        # The fact is a scratch worktree's only write, so it is the only place
+        # its flakes survive; `test-status` lists them with the delegate's run.
         run_fact["flaky"] = record["flaky"]
     appended = _evidence_mod.append_test_run(project_dir, run_fact)
     if appended.get("status") != "appended":
@@ -4819,7 +4907,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     because appending ids to a command that already names a selection would
     rerun all of it; the fallback pytest path builds its own. More than
     ``_RERUN_MAX_FAILED`` failures, a failure with no test id, or one naming no
-    file here is not retried, and the output says which. Refused with an
+    file here is not retried, and the output says which. A passing retry clears
+    a command only when the run's own status was 1 (tests failed); any other
+    status names a failure outside the tests and stands. Refused with an
     ingest or a restamp, which run nothing. A runner's own retries, where its
     report marks them (``<flakyFailure>``/``<flakyError>``, Surefire's
     convention), are read from any parsed report as the same ``flaky`` entries.
@@ -5709,6 +5799,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             rerun = _rerun_failures(
                 project_dir, failed_cases, failed, declared_commands or [None],
                 rerun_templates, rerun_attempts,
+                # The fallback's own pytest arguments carry over to its retry,
+                # whole: splitting options from paths needs each option's arity,
+                # and a path among them only widens the retry, whose results
+                # are read for the pending ids alone.
+                options=extra,
             )
             for note in rerun["notes"]:
                 print(f"note: {note}", file=sys.stderr)
@@ -5719,11 +5814,25 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 failed -= 1
                 passed += 1
             for root_index, rc in rerun["rc"].items():
-                # Every failure of this command passed on retry, so its exit
-                # status is the last rerun's — which a coverage threshold or
-                # another non-test failure still makes nonzero, and the check
-                # below then refuses it as it would any unexplained exit.
-                run_returncodes[root_index] = rc
+                # Every failure of this command passed on retry. Its status
+                # becomes the last rerun's only when the run's own said "tests
+                # failed" and nothing else: 1, for pytest and testament. Any
+                # other status names a failure outside the tests (an internal
+                # error, an interrupted run), which a rerun of the failing ids
+                # alone would not repeat, so it stands, and the check below
+                # refuses it as an unexplained exit. A non-test failure that
+                # also exits 1 (pytest-cov's threshold) cannot be told apart
+                # from a test failure by status; a rerun of a few ids rarely
+                # clears a whole-suite threshold, and when it does the run is
+                # recorded green.
+                if run_returncodes[root_index] == 1:
+                    run_returncodes[root_index] = rc
+                else:
+                    print(
+                        f"note: the run exited {run_returncodes[root_index]}, not 1 (tests "
+                        "failed), so its passing retry does not clear it",
+                        file=sys.stderr,
+                    )
         # A command that exited nonzero while its own report shows no failure
         # has not been accounted for: the report missed a case, the runner died
         # after writing it, or something outside the tests failed the command.
@@ -5811,12 +5920,6 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             failed += 1
             passed -= 1
             failed_ids.append(entry["id"])
-        if blocked_flakes and run_returncodes:
-            # Both exits (this tree's and a scratch worktree's) take a live
-            # run's status from its commands, and every command may have
-            # exited 0 once its retry passed. The policy's red is one none of
-            # them reported, so it is added as its own.
-            run_returncodes.append(1)
 
     # Base record carries the pytest half PLUS schema-valid placeholder F4a
     # fields, so the file is self-sufficient even if the F4a overlay below is
@@ -5872,6 +5975,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             source="from-junit" if from_junits else "run",
             degraded_reason=degraded_reason,
             run_returncodes=run_returncodes,
+            policy_red=bool(blocked_flakes),
         )
 
     # Atomic write — the freshness gate must never observe a half-written file.
@@ -5955,9 +6059,6 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             run_fact["head"] = head_sha.strip()
         if degraded_reason:
             run_fact["degraded"] = degraded_reason
-        if record.get("flaky"):
-            # A worktree that reuses this run by tree reuses its flakes too.
-            run_fact["flaky"] = record["flaky"]
         appended = _evidence_mod.append_test_run(project_dir, run_fact)
         if appended.get("status") != "appended":
             print(
@@ -6015,6 +6116,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     # Exit status mirrors the suite when we ran it (every declared command must
     # exit 0); in ingest mode there is no process, so derive it from the
     # failure count.
+    if blocked_flakes:
+        # The policy's red, which no command reported: each may have exited 0
+        # once its retry passed.
+        return 1
     if run_returncodes:
         return 0 if all(rc == 0 for rc in run_returncodes) else 1
     return 0 if failed == 0 else 1
@@ -6777,6 +6882,7 @@ def _narrowed_run_lines(project_dir: Path) -> list[str]:
         ceiling = body.get("ceiling") if isinstance(body.get("ceiling"), str) else "(not recorded)"
         flag = " DEGRADED" if isinstance(body.get("degraded"), str) and body["degraded"] else ""
         lines.append(f"  {tree} {fact.get('ts') or '(no time)'}{more}: {counts}{flag} — ceiling: {ceiling}")
+        lines.extend(_gates().flaky_lines(body.get("flaky"), prefix="    flaky: "))
     if len(ordered) > _NARROWED_RUNS_SHOWN:
         lines.append(f"  … and {len(ordered) - _NARROWED_RUNS_SHOWN} older worktree(s)")
     return lines

@@ -20,8 +20,9 @@ hidden, and it is judged against the branch's diff, which a test runner cannot s
   pass and carries a `flaky` entry: id, first failure text (bounded), the number of failed
   attempts, the source, and the test file where the report names one. `<rerunFailure>` sits beside
   a final `<failure>`, so that test failed every attempt and stays failed.
-- `flaky` is capped and sorted, and omitted when nothing flaked. It is carried by the record, the
-  `test-run` fact and a restamp. It is kept out of the evidence schema, as `failed_tests` is: it
+- `flaky` is capped and sorted, and omitted when nothing flaked. It is carried by the record and
+  a restamp, and by a scratch worktree's narrowed `test-run` fact, whose flakes `test-status`
+  lists under that delegate's run. It is kept out of the evidence schema, as `failed_tests` is: it
   is printed and carried, and a malformed value never moves a verdict.
 - The record line prints `passed only on retry:`. `test-status` prints one `flaky:` line per
   flake after its verdict, and the exit code is unchanged.
@@ -47,15 +48,20 @@ hidden, and it is judged against the branch's diff, which a test runner cannot s
 ### Chunk 03: flakes are judged against the branch
 
 - Each flake is marked `touched` when the branch's changed files (the coverage verifier's base
-  and set) include its test file. The file comes from the report, or is resolved from pytest's
-  classname. `null`, meaning the file or the diff could not be read, is treated as touched by
-  every policy.
-- `flaky_policy: accept | warn | block` (default `warn`). `block` leaves a touched flake failed,
-  so the record is red and the exit status nonzero. A restamp is not judged again. An unknown
-  value is refused before any run.
-- `test-status` tags each flake `[touched by this branch]`, `[branch touch unknown]` or
-  `[outside this branch's diff]`. The boundary Critic warns on the first two under `warn`, and
-  the rule is pinned to the printed tags.
+  and set) include its test file. The file comes from the report, made repo-relative (absolute
+  paths, and paths relative to a pytest rootdir below the repo), or from the classname: pytest's
+  module path, or for any other runner the class's own file, so a Surefire flake is judged by
+  its `.java` file. `null` means the file or the diff could not be read; `touched_why` says
+  which, and every policy treats it as touched.
+- `flaky_policy: accept | warn | block` (default `warn`). The policy's answer is decided once,
+  at record time, and stored as each flake's `outcome` (`noted`, `accepted`, `warn` or
+  `blocked`). `block` leaves a touched flake failed, so the record is red and the exit status
+  nonzero. A restamp is not judged again. An unknown value is refused before any run.
+- `test-status` prints the judgment and the outcome with each flake, for example
+  `[touched by this branch; flaky_policy: warn]`. The boundary Critic warns on a line carrying
+  `flaky_policy: warn`, and the rule is pinned to the printed text.
+- A retry clears a command only when the run's own exit status was 1 (tests failed, for pytest
+  and testament). Any other status names a failure outside the tests and stands.
 - A flake in an unchanged test file that covers changed code is not yet treated as touched:
   #1088.
 
