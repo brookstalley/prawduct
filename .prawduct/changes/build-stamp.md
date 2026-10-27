@@ -39,5 +39,7 @@ workaround, and it costs a change record, two boundary reviews and a full suite 
 ## Consumer note
 Every evidence fact now records which plugin build wrote it when the plugin runs
 from a git checkout (a dev or beta build), as `actor.build`. A marketplace install records none.
-To compare builds of the same version, run `prawduct-hook stats --by-build`. Nothing you send
-upstream changes: contribution reports still carry only the major.minor version.
+To compare builds of the same version, run `prawduct-hook stats --by-build`. The build sha now
+travels with those facts wherever `evidence sync` pushes them, which is your product's own remote,
+as the branch name already does. Contribution reports to prawduct are unchanged: they still carry
+only the major.minor version.
