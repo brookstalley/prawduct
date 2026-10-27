@@ -195,8 +195,9 @@ at record time.
 - **Deliverables:**
   - `plugin/bin/prawduct-hook` `cmd_test_evidence`: a leaf with `flakyFailure`/`flakyError` and
     no `failure`/`error` is passed with a flake; collect `flaky` entries (`source: "junit"`,
-    `attempts` = number of flaky elements); write the capped field to the record and the
-    `test-run` fact; print a `flaky:` line.
+    `attempts` = number of flaky elements); write the capped field to the record (and, since
+    the boundary review, only a scratch worktree's narrowed `test-run` fact); print a `flaky:`
+    line.
   - `plugin/lib/gates.py`: one `name_flaky_tests` formatter (tolerant of malformed values),
     used by the record line and by `test_status`, which prints one line per flake after the
     verdict and never changes the exit code.
@@ -206,7 +207,7 @@ at record time.
   - flakyError counts the same as flakyFailure;
   - no flake elements → no `flaky` key at all (absence, never `[]`);
   - cap at 20; malformed `flaky` in a record → `test-status` exit unchanged, no traceback;
-  - `test-run` fact carries `flaky`.
+  - the plain `test-run` fact carries no `flaky` (boundary review; see "Persisted format").
 - **Acceptance criteria:** tests pass. An existing record without the key reads exactly as
   before.
 - **Done when:**
@@ -252,14 +253,15 @@ at record time.
 - **Depends on:** Chunk 02
 - **Deliverables:**
   - `plugin/bin/prawduct-hook`: `touched` on each entry from `coverage._coverage_changed_files`
-    at `coverage._coverage_resolve_base`, with `null` when the file is unknown or the diff
-    cannot run. Under `block`, a touched or unknown flake is not credited: it stays in `failed`
-    and `failed_tests`, and the entry records `"blocked": true`.
+    at `coverage._coverage_resolve_base`, with `null` and `touched_why` when the file or the diff
+    cannot be read, and the policy's `outcome` decided here. Under `block`, a touched or unknown
+    flake is not credited: it stays in `failed` and `failed_tests`, with `outcome: "blocked"`.
   - `flaky_policy` reader: an unknown value is refused (exit 2), like other enum keys.
-  - `plugin/lib/gates.py` `test_status`: mark touched flakes `(touched by this branch)`.
-  - `plugin/skills/critic/goals-1-3.md` and `review-protocol.md`: under `warn`, a touched or
-    unknown flake in the evidence → WARNING "a test this branch touched passed only on retry" at
-    the boundary, an observation at the inner stage. Under `accept`, nothing.
+  - `plugin/lib/gates.py` `test_status`: print each flake's judgment and outcome, e.g.
+    `[touched by this branch; flaky_policy: warn]`.
+  - `plugin/skills/critic/goals-1-3.md` and `review-protocol.md`: a `flaky:` line carrying
+    `flaky_policy: warn` → WARNING at the boundary, an observation at the inner stage. Under
+    `accept` the line carries no such text, so nothing.
   - `plugin/docs/project-state-keys.md`: `flaky_policy`, `test_rerun_command(s)`.
   - File the deferred covered-code backlog item.
 - **Tests:** touched / untouched / unknown classification; `block` keeps a touched flake red
