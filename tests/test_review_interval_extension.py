@@ -231,6 +231,11 @@ class TestStopGate:
         assert _GENERIC_BLOCK not in result.stderr
         assert "deferred-boundary-review" in result.stderr
         assert "starts from the newest committed state a review covers" in result.stderr
+        # A status nobody at exit 0 can act on stays in the log: no
+        # `systemMessage` puts it in the user's transcript every turn. (Other
+        # advisories, e.g. the handoff note, may still be shown.)
+        shown = json.loads(result.stdout)["systemMessage"] if result.stdout.strip() else ""
+        assert "deferred-boundary-review" not in shown
 
     def test_near_the_end_the_uncovered_fix_still_blocks(self, tmp_path):
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=True)

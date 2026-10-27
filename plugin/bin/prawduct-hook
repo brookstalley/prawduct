@@ -246,6 +246,13 @@ def _cumulative_final_last_chunk(project_dir: Path, prawduct_dir: Path, binding)
 DEFERRED_REVIEW_TOKEN = "deferred-boundary-review"
 
 
+class _LogOnlyAdvisory(str):
+    """An advisory with no reader at exit 0: a status the user cannot act on
+    and the model never sees there. It still rides the exit-2 block text, where
+    the model reads it, and the stderr log; it is kept out of the transcript's
+    ``systemMessage``, which is where a per-turn status becomes noise."""
+
+
 def _deliver_stop_advisories(advisories: list[str], *, blocking: bool) -> None:
     """Deliver the Stop gate's non-blocking advisories — the one owner, called
     at every exit of ``cmd_stop`` once ``stop_advisories`` is declared.
@@ -262,7 +269,8 @@ def _deliver_stop_advisories(advisories: list[str], *, blocking: bool) -> None:
       starting another turn (``hookSpecificOutput.additionalContext``
       continues the conversation, under the same continuation cap as a
       block), so none is used: the advisory's remedy reaches the model where
-      the gate blocks. The text is mirrored on stderr for the log.
+      the gate blocks. The text is mirrored on stderr for the log. A
+      :class:`_LogOnlyAdvisory` is mirrored on stderr and goes no further.
     """
     if not advisories:
         return
@@ -274,7 +282,9 @@ def _deliver_stop_advisories(advisories: list[str], *, blocking: bool) -> None:
     for advisory in advisories:
         print("", file=sys.stderr)
         print(advisory, file=sys.stderr)
-    print(json.dumps({"systemMessage": "\n\n".join(advisories)}))
+    shown = [a for a in advisories if not isinstance(a, _LogOnlyAdvisory)]
+    if shown:
+        print(json.dumps({"systemMessage": "\n\n".join(shown)}))
 
 
 def _record_lint():
@@ -2864,8 +2874,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     blockers: list[str] = []
     canary_findings: list[str] = []
     # Non-blocking advisories, delivered through `_deliver_stop_advisories` at
-    # every return below: at exit 0 they reach the user only (systemMessage),
-    # at exit 2 both readers (stderr, beside the blockers).
+    # every return below: at exit 0 they reach the user only (systemMessage) —
+    # except a `_LogOnlyAdvisory`, which stays in the stderr log — and at exit 2
+    # both readers (stderr, beside the blockers).
     stop_advisories: list[str] = []
 
     # STH-3W7F: is harness-tracked background work still producing the diff?
@@ -3819,14 +3830,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                 else None
             )
             if extension is not None:
-                stop_advisories.append(_attributed("critic",
+                stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span} yet, and none is owed now — {extension}.\n"
                     "  The next `/prawduct:critic` of this plan's work reviews from that\n"
                     "  state, so this work is covered then without a round of its own.\n"
-                ))
+                )))
             elif deferral is not None and deferral.defers and not deferral.last_chunk:
-                stop_advisories.append(_attributed("critic",
+                stop_advisories.append(_LogOnlyAdvisory(_attributed("critic",
                     f"WARNING ({DEFERRED_REVIEW_TOKEN}): no review covers this session's\n"
                     f"  changes{span}, and none is owed yet — {deferral.reason}.\n"
                     "  This chunk's review is deferred to the boundary. Next:\n"
@@ -3835,7 +3846,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     + "  The boundary review is the PR gate's evidence. To review this chunk anyway, run\n"
                     "  `/prawduct:critic chunk`, or declare `Critic mode:` on any chunk of\n"
                     "  the plan to restore per-chunk review for the whole plan.\n"
-                ))
+                )))
             else:
                 last_chunk_note = (
                     "  This plan is short and its per-chunk reviews were deferred to this\n"
