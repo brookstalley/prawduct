@@ -188,6 +188,18 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
     ]
 
 
+#: Why the tripwire matters, shared by both shapes of the advisory.
+_TRIPWIRE_WHY = (
+    "every other prawduct check is delivered by the plugin, so in a session "
+    "that loads no plugin (a new Claude Code profile, a machine that never ran "
+    "the install) only a project hook can say governance is off"
+)
+_TRIPWIRE_COST = (
+    " — a session whose profile has no prawduct install for this repo would run "
+    "ungoverned with nothing saying so"
+)
+
+
 def probe_tripwire_missing(state: ProjectState, codebase: Codebase):
     """Fire when an onboarded repo's settings lack the current unloaded-plugin
     tripwire hook (``lib/unloaded_tripwire.py``).
@@ -196,14 +208,37 @@ def probe_tripwire_missing(state: ProjectState, codebase: Codebase):
     session is exactly the one where this probe cannot run — so the nudge has to
     land here, in a session that did load it, for the hook to be there next time.
     Gated on the marketplace entry like the drift probe: a repo that never
-    onboarded has nothing to add it to. A malformed settings file or ``hooks``
-    shape is not fired on; the drift check takes the same stance.
+    onboarded has nothing to add it to. A ``hooks`` shape the writer refuses
+    fires too, with evidence naming the shape, because that repo is just as
+    silent and no writer will fix it unasked.
     """
     if not install_reference_drift(codebase.root)["present"]:
         return []
-    found = unloaded_tripwire.read_settings_state(codebase.root)
-    if found not in (unloaded_tripwire.ABSENT, unloaded_tripwire.STALE):
+    found, reason = unloaded_tripwire.read_settings(codebase.root)
+    if found == unloaded_tripwire.PRESENT:
         return []
+    if found == unloaded_tripwire.MALFORMED:
+        return [
+            AdvisoryCandidate(
+                type="tripwire-missing",
+                evidence=(
+                    ".claude/settings.json has a shape the tripwire writer will not "
+                    f"edit: {reason}",
+                    _TRIPWIRE_WHY,
+                ),
+                trigger_summary=(
+                    "this repo's committed .claude/settings.json cannot take the "
+                    f"unloaded-plugin tripwire hook: {reason}{_TRIPWIRE_COST}"
+                ),
+                owner_action=(
+                    "Fix the `hooks` shape in .claude/settings.json by hand (it must be "
+                    "an object whose SessionStart is a list); after that, say go and the "
+                    "hook is added with everything else kept."
+                ),
+                recommended_action="/prawduct:doctor",
+                priority="info",
+            )
+        ]
     what = (
         "has no unloaded-plugin tripwire hook"
         if found == unloaded_tripwire.ABSENT
@@ -215,15 +250,9 @@ def probe_tripwire_missing(state: ProjectState, codebase: Codebase):
             evidence=(
                 ".claude/settings.json lacks the current SessionStart hook that "
                 "lib/unloaded_tripwire.py writes",
-                "every other prawduct check is delivered by the plugin, so in a session "
-                "that loads no plugin (a new Claude Code profile, a machine that never ran "
-                "the install) only a project hook can say governance is off",
+                _TRIPWIRE_WHY,
             ),
-            trigger_summary=(
-                f"this repo's committed .claude/settings.json {what} — a session whose "
-                "profile has no prawduct install for this repo would run ungoverned with "
-                "nothing saying so"
-            ),
+            trigger_summary=f"this repo's committed .claude/settings.json {what}{_TRIPWIRE_COST}",
             owner_action=(
                 "Say go — this adds one SessionStart hook to a committed settings file "
                 "and keeps everything else in it; you will see what it adds before "

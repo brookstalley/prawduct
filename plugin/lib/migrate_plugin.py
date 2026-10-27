@@ -28,7 +28,7 @@ from pathlib import Path
 
 from dataclasses import dataclass
 
-from . import core, lifecycle_repair, unloaded_tripwire
+from . import core, lifecycle_repair
 from .anchor_archive import shipped_anchor_in
 
 # The committed install reference (design §8). Pins the marketplace + plugin
@@ -423,7 +423,12 @@ def transform_settings(project_dir: Path) -> bool:
         data[top_key] = existing
 
     # The project-level SessionStart hook that speaks when the plugin did not
-    # load — the one piece of governance that runs without it.
+    # load — the one piece of governance that runs without it. Imported here:
+    # the tripwire reads this module's PLUGIN_ID, so the import stays one-way. A
+    # hooks shape it cannot add to is left alone; callers report it
+    # (`unloaded_tripwire.skipped_warning`).
+    from . import unloaded_tripwire  # noqa: PLC0415
+
     unloaded_tripwire.ensure_tripwire(data)
 
     if json.dumps(data, sort_keys=True) == before and path.is_file():
@@ -1057,6 +1062,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
                 "untouched, so the `distribution: plugin` marker will NOT be "
                 "recorded and no retired keys will be removed. Fix the file first."
             )
+        _note_skipped_tripwire(project_dir, result)
         result["notes"].append(
             "Dry run — no files changed. Re-run with --apply to perform the cutover."
         )
@@ -1087,6 +1093,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     edited.extend(apply_governance_anchor(project_dir).paths)
     if transform_settings(project_dir):
         edited.append(".claude/settings.json")
+    _note_skipped_tripwire(project_dir, result)
     # Before the append, so the distribution marker lands at the end of a state
     # file that has already shed its retired keys rather than above them.
     state_keys_removed = strip_retired_state(project_dir)
@@ -1122,6 +1129,15 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         "Cutover applied. Review `git status`, then commit as one reversible commit."
     )
     return result
+
+
+def _note_skipped_tripwire(project_dir: Path, result: dict) -> None:
+    """Say so when the settings' ``hooks`` shape stops the tripwire being written."""
+    from . import unloaded_tripwire  # noqa: PLC0415 — see transform_settings
+
+    warning = unloaded_tripwire.skipped_warning(project_dir)
+    if warning:
+        result["notes"].append(warning)
 
 
 def run(project_dir: str | Path, argv: list[str]) -> int:

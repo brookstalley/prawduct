@@ -520,7 +520,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   (`gates.commit_coverage`); verdict token leads on stdout, degrades to `unknown` rather than a
   reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
-  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`, `install-tripwire`,
   `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`, `migrate-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
@@ -578,8 +578,8 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`reanchor`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`,
-`migrate-change-log`) default to a
+`reanchor`, `install-tripwire`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`,
+`cut-change-log`, `migrate-change-log`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
@@ -635,6 +635,14 @@ files to touch previews first. That framing is descriptive — the binding rule 
     separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
     to repair, the second is an anchor the owner has edited, which this command reports and
     declines to overwrite.
+  - `install-tripwire --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #1
+    runs the command and relays its human form. The shape is published for programmatic consumers
+    and carries keys `status` — the state found before any write, one of `present` / `absent` /
+    `stale` / `malformed` — plus `applied` (whether this run wrote), `path` (the settings file)
+    and `reason` (the malformed shape in words, `null` otherwise). Unlike `reanchor`, an
+    `--apply` that wrote still reports the status it found (`absent` or `stale`) with
+    `applied: true`. Dry run exits 0 when it ran and 1 on `malformed` (could not grade); `--apply`
+    exits 0 on a write or an already-current hook and 1 on `malformed` (nothing written).
   - `stale-plugin-caches --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #21
     runs the command and relays its human form. The key set is listed once, in the § Operations
     "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it

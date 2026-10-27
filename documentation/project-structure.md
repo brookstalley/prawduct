@@ -93,7 +93,7 @@ prawduct/
 
 ## Product repos (plugin-governed)
 
-A v2 product repo commits only its own state plus a small install reference — no framework files. Governance comes from the plugin.
+A v2 product repo commits only its own state plus a small install reference and the unloaded-plugin tripwire hook beside it in `.claude/settings.json` — no framework files. Governance comes from the plugin; the tripwire only says when the plugin did not load.
 
 ```
 my-product/

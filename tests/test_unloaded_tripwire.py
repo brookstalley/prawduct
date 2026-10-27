@@ -127,6 +127,49 @@ def test_project_dir_through_a_symlink_is_silent(world, tmp_path):
     assert _run_hook(world, project=link) == ""
 
 
+def _linked_worktree(main: Path, wt: Path, *, relative: bool = False) -> Path:
+    """The on-disk shape `git worktree add` leaves: a `.git` FILE in the
+    worktree naming `<main>/.git/worktrees/<name>`, whose `commondir` is `../..`."""
+    gitdir = main / ".git" / "worktrees" / wt.name
+    gitdir.mkdir(parents=True)
+    (gitdir / "commondir").write_text("../..\n")
+    wt.mkdir(parents=True)
+    pointer = gitdir.relative_to(wt, walk_up=True) if relative else gitdir
+    (wt / ".git").write_text(f"gitdir: {pointer}\n")
+    return wt
+
+
+@pytest.mark.parametrize("relative", [False, True])
+def test_a_worktree_of_the_recorded_checkout_is_silent(world, tmp_path, relative):
+    """A project-scope record names the main checkout; `claude --worktree` starts
+    the session in a linked worktree of it, where the plugin loads too."""
+    if relative and sys.version_info < (3, 12):
+        pytest.skip("Path.relative_to(walk_up=True) needs 3.12")
+    (world["repo"] / ".git").mkdir()
+    wt = _linked_worktree(world["repo"], tmp_path / "wt" / "feature", relative=relative)
+    _manifest(world, {"version": 2, "plugins": {pa.PLUGIN_ID: [_record(world["repo"])]}})
+    assert _run_hook(world, project=wt) == ""
+    assert pa.plugin_activation_status(wt, plugins_file=world["config"] / "plugins" / "installed_plugins.json")["status"] == "active"
+
+
+def test_a_worktree_of_an_unrecorded_checkout_is_still_the_loud_line(world, tmp_path):
+    (world["other"] / ".git").mkdir()
+    wt = _linked_worktree(world["other"], tmp_path / "wt" / "feature")
+    _manifest(world, {"version": 2, "plugins": {pa.PLUGIN_ID: [_record(world["repo"])]}})
+    assert _run_hook(world, project=wt).startswith(_LOUD)
+
+
+def test_a_submodule_does_not_borrow_its_superprojects_record(world, tmp_path):
+    """A submodule's `.git` file names a gitdir with no `commondir`."""
+    (world["repo"] / ".git" / "modules" / "sub").mkdir(parents=True)
+    sub = world["repo"] / "sub"
+    sub.mkdir()
+    (sub / ".git").write_text(f"gitdir: {world['repo'] / '.git' / 'modules' / 'sub'}\n")
+    _manifest(world, {"version": 2, "plugins": {pa.PLUGIN_ID: [_record(world["repo"])]}})
+    assert _run_hook(world, project=sub).startswith(_LOUD)
+    assert pa.checkout_paths(sub.resolve()) == [sub.resolve()]
+
+
 def test_record_for_a_different_repo_only_is_the_loud_line(world):
     _manifest(world, {"version": 2, "plugins": {pa.PLUGIN_ID: [_record(world["other"])]}})
     assert _run_hook(world).startswith(_LOUD)
@@ -164,7 +207,7 @@ def test_a_missing_python3_is_still_visible(world):
     empty.mkdir()
     out = _run_hook(world, path=str(empty))
     assert out.startswith(_SOFT)
-    assert "python3 could not be run" in out
+    assert "(python3 not found:" in out
 
 
 def test_a_python3_that_fails_to_run_is_still_visible(world):
@@ -175,7 +218,9 @@ def test_a_python3_that_fails_to_run_is_still_visible(world):
     (shim / "python3").write_text("#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n")
     (shim / "python3").chmod(0o755)
     out = _run_hook(world, path=f"{shim}:/usr/bin:/bin")
-    assert "python3 could not be run" in out
+    assert out.startswith(_SOFT)
+    assert "(python3 exited 1, so the check did not finish:" in out
+    assert "not found" not in out
 
 
 def test_default_config_dir_is_home_dot_claude(world):
@@ -220,10 +265,31 @@ def test_verdict_agrees_with_plugin_activation(world, content):
             .replace('"OTHER"', json.dumps(str(world["other"])))
         )
     path = _manifest(world, content)
-    expected = pa.plugin_activation_status(world["repo"], plugins_file=path)["status"]
-    out = _run_hook(world)
-    got = "active" if out == "" else "inactive" if out.startswith(_LOUD) else "unknown"
-    assert got == expected, out
+    (world["repo"] / ".git").mkdir()
+    wt = _linked_worktree(world["repo"], world["home"] / "wt")
+    for project in (world["repo"], wt):
+        expected = pa.plugin_activation_status(project, plugins_file=path)["status"]
+        out = _run_hook(world, project=project)
+        got = "active" if out == "" else "inactive" if out.startswith(_LOUD) else "unknown"
+        assert got == expected, (project, out)
+
+
+def test_the_matcher_is_the_banner_hooks_own():
+    """'No banner appeared' and 'the tripwire would have spoken' must cover the
+    same session starts — read from the plugin's hooks.json, not restated."""
+    hooks = json.loads((_PLUGIN_ROOT / "hooks" / "hooks.json").read_text())["hooks"]
+    banner = [
+        g["matcher"] for g in hooks["SessionStart"]
+        if any("hooks/banner.py" in h["command"] for h in g["hooks"])
+    ]
+    assert banner == [tw.TRIPWIRE_MATCHER]
+
+
+def test_the_plugin_id_is_the_install_contracts():
+    from lib.migrate_plugin import PLUGIN_ID
+
+    assert tw.PLUGIN_ID is PLUGIN_ID
+    assert next(iter(INSTALL_REFERENCE["enabledPlugins"])) in tw.TRIPWIRE_COMMAND
 
 
 def test_the_python_half_survives_sh_single_quoting():
@@ -275,6 +341,30 @@ def test_replacing_a_stale_copy_alone_in_its_group_drops_the_empty_group():
     assert data["hooks"]["SessionStart"] == [tw.TRIPWIRE_GROUP]
 
 
+@pytest.mark.parametrize(
+    "data", [{"hooks": None}, {"hooks": {"SessionStart": None}}, {"hooks": {"Stop": []}}]
+)
+def test_a_null_hooks_value_reads_as_absent(data):
+    assert tw.tripwire_state(data) == tw.ABSENT
+    assert tw.ensure_tripwire(data) is True
+    assert data["hooks"]["SessionStart"] == [tw.TRIPWIRE_GROUP]
+
+
+@pytest.mark.parametrize(
+    "hooks, named",
+    [
+        ([], "`hooks` is a JSON array"),
+        ("x", "`hooks` is a JSON string"),
+        ({"SessionStart": {"a": 1}}, "`hooks.SessionStart` is a JSON object"),
+        ({"SessionStart": 3}, "`hooks.SessionStart` is a JSON number"),
+    ],
+)
+def test_a_malformed_shape_is_named(hooks, named):
+    data = {"hooks": hooks}
+    assert tw.tripwire_state(data) == tw.MALFORMED
+    assert tw.malformed_shape(data).startswith(named)
+
+
 def test_ensure_leaves_a_malformed_hooks_shape_alone():
     data = {"hooks": {"SessionStart": {"not": "a list"}}}
     assert tw.tripwire_state(data) == tw.MALFORMED
@@ -299,6 +389,48 @@ def test_transform_settings_writes_it_once_and_keeps_it(tmp_path):
     commands = [h["command"] for g in data["hooks"]["SessionStart"] for h in g["hooks"]]
     assert commands == ["echo mine", tw.TRIPWIRE_COMMAND]
     assert data["enabledPlugins"] == INSTALL_REFERENCE["enabledPlugins"]
+
+
+def test_transform_settings_survives_null_hooks(tmp_path):
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text('{"hooks": null}')
+    assert transform_settings(tmp_path) is True
+    data = json.loads((tmp_path / ".claude" / "settings.json").read_text())
+    assert tw.tripwire_state(data) == tw.PRESENT
+
+
+def test_init_product_says_when_a_malformed_hooks_shape_kept_the_hook_out(tmp_path):
+    from lib.init_product import init_product
+
+    repo = tmp_path / "product"
+    (repo / ".claude").mkdir(parents=True)
+    (repo / ".claude" / "settings.json").write_text('{"hooks": {"SessionStart": {"x": 1}}}')
+    for apply in (False, True):
+        result = init_product(repo, "Product", apply=apply)
+        named = [w for w in result["warnings"] if "tripwire not written" in w]
+        assert len(named) == 1, result["warnings"]
+        assert "`hooks.SessionStart` is a JSON object" in named[0]
+
+
+def test_init_product_does_not_warn_on_a_normal_repo(tmp_path):
+    from lib.init_product import init_product
+
+    repo = tmp_path / "product"
+    repo.mkdir()
+    result = init_product(repo, "Product", apply=True)
+    assert not [w for w in result["warnings"] if "tripwire" in w]
+
+
+def test_migrate_says_when_a_malformed_hooks_shape_kept_the_hook_out(tmp_path):
+    from lib.migrate_plugin import migrate_to_plugin as migrate
+
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "settings.json").write_text('{"hooks": []}')
+    for apply in (False, True):
+        result = migrate(tmp_path, apply=apply)
+        named = [n for n in result["notes"] if "tripwire not written" in n]
+        assert len(named) == 1, result["notes"]
+        assert "`hooks` is a JSON array" in named[0]
 
 
 def test_init_product_writes_it(tmp_path):
@@ -371,7 +503,9 @@ def test_cli_apply_writes_and_is_idempotent(tmp_path):
     after = path.read_bytes()
     again = _cli(tmp_path, "--apply", "--json")
     assert again.returncode == 0
-    assert json.loads(again.stdout) == {"status": "present", "applied": False, "path": str(path)}
+    assert json.loads(again.stdout) == {
+        "status": "present", "applied": False, "path": str(path), "reason": None,
+    }
     assert path.read_bytes() == after
 
 
@@ -421,6 +555,33 @@ def test_probe_is_inert_once_the_doctor_repair_ran(tmp_path):
     assert irp.probe_tripwire_missing(ProjectState({}), Codebase(root=tmp_path))
     assert _cli(tmp_path, "--apply").returncode == 0
     assert irp.probe_tripwire_missing(ProjectState({}), Codebase(root=tmp_path)) == []
+
+
+def test_probe_fires_on_a_malformed_hooks_shape_naming_it(tmp_path):
+    _onboarded(tmp_path, hooks={"SessionStart": "oops"})
+    out = irp.probe_tripwire_missing(ProjectState({}), Codebase(root=tmp_path))
+    assert [c.type for c in out] == ["tripwire-missing"]
+    assert "`hooks.SessionStart` is a JSON string" in out[0].evidence[0]
+    assert "`hooks.SessionStart` is a JSON string" in out[0].trigger_summary
+    assert "by hand" in out[0].owner_action
+
+
+def test_dismissing_the_advisory_silences_it(tmp_path, _isolated_registry):
+    """The consumer note's opt-out: dismiss it, and the next sync keeps it
+    dismissed rather than raising it again."""
+    from lib import advisory_store as store
+
+    _onboarded(tmp_path)
+    (tmp_path / ".prawduct").mkdir()
+    irp.register()
+    store.run_sync_advisories(tmp_path)
+    ids = [a["id"] for a in store.read_store(tmp_path)["advisories"]
+           if a.get("type") == "tripwire-missing" and a.get("state") == "active"]
+    assert len(ids) == 1
+    store.dismiss(tmp_path, ids[0], "we do not want the hook")
+    assert store.run_sync_advisories(tmp_path)["active"] == 0
+    states = {a["id"]: a["state"] for a in store.read_store(tmp_path)["advisories"]}
+    assert states[ids[0]] == "dismissed"
 
 
 def test_probe_is_inert_on_a_repo_that_never_onboarded(tmp_path):

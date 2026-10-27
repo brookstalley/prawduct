@@ -6,7 +6,7 @@ disable-model-invocation: false
 allowed-tools: Bash(prawduct-hook init-product*), Bash(prawduct-hook coverage-scaffold*), Bash(prawduct-hook backlog provision*), Bash(python3 plugin/bin/prawduct-hook backlog provision*), Bash(prawduct-hook check-plugin-active*), Bash(python3 plugin/bin/prawduct-hook check-plugin-active*), Bash(git status*), Bash(git -C * status*), Bash(git add *), Bash(git -C * add *), Bash(git commit *), Bash(git -C * commit *), Bash(prawduct-hook evidence configure*), Read, Glob, Grep
 ---
 
-You are onboarding a repo onto Prawduct under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* plus its own `.prawduct/` state — no framework files. Onboarding is the same whether the repo is brand-new or an existing codebase, and it operates on the consumer's own repo — there is no framework checkout to call back to.
+You are onboarding a repo onto Prawduct under the **plugin** distribution model. Prawduct is installed as a Claude Code plugin (dev-time governance); a product commits only the install *reference* and the unloaded-plugin tripwire hook (both in `.claude/settings.json`) plus its own `.prawduct/` state — no framework files. Onboarding is the same whether the repo is brand-new or an existing codebase, and it operates on the consumer's own repo — there is no framework checkout to call back to.
 
 (For an already-onboarded repo, health-check / repair / maintenance lives in **`/prawduct:doctor`**, not here.)
 

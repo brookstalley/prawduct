@@ -267,6 +267,11 @@ def init_product(
         (edited if settings_exists else created).append(".claude/settings.json")
         if apply:
             transform_settings(project_dir)
+    # Said, never swallowed: a `hooks` shape the writer cannot add to leaves the
+    # repo without the tripwire, and a session that loads no plugin silent.
+    tripwire_skipped = unloaded_tripwire.skipped_warning(project_dir)
+    if tripwire_skipped:
+        warnings.append(tripwire_skipped)
 
     # distribution: plugin (the stand-down signal; also the idempotency marker).
     if apply:

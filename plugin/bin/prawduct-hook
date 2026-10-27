@@ -9521,8 +9521,7 @@ def cmd_install_tripwire(project_dir: Path, argv: list[str]) -> int:
             "plugin here starts ungoverned with nothing saying so.",
             unloaded_tripwire.STALE: "the tripwire hook is an older or edited copy; the "
             "repair replaces it with the current one.",
-            unloaded_tripwire.MALFORMED: "settings.json is not JSON, or its `hooks` / "
-            "`hooks.SessionStart` is not the shape Claude Code reads; fix it by hand "
+            unloaded_tripwire.MALFORMED: f"{result['reason']}; fix it by hand "
             "first. Nothing was written.",
         }[status]
         print(f"install-tripwire ({'apply' if apply else 'dry-run'}): {status}")
