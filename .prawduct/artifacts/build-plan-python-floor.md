@@ -64,7 +64,8 @@ installing a Python for the user; Windows-specific interpreter discovery (`py -3
 - *Stop does not block on a missing interpreter.* Exit 2 at Stop asks the model to fix something
   only the user can, which loops. It exits 1 (non-blocking, shown to the user) with the remedy.
 - *Version tier.* Shipped inside 3.8.0 (minor), not a major: a machine with any 3.14 installed keeps
-  working unchanged, and the consumer note names the requirement. The owner may override.
+  working unchanged, and the consumer note names the requirement. **Confirmed by the owner
+  2026-10-27: "yes 3.14 goes to 3.8.0".**
 - *`tomllib` fallback.* The 3.10 branch in `release_verification` that reports "unverifiable" when
   `tomllib` is missing becomes dead and is removed with its test.
 
