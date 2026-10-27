@@ -102,17 +102,17 @@ STATIC_ANCHOR = f"""{ANCHOR_MARKER}
 
 ## Governance (Prawduct)
 
-This repo is governed by **Prawduct**, loaded through your agent host's
-Prawduct integration.
+This repo is governed by **Prawduct**, through your agent host's integration.
 
-**Check first: is that integration loaded?** If not, **governance is OFF** — no
-Stop gate, no Critic, nothing below enforced. Tell the user; don't proceed as if
-governed. If you can't tell, assume it isn't.
+**Check first: is it loaded?** If not, or if you can't tell,
+**governance is OFF** — no Stop gate, no Critic, nothing below enforced. Tell
+the user before any work; don't proceed as if governed or imitate its gates from
+its files.
 
-- **Claude Code:** loaded when `/prawduct:*` commands are available; if not, run
+- **Claude Code:** loaded if its session banner appeared; if not, run
   `claude plugin install {PLUGIN_ID}` and restart.
 
-**With it loaded — before writing any code, STOP and read the build cycle**
+**Then, before writing any code, STOP and read the build cycle**
 (Claude Code: `/prawduct:methodology building`). Skipping it is the #1 governance
 failure.
 
@@ -129,8 +129,8 @@ Hardest rules:
   review.
 
 **Enforcement is structural — while the integration is loaded:** its Stop hook
-runs at session end and **blocks** if code changed against an active build plan
-with no Critic findings.
+**blocks** at session end if code changed against an active build plan with no
+Critic findings.
 """
 
 #: Where the anchor lives, and the one line that makes Claude Code read it.

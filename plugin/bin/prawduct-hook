@@ -9421,8 +9421,7 @@ def cmd_norm_index_scaffold(project_dir: Path, argv: list[str]) -> int:
 def cmd_reanchor(project_dir: Path, argv: list[str]) -> int:
     """Detect — and on ``--apply`` repair — a governance anchor that is in the
     wrong place (still in ``CLAUDE.md`` rather than ``AGENTS.md``, or not imported
-    by ``CLAUDE.md``) or lacks one of the current text's load-bearing sentences:
-    the plugin-absent notice, or the rule that review rigor is stage-keyed
+    by ``CLAUDE.md``) or lacks one of the current text's load-bearing sentences
     (``lib/anchor_repair.SUBSTANCE`` is the roster; the detail names which one).
 
     ``apply_governance_anchor`` returns the moment it sees the sentinel, so it
