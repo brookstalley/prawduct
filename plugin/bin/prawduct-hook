@@ -34,8 +34,9 @@ Usage (wired by ``hooks/hooks.json``):
 from __future__ import annotations
 
 # The Python floor, checked before anything newer is imported: below it, re-run
-# this entry point under an interpreter that qualifies, or fail loudly. Everything
-# above this call must parse on old interpreters (tests/test_python_floor.py).
+# this entry point under an interpreter that qualifies, or fail loudly. This WHOLE
+# file must parse on old interpreters: Python compiles a file before running any
+# of it, so newer syntax anywhere fails before this check (tests/test_python_floor.py).
 import os as _os
 import sys as _sys
 
@@ -4584,7 +4585,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     scripts:
 
     * ``test_command:`` — the project's canonical suite invocation, run
-      shlex-split from the repo root instead of ``sys.executable -m pytest``
+      shlex-split from the repo root instead of the ``-m pytest`` fallback
       (whose interpreter cannot import a uv/venv-managed product package). It
       MUST contain a ``{junit_xml}`` literal; the hook substitutes its report
       path there. Shell operators are not supported — point the command at a

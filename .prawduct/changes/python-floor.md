@@ -2,6 +2,7 @@
 schema: 1
 type: feature
 scope: python-floor
+closes: [brookstalley/prawduct#1097]
 date: 2026-10-27
 title: prawduct needs Python 3.14, and its hooks find one when `python3` is older (#1097)
 ---

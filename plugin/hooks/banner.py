@@ -53,8 +53,9 @@ project context (e.g. a bare unit test) never mutates whatever repo is cwd.
 from __future__ import annotations
 
 # The Python floor, checked before anything newer is imported: below it, re-run
-# this entry point under an interpreter that qualifies, or fail loudly. Everything
-# above this call must parse on old interpreters (tests/test_python_floor.py).
+# this entry point under an interpreter that qualifies, or fail loudly. This WHOLE
+# file must parse on old interpreters: Python compiles a file before running any
+# of it, so newer syntax anywhere fails before this check (tests/test_python_floor.py).
 import os as _os
 import sys as _sys
 

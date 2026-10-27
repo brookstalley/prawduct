@@ -160,8 +160,7 @@ suite_coupled_prefixes:
 #
 # `format` names a structural shape, never a language; `key` is descended
 # literally, so nothing infers which table of a manifest wins. Reading `toml`
-# delegates to stdlib `tomllib` (3.11+); on the 3.10 floor that one entry
-# reports `unverifiable` while the other two still verify.
+# delegates to stdlib `tomllib`.
 release_version_files:
   - path: plugin/VERSION
     format: bare

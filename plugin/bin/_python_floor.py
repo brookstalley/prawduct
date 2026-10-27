@@ -11,11 +11,13 @@ it looks for an interpreter that qualifies and re-executes the same command unde
 it; when there is none it fails loudly, in the way the entry point's caller will
 actually see.
 
-This file, and the top of every entry point up to the :func:`ensure` call, must
-parse under the oldest ``python3`` a consumer machine still resolves (macOS ships
-3.9). ``tests/test_python_floor.py`` pins that with ``ast.parse(...,
-feature_version=...)``: newer syntax here would raise ``SyntaxError`` before the
-check could run, which is the silent failure this module exists to prevent.
+This file and every entry point, each WHOLE file, must parse under the oldest
+``python3`` a consumer machine still resolves (macOS ships 3.9): Python compiles a
+file before running any of it, so newer syntax anywhere in an entry point raises
+``SyntaxError`` before the check could run — the silent failure this module exists
+to prevent. ``tests/test_python_floor.py`` pins it, with ``ast.parse(...,
+feature_version=...)`` and with a real older interpreter where one exists.
+Modules the entry points import AFTER the check (``lib/``) are free of this.
 """
 
 import os
@@ -196,4 +198,9 @@ def ensure(entry, argv=None, environ=None, version_info=None, executable=None,
     env[REEXEC_ENV] = executable or "unknown"
     out.flush()
     err.flush()
-    execve(target, [target, entry] + list(argv[1:]), env)
+    try:
+        execve(target, [target, entry] + list(argv[1:]), env)
+    except OSError:
+        # The probe ran it a moment ago; if it cannot be exec'd now, report the
+        # floor the same loud way rather than as a traceback.
+        sys.exit(fail(role, version_info, executable, out, err, rejected=[target]))

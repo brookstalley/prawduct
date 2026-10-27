@@ -203,6 +203,22 @@ class TestFailureSurfacesWhereTheCallerLooks:
         assert code == 1 and out == ""
         assert err.startswith("ERROR: prawduct needs Python 3.14")
 
+    def test_an_exec_that_fails_reports_the_floor_not_a_traceback(self, tmp_path):
+        target = _write_python(tmp_path / "bin" / "python3.14", 0)
+        out, err = io.StringIO(), io.StringIO()
+
+        def _refuses(*_a):
+            raise PermissionError("exec refused")
+
+        with pytest.raises(SystemExit) as exc:
+            floor.ensure(
+                "/p/bin/prawduct-hook", argv=["prawduct-hook", "test-status"],
+                environ={"PATH": str(target.parent)}, version_info=(3, 9, 6),
+                executable="/usr/bin/python3", out=out, err=err, execve=_refuses,
+            )
+        assert exc.value.code == 1
+        assert err.getvalue().startswith("ERROR:") and str(target) in err.getvalue()
+
     def test_a_candidate_that_would_not_run_is_named(self, tmp_path):
         """The pyenv case: `python3.14` is on PATH as a shim for a version this
         directory does not select. The user can see it, so "none found" alone
