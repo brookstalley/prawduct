@@ -2327,8 +2327,8 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     warnings: list[str] = []
 
-    # Both gates at session end read the session's WORK span (base tree ->
-    # working tree, committed work included), so this advisory reads it too:
+    # Both gates at session end read the session's WORK span (what it
+    # authored, committed work included), so this advisory reads it too:
     # judgeable work in the span is what either gate can fire on.
     span = gates.session_work_span(project_dir)
     if not span["judgeable"]:
