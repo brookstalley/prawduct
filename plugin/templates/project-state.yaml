@@ -216,18 +216,18 @@ build_state:
 # =============================================================================
 # OPTIONAL KEYS
 # =============================================================================
-# Each key below is optional. Its full explanation (what reads it, what it
-# trades, its exact syntax) is the plugin's docs/project-state-keys.md —
-# `/prawduct:methodology project-state` — read it before setting one.
+# Each key below is optional and explained in the plugin's
+# docs/project-state-keys.md (`/prawduct:methodology project-state`):
+# read it before setting one.
 
-# DEPRECATED: a plan claims its branch in its own `branch:` frontmatter
-# (`prawduct-hook plan bind`); this is read only while no plan does.
+# DEPRECATED: a plan claims its branch by `branch:` frontmatter
+# (`prawduct-hook plan bind`); read only while no plan does.
 # active_build_plan: artifacts/build-plan-my-scope.md
 
 # The branch feature work integrates onto. Set it on a gitflow repo.
 # base_branch: develop
 
-# A second root for build-plan file refs (plans written from inside a subdir).
+# A second root for build-plan file refs (plans written from a subdir).
 # build_plan_ref_root: plugin
 
 # The paths where a missed defect costs most; a diff touching one gets the
@@ -249,12 +249,10 @@ coverage_required: false
 # The exact suite invocation, when it isn't `python -m pytest` over tests/.
 # test_command: uv run pytest --junit-xml={junit_xml} -q
 # test_commands:    (several environments; instead of test_command)
-#   - npm run test:ci -- --junit --outputFile={junit_xml}
 # tests_dirs: tests
-# How `record --rerun-failed` retries only failed tests, and what a retry-only pass earns:
-# test_rerun_command: uv run pytest --junit-xml={junit_xml} -q {pytest_node_ids}
-# test_rerun_commands:    (one per test_commands entry; `none` for no rerun)
-# flaky_policy: warn    (accept | warn | block)
+# test_rerun_command: pytest --junit-xml={junit_xml} {pytest_node_ids}
+# test_rerun_commands:    (one per test_commands)
+# flaky_policy: warn
 # Paths your tests read as data:
 # suite_coupled_prefixes:
 #   - documentation/

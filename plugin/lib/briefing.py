@@ -2126,8 +2126,7 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
     # 3b. Tests the saved run passed only on retry. A green that needed a
     #     retry is still a green, so nothing else carries these past /clear,
     #     and a flake nobody files is the race the retry hid.
-    record, _ = gates._parse_test_evidence(prawduct_dir)
-    flakes = gates.flaky_lines((record or {}).get("flaky"))
+    flakes = gates.saved_flaky_lines(project_dir)
     if flakes:
         sections.append("## Flaky Tests (passed only on retry)")
         sections.extend(f"- {line.removeprefix('flaky: ')}" for line in flakes)

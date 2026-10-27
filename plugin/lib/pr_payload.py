@@ -328,8 +328,7 @@ def _section_test_evidence(project_dir: Path) -> Section:
     # The saved run's flakes ride along, rendered by the one formatter every
     # status surface uses, so the reviewer reads the touched/unknown tag the
     # Critic's flaky_policy rule is written against.
-    record, _ = lib.gates._parse_test_evidence(lib.gitstate.get_prawduct_dir(project_dir))
-    flakes = lib.gates.flaky_lines((record or {}).get("flaky"))
+    flakes = lib.gates.saved_flaky_lines(project_dir)
     return Section("test_evidence", body=(
         f"test-status: {verdict} (exit {0 if is_current else 1})\nreason: {reason}"
         + "".join(f"\n{line}" for line in flakes)

@@ -401,8 +401,13 @@ def _governed_protocol_ceiling() -> int:
 #: reviewer reads (`TestEveryCheckCarriesASeverity`). +3 per inner review,
 #: priced against the SUM: without the severity, the reviewer rates a BLOCKING
 #: format finding for itself, and a wrong rating costs a round.
+#: RAISED 2026-10-26 (chunk 2817 -> 2840), DECLARED (flaky-rerun, #1087):
+#: `goals-1-3.md` rates a `flaky:` test-status line the branch touched under
+#: `flaky_policy: warn`. +29 per inner review — the same clause, and the same
+#: price, declared on the route sums in `test_reviewer_payload_budget.py`.
+#: verify-resolutions stays under its ceiling, so it is not raised.
 CEILINGS = {
-    "chunk": 2817,
+    "chunk": 2840,
     "verify-resolutions": 3940,
     "final": _governed_protocol_ceiling(),
     "cumulative": _governed_protocol_ceiling(),

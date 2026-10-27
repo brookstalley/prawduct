@@ -232,6 +232,15 @@ _FLAKY_TOUCH_TAGS = {
 }
 
 
+def saved_flaky_lines(project_dir: Path) -> list[str]:
+    """:func:`flaky_lines` for the saved run, whatever its freshness — the one
+    answer ``test-status``, the session handoff and the PR payload print. A
+    record that cannot be read or fails its schema has no flakes to report;
+    its other readers say why."""
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    return flaky_lines((record or {}).get("flaky"))
+
+
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     """The saved test-evidence record, or ``(None, reason)`` saying why not.
 
@@ -2202,8 +2211,7 @@ def test_status(project_dir: Path) -> int:
     # After the verdict, never instead of it: the saved run's flakes. Printed
     # whatever the verdict, since a stale green that passed only on retry is
     # still worth a backlog item, and never changing the exit code.
-    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
-    for line in flaky_lines((record or {}).get("flaky")):
+    for line in saved_flaky_lines(project_dir):
         print(line)
     return 0 if is_current else 1
 
