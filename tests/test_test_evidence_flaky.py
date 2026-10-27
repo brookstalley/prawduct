@@ -72,6 +72,8 @@ class TestJunitFlakesAreRecorded:
             "attempts": 1,
             "source": "junit",
             "file": "tests/test_net.py",
+            # judged against the branch: the fixture never changed this file
+            "touched": False,
         }]
         # the plugin's own validator accepts what the plugin produced
         assert _run_in(tmp_path / "flaky", "validate-evidence").returncode == 0
@@ -168,7 +170,7 @@ class TestFlakesArePrinted:
         assert lines[0].startswith(("current", "stale"))
         assert lines[1] == (
             "flaky: tests.test_net.TestPool::test_timeout — passed on the runner's "
-            "retry after 1 failure(s); first: Timeout after 5s"
+            "retry after 1 failure(s) [outside this branch's diff]; first: Timeout after 5s"
         )
 
     def test_a_malformed_flaky_value_changes_nothing(self, tmp_path):
@@ -288,6 +290,8 @@ class TestRerunFailed:
             "attempts": 1,
             "source": "rerun",
             "file": "tests/test_x.py",
+            # judged against the branch: the fixture never changed this file
+            "touched": False,
         }]
         # the rerun ran only the failure, by node id
         assert [a for a in _calls(repo)[1] if "::" in a] == [_FLAKE]
@@ -507,6 +511,8 @@ class TestAgainstRealPytest:
             "attempts": 1,
             "source": "rerun",
             "file": "tests/test_x.py",
+            # judged against the branch: the fixture never changed this file
+            "touched": False,
         }]
         assert "timed out under load" in ev["flaky"][0]["first_failure"]
         # the run, then a rerun of the one test alone
@@ -525,3 +531,172 @@ class TestAgainstRealPytest:
         repo = self._repo(tmp_path, "")
         res, ev = _rerun_record(repo, "--rerun-failed", "--", "-p", "no:cacheprovider")
         self._assert_one_flake(repo, res, ev)
+
+
+# ---------------------------------------------------------------------------
+# Judging flakes against the branch: `touched` and flaky_policy
+# ---------------------------------------------------------------------------
+
+def _branch_repo(tmp_path: Path, *, touch: bool, policy: str = "") -> Path:
+    """A feature branch off ``main`` whose diff does or does not include the
+    flaky test's file."""
+    repo = _repo(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_net.py").write_text("def test_timeout():\n    pass\n")
+    (repo / "src.py").write_text("X = 1\n")
+    (repo / ".gitignore").write_text("report.xml\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "feature")
+    if touch:
+        (repo / "tests" / "test_net.py").write_text("def test_timeout():\n    assert 1\n")
+    else:
+        (repo / "src.py").write_text("X = 2\n")
+    if policy:
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"flaky_policy: {policy}\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "branch work")
+    return repo
+
+
+_NET_FLAKE = """
+<testcase classname="tests.test_net" name="test_timeout">
+  <flakyFailure message="Timeout"><stackTrace>t</stackTrace></flakyFailure>
+</testcase>
+<testcase classname="tests.test_net" name="test_ok"/>
+"""
+
+_UNKNOWN_FLAKE = """
+<testcase classname="com.example.NetTest" name="timeout">
+  <flakyFailure message="Timeout"><stackTrace>t</stackTrace></flakyFailure>
+</testcase>
+"""
+
+
+class TestFlakesAreJudgedAgainstTheBranch:
+    def test_a_flake_in_a_file_the_branch_changed_is_touched(self, tmp_path):
+        res, ev = _record(_branch_repo(tmp_path, touch=True), _NET_FLAKE)
+        assert res.returncode == 0, res.stderr  # warn is the default: still green
+        (entry,) = ev["flaky"]
+        assert (entry["file"], entry["touched"]) == ("tests/test_net.py", True)
+        assert "blocked" not in entry
+
+    def test_a_flake_in_a_file_the_branch_left_alone_is_not(self, tmp_path):
+        _, ev = _record(_branch_repo(tmp_path, touch=False), _NET_FLAKE)
+        assert ev["flaky"][0]["touched"] is False
+
+    def test_a_flake_whose_file_cannot_be_found_is_unknown(self, tmp_path):
+        _, ev = _record(_branch_repo(tmp_path, touch=False), _UNKNOWN_FLAKE)
+        (entry,) = ev["flaky"]
+        assert entry["touched"] is None
+        assert "file" not in entry
+
+    def test_test_status_tags_each_judgment(self, tmp_path):
+        for touch, xml, tag in (
+            (True, _NET_FLAKE, "[touched by this branch]"),
+            (False, _NET_FLAKE, "[outside this branch's diff]"),
+            (False, _UNKNOWN_FLAKE, "[branch touch unknown]"),
+        ):
+            sub = tmp_path / f"{touch}-{tag[1:4]}"
+            sub.mkdir()
+            repo = _branch_repo(sub, touch=touch)
+            _record(repo, xml)
+            (line,) = [ln for ln in _run_in(repo, "test-status").stdout.splitlines()
+                       if ln.startswith("flaky:")]
+            assert tag in line, (tag, line)
+
+
+class TestFlakyPolicy:
+    def test_block_leaves_a_touched_flake_failed(self, tmp_path):
+        res, ev = _record(_branch_repo(tmp_path, touch=True, policy="block"), _NET_FLAKE)
+        assert res.returncode == 1
+        assert (ev["passed"], ev["failed"]) == (1, 1)
+        assert ev["failed_tests"] == ["tests.test_net::test_timeout"]
+        assert ev["flaky"][0]["blocked"] is True
+        assert "BLOCKED by flaky_policy" in _run_in(tmp_path / "flaky", "test-status").stdout
+
+    def test_block_leaves_an_unknown_flake_failed(self, tmp_path):
+        res, ev = _record(_branch_repo(tmp_path, touch=False, policy="block"), _UNKNOWN_FLAKE)
+        assert res.returncode == 1
+        assert ev["failed"] == 1
+
+    def test_block_credits_a_flake_the_branch_did_not_touch(self, tmp_path):
+        res, ev = _record(_branch_repo(tmp_path, touch=False, policy="block"), _NET_FLAKE)
+        assert res.returncode == 0, res.stderr
+        assert ev["failed"] == 0
+        assert "blocked" not in ev["flaky"][0]
+
+    def test_accept_and_warn_credit_a_touched_flake(self, tmp_path):
+        for policy in ("accept", "warn"):
+            sub = tmp_path / policy
+            sub.mkdir()
+            res, ev = _record(_branch_repo(sub, touch=True, policy=policy), _NET_FLAKE)
+            assert res.returncode == 0, (policy, res.stderr)
+            assert ev["failed"] == 0 and ev["flaky"][0]["touched"] is True
+
+    def test_block_turns_a_live_run_red_after_its_retry_passed(self, tmp_path):
+        """Every command exited 0 once its retry passed, so the policy's red
+        is one no command reported — the exit status must still carry it."""
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "pass"]},
+                              _ONE_RERUN + "flaky_policy: block\n")
+        _git(repo, "checkout", "-b", "feature")
+        (repo / "tests" / "test_x.py").write_text("def test_a():\n    assert 1\n")
+        _git(repo, "commit", "-am", "branch edits the flaky test's file")
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        assert ev["flaky"][0]["touched"] is True
+        assert res.returncode == 1, res.stdout + res.stderr
+        assert ev["failed"] == 1
+
+    def test_an_unknown_policy_is_refused_before_any_run(self, tmp_path):
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "pass"]},
+                              _ONE_RERUN + "flaky_policy: strict\n")
+        res, _ = _rerun_record(repo, "--rerun-failed")
+        assert res.returncode == 2
+        assert "flaky_policy" in res.stderr
+        assert not (repo / "calls.json").exists()
+
+    def test_a_restamp_does_not_judge_again(self, tmp_path):
+        """The reused counts already carry the policy's answer; judging again
+        would count a blocked flake as failed twice."""
+        repo = _branch_repo(tmp_path, touch=True, policy="block")
+        _record(repo, _NET_FLAKE)
+        res = _run_in(repo, "test-evidence", "record", "--no-rerun")
+        ev = json.loads((repo / ".prawduct" / ".test-evidence.json").read_text())
+        assert "restamped" in res.stdout
+        assert (ev["passed"], ev["failed"]) == (1, 1)
+
+    def test_a_record_from_before_the_judgment_gets_no_tag(self, tmp_path):
+        """No ``touched`` key is not ``touched: null``: one was never judged,
+        the other was judged and the answer could not be found."""
+        repo = _repo(tmp_path)
+        _record(repo, '<testcase classname="m" name="ok"/>')
+        path = repo / ".prawduct" / ".test-evidence.json"
+        ev = json.loads(path.read_text())
+        ev["flaky"] = [{"id": "m::old", "attempts": 1, "source": "junit"}]
+        path.write_text(json.dumps(ev))
+        res = _run_in(repo, "test-status")
+        assert "Traceback" not in res.stderr
+        (line,) = [ln for ln in res.stdout.splitlines() if ln.startswith("flaky:")]
+        assert line == "flaky: m::old — passed on the runner's retry after 1 failure(s)"
+
+
+class TestTheCriticRuleMatchesWhatIsPrinted:
+    """The Critic rates a touched flake from the ``test-status`` line, so the
+    tags the rule quotes must be the tags printed, in both files that carry the
+    rule — a reword in one is a rule the other reviewer route never applies."""
+
+    def test_both_carriers_quote_the_printed_tags(self):
+        import re
+        from lib import gates
+        root = Path(__file__).resolve().parent.parent / "plugin" / "skills" / "critic"
+        for name in ("goals-1-3.md", "review-protocol.md"):
+            text = (root / name).read_text()
+            (rule,) = [ln for ln in text.splitlines() if "flaky_policy: warn" in ln]
+            quoted = re.findall(r"`([^`]+)`", rule.split("A `flaky:` line", 1)[1])
+            touched_tag, unknown_tag = quoted[0], quoted[1]
+            assert touched_tag in gates._FLAKY_TOUCH_TAGS[(True, False)], name
+            assert unknown_tag in gates._FLAKY_TOUCH_TAGS[(None, False)], name
+            # and neither matches the line for a flake the branch left alone
+            assert touched_tag not in gates._FLAKY_TOUCH_TAGS[(False, False)], name
+            assert unknown_tag not in gates._FLAKY_TOUCH_TAGS[(False, False)], name
+            assert "**WARNING** at the boundary" in rule, name

@@ -4637,6 +4637,51 @@ def _rerun_failures(
     return out
 
 
+#: ``flaky_policy:`` values, for a flake in a test this branch touched (or
+#: could not be shown not to): ``accept`` notes it; ``warn`` (the default) also
+#: has the Critic warn; ``block`` leaves it failed.
+_FLAKY_POLICIES = ("accept", "warn", "block")
+
+
+def _judge_flakes(project_dir: Path, flaky: list[dict], policy: str) -> list[dict]:
+    """Mark each flake ``touched`` — did this branch change its test file? —
+    and, under ``block``, ``blocked``; return the entries that policy leaves
+    failed.
+
+    Judged here, at record time, against the base and changed-file set the
+    coverage verifier scores, because a runner cannot see the diff and this
+    command can. The record is bound to the tree it ran on, so a judgment made
+    now cannot be overtaken by a later edit: that edit makes the record stale.
+    ``touched`` is ``null`` when the file is unknown or the diff cannot be
+    read, and every policy reads ``null`` as touched — an unknown case gets
+    the strict answer, never the lenient one."""
+    cov = _coverage()
+    changed = None
+    base, _ = cov._coverage_resolve_base(project_dir)
+    if base:
+        try:
+            changed = set(cov._coverage_changed_files(project_dir, base))
+        except (RuntimeError, OSError, subprocess.SubprocessError):
+            changed = None
+    blocked = []
+    for entry in flaky:
+        test_file = entry.get("file")
+        if not test_file:
+            # A runner's report seldom names the file; pytest's classname does.
+            import xml.etree.ElementTree as ET  # noqa: PLC0415 — lazy, as in cmd_test_evidence
+            classname, _, name = entry["id"].rpartition("::")
+            _, test_file = _pytest_node_id(
+                ET.Element("testcase", {"classname": classname, "name": name}), project_dir
+            )
+            if test_file:
+                entry["file"] = test_file
+        entry["touched"] = (test_file in changed) if test_file and changed is not None else None
+        if policy == "block" and entry["touched"] is not False:
+            entry["blocked"] = True
+            blocked.append(entry)
+    return blocked
+
+
 def _capped_flaky(entries: list[dict]) -> list[dict]:
     """The record's ``flaky`` value: sorted by id so two runs with the same
     flakes write the same bytes, then capped."""
@@ -5200,6 +5245,17 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     file=sys.stderr,
                 )
                 return 2
+    # flaky_policy: read before any suite runs, so a typo costs a message and
+    # not a run. Unknown values refuse, as the other enum keys do: reading one
+    # as the default would silently relax a repo that asked for `block`.
+    flaky_policy = (_read_str_yaml_key(state_path, "flaky_policy") or "warn").strip()
+    if flaky_policy not in _FLAKY_POLICIES:
+        print(
+            f"error: flaky_policy in project-state.yaml is {flaky_policy!r}; it must be "
+            f"one of {', '.join(_FLAKY_POLICIES)} (default warn).",
+            file=sys.stderr,
+        )
+        return 2
     rerun_templates: list = []
     if rerun_attempts:
         templates, why = _validate_rerun_templates(
@@ -5741,6 +5797,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         _cap = _evidence_mod.capture_tree(project_dir)
         if _cap.get("status") == "ok":
             evidence_tree = _cap.get("tree")
+
+    # Judge the flakes against the branch. A restamp carries entries judged
+    # when they were recorded, against the counts they were recorded with, so
+    # judging them again could block a flake its reused counts already credit.
+    blocked_flakes: list[dict] = []
+    if flaky and not no_rerun:
+        blocked_flakes = _judge_flakes(project_dir, flaky, flaky_policy)
+        for entry in blocked_flakes:
+            # `block`: a test this branch touched does not get credit for a
+            # pass it needed a retry to reach. It is counted as the failure it
+            # first was, and stays listed as a flake so the reason is visible.
+            failed += 1
+            passed -= 1
+            failed_ids.append(entry["id"])
+        if blocked_flakes and run_returncodes:
+            # Both exits (this tree's and a scratch worktree's) take a live
+            # run's status from its commands, and every command may have
+            # exited 0 once its retry passed. The policy's red is one none of
+            # them reported, so it is added as its own.
+            run_returncodes.append(1)
 
     # Base record carries the pytest half PLUS schema-valid placeholder F4a
     # fields, so the file is self-sufficient even if the F4a overlay below is

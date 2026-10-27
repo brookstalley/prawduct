@@ -251,6 +251,10 @@ coverage_required: false
 # test_commands:    (several environments; instead of test_command)
 #   - npm run test:ci -- --junit --outputFile={junit_xml}
 # tests_dirs: tests
+# How `record --rerun-failed` retries only failed tests, and what a retry-only pass earns:
+# test_rerun_command: uv run pytest --junit-xml={junit_xml} -q {pytest_node_ids}
+# test_rerun_commands:    (one per test_commands entry; `none` for no rerun)
+# flaky_policy: warn    (accept | warn | block)
 # Paths your tests read as data:
 # suite_coupled_prefixes:
 #   - documentation/

@@ -214,7 +214,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -7 on 2026-10-26 (final-review-chunks, #1072): the Critic skill's step 4 proposal sentence
     # stopped restating the per-mode rule (whole-plan modes no longer propose every open chunk)
     # and points to `plan_status.propose_chunks`, the rule's one home. Ceiling lowered with it.
-    "single-pass-inner": 5788,
+    # +29 on 2026-10-26 (flaky-rerun, #1087), DECLARED: Goal 1 rates a `flaky:` test-status line the
+    # branch touched (or could not be shown not to) under `flaky_policy: warn` — one clause in
+    # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~29 tokens
+    # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
+    # the race-hiding the recorder's retry would otherwise buy.
+    "single-pass-inner": 5817,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -273,7 +278,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -7 on 2026-10-26 (final-review-chunks, #1072): the Critic skill's step 4 proposal sentence
     # stopped restating the per-mode rule (whole-plan modes no longer propose every open chunk)
     # and points to `plan_status.propose_chunks`, the rule's one home. Ceiling lowered with it.
-    "single-pass-full": 11520,
+    # +28 on 2026-10-26 (flaky-rerun, #1087), DECLARED: Goal 1 rates a `flaky:` test-status line the
+    # branch touched (or could not be shown not to) under `flaky_policy: warn` — one clause in
+    # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~28 tokens
+    # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
+    # the race-hiding the recorder's retry would otherwise buy.
+    "single-pass-full": 11548,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -358,7 +368,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # chunks with `--chunks` (the code proposal, confirm-or-edit, `chunks_proposed`) in place of the
     # first-unchecked-box inference, paid in place by the partials archive's retention mechanics;
     # the inferred-chunk caveat names the first open chunk. Ceiling lowered with it.
-    "dispatched-reviewer": 10990,
+    # +28 on 2026-10-26 (flaky-rerun, #1087), DECLARED: Goal 1 rates a `flaky:` test-status line the
+    # branch touched (or could not be shown not to) under `flaky_policy: warn` — one clause in
+    # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~28 tokens
+    # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
+    # the race-hiding the recorder's retry would otherwise buy.
+    "dispatched-reviewer": 11018,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -393,14 +408,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -7 on 2026-10-26 (final-review-chunks, #1072): the Critic skill's step 4 proposal sentence
     # stopped restating the per-mode rule (whole-plan modes no longer propose every open chunk)
     # and points to `plan_status.propose_chunks`, the rule's one home. Ceiling lowered with it.
-    "coordinator-fork": 12114,
+    # +28 on 2026-10-26 (flaky-rerun, #1087), DECLARED: Goal 1 rates a `flaky:` test-status line the
+    # branch touched (or could not be shown not to) under `flaky_policy: warn` — one clause in
+    # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~28 tokens
+    # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
+    # the race-hiding the recorder's retry would otherwise buy.
+    "coordinator-fork": 12142,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5789,
-    "single-pass-full": 11521,
-    "dispatched-reviewer": 10991,
-    "coordinator-fork": 12115,
+    "single-pass-inner": 5818,
+    "single-pass-full": 11549,
+    "dispatched-reviewer": 11019,
+    "coordinator-fork": 12143,
 }
 
 

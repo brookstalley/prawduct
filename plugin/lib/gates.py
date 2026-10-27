@@ -208,9 +208,28 @@ def flaky_lines(value: object) -> list[str]:
         first = e.get("first_failure") if isinstance(e.get("first_failure"), str) else ""
         lines.append(
             f"flaky: {e['id']} — passed on {via} after {n} failure(s)"
+            + (
+                _FLAKY_TOUCH_TAGS.get((e["touched"], e.get("blocked") is True), "")
+                if "touched" in e
+                else ""
+            )
             + (f"; first: {first}" if first else "")
         )
     return lines
+
+
+#: What a flake's branch judgment adds to its status line, keyed by
+#: ``(touched, blocked)``. A record written before the judgment existed has no
+#: ``touched`` key at all and gets no tag, which is not the same claim as
+#: ``null`` (judged, and the answer could not be found). The Critic's rule for
+#: ``flaky_policy`` matches the two tags that mean "treat as touched".
+_FLAKY_TOUCH_TAGS = {
+    (True, False): " [touched by this branch]",
+    (None, False): " [branch touch unknown]",
+    (True, True): " [touched by this branch; BLOCKED by flaky_policy, counted as failed]",
+    (None, True): " [branch touch unknown; BLOCKED by flaky_policy, counted as failed]",
+    (False, False): " [outside this branch's diff]",
+}
 
 
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":

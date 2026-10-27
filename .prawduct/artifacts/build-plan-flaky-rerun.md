@@ -72,8 +72,7 @@ contracts: a test that fails on every attempt stays red, and nothing is weakened
   branch "touched the covered code". The only coverage signal is the Python-only symbol-grep in
   `bin/test-reference-verify`, which maps changed files to tests as a whole, not per test. A
   flake in an unchanged test file that exercises changed code is accepted and noted, not warned.
-  Backlog item to file at Chunk 03: judge by covered code where `coverage_level: executed`
-  evidence exists.
+  Filed as #1088: judge by covered code where per-test coverage exists.
 - *Unknown file reads as touched.* A test whose file cannot be resolved (no `file` attribute, a
   classname that maps to no file) gets `touched: null`, and the policy treats it as touched. An
   unknown case gets the strict policy, never the lenient one (hook-surface rule on fallback
@@ -104,7 +103,21 @@ and a runner that reports its own flakes is read instead (part 2) | owner can ve
 - *`--rerun-failed`* applies to live runs only. With `--from-junit`, `--from-counts` or
   `--no-rerun` it is refused (exit 2): there is no process to rerun.
 
-**Decisions made mid-build:** (none yet)
+**Decisions made mid-build:**
+- Chunk 02: the rerun runs after the run's failures are classified and before the
+  unexplained-exit check, so a command whose every failure passed on retry takes its last
+  rerun's exit status. A non-test failure such as a coverage threshold still exits nonzero and is
+  refused as before. Settled by "authority fails closed".
+- Chunk 03: `block` adds its own nonzero exit status, because each command may have exited 0
+  after its retry passed. A restamp carries entries judged at record time and is not judged
+  again, since its reused counts already hold the policy's answer. Settled by "do it right".
+- Chunk 03: the untouched tag reads `[outside this branch's diff]`, not `[not touched by this
+  branch]`. The Critic's rule quotes `touched by this branch`, and that phrase sits inside the
+  negative form, so a reviewer matching the rule would warn on an untouched flake. Caught by the
+  test that pins the rule's quoted tags against the printed ones.
+- Chunk 03: the Critic clause is a declared payload raise of about 28 tokens per review
+  (`tests/test_reviewer_payload_budget.py`), compressed in place first. Settled by
+  nonfunctional-requirements "Review wall-clock": priced, not paid silently.
 
 **Level:** Medium-High. The recorder is well understood, and the foreign formats are verified.
 What would raise it: Chunk 02 run once on this repo with a forced failure that passes on rerun.
