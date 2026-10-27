@@ -212,19 +212,20 @@ class _Session:
     """A session whose start is pinned on the clock, so the reflog can tell
     history made before it from moves made during it.
 
-    The span bounds its reflog walk by the base-tree marker's mtime, and git
-    stamps reflog entries with the committer date. Fixture history is written at
-    the real clock; the session's marker and every git move it makes sit
-    minutes later, so no fixture step can land in the session's first second
-    and be read as the session's own.
+    The span bounds its reflog walk by `.session-start`, and git stamps both
+    reflog entries and commits with the committer date. Fixture history is
+    written at the real clock; the session's start and every git move it makes
+    sit minutes later, so no fixture step can land in the session's first
+    second and be read as the session's own.
     """
 
     def __init__(self, repo: Path):
         self.repo = repo
         self.started = int(time.time()) + 600
         _mark_base(repo)
-        marker = repo / ".prawduct" / ".session-base-tree"
-        os.utime(marker, (self.started, self.started))
+        (repo / ".prawduct" / ".session-start").write_text(
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.started))
+        )
 
     def git(self, *args: str) -> str:
         env = dict(os.environ, GIT_COMMITTER_DATE=f"@{self.started + 60} +0000")
@@ -245,6 +246,23 @@ def _their_branch(repo: Path, path: str = "theirs.py") -> None:
     _git(repo, "add", path)
     _git(repo, "commit", "-q", "-m", "someone else's commit")
     _git(repo, "checkout", "-q", "main")
+
+
+def _delegate_commits(
+    s: "_Session", tmp_path: Path, branch: str = "agent", path: str = "delegate.py"
+) -> None:
+    """A commit on `branch` made during the session in another worktree — a
+    worktree agent's, or a concurrent session's — so it is in that worktree's
+    reflog, not this one's."""
+    agent = tmp_path / f"{branch}-wt"
+    s.git("worktree", "add", "-q", "-b", branch, str(agent))
+    (agent / path).write_text("by_the_agent = 1\n")
+    env = dict(os.environ, GIT_COMMITTER_DATE=f"@{s.started + 30} +0000")
+    for args in (["add", path], ["commit", "-q", "-m", "delegate's work"]):
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=str(agent), check=True, capture_output=True, env=env,
+        )
 
 
 class TestMovesThisSessionDidNotAuthor:
@@ -343,6 +361,61 @@ class TestMovesThisSessionDidNotAuthor:
         s.git("commit", "-q", "--no-edit")
 
         assert gates.session_work_span(repo)["changed"] == ["code.py"]
+
+    def test_a_delegate_branch_merged_back_still_fires(self, tmp_path, capsys):
+        """A worktree agent commits on its own branch — in its own worktree's
+        reflog, not this one's — and the coordinator merges it back. That work
+        was made during the session, so the merge does not launder it."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _delegate_commits(s, tmp_path)
+        # Only the merge is in this checkout's reflog; the agent's commit is
+        # in its worktree's, which this session never reads.
+        assert "delegate's work" not in s.git("reflog", "show", "--format=%gs", "HEAD")
+        s.git("merge", "-q", "--no-ff", "-m", "merge agent", "agent")
+
+        assert gates.session_work_span(repo)["changed"] == ["delegate.py"]
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_a_fast_forwarded_delegate_branch_still_fires(self, tmp_path):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _delegate_commits(s, tmp_path)
+        s.git("merge", "-q", "--ff-only", "agent")
+        assert gates.session_work_span(repo)["changed"] == ["delegate.py"]
+
+    def test_history_pulled_in_from_during_the_session_still_counts(self, tmp_path):
+        """The rule is by age, not by who: a commit someone else made after the
+        session started is not excluded. That keeps a delegate's work in, at
+        the price of a concurrent session's — the class #1071 itself names."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _delegate_commits(s, tmp_path, branch="other", path="theirs.py")
+        s.git("pull", "-q", "--no-rebase", ".", "other")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_no_session_start_keeps_the_whole_span(self, tmp_path):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        (repo / ".prawduct" / ".session-start").unlink()
+        s.git("merge", "-q", "--no-ff", "-m", "merge other", "other")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_a_reflog_that_does_not_reach_the_session_start_keeps_the_whole_span(
+        self, tmp_path
+    ):
+        """A reflog that begins after the session started (expired, or the
+        repo is younger than the marker) cannot vouch that nothing before its
+        first entry was the session's."""
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("reflog", "expire", "--expire=all", "--all")
+        s.git("merge", "-q", "--no-ff", "-m", "merge other", "other")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
 
     def test_uncommitted_work_on_their_branch_still_fires(self, tmp_path):
         repo = _repo(tmp_path)
@@ -982,8 +1055,9 @@ class TestSessionWorkSpan:
         from lib import evidence, gitstate
 
         repo = _repo(tmp_path)
-        _mark_base(repo)
-        _commit_code(repo)
+        s = _Session(repo)
+        (repo / "code.py").write_text("x = 2\n")
+        s.git("commit", "-q", "-am", "c2")
 
         git_calls: list[tuple] = []
         real_run_git = evidence.run_git
@@ -1004,7 +1078,7 @@ class TestSessionWorkSpan:
         monkeypatch.setattr(gitstate, "git_status_output", spy_status)
         monkeypatch.setattr(evidence, "capture_tree", forbidden_capture)
 
-        moved = ["rev-parse", "reflog", "diff-tree", "diff"]
+        moved = ["rev-parse", "reflog", "log", "diff-tree", "diff"]
         gates.session_work_span(repo)
         assert [c[0] for c in git_calls] == ["status", "diff", *moved], git_calls
 

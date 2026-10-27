@@ -40,6 +40,7 @@ mirror), plus the stdlib.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import re
 import subprocess
 import sys
@@ -1289,7 +1290,10 @@ def session_work_span(
 # own prefix.
 _REBASE_STEP = re.compile(r"^(?:pull --rebase|rebase(?: -i)?) \((\w+)\)")
 _REBASE_IMPORTED_STEPS = frozenset({"start", "finish", "abort"})
-_AUTHORED_SUBJECTS = ("commit:", "commit (amend):", "commit (initial):", "cherry-pick:", "revert:")
+_AUTHORED_SUBJECTS = (
+    "commit:", "commit (amend):", "commit (initial):", "commit (cherry-pick):",
+    "cherry-pick:", "revert:",
+)
 _IMPORTED_SUBJECTS = ("checkout:", "pull:", "pull ", "merge ", "reset:")
 
 
@@ -1309,33 +1313,52 @@ def _classify_reflog_subject(subject: str) -> "str | None":
     return None
 
 
+def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
+    """The ``.session-start`` stamp and its epoch seconds, or ``None`` when the
+    marker is missing or not the ``YYYY-MM-DDTHH:MM:SSZ`` stamp ``cmd_clear``
+    writes."""
+    stamp = _read_session_start(prawduct_dir)
+    try:
+        when = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return stamp, int(when.timestamp())
+
+
 def _session_authored_paths(
     project_dir: Path, prawduct_dir: Path, base: str, untracked: "list[str]"
 ) -> "set[str] | None":
     """The paths this session wrote, or ``None`` when that cannot be told —
     the caller then keeps the whole base-tree span.
 
-    A pull, merge, branch switch or reset moves HEAD onto history this session
-    did not write, and the base-tree diff cannot tell those files from its own.
-    HEAD's reflog can: it records why HEAD moved. The session's work is the
-    commits it made (a hand-concluded merge counts only the paths it resolved),
-    plus whatever the working tree holds against HEAD now.
+    A pull, merge, branch switch or reset moves HEAD onto history, and the
+    base-tree diff cannot tell those files from the session's own. What it
+    brought in that is OLDER than the session cannot be the session's work;
+    what is newer may be — a delegate's branch merged back is exactly that — so
+    it counts. The session's work is therefore: commits HEAD reaches that were
+    made since the session started; the commits its own reflog records it
+    making, even ones HEAD has since moved away from; the paths a merge it
+    concluded by hand resolved; and whatever the working tree holds against
+    HEAD now.
 
-    The session started when ``cmd_clear`` wrote the base-tree marker, so the
-    marker's mtime bounds the walk. Every failure returns ``None``: authorship
-    only ever narrows the span on a fully classified reflog, so a gate loses a
-    false fire and never a real one.
+    The walk is bounded by ``.session-start`` and must reach an entry older than
+    it, or the reflog does not cover the session and cannot vouch for it. Every
+    failure, and any subject the classifier does not recognise, returns
+    ``None``: authorship narrows the span only on a reflog it fully read, so a
+    gate loses a false fire and never a real one.
 
     Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
-    — the common case, which returns at once — else three more git calls.
+    — the common case, which returns at once — else a reflog read, one ``log``,
+    a batched ``diff-tree`` per kind of commit the session made, and one
+    ``diff``.
     """
     rc, head_tree, _err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
     if rc != 0 or head_tree == base:
         return None
-    try:
-        started = int((prawduct_dir / _SESSION_BASE_TREE_MARKER).stat().st_mtime)
-    except OSError:
+    started = _session_started_epoch(prawduct_dir)
+    if started is None:
         return None
+    stamp, started_at = started
     rc, out, _err = evidence.run_git(
         project_dir, "reflog", "show", "--date=unix", "--format=%H%x00%gd%x00%gs", "HEAD"
     )
@@ -1343,12 +1366,14 @@ def _session_authored_paths(
         return None
     commits: list[str] = []
     merges: list[str] = []
+    reached_start = False
     for line in out.splitlines():
         sha, selector, subject = (line.split("\0") + ["", ""])[:3]
-        stamp = re.search(r"@\{(\d+)\}$", selector)
-        if not stamp:
+        moved_at = re.search(r"@\{(\d+)\}$", selector)
+        if not moved_at:
             return None
-        if int(stamp.group(1)) < started:
+        if int(moved_at.group(1)) < started_at:
+            reached_start = True
             break
         kind = _classify_reflog_subject(subject)
         if kind is None:
@@ -1357,7 +1382,16 @@ def _session_authored_paths(
             commits.append(sha)
         elif kind == "merge-commit":
             merges.append(sha)
+    if not reached_start:
+        return None
     authored: set[str] = set(untracked)
+    rc, out, _err = evidence.run_git(
+        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=", "--name-only",
+        "-z", "HEAD",
+    )
+    if rc != 0:
+        return None
+    authored.update(p for p in out.split("\0") if p)
     for shas, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
         if not shas:
             continue

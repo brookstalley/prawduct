@@ -40,7 +40,7 @@ priced at "asking git who wrote each hunk on every turn".
 - Uncommitted and untracked session work counts exactly as today.
 - The span never grows: the new span is a subset of today's.
 - The Stop path's added cost is nothing when the span is empty, one `rev-parse` when HEAD's tree
-  has not moved since session start, and three more git calls when it has.
+  has not moved since session start, and four or five more git calls when it has.
 
 **Out of scope:** #1071's own repro, which is another session's *commits* in a shared checkout.
 Those are `commit:` entries in the same HEAD reflog, so authorship by reflog cannot separate them.
@@ -74,6 +74,12 @@ Those are `commit:` entries in the same HEAD reflog, so authorship by reflog can
   composes coverage over base tree → working tree, so a session that authored code AND switched
   branches is judged on that wider interval, as before. Out of scope here; the boundary review
   should say whether it needs an item.
+- Boundary review (R-1/R-10, blocking): treating every merge and fast-forward as imported dropped
+  a worktree delegate's merged-back work, whose commits live in the delegate worktree's reflog.
+  The rule is now by AGE: a move keeps every commit HEAD reaches that was made since the session
+  started; only older history is excluded. A concurrent session's commits pulled in mid-session
+  therefore still count, which is #1071's own class. The walk now reads `.session-start` (not the
+  base-tree marker's mtime) and must reach an entry older than it, or the whole span stands.
 - Live check (gates rule: run a changed detection against this repo first): in this session,
   which switched from the #1087 branch to this one, the old span read 18 non-metadata paths
   (mostly #1087's work, reversed by the switch); the new span reads the 2 files this session
@@ -93,7 +99,7 @@ Those are `commit:` entries in the same HEAD reflog, so authorship by reflog can
   The span's dict shape and `source` values are unchanged.
 - `data-model.md` — **inapplicable**: no fact kind or schema changes.
 - `nonfunctional-requirements.md` "Review wall-clock is P0" — **conforms**. The Stop path adds no
-  git call on an empty span, one when HEAD's tree is unmoved, and four when it moved.
+  git call on an empty span, one when HEAD's tree is unmoved, and five or six when it moved.
 
 ## Build Chunks
 

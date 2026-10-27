@@ -3188,9 +3188,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # left BOTH the budget gate and the `learning.written` emitter dormant — and
     # if no later turn of that session ended dirty, the rule was never charged
     # and never recorded. `session_work_span` diffs the session's base tree
-    # against the working tree, so committed work is still this session's work.
+    # against the working tree, less history older than the session that a
+    # pull, merge or branch switch brought in, so committed work is still this
+    # session's work.
     #
-    # Reused rather than recomputed: the call costs a `git diff` and Stop runs
+    # Reused rather than recomputed: the call costs git calls and Stop runs
     # every turn. The name upstream is its first consumer, not the span's
     # meaning. And when the span degrades to porcelain it is because the
     # base-tree marker is missing or unreadable — the same state that leaves
