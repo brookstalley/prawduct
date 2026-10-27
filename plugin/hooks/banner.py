@@ -422,6 +422,30 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
     it refers to the lines above it; placed first it would read as being about the
     version line alone.
     """
+    old, new = version_tuple(last), version_tuple(current)
+    # An unparseable side sorts below everything, so its "direction" is an
+    # artifact of the parser, not a fact about the move: say only that it changed.
+    if old == (-1,) or new == (-1,) or old == new:
+        return [
+            f"Prawduct changed: v{last} → v{current}",
+            f"{RELAY_MARKER}Tell the user the plugin version changed, in your first "
+            "reply this session — they do not see this banner.",
+        ]
+    if new < old:
+        # A rollback (a beta, a pinned older build): what it takes away is the
+        # range being left, so list that range's highlights and gates as removed.
+        lines = [f"↓ Prawduct downgraded: v{last} → v{current}"]
+        for _v, headline in highlights_in_range(parse_changelog(root), current, last):
+            if headline:
+                lines.append(f"  − {headline}")
+        for g in new_gates_in_range(parse_gates(root), current, last):
+            name = g.get("name", g.get("id", "?"))
+            lines.append(f"  ⊖ gate \"{name}\" (no longer enforced)")
+        lines.append(
+            f"{RELAY_MARKER}Tell the user what was rolled back above, in your first "
+            "reply this session — they do not see this banner."
+        )
+        return lines
     lines = [f"↑ Prawduct updated: v{last} → v{current}"]
     for _v, headline in highlights_in_range(parse_changelog(root), last, current):
         if headline:

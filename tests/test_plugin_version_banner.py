@@ -302,6 +302,44 @@ class TestVersionMath:
         lines = banner.render_delta("2.0.0", "2.1.0", root)
         assert any("new gate" in line and "cumulative-critic" in line for line in lines)
 
+    def _rollback_root(self, tmp_path: Path) -> Path:
+        root = tmp_path / "plugin"
+        (root / "hooks").mkdir(parents=True)
+        (root / "CHANGELOG.md").write_text(
+            "# CL\n\n## v2.1.0\nThe newer release.\n\n## v2.0.0\nThe older release.\n"
+        )
+        (root / "hooks" / "gates.json").write_text(json.dumps({"gates": [
+            {"id": "later-gate", "name": "later-gate", "since": "2.1.0"}
+        ]}))
+        return root
+
+    def test_a_downgrade_is_not_announced_as_an_update(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[0] == "↓ Prawduct downgraded: v2.1.0 → v2.0.0"
+        assert not any("updated" in line for line in lines)
+
+    def test_a_downgrade_lists_what_it_rolled_back(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert "  − The newer release." in lines
+        assert not any("The older release." in line for line in lines)
+        assert any("later-gate" in line and "no longer enforced" in line for line in lines)
+        assert not any("new gate" in line for line in lines)
+
+    def test_a_dev_prerelease_downgrade_is_a_downgrade(self, banner):
+        # The case that surfaced this: develop at -dev.2, then the -dev.1 beta.
+        lines = banner.render_delta("3.8.0-dev.2", "3.8.0-dev.1", ROOT)
+        assert lines[0] == "↓ Prawduct downgraded: v3.8.0-dev.2 → v3.8.0-dev.1"
+
+    def test_an_unorderable_change_says_changed(self, banner):
+        # An unparseable marker sorts below everything, so the move cannot be
+        # called a downgrade; nor is it known to be an update.
+        lines = banner.render_delta("garbage", "2.0.0", ROOT)
+        assert lines[0] == "Prawduct changed: vgarbage → v2.0.0"
+
+    def test_a_downgrade_still_relays(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[-1].startswith(banner.RELAY_MARKER)
+
 
 class TestUpgradeRelay:
     """The delta block is emitted on stdout — the agent-facing channel — and the
