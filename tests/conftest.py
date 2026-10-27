@@ -29,6 +29,29 @@ if str(_PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(_PLUGIN_ROOT))
 
 
+def portable_param_id(val: object, argname: str) -> "str | None":
+    """A stable id for a string parameter pytest's generated id cannot carry
+    between machines, else ``None`` (pytest's own id stands).
+
+    The suite runs on a pool: one runner collects, another runs the id it was
+    handed, and an id built from a value with a newline, a leading or trailing
+    space, a tab or non-ASCII text, or one long enough to be truncated by a
+    transport, did not match on the far side, so a passing test reported an
+    error. Such a value gets ``<argname>-<sha1 prefix>``: deterministic, ASCII,
+    and distinct per value."""
+    import hashlib
+
+    if not isinstance(val, str):
+        return None
+    if val.isascii() and val == val.strip() and len(val) <= 80 and val.isprintable():
+        return None
+    return f"{argname}-{hashlib.sha1(val.encode('utf-8')).hexdigest()[:10]}"
+
+
+def pytest_make_parametrize_id(config, val, argname):
+    return portable_param_id(val, argname)
+
+
 def pytest_collection_modifyitems(config, items):
     """Skip `non_root` tests under root, then auto-assign xdist_group marks by test directory.
 

@@ -63,6 +63,15 @@ plugin, so none of it could notice its own absence.
   joins `anchor_repair.SUBSTANCE`, so an owner-edited anchor without it now grades
   `stale-modified`. The anchor was reworded in place to stay under its injected-size ceiling.
 
+### Test infrastructure, found while recording this branch's suite
+
+- `tests/conftest.py` gains `pytest_make_parametrize_id`. A string parameter whose generated id
+  has a newline, a leading or trailing space, a tab, non-ASCII text or more than 80 characters
+  now gets a stable `<argname>-<sha1 prefix>` id. On the testament pool one runner collects and
+  another runs the id it was handed, and those ids did not survive the hand-off, so tests that
+  pass were reported as errors. This hit three of this batch's four branches. Every other id is
+  unchanged.
+
 ## Consumer note
 Run `/prawduct:doctor` once in each governed repo. It adds a SessionStart hook to the repo's
 `.claude/settings.json` (commit it) that prints a warning when a session starts in a Claude Code
