@@ -97,6 +97,11 @@ installing a Python for the user; Windows-specific interpreter discovery (`py -3
   environment `requires-python` names. testament already requires uv.
 - Chunk 02: the doctor's check is `prawduct-hook python-floor`, a new read-only no-argument
   subcommand registered with the ephemeral-safe and no-argument sets and the documented list.
+- PR #1100's CI: 14 more bare-`python3` hook launches the first sweep missed (it skipped
+  `test_critic_consolidate.py` whole and never globbed `tests/scenarios/`) failed under CI's
+  restricted PATH, where only the system 3.12 exists. All now use `sys.executable`, and
+  `TestNoTestLaunchesTheHookWithABarePython3` scans `tests/` for the next one. R-4's earlier
+  acceptance ("they pass via the inherited PATH") is superseded on the record.
 - Boundary suite: 21 failures, one cause. Tests that copy `prawduct-hook` alone (the binary-skew
   guard's foreign binary, a fake plugin cache) or exec its source without `__file__` hit a
   traceback at the floor import, ahead of every command's own error handling. The floor import now
