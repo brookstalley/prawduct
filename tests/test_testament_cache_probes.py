@@ -92,7 +92,8 @@ def test_a_sole_blocker_is_raised_and_a_shared_one_is_not(repo):
     )
     assert "tools/measure.py" not in candidate.trigger_summary
     assert "sole blocker of 300 test(s)" in candidate.trigger_summary
-    assert candidate.recommended_action and candidate.owner_action
+    assert candidate.owner_action
+    assert candidate.recommended_action == ""  # owner-only: the decision is per cause
 
 
 def test_moving_counts_keep_the_same_evidence(repo):

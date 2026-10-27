@@ -181,7 +181,10 @@ def probe_uncacheable_tests(state: ProjectState, codebase: Codebase):
                         "which stops it being reported. Dismissing this advisory hides it "
                         "until the set of causes changes."
                     ),
-                    recommended_action="testament cacheability --offline",
+                    # Owner-only: the decision is per cause and the summary names
+                    # each one. `testament cacheability --offline` would show more,
+                    # but it ships with #287 and is not an allowlisted executable.
+                    recommended_action="",
                 )
             )
     return candidates

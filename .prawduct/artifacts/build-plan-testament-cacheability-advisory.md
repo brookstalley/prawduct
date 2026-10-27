@@ -68,6 +68,11 @@ the set of causes, like `git-hygiene`'s `tidy-available`.
   never start a process.
 
 **Decisions made mid-build:**
+- Chunk 01: the advisory is owner-only (empty `recommended_action`). The command it first named,
+  `testament cacheability --offline`, does not exist until #287 ships, and
+  `test_advisory_actionability` allowlists the executables an advisory may tell the runtime to
+  run. Settled by "do it right": never name a command that may not exist. Revisit when #287
+  ships.
 
 **Level:** Medium. The probe pattern is well-worn here. What would raise it: #287 shipped, and one
 real snapshot read through the probe.
