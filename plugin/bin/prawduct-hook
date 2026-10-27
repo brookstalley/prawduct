@@ -6921,8 +6921,8 @@ def _narrowed_run_lines(project_dir: Path) -> list[str]:
         flag = " DEGRADED" if isinstance(body.get("degraded"), str) and body["degraded"] else ""
         lines.append(f"  {tree} {fact.get('ts') or '(no time)'}{more}: {counts}{flag} — ceiling: {ceiling}")
         # Not `flaky:`: each was judged against that worktree's diff, and the
-        # Critic's and /prawduct:pr's flake rules read `flaky:` lines as this
-        # checkout's run.
+        # Critic's and /prawduct:pr's flake rules match `flaky:` lines as this
+        # checkout's run — this prefix is what keeps them out.
         lines.extend(_gates().flaky_lines(body.get("flaky"), prefix="    that tree's flake: "))
     if len(ordered) > _NARROWED_RUNS_SHOWN:
         lines.append(f"  … and {len(ordered) - _NARROWED_RUNS_SHOWN} older worktree(s)")

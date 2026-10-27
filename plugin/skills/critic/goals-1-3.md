@@ -68,7 +68,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 
 ## 1. Nothing Is Broken
 
-- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**. A line starting `flaky:` (this checkout's run) tagged `flaky_policy: warn` → **WARNING** at the boundary, an observation inside; a `that tree's flake:` line under `delegate runs` was judged against another worktree's diff and is never a finding.
+- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**. A `flaky:` line tagged `flaky_policy: warn` → **WARNING** at the boundary, an observation inside.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change record.

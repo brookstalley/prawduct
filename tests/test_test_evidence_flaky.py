@@ -766,16 +766,12 @@ class TestTheCriticRuleMatchesWhatIsPrinted:
         ]
         for name in ("goals-1-3.md", "review-protocol.md"):
             text = (root / name).read_text()
-            anchor = "A line starting `flaky:`"
-            (rule,) = [ln for ln in text.splitlines() if anchor in ln]
-            token = re.findall(r"`([^`]+)`", rule.split(anchor, 1)[1])[0]
+            (rule,) = [ln for ln in text.splitlines() if "A `flaky:` line" in ln]
+            token = re.findall(r"`([^`]+)`", rule.split("A `flaky:` line", 1)[1])[0]
             assert token in gates._FLAKY_OUTCOME_TEXT["warn"], (name, token)
             for other in others:
                 assert token not in other, (name, token, other)
             assert "**WARNING** at the boundary" in rule, name
-            # and it excludes, by the prefix the hook prints, the delegate lines
-            # judged against another worktree's diff
-            assert "`that tree's flake:`" in rule, name
 
 
 class TestFlakesReachTheHandoffAndThePrPayload:
