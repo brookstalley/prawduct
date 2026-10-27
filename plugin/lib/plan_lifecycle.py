@@ -28,7 +28,8 @@ The rule, in precedence order, each step's ``reason`` naming what it observed:
    ``base_commit`` is not counted: it is where the reviewed interval began,
    already on the base. Else a pending change record for the scope →
    ``merged-unreleased``, inferred from the deleted branch and the pending
-   record.
+   record — unless the plan is committed at HEAD and in no base tree, where
+   the record came with an unmerged plan and shows no merge.
 6. Otherwise ``unknown``. With ``probe_pr=True``, ``gh`` is asked first whether a
    pull request from the branch merged (``git_hygiene.merged_pr_for``) — the one
    route for a squash or rebase merge, whose reviewed commits the base never
@@ -267,6 +268,7 @@ def observe(
     # A pending change record for the scope: the branch was merged and deleted
     # and the release has not cut its record yet (gitflow retention).
     pending_note = ""
+    unmerged_record = False
     if pending is not None:
         if pending.read_error is not None:
             pending_note = f"; the pending change records could not be read ({pending.read_error})"
@@ -276,6 +278,15 @@ def observe(
                 else "fragment" if scope in pending.fragment_scopes
                 else None
             )
+            # A pending record is evidence of a merge only when the merge could be
+            # what brought it: `plan new` writes the fragment with the plan, so on
+            # an unmerged branch (a mistyped `branch:`) both are pending and nothing
+            # merged. A plan committed at HEAD but in no base tree is that case.
+            if record is not None and base_refs and _committed_off_base(
+                repo_dir, Path(plan_path), base_refs
+            ):
+                record = None
+                unmerged_record = True
             if record is not None:
                 return Lifecycle(
                     MERGED_UNRELEASED,
@@ -294,9 +305,14 @@ def observe(
     elif base_missing:
         looked = f"{base_missing}, and no change record for scope `{scope}` is pending"
     else:
+        record_part = (
+            f"its pending change record came with the plan, which is committed here "
+            f"but not in {base_label}'s tree" if unmerged_record
+            else "no change record for it is pending"
+        )
         looked = (
             f"no review fact for scope `{scope}` has its commit in {base_label}'s history, "
-            "and no change record for it is pending"
+            f"and {record_part}"
         )
     missing = f"{gone}; {looked}{pending_note}{record_note}"
     if probe_pr:
@@ -336,6 +352,22 @@ def _exact_refs(out: str) -> dict[str, str]:
         if gitstate.is_object_id(sha) and ref:
             refs[ref] = sha
     return refs
+
+
+def _committed_off_base(repo_dir: Path, path: Path, base_refs: list[str]) -> bool:
+    """Whether the file at ``path`` is committed at HEAD and absent from every
+    base tree: committed on a branch the base has not merged. An untracked file,
+    a path outside the repo, or HEAD unreadable answers False, which keeps the
+    caller's inference as it was rather than withdrawing it on no evidence."""
+    try:
+        rel = Path(path).resolve().relative_to(Path(repo_dir).resolve()).as_posix()
+    except (OSError, ValueError):
+        return False
+
+    def has(ref: str) -> bool:
+        return evidence.run_git(repo_dir, "cat-file", "-e", f"{ref}:{rel}")[0] == 0
+
+    return has("HEAD") and not any(has(ref) for ref in base_refs)
 
 
 def _contained_in(repo_dir: Path, commit: str, base_refs: list[str]) -> str | None | bool:

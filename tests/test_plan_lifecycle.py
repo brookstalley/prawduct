@@ -368,6 +368,20 @@ class TestBranchGone:
             "scope `unit` is pending release"
         )
 
+    def test_a_fragment_committed_with_an_unmerged_plan_infers_nothing(self, repo):
+        """#1106's control: the plan and its fragment are committed on a feature
+        branch the base never merged, and the plan claims a branch that does not
+        exist (a typo). `plan new` writes both together, so the pending fragment is
+        no evidence of a merge; the untracked-plan sibling above keeps inferring."""
+        _git(repo, "checkout", "-q", "-b", "fix/real", "develop")
+        _plan(repo)
+        _fragment(repo)
+        _git(repo, "add", ".prawduct")
+        _git(repo, "commit", "-qm", "plan")
+        lc = _observe(_plan(repo), repo)
+        assert lc.state == "unknown", lc
+        assert "committed here but not in `develop`'s tree" in lc.reason
+
     def test_another_scopes_fragment_infers_nothing(self, repo):
         _feature(repo)
         _delete(repo)
