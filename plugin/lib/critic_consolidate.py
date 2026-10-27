@@ -837,7 +837,50 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     return out
 
 
+def uncertified_clause(mode: str, open_chunks: "list[str]") -> str:
+    """The sentence a whole-plan review that certified no chunk ends on (#1081).
+
+    Its proposal prints only to ``critic-begin``'s stderr, inside the forked
+    critic, so without this a boundary review that proposed nothing certified
+    nothing in silence and the plan's shipped chunks read open until the
+    release archived them as unbuilt."""
+    ids = ", ".join(open_chunks)
+    return (
+        f"This {mode} review certified no chunk, and the plan still has open chunk(s) "
+        f"{ids}: its proposal found no work for them (no commit subject in its interval "
+        "names them and no Deliverables path was touched). If they are this branch's "
+        f"work, pass `--chunks {','.join(open_chunks)}` on the next `/prawduct:critic` "
+        "dispatch — omitting it certifies only the proposal."
+    )
+
+
 def next_action_line(
+    fact_id: "str | None",
+    blocking: int,
+    warning: int,
+    note: int,
+    price_sentence: "str | None" = None,
+    carried: "list[dict] | None" = None,
+    span: "str | None" = None,
+    observations: int = 0,
+    cost: "str | None" = None,
+    rides_next_review: "str | None" = None,
+    uncertified: "tuple[str, list[str]] | None" = None,
+) -> str:
+    """:func:`_next_action_core`'s sentence, ending on :func:`uncertified_clause`
+    when ``uncertified`` (the review's mode and the plan's open chunks) says a
+    whole-plan review certified nothing. Every arm carries it: a fix round does
+    not change which chunks this review left open."""
+    line = _next_action_core(
+        fact_id, blocking, warning, note, price_sentence, carried, span,
+        observations, cost, rides_next_review,
+    )
+    if uncertified:
+        line += " " + uncertified_clause(*uncertified)
+    return line
+
+
+def _next_action_core(
     fact_id: "str | None",
     blocking: int,
     warning: int,
@@ -5203,6 +5246,35 @@ def _plan_owes_a_later_review(
         return None
 
 
+def _uncertified_open_chunks(
+    project_dir: Path, prawduct_dir: Path, store: dict, fact: dict
+) -> "tuple[str, list[str]] | None":
+    """``(mode, open chunk ids)`` when ``fact`` is a whole-plan review that
+    certified no chunk while its plan still has open ones, else ``None``.
+
+    Read after the fact is appended, so it asks the same store every gate does.
+    The plan is the one the dispatch graded, resolved as ``begin_review``
+    resolves it (the review's scope, else the checkout's binding). ``None``
+    on any failure: this is advice, and advice that cannot be derived keeps the
+    line as it was."""
+    from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    body = fact.get("body") or {}
+    mode = mode_token_of(body.get("mode"))
+    if mode not in plan_status._WHOLE_PLAN_MODES or body.get("chunks"):
+        return None
+    try:
+        plan = buildplan_refs.resolve_reviewed_plan(
+            project_dir, prawduct_dir, body.get("scope")
+        ).path
+        if plan is None:
+            return None
+        open_ids = plan_status.current_chunks(plan, store, repo_dir=project_dir)
+    except (OSError, ValueError):
+        return None
+    return (mode, open_ids) if open_ids else None
+
+
 def fact_to_cache_record(
     fact: dict,
     price_sentence: "str | None" = None,
@@ -5210,6 +5282,7 @@ def fact_to_cache_record(
     span: "str | None" = None,
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
+    uncertified: "tuple[str, list[str]] | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -5292,7 +5365,7 @@ def fact_to_cache_record(
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
-            cost=cost, rides_next_review=rides_next_review,
+            cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -6060,8 +6133,9 @@ def consolidate(
         answer = gates.branch_coverage_verdict(project_dir)
         span = span_clause(answer, _span_commits(project_dir, answer))
 
+    uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
-        fact, price_sentence, carried, span, cost_sentence, rides_next_review
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
@@ -6228,6 +6302,7 @@ def consolidate(
             observations=len(fact_body.get("observations") or []),
             cost=cost_sentence,
             rides_next_review=rides_next_review,
+            uncertified=uncertified,
         )
     )
     return 0
