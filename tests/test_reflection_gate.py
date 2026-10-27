@@ -329,10 +329,15 @@ class TestMovesThisSessionDidNotAuthor:
         _git(repo, "commit", "-q", "-am", "our side, before the session")
 
         s = _Session(repo)
+        # The identity matters even though a conflicted merge commits nothing:
+        # git checks it before merging, so without one (a runner with no global
+        # config) the merge refuses outright and there is nothing to conclude.
         merge = subprocess.run(
-            ["git", "merge", "-q", "other"], cwd=str(repo), capture_output=True
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "-q", "other"],
+            cwd=str(repo), capture_output=True,
         )
         assert merge.returncode != 0, "fixture must conflict"
+        assert (repo / ".git" / "MERGE_HEAD").is_file(), merge.stderr
         (repo / "code.py").write_text("x = 'resolved'\n")
         s.git("add", "code.py")
         s.git("commit", "-q", "--no-edit")
