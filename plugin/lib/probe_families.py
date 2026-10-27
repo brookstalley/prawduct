@@ -67,7 +67,7 @@ def register_all() -> None:
     register_stale_base()  # stale remote-base / unpromoted-release-prep nudge (COV-7K4N)
     register_gitattributes()  # change-log merge=union recommendation (top-append conflicts)
     register_retired_state()  # retired build_state.test_tracking strip nudge
-    register_onboarding()  # plugin enabled but /prawduct:onboard never run in this repo
+    register_onboarding()  # plugin enabled but /prawduct:onboard (or a file-sync repo's /prawduct:migrate) never run
     register_adhoc_delegate()  # ad-hoc delegate worktree left unintegrated (its brief is the signal)
     register_oversized_state()  # governance files over this repo's size threshold
     register_evidence_size()  # clone-shared evidence store over its size threshold (#953)
