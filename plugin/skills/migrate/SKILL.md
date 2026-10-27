@@ -32,7 +32,9 @@ The cutover engine derives the REMOVE set from the **framework registry** — it
   hardest rules, read by every agent host; the full methodology now lives in the plugin.
   `AGENTS.md` is created when absent, and an existing one keeps its text above the anchor;
   `.claude/settings.json` (prawduct hook wiring + the framework banner removed; the plugin
-  install reference added — your own keys/hooks/marketplaces are preserved), and
+  install reference and the unloaded-plugin tripwire — a SessionStart hook that warns when
+  the plugin is not installed for the repo — added; your own keys/hooks/marketplaces are
+  preserved), and
   `.prawduct/project-state.yaml` (a `distribution: plugin` line appended, and **retired
   framework keys removed** — see below).
 - **RETIRED FRAMEWORK KEYS** in `.prawduct/project-state.yaml`: `views_enabled` and

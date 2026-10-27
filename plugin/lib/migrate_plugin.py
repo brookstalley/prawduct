@@ -28,7 +28,7 @@ from pathlib import Path
 
 from dataclasses import dataclass
 
-from . import core, lifecycle_repair
+from . import core, lifecycle_repair, unloaded_tripwire
 from .anchor_archive import shipped_anchor_in
 
 # The committed install reference (design §8). Pins the marketplace + plugin
@@ -364,7 +364,8 @@ def legacy_sync_stands_down(project_dir: Path) -> bool:
 
 def transform_settings(project_dir: Path) -> bool:
     """Strip the committed prawduct hook wiring + framework banner from
-    ``.claude/settings.json`` and merge the install reference.
+    ``.claude/settings.json``, merge the install reference, and add the
+    unloaded-plugin tripwire hook (``lib/unloaded_tripwire.py``).
 
     Preserves every user-owned key, including user-defined hooks and any other
     marketplaces/plugins. ``companyAnnouncements`` (the v1.x framework banner) is
@@ -420,6 +421,10 @@ def transform_settings(project_dir: Path) -> bool:
             existing = {}
         existing.update(mapping)
         data[top_key] = existing
+
+    # The project-level SessionStart hook that speaks when the plugin did not
+    # load — the one piece of governance that runs without it.
+    unloaded_tripwire.ensure_tripwire(data)
 
     if json.dumps(data, sort_keys=True) == before and path.is_file():
         return False

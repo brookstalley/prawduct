@@ -311,13 +311,19 @@ def test_claude_block_stripped_product_content_kept(repo: Path):
     assert "Don't touch this product instruction." in text
 
 
-def test_settings_mixed_sessionstart_keeps_only_user_group(repo: Path):
-    # The hallucinote shape: SessionStart has a prawduct group AND a user group.
+def test_settings_mixed_sessionstart_keeps_user_group_and_adds_tripwire(repo: Path):
+    # The hallucinote shape: SessionStart has a legacy prawduct group AND a user
+    # group. The legacy group goes, the user group stays first, and the one group
+    # migrate adds is the unloaded-plugin tripwire — the only prawduct hook a
+    # plugin repo commits, because it must run when the plugin does not load.
+    from lib.unloaded_tripwire import TRIPWIRE_GROUP
+
     run_migrate(repo, "--apply")
     data = json.loads((repo / ".claude" / "settings.json").read_text())
     ss = data["hooks"]["SessionStart"]
-    assert len(ss) == 1, "the prawduct SessionStart group must be removed, the user group kept"
+    assert len(ss) == 2, "the legacy SessionStart group must be removed, the user group kept"
     assert "session-start.sh" in ss[0]["hooks"][0]["command"]
+    assert ss[1] == TRIPWIRE_GROUP
     assert all("product-hook" not in g["hooks"][0]["command"] for g in ss)
 
 

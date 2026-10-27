@@ -9482,6 +9482,64 @@ def cmd_reanchor(project_dir: Path, argv: list[str]) -> int:
     return 1 if status == anchor_repair.STATUS_UNREADABLE else 0
 
 
+def cmd_install_tripwire(project_dir: Path, argv: list[str]) -> int:
+    """Report — and on ``--apply`` write — the unloaded-plugin tripwire hook in
+    this repo's committed ``.claude/settings.json`` (``lib/unloaded_tripwire.py``).
+
+    The repair path for a repo onboarded before the hook existed: ``init-product``
+    and ``/prawduct:migrate`` write it for new repos, and this is how
+    ``/prawduct:doctor`` adds it to an existing one without a hand edit.
+
+    Exit codes follow ``reanchor``. **Dry run:** 0 when it ran (a missing hook is
+    a finding, not a failure), 1 when it could not grade (lib not importable, or
+    settings not JSON / ``hooks`` not the shape Claude Code reads). **``--apply``:**
+    0 when it wrote or the hook was already current, 1 when it refused (nothing
+    written). Unknown flags are 2.
+    """
+    rejected = _reject_unknown_args("install-tripwire", argv, {"--apply", "--json"})
+    if rejected is not None:
+        return rejected
+    apply = "--apply" in argv
+    as_json = "--json" in argv
+
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    try:
+        from lib import unloaded_tripwire  # noqa: PLC0415 — lazy keeps top-level cheap
+    except ImportError as exc:
+        print(f"error: install-tripwire could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 1
+
+    result = unloaded_tripwire.install(project_dir, apply=apply)
+    status = result["status"]
+    if as_json:
+        print(json.dumps(result, indent=2))
+    else:
+        detail = {
+            unloaded_tripwire.PRESENT: "the tripwire hook is present and current.",
+            unloaded_tripwire.ABSENT: "no tripwire hook: a session that loads no prawduct "
+            "plugin here starts ungoverned with nothing saying so.",
+            unloaded_tripwire.STALE: "the tripwire hook is an older or edited copy; the "
+            "repair replaces it with the current one.",
+            unloaded_tripwire.MALFORMED: "settings.json is not JSON, or its `hooks` / "
+            "`hooks.SessionStart` is not the shape Claude Code reads; fix it by hand "
+            "first. Nothing was written.",
+        }[status]
+        print(f"install-tripwire ({'apply' if apply else 'dry-run'}): {status}")
+        print(f"  {detail}")
+        if result["applied"]:
+            print(f"  Wrote {result['path']}: a SessionStart hook added, every other key kept.")
+        elif status in (unloaded_tripwire.ABSENT, unloaded_tripwire.STALE):
+            print(
+                f"  Would add a SessionStart hook to {result['path']} that prints a "
+                "warning when prawduct is not installed for this repo, and nothing "
+                "when it is (--apply to write it). Every other key is kept."
+            )
+
+    return 1 if status == unloaded_tripwire.MALFORMED else 0
+
+
 def _plan_label(plan_path: Path, prawduct_dir: Path) -> str:
     """A plan named so the operator can tell it from its siblings.
 
@@ -10704,6 +10762,7 @@ _USAGE = (
     "learnings-compact [--plan [--force]|--apply] [--local] [--json]|"
     "learnings-files [--for-diff] [--json]|"
     "norm-index-scaffold [--apply] [--json]|reanchor [--apply] [--json]|"
+    "install-tripwire [--apply] [--json]|"
     "lifecycle-repair [--apply] [--json]|"
     "plan-backfill [--apply] [--json] [--date YYYY-MM-DD]|"
     "archive-change-log [--apply] [--json]|"
@@ -11171,6 +11230,7 @@ _EPHEMERAL_APPLY_GATED_COMMANDS = frozenset({
     "norm-index-scaffold",
     "plan-backfill",
     "reanchor",
+    "install-tripwire",
 })
 
 # Commands whose first positional argument selects a read or a write.
@@ -11877,6 +11937,8 @@ def _dispatch() -> int:
         return cmd_learnings_files(project_dir, sys.argv[2:])
     elif command == "reanchor":
         return cmd_reanchor(project_dir, sys.argv[2:])
+    elif command == "install-tripwire":
+        return cmd_install_tripwire(project_dir, sys.argv[2:])
     elif command == "learnings-obligation":
         return cmd_learnings_obligation(project_dir, sys.argv[2:])
     elif command == "lifecycle-repair":
