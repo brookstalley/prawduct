@@ -55,6 +55,7 @@ def register_all() -> None:
     from .evidence_size_probes import register as register_evidence_size
     from .git_hygiene_probes import register as register_git_hygiene
     from .work_unit_probes import register as register_work_unit
+    from .testament_cache_probes import register as register_testament_cache
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe
@@ -73,3 +74,4 @@ def register_all() -> None:
     register_stranded_branch()  # local branch checked out nowhere, commits no remote has (#843's local arm)
     register_git_hygiene()  # merged branches and dead worktrees whose removal loses nothing
     register_work_unit()  # plan-unbound-legacy: a plan governing through the retiring legacy window (#1050)
+    register_testament_cache()  # causes that alone keep tests uncacheable, from testament's offline snapshot
