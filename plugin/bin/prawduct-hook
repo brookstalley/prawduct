@@ -4356,6 +4356,51 @@ def _scope_refusal_remedy(cause: str | None) -> str:
 #: the run is broadly broken and the first hundred say as much as the rest.
 _FAILED_TESTS_CAP = 100
 
+#: How many flake entries a record keeps. A run with more tests passing only on
+#: retry than this is not flaky but unstable, and the names past it add nothing
+#: a reader would act on differently.
+_FLAKY_TESTS_CAP = 20
+
+#: How much of a flake's first failure a record keeps. Enough to recognise the
+#: failure (a timeout, an assertion) — the full trace stays in the runner's own
+#: output, and this text is test output, so it is carried as data and bounded.
+_FLAKY_FAILURE_TEXT_CAP = 300
+
+
+def _failure_text(element) -> str:
+    """The recognisable part of one JUnit failure-like element: its
+    ``message``, else the first non-blank line of its text (or of a
+    ``<stackTrace>`` child, Surefire's flake shape), truncated."""
+    message = (element.get("message") or "").strip()
+    if not message:
+        trace = element.find("stackTrace")
+        body = (trace.text if trace is not None else element.text) or ""
+        message = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    return message[:_FLAKY_FAILURE_TEXT_CAP]
+
+
+def _flaky_entry(case, failures: list, *, source: str) -> dict:
+    """One ``flaky`` record entry: a test that failed ``len(failures)`` times
+    and then passed. ``file`` only when the report names it — the touched
+    judgment treats an unknown file as touched, so a guessed one would be the
+    lenient answer to a question nobody could answer."""
+    entry = {
+        "id": _junit_case_id(case),
+        "first_failure": _failure_text(failures[0]),
+        "attempts": len(failures),
+        "source": source,
+    }
+    file_attr = (case.get("file") or "").strip()
+    if file_attr:
+        entry["file"] = file_attr
+    return entry
+
+
+def _capped_flaky(entries: list[dict]) -> list[dict]:
+    """The record's ``flaky`` value: sorted by id so two runs with the same
+    flakes write the same bytes, then capped."""
+    return sorted(entries, key=lambda e: e["id"])[:_FLAKY_TESTS_CAP]
+
 
 def _junit_case_id(case) -> str:
     """A ``<testcase>``'s id as ``classname::name``, or ``name`` alone when the
@@ -4431,6 +4476,8 @@ def _record_narrowed_run(
         run_fact["head"] = head_sha.strip()
     if degraded_reason:
         run_fact["degraded"] = degraded_reason
+    if record.get("flaky"):
+        run_fact["flaky"] = record["flaky"]
     appended = _evidence_mod.append_test_run(project_dir, run_fact)
     if appended.get("status") != "appended":
         print(
@@ -4867,6 +4914,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
     failed_ids: list[str] = []  # failing leaf ids, report order; empty when none were visible
+    flaky: list[dict] = []  # tests that passed only after failing (`_flaky_entry`)
     run_returncodes: list[int] = []  # one per executed command; empty when nothing ran
 
     if no_rerun:
@@ -4958,6 +5006,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         prior_ids = prior.get("failed_tests")
         if isinstance(prior_ids, list):
             failed_ids = [i for i in prior_ids if isinstance(i, str)]
+        # And the flakes: a green that passed only on retry is still that
+        # green, and a restamp that dropped them would launder it clean.
+        prior_flaky = prior.get("flaky")
+        if isinstance(prior_flaky, list):
+            flaky = [e for e in prior_flaky if isinstance(e, dict) and isinstance(e.get("id"), str)]
     elif from_counts is not None:
         # Agnostic on-ramp (no XML, no subprocess): record the counts as given.
         # The F4a overlay below still recomputes the changed-file half against
@@ -5222,6 +5275,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                         skipped += 1
                         continue
                     else:
+                        # A pass that failed first: Surefire's convention,
+                        # which records each failed attempt as a
+                        # <flakyFailure>/<flakyError> beside no final
+                        # <failure>. Its <rerunFailure>/<rerunError> sit beside
+                        # a final <failure>, so that case failed every time and
+                        # is counted above as failed.
+                        # Document order, so the first entry is the first attempt.
+                        attempts = [
+                            el for el in c if el.tag in ("flakyFailure", "flakyError")
+                        ]
+                        if attempts:
+                            flaky.append(_flaky_entry(c, attempts, source="junit"))
                         continue
                     failed_ids.append(_junit_case_id(c))
                 # Summary-only suites: their attributes are the only evidence
@@ -5392,6 +5457,11 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         # cannot grow the file every gate reads; `failed` still says how many
         # the cap left out.
         record["failed_tests"] = failed_ids[:_FAILED_TESTS_CAP]
+    if flaky:
+        # Omitted (never `[]`) when nothing flaked, like `failed_tests`. Not in
+        # the gates' schema for the same reason: it is printed, never read for
+        # a verdict, so a malformed value must not be able to turn a pass stale.
+        record["flaky"] = _capped_flaky(flaky)
     if degraded_reason:
         # Presence is the flag; an ordinary run omits the key entirely rather
         # than writing a false, so every record written before the field existed
@@ -5486,6 +5556,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             run_fact["head"] = head_sha.strip()
         if degraded_reason:
             run_fact["degraded"] = degraded_reason
+        if record.get("flaky"):
+            # A worktree that reuses this run by tree reuses its flakes too.
+            run_fact["flaky"] = record["flaky"]
         appended = _evidence_mod.append_test_run(project_dir, run_fact)
         if appended.get("status") != "appended":
             print(
@@ -5525,10 +5598,15 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if failed_ids
         else ""
     )
+    flaky_line = (
+        "\n  passed only on retry: " + _gates().name_flaky_tests(record.get("flaky"))
+        if record.get("flaky")
+        else ""
+    )
     print(
         f"{verb}: {passed} passed, {failed} failed, {skipped} skipped "
         f"in {record['duration_seconds']}s ({record['timestamp']}){provenance}"
-        f"{failing}{degradation}"
+        f"{failing}{flaky_line}{degradation}"
         + (
             _GREEN_IS_EVIDENCE_DIRECTIVE
             if _evidence_changed_judged_code(evidence_path)

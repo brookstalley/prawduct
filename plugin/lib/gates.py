@@ -169,6 +169,50 @@ def name_failing_tests(ids: object, failed: int) -> str:
     return ", ".join(shown) + (f" (+{'; +'.join(rest)})" if rest else "")
 
 
+def flaky_entries(value: object) -> list[dict]:
+    """The well-formed entries of a record's ``flaky`` value, in record order.
+
+    ``flaky`` lists the tests that passed only after failing — on the
+    recorder's own retry or, per the report, the runner's. Like
+    ``failed_tests`` it is **deliberately NOT in the schema**: it is printed and
+    carried, never read for a verdict, so a malformed value is dropped here
+    rather than refused there, where it could turn a passing record stale."""
+    if not isinstance(value, list):
+        return []
+    return [e for e in value if isinstance(e, dict) and isinstance(e.get("id"), str)]
+
+
+def name_flaky_tests(value: object) -> str:
+    """The first few flakes as ``id (failed N×)``, and how many more there are."""
+    entries = flaky_entries(value)
+    shown = entries[:_FAILING_NAMES_SHOWN]
+    parts = []
+    for e in shown:
+        attempts = e.get("attempts")
+        n = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else "?"
+        parts.append(f"{e['id']} (failed {n}×)")
+    rest = len(entries) - len(shown)
+    return ", ".join(parts) + (f" (+{rest} more in .prawduct/.test-evidence.json)" if rest else "")
+
+
+def flaky_lines(value: object) -> list[str]:
+    """One line per flake for a status surface: what passed only on retry, how
+    often it failed first, the first failure's text, and where it came from.
+    Every surface that lists flakes renders them through this, so the handoff,
+    ``test-status`` and the PR payload say the same thing about the same run."""
+    lines = []
+    for e in flaky_entries(value):
+        attempts = e.get("attempts")
+        n = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else "?"
+        via = "the runner's retry" if e.get("source") == "junit" else "the recorder's retry"
+        first = e.get("first_failure") if isinstance(e.get("first_failure"), str) else ""
+        lines.append(
+            f"flaky: {e['id']} — passed on {via} after {n} failure(s)"
+            + (f"; first: {first}" if first else "")
+        )
+    return lines
+
+
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
     """The saved test-evidence record, or ``(None, reason)`` saying why not.
 
@@ -2116,8 +2160,10 @@ def test_status(project_dir: Path) -> int:
     Used by builders, the Critic, and the PR reviewer to decide whether to
     re-run the test suite.
 
-    stdout: one line — :data:`CURRENT_TREE_LABEL`,
-    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason.
+    stdout: the verdict line first — :data:`CURRENT_TREE_LABEL`,
+    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason —
+    then one ``flaky:`` line per test the saved run passed only on retry
+    (:func:`flaky_lines`), which inform and never change the exit code.
     The parenthetical names which of :func:`tests_are_current`'s two disjuncts
     answered, because they are different guarantees and a bare `current` told
     every reader it had the stronger one. Both still mean "safe to skip the
@@ -2134,6 +2180,12 @@ def test_status(project_dir: Path) -> int:
         print(f"{label}: {reason}")
     else:
         print(f"stale: {reason}")
+    # After the verdict, never instead of it: the saved run's flakes. Printed
+    # whatever the verdict, since a stale green that passed only on retry is
+    # still worth a backlog item, and never changing the exit code.
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    for line in flaky_lines((record or {}).get("flaky")):
+        print(line)
     return 0 if is_current else 1
 
 
