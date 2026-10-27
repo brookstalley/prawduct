@@ -16,7 +16,8 @@ testament is not used the directory does not exist and the probe returns at
 once.
 
 **One advisory per suite, its id following the set of causes.** Evidence is one
-``kind site scope`` line per cause — never a count or a line number — so a
+``suite kind site scope`` line per cause, sorted by its own text — never a count,
+a line number or a rank by count, since the store hashes evidence in order — so a
 dismissal holds until a cause is added or goes away. Only a cause that is the
 sole blocker of some tests (``alone > 0``) is raised: fixing any other changes
 nothing while its partner still blocks.
@@ -141,15 +142,22 @@ def probe_uncacheable_tests(state: ProjectState, codebase: Codebase):
         return None
     full = [e for e in envelopes if e.get("selection") == "full"]
     if not full:
-        # Nothing written, or only narrowed runs: a `-k` run is not the
-        # project's state, and its absence of causes proves nothing.
-        return [] if not envelopes else None
+        if not envelopes:
+            return []
+        # Only narrowed runs: a `-k` run is not the project's state, and its
+        # absence of causes proves nothing.
+        _note("only a narrowed run's snapshot exists here; run the whole suite once")
+        return None
     candidates = []
     for envelope in full:
         if envelope.get("v") != _ENVELOPE_V:
             _note(f"snapshot version {envelope.get('v')!r} is not one this reader knows")
             return None
         if not _current(codebase.root, envelope):
+            _note(
+                f"the snapshot's commit {str(envelope.get('commit'))[:12]!r} is not in "
+                "this branch's history; run the suite here once"
+            )
             return None
         for row in envelope.get("rows") or []:
             if not isinstance(row, dict):
@@ -167,9 +175,9 @@ def probe_uncacheable_tests(state: ProjectState, codebase: Codebase):
             candidates.append(
                 AdvisoryCandidate(
                     type=PROBE_TYPE,
-                    evidence=tuple(
+                    evidence=tuple(sorted(
                         f"{suite} {kind} {site} {scope}" for kind, site, scope, _a in causes
-                    ),
+                    )),
                     trigger_summary=(
                         f"testament cannot cache some of suite `{suite}`'s results, and "
                         f"{len(causes)} cause(s) are each the only thing stopping it: {named}"

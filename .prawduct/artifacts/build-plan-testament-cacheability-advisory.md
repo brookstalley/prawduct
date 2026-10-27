@@ -54,7 +54,8 @@ the set of causes, like `git-hygiene`'s `tidy-available`.
 - *Which causes are raised:* those with `alone > 0`, meaning causes that are the only blocker for
   some tests. Fixing one of those makes tests cacheable. A cause that is never alone (behind a
   real subprocess, say) would change nothing if fixed.
-- *Advisory identity:* evidence lines are `kind site scope`, never counts or line numbers. So a
+- *Advisory identity:* evidence lines are `suite kind site scope`, sorted by their text, never
+  counts, line numbers or a rank by count. So a
   dismissal holds until a cause is added or goes away, and moving counts do not reopen it.
 - *Declining:* the owner action points at testament's declarations (shared, committed, durable)
   for "expected", and at the advisory's dismiss for "not now". Both exist; the advisory names both.
@@ -111,7 +112,7 @@ real snapshot read through the probe.
 - **Tests:** new `tests/test_testament_cache_probes.py`:
   - no snapshot directory → `[]`, and no git call;
   - a full, current snapshot with two `alone > 0` causes and one `alone == 0` → one advisory
-    naming the two, evidence `kind site scope` only;
+    naming the two, evidence `suite kind site scope` only;
   - the same causes with different counts → identical evidence;
   - a narrowed snapshot only, an unknown `v`, or a commit not an ancestor of HEAD → `None`;
   - a site that is not a `path:function` token is dropped, and `hint`/`why` text never appears in

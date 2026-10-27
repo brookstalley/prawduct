@@ -19,8 +19,8 @@ run-level hook kept about 300k of 577k executions uncacheable for a week, and no
   network and no process. Where testament is not used the directory is absent and the probe
   returns at once.
 - It raises one `testament-cache:uncacheable-tests` advisory per suite whose full, current
-  snapshot names a cause that is the sole blocker of some tests. Evidence is one `kind site scope`
-  line per cause, never a count, so a dismissal holds until the set of causes changes.
+  snapshot names a cause that is the sole blocker of some tests. Evidence is one `suite kind site scope`
+  line per cause, sorted by its text and never by count, so a dismissal holds until the set of causes changes.
 - A narrowed-only snapshot, an unknown envelope version, an unreadable file, or a commit outside
   this branch's history means the probe could not look, so an open advisory stays open.
 - Only checked tokens reach the briefing: kinds and scopes as plain words, sites as

@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from lib import evidence, probe_families, testament_cache_probes as tcp
-from lib.advisory_store import ProjectState, clear_registry, make_codebase
+from lib.advisory_store import ProjectState, clear_registry, compute_id, make_codebase
 
 
 @pytest.fixture(autouse=True)
@@ -96,11 +96,36 @@ def test_a_sole_blocker_is_raised_and_a_shared_one_is_not(repo):
     assert candidate.recommended_action == ""  # owner-only: the decision is per cause
 
 
-def test_moving_counts_keep_the_same_evidence(repo):
-    snapshot(repo, [cause(alone=300)])
-    first = run(repo)[0].evidence
-    snapshot(repo, [cause(alone=12)])
-    assert run(repo)[0].evidence == first
+def test_moving_counts_keep_the_same_advisory_id(repo):
+    """The id hashes the evidence IN ORDER, so ranking evidence by count would
+    reopen a dismissed advisory whenever two causes swapped places. Two causes
+    whose counts swap must keep the id (the summary still leads with the
+    larger)."""
+    a = dict(kind="clock_read", site="tests/conftest.py:write_scope_record", scope="process")
+    b = dict(kind="subprocess", site="tests/test_git.py:run_git", scope="test")
+    snapshot(repo, [cause(alone=300, **a), cause(alone=40, **b)])
+    first = run(repo)[0]
+    snapshot(repo, [cause(alone=12, **a), cause(alone=40, **b)])
+    second = run(repo)[0]
+    ids = [compute_id(tcp.FEATURE, tcp.PROBE_TYPE, tcp.PROBE_VERSION, c.evidence)
+           for c in (first, second)]
+    assert ids[0] == ids[1]
+    assert first.trigger_summary.index("clock_read") < first.trigger_summary.index("subprocess")
+    assert second.trigger_summary.index("subprocess") < second.trigger_summary.index("clock_read")
+
+
+def test_past_three_causes_the_summary_counts_the_rest(repo):
+    snapshot(repo, [cause(site=f"tests/t{n}.py:f", alone=10 + n) for n in range(5)])
+    (candidate,) = run(repo)
+    assert candidate.trigger_summary.endswith("; and 2 more")
+    assert len(candidate.evidence) == 5
+    assert "tests/t0.py" not in candidate.trigger_summary  # the smallest two are counted
+
+
+def test_an_unchecked_suite_name_reads_as_default(repo):
+    snapshot(repo, [cause()], suite="Unit Tests!")
+    (candidate,) = run(repo)
+    assert candidate.evidence == ("default clock_read tests/conftest.py:write_scope_record process",)
 
 
 def test_another_worktrees_snapshot_is_not_read(repo, tmp_path):
@@ -113,12 +138,14 @@ def test_another_worktrees_snapshot_is_not_read(repo, tmp_path):
     {"v": 2},
     {"commit": "f" * 40},
 ])
-def test_a_snapshot_not_about_this_checkout_could_not_look(repo, envelope):
+def test_a_snapshot_not_about_this_checkout_could_not_look(repo, envelope, capsys):
     """Narrowed only, an unknown version, or a commit outside this branch: the
     probe could not look (None), so an open advisory stays open rather than
-    resolving on data that is not this checkout's."""
+    resolving on data that is not this checkout's — and says why, or the owner
+    reads silence as "nothing uncacheable"."""
     snapshot(repo, [cause()], **envelope)
     assert run(repo) is None
+    assert "testament cacheability probe skipped" in capsys.readouterr().err
 
 
 def test_an_unreadable_snapshot_could_not_look(repo):
