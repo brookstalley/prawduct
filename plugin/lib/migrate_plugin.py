@@ -298,6 +298,34 @@ def _is_prawduct_hook(hook: object) -> bool:
     return isinstance(hook, dict) and "product-hook" in str(hook.get("command", ""))
 
 
+def legacy_hook_events(project_dir: Path) -> list[str]:
+    """The hook events in ``.claude/settings.json`` still wired to the legacy
+    ``product-hook`` script — the wiring :func:`transform_settings` strips — sorted.
+
+    Empty when there is none, and when the file is absent or unreadable: an
+    unreadable settings file says nothing about what runs at session start.
+    """
+    path = Path(project_dir) / ".claude" / "settings.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    hooks = data.get("hooks") if isinstance(data, dict) else None
+    if not isinstance(hooks, dict):
+        return []
+    return sorted(
+        event
+        for event, groups in hooks.items()
+        if isinstance(groups, list)
+        and any(
+            isinstance(group, dict)
+            and isinstance(group.get("hooks"), list)
+            and any(_is_prawduct_hook(h) for h in group["hooks"])
+            for group in groups
+        )
+    )
+
+
 def transform_settings(project_dir: Path) -> bool:
     """Strip the committed prawduct hook wiring + framework banner from
     ``.claude/settings.json`` and merge the install reference.

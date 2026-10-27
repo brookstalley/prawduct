@@ -336,3 +336,137 @@ def test_register_all_stays_silent_on_this_repo():
     register_all()
     candidates = run_all_probes(ProjectState({}), _cb(_REPO_ROOT))
     assert [c for c in candidates if c.feature == op.FEATURE] == []
+
+
+# --- unmigrated file-sync (#1090) ---------------------------------------------
+#
+# A pre-2.0 file-sync repo running under the plugin without /prawduct:migrate.
+# Its legacy sync hook stands down only once `distribution: plugin` is recorded,
+# so until then it runs beside the plugin's and can revert committed governance
+# files. The never-onboarded probe is silent here by design (the manifest is a
+# marker), so this probe is the only thing that names the route.
+
+import json  # noqa: E402
+
+from lib import migrate_plugin  # noqa: E402
+
+# The real legacy wiring shape (tests/test_plugin_migrate.py's fixture): a
+# SessionStart group calling product-hook beside a user group, a Stop group, and
+# a user-only PreToolUse group that must not count.
+_LEGACY_SETTINGS = {
+    "hooks": {
+        "SessionStart": [
+            {"matcher": "startup|clear|resume",
+             "hooks": [{"type": "command",
+                        "command": 'python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" clear'}]},
+            {"matcher": "startup|clear|resume",
+             "hooks": [{"type": "command",
+                        "command": 'bash "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"'}]},
+        ],
+        "Stop": [{"matcher": "",
+                  "hooks": [{"type": "command",
+                             "command": 'python3 "$CLAUDE_PROJECT_DIR/tools/product-hook" stop'}]}],
+        "PreToolUse": [{"matcher": "Bash",
+                        "hooks": [{"type": "command", "command": "my-own-guard.sh"}]}],
+    },
+}
+
+
+def _file_sync(tmp_path, *, wired: bool) -> Path:
+    """A pre-2.0 file-sync repo under the plugin: manifest, stub state, old block."""
+    _enabled_never_onboarded(tmp_path)
+    _write(tmp_path, SYNC_MANIFEST, '{"framework_source": "../prawduct"}\n')
+    _write(tmp_path, "CLAUDE.md", f"{core.BLOCK_BEGIN}\nold template\n<!-- PRAWDUCT:END -->\n")
+    if wired:
+        _write(tmp_path, ".claude/settings.json", json.dumps(_LEGACY_SETTINGS))
+    return tmp_path
+
+
+def _unmigrated(root):
+    return op.probe_unmigrated_file_sync(ProjectState({}), _cb(root))
+
+
+def test_unmigrated_with_the_legacy_hook_wired_is_urgent_and_names_migrate(tmp_path):
+    (adv,) = _unmigrated(_file_sync(tmp_path, wired=True))
+    assert adv.type == "unmigrated-file-sync"
+    assert adv.recommended_action == "/prawduct:migrate"
+    assert adv.priority == "urgent"
+    # the wired events, and only the ones the legacy script runs on
+    assert "SessionStart, Stop" in adv.evidence[1]
+    assert "PreToolUse" not in adv.evidence[1]
+    assert "revert" in adv.trigger_summary
+
+
+def test_unmigrated_without_the_hook_wired_is_a_warn_that_claims_no_revert(tmp_path):
+    (adv,) = _unmigrated(_file_sync(tmp_path, wired=False))
+    assert adv.recommended_action == "/prawduct:migrate"
+    assert adv.priority == "warn"
+    assert "no legacy product-hook is wired" in adv.evidence[1]
+    assert "revert" not in adv.trigger_summary
+
+
+def test_the_wiring_changes_the_advisory_identity(tmp_path):
+    wired = _unmigrated(_file_sync(tmp_path / "a", wired=True))[0]
+    bare = _unmigrated(_file_sync(tmp_path / "b", wired=False))[0]
+    def ident(adv):
+        return compute_id(op.FEATURE, adv.type, op.PROBE_VERSION, adv.evidence)
+
+    assert ident(wired) != ident(bare)
+
+
+def test_silent_once_migrated_even_with_the_hook_still_wired(tmp_path):
+    # `distribution: plugin` is what makes the legacy sync stand down, so the
+    # remaining wiring is inert and migrate has nothing left to do.
+    root = _file_sync(tmp_path, wired=True)
+    _write(root, ".prawduct/project-state.yaml",
+           _STUB_STATE + f"{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}\n")
+    assert _unmigrated(root) == []
+
+
+def test_silent_without_a_sync_manifest_even_with_legacy_wiring(tmp_path):
+    root = _enabled_never_onboarded(tmp_path)
+    _write(root, ".claude/settings.json", json.dumps(_LEGACY_SETTINGS))
+    assert _unmigrated(root) == []
+
+
+def test_exactly_one_onboarding_advisory_fires_per_state(tmp_path):
+    """The two probes split the un-set-up states between them: install for a
+    never-onboarded repo, migrate for a file-sync one — never both."""
+    op.register()
+    never = _enabled_never_onboarded(tmp_path / "never")
+    sync = _file_sync(tmp_path / "sync", wired=True)
+
+    def onboarding_types(root):
+        return sorted(
+            c.type for c in run_all_probes(ProjectState({}), _cb(root))
+            if c.type in ("never-onboarded", "unmigrated-file-sync")
+        )
+
+    assert onboarding_types(never) == ["never-onboarded"]
+    assert onboarding_types(sync) == ["unmigrated-file-sync"]
+    assert onboarding_types(_onboarded(tmp_path / "done")) == []
+
+
+def test_this_repo_is_silent():
+    # The framework checkout is migrated (`distribution: plugin`) and carries no
+    # manifest; firing here would be a false alarm on every framework session.
+    assert (_REPO_ROOT / ".prawduct" / "project-state.yaml").is_file()
+    assert _unmigrated(_REPO_ROOT) == []
+
+
+class TestLegacyHookEvents:
+    def test_names_each_event_running_the_legacy_script(self, tmp_path):
+        _write(tmp_path, ".claude/settings.json", json.dumps(_LEGACY_SETTINGS))
+        assert migrate_plugin.legacy_hook_events(tmp_path) == ["SessionStart", "Stop"]
+
+    def test_agrees_with_what_transform_settings_strips(self, tmp_path):
+        _write(tmp_path, ".claude/settings.json", json.dumps(_LEGACY_SETTINGS))
+        migrate_plugin.transform_settings(tmp_path)
+        assert migrate_plugin.legacy_hook_events(tmp_path) == []
+
+    @pytest.mark.parametrize("body", ["", "not json", "[]", '{"hooks": []}',
+                                      '{"hooks": {"Stop": "x"}}'])
+    def test_absent_unreadable_or_odd_shapes_are_none(self, tmp_path, body):
+        if body:
+            _write(tmp_path, ".claude/settings.json", body)
+        assert migrate_plugin.legacy_hook_events(tmp_path) == []
