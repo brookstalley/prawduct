@@ -51,8 +51,8 @@ plugin, so none of it could notice its own absence.
 - The descriptions of what a governed repo commits now name the hook. These are
   `architecture.md` (Design Intent #5, Distribution, and a recorded decision under the
   "writes nothing into a governed repo" norm, whose wording is left as ratified), the README, the
-  project structure, the operational spec, the migration guide, and the onboard and doctor
-  skills.
+  project structure, the operational spec, the migration guide, `api-contract.md`
+  (`install-tripwire --json`), and the onboard, doctor and migrate skills.
 
 ### Chunk 02: the anchor line
 

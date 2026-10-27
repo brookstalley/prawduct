@@ -82,6 +82,12 @@ already detects this state, but only from `/prawduct:onboard`, which runs outsid
 - Review fixes (R-6/8/11): the tag has no version, since staleness is whole-group equality. `PLUGIN_ID` comes from `migrate_plugin`, which now imports the tripwire lazily to avoid an import cycle. The sh half says `python3 not found` or `python3 exited N`.
 - Review fixes (R-4): AGENTS.md lines 24 and 85 ("a small install reference and no framework files") are left alone. The framework session footprint is at its ceiling (3080 of 3081), and neither line says "only". The archived design docs, `plugin-absent-clone-investigation.md` and `mcp-knowledge-corpus-design.md` are dated records and are left too.
 - Opt-out (PR review): re-running `/prawduct:onboard` or `/prawduct:migrate` on an onboarded repo does not re-add the hook, because both do nothing once `distribution: plugin` is recorded. Only doctor's offered `install-tripwire --apply` does, so the consumer note says that rather than what the review message assumed.
+- Coordinator, boundary: the suite could not record clean on the testament pool because
+  parametrize ids built from string values with a newline, trailing space or very long text did
+  not survive the collect-on-one-runner, run-on-another hand-off. Fixed here, for the class, by a
+  `pytest_make_parametrize_id` hook in `tests/conftest.py` (stable hashed ids for those values
+  only), with `tests/test_portable_param_ids.py`. Not in the plan; accepted on this branch because
+  it blocked this branch's own evidence and no sibling branch carries it. *Not settled by the goals.*
 
 ## Chunks
 
