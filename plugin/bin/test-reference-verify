@@ -76,6 +76,19 @@ Exit codes:
 
 from __future__ import annotations
 
+# The Python floor, checked before anything newer is imported: below it, re-run
+# this entry point under an interpreter that qualifies, or fail loudly. Everything
+# above this call must parse on old interpreters (tests/test_python_floor.py).
+import os as _os
+import sys as _sys
+
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__))))
+import _python_floor  # noqa: E402
+
+del _sys.path[0]
+if __name__ == "__main__":
+    _python_floor.ensure(__file__)
+
 import argparse
 import json
 import re

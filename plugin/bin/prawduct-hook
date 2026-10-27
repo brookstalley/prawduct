@@ -33,6 +33,19 @@ Usage (wired by ``hooks/hooks.json``):
 
 from __future__ import annotations
 
+# The Python floor, checked before anything newer is imported: below it, re-run
+# this entry point under an interpreter that qualifies, or fail loudly. Everything
+# above this call must parse on old interpreters (tests/test_python_floor.py).
+import os as _os
+import sys as _sys
+
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__))))
+import _python_floor  # noqa: E402
+
+del _sys.path[0]
+if __name__ == "__main__":
+    _python_floor.ensure(__file__)
+
 import json
 import os
 import shlex
@@ -4593,8 +4606,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     skip it. ``--no-rerun`` and ``--from-counts`` are refused there (exit 2):
     neither records a fact, so from a scratch tree they would write nothing.
 
-    With NEITHER command knob declared, the fallback runs ``sys.executable -m
-    pytest`` — the hook's interpreter, which cannot import a venv-isolated
+    With NEITHER command knob declared, the fallback runs ``-m pytest`` under the
+    interpreter the hook was invoked with (``_fallback_pytest_python``) — which
+    cannot import a venv-isolated
     product's packages. The fallback therefore nudges toward declaring a
     command on every run, and REFUSES to persist a run with zero passes and
     only failures/errors (the wrong-interpreter signature): a
@@ -5050,7 +5064,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     ]
                 else:
                     run_argv = [
-                        sys.executable, "-m", "pytest", f"--junit-xml={junit}",
+                        _fallback_pytest_python(), "-m", "pytest", f"--junit-xml={junit}",
                         "-q", *extra,
                     ]
                 try:
@@ -10919,6 +10933,15 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
         return 1
     print(f"NOTE: {detail}", file=sys.stderr)
     return 0
+
+
+def _fallback_pytest_python() -> str:
+    """The interpreter the undeclared-suite fallback runs pytest under: the one
+    the caller invoked, not the one the Python floor may have re-executed this
+    hook into. The invoked ``python3`` is the closest thing to the project's
+    environment this fallback has; the qualifying interpreter found for the hook
+    may lack the project's packages, or pytest itself."""
+    return _python_floor.REEXECUTED_FROM or sys.executable
 
 
 def main() -> int:

@@ -69,6 +69,23 @@ installing a Python for the user; Windows-specific interpreter discovery (`py -3
   `tomllib` is missing becomes dead and is removed with its test.
 
 **Decisions made mid-build:**
+- Chunk 01: the undeclared-suite pytest fallback (`test-evidence record` with no `test_command`)
+  ran `sys.executable -m pytest`. After a re-exec that is the qualifying interpreter the floor
+  found, which may lack the project's packages or pytest itself; 64 existing runtime tests went
+  red on exactly that on this machine. The re-exec now carries the invoked interpreter in
+  `PRAWDUCT_PYTHON_REEXEC`, and the fallback runs pytest under it. The two other
+  `sys.executable` launches start prawduct's own entry points, where the qualifying interpreter
+  is right. Settled by "do it right": the fallback's contract is "the hook shares the project's
+  environment", and the invoked `python3` is that environment.
+- Chunk 01: 49 test launches across 31 files started the hook with a bare `python3`, many under
+  a stripped `PATH=/usr/bin:/bin`, so they had been running the hook on the machine's system
+  interpreter — the de-facto floor of about 3.9. Under the 3.14 floor that is correctly refused,
+  so those launches now use `sys.executable`, the suite's own interpreter. What each test asserts
+  is unchanged; which interpreter a hook runs under is `tests/test_python_floor.py`'s subject,
+  including one launch through a real older `python3`. The suite now needs a 3.14 interpreter,
+  as `requires-python` will say (Chunk 02); the local `.venv` was rebuilt on 3.14.
+- Chunk 01: ruff's E402 on the imports after the floor check in `banner.py`/`digest.py` is
+  waived per line with the reason; the plugin's lint count is back to its baseline.
 
 ## Norm reconciliation (`governed_by`)
 

@@ -113,7 +113,7 @@ def _load_hook():
 
 def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-begin", *args],
+        [sys.executable, str(HOOK), "critic-begin", *args],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -121,7 +121,7 @@ def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-consolidate"],
+        [sys.executable, str(HOOK), "critic-consolidate"],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )

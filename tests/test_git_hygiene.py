@@ -7,6 +7,7 @@ implementation that proposes nothing cannot pass a keep test.
 from __future__ import annotations
 
 import json
+import sys
 import os
 import subprocess
 import time
@@ -391,7 +392,7 @@ def run_hook(cwd: Path, *args: str, home: Path) -> subprocess.CompletedProcess:
     env = {k: v for k, v in os.environ.items() if not k.startswith("CLAUDE")}
     env["HOME"] = str(home)
     return subprocess.run(
-        ["python3", str(HOOK), "git-tidy", *args], cwd=str(cwd),
+        [sys.executable, str(HOOK), "git-tidy", *args], cwd=str(cwd),
         capture_output=True, text=True, env=env, timeout=60,
     )
 

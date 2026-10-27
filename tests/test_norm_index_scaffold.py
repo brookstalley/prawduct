@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import sys
 
 from lib import core, norm_index_scaffold as nis
 
@@ -299,7 +300,7 @@ def _run(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "norm-index-scaffold", *args],
+        [sys.executable, str(HOOK), "norm-index-scaffold", *args],
         capture_output=True, text=True, env=env, timeout=30,
     )
 

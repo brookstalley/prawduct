@@ -762,7 +762,7 @@ class TestSessionBaseTreeMarker:
 
     def _run_clear(self, repo: Path) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["python3", str(ROOT / "bin" / "prawduct-hook"), "clear", "--session-start"],
+            [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "clear", "--session-start"],
             capture_output=True,
             text=True,
             cwd=str(repo),

@@ -29,6 +29,7 @@ changed paths, and the Stop harness's tree capture has to agree with them.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -366,7 +367,7 @@ class TestEligiblePlanDefers:
         }
         (tmp_path.parent / "_home").mkdir(exist_ok=True)
         proc = subprocess.run(
-            ["python3", str(HOOK), "infer-critic-mode"],
+            [sys.executable, str(HOOK), "infer-critic-mode"],
             capture_output=True, text=True, env=env, cwd=str(tmp_path), timeout=30,
         )
         assert proc.returncode == 0, proc.stderr
@@ -488,7 +489,7 @@ def _run_stop(repo: Path) -> subprocess.CompletedProcess:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "stop"],
+        [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, cwd=str(repo), timeout=30,
         input="",
     )

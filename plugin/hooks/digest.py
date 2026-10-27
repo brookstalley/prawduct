@@ -31,10 +31,23 @@ file resolves there) and writes nothing. All mutable, per-repo state lives in
 """
 from __future__ import annotations
 
-import json
-import os
-import sys
-from pathlib import Path
+# The Python floor, checked before anything newer is imported: below it, re-run
+# this entry point under an interpreter that qualifies, or fail loudly. Everything
+# above this call must parse on old interpreters (tests/test_python_floor.py).
+import os as _os
+import sys as _sys
+
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__)), "..", "bin"))
+import _python_floor  # noqa: E402
+
+del _sys.path[0]
+if __name__ == "__main__":
+    _python_floor.ensure(__file__)
+
+import json  # noqa: E402 -- after the Python floor check
+import os  # noqa: E402 -- after the Python floor check
+import sys  # noqa: E402 -- after the Python floor check
+from pathlib import Path  # noqa: E402 -- after the Python floor check
 
 # Source of truth for the digest text — one canonical document, bundled at the
 # plugin root. This is the distilled session-start dose; the
