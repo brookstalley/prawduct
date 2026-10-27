@@ -39,8 +39,8 @@ priced at "asking git who wrote each hunk on every turn".
   resolved.
 - Uncommitted and untracked session work counts exactly as today.
 - The span never grows: the new span is a subset of today's.
-- The Stop path's added cost is zero when HEAD's tree has not moved since session start, and at
-  most three more git calls when it has.
+- The Stop path's added cost is nothing when the span is empty, one `rev-parse` when HEAD's tree
+  has not moved since session start, and three more git calls when it has.
 
 **Out of scope:** #1071's own repro, which is another session's *commits* in a shared checkout.
 Those are `commit:` entries in the same HEAD reflog, so authorship by reflog cannot separate them.
@@ -63,6 +63,21 @@ Those are `commit:` entries in the same HEAD reflog, so authorship by reflog can
   today's span. Authority only ever narrows on positive evidence.
 
 **Decisions made mid-build:**
+- Chunk 01: metadata paths are dropped before the authorship walk rather than after it, so a
+  session whose only changes are `.prawduct/` files pays no extra git call. Settled by the cost
+  goal.
+- Chunk 01: the plan's first cost line ("zero added when HEAD's tree is unmoved") was wrong: the
+  check that it is unmoved is itself one `rev-parse`. Corrected above; the cost test
+  (`test_its_git_calls_are_bounded_by_what_the_session_did`) pins each tier. Settled by "do it
+  right".
+- Chunk 01: only the gates' FIRING span narrows. The Critic gate's composition verdict still
+  composes coverage over base tree → working tree, so a session that authored code AND switched
+  branches is judged on that wider interval, as before. Out of scope here; the boundary review
+  should say whether it needs an item.
+- Live check (gates rule: run a changed detection against this repo first): in this session,
+  which switched from the #1087 branch to this one, the old span read 18 non-metadata paths
+  (mostly #1087's work, reversed by the switch); the new span reads the 2 files this session
+  edited.
 
 ## Norm reconciliation (`governed_by`)
 
@@ -78,7 +93,7 @@ Those are `commit:` entries in the same HEAD reflog, so authorship by reflog can
   The span's dict shape and `source` values are unchanged.
 - `data-model.md` — **inapplicable**: no fact kind or schema changes.
 - `nonfunctional-requirements.md` "Review wall-clock is P0" — **conforms**. The Stop path adds no
-  git call when HEAD's tree is unmoved, and at most three when it moved.
+  git call on an empty span, one when HEAD's tree is unmoved, and four when it moved.
 
 ## Build Chunks
 

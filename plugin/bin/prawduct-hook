@@ -3062,7 +3062,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Gate 1: Reflection
     # - Fires on THIS SESSION'S WORK SPAN — judgeable code changed between the
-    #   session base tree and the working tree, committed work included. No
+    #   session base tree and the working tree, committed work included and
+    #   history a pull, merge or branch switch brought in excluded. No
     #   build-plan conjunct: a planless session that shipped code is exactly the
     #   session whose lesson never got written down, and the old plan conjunct
     #   made that the silent case. There is no advisory branch any more, because
@@ -3158,7 +3159,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # The trigger is judgeable code LITERALLY: a session whose only changes were
     # `.prawduct/` metadata judged nothing, so nothing here is owed — and a blocker whose first sentence says "this
     # session changed judgeable code" must not fire where that sentence is false.
-    # Read from the SPAN (base tree -> working tree, committed work included),
+    # Read from the SPAN (the session's authored work, committed included),
     # as the reflection gate above and the budget arm below already do: the
     # porcelain list is empty the moment you commit, and an unmigrated repo
     # whose turns end committed was reaching session end with this floor silent.
