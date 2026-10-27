@@ -2073,7 +2073,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
            [--chosen-by <rationale>] [--chunks <id>[,<id>...]]... [--scope <s>]
            [--tier <t>] [--force]
 
-    `--chunks` names the chunks this review covers (ST8): a comma list, and
+    `--chunks` names chunks this review certifies (ST8; its span may certify
+    more, `methodology/planning.md` "Chunk state"): a comma list, and
     repeatable — the lists join in the order given, a repeated id kept once.
     `--chunk <id>` is its one-element alias, kept for one release; the two mix.
     The joined list reaches `begin_review` as `chunks=[...]`; with neither flag

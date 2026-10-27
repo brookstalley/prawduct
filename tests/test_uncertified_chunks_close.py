@@ -68,9 +68,8 @@ def _close(
     return line, cache
 
 
-# Renegotiated with span-derived chunk state: the review may certify chunks its
-# interval builds without naming them, so the clause says it NAMED none, never
-# that it certified none.
+# A review may certify chunks its interval builds without naming them, so the
+# clause says it NAMED none, never that it certified none.
 CLAUSE = "named no chunk"
 
 

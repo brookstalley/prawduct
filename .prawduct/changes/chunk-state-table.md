@@ -37,14 +37,14 @@ once rather than closing two more instances, and this change does that.
   squash merge still read open, failing closed.
 - `plan retract` can withdraw a span certification while that span certifies the chunk.
 - `planning.md` "Chunk state", `data-model.md` (ruling D1 gains a dated extension note),
-  `api-contract.md`, `building.md`, the Critic skill and the docstrings describe both ways a chunk
-  becomes done.
+  `api-contract.md`, `cross-cutting-concerns.md`, `building.md`, the Critic skill and the docstrings
+  describe both ways a chunk becomes done.
 
 ### Chunk 03: one owner, and the change record
 
 - The first-parent test is one function, `plan_status.on_first_parent`. Chunk state and
-  `plan_lifecycle`'s merge probe both call it, so `plan status`'s lifecycle line, `plan
-  check-claims` and the briefing also read #1079's case as merged-unreleased. Before, the
+  `plan_lifecycle`'s merge probe both call it, so `plan status`'s lifecycle line and `plan
+  check-claims` also read #1079's case as merged-unreleased. Before, the
   lifecycle dropped every anchor equal to its `base_commit`.
 - The review's NEXT-ACTION clause for a whole-plan review that named no chunk now says it "named no
   chunk" and speaks only of the chunks still open. "Certified no chunk" was false once a span could
@@ -55,5 +55,7 @@ A chunk now reads done in `prawduct-hook plan status` when a clean review covere
 builds it, even if the review did not name it with `--chunks`. Before, such chunks stayed open, and
 `plan-backfill` refused the plan at release or `archive-plan` stamped built work as unbuilt. A chunk
 reviewed over uncommitted work also stays done after its branch is merged with a merge commit and
-deleted. Chunks merged by fast-forward or squash with no review naming them still read open after
-the branch is deleted. Pass `--chunks` on the boundary review if that is how you merge.
+deleted. Two merges still leave chunks open once the branch is deleted, whether or not a review
+named them: a squash merge (the reviewed commits are on no ref), and a fast-forward of a chunk
+whose only review was over uncommitted work (its anchor cannot be told from the fork point). Nothing here closes
+them yet; merge with a merge commit, or keep the branch until the release.

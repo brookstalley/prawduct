@@ -154,7 +154,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
   `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
-  — see § Error Model; `--chunks` names the build-plan chunks the review certifies — a comma list,
+  — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
+  (`methodology/planning.md` "Chunk state") — a comma list,
   repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
   alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a

@@ -219,7 +219,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~18 tokens
     # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
     # the race-hiding the recorder's retry would otherwise buy.
-    "single-pass-inner": 5806,
+    # +5 on 2026-10-27 (chunk-state-table, #1082), DECLARED: the Critic skill's step 4 said
+    # `--chunks` names "the chunks this review certifies", which a dispatcher reads as the whole
+    # set; a review's span now certifies chunks it does not name, so the sentence says so.
+    # review-protocol.md's open-chunk cause was reworded at no net cost. Priced against the SUM:
+    # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
+    # certifies anyway.
+    "single-pass-inner": 5811,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -283,7 +289,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~18 tokens
     # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
     # the race-hiding the recorder's retry would otherwise buy.
-    "single-pass-full": 11538,
+    # +5 on 2026-10-27 (chunk-state-table, #1082), DECLARED: the Critic skill's step 4 said
+    # `--chunks` names "the chunks this review certifies", which a dispatcher reads as the whole
+    # set; a review's span now certifies chunks it does not name, so the sentence says so.
+    # review-protocol.md's open-chunk cause was reworded at no net cost. Priced against the SUM:
+    # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
+    # certifies anyway.
+    "single-pass-full": 11543,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -413,14 +425,20 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~18 tokens
     # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
     # the race-hiding the recorder's retry would otherwise buy.
-    "coordinator-fork": 12132,
+    # +5 on 2026-10-27 (chunk-state-table, #1082), DECLARED: the Critic skill's step 4 said
+    # `--chunks` names "the chunks this review certifies", which a dispatcher reads as the whole
+    # set; a review's span now certifies chunks it does not name, so the sentence says so.
+    # review-protocol.md's open-chunk cause was reworded at no net cost. Priced against the SUM:
+    # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
+    # certifies anyway.
+    "coordinator-fork": 12137,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5807,
-    "single-pass-full": 11539,
+    "single-pass-inner": 5812,
+    "single-pass-full": 11544,
     "dispatched-reviewer": 11009,
-    "coordinator-fork": 12133,
+    "coordinator-fork": 12138,
 }
 
 

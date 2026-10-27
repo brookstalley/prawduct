@@ -77,12 +77,14 @@ a store holding no such fact costs no subprocess at all — and, for a spanning
 fact so placed, one ``git log`` of that fact's own interval (two for a
 dirty-tree fact: its committed part, and the commits descending from its
 dispatch commit, where its verbatim commit is looked for), memoized per
-interval. Only an anchor the first probe refuses pays more: one
-``for-each-ref`` per call to place the claimed branches, one further probe per
-anchor against a remote tracking ref or the base, and on the base, for an
-anchor that is its review's own ``base_commit``, one first-parent ``rev-list``
-bounded by the base's commits since it. Pinned by call in
-``tests/test_plan_status.py``.
+interval, plus one ``git show`` per change-fragment path in that interval.
+Only an anchor the first probe refuses pays more: one ``for-each-ref`` per
+call to place the claimed branches, one further probe per anchor against a
+remote tracking ref or the base, and on the base, for an anchor that is its
+review's own ``base_commit``, one first-parent ``rev-list`` bounded by the
+base's commits since it, memoized per anchor. Pinned by call in
+``tests/test_plan_status.py`` (``TestNoGitWalk``) and
+``tests/test_chunk_state_table.py`` (rows G1, G2).
 That is also why precedence follows cost: an import (fact or box) answers
 first, then ``dropped:``, and a review fact only for a chunk those leave open —
 so a chunk both ticked and reviewed reads ``done, imported`` with no fact cited.
@@ -538,20 +540,6 @@ def on_first_parent(repo_dir: Path, anchor: str, base: str) -> bool:
     return len(last) > 1 and last[1] == anchor
 
 
-@dataclass(frozen=True)
-class _Commit:
-    sha: str
-    tree: str
-    parents: tuple[str, ...]
-    subject: str
-    files: frozenset[str]
-
-
-#: Separates a logged commit's ids from its subject. Read only after the
-#: commit mark, so a subject holding it still parses: the split is the first.
-_FIELD_SEP = "\x1f"
-
-
 class _Spans:
     """Which chunks a review fact's own interval carries a commit for — the
     span half of ``done`` (#1082), asked by :func:`chunk_states` only for a
@@ -563,14 +551,17 @@ class _Spans:
     first-parent chain from ``dispatch_commit`` to the first commit whose tree
     is the fact's ``head_tree`` — the reviewed tree, committed verbatim. A
     tree edited again before it was committed was not the tree reviewed, so
-    that part carries nothing. A commit carries a chunk by the proposal's
-    certifying rule (:func:`chunk_proposal`): a subject carrying the plan's
-    scope and the chunk, or a Deliverables path it touches, less a change
-    fragment still the ``plan new`` stub at the reviewed tree. An unbuilt
+    that part carries nothing. A commit carries a chunk by the certifying
+    rule the proposal applies, from the same owners: :func:`_subject_chunks`
+    (a subject carrying the plan's scope and the chunk) and
+    :func:`_deliverable_chunks` (a Deliverables path it touches, less a change
+    fragment still the ``plan new`` stub at the reviewed tree). An unbuilt
     chunk has no commit, so no span carries it. A fact whose ``base_commit``
-    is not a commit id, or whose interval git cannot list, carries nothing.
+    is not a commit id, whose interval git cannot list, or — dirty-tree — whose
+    anchor's holding ref is unknown carries nothing.
 
-    One ``git log`` per distinct interval, memoized per call.
+    One :func:`_log_commits` per distinct interval, memoized per call, plus one
+    ``git show`` per change-fragment path in the interval to tell the stub.
     """
 
     def __init__(self, repo_dir: Path, plan: _Plan, content: str):
@@ -578,29 +569,11 @@ class _Spans:
         self._plan = plan
         self._content = content
         self._logs: dict[tuple[str, ...], "list[_Commit] | None"] = {}
-        self._deliverables = {c: deliverable_paths(content, c) for c in plan.chunks}
 
     def _log(self, *revs: str) -> "list[_Commit] | None":
         if revs not in self._logs:
-            rc, out, _err = evidence.run_git(
-                self._repo_dir, "log", f"--format={_COMMIT_MARK}%H %T %P{_FIELD_SEP}%s",
-                "--name-only", *revs, "--", strip=False,
-            )
-            commits: "list[_Commit] | None" = None
-            if rc == 0:
-                commits = []
-                for line in out.splitlines():
-                    if line.startswith(_COMMIT_MARK):
-                        ids, _sep, subject = line[len(_COMMIT_MARK):].partition(_FIELD_SEP)
-                        sha, tree, *parents = ids.split()
-                        commits.append(_Commit(sha, tree, tuple(parents), subject, frozenset()))
-                    elif line.strip() and commits:
-                        last = commits[-1]
-                        commits[-1] = _Commit(
-                            last.sha, last.tree, last.parents, last.subject,
-                            last.files | {line.strip()},
-                        )
-            self._logs[revs] = commits
+            commits = _log_commits(self._repo_dir, *revs)
+            self._logs[revs] = None if isinstance(commits, str) else commits
         return self._logs[revs]
 
     @staticmethod
@@ -647,12 +620,10 @@ class _Spans:
             commits = [*before, *self._verbatim_chain(after, dispatch, head_tree)]
         if not commits:
             return set()
-        carried = _named_ids(c.subject for c in commits if _carries_scope(c.subject, self._plan.scope))
-        changed = _work_paths(
-            set().union(*(c.files for c in commits)), _read_at(self._repo_dir, head_tree)
+        return _subject_chunks((c.subject for c in commits), self._plan.scope) | _deliverable_chunks(
+            self._content, self._plan.chunks, set().union(*(c.files for c in commits)),
+            _read_at(self._repo_dir, head_tree),
         )
-        carried |= {_norm(c) for c, paths in self._deliverables.items() if _touches(paths, changed)}
-        return carried
 
 
 # ---------------------------------------------------------------------------
@@ -1109,9 +1080,12 @@ def chunk_proposal(
     """The chunks a review dispatched in ``mode`` proposes to name (ST8).
 
     A mode sets a review's depth, never its reach: every mode proposes only
-    chunks there is work for, because the proposal is what the fact certifies
-    when the builder declares nothing, and a certified chunk is never reviewed
-    again.
+    chunks there is work for, because the proposal is what the fact names when
+    the builder declares nothing, a named chunk is certified (beside what the
+    fact's span certifies, ``methodology/planning.md`` "Chunk state"), and a
+    certified chunk is never reviewed again. The path and subject halves are
+    :func:`_deliverable_chunks` and :func:`_subject_chunks`, the rule a span
+    applies too.
 
     ``chunk`` mode: the open chunks whose Deliverables paths intersect
     ``diff_paths`` (repo-relative; a deliverable directory matches what is
@@ -1161,8 +1135,8 @@ def chunk_proposal(
         read = _read_at(repo_dir, head_tree)
     else:
         read = lambda _rel: None  # noqa: E731 — never a git argv; every fragment unreadable, naming fewer
-    changed = _work_paths({str(p) for p in diff_paths}, read)
-    touched = {c for c in open_ids if _touches(deliverable_paths(content, c), changed)}
+    by_path = _deliverable_chunks(content, open_ids, (str(p) for p in diff_paths), read)
+    touched = {c for c in open_ids if _norm(c) in by_path}
     notes: list[str] = []
     if mode in _WHOLE_PLAN_MODES and open_ids:
         walk = _walk_branch(Path(plan_path), repo_dir, since)
@@ -1226,7 +1200,7 @@ def _repo_of(plan_path: Path) -> Path:
 # another plan's `Chunk N` on the branch must not certify this plan's. The render tag counts a scoped plan's
 # scoped subjects too, but when none carries the scope (scope tags are a
 # convention, and drift), every subject — a misread table tag is cheap. A plan
-# with no scope counts every subject in both. `_walk_branch` is the rules' one home.
+# with no scope counts every subject in both. `_subject_chunks` is the rules' one home.
 _CHUNK_COMMIT_RE = re.compile(
     r"\(Chunk\s+(\d+(?:\.\d+)*)\)"
     r"|:\s*Chunk\s+(\d+(?:\.\d+)*)\b"
@@ -1256,9 +1230,68 @@ def _named_ids(subjects: "Iterable[str]") -> "set[str]":
         for m in _CHUNK_COMMIT_RE.finditer(s)
     }
 
-#: Opens each commit's subject line in the log; file names follow it. Not a
-#: control character: `str.strip` treats \x1c-\x1f as whitespace.
+#: Opens each commit's line in the log; file names follow it. Not a control
+#: character: `str.strip` treats \x1c-\x1f as whitespace.
 _COMMIT_MARK = "@@prawduct-commit@@ "
+
+#: Separates a logged commit's ids from its subject. Read only after the
+#: commit mark, so a subject holding it still parses: the split is the first.
+_FIELD_SEP = "\x1f"
+
+
+@dataclass(frozen=True)
+class _Commit:
+    sha: str
+    tree: str
+    parents: tuple[str, ...]
+    subject: str
+    files: frozenset[str]
+
+
+def _log_commits(repo_dir: Path, *revs: str) -> "list[_Commit] | str":
+    """The commits ``git log <revs>`` lists, each with the paths it touched —
+    the one reader every chunk-to-commit answer here takes its commits from
+    (:func:`_walk_branch`, :class:`_Spans`). A cause string when git fails."""
+    rc, out, err = evidence.run_git(
+        repo_dir, "log", f"--format={_COMMIT_MARK}%H %T %P{_FIELD_SEP}%s", "--name-only",
+        *revs, "--", strip=False,
+    )
+    if rc != 0:
+        detail = (err or "").strip().splitlines()
+        return f"`git log {' '.join(revs)}` failed ({detail[0] if detail else f'exit {rc}'})"
+    parsed: list[tuple[str, str, tuple[str, ...], str, set[str]]] = []
+    for line in out.splitlines():
+        if line.startswith(_COMMIT_MARK):
+            ids, _sep, subject = line[len(_COMMIT_MARK):].partition(_FIELD_SEP)
+            sha, tree, *parents = ids.split()
+            parsed.append((sha, tree, tuple(parents), subject, set()))
+        elif line.strip() and parsed:
+            parsed[-1][4].add(line.strip())
+    return [_Commit(s, t, p, subj, frozenset(f)) for s, t, p, subj, f in parsed]
+
+
+def _subject_chunks(subjects: "Iterable[str]", scope: "str | None", *, fallback: bool = False) -> "set[str]":
+    """The normalized chunk ids commit ``subjects`` carry, by the scope rule
+    in the comment above :data:`_CHUNK_COMMIT_RE` — its one home. With
+    ``scope``, only subjects carrying it count: the certifying rule, which the
+    proposal and a span both apply. ``fallback`` is the render tag's rule:
+    every subject when none carries the scope."""
+    subjects = list(subjects)
+    if not scope:
+        return _named_ids(subjects)
+    scoped = [s for s in subjects if _carries_scope(s, scope)]
+    return _named_ids(subjects if fallback and not scoped else scoped)
+
+
+def _deliverable_chunks(
+    content: str, chunk_ids: "Iterable[str]", paths: "Iterable[str]", read: "_ReadAt"
+) -> "set[str]":
+    """The normalized ids of ``chunk_ids`` whose Deliverables ``paths``
+    touch, less a change fragment still the ``plan new`` stub as ``read``
+    reads it (:func:`_work_paths`) — the path half of the chunk-to-commit
+    rule, the one home every reader of it asks."""
+    changed = _work_paths(set(paths), read)
+    return {_norm(c) for c in chunk_ids if _touches(deliverable_paths(content, c), changed)}
 
 
 @dataclass(frozen=True)
@@ -1324,33 +1357,18 @@ def _walk_branch(
     if base is None:
         return cause
     head = plan.branch if plan.branch and coverage._git_ref_exists(repo_dir, plan.branch) else "HEAD"
-    rc, out, err = evidence.run_git(
-        repo_dir, "log", f"--format={_COMMIT_MARK}%s", "--name-only", f"{base}..{head}", "--",
-        strip=False,
+    commits = _log_commits(repo_dir, f"{base}..{head}")
+    if isinstance(commits, str):
+        return commits
+    subjects = [c.subject for c in commits]
+    changed = set().union(*(c.files for c in commits)) if commits else set()
+    return _BranchWalk(
+        content, plan, head,
+        named=_subject_chunks(subjects, plan.scope, fallback=True),
+        scoped_named=_subject_chunks(subjects, plan.scope),
+        all_named=_named_ids(subjects),
+        changed=changed,
     )
-    if rc != 0:
-        detail = (err or "").strip().splitlines()
-        return f"`git log {base}..{head}` failed ({detail[0] if detail else f'exit {rc}'})"
-    commits: list[tuple[str, set[str]]] = []
-    for line in out.splitlines():
-        if line.startswith(_COMMIT_MARK):
-            commits.append((line[len(_COMMIT_MARK):], set()))
-        elif line.strip() and commits:
-            commits[-1][1].add(line.strip())
-
-    subjects = [s for s, _files in commits]
-    all_named = _named_ids(subjects)
-    if plan.scope:
-        scoped = [
-            s for s in subjects
-            if _carries_scope(s, plan.scope)
-        ]
-        scoped_named = _named_ids(scoped)
-        named = scoped_named if scoped else all_named
-    else:
-        scoped_named = named = all_named
-    changed = set().union(*(files for _s, files in commits)) if commits else set()
-    return _BranchWalk(content, plan, head, named, scoped_named, all_named, changed)
 
 
 def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
@@ -1371,11 +1389,10 @@ def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
         return BuiltReport(set())
     if isinstance(walk, str):
         return BuiltReport(set(), walk)
-    changed = _work_paths(walk.changed, _read_at(Path(repo_dir), walk.head))
-    return BuiltReport({
-        c for c in walk.plan.chunks
-        if _norm(c) in walk.named or _touches(deliverable_paths(walk.content, c), changed)
-    })
+    built = walk.named | _deliverable_chunks(
+        walk.content, walk.plan.chunks, walk.changed, _read_at(Path(repo_dir), walk.head)
+    )
+    return BuiltReport({c for c in walk.plan.chunks if _norm(c) in built})
 
 
 def built_chunks(plan_path: Path, repo_dir: Path) -> set[str]:

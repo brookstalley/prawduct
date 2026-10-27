@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib import change_fragments, gitstate, plan_archive, plan_status  # noqa: E402
+from lib import change_fragments, evidence, gitstate, plan_archive, plan_status  # noqa: E402
 
 TS = "2026-10-27T10:00:00Z"
 MODES = ("chunk", "final", "cumulative", "verify-resolutions")
@@ -773,3 +773,113 @@ def test_I2_a_chunk_imported_fact_is_done_imported(repo):
     )
     state = plan_status.chunk_states(plan, _facts(imported), repo_dir=repo)["01"]
     assert (state.state, state.fact_id, state.imported) == ("done", "I1", True)
+
+
+# ---------------------------------------------------------------------------
+# F — git failing on an authority path certifies nothing
+# ---------------------------------------------------------------------------
+
+
+def _git_fails(monkeypatch, when):
+    """Make every ``evidence.run_git`` call whose argv ``when`` matches fail."""
+    real = evidence.run_git
+
+    def run_git(repo_dir, *args, **kw):
+        if when(args):
+            return 128, "", "fatal: injected failure"
+        return real(repo_dir, *args, **kw)
+
+    monkeypatch.setattr(evidence, "run_git", run_git)
+
+
+def test_F1_first_parent_rev_list_failing_refuses_the_anchor(repo, monkeypatch):
+    _plan_commit(repo)
+    plan = _plan(repo)
+    fact, _c1 = _dirty_review_then_commit(
+        repo, "src/c01.py", "feat(unit): one (Chunk 01)", chunks=["01"], mode="chunk"
+    )
+    _merge_no_ff(repo)
+    assert _states(plan, _facts(fact), repo)["01"] == "done"  # control: M2
+    _git_fails(monkeypatch, lambda a: a[:1] == ("rev-list",))
+    state = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["01"]
+    assert state.state == "open"
+    assert "first-parent history" in state.reason
+
+
+def test_F2_a_span_log_failing_certifies_nothing(repo, monkeypatch):
+    head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
+    plan = _plan(repo)
+    fact = _review(repo, "R1", base="main", head=head)
+    assert _states(plan, _facts(fact), repo)["01"] == "done"  # control: C2
+    _git_fails(monkeypatch, lambda a: a[:1] == ("log",))
+    assert _states(plan, _facts(fact), repo)["01"] == "open"
+
+
+def test_F3_a_dirty_tree_spans_descendant_log_failing_certifies_nothing(repo, monkeypatch):
+    _plan_commit(repo)
+    plan = _plan(repo)
+    fact, _c1 = _dirty_review_then_commit(
+        repo, "notes/one.txt", "feat(unit): one (Chunk 01)", mode="chunk"
+    )
+    assert _states(plan, _facts(fact), repo)["01"] == "done"  # control: C10
+    _git_fails(monkeypatch, lambda a: a[:1] == ("log",) and "--ancestry-path" in a)
+    assert _states(plan, _facts(fact), repo)["01"] == "open"
+
+
+def test_F4_a_dirty_tree_span_with_no_holding_ref_certifies_nothing(repo, monkeypatch):
+    _plan_commit(repo)
+    plan = _plan(repo)
+    fact, _c1 = _dirty_review_then_commit(
+        repo, "notes/one.txt", "feat(unit): one (Chunk 01)", mode="chunk"
+    )
+    assert _states(plan, _facts(fact), repo)["01"] == "done"  # control: C10
+    monkeypatch.setattr(plan_status._Reachability, "holder", lambda self, anchor: None)
+    assert _states(plan, _facts(fact), repo)["01"] == "open"
+
+
+# ---------------------------------------------------------------------------
+# G — the git calls a span and the first-parent rule add (NF1)
+# ---------------------------------------------------------------------------
+
+
+def _record_git(monkeypatch) -> "list[tuple[str, ...]]":
+    calls: list[tuple[str, ...]] = []
+    real = evidence.run_git
+
+    def run_git(repo_dir, *args, **kw):
+        calls.append(args)
+        return real(repo_dir, *args, **kw)
+
+    monkeypatch.setattr(evidence, "run_git", run_git)
+    return calls
+
+
+def test_G1_a_dirty_tree_span_costs_its_two_interval_logs(repo, monkeypatch):
+    base = _plan_commit(repo)
+    at = _commit(repo, "notes/zero.txt", "z\n", "chore(unit): groundwork")
+    plan = _plan(repo)
+    tree = _stage(repo, "notes/one.txt", "x\n")
+    fact = _review(repo, "R1", base=base, dispatch=at, head_tree=tree, mode="chunk")
+    _git(repo, "commit", "-qm", "feat(unit): one (Chunk 01)")
+    calls = _record_git(monkeypatch)
+    # Two facts over one interval: the second costs nothing more.
+    assert _states(plan, _facts(fact, {**fact, "id": "R2"}), repo)["01"] == "done"
+    assert [c[0] for c in calls] == ["merge-base", "log", "log"]
+    assert [c[3:-1] for c in calls[1:]] == [
+        (f"{base}..{at}",), ("--ancestry-path", f"{at}..feature/unit"),
+    ]
+
+
+def test_G2_the_first_parent_rule_costs_one_rev_list_per_anchor(repo, monkeypatch):
+    _plan_commit(repo)
+    plan = _plan(repo)
+    fact, _c1 = _dirty_review_then_commit(
+        repo, "src/c01.py", "feat(unit): one (Chunk 01)", chunks=["01"], mode="chunk"
+    )
+    _merge_no_ff(repo)
+    anchor = fact["body"]["dispatch_commit"]
+    calls = _record_git(monkeypatch)
+    assert _states(plan, _facts(fact, {**fact, "id": "R2"}), repo)["01"] == "done"
+    assert [c for c in calls if c[0] == "rev-list"] == [
+        ("rev-list", "--first-parent", "--parents", f"{anchor}..main"),
+    ]

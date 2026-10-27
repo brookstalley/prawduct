@@ -5120,8 +5120,8 @@ def build_fact_body(
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
         "scope_reason": manifest.get("scope_reason"),
         "base_extended_from": manifest.get("base_extended_from"),
-        # The chunks this review names (ST8) — what `plan_status.chunk_states`
-        # certifies from — with the code-derived proposal beside them, so a
+        # The chunks this review names (ST8) — one of the two things
+        # `plan_status.chunk_states` certifies from, beside the span — with the code-derived proposal beside them, so a
         # coordinator's edit of the set is visible on the record. `chunk` is the
         # first, for readers older than `chunks`. A manifest from before the
         # fields carries `chunk` alone; its fact keeps that reading.

@@ -177,6 +177,14 @@ commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbat
 | D2 | `dropped:` entry with no reason | open, says why |
 | I1 | Ticked `## Status` box, unmigrated | done, imported |
 | I2 | `chunk-imported` fact | done, imported, citing it |
+| **F — git failing on an authority path** | | |
+| F1 | The first-parent `rev-list` fails (M2's shape) | open: the anchor is refused |
+| F2 | A span's `git log` fails (C2's shape) | open |
+| F3 | A dirty-tree span's descendant log fails (C10's shape) | open |
+| F4 | A dirty-tree span whose anchor's holding ref is unknown | open |
+| **G — what the added git calls cost** | | |
+| G1 | Two dirty-tree facts over one interval | one probe and the two interval logs, once |
+| G2 | Two facts at one `base_commit` anchor after a `--no-ff` merge | one first-parent `rev-list` |
 
 ## Chunks
 

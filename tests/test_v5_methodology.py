@@ -1166,7 +1166,13 @@ LAST_MEASURED_TOKENS = {
     # -7 on 2026-10-26 (final-review-chunks, #1072): step 4's proposal sentence points to
     # `plan_status.propose_chunks` instead of restating a per-mode rule that changed (whole-plan
     # modes propose what the interval built, not every open chunk). A READING; the ceiling follows it down.
-    "skills/critic/SKILL.md": 3100,
+    # +5 on 2026-10-27 (chunk-state-table, #1082), DECLARED: the Critic skill's step 4 said
+    # `--chunks` names "the chunks this review certifies", which a dispatcher reads as the whole
+    # set; a review's span now certifies chunks it does not name, so the sentence says so. Not paid by
+    # trimming: no other clause of step 4 restates the rule. Priced against the route sums:
+    # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
+    # certifies anyway.
+    "skills/critic/SKILL.md": 3105,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -5954,7 +5960,9 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3096 -> 3108 (evidence-transport, 2026-10-25): the `evidence` grant narrowed
         # to `status`/`list` — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3108 -> 3101 (final-review-chunks, 2026-10-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3101, f"SKILL.md is ~{tokens} tokens, should be <3101"
+        # RAISED 3101 -> 3106 (chunk-state-table, 2026-10-27): `--chunks` no longer bounds what a
+        # review certifies — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3106, f"SKILL.md is ~{tokens} tokens, should be <3106"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
