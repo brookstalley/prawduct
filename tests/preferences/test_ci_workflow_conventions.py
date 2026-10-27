@@ -103,6 +103,31 @@ class TestPythonFloorIsNotASecondHome:
             "untested claim"
         )
 
+    def test_the_enforced_floor_is_the_declared_floor(self):
+        # Red if `requires-python` moves and the floor the hooks enforce does not.
+        # A stale FLOOR passes CI silently: the suite runs on the new floor, so
+        # nothing below it is ever exercised.
+        import importlib.util
+
+        path = REPO_ROOT / "plugin" / "bin" / "_python_floor.py"
+        spec = importlib.util.spec_from_file_location("python_floor_pin", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.floor_text() == _requires_python_floor()
+
+    def test_release_verification_runs_the_declared_floor(self):
+        steps = _load(VERIFY_WORKFLOW)["jobs"]["verify"]["steps"]
+        versions = [
+            str(s["with"]["python-version"]) for s in steps
+            if str(s.get("uses", "")).startswith("actions/setup-python") and "with" in s
+        ]
+        assert versions == [_requires_python_floor()], versions
+
+    def test_the_doctor_check_names_the_declared_floor(self):
+        doctor = (REPO_ROOT / "plugin" / "skills" / "doctor" / "SKILL.md").read_text()
+        check = next(line for line in doctor.splitlines() if line.startswith("26. "))
+        assert f"{_requires_python_floor()} or newer" in check
+
     def test_matrix_does_not_test_below_the_declared_floor(self):
         # Red if the matrix keeps an EOL leg after the floor moves up. Testing
         # below what the project supports is wasted CI and a misleading green.

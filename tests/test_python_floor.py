@@ -54,13 +54,37 @@ class TestEntryPointsParseOnOldInterpreters:
     def test_it_parses_at_the_oldest_feature_version(self, path):
         ast.parse(path.read_text(), filename=str(path), feature_version=OLDEST_PARSER)
 
-    def test_the_parser_check_can_fail(self):
-        """Positive control: `feature_version` really refuses syntax newer than
-        the floor it is given, so the check above is not vacuous."""
-        newer = "match x:\n    case 1:\n        pass\n"
+    @pytest.mark.parametrize("newer", [
+        "match x:\n    case 1:\n        pass\n",
+        "type X = int\n",
+        "def f[T](x: T): pass\n",
+        "try:\n    pass\nexcept* E:\n    pass\n",
+        "try:\n    pass\nexcept A, B:\n    pass\n",
+        'x = t"hi"\n',
+    ], ids=["match", "type-stmt", "generic-def", "except-star", "except-no-parens", "t-string"])
+    def test_the_parser_check_can_fail(self, newer):
+        """Positive control: `feature_version` refuses these, so the check above
+        is not vacuous for them. It is best-effort and does NOT refuse every
+        newer form — same-quote nested f-strings (3.12) and parenthesised
+        `with` (3.10) pass it — which is why the real-interpreter check below
+        exists."""
         ast.parse(newer)
         with pytest.raises(SyntaxError):
             ast.parse(newer, feature_version=OLDEST_PARSER)
+
+    @pytest.mark.parametrize("path", ENTRY_POINTS + [_FLOOR_PATH], ids=lambda p: p.name)
+    def test_a_real_older_interpreter_parses_it(self, path):
+        """The exact check `feature_version` approximates: the older interpreter's
+        own parser. Runs wherever one exists (macOS's 3.9, a CI image's system
+        `python3`)."""
+        old = _older_python3()
+        if old is None:
+            pytest.skip("no python3 below 3.14 on this machine")
+        res = subprocess.run(
+            [old, "-c", "import ast, sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])", str(path)],
+            capture_output=True, text=True,
+        )
+        assert res.returncode == 0, res.stderr
 
     @pytest.mark.parametrize("path", ENTRY_POINTS, ids=lambda p: p.name)
     def test_the_check_runs_before_any_other_import(self, path):
@@ -178,6 +202,19 @@ class TestFailureSurfacesWhereTheCallerLooks:
         code, _calls, out, err = _ensure("/p/bin/prawduct-hook", ["prawduct-hook", sub], self._none(tmp_path))
         assert code == 1 and out == ""
         assert err.startswith("ERROR: prawduct needs Python 3.14")
+
+    def test_a_candidate_that_would_not_run_is_named(self, tmp_path):
+        """The pyenv case: `python3.14` is on PATH as a shim for a version this
+        directory does not select. The user can see it, so "none found" alone
+        would contradict them; the message names it and the pyenv step that
+        makes it selectable."""
+        shim = _write_python(tmp_path / "shims" / "python3.14", 1)
+        code, _calls, _out, err = _ensure(
+            "/p/bin/prawduct-hook", ["prawduct-hook", "test-status"], {"PATH": str(shim.parent)}
+        )
+        assert code == 1
+        assert f"found but would not run: {shim}" in err
+        assert "pyenv local <current> 3.14" in err
 
     def test_the_cli_names_the_interpreter_and_the_fix(self, tmp_path):
         code, _calls, _out, err = _ensure(

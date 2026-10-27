@@ -28,8 +28,10 @@ still runs under the `python3` you invoked, not the interpreter found for the ho
 
 ## Consumer note
 - **Every machine that opens a governed repo needs Python 3.14 or newer**, including repos that are
-  not Python projects, because prawduct's hooks are Python. Install one so `python3.14` is on PATH:
-  `brew install python@3.14`, `uv python install 3.14`, or `pyenv install 3.14`.
+  not Python projects, because prawduct's hooks are Python. Install one so `python3.14` runs from the
+  repo: `brew install python@3.14` or `uv python install 3.14`. Under pyenv, `pyenv install 3.14`
+  is not enough where a `.python-version` pins an older version; also make 3.14 selectable there,
+  e.g. `pyenv local <current> 3.14`. The error names any `python3.14` it found that would not run.
 - Nothing else changes where `python3` already resolves to 3.14. Where it resolves lower, hooks
   re-run themselves under the 3.14 they find, at the cost of a probe and a re-exec per hook call.
   To avoid that, make `python3` resolve to 3.14 in the repo (for example a pyenv

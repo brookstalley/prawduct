@@ -41,9 +41,11 @@ _NAMED_MINORS = 6
 _PROBE = "import sys; sys.exit(0 if sys.version_info[:2] >= (%d, %d) else 1)" % FLOOR
 
 _INSTALL_HINT = (
-    "Install Python {floor} so that `python{floor}` is on PATH (for example "
-    "`brew install python@{floor}`, `uv python install {floor}`, or "
-    "`pyenv install {floor}`), then restart Claude Code."
+    "Install Python {floor} so that `python{floor}` runs from this directory (for "
+    "example `brew install python@{floor}` or `uv python install {floor}`; under "
+    "pyenv, `pyenv install {floor}` and then make it selectable here alongside the "
+    "repo's own version, e.g. `pyenv local <current> {floor}`), then restart "
+    "Claude Code."
 )
 
 
@@ -94,9 +96,13 @@ def qualifies(path, run=subprocess.run):
         return False
 
 
-def find_interpreter(environ=None, run=subprocess.run):
-    """The first interpreter at or above the floor, or ``None``."""
+def find_interpreter(environ=None, run=subprocess.run, rejected=None):
+    """The first interpreter at or above the floor, or ``None``. Candidates that
+    were found but would not run are appended to ``rejected`` when given, so a
+    failure can name them — a pyenv shim for a version this directory does not
+    select looks installed to the user and must not read as "none found"."""
     environ = os.environ if environ is None else environ
+    rejected = [] if rejected is None else rejected
     seen = set()
     for path in _named_candidates(environ):
         real = os.path.realpath(path)
@@ -105,9 +111,12 @@ def find_interpreter(environ=None, run=subprocess.run):
         seen.add(real)
         if qualifies(path, run):
             return path
+        rejected.append(path)
     path = _uv_candidate(environ, run)
-    if path and os.path.realpath(path) not in seen and qualifies(path, run):
-        return path
+    if path and os.path.realpath(path) not in seen:
+        if qualifies(path, run):
+            return path
+        rejected.append(path)
     return None
 
 
@@ -134,14 +143,16 @@ def _found_text(version_info, executable):
     return "Python %d.%d (%s)" % (version_info[0], version_info[1], executable or "unknown path")
 
 
-def fail(role, version_info, executable, out, err, looped=False):
+def fail(role, version_info, executable, out, err, looped=False, rejected=()):
     """Report the missing interpreter for ``role``; return the exit code."""
     found = _found_text(version_info, executable)
     hint = _INSTALL_HINT.format(floor=floor_text())
     if looped:
         why = "re-executed under %s, which is still below the floor" % found
     else:
-        why = "the hooks found only %s and no python%s" % (found, floor_text())
+        why = "the hooks found only %s and no python%s that runs here" % (found, floor_text())
+        if rejected:
+            why += " (found but would not run: %s)" % ", ".join(rejected)
     if role == "banner":
         out.write(
             "PRAWDUCT GOVERNANCE IS OFF THIS SESSION: prawduct needs Python %s or newer; "
@@ -177,9 +188,10 @@ def ensure(entry, argv=None, environ=None, version_info=None, executable=None,
     role = role_of(entry, argv)
     if environ.get(REEXEC_ENV):
         sys.exit(fail(role, version_info, executable, out, err, looped=True))
-    target = find_interpreter(environ, run)
+    rejected = []
+    target = find_interpreter(environ, run, rejected)
     if target is None:
-        sys.exit(fail(role, version_info, executable, out, err))
+        sys.exit(fail(role, version_info, executable, out, err, rejected=rejected))
     env = dict(environ)
     env[REEXEC_ENV] = executable or "unknown"
     out.flush()
