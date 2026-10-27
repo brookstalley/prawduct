@@ -29,20 +29,26 @@ pins that over every ``lib`` module and the hook.
   not done, for the two deliberately-run surfaces that print it.
 
 **done** is a ``review`` fact whose body ``scope`` is this plan's ``scope:``,
-whose chunk list names the chunk (``chunks`` when present, else ``[chunk]``
-when ``chunk`` is set, else nothing), whose blocking findings are zero or all
-resolved by a passing ``resolution`` fact (``dispositions.census`` owns that
-rule), and whose anchor commit is reachable from the plan's ``branch:`` or a
-declared ``working-branches:`` entry — or, once every one of those is gone
-from every local and remote ref (the merge took them), from the plan's base,
-which is where their commits went (:class:`_Reachability`, #1065). Mode labels do not matter. A
+whose blocking findings are zero or all resolved by a passing ``resolution``
+fact (``dispositions.census`` owns that rule), whose anchor commit is reachable
+from the plan's ``branch:`` or a declared ``working-branches:`` entry — or,
+once every one of those is gone from every local and remote ref (the merge took
+them), from the plan's base, which is where their commits went
+(:class:`_Reachability`, #1065, #1079) — and which either names the chunk
+(``chunks`` when present, else ``[chunk]`` when ``chunk`` is set, else nothing)
+or SPANS it: the fact is an edge the coverage algebra composes
+(``coverage_algebra.review_edges``) and its own interval carries a commit that
+builds the chunk (:class:`_Spans`, #1082). That is the span the coverage gate
+composes over, so the two instruments cannot disagree about it; an unbuilt
+chunk has no commit, so no span certifies it. Naming answers first, in store
+order, and a span only for a chunk naming left open. Mode labels do not matter. A
 ``chunk-imported`` fact (``{scope, chunk, source: "status-box", imported_at}``,
 written by the MG2 migration) is ``done`` too, tagged ``imported``. Until a plan
 is migrated, each ticked ``## Status`` box reads exactly as such a fact would —
 in memory, nothing written (MG1).
 
 **Retracted** is a ``chunk-retracted`` fact naming this plan's scope, a chunk
-and the fact that certified it: that fact no longer certifies that chunk, and
+and the fact that certified it, by name or by span: that fact no longer certifies that chunk, and
 the chunk says so in its ``reason`` while it stays open. Only that pair is
 withdrawn — the fact's other chunks stay done, and a later fact naming the
 chunk certifies it again. A box read in memory has no fact to retract.
@@ -63,13 +69,19 @@ rather than an absence. Both are ``synthetic``: they keep :func:`is_finished`
 false, but they are not chunk ids, so :func:`current_chunks` and
 :func:`chunk_proposal` never hand one out.
 
-**Cost (NF1).** :func:`chunk_states` is called on every Stop. It walks no git
-history and makes no network call: its only subprocess is one ``git merge-base
---is-ancestor`` per distinct anchor, run only for a fact that would otherwise
-certify a chunk still open, memoized per call — so a store holding no such fact
-costs no subprocess at all. Only an anchor that probe refuses pays more: one
-``for-each-ref`` per call to place the claimed branches, and one further probe
-per anchor against a remote tracking ref or the base. Pinned by call in
+**Cost (NF1).** :func:`chunk_states` is called on every Stop. It makes no
+network call and never walks the branch's or the base's whole history: its
+subprocesses are one ``git merge-base --is-ancestor`` per distinct anchor, run
+only for a fact that could still certify an open chunk, memoized per call — so
+a store holding no such fact costs no subprocess at all — and, for a spanning
+fact so placed, one ``git log`` of that fact's own interval (two for a
+dirty-tree fact: its committed part, and the commits descending from its
+dispatch commit, where its verbatim commit is looked for), memoized per
+interval. Only an anchor the first probe refuses pays more: one
+``for-each-ref`` per call to place the claimed branches, one further probe per
+anchor against a remote tracking ref or the base, and on the base, for an
+anchor that is its review's own ``base_commit``, one first-parent ``rev-list``
+bounded by the base's commits since it. Pinned by call in
 ``tests/test_plan_status.py``.
 That is also why precedence follows cost: an import (fact or box) answers
 first, then ``dropped:``, and a review fact only for a chunk those leave open —
@@ -81,11 +93,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Literal
+from typing import TYPE_CHECKING, Callable, Iterable, Literal
 
 from . import (
-    buildplan_refs, change_fragments, core, coverage, dispositions, evidence, gitstate, plan_index,
-    work_unit,
+    buildplan_refs, change_fragments, core, coverage, coverage_algebra, dispositions, evidence,
+    gitstate, plan_index, work_unit,
 )
 
 if TYPE_CHECKING:
@@ -132,10 +144,11 @@ class ChunkState:
     ``done`` chunk; both are ``None`` for a box read in memory, which no fact
     backs yet. ``imported`` marks a ``done`` that came from a box, as a
     ``chunk-imported`` fact or in memory. ``reason`` is the declared reason for
-    a ``dropped`` chunk, and for an ``open`` one says why something that looked
+    a ``dropped`` chunk; for an ``open`` one it says why something that looked
     like an answer was not one (an unreadable ``dropped:`` entry, a review that
-    names the chunk but cannot certify it, an unparseable heading); ``None``
-    for a plain open chunk.
+    names the chunk but cannot certify it, an unparseable heading); for a
+    ``done`` one certified by span it says so, since that fact does not name
+    it. ``None`` for a plain open chunk and a done one certified by name.
 
     ``synthetic`` marks an entry that is not a chunk of the plan but stands in,
     open, for what could not be read — the :data:`UNREADABLE_PLAN` key and a
@@ -405,11 +418,20 @@ class _Reachability:
     a branch present only on a remote is probed by its tracking ref, and a plan
     whose claimed branches are all gone is probed against its base — which is
     where a merged branch's commits went once ``/prawduct:pr`` deleted it, and
-    the case that read every chunk of a merged plan as open (#1065). On the
-    base path a review anchored at its own ``base_commit`` certifies nothing:
-    that commit was on the base before the review ran, so finding it there
-    says nothing about a merge (the rule ``plan_lifecycle`` applies to the same
-    question).
+    the case that read every chunk of a merged plan as open (#1065).
+
+    On the base path an anchor that is its own review's ``base_commit`` is
+    refused only when it is on the base's FIRST-PARENT history: the fork point
+    of a review dispatched before the branch's first commit is there, held by
+    the base before the review ran, so finding it says nothing about a merge.
+    A dirty-tree review's ``base_commit`` is the branch HEAD the tree sat on,
+    which a merge commit brings in through its second parent; that anchor is
+    accepted (#1079). A fast-forward merge puts branch commits on the
+    first-parent history too, so there such an anchor still reads as a fork
+    point — open, failing closed.
+
+    :meth:`holder` names the ref that held an accepted anchor, which is where
+    a dirty-tree review's verbatim commit is looked for (:class:`_Spans`).
     """
 
     def __init__(self, repo_dir: Path, plan: _Plan, content: str):
@@ -417,6 +439,7 @@ class _Reachability:
         self._plan = plan
         self._content = content
         self._memo: dict[str, bool] = {}
+        self._holder: dict[str, str] = {}
         self._placement: _Placement | None = None
 
     def _probe(self, anchor: str, target: str) -> bool:
@@ -424,6 +447,35 @@ class _Reachability:
             evidence.run_git(self._repo_dir, "merge-base", "--is-ancestor", anchor, target)[0]
             == 0
         )
+
+    def _first_held(self, anchor: str, refs: "tuple[str, ...]") -> bool:
+        held = next((r for r in refs if self._probe(anchor, r)), None)
+        if held is not None:
+            self._holder[anchor] = held
+        return held is not None
+
+    def _on_first_parent(self, anchor: str, base: str) -> bool:
+        """Whether ``anchor`` — known to be in ``base``'s history — is on its
+        first-parent chain. ``rev-list --first-parent anchor..base`` walks from
+        the base down to the first commit ``anchor`` reaches; the anchor is on
+        the chain exactly when that last commit's first parent is the anchor
+        (or nothing is listed: the base is the anchor). Git failing answers
+        yes, which refuses: authority fails closed. The walk is bounded by the
+        base's commits since the anchor, never its whole history."""
+        rc, out, _err = evidence.run_git(
+            self._repo_dir, "rev-list", "--first-parent", "--parents", f"{anchor}..{base}"
+        )
+        if rc != 0:
+            return True
+        lines = out.splitlines()
+        if not lines:
+            return True
+        last = lines[-1].split()
+        return len(last) > 1 and last[1] == anchor
+
+    def holder(self, anchor: str) -> "str | None":
+        """The ref an accepted ``anchor`` was found on, else ``None``."""
+        return self._holder.get(anchor)
 
     def placement(self) -> _Placement:
         if self._placement is None:
@@ -443,33 +495,155 @@ class _Reachability:
     def __call__(self, anchor: str, fork_point: object = None) -> str | None:
         names = " or ".join(f"`{b}`" for b in self._plan.branches)
         if anchor not in self._memo:
-            self._memo[anchor] = any(self._probe(anchor, b) for b in self._plan.branches)
+            self._memo[anchor] = self._first_held(anchor, self._plan.branches)
         if self._memo[anchor]:
             return None
         where = self.placement()
         if where.remote_refs:
             key = f"remote:{anchor}"
             if key not in self._memo:
-                self._memo[key] = any(self._probe(anchor, r) for r in where.remote_refs)
+                self._memo[key] = self._first_held(anchor, where.remote_refs)
             return None if self._memo[key] else f"its commit is not on {names}"
         if not where.gone:
             return f"its commit is not on {names}"
         if where.base is None:
             return f"{names} is on no local or remote branch, and {where.base_cause}"
-        if anchor == fork_point:
-            return (
-                f"its commit is the review's own base commit, which `{where.base}` held "
-                "before the review ran"
-            )
         key = f"base:{anchor}"
         if key not in self._memo:
             self._memo[key] = self._probe(anchor, where.base)
-        if self._memo[key]:
-            return None
-        return (
-            f"its commit is not on `{where.base}` ({names} is on no local or remote "
-            "branch, so the base it merged into is asked)"
+        if not self._memo[key]:
+            return (
+                f"its commit is not on `{where.base}` ({names} is on no local or remote "
+                "branch, so the base it merged into is asked)"
+            )
+        if anchor == fork_point:
+            first = f"first-parent:{anchor}"
+            if first not in self._memo:
+                self._memo[first] = self._on_first_parent(anchor, where.base)
+            if self._memo[first]:
+                return (
+                    f"its commit is the review's own base commit, which is on `{where.base}`'s "
+                    "first-parent history, so the base held it before the review ran"
+                )
+        self._holder[anchor] = where.base
+        return None
+
+
+@dataclass(frozen=True)
+class _Commit:
+    sha: str
+    tree: str
+    parents: tuple[str, ...]
+    subject: str
+    files: frozenset[str]
+
+
+#: Separates a logged commit's ids from its subject. Read only after the
+#: commit mark, so a subject holding it still parses: the split is the first.
+_FIELD_SEP = "\x1f"
+
+
+class _Spans:
+    """Which chunks a review fact's own interval carries a commit for — the
+    span half of ``done`` (#1082), asked by :func:`chunk_states` only for a
+    fact the cheap answers leave able to certify an open chunk.
+
+    The interval is the fact's, never the branch's, so it reads the same after
+    the merge deletes the branch: ``base_commit..head_commit``; for a
+    dirty-tree fact, ``base_commit..dispatch_commit`` and then the
+    first-parent chain from ``dispatch_commit`` to the first commit whose tree
+    is the fact's ``head_tree`` — the reviewed tree, committed verbatim. A
+    tree edited again before it was committed was not the tree reviewed, so
+    that part carries nothing. A commit carries a chunk by the proposal's
+    certifying rule (:func:`chunk_proposal`): a subject carrying the plan's
+    scope and the chunk, or a Deliverables path it touches, less a change
+    fragment still the ``plan new`` stub at the reviewed tree. An unbuilt
+    chunk has no commit, so no span carries it. A fact whose ``base_commit``
+    is not a commit id, or whose interval git cannot list, carries nothing.
+
+    One ``git log`` per distinct interval, memoized per call.
+    """
+
+    def __init__(self, repo_dir: Path, plan: _Plan, content: str):
+        self._repo_dir = repo_dir
+        self._plan = plan
+        self._content = content
+        self._logs: dict[tuple[str, ...], "list[_Commit] | None"] = {}
+        self._deliverables = {c: deliverable_paths(content, c) for c in plan.chunks}
+
+    def _log(self, *revs: str) -> "list[_Commit] | None":
+        if revs not in self._logs:
+            rc, out, _err = evidence.run_git(
+                self._repo_dir, "log", f"--format={_COMMIT_MARK}%H %T %P{_FIELD_SEP}%s",
+                "--name-only", *revs, "--", strip=False,
+            )
+            commits: "list[_Commit] | None" = None
+            if rc == 0:
+                commits = []
+                for line in out.splitlines():
+                    if line.startswith(_COMMIT_MARK):
+                        ids, _sep, subject = line[len(_COMMIT_MARK):].partition(_FIELD_SEP)
+                        sha, tree, *parents = ids.split()
+                        commits.append(_Commit(sha, tree, tuple(parents), subject, frozenset()))
+                    elif line.strip() and commits:
+                        last = commits[-1]
+                        commits[-1] = _Commit(
+                            last.sha, last.tree, last.parents, last.subject,
+                            last.files | {line.strip()},
+                        )
+            self._logs[revs] = commits
+        return self._logs[revs]
+
+    @staticmethod
+    def _verbatim_chain(after: "list[_Commit]", start: str, tree: str) -> "list[_Commit]":
+        """The first-parent chain from ``start`` (exclusive) to the nearest
+        commit whose tree is ``tree``, else ``[]``."""
+        children: dict[str, list[_Commit]] = {}
+        for commit in after:
+            if commit.parents:
+                children.setdefault(commit.parents[0], []).append(commit)
+        frontier: list[tuple[str, list[_Commit]]] = [(start, [])]
+        seen = {start}
+        while frontier:
+            nxt: list[tuple[str, list[_Commit]]] = []
+            for sha, chain in frontier:
+                for child in children.get(sha, ()):
+                    if child.sha in seen:
+                        continue
+                    seen.add(child.sha)
+                    if child.tree == tree:
+                        return [*chain, child]
+                    nxt.append((child.sha, [*chain, child]))
+            frontier = nxt
+        return []
+
+    def carried(self, body: dict, holder: "str | None") -> "set[str]":
+        """The normalized ids of the chunks ``body``'s interval carries a
+        commit for. ``holder`` is the ref the fact's anchor was found on."""
+        base = body.get("base_commit")
+        head = body.get("head_commit")
+        head_tree = body.get("head_tree")
+        if not gitstate.is_object_id(base) or not gitstate.is_object_id(head_tree):
+            return set()
+        if gitstate.is_object_id(head):
+            commits = self._log(f"{base}..{head}")
+        else:
+            dispatch = body.get("dispatch_commit")
+            if not gitstate.is_object_id(dispatch) or holder is None:
+                return set()
+            before = [] if dispatch == base else self._log(f"{base}..{dispatch}")
+            after = self._log("--ancestry-path", f"{dispatch}..{holder}")
+            if before is None or after is None:
+                return set()
+            commits = [*before, *self._verbatim_chain(after, dispatch, head_tree)]
+        if not commits:
+            return set()
+        carried = _named_ids(c.subject for c in commits if _carries_scope(c.subject, self._plan.scope))
+        changed = _work_paths(
+            set().union(*(c.files for c in commits)), _read_at(self._repo_dir, head_tree)
         )
+        carried |= {_norm(c) for c, paths in self._deliverables.items() if _touches(paths, changed)}
+        return carried
 
 
 # ---------------------------------------------------------------------------
@@ -484,8 +658,9 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
     tree git runs in for the reachability probe. A plan with no chunks answers
     ``{}``; an unreadable plan answers ``{UNREADABLE_PLAN: open}``; each heading
     the chunk parser rejects adds an open entry keyed ``?L<line>``. Those two
-    are ``synthetic`` (:class:`ChunkState`). Never raises; never walks git
-    history and never calls :func:`built_chunks` (module docstring, NF1).
+    are ``synthetic`` (:class:`ChunkState`). Never raises; never walks the
+    branch's history and never calls :func:`built_chunks` — a span reads only
+    the interval its own fact records (module docstring, NF1).
     """
     try:
         content = Path(plan_path).read_text(encoding="utf-8")
@@ -520,11 +695,11 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
     # would write, in memory. Then the hand-written `dropped:` declaration.
     retracted = retractions(store, plan.scope)
 
-    def withdrawn(fact_id: str, norm_id: str, what: str) -> bool:
+    def withdrawn(fact_id: str, norm_id: str, what: str, how: str = "names it") -> bool:
         reason = retracted.get((fact_id, norm_id))
         if reason is None:
             return False
-        note(norm_id, f"{what} {fact_id} names it, but it was retracted: {reason}")
+        note(norm_id, f"{what} {fact_id} {how}, but it was retracted: {reason}")
         return True
 
     if plan.scope:
@@ -549,8 +724,13 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
 
     if plan.scope:
         # Review facts: scope and chunks first (free), census next (no git), the
-        # reachability probe last and only for a fact that would certify.
+        # reachability probe last and only for a fact that would certify. A
+        # fact certifies the chunks it names, then — for chunks still open —
+        # those its interval carries a commit for (`_Spans`), but only when it
+        # is an edge the coverage algebra composes, so chunk state and the
+        # coverage gate agree on which facts span anything (#1082).
         candidates = []
+        spanning = []
         for fact in evidence.facts_of_kind(store, "review"):
             body = fact.get("body") or {}
             if body.get("scope") != plan.scope or not isinstance(fact.get("id"), str):
@@ -561,7 +741,13 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
             ]
             if named:
                 candidates.append((fact, body, named))
-        verdicts = _blocking_clear(store, [f["id"] for f, _b, _n in candidates])
+            if coverage_algebra.review_edges([fact]):
+                spanning.append((fact, body))
+        if not any(still_open(n) for n in by_norm):
+            spanning = []
+        verdicts = _blocking_clear(store, list(dict.fromkeys(
+            [f["id"] for f, _b, _n in candidates] + [f["id"] for f, _b in spanning]
+        )))
         reachable = _Reachability(Path(repo_dir), plan, content)
         for fact, body, named in candidates:
             targets = [n for n in named if still_open(n)]
@@ -574,9 +760,11 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                 continue
             # A dirty-tree review records no `head_commit`; its `dispatch_commit`
             # is the anchor (critic_consolidate's prior-fact rule). So such a
-            # review certifies once its dispatch commit is in the branch's
-            # history; that the reviewed TREE was committed is the Stop gate's
-            # coverage verdict to carry, not this function's.
+            # review certifies the chunks it NAMES once its dispatch commit is
+            # in the branch's history; that the reviewed TREE was committed is
+            # the Stop gate's coverage verdict to carry. A span is stricter,
+            # because it certifies chunks nobody named: its uncommitted part
+            # counts only once committed verbatim (`_Spans`).
             anchor = evidence.review_anchor(body)
             if not plan.branches:
                 why = "the plan declares no `branch:` its commit could be on"
@@ -590,6 +778,27 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
                 continue
             for n in targets:
                 states[by_norm[n]] = ChunkState("done", fact["id"], _date(fact.get("ts")))
+
+        spans = _Spans(Path(repo_dir), plan, content)
+        for fact, body in spanning:
+            if not any(still_open(n) for n in by_norm):
+                break
+            anchor = evidence.review_anchor(body)
+            if (
+                verdicts.get(fact["id"]) is not None
+                or not plan.branches
+                or not gitstate.is_object_id(anchor)
+                or reachable(anchor, body.get("base_commit")) is not None
+            ):
+                continue
+            for n in sorted(spans.carried(body, reachable.holder(anchor))):
+                if still_open(n) and not withdrawn(
+                    fact["id"], n, "review", "carries its commit in its interval"
+                ):
+                    states[by_norm[n]] = ChunkState(
+                        "done", fact["id"], _date(fact.get("ts")),
+                        reason="by span: its review's interval carries the chunk's commit",
+                    )
 
     for key, heading in plan.unparsed:
         states[key] = ChunkState(
@@ -625,10 +834,12 @@ def retraction_target(
     """Whether ``fact_id``'s certification of ``chunk`` can be withdrawn, and
     the exact pair to record — the one check ``plan retract`` writes behind.
 
-    ``fact_id`` omitted: the fact that certifies the chunk now. Given: a
-    ``review`` or ``chunk-imported`` fact of this plan's scope that names the
-    chunk — the chunk need not read ``done`` (a fact blocked today may certify
-    tomorrow, once its blocker resolves). A chunk whose ``## Status`` box is
+    ``fact_id`` omitted: the fact that certifies the chunk now, by name or by
+    span. Given: a ``review`` or ``chunk-imported`` fact of this plan's scope
+    that names the chunk — the chunk need not read ``done`` (a fact blocked
+    today may certify tomorrow, once its blocker resolves) — or the review fact
+    certifying it by span now; a span that does not certify it today cannot be
+    withdrawn ahead of time. A chunk whose ``## Status`` box is
     ticked is refused whatever the fact: the box certifies it in memory after
     any withdrawal, so unticking it comes first. ``fact_id`` omitted on a chunk
     whose certification is already withdrawn answers ``already``, so a re-run
@@ -703,11 +914,15 @@ def retraction_target(
         fact_chunks(body) if fact.get("kind") == "review"
         else ([str(body["chunk"])] if body.get("chunk") is not None else [])
     )
-    if _norm(key) not in {_norm(c) for c in named}:
+    # A fact certifies a chunk it names, or one its interval carries while it
+    # is the fact certifying it now (`chunk_states`' span answer).
+    by_span = state.state == "done" and state.fact_id == fact_id
+    if _norm(key) not in {_norm(c) for c in named} and not by_span:
         return RetractionTarget(
             "not-named",
             f"`{fact_id}` does not name chunk {key} (it names "
-            f"{', '.join(named) or 'no chunk'}), so it certifies nothing to retract",
+            f"{', '.join(named) or 'no chunk'}) and does not certify it by its interval, "
+            "so it certifies nothing to retract",
             plan.scope, key, fact_id,
         )
     if (fact_id, _norm(key)) in retractions(store, plan.scope):
@@ -1022,6 +1237,16 @@ def _carries_scope(subject: str, scope: str) -> bool:
         return m.group(1).strip() == scope
     return re.match(rf"{re.escape(scope)}(?::|\s)", subject) is not None
 
+
+def _named_ids(subjects: "Iterable[str]") -> "set[str]":
+    """The normalized chunk ids ``subjects`` carry, in :data:`_CHUNK_COMMIT_RE`'s
+    anchored forms. Which subjects to pass is the caller's scope rule."""
+    return {
+        _norm(next(g for g in m.groups() if g is not None))
+        for s in subjects
+        for m in _CHUNK_COMMIT_RE.finditer(s)
+    }
+
 #: Opens each commit's subject line in the log; file names follow it. Not a
 #: control character: `str.strip` treats \x1c-\x1f as whitespace.
 _COMMIT_MARK = "@@prawduct-commit@@ "
@@ -1104,21 +1329,14 @@ def _walk_branch(
         elif line.strip() and commits:
             commits[-1][1].add(line.strip())
 
-    def names(subjects: "list[str]") -> "set[str]":
-        return {
-            _norm(next(g for g in m.groups() if g is not None))
-            for s in subjects
-            for m in _CHUNK_COMMIT_RE.finditer(s)
-        }
-
     subjects = [s for s, _files in commits]
-    all_named = names(subjects)
+    all_named = _named_ids(subjects)
     if plan.scope:
         scoped = [
             s for s in subjects
             if _carries_scope(s, plan.scope)
         ]
-        scoped_named = names(scoped)
+        scoped_named = _named_ids(scoped)
         named = scoped_named if scoped else all_named
     else:
         scoped_named = named = all_named

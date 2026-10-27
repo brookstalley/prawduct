@@ -146,7 +146,8 @@ def _review(
     body = {
         "scope": scope,
         "mode": mode,
-        "base_commit": base,
+        # A commit id, as the writer records it — never the ref it was named by.
+        "base_commit": _git(repo, "rev-parse", base) if base else None,
         "base_tree": base_tree,
         "head_commit": head,
         "head_tree": head_tree,
@@ -306,7 +307,6 @@ def test_M1_no_ff_merge_branch_deleted_committed_review_is_done(repo):
     assert _states(plan, fact, repo)["01"] == "done"
 
 
-@pytest.mark.xfail(strict=True, reason="M2 (#1079)")
 def test_M2_no_ff_merge_branch_deleted_dirty_review_at_branch_head_is_done(repo):
     """#1079: the anchor equals the review's ``base_commit`` and reaches the
     base only through the merge's second parent, so it was not on the base
@@ -395,6 +395,9 @@ def test_M8_fork_point_anchor_branch_deleted_is_open(repo):
     state = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["01"]
     assert state.state == "open"
     assert "review's own base commit" in state.reason
+    # The base moving on past the fork point leaves it on the first-parent history.
+    _commit(repo, "other.txt", "x\n", "unrelated work on main")
+    assert plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["01"].state == "open"
 
 
 def test_M9_gone_branch_with_an_unresolvable_base_is_open(repo):
@@ -423,7 +426,6 @@ def test_C1_a_fact_naming_the_chunk_certifies_it_and_not_the_others(repo):
     assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open", "03": "open"}
 
 
-@pytest.mark.xfail(strict=True, reason="C2 (#1082)")
 def test_C2_an_unnamed_span_certifies_a_chunk_its_subject_carries(repo):
     _commit(repo, "notes/a.txt", "a\n", "feat(unit): one (Chunk 01)")
     head = _commit(repo, "notes/b.txt", "b\n", "feat(unit): two (Chunk 02)")
@@ -434,7 +436,6 @@ def test_C2_an_unnamed_span_certifies_a_chunk_its_subject_carries(repo):
     assert states["01"].fact_id == "R1"
 
 
-@pytest.mark.xfail(strict=True, reason="C3 (#1082)")
 def test_C3_an_unnamed_span_certifies_a_chunk_whose_deliverables_it_touches(repo):
     head = _commit(repo, "src/c02.py", "x\n", "feat(unit): the second part")
     plan = _plan(repo)
@@ -442,7 +443,6 @@ def test_C3_an_unnamed_span_certifies_a_chunk_whose_deliverables_it_touches(repo
     assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "done", "03": "open"}
 
 
-@pytest.mark.xfail(strict=True, reason="C4 (#1082)")
 def test_C4_a_fact_naming_one_chunk_certifies_another_its_span_carries(repo):
     _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
     head = _commit(repo, "src/c02.py", "x\n", "feat(unit): two (Chunk 02)")
@@ -451,7 +451,6 @@ def test_C4_a_fact_naming_one_chunk_certifies_another_its_span_carries(repo):
     assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "done", "03": "open"}
 
 
-@pytest.mark.xfail(strict=True, reason="C5 (#1082)")
 def test_C5_a_span_with_no_commit_for_the_chunk_leaves_it_open(repo):
     """#1072's invariant: an unbuilt chunk has no commit, so no span carries it."""
     head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
@@ -460,7 +459,6 @@ def test_C5_a_span_with_no_commit_for_the_chunk_leaves_it_open(repo):
     assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open", "03": "open"}
 
 
-@pytest.mark.xfail(strict=True, reason="C6 (#1082)")
 def test_C6_a_deliverable_touched_before_the_span_is_not_carried_by_it(repo):
     early = _commit(repo, "src/c03.py", "stub\n", "feat(unit): one (Chunk 01)")
     head = _commit(repo, "src/c01.py", "x\n", "fix(unit): one again")
@@ -492,7 +490,6 @@ def test_C9_another_scopes_span_certifies_nothing(repo):
     assert _states(plan, _facts(fact), repo)["01"] == "open"
 
 
-@pytest.mark.xfail(strict=True, reason="C10 (#1082)")
 def test_C10_a_dirty_tree_span_committed_verbatim_certifies_the_commit(repo):
     _plan_commit(repo)
     plan = _plan(repo)
@@ -539,7 +536,6 @@ def _issue_1082(repo: Path) -> "tuple[Path, dict]":
     return plan, _facts(cumulative, verify)
 
 
-@pytest.mark.xfail(strict=True, reason="C13 (#1082)")
 def test_C13_issue_1082_repro_reads_chunk_03_done(repo):
     plan, facts = _issue_1082(repo)
     states = plan_status.chunk_states(plan, facts, repo_dir=repo)
@@ -548,7 +544,6 @@ def test_C13_issue_1082_repro_reads_chunk_03_done(repo):
     assert plan_status.is_finished(plan, facts, repo_dir=repo)
 
 
-@pytest.mark.xfail(strict=True, reason="C14 (#1082)")
 def test_C14_issue_1082_after_merge_archives_with_no_unbuilt_chunk(repo):
     plan, facts = _issue_1082(repo)
     _merge_no_ff(repo)
@@ -569,7 +564,6 @@ def test_K1_a_named_fact_certifies_in_every_mode(repo, mode):
     assert _states(plan, _facts(fact), repo)["01"] == "done"
 
 
-@pytest.mark.xfail(strict=True, reason="K2 (#1082)")
 @pytest.mark.parametrize("mode", MODES)
 def test_K2_an_unnamed_span_certifies_in_every_mode(repo, mode):
     head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
@@ -624,7 +618,6 @@ def test_P3_a_chunk_review_proposes_by_its_diff(repo):
     assert _states(plan, _facts(fact), repo)["01"] == "done"
 
 
-@pytest.mark.xfail(strict=True, reason="P4 (#1082)")
 def test_P4_the_plan_new_stub_is_not_the_change_record_chunks_work(repo):
     """#1075."""
     fragment = ".prawduct/changes/unit.md"
@@ -698,7 +691,6 @@ def test_B4_an_unnamed_span_with_an_unresolved_blocker_certifies_nothing(repo):
     assert _states(plan, _facts(fact), repo)["01"] == "open"
 
 
-@pytest.mark.xfail(strict=True, reason="B5 (#1082)")
 def test_B5_an_unnamed_span_whose_blocker_is_resolved_certifies(repo):
     head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
     plan = _plan(repo)
@@ -732,7 +724,6 @@ def test_X2_a_later_fact_naming_a_retracted_chunk_certifies_it_again(repo):
     assert (state.state, state.fact_id) == ("done", "R2")
 
 
-@pytest.mark.xfail(strict=True, reason="X3 (#1082)")
 def test_X3_a_span_certification_can_be_retracted(repo):
     head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
     plan = _plan(repo)

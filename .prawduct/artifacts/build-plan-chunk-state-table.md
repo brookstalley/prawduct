@@ -84,6 +84,20 @@ no commit, so a span can never certify it, which keeps #1072 fixed.
 - *Not settled by the goals:* fast-forward merge with an anchor equal to its `base_commit` (M5) and
   squash merge (M6) read open after the branch is deleted, as today: M5 cannot be told from a fork
   point on the first-parent history, and a squash leaves the anchor on no ref.
+- Chunk 02: #1079's rule is "refuse an anchor equal to its review's `base_commit` only when it is on
+  the base's first-parent history" — the goals' first-parent test, kept to the anchor the old rule
+  refused, so a fast-forwarded anchor that is NOT its `base_commit` stays done (M4) as before.
+- Chunk 02: naming answers first and a span only for a chunk naming left open; a span-certified
+  `done` carries a `reason` saying so, since the cited fact does not name it.
+- *Not settled by the goals:* `plan retract` may withdraw a span certification only while that
+  span certifies the chunk (`retraction_target`); one blocked today cannot be withdrawn in advance.
+- *Not settled by the goals:* `data-model.md`'s 2026-10-24 ruling D1 gains a dated extension note
+  citing this plan's design decision rather than a rewritten statement; the owner's confirmation
+  of option 1 lives with the coordinator, not here.
+- Left for the coordinator (outside this delegate's files): `critic_consolidate.uncertified_clause`
+  says a whole-plan review that names nothing "certified no chunk" and "omitting it certifies only
+  the proposal", both now false when its span certified some; and `plan_lifecycle`'s merge probe
+  keeps the old `anchor == base_commit` refusal (its signature and behaviour were out of scope).
 
 ## Case table
 

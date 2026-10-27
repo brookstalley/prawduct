@@ -1432,7 +1432,10 @@ LAST_MEASURED_TOKENS = {
     # +23 on 2026-10-26 (stub-not-built, #1075): "no gate reads that view" was false — the
     # short-plan Stop gate reads the `built` tag to arm. A CORRECTION, not a raise to spend: the
     # sentence now says no gate certifies from it and names the one arming reader.
-    "methodology/planning.md": 5857,
+    # +22 on 2026-10-27 (chunk-state-table, #1082): a review also completes a chunk whose commit
+    # its interval reviewed, though it does not name it. A RAISE: the rule's one home gains the
+    # clause; building.md and the Critic skill point at it without restating it.
+    "methodology/planning.md": 5879,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
