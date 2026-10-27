@@ -92,6 +92,7 @@ from .migrate_plugin import (
     SYNC_MANIFEST,
     already_migrated,
     legacy_hook_events,
+    legacy_sync_stands_down,
 )
 
 FEATURE = "onboarding"
@@ -233,27 +234,30 @@ def probe_unmigrated_file_sync(state: ProjectState, codebase: Codebase):
 
     The repo the never-onboarded probe stays silent on, because its sync manifest
     proves an onboard once ran. Its route is ``/prawduct:migrate``, and nothing
-    else says so: the legacy sync stands down only once ``distribution: plugin``
-    is recorded, which is migrate's own write, so until then a still-wired legacy
-    hook runs at every session start beside the plugin's. Syncing from a framework
-    checkout older than the repo, it silently rewrites the committed governance
-    files back to that checkout's templates (#1090).
+    else says so. A still-wired legacy hook syncs at every session start beside
+    the plugin's unless it stands down: on ``distribution: plugin`` (migrate's
+    own write), or — only in a hook synced at v2.0.0 or later — when the repo's
+    settings enable the plugin. Syncing from a framework checkout older than the
+    repo, it silently rewrites the committed governance files back to that
+    checkout's templates (#1090).
 
-    Two states, one advisory: with the legacy hook wired it is ``urgent`` — it
-    reverts committed files every session — and without it ``warn``, since the
-    repo still carries framework files the plugin has replaced. Evidence names
-    the wired hook events, so the advisory re-raises when the wiring changes.
+    ``urgent`` only when that sync can run: the hook is wired on SessionStart and
+    cannot be shown to stand down (``legacy_sync_stands_down``). Every other
+    state is ``warn`` with text saying why nothing reverts, since the repo still
+    carries framework files the plugin has replaced. Evidence names the wired
+    hook events, so the advisory re-raises when the wiring changes.
     """
     root = codebase.root
     if not (root / SYNC_MANIFEST).is_file() or already_migrated(root):
         return []
     events = legacy_hook_events(root)
-    if events:
+    syncs = "SessionStart" in events and not legacy_sync_stands_down(root)
+    wired = f".claude/settings.json still wires the legacy product-hook on {', '.join(events)}"
+    if syncs:
         wiring = (
-            f".claude/settings.json still wires the legacy product-hook on {', '.join(events)}, "
-            "so it runs at every session start beside the plugin's hook and syncs from the "
-            "framework checkout the manifest names — when that checkout is older than this "
-            "repo, it rewrites the committed governance files back to its templates"
+            f"{wired}, so it runs at every session start beside the plugin's hook and syncs "
+            "from the framework checkout the manifest names — when that checkout is older "
+            "than this repo, it rewrites the committed governance files back to its templates"
         )
         summary = (
             "This repo is still on the pre-2.0 file-sync install, and its legacy sync hook "
@@ -263,10 +267,18 @@ def probe_unmigrated_file_sync(state: ProjectState, codebase: Codebase):
             "stops it."
         )
     else:
+        if not events:
+            why = "no legacy product-hook is wired in .claude/settings.json"
+        elif "SessionStart" not in events:
+            why = f"{wired}, but not on SessionStart, so it never syncs"
+        else:
+            why = (
+                f"{wired}, but that hook stands down because the repo's settings enable "
+                "the plugin"
+            )
         wiring = (
-            "no legacy product-hook is wired in .claude/settings.json, so nothing reverts "
-            "files at session start, but the repo still carries the framework files the "
-            "plugin has replaced"
+            f"{why}; nothing reverts files at session start, but the repo still carries the "
+            "framework files the plugin has replaced"
         )
         summary = (
             "This repo is still on the pre-2.0 file-sync install: it carries framework files "
@@ -288,7 +300,7 @@ def probe_unmigrated_file_sync(state: ProjectState, codebase: Codebase):
             ),
             recommended_action="/prawduct:migrate",
             alternative_actions=(),
-            priority="urgent" if events else "warn",
+            priority="urgent" if syncs else "warn",
         )
     ]
 

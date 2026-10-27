@@ -326,6 +326,42 @@ def legacy_hook_events(project_dir: Path) -> list[str]:
     )
 
 
+#: The legacy hook's own stand-down function. v2.0.0 added it to
+#: ``tools/product-hook`` (removed with the engine in v2.0.3), so a repo last
+#: synced before 2.0 carries a hook without it.
+_LEGACY_STAND_DOWN = "_plugin_governance_active"
+
+
+def legacy_sync_stands_down(project_dir: Path) -> bool:
+    """True when the repo's legacy hook yields to the plugin on its own.
+
+    Short of ``distribution: plugin``, the legacy hook's stand-down also fires
+    when ``.claude/settings.json`` or ``settings.local.json`` enables a
+    ``prawduct@…`` plugin — but only a hook synced at v2.0.0 or later has that
+    check. Both halves must be shown; anything unreadable is False, because a
+    hook nobody can show yields is one that may still sync.
+    """
+    root = Path(project_dir)
+    try:
+        hook = (root / "tools" / "product-hook").read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    if _LEGACY_STAND_DOWN not in hook:
+        return False
+    for name in ("settings.json", "settings.local.json"):
+        try:
+            data = json.loads((root / ".claude" / name).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        enabled = data.get("enabledPlugins") if isinstance(data, dict) else None
+        if isinstance(enabled, dict) and any(
+            val and isinstance(key, str) and key.split("@", 1)[0] == "prawduct"
+            for key, val in enabled.items()
+        ):
+            return True
+    return False
+
+
 def transform_settings(project_dir: Path) -> bool:
     """Strip the committed prawduct hook wiring + framework banner from
     ``.claude/settings.json`` and merge the install reference.

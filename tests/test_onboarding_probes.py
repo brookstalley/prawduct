@@ -341,9 +341,9 @@ def test_register_all_stays_silent_on_this_repo():
 # --- unmigrated file-sync (#1090) ---------------------------------------------
 #
 # A pre-2.0 file-sync repo running under the plugin without /prawduct:migrate.
-# Its legacy sync hook stands down only once `distribution: plugin` is recorded,
-# so until then it runs beside the plugin's and can revert committed governance
-# files. The never-onboarded probe is silent here by design (the manifest is a
+# Its legacy sync hook stands down on `distribution: plugin`, or (a v2.0+ hook
+# only) on the repo's settings enabling the plugin; short of either it runs
+# beside the plugin's and can revert committed governance files. The never-onboarded probe is silent here by design (the manifest is a
 # marker), so this probe is the only thing that names the route.
 
 import json  # noqa: E402
@@ -452,6 +452,68 @@ def test_this_repo_is_silent():
     # manifest; firing here would be a false alarm on every framework session.
     assert (_REPO_ROOT / ".prawduct" / "project-state.yaml").is_file()
     assert _unmigrated(_REPO_ROOT) == []
+
+
+# The legacy hook as synced: before v2.0.0 it had no stand-down; from v2.0.0 it
+# yields when the repo's settings enable a prawduct@ plugin.
+_PRE_2_HOOK = "def cmd_clear(project_dir):\n    sync()\n"
+_V2_HOOK = (
+    "def _plugin_governance_active(project_dir):\n    ...\n"
+    "def cmd_clear(project_dir):\n    if _plugin_governance_active(project_dir):\n"
+    "        return 0\n    sync()\n"
+)
+_ENABLED = {"enabledPlugins": {"prawduct@prawduct": True}}
+
+
+def _with_settings(root, extra: dict, *, name="settings.json"):
+    data = json.loads((root / ".claude" / "settings.json").read_text())
+    if name == "settings.json":
+        data.update(extra)
+        _write(root, ".claude/settings.json", json.dumps(data))
+    else:
+        _write(root, f".claude/{name}", json.dumps(extra))
+    return root
+
+
+def test_a_hook_wired_only_off_session_start_never_syncs_so_warns(tmp_path):
+    root = _file_sync(tmp_path, wired=False)
+    _write(root, ".claude/settings.json", json.dumps(
+        {"hooks": {"Stop": _LEGACY_SETTINGS["hooks"]["Stop"]}}))
+    (adv,) = _unmigrated(root)
+    assert adv.priority == "warn"
+    assert "on Stop, but not on SessionStart" in adv.evidence[1]
+    assert "revert" not in adv.trigger_summary
+
+
+@pytest.mark.parametrize("name", ["settings.json", "settings.local.json"])
+def test_a_v2_hook_standing_down_on_the_repos_plugin_enable_warns(tmp_path, name):
+    root = _with_settings(_file_sync(tmp_path, wired=True), _ENABLED, name=name)
+    _write(root, "tools/product-hook", _V2_HOOK)
+    (adv,) = _unmigrated(root)
+    assert adv.priority == "warn"
+    assert "stands down because the repo's settings enable the plugin" in adv.evidence[1]
+    assert "revert" not in adv.trigger_summary
+
+
+def test_a_v2_hook_without_a_repo_plugin_enable_still_syncs(tmp_path):
+    # The #1090 field case: the plugin installed at USER scope, so nothing in the
+    # repo's settings trips the stand-down.
+    root = _file_sync(tmp_path, wired=True)
+    _write(root, "tools/product-hook", _V2_HOOK)
+    assert _unmigrated(root)[0].priority == "urgent"
+
+
+def test_a_pre_2_hook_ignores_the_repos_plugin_enable(tmp_path):
+    root = _with_settings(_file_sync(tmp_path, wired=True), _ENABLED)
+    _write(root, "tools/product-hook", _PRE_2_HOOK)
+    assert _unmigrated(root)[0].priority == "urgent"
+
+
+def test_a_disabled_plugin_entry_is_no_stand_down(tmp_path):
+    root = _with_settings(_file_sync(tmp_path, wired=True),
+                          {"enabledPlugins": {"prawduct@prawduct": False}})
+    _write(root, "tools/product-hook", _V2_HOOK)
+    assert _unmigrated(root)[0].priority == "urgent"
 
 
 class TestLegacyHookEvents:
