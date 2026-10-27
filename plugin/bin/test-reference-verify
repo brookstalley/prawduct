@@ -82,11 +82,18 @@ from __future__ import annotations
 import os as _os
 import sys as _sys
 
-_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__))))
-import _python_floor  # noqa: E402
-
-del _sys.path[0]
-if __name__ == "__main__":
+try:
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__))))
+    try:
+        import _python_floor  # noqa: E402
+    finally:
+        del _sys.path[0]
+except (NameError, ImportError):
+    # Run without a `__file__` (exec'd source) or copied without its sibling
+    # module: there is no floor check to run, so run as before rather than
+    # tracing back ahead of every command's own error handling.
+    _python_floor = None
+if _python_floor is not None and __name__ == "__main__":
     _python_floor.ensure(__file__)
 
 import argparse

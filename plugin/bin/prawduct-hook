@@ -39,11 +39,18 @@ from __future__ import annotations
 import os as _os
 import sys as _sys
 
-_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__))))
-import _python_floor  # noqa: E402
-
-del _sys.path[0]
-if __name__ == "__main__":
+try:
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__))))
+    try:
+        import _python_floor  # noqa: E402
+    finally:
+        del _sys.path[0]
+except (NameError, ImportError):
+    # Run without a `__file__` (exec'd source) or copied without its sibling
+    # module: there is no floor check to run, so run as before rather than
+    # tracing back ahead of every command's own error handling.
+    _python_floor = None
+if _python_floor is not None and __name__ == "__main__":
     _python_floor.ensure(__file__)
 
 import json
@@ -8380,6 +8387,9 @@ def cmd_python_floor() -> int:
     ``python3`` pays a probe and a re-exec on every hook call — healthy, and
     cheaper once ``python3`` itself resolves to the floor in this directory.
     """
+    if _python_floor is None:
+        print("error: python-floor: the floor module beside this script could not be loaded", file=sys.stderr)
+        return 1
     floor = _python_floor.floor_text()
     found = sys.version_info
     print(
@@ -10966,7 +10976,8 @@ def _fallback_pytest_python() -> str:
     hook into. The invoked ``python3`` is the closest thing to the project's
     environment this fallback has; the qualifying interpreter found for the hook
     may lack the project's packages, or pytest itself."""
-    return _python_floor.REEXECUTED_FROM or sys.executable
+    origin = _python_floor.REEXECUTED_FROM if _python_floor is not None else None
+    return origin or sys.executable
 
 
 def main() -> int:

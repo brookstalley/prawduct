@@ -96,6 +96,13 @@ installing a Python for the user; Windows-specific interpreter discovery (`py -3
   environment `requires-python` names. testament already requires uv.
 - Chunk 02: the doctor's check is `prawduct-hook python-floor`, a new read-only no-argument
   subcommand registered with the ephemeral-safe and no-argument sets and the documented list.
+- Boundary suite: 21 failures, one cause. Tests that copy `prawduct-hook` alone (the binary-skew
+  guard's foreign binary, a fake plugin cache) or exec its source without `__file__` hit a
+  traceback at the floor import, ahead of every command's own error handling. The floor import now
+  fails open (hook-surface rule: code before dispatch must fail open on an import error): without
+  its sibling module there is no check to run, and the script runs as before. Those tests are the
+  positive control — red without the fail-open, green with it. The doctor-numbering test's range
+  was extended for check 26, which it exists to require be appended.
 
 ## Norm reconciliation (`governed_by`)
 
