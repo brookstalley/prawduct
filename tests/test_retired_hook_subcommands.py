@@ -119,7 +119,7 @@ def _run(
         env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root or _ROOT)
         kwargs = {"env": env}
     return subprocess.run(
-        ["python3", str(_HOOK), command, *args],
+        [sys.executable, str(_HOOK), command, *args],
         input=stdin,
         capture_output=True,
         text=True,
@@ -247,7 +247,7 @@ class TestUsageAdvertisesTheRetiredCommands:
         """Same shape as the announcing inert verbs, so `prawduct-hook` with no
         args tells a reader these exist and do nothing."""
         usage = subprocess.run(
-            ["python3", str(_HOOK)], capture_output=True, text=True, timeout=30
+            [sys.executable, str(_HOOK)], capture_output=True, text=True, timeout=30
         ).stderr
         for command in RETIRED_HOOK_SUBCOMMANDS:
             assert f"{command} [deprecated, inert]" in usage

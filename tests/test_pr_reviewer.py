@@ -8,6 +8,7 @@ PR-reviewer template/skill content. The file-sync init/sync/manifest behavior
 from __future__ import annotations
 
 import json
+import sys
 import re
 import subprocess
 from pathlib import Path
@@ -77,7 +78,7 @@ def run_hook(
         env.update(env_extra)
 
     return subprocess.run(
-        ["python3", str(HOOK_PATH), command],
+        [sys.executable, str(HOOK_PATH), command],
         capture_output=True,
         text=True,
         env=env,

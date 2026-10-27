@@ -65,16 +65,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
-      # Both legs report. Learning that 3.10 broke is worth as much as learning
-      # 3.14 did, and fail-fast would throw away whichever finished second.
+      # Every leg reports: fail-fast would throw away whichever finished second
+      # once there is more than one.
       fail-fast: false
       matrix:
-        # Floor and current. The floor mirrors `requires-python` in
-        # `pyproject.toml` — that file is the fact, this is a copy of it, and
+        # The floor. It mirrors `requires-python` in `pyproject.toml` — that file
+        # is the fact, this is a copy of it, and
         # `tests/preferences/test_ci_workflow_conventions.py` fails if the two
-        # drift. Without the floor leg `requires-python = ">=3.10"` is a claim
-        # nothing checks.
-        python-version: ["3.10", "3.14"]
+        # drift. Without the floor leg `requires-python` is a claim nothing
+        # checks. A leg for a newer release goes beside it once the suite
+        # should prove that release too.
+        python-version: ["3.14"]
     steps:
       - uses: actions/checkout@v7
         with:

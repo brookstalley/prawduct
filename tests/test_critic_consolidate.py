@@ -103,7 +103,7 @@ def _commit_file(repo: Path, rel: str, content: str, msg: str) -> str:
 
 def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-consolidate"],
+        [sys.executable, str(HOOK), "critic-consolidate"],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -159,7 +159,7 @@ def _write_manifest(repo: Path, head: str, *, roster=None, **overrides) -> None:
 
 def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-begin", *args],
+        [sys.executable, str(HOOK), "critic-begin", *args],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -175,7 +175,7 @@ def _abandon(repo: Path) -> subprocess.CompletedProcess:
     a caller genuinely does, so the setup models the lifecycle instead of a path
     the guard now refuses."""
     return subprocess.run(
-        ["python3", str(HOOK), "critic-end"],
+        [sys.executable, str(HOOK), "critic-end"],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -3621,7 +3621,7 @@ class TestConsolidateIntegration:
         _write_manifest(repo, head)
         _full_roster_partials(repo, head)
         result = subprocess.run(
-            ["python3", str(HOOK), "subagent-stop"],
+            [sys.executable, str(HOOK), "subagent-stop"],
             input=json.dumps({"cwd": str(repo),
                               "agent_type": "prawduct:critic-reviewer"}),
             cwd=str(repo), capture_output=True, text=True,
@@ -4766,7 +4766,7 @@ class TestStageReachesEveryReader:
         assert len(events) == 1 and events[0]["review"]["stage"] == "inner"
 
         stats = subprocess.run(
-            ["python3", str(HOOK), "review-stats", "--json"],
+            [sys.executable, str(HOOK), "review-stats", "--json"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
@@ -4802,12 +4802,12 @@ class TestStageReachesEveryReader:
 
         env = {**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
         filed = subprocess.run(
-            ["python3", str(HOOK), "disposition", fact["id"], finding["fid"], "--file", "#1"],
+            [sys.executable, str(HOOK), "disposition", fact["id"], finding["fid"], "--file", "#1"],
             cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
         )
         assert filed.returncode == 0, filed.stderr
         stats = subprocess.run(
-            ["python3", str(HOOK), "review-stats", "--json"],
+            [sys.executable, str(HOOK), "review-stats", "--json"],
             cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
         )
         assert stats.returncode == 0, stats.stderr
@@ -5317,7 +5317,7 @@ class TestBeginMarksFindingsSuperseded:
         repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
         assert _run_begin(repo, "--mode", "chunk").returncode == 0  # B dispatched…
         subprocess.run(  # …and abandoned without consolidating
-            ["python3", str(HOOK), "critic-end"],
+            [sys.executable, str(HOOK), "critic-end"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
@@ -6299,7 +6299,7 @@ class TestWorktreeVisibility:
         (repo_b / ".prawduct").mkdir()  # onboarded, so we reach the refuse
         (repo_b / "b.py").write_text("y = 2\n")
         result = subprocess.run(
-            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+            [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
             cwd=str(repo_a), capture_output=True, text=True,
             env={**_git_env(repo_a), "CLAUDE_PLUGIN_ROOT": str(ROOT),
                  "CLAUDE_PROJECT_DIR": str(repo_b)}, timeout=30,
@@ -8544,7 +8544,7 @@ class TestGuardRefusalsReachTheirOwnQuery:
 
     def _list(self, repo: Path) -> str:
         proc = subprocess.run(
-            ["python3", str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
+            [sys.executable, str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
@@ -8952,7 +8952,7 @@ class TestOneFixOrderEverywhere:
 
 def _run_consolidate_args(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-consolidate", *args],
+        [sys.executable, str(HOOK), "critic-consolidate", *args],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )

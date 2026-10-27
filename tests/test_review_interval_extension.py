@@ -15,6 +15,7 @@ pre-empt what is being tested.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -263,7 +264,7 @@ class TestReviewClose:
 class TestCostOfCommit:
     def _price(self, repo: Path) -> dict:
         result = subprocess.run(
-            ["python3", str(HOOK), "cost-of-commit", "--json"],
+            [sys.executable, str(HOOK), "cost-of-commit", "--json"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
         )

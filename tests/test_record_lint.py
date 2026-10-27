@@ -45,7 +45,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
-        ["python3", str(HOOK), *args],
+        [sys.executable, str(HOOK), *args],
         cwd=str(repo),
         capture_output=True,
         text=True,

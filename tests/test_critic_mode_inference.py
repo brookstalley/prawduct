@@ -1635,7 +1635,7 @@ class TestInferCriticModeSubcommand:
         self, project_dir: Path, extra_args: list[str] | None = None
     ) -> subprocess.CompletedProcess:
         cmd = [
-            "python3", str(self.HOOK_PATH), "infer-critic-mode",
+            sys.executable, str(self.HOOK_PATH), "infer-critic-mode",
         ]
         if extra_args:
             cmd.extend(extra_args)

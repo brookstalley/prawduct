@@ -53,7 +53,7 @@ Recording needs `testament` and node installed: any command that cannot start fa
 record. On a machine without testament, run the two suites yourself and ingest both reports in
 one call:
 
-    python3 -m pytest tests/ --junit-xml=/tmp/py.xml -q
+    uv run --extra dev python -m pytest tests/ --junit-xml=/tmp/py.xml -q
     node --test --test-reporter=junit --test-reporter-destination=/tmp/node.xml collector/test/*.test.mjs
     prawduct-hook test-evidence record --from-junit /tmp/py.xml --from-junit /tmp/node.xml
 

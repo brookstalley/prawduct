@@ -26,6 +26,7 @@ mirroring ``tests/test_cumulative_gate.py``.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -100,7 +101,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     return subprocess.run(
-        ["python3", str(HOOK), *args],
+        [sys.executable, str(HOOK), *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
 
