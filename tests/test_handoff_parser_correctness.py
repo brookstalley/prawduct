@@ -463,8 +463,9 @@ class TestChunkCommitSubjectForms:
     ignore it.
 
     All the forms are pinned together because the narrowing is only correct as
-    a set: the three that must match are the conventions actually in use in
-    this repo's history, and the ones that must not are false positives.
+    a set: the four that must match, in any case, are the conventions actually
+    in use in this repo's history and its products' (#1081), and the ones that
+    must not are false positives.
     Dropping any match arm silences a real convention; widening past them
     re-admits prose.
     """
@@ -491,8 +492,10 @@ class TestChunkCommitSubjectForms:
             "feat(forms): land it (Chunk 04)",
             "docs(forms): Chunk 04 — the prose half",
             "docs(forms): close Chunk 04 — the verify pass and the reflection",
+            "feat(forms): chunk 04 — the lowercase this repo's own log uses",
+            "forms chunk 04: the page",
         ],
-        ids=["parenthesised", "after-the-colon", "close-idiom"],
+        ids=["parenthesised", "after-the-colon", "close-idiom", "lowercase", "id-then-colon"],
     )
     def test_a_commit_that_carries_the_chunk_is_built(self, tmp_path: Path, subject):
         assert self._built_for(tmp_path, subject) == {"04"}, (
@@ -546,11 +549,19 @@ class TestChunkCommitSubjectForms:
         built = self._built_for(tmp_path, "fix(forms-renamed): the critic summary (Chunk 04)")
         assert built == {"04"}
 
-    def test_the_narrowing_strictly_narrows(self):
-        """Over this repo's own history the pattern must match nothing the old
-        one missed — the risk of a rewrite is "it starts matching something
-        else", which no positive test can see."""
-        old = re.compile(r"Chunk\s+(\d+)")
+    def test_the_pattern_matches_nothing_beyond_a_chunk_id_in_any_case(self):
+        """Over this repo's own history the pattern must match nothing a
+        case-blind ``chunk <id>`` search misses — the risk of a rewrite is "it
+        starts matching something else", which no positive test can see.
+
+        Renegotiated in the open (#1081): this pinned the CASE-SENSITIVE
+        ``Chunk <id>`` as the ceiling, and that ceiling was the defect. This
+        repo's own log carries ``feat(opus-55-w1): chunk 03 — …`` and products
+        write ``<scope> chunk 01: …``; both name the chunk and neither was read,
+        so a boundary review proposed nothing and certified nothing. Case is
+        the one widening; the anchored forms still keep prose out
+        (:meth:`test_a_commit_that_merely_mentions_the_chunk_is_not`)."""
+        old = re.compile(r"Chunk\s+(\d+)", re.IGNORECASE)
         subjects = subprocess.run(
             ["git", "log", "--format=%s", "-800"],
             cwd=str(Path(__file__).resolve().parent.parent),
