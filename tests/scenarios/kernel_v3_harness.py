@@ -12,6 +12,7 @@ scenarios, only the plumbing lives here.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -33,7 +34,7 @@ def _git(repo: Path, *args: str) -> str:
 
 def _hook(repo: Path, *args: str, stdin: str | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), *args],
+        [sys.executable, str(HOOK), *args],
         cwd=str(repo),
         capture_output=True,
         text=True,

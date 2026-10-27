@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import io
+import re
 import os
 import shutil
 import subprocess
@@ -100,6 +101,25 @@ class TestEntryPointsParseOnOldInterpreters:
             if isinstance(node, ast.ImportFrom):
                 assert node.module in allowed, ast.unparse(node)
         pytest.fail(f"{path.name} never calls _python_floor.ensure under __main__")
+
+
+class TestNoTestLaunchesTheHookWithABarePython3:
+    def test_hook_launches_use_the_suites_interpreter(self):
+        """A test that starts an entry point with a bare `python3` runs it on
+        whatever that name resolves to — the system 3.12 on a CI image, 3.9 on
+        a Mac — so under the floor it passes only where a 3.14 is discoverable.
+        CI found the copies a hand sweep missed; this finds the next one here."""
+        tests_dir = Path(__file__).resolve().parent
+        pattern = re.compile(r"""["']python3["']\s*,\s*(str\(|f["']|os\.|HOOK|_HOOK|self\.HOOK|hook\b)""")
+        offenders = []
+        scanned = 0
+        for path in sorted(tests_dir.rglob("*.py")):
+            scanned += 1
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                if pattern.search(line):
+                    offenders.append(f"{path.relative_to(tests_dir)}:{n}: {line.strip()}")
+        assert scanned > 100, "the scan must have reached the suite"
+        assert not offenders, "launch with sys.executable:\n  " + "\n  ".join(offenders)
 
 
 class TestDiscovery:

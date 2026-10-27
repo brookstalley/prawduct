@@ -93,7 +93,7 @@ def _stop(repo: Path) -> subprocess.CompletedProcess:
     """The Stop-hook gate. PATH is trimmed to the system dirs so the PR
     gate's ``gh`` probe can never leave the sandbox (hermetic, fast)."""
     return subprocess.run(
-        ["python3", str(HOOK), "stop"],
+        [sys.executable, str(HOOK), "stop"],
         cwd=str(repo),
         capture_output=True,
         text=True,
