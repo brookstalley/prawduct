@@ -424,6 +424,9 @@ class TestDegradations:
                     # same, which is the defect it exists to catch.
                     return True, "a reason that does not vary by clause", self._c
 
+                def saved_flaky_lines(self, *a, **k):
+                    return []
+
             import unittest.mock as _m
             with _m.patch.object(
                 pr_payload, "_lib",

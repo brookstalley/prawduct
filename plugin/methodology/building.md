@@ -96,7 +96,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 **Verify.** Two layers:
 
-- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
+- *Code:* A chunk runs the ceiling above; record the declared suite once, at the boundary run — not after committing (a commit doesn't stale session-scoped evidence). Record via `prawduct-hook test-evidence record`, or ingest an existing run — `--from-junit`, `--from-counts` (any toolchain), `--no-rerun` (restamp) — no re-run even when `test_command:` is declared. A flaky failure: `--rerun-failed` retries only the failures. Non-default suites: `test_command:`/`test_commands:`/`tests_dirs:`.
 - *Product:* Launch it, call it, inspect output. If infrastructure dependencies are declared, verify against real instances — mocks are not verification.
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).

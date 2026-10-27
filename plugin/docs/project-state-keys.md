@@ -233,7 +233,7 @@ at `bin/test-reference-verify` emits the floor; products with non-trivial covera
 plug in a stronger verifier. See `/prawduct:methodology building` "Test Discipline". Default off —
 schema is checked but content is not enforced.
 
-## test_command, test_commands, tests_dirs (optional, gate-soundness)
+## test_command, test_commands, test_rerun_command, test_rerun_commands, flaky_policy, tests_dirs (optional, gate-soundness)
 
 `prawduct-hook test-evidence record` defaults to running `-m pytest`, under the `python3` the hook
 was invoked with, from the repo root and grepping a single `tests/` dir. When the repo's real shape differs (uv/venv-managed
@@ -262,6 +262,31 @@ test_commands:
   - pipenv run pytest --junit-xml={junit_xml} -q
   - npm run test:ci -- --junit --outputFile={junit_xml}
 ```
+
+**`test_rerun_command:` / `test_rerun_commands:`** — how `test-evidence record --rerun-failed`
+retries only a run's failing tests. A declared command is never retried by appending ids to it,
+because one that already names a selection (`pytest tests/ -m "…"`) would rerun all of it.
+`test_rerun_command:` pairs with `test_command:`. `test_rerun_commands:` pairs by position with
+`test_commands:`, one entry per command, and `none` means that command is not retried. A length
+mismatch is refused. Each template is shlex-split, needs `{junit_xml}`, and takes
+`{pytest_node_ids}` as a separate argument, which becomes one argument per failing test
+(`tests/test_x.py::TestY::test_z`). Without a declared command, the fallback pytest path builds
+its own rerun. Checked before any suite runs.
+
+```yaml
+test_command: uv run pytest tests --junit-xml={junit_xml} -q
+test_rerun_command: uv run pytest --junit-xml={junit_xml} -q {pytest_node_ids}
+```
+
+**`flaky_policy:`** (`accept` | `warn` | `block`, default `warn`) — what a flake earns when this
+branch touched it. A flake is a test that passed only on retry, whether the recorder's
+`--rerun-failed` or a runner that reports it (`<flakyFailure>`). Each flake is judged at record
+time against the branch's changed files. The test file comes from the report, or from the
+classname (pytest's module path, or the class's own file in any language). One whose file or
+diff cannot be read counts as touched, and its status line says why. The policy's answer is
+decided then and printed with the flake: `accept` notes it; `warn` has the boundary Critic warn;
+`block` leaves it failed, so the record stays red. A flake outside the branch's diff is noted
+under every policy. An unknown value is refused.
 
 **`tests_dirs:`** — whitespace-separated test trees for the coverage verifier (default: `tests`).
 One verifier run unions discovery across all of them.

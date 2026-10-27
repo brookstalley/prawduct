@@ -518,7 +518,10 @@ LAST_MEASURED_TOKENS = {
     # `/prawduct:pr` carries the store's review facts to other clones; mostly paid in place by
     # dropping its `evidence status|list` pointer, which `review-cycle.md` — cited at the
     # paragraph's end as the full model — states in the same sentence.
-    "methodology/building.md": 5297,
+    # +10 on 2026-10-26 (flaky-rerun, #1087), DECLARED: the Verify bullet names `--rerun-failed`
+    # beside the other record flags, so a builder whose boundary run lost one test to load reruns
+    # that test rather than the declared suite (on this repo ~18 min per suite run).
+    "methodology/building.md": 5307,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -686,7 +689,9 @@ LAST_MEASURED_TOKENS = {
     # +30 on 2026-10-21 (#706): Goal 2 checks a declared Exposed API surface against the contract
     # artifact, after tightening the bullet's two decision clauses (net of that). DECLARED, a READING.
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
-    "skills/critic/review-protocol.md": 3926,
+    # +18 on 2026-10-26 (flaky-rerun, #1087): Goal 1 rates a `flaky:` test-status line carrying
+    # `flaky_policy: warn`. DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
+    "skills/critic/review-protocol.md": 3944,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -801,7 +806,9 @@ LAST_MEASURED_TOKENS = {
     # `retired-claim-survives` check, paid by tightening the chunk-ref-missing parenthesis. A READING.
     # +4 on 2026-10-25 (chunk-status, owner ruling D1): the inferred-chunk caveat names the plan's first open chunk, which is what
     # record_lint emits now, in place of the first unticked Status box; `--chunks`.
-    "skills/critic/goals-1-3.md": 2688,
+    # +18 on 2026-10-26 (flaky-rerun, #1087): the same `flaky_policy` clause as review-protocol.md.
+    # DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
+    "skills/critic/goals-1-3.md": 2706,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -3568,7 +3575,8 @@ class TestBuildingMethodology:
         # LOWERED 5322 -> 5316 (work-unit binding, 2026-10-24): one over the reading — see LAST_MEASURED_TOKENS.
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5298, f"building.md is ~{tokens} tokens, should be <5298"
+        # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5308, f"building.md is ~{tokens} tokens, should be <5308"
 
 
 # =============================================================================
@@ -5359,7 +5367,8 @@ class TestCriticSkill:
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3928, f"review-protocol.md is ~{tokens} tokens, should be <3928"
+        # RAISED 3928 -> 3945 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 3945, f"review-protocol.md is ~{tokens} tokens, should be <3945"
 
 
 # =============================================================================
@@ -5665,7 +5674,8 @@ class TestCriticGoals13:
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
-        assert tokens < 2689, f"goals-1-3.md is ~{tokens} tokens, should be <2689"
+        # RAISED 2689 -> 2707 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 2707, f"goals-1-3.md is ~{tokens} tokens, should be <2707"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
