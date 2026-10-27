@@ -21,23 +21,23 @@ workaround, and it costs a change record, two boundary reviews and a full suite 
 - It is read once per process, using two git calls (about 35 ms warm, 125 ms cold on the owner's
   machine). The calls drop git's repository-locating environment variables, so a hook run from a
   product's git hook still reads the plugin checkout, not the product.
-- `actor.build` travels with the facts through the notes transport to the product's own remote.
-  It identifies no more than `actor.branch` already does; `api-contract.md` says so.
+- `actor.build` travels with the facts through the notes transport to the product's own remote,
+  as `actor.branch` does (`api-contract.md`, `evidence sync`). It names a commit of the plugin, not
+  of the product, so it tells that remote nothing about the product's own code.
+- Its git calls run with `GIT_OPTIONAL_LOCKS=0`, so reading the build never rewrites the index of
+  the checkout the plugin runs from, which is often a developer's working tree.
 
 ### Chunk 02: `stats --by-build`
 
 - `prawduct-hook stats --by-build` adds `by_build` (`{major.minor: {build: body}}`) next to an
-  unchanged `by_version`, and the human report prints one block per build. Builds are listed in
+  unchanged `by_version`, and the human report prints one block per build. Each row is computed
+  over that build's facts, so rows need not sum to the version's totals. Builds are listed in
   the order the store first saw them. A fact with no build groups as `unstamped`.
 - The contribution payload still carries only `major.minor` and the dev flag. Two new tests pin
   that `build` never reaches it.
 
-### Chunk 03: change record
-
-This fragment.
-
 ## Consumer note
-Review, resolution and guard facts now record which plugin build wrote them when the plugin runs
+Every evidence fact now records which plugin build wrote it when the plugin runs
 from a git checkout (a dev or beta build), as `actor.build`. A marketplace install records none.
 To compare builds of the same version, run `prawduct-hook stats --by-build`. Nothing you send
 upstream changes: contribution reports still carry only the major.minor version.

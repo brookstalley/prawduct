@@ -148,6 +148,21 @@ class TestReadPluginBuild:
         monkeypatch.setenv("GIT_WORK_TREE", str(other))
         assert evidence.read_plugin_build(plugin) == expected
 
+    def test_reading_the_build_never_rewrites_the_checkouts_index(self, tmp_path):
+        """The plugin checkout is often a developer's working tree. A tracked
+        file whose mtime moved but whose content did not makes a plain
+        `git status` refresh and rewrite the index; the stamp must not."""
+        import os
+
+        plugin = _checkout(tmp_path)
+        tracked = plugin / "VERSION"
+        future = tracked.stat().st_mtime + 3600
+        os.utime(tracked, (future, future))
+        index = plugin.parent / ".git" / "index"
+        before = index.stat().st_mtime_ns
+        assert evidence.read_plugin_build(plugin) is not None
+        assert index.stat().st_mtime_ns == before
+
 
 @pytest.fixture
 def product(tmp_path):

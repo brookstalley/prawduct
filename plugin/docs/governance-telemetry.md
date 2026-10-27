@@ -427,8 +427,9 @@ by `major.minor` (`unknown` when a fact names no version).
 Every dev build of one version shares its version string, so this is how two
 dev builds are told apart. Facts with no build (a marketplace install, or ones
 written before the field existed) form one `unstamped` row. Each row is defined
-exactly as a version's numbers are, and builds are listed in the order the
-store first saw them. The human report prints one block per build instead of
+exactly as a version's numbers are, over that build's facts, so rows need not
+sum to the version's totals: a session that ran on two builds counts in both.
+Builds are listed in the order the store first saw them. The human report prints one block per build instead of
 per version, and `--json` adds `by_build`, keyed by `major.minor` and then by
 build, beside an unchanged `by_version`. The contribution report never carries
 the build: it stays at `major.minor` plus the dev flag.

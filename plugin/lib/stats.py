@@ -107,8 +107,9 @@ def aggregate_by_build(facts: list[dict], since=None, until=None) -> dict:
     """``{major.minor: {build: report body}}`` — :func:`aggregate` with each
     version split by build. Builds are listed in the order the store first
     saw them, which is the order they ran, since a sha says nothing of its
-    age. Each body is defined exactly as a ``by_version`` one is, so a
-    version's rows split its numbers rather than redefine them."""
+    age. Each body is defined exactly as a ``by_version`` one is, over that
+    build's facts; rows need not sum to the version's totals, because a
+    session or scope that ran on two builds counts in both."""
     first_seen: dict = {}
     for i, fact in enumerate(facts):
         first_seen.setdefault((_bucket(fact), build_of(fact)), i)

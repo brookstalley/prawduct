@@ -296,8 +296,13 @@ def read_plugin_build(plugin_root: Path) -> str | None:
     borrow that repository's sha, so the root's own ``VERSION`` has to be a
     tracked file of the checkout. The dirty check is scoped to the plugin
     directory: a dirty sibling outside it did not change the code that ran.
+    Runs with ``GIT_OPTIONAL_LOCKS=0``, so it never rewrites that index.
     Never raises (:func:`run_git` converts every failure)."""
     env = {k: v for k, v in os.environ.items() if k not in _REPO_LOCATING_ENV}
+    # A read must never refresh the checkout's index: this one is often a
+    # developer's working tree, where a lock collides with their own git and a
+    # rewritten index reads as activity to whatever watches its mtime.
+    env["GIT_OPTIONAL_LOCKS"] = "0"
     rc, _, _ = run_git(plugin_root, "ls-files", "--error-unmatch", "--", "VERSION", env=env)
     if rc != 0:
         return None
