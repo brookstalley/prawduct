@@ -694,7 +694,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `schema_version` (see Versioning).
   - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the
     opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
-    `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
+    `schema_ahead`, and `by_version` keyed by plugin `major.minor`; with `--by-build`, also
+    `by_build`, keyed by `major.minor` then `actor.build` (`unstamped` when absent). The per-version keys are defined
     in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
   - `aggregate-stats --json` → **no skill consumer today**: top-level `schema_version`,
     `generated_at`, `sources` (`local`, `local_skipped`, `contributed` — `bundles`, `lines`,

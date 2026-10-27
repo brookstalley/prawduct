@@ -58,6 +58,9 @@ version already identifies it. Read once per process. No schema version moves.
 - Chunk 01: git's repository-locating variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, …) are stripped for the stamp's calls, because a hook run under a product's git hook would otherwise stamp the product's commit. Inferred.
 - Chunk 01: sha and dirtiness come from one `git status --porcelain=v2 --branch -- .` call plus one `ls-files` check; if either fails, no build is recorded rather than a sha of unknown dirtiness. Measured cost on this machine: about 35 ms warm, about 125 ms cold, paid once per process (the result, `None` included, is memoised).
 - Chunk 01: `actor.build` travels in the notes transport like `actor.branch` (only `actor.session` is dropped there), so it reaches the product's remote with the transported facts. The plan bounded only the contribution payload; this was left as is because the build is no more identifying than the branch, and a clone that ingests the fact can then still say which build wrote it (Goals questions 1 and 3). Flagged for the owner.
+- Chunk 02: `stats --by-build` is a flag that adds a `by_build` key (`{major.minor: {build: body}}`) beside an unchanged `by_version`, rather than re-keying `by_version`; the default shape is unchanged, so `REPORT_SCHEMA_VERSION` stays at 2. With the flag, the human report prints one block per build in place of one per version.
+- Chunk 02: within a version, builds are listed in the order the store first saw them (append order, close to run order), because sorting shas puts them in no useful order. A non-string or empty `actor.build` counts as `unstamped`.
+- Chunk 02: `contribution.py` needed no change, because it buckets through its own `contribution_bucket` and never reads `actor.build`. Two tests now pin that: one on the payload and one end to end through `contribute --json` over a store whose facts carry a build.
 
 ## Chunks
 
