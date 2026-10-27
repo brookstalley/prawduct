@@ -106,6 +106,13 @@ consult the record, because there is no declaration standing behind that invocat
 is the reader's own guess at the suite, so the scope it actually selected is the only evidence of
 what it covered.
 
+A report that marks a runner's own retries, Surefire's `<flakyFailure>`/`<flakyError>`, is read as
+a pass that carries a flake. It is recorded in the evidence's `flaky` list and judged against the
+branch by `flaky_policy` (`docs/project-state-keys.md`). `<rerunFailure>` sits beside a final
+`<failure>`, so that test failed every attempt. pytest-rerunfailures writes no such marker (pytest's
+JUnit writer drops its `rerun` reports), so its retries are invisible here. Use the recorder's
+`--rerun-failed` instead.
+
 ## Producing one
 
 **Advice, not contract.** What binds is the two properties above and the record this reads;

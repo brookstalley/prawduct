@@ -700,3 +700,43 @@ class TestTheCriticRuleMatchesWhatIsPrinted:
             assert touched_tag not in gates._FLAKY_TOUCH_TAGS[(False, False)], name
             assert unknown_tag not in gates._FLAKY_TOUCH_TAGS[(False, False)], name
             assert "**WARNING** at the boundary" in rule, name
+
+
+class TestFlakesReachTheHandoffAndThePrPayload:
+    """A green that needed a retry is still a green, so nothing else carries
+    its flakes past /clear or into the PR review — each surface must."""
+
+    def test_the_session_handoff_lists_them(self, tmp_path):
+        from lib import briefing
+        repo = _branch_repo(tmp_path, touch=True)
+        _record(repo, _NET_FLAKE)
+        text = briefing.render_session_handoff(repo).text
+        section = text.split("## Flaky Tests (passed only on retry)\n", 1)[1].split("\n## ", 1)[0]
+        assert section.startswith(
+            "- tests.test_net::test_timeout — passed on the runner's retry after 1 failure(s) "
+            "[touched by this branch]"
+        ), section
+
+    def test_a_clean_run_adds_no_handoff_section(self, tmp_path):
+        from lib import briefing
+        repo = _branch_repo(tmp_path, touch=True)
+        _record(repo, '<testcase classname="m" name="ok"/>')
+        assert "Flaky Tests" not in briefing.render_session_handoff(repo).text
+
+    def test_the_pr_payload_test_section_carries_them(self, tmp_path):
+        from lib import pr_payload
+        repo = _branch_repo(tmp_path, touch=True)
+        _record(repo, _NET_FLAKE)
+        body = pr_payload._section_test_evidence(repo).body
+        lines = body.splitlines()
+        assert lines[0].startswith("test-status: ")
+        assert any(
+            ln.startswith("flaky: tests.test_net::test_timeout") and "[touched by this branch]" in ln
+            for ln in lines
+        ), body
+
+    def test_a_clean_run_adds_no_payload_line(self, tmp_path):
+        from lib import pr_payload
+        repo = _branch_repo(tmp_path, touch=True)
+        _record(repo, '<testcase classname="m" name="ok"/>')
+        assert "flaky:" not in pr_payload._section_test_evidence(repo).body
