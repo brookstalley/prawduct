@@ -14,7 +14,7 @@ run-level hook kept about 300k of 577k executions uncacheable for a week, and no
 ### Chunk 01: the probe
 
 - `lib/testament_cache_probes.py` reads testament's per-worktree cacheability snapshot (testament
-  #287): it lists `*.json` under testament's state directory (`$TESTAMENT_HOME/client/cacheability/`,
+  testament#287): it lists `*.json` under testament's state directory (`$TESTAMENT_HOME/client/cacheability/`,
   else `~/.local/share/testament/...`) and keeps envelopes whose `root` is this worktree. No
   network and no process. Where testament is not used the directory is absent and the probe
   returns at once.
@@ -29,7 +29,7 @@ run-level hook kept about 300k of 577k executions uncacheable for a week, and no
 
 ### Chunk 02: this change record
 
-Built against #287's agreed envelope before testament has shipped it. Until a testament release
+Built against testament#287's agreed envelope before testament has shipped it. Until a testament release
 writes snapshots, the advisory is inert.
 
 ## Consumer note
