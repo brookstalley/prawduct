@@ -118,7 +118,8 @@ The thresholds are a proposal; the owner sets them. Their only job is to exist b
 
 On owner confirmation: add the ruling sentence beneath the stage-keyed-rigor clause in
 `nonfunctional-requirements.md` as a recorded departure/clarification (not an edit to the clause itself),
-comment the resolution on #771 and #180 item 3, and close #771 as `completed`.
+comment the resolution on #771 and #180 item 3, and close issue #771 by hand
+(`gh issue close 771 --reason completed`).
 
 ## Options considered and rejected
 
