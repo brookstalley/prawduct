@@ -4396,6 +4396,247 @@ def _flaky_entry(case, failures: list, *, source: str) -> dict:
     return entry
 
 
+#: Most retries `--rerun-failed=N` may ask for. A test needing more than this
+#: to pass is not flaky under load; it is broken some of the time, and the
+#: retries only buy a green that hides it.
+_RERUN_MAX_ATTEMPTS = 5
+
+#: Above this many failures a run is broken, not flaky: one contended test
+#: times out, a regression fails many. Retrying a broken run spends the
+#: minutes the flag exists to save and can only end in a green it should not.
+_RERUN_MAX_FAILED = 5
+
+
+def _pytest_node_id(case, project_dir: Path) -> "tuple[str | None, str | None]":
+    """``(node id, test file)`` for a JUnit ``<testcase>``, or ``(None, None)``.
+
+    pytest writes ``classname`` as the test file's dotted path plus any
+    classes (``tests.test_x.TestY``) and selects by ``tests/test_x.py::TestY::
+    name``. The report's ``file`` attribute, where it has one, names the file
+    outright; otherwise the longest dotted prefix that is a file in this repo is
+    the module and the rest are classes. A case naming no file here has no id:
+    a guessed one would select nothing, or something else."""
+    classname = (case.get("classname") or "").strip()
+    name = case.get("name") or ""
+    if not name:
+        return None, None
+    parts = classname.split(".") if classname else []
+    file_attr = (case.get("file") or "").strip()
+    if file_attr:
+        # The classes are what the classname carries past the module. A pytest
+        # rootdir other than this repo drops leading path segments from the
+        # classname, so the module is matched by its longest tail that leads
+        # the classname, not by the whole path.
+        module = file_attr[:-3].split("/") if file_attr.endswith(".py") else []
+        classes: list[str] = []
+        for k in range(len(module)):
+            tail = module[k:]
+            if parts[: len(tail)] == tail:
+                classes = parts[len(tail):]
+                break
+        return "::".join([file_attr, *classes, name]), file_attr
+    for k in range(len(parts), 0, -1):
+        candidate = "/".join(parts[:k]) + ".py"
+        if (project_dir / candidate).is_file():
+            return "::".join([candidate, *parts[k:], name]), candidate
+    return None, None
+
+
+def _rerun_argv(template: str, junit: Path, node_ids: list[str]) -> list[str]:
+    """A rerun template's argv: split before substituting, as the run's own
+    command is, and ``{pytest_node_ids}`` — a whole token — becomes one token
+    per id."""
+    argv: list[str] = []
+    for tok in shlex.split(template):
+        if tok == "{pytest_node_ids}":
+            argv.extend(node_ids)
+        else:
+            argv.append(tok.replace("{junit_xml}", str(junit)))
+    return argv
+
+
+def _validate_rerun_templates(
+    state_path: Path, test_command: "str | None", test_commands: "list[str] | None",
+    declared_commands: list[str],
+) -> "tuple[list[str | None] | None, str]":
+    """The rerun template for each declared command (``None`` where it has
+    none), or ``(None, why)`` when the declaration cannot be used.
+
+    ``test_rerun_command:`` pairs with ``test_command:``; ``test_rerun_commands:``
+    is aligned by position with ``test_commands:``, an entry ``none`` meaning
+    that command is not retried. A list cannot carry a mapping in this
+    reader, so position is the pairing, and a length mismatch is refused rather
+    than guessed. Checked before any suite runs, as the run's own commands are,
+    so a typo costs a message and not the minutes of a suite."""
+    if not declared_commands:
+        return [None], ""  # the fallback pytest path builds its own
+    single = _read_str_yaml_key(state_path, "test_rerun_command")
+    plural = _read_str_list_yaml_key(state_path, "test_rerun_commands")
+    if plural is None and _yaml_top_level_key_present(state_path, "test_rerun_commands"):
+        return None, (
+            "test_rerun_commands is declared but not in the supported shape — a block "
+            "sequence of plain strings, one per test_commands entry (`none` for a "
+            "command with no rerun)"
+        )
+    if test_command and plural is not None:
+        return None, "test_rerun_commands pairs with test_commands; with test_command declare test_rerun_command"
+    if test_commands and single:
+        return None, "test_rerun_command pairs with test_command; with test_commands declare test_rerun_commands"
+    templates: list = [single] if test_command else list(plural or [])
+    if not any(templates):
+        return None, (
+            "--rerun-failed needs a rerun template for the declared command(s): "
+            "test_rerun_command (or test_rerun_commands, one per test_commands entry), "
+            "containing {junit_xml} and {pytest_node_ids}. A declared command is not "
+            "retried by appending ids to it, because a command that already names a "
+            "selection would rerun all of it"
+        )
+    if len(templates) != len(declared_commands):
+        return None, (
+            f"test_rerun_commands has {len(templates)} entr(ies) and test_commands "
+            f"{len(declared_commands)} — they pair by position, so declare one per "
+            "command (`none` for a command with no rerun)"
+        )
+    out: list = []
+    for template in templates:
+        if not template or template.strip() == "none":
+            out.append(None)
+            continue
+        try:
+            toks = shlex.split(template)
+        except ValueError as exc:
+            return None, f"rerun template {template!r} cannot be split into arguments ({exc})"
+        if "{pytest_node_ids}" not in toks:
+            return None, f"rerun template {template!r} must contain {{pytest_node_ids}} as its own argument"
+        if "{junit_xml}" not in template:
+            return None, f"rerun template {template!r} must contain the {{junit_xml}} placeholder"
+        out.append(template)
+    return out, ""
+
+
+def _rerun_failures(
+    project_dir: Path,
+    failed_cases: list,
+    failed_total: int,
+    commands: list,
+    templates: list,
+    attempts_max: int,
+) -> dict:
+    """Retry a live run's failing tests, by node id, through each command's
+    rerun template, up to ``attempts_max`` times; say why any was not retried.
+
+    Returns ``{"flaked": [(root index, flaky entry)], "rc": {root index: the
+    last rerun's exit status}, "notes": [str]}``. ``rc`` holds only commands
+    whose every failure passed, so a caller may treat that command as having
+    exited as its last rerun did. A test that never passes stays failing: the
+    retry can only turn a failure the rerun saw pass into a flake, never hide
+    one it did not see.
+
+    ``commands`` are the declared commands (``[None]`` for the fallback pytest
+    path, which needs no template: the hook built that argv itself, so it can
+    build the rerun's)."""
+    import tempfile  # noqa: PLC0415 — lazy, as in cmd_test_evidence
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+
+    out: dict = {"flaked": [], "rc": {}, "notes": []}
+    if failed_total > _RERUN_MAX_FAILED:
+        out["notes"].append(
+            f"not retried: {failed_total} tests failed, more than {_RERUN_MAX_FAILED} — "
+            "a broken run, not a flaky one"
+        )
+        return out
+    if len(failed_cases) < failed_total:
+        out["notes"].append(
+            f"not retried: {failed_total - len(failed_cases)} failure(s) carry no test id "
+            "(a summary-only suite), so nothing can select them and the run stays red"
+        )
+        return out
+    by_root: dict = {}
+    for root_index, case in failed_cases:
+        by_root.setdefault(root_index, []).append(case)
+    rs = _report_scope()
+    for root_index, cases in sorted(by_root.items()):
+        command = commands[root_index]
+        ids = [_junit_case_id(c) for c in cases]
+        template = templates[root_index] if command is not None else None
+        if command is not None and template is None:
+            out["notes"].append(
+                f"not retried: no rerun template for {command!r} — {', '.join(ids)}"
+            )
+            continue
+        resolved = [(c, *_pytest_node_id(c, project_dir)) for c in cases]
+        unresolved = [_junit_case_id(c) for c, node, _ in resolved if node is None]
+        if unresolved:
+            # Retrying the rest could not make this command green, so it would
+            # spend a run to change nothing the record says.
+            out["notes"].append(
+                "not retried: no test file in this repo matches "
+                f"{', '.join(unresolved)}, so no node id can select it"
+                + (f" (and {command!r} stays red)" if command else "")
+            )
+            continue
+        pending = {
+            _junit_case_id(c): {
+                "case": c,
+                "node": node,
+                "file": file,
+                "failures": [c.find("error") if c.find("error") is not None else c.find("failure")],
+            }
+            for c, node, file in resolved
+        }
+        last_rc = None
+        for _attempt in range(attempts_max):
+            fd, junit_name = tempfile.mkstemp(suffix=".xml", prefix="prawduct-rerun-")
+            os.close(fd)
+            junit = Path(junit_name)
+            nodes = [p["node"] for p in pending.values()]
+            argv = (
+                _rerun_argv(template, junit, nodes)
+                if command is not None
+                else [sys.executable, "-m", "pytest", f"--junit-xml={junit}", "-q", *nodes]
+            )
+            try:
+                try:
+                    proc = subprocess.run(argv, cwd=str(project_dir))
+                except OSError as exc:
+                    out["notes"].append(f"rerun could not launch {argv[0]!r} ({exc}); not retried further")
+                    break
+                last_rc = proc.returncode
+                try:
+                    root = ET.parse(junit).getroot()
+                except (ET.ParseError, OSError) as exc:
+                    out["notes"].append(f"rerun report unreadable ({exc}); not retried further")
+                    break
+            finally:
+                for leftover in (junit, rs.record_path(junit)):
+                    try:
+                        leftover.unlink()
+                    except OSError:
+                        pass
+            for leaf in root.iter("testcase"):
+                entry = pending.get(_junit_case_id(leaf))
+                if entry is None:
+                    continue
+                failure = leaf.find("error") if leaf.find("error") is not None else leaf.find("failure")
+                if failure is not None:
+                    entry["failures"].append(failure)
+                elif leaf.find("skipped") is None:
+                    flake = _flaky_entry(entry["case"], entry["failures"], source="rerun")
+                    flake.setdefault("file", entry["file"])
+                    out["flaked"].append((root_index, flake))
+                    del pending[_junit_case_id(leaf)]
+            if not pending:
+                break
+        if pending:
+            out["notes"].append(
+                f"still failing after {attempts_max} retr{'y' if attempts_max == 1 else 'ies'}: "
+                + ", ".join(pending)
+            )
+        elif last_rc is not None:
+            out["rc"][root_index] = last_rc
+    return out
+
+
 def _capped_flaky(entries: list[dict]) -> list[dict]:
     """The record's ``flaky`` value: sorted by id so two runs with the same
     flakes write the same bytes, then capped."""
@@ -4521,7 +4762,22 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
 
     Usage: ``prawduct-hook test-evidence record [--from-junit <report>]
     [--from-counts passed=N failed=M skipped=K [duration=S]] [--no-rerun]
-    [--degraded "<reason>"] [-- <extra pytest args>]``
+    [--degraded "<reason>"] [--rerun-failed[=N]] [-- <extra pytest args>]``
+
+    ``--rerun-failed[=N]`` (#1087) retries a live run's failing tests — only
+    those, by pytest node id, up to N times (default 1, at most
+    ``_RERUN_MAX_ATTEMPTS``) — on the same tree, inside the run's tree bracket.
+    A test that passes on a retry is a pass carrying a ``flaky`` entry; one
+    that fails every attempt stays failed. A declared command retries only
+    through its own template (``test_rerun_command:`` /
+    ``test_rerun_commands:``, with ``{junit_xml}`` and ``{pytest_node_ids}``),
+    because appending ids to a command that already names a selection would
+    rerun all of it; the fallback pytest path builds its own. More than
+    ``_RERUN_MAX_FAILED`` failures, a failure with no test id, or one naming no
+    file here is not retried, and the output says which. Refused with an
+    ingest or a restamp, which run nothing. A runner's own retries, where its
+    report marks them (``<flakyFailure>``/``<flakyError>``, Surefire's
+    convention), are read from any parsed report as the same ``flaky`` entries.
 
     ``--degraded "<reason>"`` records that the run did NOT cover what its counts
     imply, and why. A suite whose workers die under contention typically neither
@@ -4655,7 +4911,8 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             "usage: prawduct-hook test-evidence record "
             "[--from-junit <report>]... "
             "[--from-counts passed=N failed=M skipped=K [duration=S]] "
-            "[--no-rerun] [--degraded \"<reason>\"] [-- <pytest args>]",
+            "[--no-rerun] [--degraded \"<reason>\"] [--rerun-failed[=N]] "
+            "[-- <pytest args>]",
             file=sys.stderr,
         )
         return 2
@@ -4671,6 +4928,26 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         if _flag in rest:
             no_rerun = True
             rest = [t for t in rest if t != _flag]
+
+    # --rerun-failed[=N]: after a live run, retry only its failures, up to N
+    # times (default once), on the same tree. Parsed before `--`, like the
+    # other prawduct flags, and removed so it never reaches the runner.
+    rerun_attempts = 0
+    for tok in [t for t in rest if t == "--rerun-failed" or t.startswith("--rerun-failed=")]:
+        if rerun_attempts:
+            print("error: --rerun-failed may be given once.", file=sys.stderr)
+            return 2
+        raw = tok.partition("=")[2] if "=" in tok else "1"
+        if not raw.isdigit() or not 1 <= int(raw) <= _RERUN_MAX_ATTEMPTS:
+            print(
+                f"error: --rerun-failed=N takes N from 1 to {_RERUN_MAX_ATTEMPTS}, got "
+                f"{raw!r}. A test that needs more retries than that to pass is "
+                "broken some of the time, not flaky.",
+                file=sys.stderr,
+            )
+            return 2
+        rerun_attempts = int(raw)
+        rest.remove(tok)
 
     # --degraded "<reason>": the run did not cover what its counts imply. NOT a
     # count source — it annotates whichever source is in play — so it is parsed
@@ -4749,6 +5026,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
         print(
             "error: " + " and ".join(_sources) + " are mutually exclusive — "
             "choose one evidence source.",
+            file=sys.stderr,
+        )
+        return 2
+    if rerun_attempts and _sources:
+        # A retry reruns failures in a process this command started, on the
+        # tree it bracketed. An ingested report or reused counts have neither;
+        # a runner's own retries are read from its report instead.
+        print(
+            f"error: --rerun-failed retries a live run's failures, and {_sources[0]} "
+            "runs nothing. A runner that retries on its own and reports it "
+            "(<flakyFailure>, Surefire's convention) is read from its report "
+            "with --from-junit, without the flag.",
             file=sys.stderr,
         )
         return 2
@@ -4911,10 +5200,20 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     file=sys.stderr,
                 )
                 return 2
+    rerun_templates: list = []
+    if rerun_attempts:
+        templates, why = _validate_rerun_templates(
+            state_path, test_command, test_commands, declared_commands
+        )
+        if templates is None:
+            print(f"error: {why}.", file=sys.stderr)
+            return 2
+        rerun_templates = templates
 
     roots: list = []  # parsed JUnit roots (run or --from-junit); empty for counts/restamp
     failed_ids: list[str] = []  # failing leaf ids, report order; empty when none were visible
     flaky: list[dict] = []  # tests that passed only after failing (`_flaky_entry`)
+    failed_cases: list = []  # (root index, <testcase>) per failing leaf, for --rerun-failed
     run_returncodes: list[int] = []  # one per executed command; empty when nothing ran
 
     if no_rerun:
@@ -5289,6 +5588,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                             flaky.append(_flaky_entry(c, attempts, source="junit"))
                         continue
                     failed_ids.append(_junit_case_id(c))
+                    failed_cases.append((root_index, c))
                 # Summary-only suites: their attributes are the only evidence
                 # they carry, so recording a confident 0 would discard a whole
                 # environment. Ant-style double-counting cannot arise here — a
@@ -5345,6 +5645,29 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                 file=sys.stderr,
             )
             return 2
+        # --rerun-failed: retry the failures here, inside the tree bracket the
+        # run opened, so the tree check below covers the retries too. A retry
+        # that passes moves one failure to a pass that carries a flake; one
+        # that never passes leaves it exactly as the run recorded it.
+        if rerun_attempts and live_run and failed > 0:
+            rerun = _rerun_failures(
+                project_dir, failed_cases, failed, declared_commands or [None],
+                rerun_templates, rerun_attempts,
+            )
+            for note in rerun["notes"]:
+                print(f"note: {note}", file=sys.stderr)
+            for root_index, entry in rerun["flaked"]:
+                flaky.append(entry)
+                failed_ids.remove(entry["id"])
+                failed_by_root[root_index] -= 1
+                failed -= 1
+                passed += 1
+            for root_index, rc in rerun["rc"].items():
+                # Every failure of this command passed on retry, so its exit
+                # status is the last rerun's — which a coverage threshold or
+                # another non-test failure still makes nonzero, and the check
+                # below then refuses it as it would any unexplained exit.
+                run_returncodes[root_index] = rc
         # A command that exited nonzero while its own report shows no failure
         # has not been accounted for: the report missed a case, the runner died
         # after writing it, or something outside the tests failed the command.

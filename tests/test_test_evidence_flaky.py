@@ -187,3 +187,341 @@ class TestFlakesArePrinted:
             assert "flaky:" not in res.stdout
             assert "Traceback" not in res.stderr
 
+
+# ---------------------------------------------------------------------------
+# --rerun-failed: the recorder's own retry of a live run's failures
+# ---------------------------------------------------------------------------
+
+#: A stand-in for a declared test command. It reads a plan of outcomes per test
+#: (one per invocation, the last repeating), writes JUnit for the tests it was
+#: asked to run — all of them with no selection, else only the node ids given —
+#: logs its argv, and exits 1 when anything failed, as a real runner does.
+_FAKE_RUNNER = r'''
+import json, sys
+from pathlib import Path
+from xml.sax.saxutils import quoteattr
+args = sys.argv[1:]
+junit = args[args.index("--junit-xml") + 1]
+selection = [a for a in args if "::" in a]
+here = Path(__file__).parent
+plan = json.loads((here / "plan.json").read_text())
+calls = here / "calls.json"
+seen = json.loads(calls.read_text()) if calls.exists() else []
+seen.append(args)
+calls.write_text(json.dumps(seen))
+if selection and (here / "edit-on-rerun").exists():  # an edit landing mid-retry
+    (here / "tests" / "test_x.py").write_text("def test_a():\n    assert 1\n")
+cases, bad, summary = [], False, ""
+for node, outcomes in plan.items():
+    if selection and node not in selection:
+        continue
+    path, _, rest = node.partition("::")
+    parts = rest.split("::")
+    classname = ".".join([path[:-3].replace("/", "."), *parts[:-1]])
+    count = sum(1 for call in seen if not [a for a in call if "::" in a] or node in call)
+    outcome = outcomes[min(count, len(outcomes)) - 1]
+    if "--always-fail" in args:  # a second environment that is simply red
+        outcome = "fail"
+    body = ""
+    if outcome == "summary":  # a suite that died before naming its cases
+        bad = True
+        summary = '<testsuite name="agg" tests="1" failures="1" time="1"/>'
+        continue
+    if outcome == "fail":
+        bad = True
+        body = '<failure message="timed out after 5s">trace</failure>'
+    elif outcome == "skip":
+        body = "<skipped/>"
+    cases.append(f"<testcase classname={quoteattr(classname)} name={quoteattr(parts[-1])}>{body}</testcase>")
+Path(junit).write_text(
+    '<?xml version="1.0"?><testsuites><testsuite name="s" time="1">'
+    + "".join(cases) + "</testsuite>" + summary + "</testsuites>")
+sys.exit(1 if bad else 0)
+'''
+
+_RUN = "python3 runner.py --junit-xml {junit_xml}"
+_RERUN = "python3 runner.py --junit-xml {junit_xml} {pytest_node_ids}"
+
+
+def _declared_repo(tmp_path: Path, plan: dict, state: str) -> Path:
+    repo = _repo(tmp_path)
+    (repo / "runner.py").write_text(_FAKE_RUNNER)
+    (repo / "plan.json").write_text(json.dumps(plan))
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_x.py").write_text("def test_a():\n    pass\n")
+    (repo / ".prawduct" / "project-state.yaml").write_text(state)
+    # the runner's own bookkeeping, like any runner's cache, is not the tree
+    (repo / ".gitignore").write_text("calls.json\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "runner")
+    return repo
+
+
+def _rerun_record(repo: Path, *flags: str):
+    res = _run_in(repo, "test-evidence", "record", *flags)
+    path = repo / ".prawduct" / ".test-evidence.json"
+    ev = json.loads(path.read_text()) if path.is_file() else None
+    return res, ev
+
+
+def _calls(repo: Path) -> list[list[str]]:
+    return json.loads((repo / "calls.json").read_text())
+
+
+_ONE_RERUN = f"test_command: {_RUN}\ntest_rerun_command: {_RERUN}\n"
+_FLAKE = "tests/test_x.py::TestPool::test_timeout"
+
+
+class TestRerunFailed:
+    def test_a_failure_that_passes_on_rerun_is_a_green_with_one_flake(self, tmp_path):
+        repo = _declared_repo(tmp_path, {
+            _FLAKE: ["fail", "pass"],
+            "tests/test_x.py::test_ok": ["pass"],
+        }, _ONE_RERUN)
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert (ev["passed"], ev["failed"]) == (2, 0)
+        assert "failed_tests" not in ev
+        assert ev["flaky"] == [{
+            "id": "tests.test_x.TestPool::test_timeout",
+            "first_failure": "timed out after 5s",
+            "attempts": 1,
+            "source": "rerun",
+            "file": "tests/test_x.py",
+        }]
+        # the rerun ran only the failure, by node id
+        assert [a for a in _calls(repo)[1] if "::" in a] == [_FLAKE]
+        assert "evidence_tree" in ev
+
+    def test_an_edit_during_the_rerun_vouches_for_no_tree(self, tmp_path):
+        """The retries run inside the run's tree bracket: a green assembled
+        from a run on one tree and a retry on another vouches for neither."""
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "pass"]}, _ONE_RERUN)
+        (repo / "edit-on-rerun").write_text("")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "arm")
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert ev["failed"] == 0 and len(ev["flaky"]) == 1
+        assert "evidence_tree" not in ev
+        assert "tests/test_x.py" in res.stderr
+
+    def test_a_test_that_fails_every_attempt_stays_red(self, tmp_path):
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail"]}, _ONE_RERUN)
+        res, ev = _rerun_record(repo, "--rerun-failed=2")
+        assert res.returncode == 1
+        assert ev["failed"] == 1
+        assert ev["failed_tests"] == ["tests.test_x.TestPool::test_timeout"]
+        assert "flaky" not in ev
+        assert len(_calls(repo)) == 3  # the run and two retries
+
+    def test_n_retries_and_the_attempts_count_every_failure(self, tmp_path):
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "fail", "pass"]}, _ONE_RERUN)
+        res, ev = _rerun_record(repo, "--rerun-failed=3")
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert ev["flaky"][0]["attempts"] == 2
+        assert len(_calls(repo)) == 3  # stops at the pass
+
+    def test_a_test_skipped_on_rerun_has_not_passed(self, tmp_path):
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "skip"]}, _ONE_RERUN)
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        assert res.returncode == 1
+        assert ev["failed"] == 1
+        assert "flaky" not in ev
+        assert "still failing after 1 retry" in res.stderr
+
+    def test_a_failure_with_no_test_id_is_not_retried(self, tmp_path):
+        repo = _declared_repo(tmp_path, {
+            _FLAKE: ["fail", "pass"], "tests/test_x.py::test_dead": ["summary"],
+        }, _ONE_RERUN)
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        assert res.returncode == 1
+        assert ev["failed"] == 2
+        assert len(_calls(repo)) == 1
+        assert "carry no test id" in res.stderr
+
+    def test_without_the_flag_nothing_is_retried(self, tmp_path):
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "pass"]}, _ONE_RERUN)
+        res, ev = _rerun_record(repo)
+        assert res.returncode == 1
+        assert ev["failed"] == 1
+        assert len(_calls(repo)) == 1
+
+    def test_too_many_failures_is_a_broken_run_and_is_not_retried(self, tmp_path):
+        plan = {f"tests/test_x.py::test_{i}": ["fail", "pass"] for i in range(6)}
+        repo = _declared_repo(tmp_path, plan, _ONE_RERUN)
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        assert res.returncode == 1
+        assert ev["failed"] == 6
+        assert len(_calls(repo)) == 1
+        assert "not retried" in res.stderr and "6 tests failed" in res.stderr
+
+    def test_a_command_whose_template_is_none_is_not_retried_and_says_so(self, tmp_path):
+        state = (
+            "test_commands:\n"
+            f"  - {_RUN}\n"
+            "  - python3 runner.py --junit-xml {junit_xml} --always-fail\n"
+            "test_rerun_commands:\n"
+            f"  - {_RERUN}\n"
+            "  - none\n"
+        )
+        repo = _declared_repo(tmp_path, {_FLAKE: ["fail", "pass"]}, state)
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        # the first command's failure is retried and passes; the second's
+        # has no template and stays red
+        assert res.returncode == 1, res.stdout + res.stderr
+        assert ev["failed"] == 1
+        assert [e["id"] for e in ev["flaky"]] == ["tests.test_x.TestPool::test_timeout"]
+        assert "no rerun template" in res.stderr
+
+    def test_an_id_that_resolves_to_no_file_is_not_retried(self, tmp_path):
+        repo = _declared_repo(tmp_path, {"tests/test_gone.py::test_t": ["fail", "pass"]}, _ONE_RERUN)
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        assert res.returncode == 1
+        assert ev["failed"] == 1
+        assert len(_calls(repo)) == 1
+        assert "tests.test_gone::test_t" in res.stderr
+
+    def test_the_rerun_declaration_is_checked_before_any_suite_runs(self, tmp_path):
+        bad = {
+            "no placeholder": f"test_command: {_RUN}\ntest_rerun_command: python3 runner.py --junit-xml {{junit_xml}}\n",
+            "no junit": f"test_command: {_RUN}\ntest_rerun_command: python3 runner.py {{pytest_node_ids}}\n",
+            "misaligned": (
+                f"test_commands:\n  - {_RUN}\n  - {_RUN}\n"
+                f"test_rerun_commands:\n  - {_RERUN}\n"
+            ),
+            "wrong pairing": f"test_command: {_RUN}\ntest_rerun_commands:\n  - {_RERUN}\n",
+            "wrong pairing plural": f"test_commands:\n  - {_RUN}\ntest_rerun_command: {_RERUN}\n",
+            "none declared": f"test_command: {_RUN}\n",
+        }
+        for label, state in bad.items():
+            (tmp_path / label.replace(" ", "_")).mkdir()
+            repo = _declared_repo(tmp_path / label.replace(" ", "_"), {_FLAKE: ["fail", "pass"]}, state)
+            res, _ = _rerun_record(repo, "--rerun-failed")
+            assert res.returncode == 2, (label, res.stdout, res.stderr)
+            assert not (repo / "calls.json").exists(), label
+            if label.startswith("wrong pairing"):
+                # the message names the pairing, not a missing template
+                assert "pairs with" in res.stderr, res.stderr
+
+    def test_the_flag_needs_a_live_run(self, tmp_path):
+        repo = _repo(tmp_path)
+        junit = repo / "r.xml"
+        junit.write_text('<testsuites><testsuite name="s"><testcase classname="c" name="t"/></testsuite></testsuites>')
+        for flags in (["--from-junit", str(junit)], ["--from-counts", "passed=1", "failed=0"], ["--no-rerun"]):
+            res = _run_in(repo, "test-evidence", "record", "--rerun-failed", *flags)
+            assert res.returncode == 2, (flags, res.stderr)
+            assert "--rerun-failed" in res.stderr
+
+    def test_a_bad_count_is_refused(self, tmp_path):
+        repo = _repo(tmp_path)
+        for flag in ("--rerun-failed=0", "--rerun-failed=6", "--rerun-failed=x"):
+            res = _run_in(repo, "test-evidence", "record", flag)
+            assert res.returncode == 2, (flag, res.stderr)
+
+
+class TestPytestNodeIds:
+    """The JUnit id is ``classname::name`` with a dotted module path; pytest
+    selects by ``path.py::Class::name``. The longest dotted prefix naming a
+    file in the repo is the module; the rest are classes."""
+
+    def _resolve(self, tmp_path, classname, name, files, file_attr=None):
+        import importlib.machinery
+        import importlib.util
+        import xml.etree.ElementTree as ET
+        hook = Path(__file__).resolve().parent.parent / "plugin" / "bin" / "prawduct-hook"
+        loader = importlib.machinery.SourceFileLoader("_hook_for_ids", str(hook))
+        spec = importlib.util.spec_from_loader("_hook_for_ids", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        for f in files:
+            (tmp_path / f).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / f).write_text("")
+        case = ET.Element("testcase", {"classname": classname, "name": name,
+                                       **({"file": file_attr} if file_attr else {})})
+        return mod._pytest_node_id(case, tmp_path)
+
+    def test_a_class_method_with_params(self, tmp_path):
+        assert self._resolve(tmp_path, "tests.test_x.TestY", "test_z[a-b]", ["tests/test_x.py"]) == (
+            "tests/test_x.py::TestY::test_z[a-b]", "tests/test_x.py")
+
+    def test_a_module_level_test(self, tmp_path):
+        assert self._resolve(tmp_path, "tests.test_x", "test_z", ["tests/test_x.py"]) == (
+            "tests/test_x.py::test_z", "tests/test_x.py")
+
+    def test_the_file_attribute_wins(self, tmp_path):
+        assert self._resolve(tmp_path, "pkg.test_x.TestY", "t", [], file_attr="src/pkg/test_x.py") == (
+            "src/pkg/test_x.py::TestY::t", "src/pkg/test_x.py")
+
+    def test_no_file_is_no_id(self, tmp_path):
+        assert self._resolve(tmp_path, "tests.test_gone", "t", ["tests/test_x.py"]) == (None, None)
+        assert self._resolve(tmp_path, "", "t", []) == (None, None)
+
+
+_REAL_FLAKY_TEST = '''
+from pathlib import Path
+import pytest
+
+COUNTER = Path(__file__).parent.parent / "attempts.txt"
+
+
+def _attempt(key):
+    seen = COUNTER.read_text().splitlines() if COUNTER.exists() else []
+    COUNTER.write_text("\\n".join([*seen, key]) + "\\n")
+    return seen.count(key) + 1
+
+
+class TestPool:
+    @pytest.mark.parametrize("size", ["a-b"])
+    def test_timeout(self, size):
+        assert _attempt("timeout") > 1, "timed out under load"
+
+
+def test_ok():
+    assert True
+'''
+
+
+class TestAgainstRealPytest:
+    """The fake runner proves the recorder's logic; this proves its reading of
+    what pytest actually writes — the dotted classname, a parametrized name —
+    and that the node ids it derives select the test in a real rerun."""
+
+    def _repo(self, tmp_path: Path, state: str) -> Path:
+        repo = _repo(tmp_path)
+        (repo / "tests").mkdir()
+        (repo / "tests" / "test_x.py").write_text(_REAL_FLAKY_TEST)
+        (repo / ".gitignore").write_text("attempts.txt\n__pycache__/\n")
+        if state:
+            (repo / ".prawduct" / "project-state.yaml").write_text(state)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "real")
+        return repo
+
+    def _assert_one_flake(self, repo: Path, res, ev):
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert ev["failed"] == 0
+        assert ev["flaky"] == [{
+            "id": "tests.test_x.TestPool::test_timeout[a-b]",
+            "first_failure": ev["flaky"][0]["first_failure"],
+            "attempts": 1,
+            "source": "rerun",
+            "file": "tests/test_x.py",
+        }]
+        assert "timed out under load" in ev["flaky"][0]["first_failure"]
+        # the run, then a rerun of the one test alone
+        assert (repo / "attempts.txt").read_text().split() == ["timeout", "timeout"]
+
+    def test_a_declared_pytest_command_with_a_rerun_template(self, tmp_path):
+        pytest_cmd = "python3 -m pytest -p no:cacheprovider -q --junit-xml={junit_xml}"
+        repo = self._repo(tmp_path, (
+            f"test_command: {pytest_cmd} tests\n"
+            f"test_rerun_command: {pytest_cmd} {{pytest_node_ids}}\n"
+        ))
+        res, ev = _rerun_record(repo, "--rerun-failed")
+        self._assert_one_flake(repo, res, ev)
+
+    def test_the_fallback_pytest_path_needs_no_template(self, tmp_path):
+        repo = self._repo(tmp_path, "")
+        res, ev = _rerun_record(repo, "--rerun-failed", "--", "-p", "no:cacheprovider")
+        self._assert_one_flake(repo, res, ev)
