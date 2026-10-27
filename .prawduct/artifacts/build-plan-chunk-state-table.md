@@ -68,6 +68,96 @@ no commit, so a span can never certify it, which keeps #1072 fixed.
 **Level:** Medium. What would raise it: the case table itself, which is Chunk 01's deliverable.
 
 **Decisions made mid-build:** *(appended while building)*
+- Chunk 01: the rows failing before Chunk 02 were M2 (#1079) and C2-C6, C10, C13, C14, K2, P4, B5,
+  X3 (#1082). C5, C6 and P4 test an invariant that already held, but each carries a span-done
+  positive control in the same fixture, so they failed with the rest of #1082.
+- *Not settled by the goals:* "the chunk's built commit" is a commit in the FACT's own interval,
+  attributed by the proposal's certifying rule (a subject carrying the plan's scope, or a
+  Deliverables path the commit touches), not `built_report`'s whole-branch walk. The goals inferred
+  the walk; it reads nothing once the merge deletes the branch (C14), and its path rule reads a
+  Deliverable touched early as built, which would let a span certify an unbuilt chunk (C6).
+- *Not settled by the goals:* a span certifies only through a fact that is an edge
+  (`coverage_algebra.review_edges`) — the same validity the coverage gate composes with, so the two
+  instruments agree on which facts span anything.
+- *Not settled by the goals:* a dirty-tree fact's uncommitted part certifies only once that tree is
+  committed verbatim (C10, C11); a fact with no `base_commit` spans nothing (C12).
+- *Not settled by the goals:* fast-forward merge with an anchor equal to its `base_commit` (M5) and
+  squash merge (M6) read open after the branch is deleted, as today: M5 cannot be told from a fork
+  point on the first-parent history, and a squash leaves the anchor on no ref.
+
+## Case table
+
+Every situation `plan_status.chunk_states` answers, with the state it must answer. Each row is one
+test in `tests/test_chunk_state_table.py`, named `test_<row id>_…`. "Named" is a review fact whose
+`chunks` (else `chunk`) lists the chunk; "span" is a clean, in-scope review fact that is an edge in
+the coverage algebra's sense (`coverage_algebra.review_edges`: both trees recorded, every judgeable
+changed file reviewed) and whose interval carries a commit that builds the chunk — a commit subject
+carrying the chunk and the plan's scope, or a Deliverables path the commit touches (the `plan new`
+stub fragment touching nothing). A commit is in a fact's interval when it is in
+`base_commit..head_commit`, or, for a dirty-tree fact (`head_commit: null`), in
+`base_commit..dispatch_commit` or on the first-parent chain from `dispatch_commit` to the first
+commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbatim).
+
+| Row | Situation | Expected |
+|---|---|---|
+| **A — anchor placement, branch present** | | |
+| A1 | Named fact anchored on the plan's `branch:` | done (that chunk only) |
+| A2 | Named fact anchored on no claimed branch; branch present | open, "not on `feature/unit`" |
+| A3 | Named fact anchored on a declared `working-branches:` entry | done |
+| A4 | Branch only on a remote; anchor on its tracking ref | done |
+| A5 | Git cannot list the branches | open, no base fallback |
+| A6 | Plan declares no `branch:` | open, says so |
+| A7 | Fact records no commit (`head_commit` and `dispatch_commit` null) | open, says so |
+| A8 | Dirty-tree named fact (`head_commit: null`), branch present | done, anchored at `dispatch_commit` |
+| **M — after the merge** | | |
+| M1 | `--no-ff` merge, branch deleted, committed review (#1065) | done |
+| M2 | `--no-ff` merge, branch deleted, dirty-tree review at the branch HEAD, so anchor = `base_commit` (#1079) | done: the anchor reaches the base only through the merge |
+| M3 | As M2, branch kept | done |
+| M4 | Fast-forward merge, branch deleted, committed review | done |
+| M5 | Fast-forward merge, branch deleted, anchor = `base_commit` | open, "review's own base commit": on the base's first-parent history it cannot be told from a fork point |
+| M6 | Squash merge, branch deleted | open: the reviewed anchor is on no ref |
+| M7 | Branch deleted unmerged | open, names the gone branch |
+| M8 | Fork-point anchor (a review before the branch's first commit), branch deleted | open, "review's own base commit" |
+| M9 | Branch gone, plan's `base:` names no ref | open, says so |
+| **C — named vs span coverage** | | |
+| C1 | Fact names chunk 01; its span ends before chunk 02's commit | 01 done, 02 open |
+| C2 | Unnamed span carries chunks 01 and 02 by scoped subject | both done, citing that fact |
+| C3 | Unnamed span carries chunk 02 by a Deliverables path, subject naming no chunk | 02 done |
+| C4 | Fact names 01; its span also carries 02's commit | both done |
+| C5 | Unnamed `final` span carrying only chunk 01's commit (#1072's invariant) | 01 done, 02 and 03 open |
+| C6 | Chunk 03's Deliverable touched before the span starts | 03 open |
+| C7 | Chunk carried only by an unscoped subject (`feat(other): … (Chunk 02)`) | open |
+| C8 | Span fact that reviewed less than it changed (no edge) | open |
+| C9 | Span fact of another scope | open |
+| C10 | Dirty-tree span, reviewed tree committed verbatim | the commit's chunk done |
+| C11 | Dirty-tree span, tree edited again before commit | open |
+| C12 | Span fact with no `base_commit` | open: the interval cannot be placed |
+| C13 | #1082 steps 1-7: cumulative names 01, 02; a clean verify-resolutions over chunk 03's uncommitted tree names nothing; committed verbatim as `(Chunk 03)` | all done, 03 citing the verify fact; finished |
+| C14 | C13, then `--no-ff` merge and branch deleted | all done; `unbuilt_at_archive` is `None` |
+| **K — mode labels do not matter** | | |
+| K1 | Named fact in `chunk` / `final` / `cumulative` / `verify-resolutions` | done in each |
+| K2 | Unnamed span fact in each of those modes | done in each |
+| **P — the proposal at dispatch, then the fact it writes** | | |
+| P1 | Mid-plan `final` (#1072) | names only built chunks; unbuilt stay open |
+| P2 | Boundary `cumulative`, a chunk built only by subject | names every built chunk; all done |
+| P3 | `chunk` review | proposes by its diff; done |
+| P4 | Change-record chunk whose fragment is still the `plan new` stub (#1075) | not proposed; open, by proposal and by span |
+| P5 | Bare-name Deliverables, `<scope> chunk 01:` subjects (#1081) | proposed; done |
+| **B — blocking findings** | | |
+| B1 | Named fact with an unresolved blocking finding | open, names the finding |
+| B2 | Its blocker resolved by a passing `resolution` fact | done |
+| B3 | Blocking count with a finding that has no `fid` | open |
+| B4 | Unnamed span with an unresolved blocker | open |
+| B5 | Its blocker resolved | done |
+| **X — retraction** | | |
+| X1 | `chunk-retracted` for (fact, 01) on a fact naming 01, 02 | 01 open with the reason; 02 done |
+| X2 | A later fact naming the retracted chunk | done, citing the later fact |
+| X3 | A span certification: `plan retract` targets it, and retracting it | `retraction_target` ok; then open with the reason |
+| **D / I — declarations and imports** | | |
+| D1 | `dropped:` with a reason | dropped; plan finished |
+| D2 | `dropped:` entry with no reason | open, says why |
+| I1 | Ticked `## Status` box, unmigrated | done, imported |
+| I2 | `chunk-imported` fact | done, imported, citing it |
 
 ## Chunks
 
