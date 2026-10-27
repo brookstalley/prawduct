@@ -866,6 +866,9 @@ class TestCommand:
             ("legacy-layout", ar.ANCHOR_V2, ar.STATUS_LEGACY_LAYOUT),
             ("absent", None, ar.STATUS_ABSENT),
         ],
+        # Explicit ids: an anchor's text makes pytest's generated id differ between
+        # interpreters, and a runner that collects a different id cannot run it.
+        ids=["legacy-layout", "absent"],
     )
     def test_apply_reports_the_write_not_the_defect_it_fixed(
         self, tmp_path: Path, start, anchor, was
@@ -925,6 +928,7 @@ class TestCommand:
         ("stale-apply", ar.ANCHOR_V2, ("--apply",), 0),    # wrote
         ("current-apply", STATIC_ANCHOR.strip(), ("--apply",), 0),  # idempotent no-op
     ],
+    ids=["current-dry", "stale-dry", "stale-apply", "current-apply"],  # anchor text varies the generated id
 )
 def test_exit_codes_for_graded_runs(tmp_path: Path, case, anchor, args, expected):
     write = _write_agents if case.startswith("current") else _write_claude

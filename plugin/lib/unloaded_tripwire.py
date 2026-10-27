@@ -267,11 +267,6 @@ def read_settings(project_dir: str | Path) -> tuple[str, str | None]:
     return tripwire_state(data), malformed_shape(data)
 
 
-def read_settings_state(project_dir: str | Path) -> str:
-    """:func:`tripwire_state` of the repo's committed settings."""
-    return read_settings(project_dir)[0]
-
-
 def skipped_warning(project_dir: str | Path) -> str | None:
     """The sentence a settings writer reports when it could not add the hook, or
     ``None`` when the hook is there. One home for it, so ``init-product`` and
