@@ -40,6 +40,8 @@ mirror), plus the stdlib.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -1300,7 +1302,10 @@ def session_work_span(
     The span is the ``.session-base-tree`` marker (the ``HEAD^{tree}`` recorded
     at session start) against the WORKING TREE, so a session that commits its
     work is still holding that work — which the porcelain span, empty the
-    moment you commit, is not. ``judgeable`` is
+    moment you commit, is not. Paths that differ only because a pull, merge,
+    branch switch or reset brought in history the session did not write are
+    dropped (:func:`_session_authored_paths`), so the span holds what the
+    session AUTHORED, never more than the base-tree diff. ``judgeable`` is
     ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
     judgeability predicate, never a second copy of it.
 
@@ -1313,8 +1318,10 @@ def session_work_span(
     uncommitted work — it never widens it — which is the direction authority
     must fail in.
 
-    **Cost bound: at most one ``git status`` and one ``git diff``, and no
-    temp-index capture.** This runs on every Stop, which is every turn.
+    **Cost bound: one ``git status`` and one ``git diff`` when nothing changed,
+    one ``rev-parse`` more when HEAD's tree has not moved, and a reflog read,
+    one batched ``diff-tree`` and one ``git diff`` beyond that only when it has;
+    never a temp-index capture.** This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1354,10 +1361,143 @@ def session_work_span(
     if rc != 0:
         return _span(porcelain, "porcelain")
     changed = [p for p in out.split("\0") if p]
-    changed += [
-        p for p in _session_untracked_paths(project_dir, snapshot) if p not in changed
-    ]
-    return _span([f for f in changed if not gitstate._is_metadata_path(f)], "base-tree")
+    untracked = _session_untracked_paths(project_dir, snapshot)
+    changed += [p for p in untracked if p not in changed]
+    changed = [f for f in changed if not gitstate._is_metadata_path(f)]
+    authored = (
+        _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+        if changed
+        else None
+    )
+    if authored is not None:
+        changed = [p for p in changed if p in authored]
+    return _span(changed, "base-tree")
+
+
+# HEAD reflog subjects, classified by whether the move carries work this
+# session wrote. A pick-type rebase step replays a commit onto a new base, so
+# its diff is the commit's own change; the rebase's start/finish only move HEAD
+# onto someone else's history. `pull --rebase` logs the same steps under its
+# own prefix.
+_REBASE_STEP = re.compile(r"^(?:pull --rebase|rebase(?: -i)?) \((\w+)\)")
+_REBASE_IMPORTED_STEPS = frozenset({"start", "finish", "abort"})
+_AUTHORED_SUBJECTS = (
+    "commit:", "commit (amend):", "commit (initial):", "commit (cherry-pick):",
+    "cherry-pick:", "revert:",
+)
+_IMPORTED_SUBJECTS = ("checkout:", "pull:", "pull ", "merge ", "reset:")
+
+
+def _classify_reflog_subject(subject: str) -> "str | None":
+    """``"authored"``, ``"merge-commit"``, ``"imported"``, or ``None`` for a
+    subject this reader does not recognise — which makes the caller give up on
+    authorship rather than guess, because git's wording is not a contract."""
+    step = _REBASE_STEP.match(subject)
+    if step:
+        return "imported" if step.group(1) in _REBASE_IMPORTED_STEPS else "authored"
+    if subject.startswith("commit (merge):"):
+        return "merge-commit"
+    if subject.startswith(_AUTHORED_SUBJECTS):
+        return "authored"
+    if subject.startswith(_IMPORTED_SUBJECTS):
+        return "imported"
+    return None
+
+
+def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
+    """The ``.session-start`` stamp and its epoch seconds, or ``None`` when the
+    marker is missing or not the ``YYYY-MM-DDTHH:MM:SSZ`` stamp ``cmd_clear``
+    writes."""
+    stamp = _read_session_start(prawduct_dir)
+    try:
+        when = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return stamp, int(when.timestamp())
+
+
+def _session_authored_paths(
+    project_dir: Path, prawduct_dir: Path, base: str, untracked: "list[str]"
+) -> "set[str] | None":
+    """The paths this session wrote, or ``None`` when that cannot be told —
+    the caller then keeps the whole base-tree span.
+
+    A pull, merge, branch switch or reset moves HEAD onto history, and the
+    base-tree diff cannot tell those files from the session's own. What it
+    brought in that is OLDER than the session cannot be the session's work;
+    what is newer may be — a delegate's branch merged back is exactly that — so
+    it counts. The session's work is therefore: commits HEAD reaches that were
+    made since the session started; the commits its own reflog records it
+    making, even ones HEAD has since moved away from; the paths a merge it
+    concluded by hand resolved; and whatever the working tree holds against
+    HEAD now.
+
+    The walk is bounded by ``.session-start`` and must reach an entry older than
+    it, or the reflog does not cover the session and cannot vouch for it. Every
+    failure, and any subject the classifier does not recognise, returns
+    ``None``: authorship narrows the span only on a reflog it fully read, so a
+    gate loses a false fire and never a real one.
+
+    Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
+    — the common case, which returns at once — else a reflog read, one ``log``,
+    a batched ``diff-tree`` per kind of commit the session made, and one
+    ``diff``.
+    """
+    rc, head_tree, _err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc != 0 or head_tree == base:
+        return None
+    started = _session_started_epoch(prawduct_dir)
+    if started is None:
+        return None
+    stamp, started_at = started
+    rc, out, _err = evidence.run_git(
+        project_dir, "reflog", "show", "--date=unix", "--format=%H%x00%gd%x00%gs", "HEAD"
+    )
+    if rc != 0:
+        return None
+    commits: list[str] = []
+    merges: list[str] = []
+    reached_start = False
+    for line in out.splitlines():
+        sha, selector, subject = (line.split("\0") + ["", ""])[:3]
+        moved_at = re.search(r"@\{(\d+)\}$", selector)
+        if not moved_at:
+            return None
+        if int(moved_at.group(1)) < started_at:
+            reached_start = True
+            break
+        kind = _classify_reflog_subject(subject)
+        if kind is None:
+            return None
+        if kind == "authored":
+            commits.append(sha)
+        elif kind == "merge-commit":
+            merges.append(sha)
+    if not reached_start:
+        return None
+    authored: set[str] = set(untracked)
+    rc, out, _err = evidence.run_git(
+        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=", "--name-only",
+        "-z", "HEAD",
+    )
+    if rc != 0:
+        return None
+    authored.update(p for p in out.split("\0") if p)
+    for shas, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+        if not shas:
+            continue
+        rc, out, _err = evidence.run_git(
+            project_dir, "diff-tree", "--stdin", "--no-commit-id", "--name-only", "-z",
+            *flags, input="\n".join(shas) + "\n",
+        )
+        if rc != 0:
+            return None
+        authored.update(p for p in out.split("\0") if p)
+    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", "HEAD")
+    if rc != 0:
+        return None
+    authored.update(p for p in out.split("\0") if p)
+    return authored
 
 
 #: The two lines a reflection must carry, and the words the blocker uses for

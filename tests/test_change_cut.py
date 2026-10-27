@@ -104,7 +104,7 @@ def _snapshot(project: Path) -> dict[str, bytes]:
 
 def _cut(project: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "cut-change-log", *args],
+        [sys.executable, str(HOOK), "cut-change-log", *args],
         cwd=str(project), capture_output=True, text=True, timeout=60,
         env={"PATH": "/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(project), "HOME": str(project.parent)},
     )

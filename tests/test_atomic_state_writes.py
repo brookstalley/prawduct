@@ -246,7 +246,7 @@ def _run_clear(project_dir: Path) -> subprocess.CompletedProcess:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "clear", "--session-start"],
+        [sys.executable, str(HOOK), "clear", "--session-start"],
         capture_output=True, text=True, env=env, timeout=20,
     )
 

@@ -45,7 +45,7 @@ def _git(repo: Path, *args: str) -> str:
 
 def _hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), *args], cwd=str(repo), capture_output=True, text=True,
+        [sys.executable, str(HOOK), *args], cwd=str(repo), capture_output=True, text=True,
         env=_env(repo), timeout=60,
     )
 

@@ -120,7 +120,7 @@ def _repo(tmp_path: Path, *, with_plan: bool = True, with_change_log: bool = Tru
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo))
     return subprocess.run(
-        ["python3", str(HOOK), "pr-review-payload", *args],
+        [sys.executable, str(HOOK), "pr-review-payload", *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=60,
     )
 

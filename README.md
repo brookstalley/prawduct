@@ -27,7 +27,10 @@ Claude Code is fantastic at writing code, but without discipline it makes assump
 ### Prerequisites
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- Python 3 (the plugin's governance hooks are Python, zero external dependencies)
+- Python 3.14 or newer, reachable as `python3.14` (or newer) or as `python3`, on every machine
+  that runs a governed repo — including repos that are not Python projects. The plugin's hooks
+  are Python with zero external dependencies; below 3.14 they re-run themselves under one they
+  find, and say so loudly when there is none.
 - git
 
 Prawduct is a **Claude Code plugin**: install it **once at the user level**, then **onboard each
@@ -189,7 +192,7 @@ pool answers (`documentation/running-tests.md`). To run the suites by hand:
 
 ```bash
 cd prawduct
-python3 -m pytest tests/
+uv run --extra dev python -m pytest tests/   # the suite needs Python 3.14+ (requires-python)
 node --test 'collector/test/*.test.mjs'
 ```
 

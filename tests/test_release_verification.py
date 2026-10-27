@@ -116,26 +116,6 @@ def _make_repo(
     return repo
 
 
-#: Gates an assertion that is literally false below Python 3.11.
-#:
-#: `_make_repo` mirrors prawduct's real layout, `pyproject.toml` included, so any
-#: fixture built from it carries a `toml` entry — unreadable without `tomllib`,
-#: where this check reports `unverifiable` by design. Tests asserting the full
-#: three-file verification are therefore interpreter-dependent *without saying so
-#: anywhere in their own body*, which is how four pre-existing ones landed on the
-#: 3.10 CI leg's red list at once.
-#:
-#: This is the fact's one home: the rationale lived at all four call sites in
-#: identical 5-line copies before, which is four places to edit when the floor
-#: moves. `test_the_floor_leg_degrades_instead_of_failing` is the compensating
-#: always-on case — skipping without it would leave the floor leg proving nothing
-#: about the shape it actually runs.
-needs_tomllib = pytest.mark.skipif(
-    rv._toml_loader() is None,
-    reason="tomllib is 3.11+; test_the_floor_leg_degrades_instead_of_failing covers that leg",
-)
-
-
 def _read(fmt: str, content: str, key: str = "") -> rv._Read:
     return rv._read_version(rv.VersionFile("f", fmt, key), content)
 
@@ -152,17 +132,16 @@ class TestVersionParsing:
             ("json", "version", "not json at all", None),
             ("json", "a.b.version", '{"a": {"b": {"version": "3.2.0"}}}', "3.2.0"),
             ("json", "a.b.version", '{"a": {"b": {}}}', None),
-            pytest.param("toml", "version", 'version = "3.2.0"\n', "3.2.0", marks=needs_tomllib),
-            pytest.param("toml", "version", "version = '3.2.0'\n", "3.2.0", marks=needs_tomllib),
+            pytest.param("toml", "version", 'version = "3.2.0"\n', "3.2.0"),
+            pytest.param("toml", "version", "version = '3.2.0'\n", "3.2.0"),
             pytest.param(
-                "toml", "project.version", "[project]\nname = 'x'\n", None, marks=needs_tomllib
+                "toml", "project.version", "[project]\nname = 'x'\n", None
             ),
         ],
     )
     def test_extracts_or_reports_absent(self, kind, key, content, expected):
         assert _read(kind, content, key).value == expected
 
-    @needs_tomllib
     @pytest.mark.parametrize("first", ["project", "tool.other"])
     def test_the_declared_table_wins_at_either_ordering(self, first):
         """#580, and the test that used to assert the defect as a guarantee.
@@ -191,7 +170,6 @@ class TestVersionParsing:
         # path is descended, not that `[project]` acquired a special case.
         assert _read("toml", content, "tool.other.version").value == "9.9.9"
 
-    @needs_tomllib
     @pytest.mark.parametrize("key", ["versioning", "version_scheme", "versions"])
     def test_a_neighbouring_key_is_not_read_as_the_version(self, key):
         """A prefix match reads a neighbouring key as the release version.
@@ -249,23 +227,6 @@ class TestVersionParsing:
             assert read.value is None
         readable = _read("json", '{"name": "x"}', "version")
         assert readable.blocked is False, "a readable file with no version is not blocked"
-
-    def test_toml_without_tomllib_is_blocked_naming_the_interpreter(self, monkeypatch):
-        """The 3.10 floor, exercised on every interpreter.
-
-        On 3.10 this path is reached for real and `needs_tomllib` skips the
-        cases above; on 3.11+ the import cannot be un-done, so the loader lookup
-        is substituted — the same split the suite already uses for a hung
-        toolchain, which likewise cannot be staged for real. What is asserted is
-        the caller's handling: an absent stdlib module is not evidence about a
-        release, so it must be `blocked`, never a version verdict.
-        """
-        monkeypatch.setattr(rv, "_toml_loader", lambda: None)
-        read = _read("toml", 'version = "3.2.0"\n', "version")
-        assert read.blocked is True
-        assert read.value is None
-        assert "3.11+" in read.problem
-
 
 class TestDeclarationReading:
     """The minimal-YAML reader. Undeclared, declared-empty and declared are
@@ -387,7 +348,6 @@ class TestDeclarationReading:
 
 
 class TestVersionFiles:
-    @needs_tomllib
     def test_agreeing_tree_is_ok(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0")
         state, detail = rv.check_version_files(repo, "v3.2.0")
@@ -459,9 +419,8 @@ class TestVersionFiles:
 
         A `pyproject.toml` with no `[project].version` is *skipped* under the
         guess and *failed* under a declaration, because the product asserted the
-        version lives there. Driven through `json` rather than `toml` so the
-        3.10 floor leg exercises it too — the format is incidental here, the
-        provenance is the subject.
+        version lives there. Driven through `json` rather than `toml` — the
+        format is incidental here, the provenance is the subject.
         """
         repo = tmp_path / "declared"
         repo.mkdir()
@@ -496,55 +455,24 @@ class TestVersionFiles:
         state, _ = rv.check_version_files(repo, "v1.0.0")
         assert state != rv.FAILED, "an assumed layout graded a product that never claimed it"
 
-    def test_the_floor_leg_degrades_instead_of_failing(self, tmp_path, monkeypatch):
-        """What Python 3.10 sees, asserted on every interpreter.
-
-        Four happy-path tests in this file assert prawduct's full three-file
-        verification, which is true only on 3.11+ — `_make_repo` mirrors the
-        real layout, `pyproject.toml` included. They now carry `@needs_tomllib`,
-        which would leave the CI floor leg (`tests.yml` runs 3.10 and 3.14) with
-        no coverage of the shape it actually runs. This is that coverage, and it
-        pins the property that matters: the floor **degrades**, it does not fail.
-
-        Found by simulating the loader's absence across the whole file. A
-        reviewer caught one test failing on 3.10; there were five, because the
-        fallback layout carries a toml entry for every fixture built from it.
-        """
-        monkeypatch.setattr(rv, "_toml_loader", lambda: None)
-        repo = _make_repo(tmp_path, version="3.2.0")
-        state, detail = rv.check_version_files(repo, "v3.2.0")
-        assert state == rv.UNVERIFIABLE, "the floor must not report a verdict it cannot support"
-        assert state != rv.FAILED, "an interpreter's stdlib is not evidence about a release"
-        assert "3.11+" in detail
-        # The two readable files still verified — the degradation is scoped to
-        # the entry that needs the missing module, not to the whole check.
-        assert "2 file(s) did agree" in detail
-        assert "plugin/VERSION" in detail
-
-    def test_a_blocked_file_does_not_swallow_a_disagreement_beside_it(
-        self, tmp_path, monkeypatch
-    ):
+    def test_a_blocked_file_does_not_swallow_a_disagreement_beside_it(self, tmp_path):
         """Every soft finding is reported, not just the first kind found.
 
-        The shape a 3.10 operator actually hits: `pyproject.toml` cannot be read
-        at all, and `plugin/VERSION` disagrees. Returning only the blocked list
-        drops a live version disagreement because an unrelated sibling could not
-        be parsed — "advice fails soft" is not "advice fails silent", one level
-        down from where this branch fixed it last chunk.
-
-        Writing this also caught the detail calling `checked` files "did agree"
-        while it still held files that had just disagreed.
+        One declared file cannot be read at all — a format this check does not
+        know — and `plugin/VERSION` disagrees. Returning only the blocked list
+        would drop a live version disagreement because an unrelated sibling
+        could not be parsed. Under a declaration the disagreement is a verdict,
+        so the check fails on it rather than reporting "could not read" alone.
         """
-        monkeypatch.setattr(rv, "_toml_loader", lambda: None)
-        repo = _make_repo(tmp_path, version="3.2.0", tag="v3.2.1")
+        repo = _make_repo(
+            tmp_path, version="3.2.0", tag="v3.2.1",
+            declare=_state_yaml(_BARE, _JSON, ("pyproject.toml", "ini", "project.version")),
+        )
         state, detail = rv.check_version_files(repo, "v3.2.1")
-        assert state == rv.UNVERIFIABLE
-        assert "3.11+" in detail, "the unreadable file went unreported"
+        assert state == rv.FAILED, "an unreadable sibling turned a disagreement into a shrug"
         assert "plugin/VERSION: says 3.2.0, tag says 3.2.1" in detail, (
             "a real disagreement was dropped because a sibling file was unreadable"
         )
-        assert "did agree" not in detail, "nothing agreed here"
-
     def test_a_declaration_naming_no_files_is_unverifiable_not_a_pass(self, tmp_path):
         """`release_version_files: []` is a deliberate opt-out, not a green light.
 
@@ -556,7 +484,6 @@ class TestVersionFiles:
         assert state == rv.UNVERIFIABLE
         assert "no version file to check" in detail
 
-    @needs_tomllib
     def test_a_fully_declared_tree_agrees(self, tmp_path):
         repo = _make_repo(tmp_path, version="3.2.0", declare=_state_yaml(_BARE, _JSON, _TOML))
         state, detail = rv.check_version_files(repo, "v3.2.0")
@@ -622,12 +549,7 @@ class TestVersionFiles:
         not, and a soft failure still owes its reader the real one.
 
         **Built on a `json` file, not the `pyproject.toml` this defect was found
-        through.** The first cut used the latter and asserted `OK` — which is
-        true on 3.11+ and false on the 3.10 CI leg, where the toml entry is
-        `blocked` and the check returns UNVERIFIABLE without ever reaching the
-        detail string this greps. It was R-1's only test, so on the floor leg
-        the fix went from covered to red. The reason-split has nothing to do
-        with TOML, so it is proven on a format every interpreter can read.
+        through:** the reason-split has nothing to do with TOML.
         """
         repo = tmp_path / "mixed"
         repo.mkdir()
@@ -667,7 +589,6 @@ class TestVersionFiles:
         state, _ = rv.check_version_files(repo, "v1.0.0")
         assert state == rv.UNVERIFIABLE
 
-    @needs_tomllib
     def test_reads_the_tag_tree_not_the_working_tree(self, tmp_path):
         """The regression this gate exists to prevent, in one test.
 
@@ -980,7 +901,6 @@ class TestCheckReleased:
 
         monkeypatch.setattr(rv, "_run", fake)
 
-    @needs_tomllib
     def test_complete_release_exits_zero(self, tmp_path, monkeypatch, capsys):
         repo = _make_repo(tmp_path, version="3.2.0")
         self._stub_gh(monkeypatch, (0, "https://example/v3.2.0", ""))
@@ -1015,7 +935,6 @@ class TestCheckReleased:
         assert "not-released" not in err
         assert "not a git repository" in err
 
-    @needs_tomllib
     def test_accepts_bare_version(self, tmp_path, monkeypatch):
         repo = _make_repo(tmp_path, version="3.2.0")
         self._stub_gh(monkeypatch, (0, "https://example/v3.2.0", ""))

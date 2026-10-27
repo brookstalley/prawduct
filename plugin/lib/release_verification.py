@@ -30,8 +30,7 @@ parsing). A product declares ``release_version_files:`` as path + format + key
 path; the format names a *structural shape* (``bare``, ``json``, ``toml``) and
 the key path is descended literally, so nothing here decides which table of a
 manifest wins. Reading ``toml`` **delegates to stdlib** ``tomllib`` rather than
-hand-rolling a parser, which is that norm's interim rule applied as written;
-on an interpreter without it (3.10) such a file is *unverifiable*, never failed.
+hand-rolling a parser, which is that norm's interim rule applied as written.
 
 **Failure posture is split on purpose** (``architecture.md`` § Direction — a
 command's posture follows what it produces). The local checks produce a verdict
@@ -50,6 +49,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Callable, NamedTuple
 
@@ -259,26 +259,6 @@ def _read_declaration(text: str) -> list[VersionFile] | None:
     ]
 
 
-def _toml_loader() -> Callable[[str], dict] | None:
-    """``tomllib.loads``, or ``None`` on an interpreter without it.
-
-    **Delegation, not a parser.** ``architecture.md``'s in-transition LNG-5W8R
-    says no gate acquires a language-specific parser, and its interim rule says
-    new gate code *delegates first*. The branch this replaced was a hand-rolled
-    scan for one language's manifest format — named on that norm's own
-    retroactivity list — so the repair deletes it rather than teaching it about
-    tables. ``tomllib`` is 3.11+ and ``requires-python`` is ``>=3.10``; that
-    floor is a supported state here, not an error, and it degrades to
-    *unverifiable* because an interpreter's stdlib is not evidence about a
-    release.
-    """
-    try:
-        import tomllib  # noqa: PLC0415 -- 3.11+ only; its absence is a supported state
-    except ImportError:
-        return None
-    return tomllib.loads
-
-
 def _descend(data: object, key: str) -> object | None:
     """The value at a dotted ``key``, or ``None`` if the path does not resolve."""
     cursor = data
@@ -313,14 +293,7 @@ def _read_version(spec: VersionFile, content: str) -> _Read:
     if spec.fmt == "json":
         loader: Callable[[str], object] | None = json.loads
     elif spec.fmt == "toml":
-        loader = _toml_loader()
-        if loader is None:
-            return _Read(
-                None,
-                "reading toml needs Python 3.11+ (tomllib); this interpreter is "
-                f"{sys.version_info.major}.{sys.version_info.minor}",
-                blocked=True,
-            )
+        loader = tomllib.loads
     else:
         named = f"format {spec.fmt!r}" if spec.fmt else "no format"
         return _Read(None, f"declares {named}, which this check cannot read", blocked=True)

@@ -176,9 +176,6 @@ def atomic_write_text(
     the next write overwrites it.
     """
     tmp = path.with_name(path.name + ".tmp")
-    # `open` rather than `write_text(newline=…)`: the latter wants Python 3.10+,
-    # and the hook runs under whatever `python3` a product's PATH resolves to —
-    # 3.9.6 on a stock macOS. `open` has taken both keywords since forever.
     with tmp.open("w", encoding=encoding, newline=newline) as handle:
         handle.write(text)
     os.replace(tmp, path)

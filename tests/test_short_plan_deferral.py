@@ -14,11 +14,12 @@ Three mechanisms, one predicate (``critic_mode.short_plan_deferral``):
   eligible plan with code in flight, and ``cumulative`` as ever once the tree
   is clean, so the boundary review is inferred exactly where it always was.
 - The Stop hook's Critic gate WARNS instead of blocking on an eligible plan's
-  non-final chunk, naming the boundary review. At exit 0 the warning reaches
-  the user only (a JSON ``systemMessage`` on stdout — Stop has no model channel
-  that does not start a turn); when another gate blocks it rides the exit-2
-  stderr beside the blockers. On the last chunk it blocks as ever and says
-  what the boundary review is.
+  non-final chunk, naming the boundary review. At exit 0 the warning goes to
+  the hook's stderr log only: nobody there can act on it (the model never sees
+  exit-0 output, and the user has nothing to do), so it is not put in the
+  transcript as a ``systemMessage`` every turn. When another gate blocks it
+  rides the exit-2 stderr beside the blockers, where the model reads it. On
+  the last chunk it blocks as ever and says what the boundary review is.
 - ``check-cumulative-critic`` is untouched: the plan's acceptance criterion is
   that one ``cumulative`` fact spanning merge-base…HEAD passes the PR gate on
   its own, and a control here shows the gate can still fail.
@@ -29,6 +30,7 @@ changed paths, and the Stop harness's tree capture has to agree with them.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -366,7 +368,7 @@ class TestEligiblePlanDefers:
         }
         (tmp_path.parent / "_home").mkdir(exist_ok=True)
         proc = subprocess.run(
-            ["python3", str(HOOK), "infer-critic-mode"],
+            [sys.executable, str(HOOK), "infer-critic-mode"],
             capture_output=True, text=True, env=env, cwd=str(tmp_path), timeout=30,
         )
         assert proc.returncode == 0, proc.stderr
@@ -423,7 +425,7 @@ class TestAChunkShippedAsItsOwnPR:
         _arm_stop(prawduct)
         result = _run_stop(tmp_path)
         assert result.returncode == 0, result.stderr
-        flat = " ".join(json.loads(result.stdout)["systemMessage"].split())
+        flat = " ".join(result.stderr.split())
         assert critic_mode.SHORT_PLAN_OWN_PR_NOTE in flat, flat
 
     @pytest.mark.parametrize("rel", ["methodology/planning.md", "templates/build-plan.md"])
@@ -488,7 +490,7 @@ def _run_stop(repo: Path) -> subprocess.CompletedProcess:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "stop"],
+        [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, cwd=str(repo), timeout=30,
         input="",
     )
@@ -502,13 +504,15 @@ class TestStopGateOnShortPlans:
         assert result.returncode == 0, result.stderr
         assert _GENERIC_BLOCK not in result.stderr
         assert "deferred-boundary-review" in result.stderr
-        # Delivered where exit 0 is read: ONE JSON object is the whole of stdout,
-        # for the user only — `additionalContext` would start a model turn on
-        # every Stop while the deferral is active (#822).
-        payload = json.loads(result.stdout)
-        assert set(payload) == {"systemMessage"}
-        text = payload["systemMessage"]
-        assert "deferred-boundary-review" in text
+        # Renegotiated (2026-10-27, owner: "pure noise"): this used to be a
+        # `systemMessage` — the user's transcript, every turn while the deferral
+        # held — for a status the user cannot act on and the model never sees at
+        # exit 0. It is now log-only there; the exit-2 case below still carries
+        # it to the model. `additionalContext` stays unused: it would start a
+        # model turn on every Stop (#822).
+        shown = json.loads(result.stdout)["systemMessage"] if result.stdout.strip() else ""
+        assert "deferred-boundary-review" not in shown
+        text = result.stderr
         assert "`cumulative`" in text and "/prawduct:critic chunk" in text
         assert "gate: critic-review" in text  # attributed like a block would be
         # The next step is the ONE statement `short_plan_next_step` owns: commit
