@@ -38,9 +38,12 @@ them), from the plan's base, which is where their commits went
 (``chunks`` when present, else ``[chunk]`` when ``chunk`` is set, else nothing)
 or SPANS it: the fact is an edge the coverage algebra composes
 (``coverage_algebra.review_edges``) and its own interval carries a commit that
-builds the chunk (:class:`_Spans`, #1082). That is the span the coverage gate
-composes over, so the two instruments cannot disagree about it; an unbuilt
-chunk has no commit, so no span certifies it. Naming answers first, in store
+builds the chunk (:class:`_Spans`, #1082). Only a fact the coverage algebra
+accepts as an edge may span, so chunk state never credits an interval the
+coverage gate rejects — though an edge may certify no chunk. A commit builds a
+chunk by a scoped subject carrying it or by a path ONLY that chunk's
+Deliverables cover, so a neighbour's commit on a shared path certifies no
+unbuilt chunk (:func:`_deliverable_chunks`). Naming answers first, in store
 order, and a span only for a chunk naming left open. Mode labels do not matter. A
 ``chunk-imported`` fact (``{scope, chunk, source: "status-box", imported_at}``,
 written by the MG2 migration) is ``done`` too, tagged ``imported``. Until a plan
@@ -554,9 +557,10 @@ class _Spans:
     that part carries nothing. A commit carries a chunk by the certifying
     rule the proposal applies, from the same owners: :func:`_subject_chunks`
     (a subject carrying the plan's scope and the chunk) and
-    :func:`_deliverable_chunks` (a Deliverables path it touches, less a change
-    fragment still the ``plan new`` stub at the reviewed tree). An unbuilt
-    chunk has no commit, so no span carries it. A fact whose ``base_commit``
+    :func:`_deliverable_chunks` (a path it touches that only that chunk's
+    Deliverables cover, less a change fragment still the ``plan new`` stub at
+    the reviewed tree). A chunk with no commit of its own in the interval is
+    carried by nothing. A fact whose ``base_commit``
     is not a commit id, whose interval git cannot list, or — dirty-tree — whose
     anchor's holding ref is unknown carries nothing.
 
@@ -621,9 +625,9 @@ class _Spans:
         if not commits:
             return set()
         return _subject_chunks((c.subject for c in commits), self._plan.scope) | _deliverable_chunks(
-            self._content, self._plan.chunks, set().union(*(c.files for c in commits)),
-            _read_at(self._repo_dir, head_tree),
-        )
+            self._content, self._plan.chunks, self._plan.chunks,
+            set().union(*(c.files for c in commits)), _read_at(self._repo_dir, head_tree),
+        ).chunks
 
 
 # ---------------------------------------------------------------------------
@@ -707,8 +711,8 @@ def chunk_states(plan_path: Path, facts: object, *, repo_dir: Path) -> dict[str,
         # reachability probe last and only for a fact that would certify. A
         # fact certifies the chunks it names, then — for chunks still open —
         # those its interval carries a commit for (`_Spans`), but only when it
-        # is an edge the coverage algebra composes, so chunk state and the
-        # coverage gate agree on which facts span anything (#1082).
+        # is an edge the coverage algebra composes: chunk state never spans an
+        # interval the coverage gate rejects (#1082).
         candidates = []
         spanning = []
         for fact in evidence.facts_of_kind(store, "review"):
@@ -1135,8 +1139,10 @@ def chunk_proposal(
         read = _read_at(repo_dir, head_tree)
     else:
         read = lambda _rel: None  # noqa: E731 — never a git argv; every fragment unreadable, naming fewer
-    by_path = _deliverable_chunks(content, open_ids, (str(p) for p in diff_paths), read)
-    touched = {c for c in open_ids if _norm(c) in by_path}
+    by_path = _deliverable_chunks(
+        content, open_ids, _read_plan(content).chunks, (str(p) for p in diff_paths), read
+    )
+    touched = {c for c in open_ids if _norm(c) in by_path.chunks}
     notes: list[str] = []
     if mode in _WHOLE_PLAN_MODES and open_ids:
         walk = _walk_branch(Path(plan_path), repo_dir, since)
@@ -1169,6 +1175,16 @@ def chunk_proposal(
                 f"({', '.join(f'`{b}`' for b in bare)}), which no path in the diff can equal "
                 "and the record lint does not check — write them from the repo root, or "
                 "pass --chunks if it is this review's work"
+            )
+    # A shared path names no chunk; say so when it is why an open owner was left out.
+    for path, owners in by_path.shared.items():
+        left_out = [c for c in owners if c in open_ids and c not in touched]
+        if left_out:
+            notes.append(
+                f"`{path}` proposes none of chunk(s) {', '.join(owners)}: each lists it under "
+                "Deliverables, so a touch cannot say whose work it is — a scoped "
+                "`(Chunk N)` subject or --chunks names "
+                f"{'it' if len(left_out) == 1 else 'them'}"
             )
     return ChunkProposal([c for c in open_ids if c in touched], tuple(notes))
 
@@ -1283,15 +1299,51 @@ def _subject_chunks(subjects: "Iterable[str]", scope: "str | None", *, fallback:
     return _named_ids(subjects if fallback and not scoped else scoped)
 
 
+@dataclass(frozen=True)
+class _PathAnswer:
+    """:func:`_deliverable_chunks`' answer: the normalized ids credited, and
+    each touched path more than one chunk's Deliverables cover, with those
+    chunks (as the plan prints them), which the certifying rule credits to none."""
+
+    chunks: "set[str]"
+    shared: "dict[str, tuple[str, ...]]"
+
+
 def _deliverable_chunks(
-    content: str, chunk_ids: "Iterable[str]", paths: "Iterable[str]", read: "_ReadAt"
-) -> "set[str]":
-    """The normalized ids of ``chunk_ids`` whose Deliverables ``paths``
-    touch, less a change fragment still the ``plan new`` stub as ``read``
-    reads it (:func:`_work_paths`) — the path half of the chunk-to-commit
-    rule, the one home every reader of it asks."""
+    content: str,
+    chunk_ids: "Iterable[str]",
+    plan_chunks: "Iterable[str]",
+    paths: "Iterable[str]",
+    read: "_ReadAt",
+    *,
+    certifying: bool = True,
+) -> _PathAnswer:
+    """The chunks of ``chunk_ids`` that touched ``paths`` attribute work to —
+    the path half of the chunk-to-commit rule, the one home every reader of it
+    asks. A change fragment still the ``plan new`` stub as ``read`` reads it
+    touches nothing (:func:`_work_paths`).
+
+    A path is attributed by who OWNS it among all ``plan_chunks``: every chunk
+    whose Deliverables cover it (the path itself, or a directory above it). The
+    certifying rule (``certifying``, for the proposal and a span) credits a
+    path only to its one owner: a path two chunks list cannot say whose work a
+    touch was, and crediting both certified the unbuilt one — such a chunk is
+    found by a scoped subject or a naming fact instead. The ``built`` tag,
+    which certifies nothing and arms a gate only early, passes
+    ``certifying=False`` and credits every owner."""
     changed = _work_paths(set(paths), read)
-    return {_norm(c) for c in chunk_ids if _touches(deliverable_paths(content, c), changed)}
+    deliverables = {c: deliverable_paths(content, c) for c in plan_chunks}
+    wanted = {_norm(c) for c in chunk_ids}
+    credited: set[str] = set()
+    shared: dict[str, tuple[str, ...]] = {}
+    for path in sorted(changed):
+        owners = tuple(c for c, d in deliverables.items() if _touches(d, {path}))
+        if len(owners) > 1:
+            shared[path] = owners
+            if certifying:
+                continue
+        credited |= {_norm(c) for c in owners}
+    return _PathAnswer(credited & wanted, shared)
 
 
 @dataclass(frozen=True)
@@ -1390,8 +1442,9 @@ def built_report(plan_path: Path, repo_dir: Path) -> BuiltReport:
     if isinstance(walk, str):
         return BuiltReport(set(), walk)
     built = walk.named | _deliverable_chunks(
-        walk.content, walk.plan.chunks, walk.changed, _read_at(Path(repo_dir), walk.head)
-    )
+        walk.content, walk.plan.chunks, walk.plan.chunks, walk.changed,
+        _read_at(Path(repo_dir), walk.head), certifying=False,
+    ).chunks
     return BuiltReport({c for c in walk.plan.chunks if _norm(c) in built})
 
 

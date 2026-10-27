@@ -60,7 +60,8 @@ span is the root cause #1092 names; option 2 (make every flow name every chunk) 
 place to keep in sync. Naming still works: a fact that names a chunk keeps certifying it as today.
 *Inferred:* "the chunk's built commit" is the commit(s) the existing `_walk_branch` /
 `built_report` subject-and-deliverable walk already attributes to that chunk. An unbuilt chunk has
-no commit, so a span can never certify it, which keeps #1072 fixed.
+no commit, so a span can never certify it, which keeps #1072 fixed. (That holds only once a path
+two chunks list attributes a commit to neither: see Decisions, Chunk 02 review round 2.)
 
 **Out of scope:** #1106 (the briefing's stale-plan predicate; a separate branch calls
 `plan_lifecycle.observe` and needs its signature unchanged). The remainder of #1071.
@@ -73,12 +74,12 @@ no commit, so a span can never certify it, which keeps #1072 fixed.
   positive control in the same fixture, so they failed with the rest of #1082.
 - *Not settled by the goals:* "the chunk's built commit" is a commit in the FACT's own interval,
   attributed by the proposal's certifying rule (a subject carrying the plan's scope, or a
-  Deliverables path the commit touches), not `built_report`'s whole-branch walk. The goals inferred
+  Deliverables path only that chunk lists), not `built_report`'s whole-branch walk. The goals inferred
   the walk; it reads nothing once the merge deletes the branch (C14), and its path rule reads a
   Deliverable touched early as built, which would let a span certify an unbuilt chunk (C6).
 - *Not settled by the goals:* a span certifies only through a fact that is an edge
-  (`coverage_algebra.review_edges`) — the same validity the coverage gate composes with, so the two
-  instruments agree on which facts span anything.
+  (`coverage_algebra.review_edges`) — the same validity the coverage gate composes with, so chunk
+  state never spans an interval the gate rejects (an edge may still certify no chunk).
 - *Not settled by the goals:* a dirty-tree fact's uncommitted part certifies only once that tree is
   committed verbatim (C10, C11); a fact with no `base_commit` spans nothing (C12).
 - *Not settled by the goals:* fast-forward merge with an anchor equal to its `base_commit` (M5) and
@@ -103,6 +104,20 @@ no commit, so a span can never certify it, which keeps #1072 fixed.
   `plan_lifecycle._merge_evidence` both call, so the lifecycle reads #1079's case as
   merged-unreleased by the same rule chunk state uses (one owner for the class). The NEXT-ACTION
   clause now says the review "named no chunk" and speaks only of the chunks still open.
+- Chunk 02 review round 2: a span credited every chunk whose Deliverables a commit in its interval
+  touched, so when two chunks list one path the commit building one certified the other, unbuilt,
+  and the boundary `cumulative` re-certified it after any retraction. Now a touched path credits a
+  chunk only when that chunk is its one owner among all the plan's chunks (the path itself or a
+  directory above it, rows S1-S3); a shared path needs a scoped subject or a naming fact. The
+  proposal shares the rule through the same owner, `_deliverable_chunks`, and notes the shared path
+  when it is why an open chunk was left out (S4). *Not settled by the goals:* ownership is counted
+  over every chunk of the plan, not only the open ones, so a done chunk still makes a path shared;
+  the `built` tag keeps the loose rule (S5), because it certifies nothing and arms its one gate
+  only early, where crediting both owners errs toward arming.
+- Round 2 against this repo's 173 plans (46 with a shared path): no chunk's state changed from
+  39dcde20. Only one chunk here is span-certified at all (`build-plan-coverage-honesty.md` 04,
+  archived), the same under both rules: this repo's reviews name their chunks, so the span path
+  rarely decides.
 
 ## Case table
 
@@ -111,8 +126,9 @@ test in `tests/test_chunk_state_table.py`, named `test_<row id>_…`. "Named" is
 `chunks` (else `chunk`) lists the chunk; "span" is a clean, in-scope review fact that is an edge in
 the coverage algebra's sense (`coverage_algebra.review_edges`: both trees recorded, every judgeable
 changed file reviewed) and whose interval carries a commit that builds the chunk — a commit subject
-carrying the chunk and the plan's scope, or a Deliverables path the commit touches (the `plan new`
-stub fragment touching nothing). A commit is in a fact's interval when it is in
+carrying the chunk and the plan's scope, or a path the commit touches that ONLY that chunk's
+Deliverables cover (a path two chunks list attributes to neither; the `plan new` stub fragment
+touches nothing). A commit is in a fact's interval when it is in
 `base_commit..head_commit`, or, for a dirty-tree fact (`head_commit: null`), in
 `base_commit..dispatch_commit` or on the first-parent chain from `dispatch_commit` to the first
 commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbatim).
@@ -177,6 +193,12 @@ commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbat
 | D2 | `dropped:` entry with no reason | open, says why |
 | I1 | Ticked `## Status` box, unmigrated | done, imported |
 | I2 | `chunk-imported` fact | done, imported, citing it |
+| **S — a Deliverables path several chunks list** | | |
+| S1 | Chunk 01's commit touches its own file and a file 01 and 02 both list; unnamed span | 01 done, 02 open |
+| S2 | A `(Chunk 02)` scoped commit touching only the shared file | 02 done by subject, 01 open |
+| S3 | 01 lists `lib/pkg/`, 02 lists `lib/pkg/b.py`; a commit touches both `a.py` and `b.py` | 01 done by `a.py`, 02 open (the control: a path one chunk owns still certifies) |
+| S4 | A `chunk` proposal over only the shared file | proposes neither, and a note says why |
+| S5 | The `built` tag over only the shared file | tags both: it certifies nothing |
 | **F — git failing on an authority path** | | |
 | F1 | The first-parent `rev-list` fails (M2's shape) | open: the anchor is refused |
 | F2 | A span's `git log` fails (C2's shape) | open |

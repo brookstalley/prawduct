@@ -1,8 +1,8 @@
 """The chunk-state case table — one test per row (#1092).
 
-``.prawduct/artifacts/build-plan-chunk-state-table.md`` "## Case table" lists
+The build plan of scope ``chunk-state-table`` lists, under "## Case table",
 every situation :func:`plan_status.chunk_states` must answer, with the state it
-must answer. Each test here is one row, named by its row id, so a row and its
+must answer (the plan resolves by its scope wherever it is filed). Each test here is one row, named by its row id, so a row and its
 test are found by the same id. Fixtures are real git repositories, because the
 answer depends on git's: whether an anchor is in a branch's history, whether a
 merge put it there through a first parent or a second, which commits a review's
@@ -452,7 +452,7 @@ def test_C4_a_fact_naming_one_chunk_certifies_another_its_span_carries(repo):
 
 
 def test_C5_a_span_with_no_commit_for_the_chunk_leaves_it_open(repo):
-    """#1072's invariant: an unbuilt chunk has no commit, so no span carries it."""
+    """#1072's invariant: no commit in the span builds the unbuilt chunks."""
     head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
     plan = _plan(repo)
     fact = _review(repo, "R1", base="main", head=head, mode="final")
@@ -570,6 +570,61 @@ def test_K2_an_unnamed_span_certifies_in_every_mode(repo, mode):
     plan = _plan(repo)
     fact = _review(repo, "R1", base="main", head=head, mode=mode)
     assert _states(plan, _facts(fact), repo)["01"] == "done"
+
+
+# ---------------------------------------------------------------------------
+# S — a Deliverables path several chunks list attributes a commit to none
+# ---------------------------------------------------------------------------
+
+SHARED = {"01": "`src/c01.py`; `src/shared.py`", "02": "`src/shared.py`; `src/c02.py`"}
+
+
+def test_S1_a_shared_path_certifies_neither_chunk_by_a_span(repo):
+    """Chunk 01's commit touches its own file and the file both chunks list;
+    the span certifies 01 by its own file, and 02, unbuilt, by nothing."""
+    _write(repo, "src/c01.py", "x\n")
+    head = _commit(repo, "src/shared.py", "x\n", "feat(unit): the first part")
+    plan = _plan(repo, ("01", "02"), deliverables=SHARED)
+    fact = _review(repo, "R1", base="main", head=head)
+    assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open"}
+
+
+def test_S2_a_scoped_subject_certifies_the_chunk_a_shared_path_cannot(repo):
+    head = _commit(repo, "src/shared.py", "x\n", "feat(unit): two (Chunk 02)")
+    plan = _plan(repo, ("01", "02"), deliverables=SHARED)
+    fact = _review(repo, "R1", base="main", head=head)
+    assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "done"}
+
+
+def test_S3_a_path_one_chunk_owns_still_certifies_it(repo):
+    """The control, with a directory: chunk 01 lists `lib/pkg/`, chunk 02 lists
+    one file under it. A file only 01's directory covers certifies 01; the
+    file both cover certifies neither."""
+    _write(repo, "lib/pkg/a.py", "x\n")
+    head = _commit(repo, "lib/pkg/b.py", "x\n", "feat(unit): package work")
+    plan = _plan(repo, ("01", "02"), deliverables={"01": "`lib/pkg/`", "02": "`lib/pkg/b.py`"})
+    fact = _review(repo, "R1", base="main", head=head)
+    assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open"}
+
+
+def test_S4_the_proposal_names_no_chunk_by_a_shared_path_and_says_so(repo):
+    _commit(repo, "src/shared.py", "x\n", "feat(unit): shared groundwork")
+    plan = _plan(repo, ("01", "02"), deliverables=SHARED)
+    proposal = plan_status.chunk_proposal(
+        plan, _facts(), ["src/shared.py"], "chunk", repo_dir=repo
+    )
+    assert proposal.chunks == []
+    assert any("`src/shared.py`" in n and "01, 02" in n for n in proposal.notes), proposal.notes
+    # Control: a path one chunk owns is proposed.
+    assert plan_status.propose_chunks(plan, _facts(), ["src/c01.py"], "chunk", repo_dir=repo) == ["01"]
+
+
+def test_S5_the_built_tag_still_reads_a_shared_path_as_both_chunks_work(repo):
+    """The tag certifies nothing and only arms a gate early, so it keeps the
+    looser rule: work on a path two chunks list tags both."""
+    _commit(repo, "src/shared.py", "x\n", "feat(unit): shared groundwork")
+    plan = _plan(repo, ("01", "02"), deliverables=SHARED)
+    assert plan_status.built_report(plan, repo).built == {"01", "02"}
 
 
 # ---------------------------------------------------------------------------

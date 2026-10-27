@@ -1441,7 +1441,10 @@ LAST_MEASURED_TOKENS = {
     # +22 on 2026-10-27 (chunk-state-table, #1082): a review also completes a chunk whose commit
     # its interval reviewed, though it does not name it. A RAISE: the rule's one home gains the
     # clause; building.md and the Critic skill point at it without restating it.
-    "methodology/planning.md": 5879,
+    # +7 on 2026-10-27 (chunk-state-table review round 2): the span's path half says a
+    # Deliverables path counts only when no other chunk lists it, since a shared path let one
+    # chunk's commit certify its unbuilt neighbour. A CORRECTION of the clause above, in place.
+    "methodology/planning.md": 5886,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

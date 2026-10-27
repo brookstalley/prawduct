@@ -26,10 +26,11 @@ once rather than closing two more instances, and this change does that.
 - **#1082, span-derived done.** A chunk is now also done when a clean, in-scope review fact that is
   a coverage edge has a commit in its own interval that builds the chunk, whether or not the fact
   names it. A commit builds a chunk when its subject carries the chunk and the plan's scope, or
-  when it touches a Deliverables path (the `plan new` stub excluded). A dirty-tree fact's
-  uncommitted part counts once that exact tree is committed. An unbuilt chunk has no commit, so a
-  span never certifies it. Chunk state and the coverage gate now agree on which facts cover
-  anything. Naming still answers first; a span-certified `done` says so in its reason line.
+  when it touches a path only that chunk's Deliverables list (the `plan new` stub excluded). A
+  path two chunks list builds neither by path alone, so a neighbour's commit never certifies an
+  unbuilt chunk; the review proposal applies the same rule and says when a shared path is why it
+  named nothing. A dirty-tree fact's uncommitted part counts once that exact tree is committed.
+  Only a fact the coverage gate accepts as an edge may span. Naming still answers first; a span-certified `done` says so in its reason line.
 - **#1079, first-parent reachability.** After the merge deletes the branch, an anchor equal to its
   review's `base_commit` is refused only when it is on the base's first-parent history (the fork
   point the base already held). One reachable only through a `--no-ff` merge's second parent is
