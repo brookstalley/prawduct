@@ -226,6 +226,29 @@ def _older_python3() -> "str | None":
     return None
 
 
+class TestThePythonFloorReport:
+    """`prawduct-hook python-floor` is what `/prawduct:doctor` relays."""
+
+    def test_a_direct_run_reports_no_reexec(self):
+        hook = str(_PLUGIN / "bin" / "prawduct-hook")
+        env = {k: v for k, v in os.environ.items() if k != floor.REEXEC_ENV}
+        res = subprocess.run([sys.executable, hook, "python-floor"], capture_output=True, text=True, env=env)
+        assert res.returncode == 0, res.stderr
+        first, second = res.stdout.splitlines()
+        assert first.startswith(f"python: {sys.executable} (") and first.endswith("meets the 3.14 floor")
+        assert second == "invoked as: the interpreter above (no re-exec)"
+
+    def test_a_reexecuted_run_names_where_it_started(self):
+        old = _older_python3()
+        if old is None or floor.find_interpreter() is None:
+            pytest.skip("needs both a python3 below 3.14 and one at it on this machine")
+        hook = str(_PLUGIN / "bin" / "prawduct-hook")
+        env = {k: v for k, v in os.environ.items() if k != floor.REEXEC_ENV}
+        res = subprocess.run([old, hook, "python-floor"], capture_output=True, text=True, env=env)
+        assert res.returncode == 0, res.stderr
+        assert "below the floor — re-executed under the interpreter above" in res.stdout.splitlines()[1]
+
+
 class TestOnARealOlderInterpreter:
     def test_prawduct_hook_reexecutes_and_answers(self):
         old = _older_python3()

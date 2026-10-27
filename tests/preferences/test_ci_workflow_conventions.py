@@ -72,7 +72,7 @@ def _scalars(node: object) -> list[str]:
 
 
 def _requires_python_floor() -> str:
-    """The lower bound declared by `pyproject.toml`, e.g. `"3.10"`."""
+    """The lower bound declared by `pyproject.toml`, e.g. `"3.14"`."""
     text = (REPO_ROOT / "pyproject.toml").read_text()
     match = re.search(r'^requires-python\s*=\s*"[><=~^]*\s*([0-9]+\.[0-9]+)', text, re.MULTILINE)
     assert match, "pyproject.toml must declare requires-python with a floor version"

@@ -68,7 +68,7 @@ base_branch: develop
 test_commands:
   - testament run --junit-xml {junit_xml}
   - node --test --test-reporter=junit --test-reporter-destination={junit_xml} collector/test/*.test.mjs
-  - python3 -m pytest tests/ -m "requires_history or requires_local_cache" -n 0 --junit-xml={junit_xml} -q
+  - uv run --extra dev python -m pytest tests/ -m "requires_history or requires_local_cache" -n 0 --junit-xml={junit_xml} -q
 
 # Path prefixes whose files a NON-HERMETIC test in THIS repo reads. Absent means
 # empty, which is exactly the behaviour every repo had before the key existed.

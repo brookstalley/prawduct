@@ -8371,6 +8371,29 @@ def cmd_bug_inbox(project_dir: Path) -> int:
     return 0
 
 
+def cmd_python_floor() -> int:
+    """Report the interpreter this hook runs under, against the Python floor.
+
+    Reaching this line means the floor check passed, so the interpreter always
+    qualifies; what is worth reporting is how it was reached. ``python3`` is
+    what every hook names, so an invocation re-executed from an older
+    ``python3`` pays a probe and a re-exec on every hook call — healthy, and
+    cheaper once ``python3`` itself resolves to the floor in this directory.
+    """
+    floor = _python_floor.floor_text()
+    found = sys.version_info
+    print(
+        f"python: {sys.executable} ({found.major}.{found.minor}.{found.micro}) "
+        f"— meets the {floor} floor"
+    )
+    origin = _python_floor.REEXECUTED_FROM
+    if origin:
+        print(f"invoked as: {origin}, below the floor — re-executed under the interpreter above")
+    else:
+        print("invoked as: the interpreter above (no re-exec)")
+    return 0
+
+
 def cmd_version() -> int:
     """Print the running prawduct plugin version (bare semver from the bundled
     ``.claude-plugin/plugin.json``) and exit 0; exit 1 if the manifest is
@@ -10056,7 +10079,7 @@ _USAGE = (
     "infer-critic-mode [args]|"
     "plan {new <scope> [--branch B] [--base BASE] [--title T] [--kind K] [--working]|"
     "bind <path> --branch B|resolve [--json]|status [<path>] [--json]}|"
-    "resolve-base|version|print-install-reference|"
+    "resolve-base|version|python-floor|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
@@ -10508,6 +10531,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "verify-chunk-refs",
     "verify-coverage",
     "verify-records",
+    # Read-only: reports sys.executable and the floor check's re-exec origin.
+    "python-floor",
     "version",
     # Read-only: git reads with --no-optional-locks and file mtimes.
     "worktrees",
@@ -10998,6 +11023,7 @@ _NO_ARGUMENT_COMMANDS = frozenset({
     "test-status",
     "validate-evidence",
     "verify-coverage",
+    "python-floor",
     "version",
 })
 
@@ -11211,6 +11237,8 @@ def _dispatch() -> int:
         return cmd_bug_inbox(project_dir)
     elif command == "version":
         return cmd_version()
+    elif command == "python-floor":
+        return cmd_python_floor()
     elif command == "print-install-reference":
         return cmd_print_install_reference()
     elif command == "advisory":

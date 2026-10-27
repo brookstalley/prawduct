@@ -116,7 +116,7 @@ for a specific workload.
 ```
 
 **Components**
-- **Core library** (`lib/backlog/…`, Python 3.10+, **sync**, **return-value errors** per project conventions). The only place CRUD logic lives; CLI/MCP/skill are thin fronts.
+- **Core library** (`lib/backlog/…`, Python 3.14+, **sync**, **return-value errors** per project conventions). The only place CRUD logic lives; CLI/MCP/skill are thin fronts.
 - **GitHub client** — **HTTP is the leaning default; `gh` survives only as a bootstrap (D8/§11-S1)** — auth, not latency, is the deciding factor (App installation tokens are JWT-based; `gh` can't mint them cleanly). Whichever wins, list-form subprocess / no `shell=True` if `gh`; stdlib HTTP + explicit token handling if HTTP.
 - **Read-through cache (optional)** — SQLite, per-clone, **gitignored**, `git-common-dir`-keyed (shared across a clone's worktrees, as the evidence store is). *Derived personal state, never the truth* (the "shared-answer vs personal-nag state live in separate stores" learning). Fetch-on-miss, serve-on-hit with visible age, revalidate when a read drives a decision. **Optional:** the system is correct without it (online-only), just slower and online-only.
 - **Offline write-queue (optional)** — append-only local log of mutations made while offline; flushed on reconnect; each entry atomic. An enhancement over the P0 floor (fail-fast + retry).

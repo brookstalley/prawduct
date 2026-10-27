@@ -86,6 +86,16 @@ installing a Python for the user; Windows-specific interpreter discovery (`py -3
   as `requires-python` will say (Chunk 02); the local `.venv` was rebuilt on 3.14.
 - Chunk 01: ruff's E402 on the imports after the floor check in `banner.py`/`digest.py` is
   waived per line with the reason; the plugin's lint count is back to its baseline.
+- Chunk 02: removing the `tomllib` fallback deleted the two tests that pinned its 3.10 behaviour.
+  `test_a_blocked_file_does_not_swallow_a_disagreement_beside_it` kept its subject on a declared
+  file in a format the check does not know, the one way left to be blocked. Under a declaration
+  that disagreement is a verdict (FAILED), so the test asserts that, not the old UNVERIFIABLE.
+- Chunk 02: this repo's own local suite command (`project-state.yaml`'s third `test_commands`
+  entry, `running-tests.md`, the README) ran `python3 -m pytest`, which resolves below the floor
+  on this machine; each now runs `uv run --extra dev python -m pytest`, which builds the 3.14
+  environment `requires-python` names. testament already requires uv.
+- Chunk 02: the doctor's check is `prawduct-hook python-floor`, a new read-only no-argument
+  subcommand registered with the ephemeral-safe and no-argument sets and the documented list.
 
 ## Norm reconciliation (`governed_by`)
 

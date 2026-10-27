@@ -336,8 +336,9 @@ class TestTheHumanRenderer:
 
 
 class TestEveryIsoParseSurvivesPython310:
-    """`datetime.fromisoformat` only learned the `Z` suffix in **3.11**, and CI
-    runs 3.10.
+    """`datetime.fromisoformat` only learned the `Z` suffix in **3.11**. CI ran
+    3.10 when this was found; the floor is now 3.14, but `tools/` scripts carry
+    no floor check and run under whatever `python3` an operator has.
 
     This shipped broken and the maintainer could not see it, because reproducing
     it needs TWO independent environment facts at once:
@@ -399,8 +400,7 @@ class TestEveryIsoParseSurvivesPython310:
                     offenders.append(f"{rel}:{n}: {line.strip()}")
         assert not offenders, (
             "these parse an ISO stamp without normalising a `Z` suffix, which "
-            "raises ValueError on Python 3.10 (in CI) while passing on 3.11+ "
-            "(locally). Route them through the tool's `_parse_instant`:\n  "
+            "raises ValueError on Python 3.10 while passing on 3.11+. Route them through the tool's `_parse_instant`:\n  "
             + "\n  ".join(offenders)
         )
 

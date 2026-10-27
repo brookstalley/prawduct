@@ -133,8 +133,7 @@ fallback, and reorganising your layout later cannot retroactively fail an old re
 `project.version` and nothing has to decide which table of a manifest wins. A key name containing
 a literal dot is not expressible — point at a `bare` or `json` file instead.
 
-`toml` needs Python 3.11+ (`tomllib`); on 3.10 such an entry reports `unverifiable` rather than
-failing, since an interpreter's stdlib is not evidence about your release. Block style only. An
+Block style only. An
 empty list is a deliberate "this product ships no version file" and reports that nothing was
 checked.
 
