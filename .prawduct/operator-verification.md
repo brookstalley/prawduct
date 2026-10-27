@@ -1326,7 +1326,12 @@ rather than as an error the reader should go fix.
 
 ## VRF-020 — Chunk 04 (review-stages) — the deferral WARNING's channel, observed from the model's seat
 
-**Status:** pending
+**Status:** accepted
+**Accepted:** 2026-10-27 — no longer applicable; must NOT be drained by running its steps. Scope
+`stop-deferral-quiet` (owner: the notice is "pure noise") made the deferral WARNING log-only at
+exit 0: no `systemMessage` and no `additionalContext` carries it there any more, so the steps
+below would report a missing message as a bug. At exit 2 it rides the block text, which
+`tests/test_short_plan_deferral.py` pins.
 
 **Raised:** 2026-09-17, from the bundle review's R-9 (accepted) — the static half is pinned in
 `tests/test_short_plan_deferral.py`; the harness half has never been observed.
