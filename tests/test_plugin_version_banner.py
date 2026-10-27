@@ -303,13 +303,13 @@ class TestVersionMath:
         assert any("new gate" in line and "cumulative-critic" in line for line in lines)
 
     def _rollback_root(self, tmp_path: Path) -> Path:
+        """The plugin a downgrade actually runs: the OLDER one, whose changelog
+        and gates stop at its own version."""
         root = tmp_path / "plugin"
-        (root / "hooks").mkdir(parents=True)
-        (root / "CHANGELOG.md").write_text(
-            "# CL\n\n## v2.1.0\nThe newer release.\n\n## v2.0.0\nThe older release.\n"
-        )
+        (root / "hooks").mkdir(parents=True, exist_ok=True)
+        (root / "CHANGELOG.md").write_text("# CL\n\n## v2.0.0\nThe older release.\n")
         (root / "hooks" / "gates.json").write_text(json.dumps({"gates": [
-            {"id": "later-gate", "name": "later-gate", "since": "2.1.0"}
+            {"id": "old-gate", "name": "old-gate", "since": "2.0.0"}
         ]}))
         return root
 
@@ -318,12 +318,13 @@ class TestVersionMath:
         assert lines[0] == "↓ Prawduct downgraded: v2.1.0 → v2.0.0"
         assert not any("updated" in line for line in lines)
 
-    def test_a_downgrade_lists_what_it_rolled_back(self, banner, tmp_path):
+    def test_a_downgrade_names_the_rollback_and_lists_no_highlight(self, banner, tmp_path):
         lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
-        assert "  − The newer release." in lines
-        assert not any("The older release." in line for line in lines)
-        assert any("later-gate" in line and "no longer enforced" in line for line in lines)
-        assert not any("new gate" in line for line in lines)
+        assert lines[1] == "  changes after v2.0.0 are no longer running"
+        assert not any(line.startswith(("  • ", "  ⊕ ")) for line in lines), lines
+        # Control: the same root does carry a highlight an upgrade into it lists.
+        up = banner.render_delta("1.9.0", "2.0.0", self._rollback_root(tmp_path))
+        assert "  • The older release." in up
 
     def test_a_dev_prerelease_downgrade_is_a_downgrade(self, banner):
         # The case that surfaced this: develop at -dev.2, then the -dev.1 beta.
@@ -339,6 +340,7 @@ class TestVersionMath:
     def test_a_downgrade_still_relays(self, banner, tmp_path):
         lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
         assert lines[-1].startswith(banner.RELAY_MARKER)
+        assert "rolled back" in lines[-1] and "above" not in lines[-1]
 
 
 class TestUpgradeRelay:

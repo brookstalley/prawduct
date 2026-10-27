@@ -406,12 +406,17 @@ def new_gates_in_range(gates: list[dict], last: str, current: str) -> list[dict]
 
 #: Leading glyph of the relay directive. A *directive to the agent*, not a severity
 #: signal, so it sits outside the ``CRITICAL:``/``WARNING:``/``NOTE:`` vocabulary and
-#: alongside the banner's own ``↑``/``•``/``⊕`` line glyphs.
+#: alongside the banner's own ``↑``/``↓``/``•``/``⊕`` line glyphs.
 RELAY_MARKER = "⇒ "
 
 
 def render_delta(last: str, current: str, root: Path) -> list[str]:
     """Lines for the delta block shown when the version changed.
+
+    The direction comes from :func:`version_tuple`: a higher version lists the
+    highlights and gates it brings, a lower one says it rolled back (the running
+    plugin is the older one, so it cannot list what it lacks), and a move with an
+    unparseable side, or two versions that sort equal, says only that it changed.
 
     Closes with a **relay directive**. The delta block goes to stdout — the
     agent-facing channel — and ``write_marker`` advances the marker the moment it
@@ -432,20 +437,14 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
             "reply this session — they do not see this banner.",
         ]
     if new < old:
-        # A rollback (a beta, a pinned older build): what it takes away is the
-        # range being left, so list that range's highlights and gates as removed.
-        lines = [f"↓ Prawduct downgraded: v{last} → v{current}"]
-        for _v, headline in highlights_in_range(parse_changelog(root), current, last):
-            if headline:
-                lines.append(f"  − {headline}")
-        for g in new_gates_in_range(parse_gates(root), current, last):
-            name = g.get("name", g.get("id", "?"))
-            lines.append(f"  ⊖ gate \"{name}\" (no longer enforced)")
-        lines.append(
-            f"{RELAY_MARKER}Tell the user what was rolled back above, in your first "
-            "reply this session — they do not see this banner."
-        )
-        return lines
+        # The running plugin is the OLDER one, so its changelog and gates hold
+        # nothing from the range being rolled back: there is no list to give.
+        return [
+            f"↓ Prawduct downgraded: v{last} → v{current}",
+            f"  changes after v{current} are no longer running",
+            f"{RELAY_MARKER}Tell the user the plugin was rolled back, in your first "
+            "reply this session — they do not see this banner.",
+        ]
     lines = [f"↑ Prawduct updated: v{last} → v{current}"]
     for _v, headline in highlights_in_range(parse_changelog(root), last, current):
         if headline:
