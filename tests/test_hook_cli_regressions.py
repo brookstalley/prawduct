@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -227,7 +228,7 @@ class TestCriticBeginRendersABranchlessSiblingWorktree:
 
         proc = subprocess.run(
             [
-                "python3", str(_ROOT / "bin" / "prawduct-hook"),
+                sys.executable, str(_ROOT / "bin" / "prawduct-hook"),
                 "critic-begin", "--mode", "chunk", "--chosen-by", "test",
             ],
             cwd=str(work),

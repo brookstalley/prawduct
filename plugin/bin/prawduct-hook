@@ -33,6 +33,27 @@ Usage (wired by ``hooks/hooks.json``):
 
 from __future__ import annotations
 
+# The Python floor, checked before anything newer is imported: below it, re-run
+# this entry point under an interpreter that qualifies, or fail loudly. This WHOLE
+# file must parse on old interpreters: Python compiles a file before running any
+# of it, so newer syntax anywhere fails before this check (tests/test_python_floor.py).
+import os as _os
+import sys as _sys
+
+try:
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__))))
+    try:
+        import _python_floor  # noqa: E402
+    finally:
+        del _sys.path[0]
+except (NameError, ImportError):
+    # Run without a `__file__` (exec'd source) or copied without its sibling
+    # module: there is no floor check to run, so run as before rather than
+    # tracing back ahead of every command's own error handling.
+    _python_floor = None
+if _python_floor is not None and __name__ == "__main__":
+    _python_floor.ensure(__file__)
+
 import json
 import os
 import shlex
@@ -3073,7 +3094,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Gate 1: Reflection
     # - Fires on THIS SESSION'S WORK SPAN — judgeable code changed between the
-    #   session base tree and the working tree, committed work included. No
+    #   session base tree and the working tree, committed work included and
+    #   history a pull, merge or branch switch brought in excluded. No
     #   build-plan conjunct: a planless session that shipped code is exactly the
     #   session whose lesson never got written down, and the old plan conjunct
     #   made that the silent case. There is no advisory branch any more, because
@@ -3169,7 +3191,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # The trigger is judgeable code LITERALLY: a session whose only changes were
     # `.prawduct/` metadata judged nothing, so nothing here is owed — and a blocker whose first sentence says "this
     # session changed judgeable code" must not fire where that sentence is false.
-    # Read from the SPAN (base tree -> working tree, committed work included),
+    # Read from the SPAN (the session's authored work, committed included),
     # as the reflection gate above and the budget arm below already do: the
     # porcelain list is empty the moment you commit, and an unmigrated repo
     # whose turns end committed was reaching session end with this floor silent.
@@ -3198,9 +3220,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # left BOTH the budget gate and the `learning.written` emitter dormant — and
     # if no later turn of that session ended dirty, the rule was never charged
     # and never recorded. `session_work_span` diffs the session's base tree
-    # against the working tree, so committed work is still this session's work.
+    # against the working tree, less history older than the session that a
+    # pull, merge or branch switch brought in, so committed work is still this
+    # session's work.
     #
-    # Reused rather than recomputed: the call costs a `git diff` and Stop runs
+    # Reused rather than recomputed: the call costs git calls and Stop runs
     # every turn. The name upstream is its first consumer, not the span's
     # meaning. And when the span degrades to porcelain it is because the
     # base-tree marker is missing or unreadable — the same state that leaves
@@ -4572,7 +4596,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     scripts:
 
     * ``test_command:`` — the project's canonical suite invocation, run
-      shlex-split from the repo root instead of ``sys.executable -m pytest``
+      shlex-split from the repo root instead of the ``-m pytest`` fallback
       (whose interpreter cannot import a uv/venv-managed product package). It
       MUST contain a ``{junit_xml}`` literal; the hook substitutes its report
       path there. Shell operators are not supported — point the command at a
@@ -4604,8 +4628,9 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
     skip it. ``--no-rerun`` and ``--from-counts`` are refused there (exit 2):
     neither records a fact, so from a scratch tree they would write nothing.
 
-    With NEITHER command knob declared, the fallback runs ``sys.executable -m
-    pytest`` — the hook's interpreter, which cannot import a venv-isolated
+    With NEITHER command knob declared, the fallback runs ``-m pytest`` under the
+    interpreter the hook was invoked with (``_fallback_pytest_python``) — which
+    cannot import a venv-isolated
     product's packages. The fallback therefore nudges toward declaring a
     command on every run, and REFUSES to persist a run with zero passes and
     only failures/errors (the wrong-interpreter signature): a
@@ -5061,7 +5086,7 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
                     ]
                 else:
                     run_argv = [
-                        sys.executable, "-m", "pytest", f"--junit-xml={junit}",
+                        _fallback_pytest_python(), "-m", "pytest", f"--junit-xml={junit}",
                         "-q", *extra,
                     ]
                 try:
@@ -8368,6 +8393,32 @@ def cmd_bug_inbox(project_dir: Path) -> int:
     return 0
 
 
+def cmd_python_floor() -> int:
+    """Report the interpreter this hook runs under, against the Python floor.
+
+    Reaching this line means the floor check passed, so the interpreter always
+    qualifies; what is worth reporting is how it was reached. ``python3`` is
+    what every hook names, so an invocation re-executed from an older
+    ``python3`` pays a probe and a re-exec on every hook call — healthy, and
+    cheaper once ``python3`` itself resolves to the floor in this directory.
+    """
+    if _python_floor is None:
+        print("error: python-floor: the floor module beside this script could not be loaded", file=sys.stderr)
+        return 1
+    floor = _python_floor.floor_text()
+    found = sys.version_info
+    print(
+        f"python: {sys.executable} ({found.major}.{found.minor}.{found.micro}) "
+        f"— meets the {floor} floor"
+    )
+    origin = _python_floor.REEXECUTED_FROM
+    if origin:
+        print(f"invoked as: {origin}, below the floor — re-executed under the interpreter above")
+    else:
+        print("invoked as: the interpreter above (no re-exec)")
+    return 0
+
+
 def cmd_version() -> int:
     """Print the running prawduct plugin version (bare semver from the bundled
     ``.claude-plugin/plugin.json``) and exit 0; exit 1 if the manifest is
@@ -10053,7 +10104,7 @@ _USAGE = (
     "infer-critic-mode [args]|"
     "plan {new <scope> [--branch B] [--base BASE] [--title T] [--kind K] [--working]|"
     "bind <path> --branch B|resolve [--json]|status [<path>] [--json]}|"
-    "resolve-base|version|print-install-reference|"
+    "resolve-base|version|python-floor|print-install-reference|"
     "evidence {status|list [--kind <k>] [-n <count>]|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}|advisory <subcmd> [args]|"
     "disposition <review-id> <fid|oid> {--accept <reason>|--file <backlog-id>|--fixed <path>[,<path>...]} [--owner-ruling <text>]|"
     "render-dispositions [--review <id>|--scope <s>] [--json]|"
@@ -10505,6 +10556,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "verify-chunk-refs",
     "verify-coverage",
     "verify-records",
+    # Read-only: reports sys.executable and the floor check's re-exec origin.
+    "python-floor",
     "version",
     # Read-only: git reads with --no-optional-locks and file mtimes.
     "worktrees",
@@ -10932,6 +10985,16 @@ def _check_binary_skew(command: str, project_dir: Path, argv: "list[str] | None"
     return 0
 
 
+def _fallback_pytest_python() -> str:
+    """The interpreter the undeclared-suite fallback runs pytest under: the one
+    the caller invoked, not the one the Python floor may have re-executed this
+    hook into. The invoked ``python3`` is the closest thing to the project's
+    environment this fallback has; the qualifying interpreter found for the hook
+    may lack the project's packages, or pytest itself."""
+    origin = _python_floor.REEXECUTED_FROM if _python_floor is not None else None
+    return origin or sys.executable
+
+
 def main() -> int:
     """Dispatch. ``_dispatch`` is where the command table lives.
 
@@ -10986,6 +11049,7 @@ _NO_ARGUMENT_COMMANDS = frozenset({
     "test-status",
     "validate-evidence",
     "verify-coverage",
+    "python-floor",
     "version",
 })
 
@@ -11199,6 +11263,8 @@ def _dispatch() -> int:
         return cmd_bug_inbox(project_dir)
     elif command == "version":
         return cmd_version()
+    elif command == "python-floor":
+        return cmd_python_floor()
     elif command == "print-install-reference":
         return cmd_print_install_reference()
     elif command == "advisory":

@@ -133,10 +133,8 @@ fallback, and reorganising your layout later cannot retroactively fail an old re
 `project.version` and nothing has to decide which table of a manifest wins. A key name containing
 a literal dot is not expressible — point at a `bare` or `json` file instead.
 
-`toml` needs Python 3.11+ (`tomllib`); on 3.10 such an entry reports `unverifiable` rather than
-failing, since an interpreter's stdlib is not evidence about your release. Block style only. An
-empty list is a deliberate "this product ships no version file" and reports that nothing was
-checked.
+Block style only. An empty list is a deliberate "this product ships no version file" and reports
+that nothing was checked.
 
 ```yaml
 release_version_files:
@@ -237,8 +235,8 @@ schema is checked but content is not enforced.
 
 ## test_command, test_commands, tests_dirs (optional, gate-soundness)
 
-`prawduct-hook test-evidence record` defaults to running `sys.executable -m pytest` from the repo
-root and grepping a single `tests/` dir. When the repo's real shape differs (uv/venv-managed
+`prawduct-hook test-evidence record` defaults to running `-m pytest`, under the `python3` the hook
+was invoked with, from the repo root and grepping a single `tests/` dir. When the repo's real shape differs (uv/venv-managed
 interpreter, no root pytest config, monorepo test trees), declare it — don't wrap it.
 
 **`test_command:`** — the canonical suite invocation (the exact command CI runs), shlex-split and

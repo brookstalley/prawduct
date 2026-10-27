@@ -46,7 +46,11 @@ class TestDoctorNumbering:
 
     def test_a_new_check_appends_and_no_check_is_renumbered(self):
         checks = _health_checks(DOCTOR.read_text(encoding="utf-8"))
-        assert sorted(checks) == [n for n in range(1, 26) if n not in self.RETIRED], sorted(checks)
+        assert sorted(checks) == [n for n in range(1, 27) if n not in self.RETIRED], sorted(checks)
+
+    def test_check_26_is_the_python_floor(self):
+        check = _health_checks(DOCTOR.read_text(encoding="utf-8"))[26]
+        assert "prawduct-hook python-floor" in check
 
     def test_check_25_is_the_notes_transport(self):
         check = _health_checks(DOCTOR.read_text(encoding="utf-8"))[25]

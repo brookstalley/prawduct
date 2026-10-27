@@ -19,6 +19,7 @@ unit-testable via subprocess with a SubagentStop-shaped stdin.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -133,7 +134,7 @@ def _set_marker(repo: Path) -> None:
 
 def _run(repo: Path, stdin_obj: dict, *, run_cwd: Path | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "subagent-stop"],
+        [sys.executable, str(HOOK), "subagent-stop"],
         cwd=str(run_cwd or repo), capture_output=True, text=True,
         env=_git_env(repo), input=json.dumps(stdin_obj), timeout=30,
     )

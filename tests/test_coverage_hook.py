@@ -13,6 +13,7 @@ default, never overwriting, never auto-deciding relevance).
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 
 import pytest
@@ -33,7 +34,7 @@ def _run(command: str, project_dir: Path, *args: str) -> subprocess.CompletedPro
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), command, *args],
+        [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=30,
     )
 
@@ -358,7 +359,7 @@ def _run_with_broken_staging(
     home = tmp_path.parent / "_home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
-        ["python3", str(HOOK), "coverage-status", *extra],
+        [sys.executable, str(HOOK), "coverage-status", *extra],
         capture_output=True, text=True, timeout=30,
         env={
             "HOME": str(home),

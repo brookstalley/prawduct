@@ -84,7 +84,7 @@ def _run_stop(
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "stop"],
+        [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, timeout=20,
         input=stdin,
     )
@@ -221,7 +221,7 @@ def _dispatched_real_repo(
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     begin = subprocess.run(
-        ["python3", str(HOOK), "critic-begin", "--mode",
+        [sys.executable, str(HOOK), "critic-begin", "--mode",
          "cumulative" if commit_edit else "chunk"],
         capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
     )
@@ -369,7 +369,7 @@ class TestChunk05ConsolidateOrBlock:
         )
         _write_partial(prawduct, "reviewer", commit=manifest["commit_reviewed"])
         result = subprocess.run(
-            ["python3", str(HOOK), "stop"],
+            [sys.executable, str(HOOK), "stop"],
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
         )
         assert result.returncode == 0, (
@@ -405,7 +405,7 @@ class TestChunk05ConsolidateOrBlock:
         )
         _write_partial(prawduct, "reviewer", commit=manifest["commit_reviewed"])
         result = subprocess.run(
-            ["python3", str(HOOK), "stop"],
+            [sys.executable, str(HOOK), "stop"],
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
         )
         assert result.returncode == 0, (
@@ -625,7 +625,7 @@ class TestASelfHealSurvivesTheSessionBoundary:
         _set_marker(prawduct)
 
         boundary = subprocess.run(
-            ["python3", str(HOOK), "clear", "--session-start"],
+            [sys.executable, str(HOOK), "clear", "--session-start"],
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
         )
         assert boundary.returncode == 0, boundary.stderr
@@ -643,7 +643,7 @@ class TestASelfHealSurvivesTheSessionBoundary:
         (repo / "src" / "new.py").write_text("y = 1\n")
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         result = subprocess.run(
-            ["python3", str(HOOK), "stop"],
+            [sys.executable, str(HOOK), "stop"],
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
         )
 
@@ -661,7 +661,7 @@ class TestASelfHealSurvivesTheSessionBoundary:
         assert "CRITIC REVIEW (incomplete)" not in result.stderr
 
         attested = subprocess.run(
-            ["python3", str(HOOK), "critic-consolidate",
+            [sys.executable, str(HOOK), "critic-consolidate",
              "--tree-changed-by-builder", "the new session's own edit"],
             capture_output=True, text=True, env=env, cwd=str(repo), timeout=20,
         )

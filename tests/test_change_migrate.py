@@ -47,7 +47,7 @@ def _snapshot(project: Path) -> dict[str, str]:
 
 def _migrate(project: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "migrate-change-log", *args],
+        [sys.executable, str(HOOK), "migrate-change-log", *args],
         cwd=str(project), capture_output=True, text=True, timeout=60,
         env={"PATH": "/usr/bin:/bin", "CLAUDE_PROJECT_DIR": str(project), "HOME": str(project.parent)},
     )
