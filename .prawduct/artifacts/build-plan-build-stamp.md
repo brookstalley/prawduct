@@ -53,6 +53,11 @@ version already identifies it. Read once per process. No schema version moves.
 **Level:** High.
 
 **Decisions made mid-build:** *(appended while building)*
+- Chunk 01: "dirty" counts untracked-unignored files under the plugin tree as well as modified tracked ones (new code runs too); ignored files (bytecode caches) and changes outside the plugin directory do not. Alignment-pass miss: the plan said "uncommitted changes" without saying which.
+- Chunk 01: a plugin root counts as a checkout only when its own `VERSION` is a tracked file there, so a copy under an unrelated repository (a version-controlled home directory) records no build instead of borrowing that repository's sha. Inferred, not in the plan.
+- Chunk 01: git's repository-locating variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, …) are stripped for the stamp's calls, because a hook run under a product's git hook would otherwise stamp the product's commit. Inferred.
+- Chunk 01: sha and dirtiness come from one `git status --porcelain=v2 --branch -- .` call plus one `ls-files` check; if either fails, no build is recorded rather than a sha of unknown dirtiness. Measured cost on this machine: about 35 ms warm, about 125 ms cold, paid once per process (the result, `None` included, is memoised).
+- Chunk 01: `actor.build` travels in the notes transport like `actor.branch` (only `actor.session` is dropped there), so it reaches the product's remote with the transported facts. The plan bounded only the contribution payload; this was left as is because the build is no more identifying than the branch, and a clone that ingests the fact can then still say which build wrote it (Goals questions 1 and 3). Flagged for the owner.
 
 ## Chunks
 

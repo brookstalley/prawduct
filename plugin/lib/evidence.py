@@ -13,7 +13,8 @@ consumer migration, C9 tier 1).
 **Envelope (D2).** One JSON object per line::
 
     {"schema": 1, "kind": "review", "id": "...", "ts": "...",
-     "actor": {"session": ..., "worktree": ..., "plugin": ..., "branch": ...},
+     "actor": {"session": ..., "worktree": ..., "plugin": ..., "branch": ...,
+               "build": ...},
      "body": {...}}
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
@@ -25,6 +26,9 @@ today; ``pr-review``/``promotion`` are reserved for later constituent plans);
 is OPTIONAL and omitted (never null) when HEAD is detached or unreadable; it
 was added by #648 because ``worktree`` alone stopped being able to say whether
 a tree was disposable, and no reader can probe a tree that is already deleted.
+Its ``build`` is OPTIONAL by the same rule: the plugin checkout's commit sha
+(12 hex), ``+dirty`` when the plugin tree has uncommitted changes, omitted when
+the plugin is not a git checkout (a marketplace install) or git fails (#1086).
 
 **Keying (D3).** Facts reference *tree SHAs* captured via a temporary index
 (``capture_tree``): objects are written to the shared odb, the session's real
@@ -246,6 +250,11 @@ def store_path(project_dir: Path) -> Path | None:
     return common / STORE_SUBDIR / STORE_BASENAME
 
 
+def _plugin_root() -> Path:
+    """The plugin tree this module runs from (the directory holding ``VERSION``)."""
+    return Path(__file__).resolve().parent.parent
+
+
 def _plugin_version() -> str | None:
     """The bundled VERSION, nullable — never invented.
 
@@ -254,12 +263,68 @@ def _plugin_version() -> str | None:
     would crash the gate rather than null a field.
     """
     try:
-        text = (Path(__file__).resolve().parent.parent / "VERSION").read_text(
-            encoding="utf-8"
-        )
+        text = (_plugin_root() / "VERSION").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
     return text.strip() or None
+
+
+#: Length of the commit sha ``actor.build`` records.
+BUILD_SHA_LENGTH = 12
+#: Suffix on ``actor.build`` when the plugin tree differs from its commit.
+BUILD_DIRTY_SUFFIX = "+dirty"
+#: Git's repository-locating variables. A hook can run under a git hook or a
+#: caller that exported them for the PRODUCT repo, and git would then answer
+#: about the product rather than the plugin checkout.
+_REPO_LOCATING_ENV = (
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX",
+    "GIT_NAMESPACE",
+)
+_UNREAD = object()
+_build_memo: object = _UNREAD
+
+
+def read_plugin_build(plugin_root: Path) -> str | None:
+    """The build ``plugin_root`` is: its checkout's commit sha (first
+    :data:`BUILD_SHA_LENGTH` hex), plus :data:`BUILD_DIRTY_SUFFIX` when the
+    plugin tree has uncommitted or untracked-unignored changes. ``None`` when
+    it is not a git checkout, or any git call fails or times out.
+
+    A plugin root merely sitting inside some unrelated repository (a home
+    directory under version control holding a marketplace copy) must not
+    borrow that repository's sha, so the root's own ``VERSION`` has to be a
+    tracked file of the checkout. The dirty check is scoped to the plugin
+    directory: a dirty sibling outside it did not change the code that ran.
+    Never raises (:func:`run_git` converts every failure)."""
+    env = {k: v for k, v in os.environ.items() if k not in _REPO_LOCATING_ENV}
+    rc, _, _ = run_git(plugin_root, "ls-files", "--error-unmatch", "--", "VERSION", env=env)
+    if rc != 0:
+        return None
+    rc, out, _ = run_git(
+        plugin_root, "status", "--porcelain=v2", "--branch", "--", ".", env=env, strip=False
+    )
+    if rc != 0:
+        return None
+    sha, dirty = None, False
+    for line in out.splitlines():
+        if line.startswith("# branch.oid "):
+            sha = line[len("# branch.oid "):].strip()
+        elif line and not line.startswith("#"):
+            dirty = True
+    if not sha or not re.fullmatch(r"[0-9a-f]{40,64}", sha):
+        return None  # "(initial)": a checkout with no commit has no build
+    return sha[:BUILD_SHA_LENGTH] + (BUILD_DIRTY_SUFFIX if dirty else "")
+
+
+def _plugin_build() -> str | None:
+    """:func:`read_plugin_build` of the running plugin, read once per process:
+    the code that runs cannot change under a running process, so neither can
+    its build, and a hook appending several facts pays the git calls once."""
+    global _build_memo
+    if _build_memo is _UNREAD:
+        _build_memo = read_plugin_build(_plugin_root())
+    return _build_memo  # type: ignore[return-value]
 
 
 def _session_epoch(project_dir: Path) -> str | None:
@@ -323,6 +388,13 @@ def append_fact(
     branch = gitstate.current_branch(project_dir)
     if branch:
         actor["branch"] = branch
+    # `actor.build` (#1086) — the plugin checkout's commit, same omitted-not-
+    # null rule. Every dev build of one version shares `plugin`, so without it
+    # facts from different builds are indistinguishable. A marketplace install
+    # is no git checkout and records none; its released version identifies it.
+    build = _plugin_build()
+    if build:
+        actor["build"] = build
     envelope = {
         "schema": SCHEMA_VERSION,
         "kind": kind,

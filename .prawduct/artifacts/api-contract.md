@@ -211,7 +211,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   tracking ref to what it pushed; a remote with no notes yet is not an error. Note lines carry the
   store line with the actor's locator fields reduced: `actor.worktree` cut to its basename, or to
   `.claude/worktrees/<name>` for a harness scratch worktree (so the receiving clone classifies the
-  fact as ephemeral too), never the path above it; `actor.session` dropped. Exit 0 ok; 1 a reported failure naming the failing `step`
+  fact as ephemeral too), never the path above it; `actor.session` dropped; `actor.plugin`,
+  `actor.branch` and `actor.build` (the plugin checkout's commit sha) travel as written. Exit 0 ok; 1 a reported failure naming the failing `step`
   (`fetch`, `merge`, `reconcile`, `ingest`, `push`), git's stderr scrubbed of credentials and
   nothing retried; 2 usage.
   `/prawduct:pr create|update` runs it after the branch push, and a failure there is reported

@@ -477,15 +477,19 @@ class TestSchemaUnchanged:
         assert set(fact["actor"]) == {"session", "worktree", "plugin"}
         assert "ephemeral" not in fact and "provenance" not in fact
 
-    def test_the_writer_stores_provenance_but_never_the_verdict(self, tmp_path):
+    def test_the_writer_stores_provenance_but_never_the_verdict(self, tmp_path, monkeypatch):
         """The other side of the same rule, at the writer this time: whatever
         `append_fact` puts in `actor` must be raw provenance, never the
-        classification derived from it."""
+        classification derived from it. `actor.build` (#1086) is provenance
+        too: which plugin build wrote the fact. It is pinned to a value here
+        because whether the running plugin is a git checkout depends on where
+        the suite runs."""
         repo = _make_repo(tmp_path)
         _git(repo, "checkout", "-q", "-b", "fix/real-thing")
+        monkeypatch.setattr(evidence, "_plugin_build", lambda: "abcdef012345")
 
         evidence.append_fact(repo, kind="review", fact_id="rev-a", body={"head_tree": "t"})
 
         written = json.loads(evidence.store_path(repo).read_text().strip())
-        assert set(written["actor"]) == {"session", "worktree", "plugin", "branch"}
+        assert set(written["actor"]) == {"session", "worktree", "plugin", "branch", "build"}
         assert "ephemeral" not in written and "provenance" not in written

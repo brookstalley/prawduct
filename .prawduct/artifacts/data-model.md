@@ -127,7 +127,7 @@ clone that wrote it.
 | `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start`, `chunk-imported`, `chunk-retracted` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
-| `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
+| `actor` | object | `{session, worktree, plugin}` plus optional `branch` and `build` — provenance: which session, which worktree, which plugin version and build wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted. `build` is the plugin checkout's commit sha (12 hex), with `+dirty` when the plugin tree has uncommitted or untracked changes; omitted (never null) when the plugin is not a git checkout (a marketplace install, which its released `plugin` already identifies) or git fails. It exists because every dev build of one version shares `plugin` (#1086) |
 | `body` | object | Kind-specific payload (see below) |
 
 - **Review fact `body`** — the tree interval reviewed (`base_tree`/`head_tree` and their commits),
