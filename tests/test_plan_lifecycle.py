@@ -428,6 +428,21 @@ class TestNotEvidenceOfAMerge:
         assert lc.state == "merged-unreleased", lc
         assert "review R-real's commit" in lc.reason
 
+    def test_a_dirty_tree_review_at_its_own_base_commit_merged_no_ff_is_a_merge(self, repo):
+        """#1079's shape, in the lifecycle: a review of uncommitted work is anchored
+        at its ``base_commit``, the branch HEAD the dirty tree sat on. A
+        ``--no-ff`` merge brings that commit into develop through its second
+        parent, off the first-parent history, so it shows the merge. The
+        fork-point sibling above is the control: the same anchor-equals-base
+        shape, on develop's first-parent history, shows nothing."""
+        head = _feature(repo)
+        _merge_no_ff(repo)
+        _delete(repo)
+        dirty = _review("R-dirty", None, dispatch_commit=head, base_commit=head)
+        lc = _observe(_plan(repo), repo, facts=_facts(dirty))
+        assert lc.state == "merged-unreleased", lc
+        assert "review R-dirty's commit" in lc.reason
+
     def test_a_branch_with_no_commits_of_its_own_is_in_progress(self, repo):
         """A freshly cut branch's tip IS its base's tip, which git calls
         contained; it has no commits of its own, so it is not a merge."""

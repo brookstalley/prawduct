@@ -25,8 +25,9 @@ The rule, in precedence order, each step's ``reason`` naming what it observed:
 5. The branch is gone: the newest review fact for the scope whose anchor the
    base contains → ``merged-unreleased`` (a merge-commit merge keeps the
    reviewed commits in the base's history). An anchor equal to the fact's own
-   ``base_commit`` is not counted: it is where the reviewed interval began,
-   already on the base. Else a pending change record for the scope →
+   ``base_commit`` counts only when it is off the base's first-parent history,
+   brought in by the merge (a dirty-tree review's branch HEAD), not the fork
+   point the base already held. Else a pending change record for the scope →
    ``merged-unreleased``, inferred from the deleted branch and the pending
    record.
 6. Otherwise ``unknown``. With ``probe_pr=True``, ``gh`` is asked first whether a
@@ -51,7 +52,8 @@ declared base: one ``for-each-ref`` resolving the branch and base refs together,
 one ``for-each-ref --contains`` asking whether any base ref holds the tip (a tip
 equal to a base tip skips it). Step 5's review rule, and step 4's for a tip at
 a base tip, costs one ``--contains`` per distinct anchor, newest fact first,
-stopping at the first hit. A plan with no ``base:`` adds what
+stopping at the first hit, plus one bounded first-parent ``rev-list`` for a
+contained anchor that is its own review's ``base_commit``. A plan with no ``base:`` adds what
 ``coverage.repo_base_branch`` costs. No network call unless ``probe_pr`` — pinned by spy in
 ``tests/test_plan_lifecycle.py``.
 """
@@ -367,21 +369,28 @@ def _merge_evidence(
     """``(fact id, anchor, base ref)`` for the newest review fact of ``scope``
     whose anchor the base holds, or ``None``. One ``--contains`` per distinct
     anchor, newest first, stopping at the first hit."""
-    for fact_id, anchor in _anchors_newest_first(store, scope):
+    from .plan_status import on_first_parent  # plan_status reaches this module lazily
+
+    for fact_id, anchor, is_base_commit in _anchors_newest_first(store, scope):
         contained = _contained_in(repo_dir, anchor, base_refs)
-        if contained:
+        if contained and not (
+            is_base_commit and on_first_parent(repo_dir, anchor, contained)
+        ):
             return fact_id, anchor, contained
     return None
 
 
-def _anchors_newest_first(store: dict, scope: str) -> list[tuple[str, str]]:
-    """``(fact id, anchor)`` for each review fact of ``scope`` whose anchor can
-    say the branch merged, newest first (by ``ts``, then store order), one per
-    distinct anchor.
+def _anchors_newest_first(store: dict, scope: str) -> list[tuple[str, str, bool]]:
+    """``(fact id, anchor, is its base_commit)`` for each review fact of
+    ``scope`` with an anchor, newest first (by ``ts``, then store order), one
+    per distinct anchor.
 
-    An anchor equal to the fact's own ``base_commit`` cannot: it is where the
-    reviewed interval began — the fork point for a review dispatched on a branch
-    before its first commit — and was on the base before the review ran.
+    An anchor equal to the fact's own ``base_commit`` is where the reviewed
+    interval began. For a review dispatched before the branch's first commit
+    that is the fork point, on the base before the review ran; for a review of
+    a dirty tree it is the branch HEAD the tree sat on, which a merge commit
+    brings in. The flag lets the caller tell them apart by first-parent
+    history (``plan_status.on_first_parent``), the rule chunk state uses.
     """
     reviews = [
         (i, f) for i, f in enumerate(evidence.facts_of_kind(store, "review"))
@@ -393,9 +402,9 @@ def _anchors_newest_first(store: dict, scope: str) -> list[tuple[str, str]]:
     for _i, fact in reviews:
         body = fact.get("body") or {}
         anchor = evidence.review_anchor(body)
-        if not gitstate.is_object_id(anchor) or anchor == body.get("base_commit"):
+        if not gitstate.is_object_id(anchor):
             continue
         if anchor not in seen:
             seen.add(anchor)
-            out.append((fact["id"], anchor))
+            out.append((fact["id"], anchor, anchor == body.get("base_commit")))
     return out

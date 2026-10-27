@@ -455,23 +455,7 @@ class _Reachability:
         return held is not None
 
     def _on_first_parent(self, anchor: str, base: str) -> bool:
-        """Whether ``anchor`` — known to be in ``base``'s history — is on its
-        first-parent chain. ``rev-list --first-parent anchor..base`` walks from
-        the base down to the first commit ``anchor`` reaches; the anchor is on
-        the chain exactly when that last commit's first parent is the anchor
-        (or nothing is listed: the base is the anchor). Git failing answers
-        yes, which refuses: authority fails closed. The walk is bounded by the
-        base's commits since the anchor, never its whole history."""
-        rc, out, _err = evidence.run_git(
-            self._repo_dir, "rev-list", "--first-parent", "--parents", f"{anchor}..{base}"
-        )
-        if rc != 0:
-            return True
-        lines = out.splitlines()
-        if not lines:
-            return True
-        last = lines[-1].split()
-        return len(last) > 1 and last[1] == anchor
+        return on_first_parent(self._repo_dir, anchor, base)
 
     def holder(self, anchor: str) -> "str | None":
         """The ref an accepted ``anchor`` was found on, else ``None``."""
@@ -527,6 +511,31 @@ class _Reachability:
                 )
         self._holder[anchor] = where.base
         return None
+
+
+def on_first_parent(repo_dir: Path, anchor: str, base: str) -> bool:
+    """Whether ``anchor`` — known to be in ``base``'s history — is on its
+    first-parent chain: there before any merge brought it, rather than brought
+    in by one. A review anchored at its own ``base_commit`` proves a merge only
+    when this is false (#1079); ``plan_lifecycle`` asks the same question of the
+    same anchors, so this is the one place it is answered.
+
+    ``rev-list --first-parent anchor..base`` walks from the base down to the
+    first commit ``anchor`` reaches; the anchor is on the chain exactly when
+    that last commit's first parent is the anchor (or nothing is listed: the
+    base is the anchor). Git failing answers yes, which refuses: authority
+    fails closed. The walk is bounded by the base's commits since the anchor,
+    never its whole history."""
+    rc, out, _err = evidence.run_git(
+        repo_dir, "rev-list", "--first-parent", "--parents", f"{anchor}..{base}"
+    )
+    if rc != 0:
+        return True
+    lines = out.splitlines()
+    if not lines:
+        return True
+    last = lines[-1].split()
+    return len(last) > 1 and last[1] == anchor
 
 
 @dataclass(frozen=True)

@@ -98,6 +98,11 @@ no commit, so a span can never certify it, which keeps #1072 fixed.
   says a whole-plan review that names nothing "certified no chunk" and "omitting it certifies only
   the proposal", both now false when its span certified some; and `plan_lifecycle`'s merge probe
   keeps the old `anchor == base_commit` refusal (its signature and behaviour were out of scope).
+- Coordinator, integration: both are fixed in Chunk 03's commit. The first-parent test is one
+  function, `plan_status.on_first_parent`, which the `_Reachability` probe and
+  `plan_lifecycle._merge_evidence` both call, so the lifecycle reads #1079's case as
+  merged-unreleased by the same rule chunk state uses (one owner for the class). The NEXT-ACTION
+  clause now says the review "named no chunk" and speaks only of the chunks still open.
 
 ## Case table
 
