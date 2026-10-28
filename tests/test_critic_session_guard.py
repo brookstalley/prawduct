@@ -1517,6 +1517,11 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/lib/critic_mode.py", "_rule_postfix_fix_fires", ".critic-findings.json"):
             "tests/test_critic_mode_inference.py::TestRule1bPostCumulativeFix"
             "::test_fires_for_committed_fix_after_clean_cumulative",
+        # The one writer outside consolidation: a clone whose reviews arrived
+        # as notes gets the view consolidation would have written.
+        ("plugin/lib/critic_consolidate.py", "derive_missing_cache", ".critic-findings.json"):
+            "tests/test_evidence_notes.py::TestASecondCloneGetsItsFindingsCache"
+            "::test_an_existing_cache_is_never_overwritten",
         ("plugin/lib/critic_mode.py", "_fresh_cumulative_covers_head", ".critic-findings.json"):
             "tests/test_critic_mode_inference.py::TestRule2Cumulative"
             "::test_does_not_fire_when_cumulative_record_covers_head",

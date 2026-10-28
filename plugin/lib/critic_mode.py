@@ -34,7 +34,8 @@ return the first that fires:
      recommendation no longer needs to propagate anchors.)
   2. ``cumulative`` — working tree is clean (no uncommitted code) AND
      branch is ≥2 commits ahead of the detected base branch AND no
-     ``cumulative``-mode findings file exists for current HEAD. Signal:
+     ``cumulative``-mode findings file exists for current HEAD AND the PR
+     gate's composed coverage does not already pass. Signal:
      builder has shipped chunks and is at the ``/pr create`` precondition
      point. **Not mid-plan** (the branch's own plan still owes a later
      review): there a clean tree means the builder committed the chunk
@@ -528,31 +529,47 @@ def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     return (
         "working tree is clean, so chunk/final would dispatch an empty "
         f"interval; branch is {commits_ahead} commit(s) ahead of {base_branch} "
-        "and no cumulative record covers current HEAD — the committed bundle "
+        "and no cumulative record or composed coverage covers current HEAD — "
+        "the committed bundle "
         "is cumulative's scope"
     )
 
 
 def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool:
-    """True when the derived cache records a ``cumulative`` review of this exact
-    HEAD — i.e. the bundle review has already been run and re-recommending it
-    would be noise.
+    """True when recommending the bundle review would be noise: the derived
+    cache records a ``cumulative`` review of this exact HEAD, or the PR gate's
+    own answer (:func:`gates.branch_coverage_verdict`) is already ``covered``
+    or ``transferred``.
+
+    The cache alone is a proxy for the gate, and it misreads two cases the
+    store answers: a cumulative followed by a clean verify pass (the cache then
+    holds the verify), and a clone that ingested another clone's reviews and has
+    no cache at all. Recommending a cumulative there buys a review the PR gate
+    does not need. The cache check stays first because it is one file read.
 
     One home for the question: rule 2 skips on it, and rule 4's clean-tree
     redirect must not undo that skip by routing to the mode rule 2 just declined.
     """
     head_sha = gitstate._git_head_sha(project_dir)
-    findings_path = prawduct_dir / ".critic-findings.json"
-    if not head_sha or not findings_path.is_file():
+    if not head_sha:
         return False
+    findings_path = prawduct_dir / ".critic-findings.json"
     try:
         data = json.loads(findings_path.read_text())
     except (json.JSONDecodeError, OSError):
-        return False
-    return (
-        data.get("commit_reviewed") == head_sha
+        data = None
+    if (
+        isinstance(data, dict)
+        and data.get("commit_reviewed") == head_sha
         and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
-    )
+    ):
+        return True
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    # Failures come back as statuses (`no-base`, `store-precheck`, ...), and
+    # every one but these two leaves the cumulative recommended, as before.
+    answer = gates.branch_coverage_verdict(project_dir)
+    return answer.get("status") in ("covered", "transferred")
 
 
 class PlanProgress(NamedTuple):
@@ -1092,7 +1109,7 @@ def _rule_cumulative_fires(
     return (
         f"branch is {commits_ahead} commits ahead of {base_branch}, "
         "working tree clean, no fresh cumulative-mode record for "
-        "current HEAD"
+        "current HEAD, and no composed review coverage spans the branch"
     )
 
 

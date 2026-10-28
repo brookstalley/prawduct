@@ -28,7 +28,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from lib import buildplan_refs, coverage_algebra, critic_mode, infer_mode  # noqa: E402 — sys.path mutated above
-from lib import plan_mint, work_unit  # noqa: E402
+from lib import evidence, plan_mint, work_unit  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -609,6 +609,65 @@ class TestRule1bPostCumulativeFix:
 
         mode, _ = infer_mode(tmp_path, None)
         assert mode == "cumulative"
+
+
+class TestRule2AsksThePrGate:
+    """Rule 2 stays silent when the PR gate's own answer is already covered,
+    with no findings cache at all — the shape of a clone that ingested another
+    clone's reviews, and of a branch whose newest review was a clean verify pass.
+    Recommending a cumulative there buys a review the gate does not need."""
+
+    def _branch(self, repo: Path) -> tuple[str, str]:
+        _init_repo(repo)
+        _write(repo, "README.md", "x\n")
+        _commit(repo, "initial")
+        base_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _checkout_new_branch(repo, "feature/work")
+        _write(repo, "src/a.py", "# a\n")
+        _commit(repo, "feat: a")
+        _write(repo, "src/b.py", "# b\n")
+        head = _commit(repo, "feat: b")
+        return base_tree, head
+
+    def _review(self, repo: Path, base_tree: str, head: str, *, mode: str, findings=None) -> None:
+        body = {
+            "base_tree": base_tree,
+            "head_tree": _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip(),
+            "head_commit": head,
+            "files_changed": ["src/a.py", "src/b.py"],
+            "files_reviewed": ["src/a.py", "src/b.py"],
+            "findings": findings or [],
+            "mode": mode,
+        }
+        assert evidence.append_fact(repo, "review", f"rev-test-{mode[:6]}", body)["status"] == "appended"
+
+    def test_silent_when_composed_coverage_passes_and_no_cache_exists(self, tmp_path: Path):
+        base_tree, head = self._branch(tmp_path)
+        self._review(tmp_path, base_tree, head, mode="verify-resolutions (delta review, inner stage)")
+        assert not (tmp_path / ".prawduct" / ".critic-findings.json").exists()
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode != "cumulative", rationale
+        assert not rationale.startswith(("rule-2", "rule-4 cumulative")), rationale
+
+    def test_still_fires_when_the_branch_is_not_covered(self, tmp_path: Path):
+        """Control: no review fact, so the gate is uncovered — rule 2 fires."""
+        self._branch(tmp_path)
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "cumulative"
+        assert rationale.startswith("rule-2 cumulative:")
+        assert "no composed review coverage spans the branch" in rationale
+
+    def test_still_fires_when_coverage_carries_a_blocking_finding(self, tmp_path: Path):
+        """A covering review that left a BLOCKING finding is `blocked`, not covered."""
+        base_tree, head = self._branch(tmp_path)
+        self._review(
+            tmp_path, base_tree, head, mode="cumulative (bundle review, ready for merge)",
+            findings=[{"fid": "R-1", "severity": "blocking", "goal": "Nothing Is Broken",
+                       "summary": "broken", "recommendation": "fix"}],
+        )
+        mode, rationale = infer_mode(tmp_path, None)
+        assert mode == "cumulative", rationale
+        assert rationale.startswith("rule-2 cumulative:")
 
 
 class TestRule2Cumulative:

@@ -1172,7 +1172,11 @@ LAST_MEASURED_TOKENS = {
     # trimming: no other clause of step 4 restates the rule. Priced against the route sums:
     # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
     # certifies anyway.
-    "skills/critic/SKILL.md": 3105,
+    # -4 on 2026-10-28 (second-clone-evidence): "`critic-consolidate` is the only writer of both"
+    # stopped being true when ingest began deriving the findings cache in a clone that never
+    # consolidated one. The reviewer needs only "you never write them", so the clause naming
+    # writers went, shorter than the claim it replaced.
+    "skills/critic/SKILL.md": 3101,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -5973,7 +5977,8 @@ class TestCriticSkillRoutesByMode:
         # LOWERED 3108 -> 3101 (final-review-chunks, 2026-10-26) — see LAST_MEASURED_TOKENS.
         # RAISED 3101 -> 3106 (chunk-state-table, 2026-10-27): `--chunks` no longer bounds what a
         # review certifies — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3106, f"SKILL.md is ~{tokens} tokens, should be <3106"
+        # LOWERED 3106 -> 3102 (second-clone-evidence, 2026-10-28) with the reading.
+        assert tokens < 3102, f"SKILL.md is ~{tokens} tokens, should be <3102"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

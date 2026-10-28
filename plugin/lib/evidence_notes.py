@@ -253,7 +253,10 @@ def _branch_commits(project_dir: Path) -> dict:
     ``merge_base..HEAD`` plus the merge base itself, which is where a fresh
     branch's first dirty-tree review anchors.
 
-    ``{"status": "ok", "commits": set}``; ``{"status": "unbounded", "reason"}``
+    ``{"status": "ok", "commits": set, "ordered": list}`` — ``ordered`` is the
+    same commits newest first (``rev-list`` order, the merge base last), for a
+    reader that must tell which of two reviews is further along the branch;
+    ``{"status": "unbounded", "reason"}``
     when no merge base resolves; ``{"status": "error", "reason"}`` when the
     commits cannot be listed."""
     from . import coverage  # noqa: PLC0415 — lazy; coverage pulls in the gate stack
@@ -265,7 +268,8 @@ def _branch_commits(project_dir: Path) -> dict:
     rc, out, err = evidence.run_git(project_dir, "rev-list", f"{merge_base}..HEAD")
     if rc != 0:
         return {"status": "error", "reason": f"cannot list the branch's commits ({err or rc})"}
-    return {"status": "ok", "commits": set(out.split()) | {merge_base}}
+    ordered = [*out.split(), merge_base]
+    return {"status": "ok", "commits": set(ordered), "ordered": ordered}
 
 
 def _read_notes(project_dir: Path, in_range: "set[str] | None",
@@ -493,6 +497,7 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
     held |= {(s.get("kind"), s.get("id")) for s in known.get("schema_ahead", [])}
 
     appended = 0
+    arrived: list[dict] = []
     for record in records:
         key = (record["kind"], record["id"])
         if key in held:
@@ -504,11 +509,48 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
                 reason=f"store append failed after {appended} record(s) ({written.get('reason')})",
             )
         held.add(key)
+        arrived.append(record)
         appended += 1
-    return _result(
+    result = _result(
         "ok", appended=appended, seen=len(records), commits=annotated,
         reason="; ".join(skipped) or None,
     )
+    if appended:
+        result["cache"] = _derive_cache(project_dir, [*known.get("facts", []), *arrived])
+    return result
+
+
+def cache_line(result: dict) -> "str | None":
+    """The line saying an ingest gave this clone its findings cache, or
+    ``None`` when it did not. One home for the wording, so session start,
+    ``evidence ingest`` and ``evidence sync`` say the same thing."""
+    review = result.get("cache")
+    if not review:
+        return None
+    return (
+        f".prawduct/.critic-findings.json derived from ingested review {review} "
+        "(this clone had none), so verify-resolutions can anchor here"
+    )
+
+
+def _derive_cache(project_dir: Path, facts: "list[dict]") -> "str | None":
+    """After facts arrive, give a clone that never consolidated a review its
+    findings cache (:func:`critic_consolidate.derive_missing_cache`); the review
+    id it was derived from, or ``None``. ``facts`` is the store as ingest already
+    holds it — what it deduped against plus what it appended — so no second read.
+    Advice: a failure leaves the clone as it was before this existed, so it is
+    reported as ``None`` and ingest stays ok."""
+    branch = _branch_commits(project_dir)
+    if branch["status"] != "ok":
+        return None
+    from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module
+
+    try:
+        return critic_consolidate.derive_missing_cache(
+            project_dir / ".prawduct", facts, branch["ordered"]
+        )
+    except OSError:
+        return None
 
 
 def _result(status: str, *, appended: int = 0, seen: int = 0, commits: int = 0,
@@ -617,4 +659,6 @@ def ingest_cmd(project_dir: Path, argv: "list[str]", *, usage: str = _USAGE) -> 
         if result["reason"]:
             failed = result["status"] != "ok"
             print(f"  {result['reason']}", file=sys.stderr if failed else sys.stdout)
+        if cache_line(result):
+            print(f"  {cache_line(result)}")
     return 0 if result["status"] == "ok" else 1

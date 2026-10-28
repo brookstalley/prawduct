@@ -167,7 +167,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
-  their commit` — what `evidence sync` re-attaches, for the branch's commits, before it pushes;
+  their commit, on this branch's commits (merge base..HEAD)` — what `evidence sync` re-attaches
+  before it pushes; older facts are not counted;
   every `evidence` op exits 0 ok, 1 a reported failure, 2 usage — an unknown op or a bad flag —
   and `status`, which takes no flags, keeps its 2 = schema-ahead sentinel below), `ledger-append`
   (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
@@ -202,7 +203,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `evidence ingest [--all] [--json]` (mutating) appends the note lines the store lacks, bounded to
   the branch's commits from the merge base, or every note with `--all`; it prints how many records
   it appended of how many it saw on how many commits, and a skipped class (malformed lines, kinds
-  not transported) is counted in `reason`. Exit 0 when the ingest ran, appending nothing included;
+  not transported) is counted in `reason`. When it appended records and the clone has no
+  `.critic-findings.json`, it derives one from the review anchored furthest along the branch and
+  says so (`cache` in `--json`); an existing cache is left as it is. Exit 0 when the ingest ran, appending nothing included;
   1 on an error; 2 usage. A data-plane write: refused (exit 1) from a scratch
   worktree, so a disposable tree never races the main checkout's ingest, and by a foreign binary; session start
   runs it bounded at a session boundary. `evidence sync [--no-push] [--json]` (mutating; network)

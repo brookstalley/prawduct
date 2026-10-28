@@ -766,6 +766,97 @@ class TestBareOriginRoundTrip:
 # ---------------------------------------------------------------------------
 
 
+def _clone_b(origin: Path, tmp_path: Path, branch: str = "feature/unit") -> Path:
+    """A fresh clone of ``origin`` on ``branch`` with the pushed notes fetched
+    and nothing ingested yet — no store, no findings cache."""
+    b = tmp_path / "b"
+    _git(tmp_path, "clone", "-q", str(origin), str(b))
+    _configure(b)
+    b = b.resolve()
+    _git(b, "checkout", "-q", branch)
+    _git(b, "fetch", "-q", "origin", f"{NOTES_REF}:{NOTES_REF}")
+    return b
+
+
+class TestASecondCloneGetsItsFindingsCache:
+    """A clone whose reviews arrived by ingest holds the facts but never wrote
+    the derived `.critic-findings.json` every cache reader starts from — the
+    verify dispatch's anchor and the verify reviewer's prior findings — so
+    verify-resolutions could not run there (#1057). Ingest derives it."""
+
+    def test_ingest_derives_the_cache_from_the_newest_branch_review(self, origin_and_clone, tmp_path):
+        from lib import critic_consolidate, gates  # noqa: PLC0415
+
+        origin, a = origin_and_clone
+        _reviewed_branch(a)
+        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+        b = _clone_b(origin, tmp_path)
+        cache = b / ".prawduct" / ".critic-findings.json"
+        assert not cache.exists()
+
+        result = evidence_notes.ingest(b)
+        assert result["status"] == "ok" and result["appended"] == 3, result
+        assert result["cache"] == "rev-r2"
+        assert gates.validate_critic_findings(cache)
+        assert json.loads(cache.read_text())["fact_id"] == "rev-r2"
+        fact, reason = critic_consolidate._prior_review_fact(b, b / ".prawduct", evidence.read_facts(b))
+        assert reason == "" and fact["id"] == "rev-r2"
+
+    @pytest.mark.parametrize("order", ["older-first", "newer-first"])
+    def test_two_reviews_in_one_second_resolve_to_the_one_further_along(self, repo, tmp_path, order):
+        """`ts` is to the second and two consolidations can share one, and
+        ingest appends in note-read order, not review order — so "newest" is
+        the review anchored furthest along the branch: here the verify pass,
+        not the review whose blocker it resolved. Both orders, one shared
+        stamp: "first max ts" passes newer-first, "later in the store" passes
+        older-first, and only the branch position passes both."""
+        from lib import critic_consolidate  # noqa: PLC0415
+
+        refs = _reviewed_branch(repo)
+        facts = [f for f in evidence.read_facts(repo)["facts"] if f.get("kind") == "review"]
+        assert [f["id"] for f in facts] == ["rev-r1", "rev-r2"]
+        ordered = facts if order == "older-first" else list(reversed(facts))
+        tied = [{**f, "ts": "2026-10-28T12:00:00Z"} for f in ordered]
+        out = tmp_path / "clone-prawduct"
+        written = critic_consolidate.derive_missing_cache(out, tied, [refs["c2"], refs["c1"], refs["seed"]])
+        assert written == "rev-r2"
+
+    def test_an_existing_cache_is_never_overwritten(self, origin_and_clone, tmp_path):
+        origin, a = origin_and_clone
+        _reviewed_branch(a)
+        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+        b = _clone_b(origin, tmp_path)
+        cache = b / ".prawduct" / ".critic-findings.json"
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text('{"own": "consolidation"}')
+
+        result = evidence_notes.ingest(b)
+        assert result["appended"] == 3 and result["cache"] is None, result
+        assert cache.read_text() == '{"own": "consolidation"}'
+
+    def test_no_cache_when_no_ingested_review_anchors_on_this_branch(self, origin_and_clone, tmp_path):
+        """On `main` the reviews belong to another lineage: they are ingested
+        with `--all`, and no cache is pointed at them."""
+        origin, a = origin_and_clone
+        _reviewed_branch(a)
+        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+        b = _clone_b(origin, tmp_path, branch="main")
+
+        result = evidence_notes.ingest(b, bound=False)
+        assert result["appended"] == 3 and result["cache"] is None, result
+        assert not (b / ".prawduct" / ".critic-findings.json").exists()
+
+    def test_the_cli_says_the_cache_was_derived(self, origin_and_clone, tmp_path):
+        origin, a = origin_and_clone
+        _reviewed_branch(a)
+        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+        b = _clone_b(origin, tmp_path)
+
+        proc = _run_hook(b, "evidence", "ingest")
+        assert proc.returncode == 0, proc.stderr
+        assert ".critic-findings.json derived from ingested review rev-r2" in proc.stdout
+
+
 class TestAppendEnvelope:
     def test_round_trip_is_byte_stable(self, repo):
         written = evidence.append_fact(repo, "review", "r-1", {"head_tree": "a" * 40, "n": [1, 2.5, None]})
@@ -1015,15 +1106,22 @@ class TestReconcile:
         assert result["attached"] == 0 and result["reason"]
 
 
+def test_the_no_note_count_says_it_covers_this_branch_only():
+    """Pinned as text, not relative to the constant: the count is bounded to
+    the branch's commits, and a line that did not say so read as the whole
+    store's after a sync."""
+    assert evidence.UNATTACHED_SCOPE == ", on this branch's commits (merge base..HEAD)"
+
+
 class TestStatusNamesUnsentFacts:
     def test_the_line_counts_a_missing_note_before_reconcile_and_zero_after(self, repo):
         c1 = _commit(repo, "src/app.py", "x = 1\n", "work")
         envelope = _review_on(repo, "r-sent", c1)
         assert evidence_notes.attach(repo, envelope, c1)["status"] == "attached"
         _review_on(repo, "r-lost", c1)
-        assert _status_line(repo) == "1 transported fact(s) with no note on their commit"
+        assert _status_line(repo) == f"1 transported fact(s) with no note on their commit{evidence.UNATTACHED_SCOPE}"
         assert evidence_notes.reconcile(repo)["attached"] == 1
-        assert _status_line(repo) == "0 transported fact(s) with no note on their commit"
+        assert _status_line(repo) == f"0 transported fact(s) with no note on their commit{evidence.UNATTACHED_SCOPE}"
 
     def test_with_no_notes_ref_the_store_count_is_named_instead(self, repo):
         head = _git(repo, "rev-parse", "HEAD")
@@ -1051,10 +1149,10 @@ class TestStatusNamesUnsentFacts:
         proc = _run_hook(repo, "evidence", "status")
         assert proc.returncode == 0, proc.stderr
         assert "none of the store's" not in proc.stdout, proc.stdout
-        assert _status_line(repo) == "0 transported fact(s) with no note on their commit"
+        assert _status_line(repo) == f"0 transported fact(s) with no note on their commit{evidence.UNATTACHED_SCOPE}"
         # Control: a fact no ref holds is still counted.
         _review_on(repo, "r-2", head)
-        assert _status_line(repo) == "1 transported fact(s) with no note on their commit"
+        assert _status_line(repo) == f"1 transported fact(s) with no note on their commit{evidence.UNATTACHED_SCOPE}"
 
     def test_a_fact_on_the_tracking_ref_is_held_though_the_local_ref_lacks_it(self, repo):
         head = _git(repo, "rev-parse", "HEAD")

@@ -5279,6 +5279,58 @@ def _uncertified_open_chunks(
     return (mode, open_ids) if open_ids else None
 
 
+def derive_missing_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]") -> "str | None":
+    """Write ``.critic-findings.json`` from the newest review fact anchored on
+    this branch, when the clone has no findings cache at all; return that
+    review's id, or ``None`` when nothing was written.
+
+    For a clone whose reviews arrived by ingest rather than by consolidating
+    here: its store holds the facts, but the derived view every cache reader
+    starts from — the verify dispatch's anchor (:func:`_prior_review_fact`),
+    the verify reviewer's "prior findings record", inference — was never
+    written, so verify-resolutions could not run in that clone. The record is
+    what consolidation renders minus its advice sentences, which need the live
+    review; for a verify fact, the anchor's unresolved blockers are carried as
+    consolidation carries them.
+
+    Never overwrites: an existing cache is this clone's own consolidation (or
+    a later one), and the single slot is not this function's to re-point.
+    ``branch_commits`` is :func:`evidence_notes._branch_commits`'s ``ordered``
+    list, newest first: a review anchored off it belongs to another lineage, and
+    "newest" is the review anchored furthest along it. Neither ``ts`` nor store
+    order can say that alone — ``ts`` is to the second, and ingest appends in
+    the order it reads notes, not the order reviews ran — so they only break
+    ties between reviews on one commit."""
+    findings_path = prawduct_dir / ".critic-findings.json"
+    if findings_path.exists():
+        return None
+    depth = {commit: i for i, commit in enumerate(branch_commits)}
+    on_branch = [
+        (i, f) for i, f in enumerate(evidence.facts_of_kind({"facts": facts}, "review"))
+        if evidence.review_anchor(f.get("body")) in depth
+    ]
+    if not on_branch:
+        return None
+    fact = max(
+        on_branch,
+        key=lambda item: (-depth[evidence.review_anchor(item[1].get("body"))],
+                          str(item[1].get("ts") or ""), item[0]),
+    )[1]
+    body = fact.get("body") or {}
+    carried = (
+        carried_blocking(facts, body.get("base_tree"), fact.get("id"))
+        if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
+        else []
+    )
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(findings_path, json.dumps(fact_to_cache_record(fact, carried=carried), indent=2))
+    if not gates.validate_critic_findings(findings_path):
+        # A record no reader trusts is worse than none: they would anchor on it.
+        findings_path.unlink(missing_ok=True)
+        return None
+    return str(fact.get("id"))
+
+
 def fact_to_cache_record(
     fact: dict,
     price_sentence: "str | None" = None,
