@@ -48,6 +48,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import copy_seam_files  # noqa: E402
 
 ROOT =Path(__file__).resolve().parent.parent / "plugin"
 HOOK = ROOT / "bin" / "prawduct-hook"
@@ -107,6 +108,11 @@ def _install_binary_at(plugin_dir: Path, version: str = "9.9.9") -> Path:
     )
     binary = plugin_dir / "bin" / "prawduct-hook"
     shutil.copy2(HOOK, binary)
+    # The binary loads its host seam from its own tree, before any `lib/` is
+    # chosen, so a real plugin tree always carries it. Only the seam: which
+    # `lib/` the rest of the process imports is the LIB axis these tests vary
+    # through `$CLAUDE_PLUGIN_ROOT`.
+    copy_seam_files(plugin_dir)
     return binary
 
 

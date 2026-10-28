@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "no-op: no pending review manifest — nothing to consolidate.\n",
+  "stderr": ""
+}
