@@ -8648,7 +8648,8 @@ def _cmd_plan_check_claims(project_dir: Path, argv: list[str]) -> int:
     - ``release-pending`` — the branch is gone, and the plan is observed
       merged and unreleased (``plan_lifecycle.observe``, the one derivation
       ``plan status`` prints too: a review anchored in the base's history, the
-      integration branch merged, or a pending change record for the scope).
+      integration branch merged, or a pending change record for the scope
+      when the plan is in the base's tree).
       That is gitflow retention working (D-BR5): a merged child's plan rides
       along inert until the release. One line, ``<plan>: <field> claims
       <branch>, which no longer exists; merged-unreleased (<reason>) — archive

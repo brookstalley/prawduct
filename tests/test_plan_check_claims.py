@@ -200,12 +200,23 @@ class TestReleasePending:
     instead of a message rebuilt here. What changed with it: a claim is judged
     by its PLAN's lifecycle, so a missing `working-branches:` entry of a plan
     whose integration branch is still in progress is a miss, pending fragment
-    or not (`TestJudgedByThePlansLifecycle`)."""
+    or not (`TestJudgedByThePlansLifecycle`).
+
+    Renegotiated for #1106: a pending record infers the merge only for a plan in
+    the base's tree, which is where any merge leaves it. These fixtures commit
+    their plans to the base for that reason; a plan the base never received
+    (a mistyped `branch:` on unmerged work) is no longer release-pending."""
+
+    @staticmethod
+    def _into_base(repo: Path) -> None:
+        _git(repo, "add", "-f", ".prawduct")
+        _git(repo, "commit", "-qm", "the merge brought the plan")
 
     def test_a_pending_fragment_makes_a_missing_branch_release_pending(self, tmp_path):
         repo = _repo(tmp_path)
         _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
         _fragment(repo, "shipped")
+        self._into_base(repo)
         result = _run(repo)
         assert result.returncode == 0, result.stdout + result.stderr
         assert (
@@ -215,6 +226,16 @@ class TestReleasePending:
             "at the release"
         ) in result.stdout.splitlines()
         assert "does not exist" not in result.stdout
+
+    def test_a_pending_fragment_beside_a_plan_the_base_never_got_is_a_miss(self, tmp_path):
+        """The control for `_into_base`: the same plan and fragment, never
+        committed, is the `plan new`-then-typo case and stays a miss."""
+        repo = _repo(tmp_path)
+        _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
+        _fragment(repo, "shipped")
+        result = _run(repo)
+        assert result.returncode == 1, result.stdout
+        assert "branch feature/merged does not exist" in result.stdout
 
     def test_without_a_pending_record_it_stays_a_miss(self, tmp_path):
         repo = _repo(tmp_path)
@@ -231,6 +252,7 @@ class TestReleasePending:
         (repo / ".prawduct" / "change-log.md").write_text(
             "# Change Log\n\n## 2026-10-01: shipped it\n<!-- prawduct: scope=shipped -->\n\nBody.\n"
         )
+        self._into_base(repo)
         result = _run(repo)
         assert result.returncode == 0, result.stdout + result.stderr
         assert (
@@ -265,6 +287,7 @@ class TestReleasePending:
         _plan(repo, "build-plan-shipped.md", "scope: shipped\nbranch: feature/merged\n")
         _plan(repo, "build-plan-gone.md", "scope: gone\nbranch: feature/gone\n")
         _fragment(repo, "shipped")
+        self._into_base(repo)
         result = _run(repo, "--json")
         assert result.returncode == 1
         outcomes = {c["branch"]: c["outcome"] for c in json.loads(result.stdout)["claims"]}

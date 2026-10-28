@@ -406,12 +406,17 @@ def new_gates_in_range(gates: list[dict], last: str, current: str) -> list[dict]
 
 #: Leading glyph of the relay directive. A *directive to the agent*, not a severity
 #: signal, so it sits outside the ``CRITICAL:``/``WARNING:``/``NOTE:`` vocabulary and
-#: alongside the banner's own ``↑``/``•``/``⊕`` line glyphs.
+#: alongside the banner's own ``↑``/``↓``/``•``/``⊕`` line glyphs.
 RELAY_MARKER = "⇒ "
 
 
 def render_delta(last: str, current: str, root: Path) -> list[str]:
     """Lines for the delta block shown when the version changed.
+
+    The direction comes from :func:`version_tuple`: a higher version lists the
+    highlights and gates it brings, a lower one says it rolled back (the running
+    plugin is the older one, so it cannot list what it lacks), and a move with an
+    unparseable side, or two versions that sort equal, says only that it changed.
 
     Closes with a **relay directive**. The delta block goes to stdout — the
     agent-facing channel — and ``write_marker`` advances the marker the moment it
@@ -422,6 +427,24 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
     it refers to the lines above it; placed first it would read as being about the
     version line alone.
     """
+    old, new = version_tuple(last), version_tuple(current)
+    # An unparseable side sorts below everything, so its "direction" is an
+    # artifact of the parser, not a fact about the move: say only that it changed.
+    if old == (-1,) or new == (-1,) or old == new:
+        return [
+            f"Prawduct changed: v{last} → v{current}",
+            f"{RELAY_MARKER}Tell the user the plugin version changed, in your first "
+            "reply this session — they do not see this banner.",
+        ]
+    if new < old:
+        # The running plugin is the OLDER one, so its changelog and gates hold
+        # nothing from the range being rolled back: there is no list to give.
+        return [
+            f"↓ Prawduct downgraded: v{last} → v{current}",
+            f"  changes after v{current} are no longer running",
+            f"{RELAY_MARKER}Tell the user the plugin was rolled back, in your first "
+            "reply this session — they do not see this banner.",
+        ]
     lines = [f"↑ Prawduct updated: v{last} → v{current}"]
     for _v, headline in highlights_in_range(parse_changelog(root), last, current):
         if headline:

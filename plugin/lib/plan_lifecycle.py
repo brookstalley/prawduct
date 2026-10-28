@@ -28,7 +28,8 @@ The rule, in precedence order, each step's ``reason`` naming what it observed:
    ``base_commit`` is not counted: it is where the reviewed interval began,
    already on the base. Else a pending change record for the scope →
    ``merged-unreleased``, inferred from the deleted branch and the pending
-   record.
+   record — but only when the plan is in a base ref's tree, where a merge put
+   it; otherwise the record came with an unmerged plan and shows no merge.
 6. Otherwise ``unknown``. With ``probe_pr=True``, ``gh`` is asked first whether a
    pull request from the branch merged (``git_hygiene.merged_pr_for``) — the one
    route for a squash or rebase merge, whose reviewed commits the base never
@@ -51,7 +52,9 @@ declared base: one ``for-each-ref`` resolving the branch and base refs together,
 one ``for-each-ref --contains`` asking whether any base ref holds the tip (a tip
 equal to a base tip skips it). Step 5's review rule, and step 4's for a tip at
 a base tip, costs one ``--contains`` per distinct anchor, newest fact first,
-stopping at the first hit. A plan with no ``base:`` adds what
+stopping at the first hit. Step 5's change-record inference adds one
+``cat-file -e`` per base ref, asking whether the plan is in its tree, and only
+when a record is pending. A plan with no ``base:`` adds what
 ``coverage.repo_base_branch`` costs. No network call unless ``probe_pr`` — pinned by spy in
 ``tests/test_plan_lifecycle.py``.
 """
@@ -267,6 +270,7 @@ def observe(
     # A pending change record for the scope: the branch was merged and deleted
     # and the release has not cut its record yet (gitflow retention).
     pending_note = ""
+    unmerged_record = False
     if pending is not None:
         if pending.read_error is not None:
             pending_note = f"; the pending change records could not be read ({pending.read_error})"
@@ -276,6 +280,15 @@ def observe(
                 else "fragment" if scope in pending.fragment_scopes
                 else None
             )
+            # A pending record is evidence of a merge only when the merge could be
+            # what brought it: `plan new` writes the fragment with the plan, so on
+            # an unmerged branch (a mistyped `branch:`) both are pending and nothing
+            # merged. A merge would have put the plan in the base's tree.
+            if record is not None and base_refs and _off_every_base(
+                repo_dir, Path(plan_path), base_refs
+            ):
+                record = None
+                unmerged_record = True
             if record is not None:
                 return Lifecycle(
                     MERGED_UNRELEASED,
@@ -294,9 +307,14 @@ def observe(
     elif base_missing:
         looked = f"{base_missing}, and no change record for scope `{scope}` is pending"
     else:
+        record_part = (
+            f"its pending change record came with the plan, which is not in "
+            f"{base_label}'s tree" if unmerged_record
+            else "no change record for it is pending"
+        )
         looked = (
             f"no review fact for scope `{scope}` has its commit in {base_label}'s history, "
-            "and no change record for it is pending"
+            f"and {record_part}"
         )
     missing = f"{gone}; {looked}{pending_note}{record_note}"
     if probe_pr:
@@ -336,6 +354,23 @@ def _exact_refs(out: str) -> dict[str, str]:
         if gitstate.is_object_id(sha) and ref:
             refs[ref] = sha
     return refs
+
+
+def _off_every_base(repo_dir: Path, path: Path, base_refs: list[str]) -> bool:
+    """Whether the file at ``path`` is in no base ref's tree. A merge of any
+    kind (merge commit, squash, rebase) puts the plan in the base, so a plan
+    absent from all of them, whether committed only on an unmerged branch or
+    never committed at all, was not brought by a merge. A path outside the repo
+    answers False, which keeps the caller's inference rather than withdrawing it
+    on no evidence; a failed git read counts as absent."""
+    try:
+        rel = Path(path).resolve().relative_to(Path(repo_dir).resolve()).as_posix()
+    except (OSError, ValueError):
+        return False
+    return not any(
+        evidence.run_git(repo_dir, "cat-file", "-e", f"{ref}:{rel}")[0] == 0
+        for ref in base_refs
+    )
 
 
 def _contained_in(repo_dir: Path, commit: str, base_refs: list[str]) -> str | None | bool:
