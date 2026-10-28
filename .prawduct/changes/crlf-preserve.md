@@ -28,5 +28,5 @@ hid it on Windows only.
 
 ## Consumer note
 In a repo whose `.prawduct/` files use CRLF line endings, `archive-change-log`, `cut-change-log`
-and `migrate-change-log` now keep CRLF in the files they rewrite. Before, they converted those
-files to LF, and the diff showed every line as changed.
+and `migrate-change-log` now keep CRLF in the files they rewrite. On macOS and Linux they used
+to convert those files to LF, so the diff showed every line as changed.
