@@ -225,7 +225,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # review-protocol.md's open-chunk cause was reworded at no net cost. Priced against the SUM:
     # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
     # certifies anyway.
-    "single-pass-inner": 5811,
+    # -4 on 2026-10-28 (second-clone-evidence): the Critic skill's "`critic-consolidate` is the
+    # only writer of both" stopped being true when ingest began deriving the findings cache in a
+    # clone that never consolidated one; the clause naming writers went, and `deferred`'s
+    # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
+    "single-pass-inner": 5806,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -295,7 +299,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # review-protocol.md's open-chunk cause was reworded at no net cost. Priced against the SUM:
     # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
     # certifies anyway.
-    "single-pass-full": 11543,
+    # -4 on 2026-10-28 (second-clone-evidence): the Critic skill's "`critic-consolidate` is the
+    # only writer of both" stopped being true when ingest began deriving the findings cache in a
+    # clone that never consolidated one; the clause naming writers went, and `deferred`'s
+    # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
+    "single-pass-full": 11538,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -431,14 +439,18 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # review-protocol.md's open-chunk cause was reworded at no net cost. Priced against the SUM:
     # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
     # certifies anyway.
-    "coordinator-fork": 12137,
+    # -4 on 2026-10-28 (second-clone-evidence): the Critic skill's "`critic-consolidate` is the
+    # only writer of both" stopped being true when ingest began deriving the findings cache in a
+    # clone that never consolidated one; the clause naming writers went, and `deferred`'s
+    # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
+    "coordinator-fork": 12132,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5812,
-    "single-pass-full": 11544,
+    "single-pass-inner": 5807,
+    "single-pass-full": 11539,
     "dispatched-reviewer": 11009,
-    "coordinator-fork": 12138,
+    "coordinator-fork": 12133,
 }
 
 

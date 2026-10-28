@@ -45,3 +45,4 @@ Every row must account for one release-pending scope. Phase 1 adds the rest.
 | host-seam | ships | |
 | crlf-preserve | ships | |
 | block-append | ships | |
+| second-clone-evidence | ships | |

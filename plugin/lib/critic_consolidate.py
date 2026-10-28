@@ -67,6 +67,7 @@ staleness" defect class this plan deletes.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import sys
@@ -5277,6 +5278,76 @@ def _uncertified_open_chunks(
     except (OSError, ValueError):
         return None
     return (mode, open_ids) if open_ids else None
+
+
+def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]") -> dict:
+    """Point ``.critic-findings.json`` at the newest review fact anchored on
+    this branch, rendering it as consolidation would.
+
+    For a clone whose reviews arrive by ingest: its store holds the facts, but
+    the derived view every cache reader starts from — the verify dispatch's
+    anchor (:func:`_prior_review_fact`), the verify reviewer's "prior findings
+    record", inference — names no review, another branch's (the single slot
+    survives a branch switch), or one a newer arrival has passed. Any of the
+    three stops verify-resolutions in that clone. The record is what
+    consolidation renders minus its advice sentences, which need the live
+    review; for a verify fact, the anchor's unresolved blockers are carried as
+    consolidation carries them.
+
+    Returns ``{"status", "review", "reason"}``. ``status`` is ``derived`` (the
+    cache now names ``review``), ``current`` (it already did — this clone's own
+    consolidation of the newest review is left exactly as written), ``none``
+    (no review anchors on this branch), ``skipped`` (a review is in flight,
+    and its consolidation owns the slot), or ``invalid`` (the rendered record
+    failed the schema its readers trust, and the cache was left as it was).
+
+    ``branch_commits`` is :func:`evidence_notes._branch_commits`'s ``ordered``
+    list, newest first: a review anchored off it belongs to another lineage, and
+    "newest" is the review anchored furthest along it. Neither ``ts`` nor store
+    order can say that alone — ``ts`` is to the second, and ingest appends in
+    the order it reads notes, not the order reviews ran — so they only break
+    ties between reviews on one commit. Only records of this reader's schema
+    are considered; a newer plugin's record is not this function's to render."""
+    if critic_marker.review_active(prawduct_dir)[0]:
+        return {"status": "skipped", "review": None, "reason": "a review is in flight"}
+    usable = [f for f in facts if isinstance(f, dict) and f.get("schema") == evidence.SCHEMA_VERSION]
+    depth = {commit: i for i, commit in enumerate(branch_commits)}
+    on_branch = [
+        (i, f) for i, f in enumerate(evidence.facts_of_kind({"facts": usable}, "review"))
+        if evidence.review_anchor(f.get("body")) in depth
+    ]
+    if not on_branch:
+        return {"status": "none", "review": None, "reason": "no review anchors on this branch"}
+    fact = max(
+        on_branch,
+        key=lambda item: (-depth[evidence.review_anchor(item[1].get("body"))],
+                          str(item[1].get("ts") or ""), item[0]),
+    )[1]
+    review = str(fact.get("id"))
+    findings_path = prawduct_dir / ".critic-findings.json"
+    try:
+        held = json.loads(findings_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        held = None
+    if isinstance(held, dict) and held.get("fact_id") == review:
+        return {"status": "current", "review": review, "reason": None}
+    body = fact.get("body") or {}
+    carried = (
+        carried_blocking(usable, body.get("base_tree"), fact.get("id"))
+        if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
+        else []
+    )
+    # Validated before it replaces anything: a record no reader trusts is worse
+    # than the one it would displace, since they would anchor on it.
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    candidate = prawduct_dir / ".critic-findings.json.derived"
+    atomic_write_text(candidate, json.dumps(fact_to_cache_record(fact, carried=carried), indent=2))
+    if not gates.validate_critic_findings(candidate):
+        candidate.unlink(missing_ok=True)
+        return {"status": "invalid", "review": review,
+                "reason": "the rendered record failed the findings schema"}
+    os.replace(candidate, findings_path)
+    return {"status": "derived", "review": review, "reason": None}
 
 
 def fact_to_cache_record(

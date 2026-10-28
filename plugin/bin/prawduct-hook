@@ -1314,6 +1314,8 @@ def _session_start_ingest(project_dir: Path) -> None:
     appended = result.get("appended") or 0
     if appended > 0:
         print(f"{appended} evidence fact(s) ingested from refs/notes/prawduct")
+        if evidence_notes.cache_line(result):
+            print(evidence_notes.cache_line(result))
     if result.get("status") != "ok":
         print(
             f"NOTE: evidence ingest at session start failed ({result.get('reason') or 'unknown'}) "

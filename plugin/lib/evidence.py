@@ -990,6 +990,10 @@ def _is_observational(record: object) -> bool:
     )
 
 
+#: The range `evidence status` counts facts with no note over, said on the line.
+UNATTACHED_SCOPE = ", on this branch's commits (merge base..HEAD)"
+
+
 def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
     """Filter a ``read_facts`` result to one kind — the consumer-side filter
     that makes unknown future kinds harmless (they can coexist, never satisfy)."""
@@ -1738,7 +1742,13 @@ def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
     if found["status"] != "ok":
         print(f"notes: facts with no note not counted — {found['reason']}")
     else:
-        print(f"{len(found['missing'])} transported fact(s) with no note on their commit")
+        # Counted over this branch's commits only (`evidence_notes.unattached`
+        # bounds it, as sync's reconcile does): older facts with no note are not
+        # owed one, and a bare count read as the whole store's after a sync.
+        print(
+            f"{len(found['missing'])} transported fact(s) with no note on their commit"
+            f"{UNATTACHED_SCOPE}"
+        )
         if found["missing"]:
             print(remedy)
     ahead = evidence_notes.unpushed(project_dir, refs or [])

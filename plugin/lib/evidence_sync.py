@@ -193,6 +193,8 @@ def sync(project_dir: Path, *, push: bool = True) -> dict:
     result["ingested"] = ingested["appended"]
     if ingested["reason"]:
         notes.append(ingested["reason"])
+    if evidence_notes.cache_line(ingested):
+        notes.append(evidence_notes.cache_line(ingested))
 
     if push:
         if not _has_ref(project_dir, NOTES_REF):

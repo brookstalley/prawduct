@@ -2777,7 +2777,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
             )
 
 
-def branch_coverage_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
+def branch_coverage_verdict(
+    project_dir: Path, *, record_grants: bool = False, read: "dict | None" = None
+) -> dict:
     """:func:`check_cumulative_critic`'s verdict as DATA — the same span, the
     same composition, the same base-advance transfer, with no printing and no
     exit code.
@@ -2796,11 +2798,15 @@ def branch_coverage_verdict(project_dir: Path, *, record_grants: bool = False) -
     authority that spent it. An advisory read appending one would file a grant
     under a gate that never ran.
 
+    ``read`` is a :func:`evidence.read_facts` result the caller already holds
+    (inference threads its one read), else the store is read here.
+
     Returns what :func:`_branch_coverage` documents, minus the private
     rendering context: a caller that wants the answer never sees the memo
     closures the printer needs.
     """
-    read = evidence.read_facts(project_dir)
+    if read is None:
+        read = evidence.read_facts(project_dir)
     cache = verdict_cache.VerdictCache.for_read(project_dir, read)
     try:
         answer = _branch_coverage(

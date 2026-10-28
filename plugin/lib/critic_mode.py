@@ -34,7 +34,8 @@ return the first that fires:
      recommendation no longer needs to propagate anchors.)
   2. ``cumulative`` — working tree is clean (no uncommitted code) AND
      branch is ≥2 commits ahead of the detected base branch AND no
-     ``cumulative``-mode findings file exists for current HEAD. Signal:
+     ``cumulative``-mode findings file exists for current HEAD AND the PR
+     gate's composed coverage does not already pass. Signal:
      builder has shipped chunks and is at the ``/pr create`` precondition
      point. **Not mid-plan** (the branch's own plan still owes a later
      review): there a clean tree means the builder committed the chunk
@@ -63,7 +64,9 @@ return the first that fires:
   4. ``cumulative`` when the tree is clean and a committed bundle is
      dispatchable, since a ``chunk``/``final`` interval ends at the working
      tree and, with nothing unreviewed behind HEAD, would be empty (and
-     ``critic-begin`` answers an empty interval without a review) — except mid-plan, which answers as rule 2 does; otherwise ``chunk`` —
+     ``critic-begin`` answers an empty interval without a review) — except
+     mid-plan, which answers as rule 2 does, and on a branch the PR gate
+     already passes, which answers ``deferred``; otherwise ``chunk`` —
      grounded on the plan when one exists, and the bare default when none
      does. ``final`` is never a default: the stage-keyed rigor norm
      (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
@@ -327,7 +330,9 @@ def infer_mode(
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
         )
 
-    cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
+    cumulative_reason = _rule_cumulative_fires(
+        prawduct_dir, project_dir, _facts_for(project_dir, progress)
+    )
     if cumulative_reason:
         ext = _extension(clean_tree=True)
         if ext:
@@ -399,7 +404,16 @@ def infer_mode(
             )
             if mid:
                 return mid
-            return "cumulative", f"rule-4 cumulative: {redirect}"
+            if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
+                return "cumulative", f"rule-4 cumulative: {redirect}"
+            # A covered branch on a clean tree owes nothing: `chunk` would dispatch
+            # an empty interval, and `cumulative` would buy a review the PR gate
+            # does not need.
+            return MODE_DEFERRED, (
+                "rule-4 deferred: the working tree is clean and the PR gate already "
+                "passes for this branch (`prawduct-hook check-cumulative-critic`), so "
+                "no review is owed now"
+            )
     if total > 0:
         return "chunk", (
             f"rule-4 chunk: {_plan_relation_note(project_dir, plan)}, prior chunks "
@@ -439,9 +453,11 @@ def _explicit_mode(
 
     **Only where the redirect works.** :func:`_clean_tree_redirect` returns ""
     when `cumulative` would refuse in its own way (no resolvable base, nothing
-    committed beyond it, or a fresh cumulative record already covering HEAD).
-    Then the token stands and the operator gets the honest empty-interval
-    refusal instead of a redirect to a second one — the same rule rule 4 keeps.
+    committed beyond it, or a fresh cumulative record already covering HEAD),
+    and the token also stands on a branch the PR gate already passes
+    (:func:`_branch_already_covered`), where a ``cumulative`` would buy nothing.
+    Then the operator gets the honest empty-interval refusal instead of a
+    redirect to a second one — the same rule rule 4 keeps.
 
     **Nor mid-plan, where the interval is not empty.** A clean tree mid-plan
     still holds unreviewed commits when the builder committed the chunk before
@@ -473,7 +489,8 @@ def _explicit_mode(
                     f"explicit-args {token} (mid-plan, not redirected): "
                     f"{_mid_plan_note(project_dir, plan, progress)}; {_interval_note(start)}"
                 )
-            return "cumulative", f"explicit-args {token} redirected: {redirect}"
+            if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
+                return "cumulative", f"explicit-args {token} redirected: {redirect}"
     return token, "explicit-args"
 
 
@@ -540,6 +557,9 @@ def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool
 
     One home for the question: rule 2 skips on it, and rule 4's clean-tree
     redirect must not undo that skip by routing to the mode rule 2 just declined.
+    Whether the branch is already covered some other way is a separate question
+    (:func:`_branch_already_covered`), asked only where a ``cumulative`` would
+    be named: mid-plan, the redirect still has to reach :func:`_mid_plan_answer`.
     """
     head_sha = gitstate._git_head_sha(project_dir)
     findings_path = prawduct_dir / ".critic-findings.json"
@@ -553,6 +573,23 @@ def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool
         data.get("commit_reviewed") == head_sha
         and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
     )
+
+
+def _branch_already_covered(project_dir: Path, read: "dict | None") -> bool:
+    """True when the PR gate's own answer (:func:`gates.branch_coverage_verdict`)
+    is ``covered`` or ``transferred`` — so naming a ``cumulative`` would buy a
+    review the gate does not need.
+
+    The findings cache cannot answer this: it holds one review, so after a
+    cumulative and a clean verify pass it holds the verify, and a clone whose
+    reviews arrived as notes may have none. ``read`` is the inference's one
+    store read (:func:`_facts_for`). Failures come back as statuses
+    (``no-base``, ``store-precheck``, ...), and every one but these two leaves
+    the cumulative named, as before."""
+    from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
+
+    answer = gates.branch_coverage_verdict(project_dir, read=read)
+    return answer.get("status") in ("covered", "transferred")
 
 
 class PlanProgress(NamedTuple):
@@ -1055,7 +1092,7 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
 
 
 def _rule_cumulative_fires(
-    prawduct_dir: Path, project_dir: Path
+    prawduct_dir: Path, project_dir: Path, read: "dict | None" = None
 ) -> str:
     """Rule 2: no code in flight + ≥2 commits ahead + no fresh cumulative record.
 
@@ -1088,11 +1125,13 @@ def _rule_cumulative_fires(
     # field, so a record carrying it is v2-era state the gates ignore.)
     if _fresh_cumulative_covers_head(prawduct_dir, project_dir):
         return ""
+    if _branch_already_covered(project_dir, read):
+        return ""
 
     return (
         f"branch is {commits_ahead} commits ahead of {base_branch}, "
         "working tree clean, no fresh cumulative-mode record for "
-        "current HEAD"
+        "current HEAD, and no composed review coverage spans the branch"
     )
 
 
