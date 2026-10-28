@@ -314,6 +314,27 @@ def _deliver_stop_advisories(advisories: list[str]) -> None:
         _host().emit_stop_advisory("\n\n".join(shown))
 
 
+#: How a blocked turn should answer the block, said once at the top of every
+#: Stop block reason. The turn's answer and its standing block are already
+#: above the block; a model that writes both again reads to the operator as
+#: the hook firing twice. The two exceptions are the closes the gates read
+#: from the LAST message: a `RUNNING` / `DO NOT CLEAR` close that defers the
+#: session-end gates (left off, the next Stop fires them), and a close an
+#: item says to change.
+STOP_BLOCK_ANSWER = (
+    "Your answer above stands. Do only what the items below ask, then end with a short "
+    "note of what you did. Do not repeat your answer or write its closing block again, "
+    "unless you need to keep a `RUNNING` / `DO NOT CLEAR` close or an item tells you to "
+    "change the close."
+)
+
+
+def _stop_block_opening() -> list[str]:
+    """The lines every Stop block reason starts with: the heading and
+    :data:`STOP_BLOCK_ANSWER`. The one owner, so no block can leave it out."""
+    return ["", "BLOCKED — resolve before ending session:", STOP_BLOCK_ANSWER, ""]
+
+
 def _stop_advisories_in_block(advisories: list[str]) -> list[str]:
     """The block-reason lines carrying the Stop's advisories: after the
     blockers, under ``ADVISORIES (not blocking):``. The block reason reaches
@@ -2928,7 +2949,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             f"HOST: {unknown}\n",
             "host",
         )
-        exit_code = host.block(f"\nBLOCKED — resolve before ending session:\n\n{blocker}\n")
+        exit_code = host.block("".join(f"{line}\n" for line in [*_stop_block_opening(), blocker]))
         _record_stop_block(project_dir, [blocker])
         return exit_code
     event = host.read_event("stop", stop_input or {})
@@ -4127,7 +4148,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # handed to the host seam, which writes it and picks the blocking exit;
     # the notes printed above it are still written here (see `lib/host.py`).
     if blockers:
-        reason = ["", "BLOCKED — resolve before ending session:", ""]
+        reason = _stop_block_opening()
         reason.extend(blockers)
         _footer = _waiver_footer(
             [getattr(b, "gate", None) for b in blockers], abandoned_critic, waivers
