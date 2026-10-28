@@ -323,6 +323,26 @@ class TestCommand:
         assert after.legacy_scopes == []
         assert all(f.ok for f in change_fragments.load_pending(project))
 
+    def test_a_crlf_log_and_the_fragments_moved_out_of_it_stay_crlf(self, tmp_path):
+        """The writer is ``newline=""``, so a log rewritten from a universal-newline
+        read would come out LF: a whole-file diff in a CRLF repo (#1073)."""
+        project = _project(tmp_path, None)
+        log = project / ".prawduct" / "change-log.md"
+        log.write_bytes(MIXED.replace("\n", "\r\n").encode("utf-8"))
+        before = release_readiness.pending_scopes(project)
+        run = _migrate(project, "--apply")
+        assert run.returncode == 0, run.stderr
+        written = [log, *sorted((project / ".prawduct" / "changes").glob("*.md"))]
+        assert [p.name for p in written] == ["change-log.md", "alpha.md", "gamma.md"]
+        for path in written:
+            data = path.read_bytes()
+            assert b"\r\n" in data and data.count(b"\n") == data.count(b"\r\n"), path.name
+        after = release_readiness.pending_scopes(project)
+        assert sorted(after.fragment_scopes) == sorted(before.legacy_scopes) == ["alpha", "gamma"]
+        assert after.legacy_scopes == [] and after.refusals == []
+        assert all(f.ok for f in change_fragments.load_pending(project))
+        assert "2026-10-18: shipped fix" in log.read_text(encoding="utf-8")
+
     def test_separated_changes_are_named_and_join_the_pending_set(self, tmp_path):
         several = _entry(
             "2026-10-15: two", "type=fix | scope=delta", "D.\n\n<!-- prawduct: type=fix | scope=epsilon -->\n\nE."
