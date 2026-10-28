@@ -465,6 +465,60 @@ class TestNotEvidenceOfAMerge:
         assert lc.state == "merged-unreleased", lc
         assert "review R-real's commit" in lc.reason
 
+    def test_a_dirty_tree_review_at_its_own_base_commit_merged_no_ff_is_a_merge(self, repo):
+        """#1079's shape, in the lifecycle: a review of uncommitted work is anchored
+        at its ``base_commit``, the branch HEAD the dirty tree sat on. A
+        ``--no-ff`` merge brings that commit into develop through its second
+        parent, off the first-parent history, so it shows the merge. The
+        fork-point sibling above is the control: the same anchor-equals-base
+        shape, on develop's first-parent history, shows nothing."""
+        head = _feature(repo)
+        _merge_no_ff(repo)
+        _delete(repo)
+        dirty = _review("R-dirty", None, dispatch_commit=head, base_commit=head)
+        lc = _observe(_plan(repo), repo, facts=_facts(dirty))
+        assert lc.state == "merged-unreleased", lc
+        assert "review R-dirty's commit" in lc.reason
+
+    def test_the_first_parent_question_failing_proves_no_merge(self, repo, monkeypatch):
+        """Git unable to say where the anchor sits on develop: the review
+        anchored at its own ``base_commit`` proves nothing (authority fails
+        closed), where it would otherwise show the ``--no-ff`` merge."""
+        head = _feature(repo)
+        _merge_no_ff(repo)
+        _delete(repo)
+        dirty = _review("R-dirty", None, dispatch_commit=head, base_commit=head)
+        assert _observe(_plan(repo), repo, facts=_facts(dirty)).state == "merged-unreleased"
+        real = evidence.run_git
+
+        def run_git(repo_dir, *args, **kw):
+            if args[:1] == ("rev-list",):
+                return 128, "", "fatal: injected failure"
+            return real(repo_dir, *args, **kw)
+
+        monkeypatch.setattr(evidence, "run_git", run_git)
+        assert _observe(_plan(repo), repo, facts=_facts(dirty)).state == "unknown"
+
+    def test_a_newer_base_commit_review_does_not_hide_the_older_one_after_a_fast_forward(self, repo):
+        """A committed review R1 anchored at the branch commit, then a newer
+        dirty-tree pass V1 dispatched at that same commit (so its anchor is its
+        own ``base_commit``), then a fast-forward and the branch deleted. On the
+        first-parent history V1's anchor cannot be told from a fork point, so
+        it proves nothing — and it must not stand in for R1, which proves the
+        merge from the same commit."""
+        fork = _git(repo, "rev-parse", "develop")
+        sha = _feature(repo)
+        _git(repo, "merge", "-q", "--ff-only", BRANCH)
+        _git(repo, "push", "-q", "origin", "develop")
+        _delete(repo)
+        older = _review("R1", sha, base_commit=fork, ts="2026-10-25T00:00:00Z")
+        newer = _review("V1", None, dispatch_commit=sha, base_commit=sha, ts="2026-10-26T00:00:00Z")
+        lc = _observe(_plan(repo), repo, facts=_facts(older, newer))
+        assert lc.state == "merged-unreleased", lc
+        assert "review R1's commit" in lc.reason
+        # Control: V1 alone is the fork-point shape there, and proves nothing.
+        assert _observe(_plan(repo), repo, facts=_facts(newer)).state == "unknown"
+
     def test_a_branch_with_no_commits_of_its_own_is_in_progress(self, repo):
         """A freshly cut branch's tip IS its base's tip, which git calls
         contained; it has no commits of its own, so it is not a merge."""

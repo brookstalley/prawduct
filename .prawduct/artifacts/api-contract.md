@@ -154,7 +154,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
   `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
-  — see § Error Model; `--chunks` names the build-plan chunks the review certifies — a comma list,
+  — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
+  (`methodology/planning.md` "Chunk state") — a comma list,
   repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
   alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
@@ -370,7 +371,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `## Status` tick read in memory, `built` is git-derived and certifies nothing (a commit naming the
   chunk in its subject or touching its deliverables, a change fragment still the `plan new` stub
   touching nothing; the short-plan Stop gate reads it only to arm its last-chunk block) and `reason` says why an entry that looked like an answer was not one (an
-  unreadable `dropped:` line, a fact whose anchor is not in the branch's history). It also
+  unreadable `dropped:` line, a fact whose anchor is not in the branch's history), and for a
+  `done` chunk certified by a fact that does not name it, that its review's interval carries a
+  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"). It also
   prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
   `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,
   `merged-unreleased`, `released`, `superseded`, `unknown`, observed from git, the review facts'
@@ -393,14 +396,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]` (mutating) withdraws one
   fact's certification of one chunk by appending a `chunk-retracted` fact (`{scope, chunk,
   fact_id, reason, retracted_at}`), attached as a note on HEAD like an import. `--fact` omitted
-  names the fact certifying the chunk now; `--plan` omitted, the bound plan. It can only reopen a
+  names the fact certifying the chunk now — by name or by its interval; `--plan` omitted, the bound plan. It can only reopen a
   chunk, so it needs no authority beyond the reason it records. Exit 0 written or already
   retracted (nothing written — the same command re-run included; `--json` `action` is `retracted` | `already-retracted`, beside
   `plan_path`, `scope`, `chunk`, `fact_id`, `retraction_id`, and `state` / `certified_by` — what the
   chunk reads after); 1 `refused: <code>` for `no-plan`, `archived-plan`, `store-unreadable`,
   `no-scope`, `unknown-chunk`, `box-import` (the chunk's `## Status` box is ticked, and certifies it
   after any withdrawal: untick it first), `not-certified`,
-  `unknown-fact`, `other-scope`, `not-named`, `fact-append-failed`; 2 usage or a path that is not
+  `unknown-fact`, `other-scope`, `not-named` (the fact neither names the chunk nor certifies it by its interval), `fact-append-failed`; 2 usage or a path that is not
   a build plan. Refused inside a scratch worktree.
   `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
   `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per

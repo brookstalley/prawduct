@@ -132,6 +132,9 @@ _FRONTMATTER_FENCE = "---"
 _GOVERNED_BY_RE = re.compile(r"^governed_by:\s*$")
 _TOP_LEVEL_KEY_RE = re.compile(r"^[A-Za-z_][\w-]*:")
 _ARTIFACT_ENTRY_RE = re.compile(r"^(\s*)-\s+artifact:\s*(\S+)\s*$")
+#: A bare-path entry, ``- .prawduct/artifacts/x.md`` — a scalar item, so it
+#: can carry no ``dispositions:``. Quotes around the path are allowed.
+_BARE_PATH_ENTRY_RE = re.compile(r"""^(\s*)-\s+["']?([^\s:"']+)["']?\s*$""")
 _DISPOSITIONS_KEY_RE = re.compile(r"^(\s*)dispositions:\s*$")
 _LIST_ITEM_RE = re.compile(r"^(\s*)-\s+\S")
 #: Where a YAML *value* begins on a line: after a `- ` item marker, after a
@@ -515,12 +518,20 @@ def _parse_governed_by(text: str) -> list[dict]:
     is fixed by the build-plan template. A disposition is a list item nested
     under ``dispositions:``; a soft-wrapped continuation does not start with
     ``- `` and so is not miscounted.
+
+    Two more entry shapes, so no item of the block is read as nothing — which
+    reported a plan disposing of no norm as fully disposed. A bare path
+    (``- .prawduct/artifacts/x.md``, the form most plans here were written
+    in) is an entry with ``"path": True`` and no dispositions, since a scalar
+    item can hold none. Any other item at the entry level is kept with
+    ``"unreadable": True`` and its text as ``artifact``.
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != _FRONTMATTER_FENCE:
         return []
     entries: list[dict] = []
     in_block = False
+    block_indent = -1
     entry_indent = -1
     disp_indent = -1
     for idx, line in enumerate(lines[1:], start=2):
@@ -535,10 +546,27 @@ def _parse_governed_by(text: str) -> list[dict]:
         artifact = _ARTIFACT_ENTRY_RE.match(line)
         if artifact:
             entry_indent = len(artifact.group(1))
+            block_indent = entry_indent if block_indent < 0 else block_indent
             disp_indent = -1
             entries.append(
                 {"artifact": artifact.group(2), "dispositions": 0, "line": idx}
             )
+            continue
+        item = _LIST_ITEM_RE.match(line)
+        if item and (block_indent < 0 or len(item.group(1)) <= block_indent):
+            entry_indent = len(item.group(1))
+            block_indent = entry_indent if block_indent < 0 else block_indent
+            disp_indent = -1
+            bare = _BARE_PATH_ENTRY_RE.match(line)
+            if bare:
+                entries.append(
+                    {"artifact": bare.group(2), "dispositions": 0, "line": idx, "path": True}
+                )
+            else:
+                entries.append({
+                    "artifact": line.strip()[1:].strip(), "dispositions": 0, "line": idx,
+                    "unreadable": True,
+                })
             continue
         if not entries:
             continue
@@ -704,7 +732,23 @@ def _check_governed_by(
         ]
     for entry in _parse_governed_by(text):
         artifact = entry["artifact"]
-        resolved = _resolve_artifact(project_dir, prawduct_dir, artifact)
+        if entry.get("unreadable"):
+            findings.append(
+                _finding(
+                    "governed-by-gap",
+                    plan_rel,
+                    entry["line"],
+                    f"`governed_by:` item `{artifact}` is in no form this check reads, so "
+                    "no norm it stands for is graded — write `- artifact: <name>` with a "
+                    "`dispositions:` line per norm",
+                )
+            )
+            continue
+        if entry.get("path"):
+            candidate = project_dir / artifact
+            resolved = candidate if candidate.is_file() else None
+        else:
+            resolved = _resolve_artifact(project_dir, prawduct_dir, artifact)
         artifact_text = _read_text(resolved) if resolved is not None else None
         if artifact_text is None:
             findings.append(
@@ -713,8 +757,8 @@ def _check_governed_by(
                     plan_rel,
                     entry["line"],
                     f"`governed_by:` cites {artifact!r}, but no readable "
-                    f"{artifact}.md exists in the repo — the plan claims "
-                    "governance by a file no reader can check",
+                    f"{artifact if entry.get('path') else artifact + '.md'} exists in the "
+                    "repo — the plan claims governance by a file no reader can check",
                 )
             )
             continue
@@ -729,7 +773,9 @@ def _check_governed_by(
                     entry["line"],
                     f"{artifact} carries {norms} `## Direction` norm(s) but this "
                     f"plan disposes of {entry['dispositions']} — each norm needs a "
-                    "recorded disposition, and \"inapplicable, because —\" is one",
+                    "recorded disposition, and \"inapplicable, because —\" is one"
+                    + (" (a bare path holds none: write it as `- artifact: <name>` with "
+                       "`dispositions:`)" if entry.get("path") else ""),
                 )
             )
     return findings
