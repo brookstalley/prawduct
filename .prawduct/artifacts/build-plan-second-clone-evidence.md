@@ -11,7 +11,7 @@ depends_on:
 governed_by:
   - artifact: data-model
     dispositions:
-      - "derived views are disposable and never authoritative → conforms: ingest becomes a second writer of .critic-findings.json, the writer-posture case the norm says returns only if a view writer does; it is advice (fails soft to None, never overwrites), renders with the same fact_to_cache_record projection, and no gate reads what it writes"
+      - "derived views are disposable and never authoritative → conforms: ingest becomes a second writer of .critic-findings.json, the writer-posture case the norm says returns only if a view writer does; it is advice (every failure comes back as an error/invalid status the ingest reports, and never fails the ingest), it re-points the view only at the newest review on this branch and leaves a cache already naming it as written, renders with the same fact_to_cache_record projection, validates before replacing, and no gate reads what it writes"
   - .prawduct/artifacts/architecture.md
   - .prawduct/artifacts/api-contract.md
 partition: serial — one chunk; the three fixes share the findings cache and the coverage answer
@@ -69,9 +69,13 @@ verdict, but three surfaces still read only what this clone wrote itself:
 - **Deliverables:** `critic_mode` rule-2 freshness; `evidence_notes.ingest` deriving the cache;
   `evidence status` wording; tests; `.prawduct/changes/second-clone-evidence.md`; a `ships` row.
 - **Tests:** rule 2 silent when coverage composes and no cache exists, and still firing when
-  uncovered (control); ingest into a cache-less clone writes a schema-valid cache naming the newest
-  branch review, leaves an existing cache alone, and writes nothing when no ingested review anchors
-  on the branch; a verify-resolutions dispatch in such a clone finds its anchor; status wording.
+  uncovered or blocked (controls); a covered clean branch answers `deferred`, and a named `chunk`
+  there stands; after ingest the cache names the newest branch review — written when missing,
+  re-pointed from another branch's or an older review, left as written when already current,
+  untouched while a review is in flight, never pointed off the branch, never rendered from a newer
+  schema, and a derivation failure reported without failing the ingest; "newest" by branch
+  position in both fact orders; a verify-resolutions dispatch in such a clone finds its anchor;
+  status wording; the ingest and sync output lines.
 - **Acceptance criteria:** Success bullets 1-3.
 - **Done when:**
   1. Acceptance criteria met and tests pass, each new guard seen red
