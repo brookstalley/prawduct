@@ -497,6 +497,9 @@ class TestCollectorFetch:
 
     @pytest.mark.parametrize(
         "body", [b"{not json", b'{"no_days": []}', b"[1, 2]", b"[" * 100_000],
+        # Named, because the deep-nesting body would otherwise BE its node id: a
+        # 100,000-character id that test runners and evidence files choke on.
+        ids=["malformed", "no-days-key", "a-list", "deep-nesting"],
     )
     def test_an_index_that_is_not_an_index_exits_1(self, collector, capsys, body):
         _Collector.routes["/bundles/index.json"] = (200, body, None)
