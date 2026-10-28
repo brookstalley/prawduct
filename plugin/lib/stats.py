@@ -6,7 +6,8 @@ answer — *did version N cost more or protect more than N-1?* — so it reads t
 clone-shared evidence store, where every fact carries the plugin version that
 wrote it (``actor.plugin``) and nothing is lost when a worktree is deleted.
 
-Every number is bucketed by plugin ``major.minor`` and defined in
+Every number is bucketed by plugin ``major.minor`` (and, under ``--by-build``,
+by the build within it, ``actor.build``) and defined in
 ``docs/governance-telemetry.md`` (§ ``prawduct-hook stats``), which is the one
 home of the definitions; the code below implements them and does not restate
 them.
@@ -87,6 +88,36 @@ def version_bucket(plugin) -> str:
 def _bucket(fact: dict) -> str:
     actor = fact.get("actor")
     return version_bucket(actor.get("plugin") if isinstance(actor, dict) else None)
+
+
+#: The build row for facts that recorded no ``actor.build``: a marketplace
+#: install, a plugin root git could not read, or a fact older than the field.
+#: Never a value a writer stamps — a build is hex, with at most ``+dirty``.
+UNSTAMPED = "unstamped"
+
+
+def build_of(fact: dict) -> str:
+    """The fact's ``actor.build``, or :data:`UNSTAMPED`."""
+    actor = fact.get("actor")
+    build = actor.get("build") if isinstance(actor, dict) else None
+    return build if isinstance(build, str) and build else UNSTAMPED
+
+
+def aggregate_by_build(facts: list[dict], since=None, until=None) -> dict:
+    """``{major.minor: {build: report body}}`` — :func:`aggregate` with each
+    version split by build. Builds are listed in the order the store first
+    saw them, which is the order they ran, since a sha says nothing of its
+    age. Each body is defined exactly as a ``by_version`` one is, over that
+    build's facts; rows need not sum to the version's totals, because a
+    session or scope that ran on two builds counts in both."""
+    first_seen: dict = {}
+    for i, fact in enumerate(facts):
+        first_seen.setdefault((_bucket(fact), build_of(fact)), i)
+    rows = aggregate(facts, since, until, bucket=lambda f: (_bucket(f), build_of(f)))
+    nested: dict = {}
+    for version, build in sorted(rows, key=lambda key: (key[0], first_seen[key])):
+        nested.setdefault(version, {})[build] = rows[(version, build)]
+    return nested
 
 
 def _body(fact: dict) -> dict:
@@ -424,18 +455,31 @@ def _reason_lines(stop_blocks: dict) -> list:
     return lines
 
 
+def _labelled_buckets(report: dict) -> list:
+    """``(heading, body)`` per block of the human report: one per version, or,
+    when the report carries ``by_build``, one per build of each version."""
+    by_build = report.get("by_build")
+    if by_build is None:
+        return [(f"plugin {version}", v) for version, v in report["by_version"].items()]
+    return [
+        (f"plugin {version} build {build}", v)
+        for version, builds in by_build.items()
+        for build, v in builds.items()
+    ]
+
+
 def render_human(report: dict) -> str:
     lines = [f"prawduct stats — {report['project']}"]
     window = report["window"]
     if window["since"] or window["until"]:
         lines.append(f"window: {window['since'] or 'start'} → {window['until'] or 'now'}")
-    for version, v in report["by_version"].items():
+    for heading, v in _labelled_buckets(report):
         f = v["findings"]
         sb = v["stop_blocks"]
         measured = v["review_seconds"]["measured"]
         lines += [
             "",
-            f"plugin {version}: {v['sessions']} session(s), {v['scopes']} scope(s), "
+            f"{heading}: {v['sessions']} session(s), {v['scopes']} scope(s), "
             f"{v['reviews']['total']} review(s)",
             "  cost",
             f"    rounds per scope   median {_fmt(v['rounds_per_scope']['median'])}, "
@@ -489,14 +533,16 @@ def render_human(report: dict) -> str:
 def stats_cmd(project_dir: Path, argv: list[str]) -> int:
     """Body of ``prawduct-hook stats``. Exit 0 with a report (an empty store
     is an answer); exit 1 on bad arguments or a store that cannot be read."""
-    usage = "usage: stats [--json] [--since <stamp>] [--until <stamp>]"
-    as_json = False
+    usage = "usage: stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]"
+    as_json = by_build = False
     since = until = None
     rest = list(argv)
     while rest:
         arg = rest.pop(0)
         if arg == "--json":
             as_json = True
+        elif arg == "--by-build":
+            by_build = True
         elif arg in ("--since", "--until"):
             if not rest:
                 print(f"stats: {arg} needs a value ({usage})", file=sys.stderr)
@@ -529,6 +575,10 @@ def stats_cmd(project_dir: Path, argv: list[str]) -> int:
         "schema_ahead": len(read.get("schema_ahead") or []),
         "by_version": aggregate(read["facts"], since, until),
     }
+    if by_build:
+        # Present only when asked for, so the default shape is unchanged and
+        # REPORT_SCHEMA_VERSION does not move.
+        report["by_build"] = aggregate_by_build(read["facts"], since, until)
     if as_json:
         print(json.dumps(report, indent=2))
     else:

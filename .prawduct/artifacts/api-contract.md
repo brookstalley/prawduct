@@ -211,7 +211,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   tracking ref to what it pushed; a remote with no notes yet is not an error. Note lines carry the
   store line with the actor's locator fields reduced: `actor.worktree` cut to its basename, or to
   `.claude/worktrees/<name>` for a harness scratch worktree (so the receiving clone classifies the
-  fact as ephemeral too), never the path above it; `actor.session` dropped. Exit 0 ok; 1 a reported failure naming the failing `step`
+  fact as ephemeral too), never the path above it; `actor.session` dropped; `actor.plugin`,
+  `actor.branch` and `actor.build` (the plugin checkout's commit sha) travel as written. Exit 0 ok; 1 a reported failure naming the failing `step`
   (`fetch`, `merge`, `reconcile`, `ingest`, `push`), git's stderr scrubbed of credentials and
   nothing retried; 2 usage.
   `/prawduct:pr create|update` runs it after the branch push, and a failure there is reported
@@ -701,7 +702,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `schema_version` (see Versioning).
   - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the
     opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
-    `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
+    `schema_ahead`, and `by_version` keyed by plugin `major.minor`; with `--by-build`, also
+    `by_build`, keyed by `major.minor` then `actor.build` (`unstamped` when absent). The per-version keys are defined
     in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
   - `aggregate-stats --json` → **no skill consumer today**: top-level `schema_version`,
     `generated_at`, `sources` (`local`, `local_skipped`, `contributed` — `bundles`, `lines`,

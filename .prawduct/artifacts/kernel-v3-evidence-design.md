@@ -72,13 +72,16 @@ semantics]
 ```json
 {"schema": 1, "kind": "review", "id": "<review-id>", "ts": "<iso8601>",
  "actor": {"session": "...", "worktree": "...", "plugin": "2.4.0",
-           "branch": "fix/thing"},
+           "branch": "fix/thing", "build": "f63a25e2aa94"},
  "body": {...}}
 ```
 
 - **`actor.branch` is optional** (#648), omitted rather than null when HEAD is
   detached or unreadable. No schema version moved: absence is a valid state
   that reads as "unknown", which lands on the restrictive classification.
+- **`actor.build` is optional** (#1086) by the same rule: the plugin checkout's
+  commit sha (12 hex), `+dirty` when the plugin tree has changes, omitted when
+  the plugin is not a git checkout or git fails.
 
 - **Append-only** (R5 posture): nothing edits or deletes a line; corrections
   are new facts. Single-slot files become derived caches only (D7).
