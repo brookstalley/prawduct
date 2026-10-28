@@ -102,17 +102,17 @@ STATIC_ANCHOR = f"""{ANCHOR_MARKER}
 
 ## Governance (Prawduct)
 
-This repo is governed by **Prawduct**, loaded through your agent host's
-Prawduct integration.
+This repo is governed by **Prawduct**, through your agent host's integration.
 
-**Check first: is that integration loaded?** If not, **governance is OFF** — no
-Stop gate, no Critic, nothing below enforced. Tell the user; don't proceed as if
-governed. If you can't tell, assume it isn't.
+**Check first: is it loaded?** If not, or if you can't tell,
+**governance is OFF** — no Stop gate, no Critic, nothing below enforced. Tell
+the user before any work; don't proceed as if governed or imitate its gates from
+its files.
 
-- **Claude Code:** loaded when `/prawduct:*` commands are available; if not, run
+- **Claude Code:** loaded if its session banner appeared; if not, run
   `claude plugin install {PLUGIN_ID}` and restart.
 
-**With it loaded — before writing any code, STOP and read the build cycle**
+**Then, before writing any code, STOP and read the build cycle**
 (Claude Code: `/prawduct:methodology building`). Skipping it is the #1 governance
 failure.
 
@@ -129,8 +129,8 @@ Hardest rules:
   review.
 
 **Enforcement is structural — while the integration is loaded:** its Stop hook
-runs at session end and **blocks** if code changed against an active build plan
-with no Critic findings.
+**blocks** at session end if code changed against an active build plan with no
+Critic findings.
 """
 
 #: Where the anchor lives, and the one line that makes Claude Code read it.
@@ -364,7 +364,8 @@ def legacy_sync_stands_down(project_dir: Path) -> bool:
 
 def transform_settings(project_dir: Path) -> bool:
     """Strip the committed prawduct hook wiring + framework banner from
-    ``.claude/settings.json`` and merge the install reference.
+    ``.claude/settings.json``, merge the install reference, and add the
+    unloaded-plugin tripwire hook (``lib/unloaded_tripwire.py``).
 
     Preserves every user-owned key, including user-defined hooks and any other
     marketplaces/plugins. ``companyAnnouncements`` (the v1.x framework banner) is
@@ -420,6 +421,15 @@ def transform_settings(project_dir: Path) -> bool:
             existing = {}
         existing.update(mapping)
         data[top_key] = existing
+
+    # The project-level SessionStart hook that speaks when the plugin did not
+    # load — the one piece of governance that runs without it. Imported here:
+    # the tripwire reads this module's PLUGIN_ID, so the import stays one-way. A
+    # hooks shape it cannot add to is left alone; callers report it
+    # (`unloaded_tripwire.skipped_warning`).
+    from . import unloaded_tripwire  # noqa: PLC0415
+
+    unloaded_tripwire.ensure_tripwire(data)
 
     if json.dumps(data, sort_keys=True) == before and path.is_file():
         return False
@@ -1052,6 +1062,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
                 "untouched, so the `distribution: plugin` marker will NOT be "
                 "recorded and no retired keys will be removed. Fix the file first."
             )
+        _note_skipped_tripwire(project_dir, result)
         result["notes"].append(
             "Dry run — no files changed. Re-run with --apply to perform the cutover."
         )
@@ -1082,6 +1093,7 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
     edited.extend(apply_governance_anchor(project_dir).paths)
     if transform_settings(project_dir):
         edited.append(".claude/settings.json")
+    _note_skipped_tripwire(project_dir, result)
     # Before the append, so the distribution marker lands at the end of a state
     # file that has already shed its retired keys rather than above them.
     state_keys_removed = strip_retired_state(project_dir)
@@ -1117,6 +1129,15 @@ def migrate_to_plugin(project_dir: str | Path, *, apply: bool = False) -> dict:
         "Cutover applied. Review `git status`, then commit as one reversible commit."
     )
     return result
+
+
+def _note_skipped_tripwire(project_dir: Path, result: dict) -> None:
+    """Say so when the settings' ``hooks`` shape stops the tripwire being written."""
+    from . import unloaded_tripwire  # noqa: PLC0415 — see transform_settings
+
+    warning = unloaded_tripwire.skipped_warning(project_dir)
+    if warning:
+        result["notes"].append(warning)
 
 
 def run(project_dir: str | Path, argv: list[str]) -> int:

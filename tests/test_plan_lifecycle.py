@@ -157,6 +157,15 @@ def _fragment(repo: Path, scope: str = "unit") -> None:
     (changes / f"{scope}.md").write_text(_FRAGMENT.format(scope=scope))
 
 
+def _plan_in_base(repo: Path) -> None:
+    """Commit the plan to develop and push it: where any merge (merge commit,
+    squash, rebase) leaves a plan, and what the change-record inference asks."""
+    _plan(repo)
+    _git(repo, "add", "-f", ".prawduct/artifacts/build-plan-unit.md")
+    _git(repo, "commit", "-qm", "plan")
+    _git(repo, "push", "-q", "origin", "develop")
+
+
 def _observe(plan: Path, repo: Path, **kw) -> plan_lifecycle.Lifecycle:
     kw.setdefault("facts", _facts())
     return plan_lifecycle.observe(plan, repo_dir=repo, **kw)
@@ -357,16 +366,43 @@ class TestBranchGone:
         assert "review R1" in lc.reason
 
     def test_a_pending_fragment_infers_merged_unreleased_and_says_so(self, repo):
+        """The inference holds only for a plan in the base's tree, where the merge
+        put it — so the plan is committed to develop here, as the merge would."""
         _feature(repo)
         _merge_no_ff(repo)
         _delete(repo)
         _fragment(repo)
+        _plan_in_base(repo)
         lc = _observe(_plan(repo), repo)
         assert lc.state == "merged-unreleased", lc
         assert lc.reason == (
             f"inferred: `{BRANCH}` is on no local or remote branch, and its fragment for "
             "scope `unit` is pending release"
         )
+
+    def test_a_fragment_committed_with_an_unmerged_plan_infers_nothing(self, repo):
+        """#1106's control: the plan and its fragment are committed on a feature
+        branch the base never merged, and the plan claims a branch that does not
+        exist (a typo). `plan new` writes both together, so the pending fragment is
+        no evidence of a merge; the in-base sibling above keeps inferring."""
+        _git(repo, "checkout", "-q", "-b", "fix/real", "develop")
+        _plan(repo)
+        _fragment(repo)
+        _git(repo, "add", ".prawduct")
+        _git(repo, "commit", "-qm", "plan")
+        lc = _observe(_plan(repo), repo)
+        assert lc.state == "unknown", lc
+        assert "which is not in `develop`'s tree" in lc.reason
+
+    def test_a_fragment_beside_a_never_committed_plan_infers_nothing(self, repo):
+        """Right after `plan new`, before its commit: the plan and fragment are on
+        disk only. No merge brought them, so a mistyped `branch:` must not read as
+        release-pending."""
+        _plan(repo)
+        _fragment(repo)
+        lc = _observe(_plan(repo), repo)
+        assert lc.state == "unknown", lc
+        assert "which is not in `develop`'s tree" in lc.reason
 
     def test_another_scopes_fragment_infers_nothing(self, repo):
         _feature(repo)
@@ -383,6 +419,7 @@ class TestBranchGone:
         (repo / ".prawduct" / "change-log.md").write_text(
             "# Change Log\n\n## 2026-10-01: unit work\n<!-- prawduct: scope=unit -->\n\nBody.\n"
         )
+        _plan_in_base(repo)
         lc = _observe(_plan(repo), repo)
         assert lc.state == "merged-unreleased", lc
         assert "its change-log entry for scope `unit` is pending release" in lc.reason

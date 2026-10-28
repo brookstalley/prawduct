@@ -228,6 +228,65 @@ class TestBranchScopedPlanBriefing:
         findings = briefing.staleness_scan(tmp_path)
         assert not any("not a branch in this repo" in f for f in findings), findings
 
+    @staticmethod
+    def _git(repo: Path, *args: str) -> None:
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+        subprocess.run(["git", *args], cwd=str(repo), env=env,
+                       capture_output=True, text=True, check=True)
+
+    @staticmethod
+    def _unit(prawduct: Path, scope: str, branch: str) -> None:
+        """A plan with an open chunk and its fragment, as `plan new` mints them."""
+        _plan(
+            prawduct,
+            f"build-plan-{scope}.md",
+            f"---\nartifact: build-plan\nscope: {scope}\nbranch: {branch}\nbase: develop\n"
+            "---\n\n### Chunk 01: a chunk\n\n- **Deliverables:** `src/a.py`\n",
+        )
+        (prawduct / "changes").mkdir(exist_ok=True)
+        (prawduct / "changes" / f"{scope}.md").write_text(
+            f"---\nschema: 1\ntype: fix\nscope: {scope}\ndate: 2026-10-27\n"
+            f"title: {scope}\n---\n\nWhat changed.\n\n## Consumer note\nNothing to do.\n"
+        )
+
+    def test_a_merged_unreleased_plan_with_an_open_chunk_says_nothing(self, tmp_path: Path):
+        """#1106: a plan merged `--no-ff` into develop, its branch deleted, waiting for
+        its release. Whatever makes a chunk read open (#1065, #1079), its lifecycle is
+        already past the merge, so "fix the frontmatter, or create the branch" is the
+        wrong remedy: the PR skill says to RETAIN it until the release."""
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        self._git(tmp_path, "add", ".")
+        self._git(tmp_path, "commit", "-q", "-m", "state")
+        self._git(tmp_path, "checkout", "-q", "-b", "fix/merged")
+        self._unit(prawduct, "merged", "fix/merged")
+        self._git(tmp_path, "add", ".")
+        self._git(tmp_path, "commit", "-q", "-m", "plan(merged): the plan")
+        self._git(tmp_path, "checkout", "-q", "develop")
+        self._git(tmp_path, "merge", "-q", "--no-ff", "-m", "merge fix/merged", "fix/merged")
+        self._git(tmp_path, "branch", "-q", "-D", "fix/merged")
+        findings = briefing.staleness_scan(tmp_path)
+        assert not any("not a branch in this repo" in f for f in findings), findings
+
+    def test_a_mistyped_branch_on_unmerged_work_still_nags(self, tmp_path: Path):
+        """The control, and the case the check exists for: the plan and its fragment
+        are on the feature branch only, and the plan names a branch that was never
+        created. Its pending fragment is no evidence of a merge, so the lifecycle
+        must not read it as merged — else this goes silent with the sibling above."""
+        _init_git_repo(tmp_path, branch="develop")
+        prawduct = _prawduct(tmp_path)
+        (prawduct / "project-state.yaml").write_text("")
+        self._git(tmp_path, "add", ".")
+        self._git(tmp_path, "commit", "-q", "-m", "state")
+        self._git(tmp_path, "checkout", "-q", "-b", "fix/real")
+        self._unit(prawduct, "typo", "fix/typo")
+        self._git(tmp_path, "add", ".")
+        self._git(tmp_path, "commit", "-q", "-m", "plan(typo): the plan")
+        findings = briefing.staleness_scan(tmp_path)
+        assert any("fix/typo" in f and "not a branch in this repo" in f
+                   for f in findings), findings
+
     def test_a_bound_plan_with_every_chunk_dropped_suggests_archiving(self, tmp_path: Path):
         """The "all chunks complete" line reads `plan_status`: every chunk done
         or dropped. The control is the same plan with the chunk left open —

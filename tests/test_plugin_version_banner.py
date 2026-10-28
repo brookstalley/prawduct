@@ -302,6 +302,46 @@ class TestVersionMath:
         lines = banner.render_delta("2.0.0", "2.1.0", root)
         assert any("new gate" in line and "cumulative-critic" in line for line in lines)
 
+    def _rollback_root(self, tmp_path: Path) -> Path:
+        """The plugin a downgrade actually runs: the OLDER one, whose changelog
+        and gates stop at its own version."""
+        root = tmp_path / "plugin"
+        (root / "hooks").mkdir(parents=True, exist_ok=True)
+        (root / "CHANGELOG.md").write_text("# CL\n\n## v2.0.0\nThe older release.\n")
+        (root / "hooks" / "gates.json").write_text(json.dumps({"gates": [
+            {"id": "old-gate", "name": "old-gate", "since": "2.0.0"}
+        ]}))
+        return root
+
+    def test_a_downgrade_is_not_announced_as_an_update(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[0] == "↓ Prawduct downgraded: v2.1.0 → v2.0.0"
+        assert not any("updated" in line for line in lines)
+
+    def test_a_downgrade_names_the_rollback_and_lists_no_highlight(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[1] == "  changes after v2.0.0 are no longer running"
+        assert not any(line.startswith(("  • ", "  ⊕ ")) for line in lines), lines
+        # Control: the same root does carry a highlight an upgrade into it lists.
+        up = banner.render_delta("1.9.0", "2.0.0", self._rollback_root(tmp_path))
+        assert "  • The older release." in up
+
+    def test_a_dev_prerelease_downgrade_is_a_downgrade(self, banner):
+        # The case that surfaced this: develop at -dev.2, then the -dev.1 beta.
+        lines = banner.render_delta("3.8.0-dev.2", "3.8.0-dev.1", ROOT)
+        assert lines[0] == "↓ Prawduct downgraded: v3.8.0-dev.2 → v3.8.0-dev.1"
+
+    def test_an_unorderable_change_says_changed(self, banner):
+        # An unparseable marker sorts below everything, so the move cannot be
+        # called a downgrade; nor is it known to be an update.
+        lines = banner.render_delta("garbage", "2.0.0", ROOT)
+        assert lines[0] == "Prawduct changed: vgarbage → v2.0.0"
+
+    def test_a_downgrade_still_relays(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[-1].startswith(banner.RELAY_MARKER)
+        assert "rolled back" in lines[-1] and "above" not in lines[-1]
+
 
 class TestUpgradeRelay:
     """The delta block is emitted on stdout — the agent-facing channel — and the

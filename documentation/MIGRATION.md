@@ -161,7 +161,8 @@ the papercuts v2.0 removes:
   a successful pull.
 
 In v2.0 the framework ships as a **Claude Code plugin**. Your repo commits *zero* framework
-files — only the small install reference. The framework code lives out-of-tree in the plugin
+files — only the small install reference, and one SessionStart hook beside it that warns when
+the plugin did not load. The framework code lives out-of-tree in the plugin
 cache and updates with zero repo diff.
 
 | Concern | v1.x (file-sync) | v2.0 (plugin) |

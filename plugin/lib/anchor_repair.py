@@ -18,8 +18,7 @@ false in precisely the session that most needs the truth. So this module exists 
 converge the fleet onto an anchor that says what is actually true there.
 
 **Detection is by substance, not by a revision tag.** The anchor carries a small
-number of load-bearing sentences — the plugin-absent notice, and the rule that
-review rigor is stage-keyed — and each is detected by the one token an equivalent
+number of load-bearing sentences (:data:`SUBSTANCE` is the roster) — and each is detected by the one token an equivalent
 sentence would have to contain (:data:`SUBSTANCE`). The question asked is "does
 this anchor say each thing the current one says?", never "which revision is it?".
 A revision tag would be a second fact to keep in sync with the thing it describes,
@@ -62,6 +61,7 @@ from .anchor_archive import (  # noqa: F401 — re-exported: callers and tests r
     ANCHOR_V3,
     ANCHOR_V4,
     ANCHOR_V5,
+    ANCHOR_V6,
     SUPERSEDED_ANCHORS,
     shipped_anchor_in,
 )
@@ -101,6 +101,11 @@ NOTICE_PROBE = f"claude plugin install {PLUGIN_ID}"
 #: detail names what is missing so the owner can judge.
 STAGE_PROBE = "stage-keyed"
 
+#: What makes an anchor current on the unloaded-plugin axis: the sentence that
+#: tells a session a missing session banner means the plugin did not load. The
+#: token is the noun an equivalent sentence has to name.
+BANNER_PROBE = "session banner"
+
 #: The load-bearing sentences, as ``(token, what it carries, what its absence
 #: costs)``. EVERY verdict below that describes a not-current anchor derives its
 #: wording from this table by asking which rows the anchor lacks — never from a
@@ -121,6 +126,13 @@ SUBSTANCE: tuple[tuple[str, str, str], ...] = (
         "on what a mid-build review blocks on, so it either escalates every review "
         "or skips the one at the boundary",
     ),
+    (
+        BANNER_PROBE,
+        "the no-banner rule",
+        "a session in a profile where the plugin did not load, in a repo without "
+        "the tripwire hook, is not told that a missing banner means governance is "
+        "off, so it works as if governed or imitates the gates from the plugin's files",
+    ),
 )
 
 
@@ -140,7 +152,8 @@ def _lacks(rows: list[tuple[str, str, str]]) -> tuple[str, str]:
 #: post-repair report — two surfaces, one sentence, so they cannot drift apart.
 _CURRENT_DETAIL = (
     "tells a session without the plugin that governance is off, names "
-    f"`{NOTICE_PROBE}`, and says review rigor is {STAGE_PROBE}"
+    f"`{NOTICE_PROBE}`, says a missing {BANNER_PROBE} means it is not loaded, "
+    f"and says review rigor is {STAGE_PROBE}"
 )
 
 def _record_success(result: dict, verb: str) -> None:

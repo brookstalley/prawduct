@@ -186,6 +186,27 @@ class TestCoarsening:
         assert (report["plugin_major"], report["plugin_minor"], report["dev"]) == (3, 7, True)
         assert "9871" not in contribution.canonical_bytes(report).decode()
 
+    def test_the_build_stamp_never_reaches_the_report(self):
+        """`actor.build` splits dev builds in the local `stats`; the report
+        stays at `major.minor` plus the dev flag, so two builds of one dev
+        version make ONE window and neither sha reaches the bytes."""
+        facts = _reviews(5, plugin="3.7.1-dev.2") + [
+            {**f, "id": f["id"] + "-b"} for f in _reviews(5, plugin="3.7.1-dev.2")
+        ]
+        for f in facts[:5]:
+            f["actor"]["build"] = "abcdef012345"
+        for f in facts[5:]:
+            f["actor"]["build"] = "fedcba543210+dirty"
+        (item,) = _pending(facts)
+        assert item["window"] == "2026-W40:3.7-dev"
+        sent = contribution.canonical_bytes(item["report"]).decode()
+        assert "abcdef" not in sent and "fedcba" not in sent and "dirty" not in sent
+        assert "build" not in item["report"]
+        # Control: the stamp is on the facts the report was built from.
+        assert {f["actor"]["build"] for f in facts} == {"abcdef012345", "fedcba543210+dirty"}
+        # The allowlist itself admits no such key.
+        assert "build" not in SCHEMA["fields"]
+
     def test_a_release_build_reports_dev_false(self):
         assert _only_report(_reviews(5, plugin="3.7.1"))["dev"] is False
 
@@ -321,6 +342,18 @@ class TestPreviewCommand:
         assert human.returncode == 0, human.stderr
         assert contribution.canonical_bytes(item["report"]).decode() in human.stdout.splitlines()
         assert f"digest {preview['digest']}" in human.stdout
+
+    def test_the_previewed_bytes_carry_no_build(self, tmp_path):
+        """End to end over a real store whose facts carry `actor.build`: the
+        exact bytes the preview would send name no build."""
+        facts = _reviews(5, ts=_last_week_stamp(), plugin="3.7.1-dev.2")
+        for f in facts:
+            f["actor"]["build"] = "abcdef012345+dirty"
+        result = self._run(_repo_with_store(tmp_path, facts), "--json")
+        assert result.returncode == 0, result.stderr
+        (item,) = json.loads(result.stdout)["pending"]
+        assert item["report"]["dev"] is True
+        assert "abcdef012345" not in result.stdout and "build" not in item["report"]
 
     def test_nothing_pending_is_an_answer(self, tmp_path):
         result = self._run(_repo_with_store(tmp_path, []))

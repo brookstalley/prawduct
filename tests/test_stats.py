@@ -10,6 +10,7 @@ to count. The CLI is pinned end to end over a real store.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -92,6 +93,67 @@ class TestVersionBucket:
     def test_facts_from_two_versions_report_apart(self):
         report = stats.aggregate([_review("r1", plugin="3.6.2"), _review("r2", plugin="3.7.0")])
         assert sorted(report) == ["3.6", "3.7"]
+
+
+def _built(fact, build):
+    fact["actor"]["build"] = build
+    return fact
+
+
+class TestByBuild:
+    """`actor.build` splits a version: every dev build of 3.8 shares `plugin`."""
+
+    def test_two_builds_of_one_version_are_two_rows(self):
+        facts = [
+            _built(_review("r1", head="h1", plugin="3.8.0-dev.2"), "abcdef012345"),
+            _built(_review("r2", head="h2", plugin="3.8.0-dev.2"), "fedcba543210+dirty"),
+            _built(_review("r3", head="h3", plugin="3.8.0-dev.2"), "fedcba543210+dirty"),
+        ]
+        rows = stats.aggregate_by_build(facts)
+        assert list(rows) == ["3.8"]
+        assert {b: v["reviews"]["total"] for b, v in rows["3.8"].items()} == {
+            "abcdef012345": 1, "fedcba543210+dirty": 2,
+        }
+        # Control: the version bucket alone cannot tell them apart.
+        assert list(stats.aggregate(facts)) == ["3.8"]
+        assert stats.aggregate(facts)["3.8"]["reviews"]["total"] == 3
+
+    def test_facts_without_a_build_are_one_unstamped_row(self):
+        facts = [
+            _review("r1", head="h1", plugin="3.8.0"),
+            _built(_review("r2", head="h2", plugin="3.8.0"), None),
+            _built(_review("r3", head="h3", plugin="3.8.0"), 7),
+            _built(_review("r4", head="h4", plugin="3.8.0"), "abcdef012345"),
+        ]
+        rows = stats.aggregate_by_build(facts)["3.8"]
+        assert rows[stats.UNSTAMPED]["reviews"]["total"] == 3
+        assert rows["abcdef012345"]["reviews"]["total"] == 1
+
+    def test_builds_are_listed_in_the_order_the_store_first_saw_them(self):
+        """A sha sorts by nothing useful; the store's order is the run order."""
+        facts = [
+            _built(_review("r1", head="h1"), "ffff00000000"),
+            _built(_review("r2", head="h2"), "000000000000"),
+            _built(_review("r3", head="h3"), "ffff00000000"),
+        ]
+        assert list(stats.aggregate_by_build(facts)["3.7"]) == ["ffff00000000", "000000000000"]
+
+    def test_versions_stay_apart_and_split_independently(self):
+        facts = [
+            _built(_review("r1", head="h1", plugin="3.7.2"), "aaaaaaaaaaaa"),
+            _built(_review("r2", head="h2", plugin="3.8.0-dev"), "aaaaaaaaaaaa"),
+        ]
+        rows = stats.aggregate_by_build(facts)
+        assert list(rows) == ["3.7", "3.8"]
+        assert all(list(builds) == ["aaaaaaaaaaaa"] for builds in rows.values())
+
+    def test_the_window_applies_to_build_rows_too(self):
+        facts = [
+            _built(_review("r1", head="h1", ts="2026-09-01T00:00:00Z"), "old000000000"),
+            _built(_review("r2", head="h2", ts="2026-10-05T00:00:00Z"), "new000000000"),
+        ]
+        rows = stats.aggregate_by_build(facts, since="2026-10-01")["3.7"]
+        assert list(rows) == ["new000000000"]
 
 
 class TestFindingOutcome:
@@ -423,6 +485,43 @@ class TestCli:
         result = self._run(repo)
         assert result.returncode == 0, result.stderr
         assert "clear-reason: in-this-message 1 (catch 1, slip 0, unclassified 0)" in result.stdout
+
+    def _two_builds(self, repo, monkeypatch):
+        """Two sessions recorded by two builds of one version, through the
+        real writer."""
+        for build in ("abcdef012345", "fedcba543210+dirty"):
+            monkeypatch.setattr(evidence, "_build_memo", build)
+            evidence.append_session_start(repo)
+            os.utime(repo / ".prawduct" / ".session-start", (1_800_000_000, 1_800_000_000))
+
+    def test_by_build_json_splits_a_version(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path)
+        self._two_builds(repo, monkeypatch)
+        report = json.loads(self._run(repo, "--json", "--by-build").stdout)
+        (version,) = report["by_version"]
+        assert report["by_version"][version]["sessions"] == 2
+        assert {b: v["sessions"] for b, v in report["by_build"][version].items()} == {
+            "abcdef012345": 1, "fedcba543210+dirty": 1,
+        }
+        assert report["schema_version"] == stats.REPORT_SCHEMA_VERSION
+
+    def test_without_the_flag_the_report_has_no_build_rows(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path)
+        self._two_builds(repo, monkeypatch)
+        report = json.loads(self._run(repo, "--json").stdout)
+        assert "by_build" not in report
+        assert "abcdef012345" not in self._run(repo).stdout
+
+    def test_by_build_human_report_heads_a_block_per_build(self, tmp_path, monkeypatch):
+        repo = self._repo(tmp_path)
+        self._two_builds(repo, monkeypatch)
+        result = self._run(repo, "--by-build")
+        assert result.returncode == 0, result.stderr
+        headings = [line for line in result.stdout.splitlines() if line.startswith("plugin ")]
+        assert [h.split(":")[0].split(" build ")[1] for h in headings] == [
+            "abcdef012345", "fedcba543210+dirty",
+        ]
+        assert all(h.endswith("1 session(s), 0 scope(s), 0 review(s)") for h in headings)
 
     def test_the_human_report_says_when_newer_facts_were_left_out(self):
         base = {"project": "p", "window": {"since": None, "until": None}, "by_version": {}}
