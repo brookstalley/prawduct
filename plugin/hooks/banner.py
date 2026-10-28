@@ -52,12 +52,33 @@ project context (e.g. a bare unit test) never mutates whatever repo is cwd.
 """
 from __future__ import annotations
 
-import importlib.util
-import json
-import re
-import subprocess
-import sys
-from pathlib import Path
+# The Python floor, checked before anything newer is imported: below it, re-run
+# this entry point under an interpreter that qualifies, or fail loudly. This WHOLE
+# file must parse on old interpreters: Python compiles a file before running any
+# of it, so newer syntax anywhere fails before this check (tests/test_python_floor.py).
+import os as _os
+import sys as _sys
+
+try:
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__)), "..", "bin"))
+    try:
+        import _python_floor  # noqa: E402
+    finally:
+        del _sys.path[0]
+except (NameError, ImportError):
+    # Run without a `__file__` (exec'd source) or copied without its sibling
+    # module: there is no floor check to run, so run as before rather than
+    # tracing back ahead of every command's own error handling.
+    _python_floor = None
+if _python_floor is not None and __name__ == "__main__":
+    _python_floor.ensure(__file__)
+
+import importlib.util  # noqa: E402 -- after the Python floor check
+import json  # noqa: E402 -- after the Python floor check
+import re  # noqa: E402 -- after the Python floor check
+import subprocess  # noqa: E402 -- after the Python floor check
+import sys  # noqa: E402 -- after the Python floor check
+from pathlib import Path  # noqa: E402 -- after the Python floor check
 
 _SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+(?:-dev(?:\.\d+)?)?)\b")
 
@@ -398,12 +419,17 @@ def new_gates_in_range(gates: list[dict], last: str, current: str) -> list[dict]
 
 #: Leading glyph of the relay directive. A *directive to the agent*, not a severity
 #: signal, so it sits outside the ``CRITICAL:``/``WARNING:``/``NOTE:`` vocabulary and
-#: alongside the banner's own ``↑``/``•``/``⊕`` line glyphs.
+#: alongside the banner's own ``↑``/``↓``/``•``/``⊕`` line glyphs.
 RELAY_MARKER = "⇒ "
 
 
 def render_delta(last: str, current: str, root: Path) -> list[str]:
     """Lines for the delta block shown when the version changed.
+
+    The direction comes from :func:`version_tuple`: a higher version lists the
+    highlights and gates it brings, a lower one says it rolled back (the running
+    plugin is the older one, so it cannot list what it lacks), and a move with an
+    unparseable side, or two versions that sort equal, says only that it changed.
 
     Closes with a **relay directive**. The delta block goes to stdout — the
     agent-facing channel — and ``write_marker`` advances the marker the moment it
@@ -414,6 +440,24 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
     it refers to the lines above it; placed first it would read as being about the
     version line alone.
     """
+    old, new = version_tuple(last), version_tuple(current)
+    # An unparseable side sorts below everything, so its "direction" is an
+    # artifact of the parser, not a fact about the move: say only that it changed.
+    if old == (-1,) or new == (-1,) or old == new:
+        return [
+            f"Prawduct changed: v{last} → v{current}",
+            f"{RELAY_MARKER}Tell the user the plugin version changed, in your first "
+            "reply this session — they do not see this banner.",
+        ]
+    if new < old:
+        # The running plugin is the OLDER one, so its changelog and gates hold
+        # nothing from the range being rolled back: there is no list to give.
+        return [
+            f"↓ Prawduct downgraded: v{last} → v{current}",
+            f"  changes after v{current} are no longer running",
+            f"{RELAY_MARKER}Tell the user the plugin was rolled back, in your first "
+            "reply this session — they do not see this banner.",
+        ]
     lines = [f"↑ Prawduct updated: v{last} → v{current}"]
     for _v, headline in highlights_in_range(parse_changelog(root), last, current):
         if headline:

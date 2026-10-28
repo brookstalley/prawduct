@@ -635,6 +635,31 @@ class TestNoGitWalk:
         ]
         assert sum(1 for c in spy.calls if c[:2] == ["git", "for-each-ref"]) == 1
 
+    def test_a_spanning_fact_costs_one_probe_and_one_log_of_its_own_interval(self, repo, monkeypatch):
+        """#1082's span answer reads the fact's recorded interval and nothing
+        wider: no walk of the branch, no ``built_chunks``. A second fact over
+        the same interval costs nothing more (memoized per interval)."""
+        base = _git(repo, "rev-parse", "HEAD")
+        head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
+        plan = _plan(repo)
+        trees = {
+            "base_tree": _git(repo, "rev-parse", f"{base}^{{tree}}"),
+            "head_tree": _git(repo, "rev-parse", f"{head}^{{tree}}"),
+            "files_changed": ["src/c01.py"], "files_reviewed": ["src/c01.py"],
+            "base_commit": base,
+        }
+        facts = []
+        for fid in ("R1", "R2"):
+            fact = _review(fid, head, chunks=[])
+            fact["body"].update(trees)
+            facts.append(fact)
+        spy = _Spy(monkeypatch)
+        assert _states(plan, _facts(*facts), repo) == {"01": "done", "02": "open", "03": "open"}
+        assert [c[:3] for c in spy.calls] == [
+            ["git", "merge-base", "--is-ancestor"], ["git", "log", "--format=@@prawduct-commit@@ %H %T %P\x1f%s"],
+        ]
+        assert f"{base}..{head}" in spy.calls[1]
+
     def test_the_spy_sees_built_chunks_git_walk(self, repo, monkeypatch):
         """Positive control: the instrument catches a walk when one happens."""
         _commit(repo, "src/c01.py", "x\n", "work")

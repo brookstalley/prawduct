@@ -67,6 +67,26 @@ from .core import (
 # =============================================================================
 
 
+def _past_its_merge(plan_path: Path, project_dir: Path, facts: object) -> bool:
+    """Whether ``plan status``'s lifecycle puts this plan past its merge.
+
+    A merged-unreleased plan is RETAINED live until its release, and a released
+    or superseded one is history. Either way a missing branch is the expected end
+    state, so the missing-branch finding — whose remedy is the frontmatter — is
+    wrong for it, whatever makes one of its chunks read open. Only a lifecycle
+    that answers is trusted; ``unknown`` and ``in-progress`` keep the finding.
+    """
+    # Imported here: plan_lifecycle reaches gates through release_readiness.
+    from . import plan_lifecycle
+
+    state = plan_lifecycle.observe(plan_path, repo_dir=project_dir, facts=facts).state
+    return state in (
+        plan_lifecycle.MERGED_UNRELEASED,
+        plan_lifecycle.RELEASED,
+        plan_lifecycle.SUPERSEDED,
+    )
+
+
 def _plan_work_possibly_unmerged(
     project_dir: Path, prawduct_dir: Path
 ) -> tuple[bool, str]:
@@ -283,7 +303,10 @@ def staleness_scan(project_dir: Path) -> list[str]:
     # the remedy is the frontmatter — never "archive the plan".
     # "Unfinished" is `plan_status.is_finished`'s answer, never a box count
     # (#1051): a plan reads finished once every chunk is done or dropped by the
-    # facts, which is the reviewed state rather than the ticked one.
+    # facts, which is the reviewed state rather than the ticked one. And a plan
+    # whose lifecycle is already past its merge is retained however its chunks
+    # read, so `plan status`'s lifecycle is asked too: a chunk-state defect must
+    # not be able to reach this message.
     facts = _read_facts_once(project_dir)
     try:
         claims = plan_index.branch_claiming_plans(prawduct_dir / "artifacts")
@@ -303,7 +326,9 @@ def staleness_scan(project_dir: Path) -> list[str]:
         existing = gitstate.local_branches(project_dir) if unproven else None
         if existing is not None:
             for claim_path, claimed_branch in unproven:
-                if claimed_branch not in existing:
+                if claimed_branch not in existing and not _past_its_merge(
+                    claim_path, project_dir, facts()
+                ):
                     label = plan_index.display_path(claim_path, prawduct_dir / "artifacts")
                     findings.append(
                         f"build plan: {label} has chunks left and declares "
@@ -2123,6 +2148,19 @@ def render_session_handoff(project_dir: Path) -> HandoffRender:
         sections.append(critic_summary)
         sections.append("")
 
+    # 3b. Tests the saved run passed only on retry. A green that needed a
+    #     retry is still a green, so nothing else carries these past /clear,
+    #     and a flake nobody files is the race the retry hid.
+    flakes = gates.saved_flaky_lines(project_dir, prefix="- ")
+    if flakes:
+        sections.append("## Flaky Tests (passed only on retry)")
+        sections.extend(flakes)
+        sections.append(
+            "File each one outside this branch's diff as a backlog item; "
+            "one the branch touched, or may have, is the branch's to explain."
+        )
+        sections.append("")
+
     # 4. Files changed during session
     if changed:
         sections.append("## Files Changed This Session")
@@ -2327,8 +2365,8 @@ def _check_previous_session_gates(project_dir: Path) -> list[str]:
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     warnings: list[str] = []
 
-    # Both gates at session end read the session's WORK span (base tree ->
-    # working tree, committed work included), so this advisory reads it too:
+    # Both gates at session end read the session's WORK span (what it
+    # authored, committed work included), so this advisory reads it too:
     # judgeable work in the span is what either gate can fire on.
     span = gates.session_work_span(project_dir)
     if not span["judgeable"]:

@@ -66,18 +66,15 @@ jobs:
         # if the ref is already present.
         run: git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
 
+      - uses: actions/setup-python@v7
+        # The floor, and nothing nicer. The hook is stdlib-only and must reach an
+        # interpreter at `requires-python`'s floor, as a consumer machine must;
+        # the runner image's own `python3` can sit below it. This makes the floor
+        # reachable without installing anything else a consumer would not have.
+        with:
+          python-version: "3.14"
+
       - name: Verify the release arrived
-        # No `setup-python` step, unlike tests.yml: the hook is stdlib-only and
-        # runs on whatever `python3` a machine already has, which is exactly how a
-        # consumer invokes it. Pinning an interpreter here would test a nicer
-        # environment than the one that matters.
-        #
-        # One check does depend on that interpreter: a `toml` entry in
-        # `release_version_files:` is read through stdlib `tomllib` (3.11+), and
-        # below that it reports *unverifiable* — exit 3, a red build. The runner
-        # image is well above the floor, so this is a note for whoever debugs a
-        # future 3, not a live hazard.
-        #
         # The repo-local hook, not a PATH-resolved one: `prawduct-hook` on PATH is
         # whatever plugin copy is installed, which is a different tree from the one
         # under test.

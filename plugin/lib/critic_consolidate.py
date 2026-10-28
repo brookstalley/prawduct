@@ -838,19 +838,23 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
 
 
 def uncertified_clause(mode: str, open_chunks: "list[str]") -> str:
-    """The sentence a whole-plan review that certified no chunk ends on (#1081).
+    """The sentence a whole-plan review that named no chunk ends on, while
+    chunks stay open after it (#1081).
 
     Its proposal prints only to ``critic-begin``'s stderr, inside the forked
-    critic, so without this a boundary review that proposed nothing certified
-    nothing in silence and the plan's shipped chunks read open until the
-    release archived them as unbuilt."""
+    critic, so without this a boundary review that proposed nothing left the
+    plan's shipped chunks open in silence until the release archived them as
+    unbuilt. The review may still have certified other chunks by its tree span
+    (a commit in its interval building them), so the sentence speaks only of
+    the chunks ``open_chunks`` lists, which are read after that."""
     ids = ", ".join(open_chunks)
     return (
-        f"This {mode} review certified no chunk, and the plan still has open chunk(s) "
-        f"{ids}: its proposal found no work for them (no commit subject in its interval "
-        "names them and no Deliverables path was touched). If they are this branch's "
-        f"work, pass `--chunks {','.join(open_chunks)}` on the next `/prawduct:critic` "
-        "dispatch — omitting it certifies only the proposal."
+        f"This {mode} review named no chunk, and the plan still has open chunk(s) "
+        f"{ids}: neither its proposal nor its interval found work for them (no commit "
+        "subject in it names them). If they are "
+        f"this branch's work, pass `--chunks {','.join(open_chunks)}` on the next "
+        "`/prawduct:critic` dispatch — without it, a review certifies only the chunks "
+        "its interval builds."
     )
 
 
@@ -5116,8 +5120,8 @@ def build_fact_body(
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
         "scope_reason": manifest.get("scope_reason"),
         "base_extended_from": manifest.get("base_extended_from"),
-        # The chunks this review names (ST8) — what `plan_status.chunk_states`
-        # certifies from — with the code-derived proposal beside them, so a
+        # The chunks this review names (ST8) — one of the two things
+        # `plan_status.chunk_states` certifies from, beside the span — with the code-derived proposal beside them, so a
         # coordinator's edit of the set is visible on the record. `chunk` is the
         # first, for readers older than `chunks`. A manifest from before the
         # fields carries `chunk` alone; its fact keeps that reading.
@@ -5250,7 +5254,7 @@ def _uncertified_open_chunks(
     project_dir: Path, prawduct_dir: Path, store: dict, fact: dict
 ) -> "tuple[str, list[str]] | None":
     """``(mode, open chunk ids)`` when ``fact`` is a whole-plan review that
-    certified no chunk while its plan still has open ones, else ``None``.
+    named no chunk while its plan still has open ones, else ``None``.
 
     Read after the fact is appended, so it asks the same store every gate does.
     The plan is the one the dispatch graded, resolved as ``begin_review``

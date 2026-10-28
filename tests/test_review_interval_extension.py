@@ -15,6 +15,7 @@ pre-empt what is being tested.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -231,6 +232,11 @@ class TestStopGate:
         assert _GENERIC_BLOCK not in result.stderr
         assert "deferred-boundary-review" in result.stderr
         assert "starts from the newest committed state a review covers" in result.stderr
+        # A status nobody at exit 0 can act on stays in the log: no
+        # `systemMessage` puts it in the user's transcript every turn. (Other
+        # advisories, e.g. the handoff note, may still be shown.)
+        shown = json.loads(result.stdout)["systemMessage"] if result.stdout.strip() else ""
+        assert "deferred-boundary-review" not in shown
 
     def test_near_the_end_the_uncovered_fix_still_blocks(self, tmp_path):
         repo, _ = _scenario(tmp_path, END, [WARNING], commit_fix=True)
@@ -263,7 +269,7 @@ class TestReviewClose:
 class TestCostOfCommit:
     def _price(self, repo: Path) -> dict:
         result = subprocess.run(
-            ["python3", str(HOOK), "cost-of-commit", "--json"],
+            [sys.executable, str(HOOK), "cost-of-commit", "--json"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
         )

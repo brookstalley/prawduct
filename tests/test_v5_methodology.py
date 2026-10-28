@@ -518,7 +518,10 @@ LAST_MEASURED_TOKENS = {
     # `/prawduct:pr` carries the store's review facts to other clones; mostly paid in place by
     # dropping its `evidence status|list` pointer, which `review-cycle.md` — cited at the
     # paragraph's end as the full model — states in the same sentence.
-    "methodology/building.md": 5297,
+    # +10 on 2026-10-26 (flaky-rerun, #1087), DECLARED: the Verify bullet names `--rerun-failed`
+    # beside the other record flags, so a builder whose boundary run lost one test to load reruns
+    # that test rather than the declared suite (on this repo ~18 min per suite run).
+    "methodology/building.md": 5307,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -686,7 +689,9 @@ LAST_MEASURED_TOKENS = {
     # +30 on 2026-10-21 (#706): Goal 2 checks a declared Exposed API surface against the contract
     # artifact, after tightening the bullet's two decision clauses (net of that). DECLARED, a READING.
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
-    "skills/critic/review-protocol.md": 3926,
+    # +18 on 2026-10-26 (flaky-rerun, #1087): Goal 1 rates a `flaky:` test-status line carrying
+    # `flaky_policy: warn`. DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
+    "skills/critic/review-protocol.md": 3944,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -801,7 +806,9 @@ LAST_MEASURED_TOKENS = {
     # `retired-claim-survives` check, paid by tightening the chunk-ref-missing parenthesis. A READING.
     # +4 on 2026-10-25 (chunk-status, owner ruling D1): the inferred-chunk caveat names the plan's first open chunk, which is what
     # record_lint emits now, in place of the first unticked Status box; `--chunks`.
-    "skills/critic/goals-1-3.md": 2688,
+    # +18 on 2026-10-26 (flaky-rerun, #1087): the same `flaky_policy` clause as review-protocol.md.
+    # DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
+    "skills/critic/goals-1-3.md": 2706,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1159,7 +1166,13 @@ LAST_MEASURED_TOKENS = {
     # -7 on 2026-10-26 (final-review-chunks, #1072): step 4's proposal sentence points to
     # `plan_status.propose_chunks` instead of restating a per-mode rule that changed (whole-plan
     # modes propose what the interval built, not every open chunk). A READING; the ceiling follows it down.
-    "skills/critic/SKILL.md": 3100,
+    # +5 on 2026-10-27 (chunk-state-table, #1082), DECLARED: the Critic skill's step 4 said
+    # `--chunks` names "the chunks this review certifies", which a dispatcher reads as the whole
+    # set; a review's span now certifies chunks it does not name, so the sentence says so. Not paid by
+    # trimming: no other clause of step 4 restates the rule. Priced against the route sums:
+    # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
+    # certifies anyway.
+    "skills/critic/SKILL.md": 3105,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1425,7 +1438,16 @@ LAST_MEASURED_TOKENS = {
     # +23 on 2026-10-26 (stub-not-built, #1075): "no gate reads that view" was false — the
     # short-plan Stop gate reads the `built` tag to arm. A CORRECTION, not a raise to spend: the
     # sentence now says no gate certifies from it and names the one arming reader.
-    "methodology/planning.md": 5857,
+    # +22 on 2026-10-27 (chunk-state-table, #1082): a review also completes a chunk whose commit
+    # its interval reviewed, though it does not name it. A RAISE: the rule's one home gains the
+    # clause; building.md and the Critic skill point at it without restating it.
+    # +7 on 2026-10-27 (chunk-state-table review round 2): the span's path half says a
+    # Deliverables path counts only when no other chunk lists it, since a shared path let one
+    # chunk's commit certify its unbuilt neighbour. A CORRECTION of the clause above, in place.
+    # +9 on 2026-10-27 (chunk-state-table, owner ruling on #1082): the span clause states the
+    # ruling — an edge the coverage gate composes, a first-parent commit whose scoped subject
+    # names the chunk, and no credit for a Deliverables path. A CORRECTION in place, as above.
+    "methodology/planning.md": 5895,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -3568,7 +3590,8 @@ class TestBuildingMethodology:
         # LOWERED 5322 -> 5316 (work-unit binding, 2026-10-24): one over the reading — see LAST_MEASURED_TOKENS.
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5298, f"building.md is ~{tokens} tokens, should be <5298"
+        # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5308, f"building.md is ~{tokens} tokens, should be <5308"
 
 
 # =============================================================================
@@ -5359,7 +5382,8 @@ class TestCriticSkill:
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3928, f"review-protocol.md is ~{tokens} tokens, should be <3928"
+        # RAISED 3928 -> 3945 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 3945, f"review-protocol.md is ~{tokens} tokens, should be <3945"
 
 
 # =============================================================================
@@ -5665,7 +5689,8 @@ class TestCriticGoals13:
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
-        assert tokens < 2689, f"goals-1-3.md is ~{tokens} tokens, should be <2689"
+        # RAISED 2689 -> 2707 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 2707, f"goals-1-3.md is ~{tokens} tokens, should be <2707"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5941,7 +5966,9 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3096 -> 3108 (evidence-transport, 2026-10-25): the `evidence` grant narrowed
         # to `status`/`list` — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3108 -> 3101 (final-review-chunks, 2026-10-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3101, f"SKILL.md is ~{tokens} tokens, should be <3101"
+        # RAISED 3101 -> 3106 (chunk-state-table, 2026-10-27): `--chunks` no longer bounds what a
+        # review certifies — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3106, f"SKILL.md is ~{tokens} tokens, should be <3106"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))

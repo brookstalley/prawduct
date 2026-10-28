@@ -1,6 +1,8 @@
-"""Post-sync advisory probe for a repo the plugin runs in but nobody onboarded.
+"""Post-sync advisory probes for a repo the plugin runs in but that is not set up for it.
 
-One probe. Enabling the prawduct plugin starts its hooks immediately, and the
+Two probes. ``probe_unmigrated_file_sync`` covers a pre-2.0 file-sync repo that
+never ran ``/prawduct:migrate`` (its docstring has the why). The rest of this
+docstring is the never-onboarded probe's. Enabling the prawduct plugin starts its hooks immediately, and the
 hooks write session state into ``.prawduct/`` — ``.session-start``,
 ``.session-base-tree``, ``.advisories.json``, ``.prawduct-version`` and the rest.
 So the directory fills, the session banner reports a version, and advisories
@@ -71,7 +73,8 @@ also the one advisory whose subject is that governance is not installed at all �
 every other nudge presumes it is — and it stops firing after a single command.
 
 Registered at the composition root (``lib/probe_families.py``), like every sibling
-probe family. Read-only and fail-soft: it executes nothing, never blocks session
+probe family. The never-onboarded probe is silent on a file-sync repo (its manifest
+is a marker), so the two never fire together. Read-only and fail-soft: it executes nothing, never blocks session
 start, and an unreadable file reads as "no marker" (fire), because unreadable is
 not evidence that an onboard happened.
 """
@@ -87,6 +90,9 @@ from .migrate_plugin import (
     DISTRIBUTION_KEY,
     DISTRIBUTION_VALUE,
     SYNC_MANIFEST,
+    already_migrated,
+    legacy_hook_events,
+    legacy_sync_stands_down,
 )
 
 FEATURE = "onboarding"
@@ -223,6 +229,83 @@ def probe_never_onboarded(state: ProjectState, codebase: Codebase):
     ]
 
 
+def probe_unmigrated_file_sync(state: ProjectState, codebase: Codebase):
+    """Fire when a pre-2.0 file-sync repo runs under the plugin but never migrated.
+
+    The repo the never-onboarded probe stays silent on, because its sync manifest
+    proves an onboard once ran. Its route is ``/prawduct:migrate``, and nothing
+    else says so. A still-wired legacy hook syncs at every session start beside
+    the plugin's unless it stands down: on ``distribution: plugin`` (migrate's
+    own write), or — only in a hook synced at v2.0.0 or later — when the repo's
+    settings enable the plugin. Syncing from a framework checkout older than the
+    repo, it silently rewrites the committed governance files back to that
+    checkout's templates (#1090).
+
+    ``urgent`` only when that sync can run: the hook is wired on SessionStart and
+    cannot be shown to stand down (``legacy_sync_stands_down``). Every other
+    state is ``warn`` with text saying why nothing reverts, since the repo still
+    carries framework files the plugin has replaced. Evidence names the wired
+    hook events, so the advisory re-raises when the wiring changes.
+    """
+    root = codebase.root
+    if not (root / SYNC_MANIFEST).is_file() or already_migrated(root):
+        return []
+    events = legacy_hook_events(root)
+    syncs = "SessionStart" in events and not legacy_sync_stands_down(root)
+    wired = f".claude/settings.json still wires the legacy product-hook on {', '.join(events)}"
+    if syncs:
+        wiring = (
+            f"{wired}, so it runs at every session start beside the plugin's hook and syncs "
+            "from the framework checkout the manifest names — when that checkout is older "
+            "than this repo, it rewrites the committed governance files back to its templates"
+        )
+        summary = (
+            "This repo is still on the pre-2.0 file-sync install, and its legacy sync hook "
+            "runs at every session start beside the plugin's. It can silently revert "
+            "committed governance files (CLAUDE.md, build plans) to an older framework "
+            "checkout's templates. /prawduct:migrate moves the repo onto the plugin and "
+            "stops it."
+        )
+    else:
+        if not events:
+            why = "no legacy product-hook is wired in .claude/settings.json"
+        elif "SessionStart" not in events:
+            why = f"{wired}, but not on SessionStart, so it never syncs"
+        else:
+            why = (
+                f"{wired}, but that hook stands down because the repo's settings enable "
+                "the plugin"
+            )
+        wiring = (
+            f"{why}; nothing reverts files at session start, but the repo still carries the "
+            "framework files the plugin has replaced"
+        )
+        summary = (
+            "This repo is still on the pre-2.0 file-sync install: it carries framework files "
+            "the plugin has replaced. /prawduct:migrate moves it onto the plugin."
+        )
+    return [
+        AdvisoryCandidate(
+            type="unmigrated-file-sync",
+            evidence=(
+                f"{SYNC_MANIFEST} is present and project-state.yaml does not record "
+                f"`{DISTRIBUTION_KEY}: {DISTRIBUTION_VALUE}`",
+                wiring,
+            ),
+            trigger_summary=summary,
+            owner_action=(
+                "Say go and I will migrate this repo: one reviewable, reversible commit that "
+                "removes the committed framework files and the legacy hook wiring and records "
+                "the plugin install. You will see the diff before anything is committed."
+            ),
+            recommended_action="/prawduct:migrate",
+            alternative_actions=(),
+            priority="urgent" if syncs else "warn",
+        )
+    ]
+
+
 def register() -> None:
-    """Register the never-onboarded probe. Idempotent (register_probe overwrites)."""
+    """Register the onboarding probes. Idempotent (register_probe overwrites)."""
     register_probe(FEATURE, "never-onboarded", PROBE_VERSION, probe_never_onboarded)
+    register_probe(FEATURE, "unmigrated-file-sync", PROBE_VERSION, probe_unmigrated_file_sync)

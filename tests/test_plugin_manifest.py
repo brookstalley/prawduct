@@ -73,7 +73,7 @@ class TestPluginManifest:
         What turns this red: any declared carrier disagreeing with VERSION, and
         a declaration that stops naming pyproject.toml or parses to nothing.
         What it cannot check: a carrier whose format this interpreter cannot
-        read (toml below Python 3.11) — those are named in `unreadable` below
+        read (a format it does not know) — those are named in `unreadable` below
         and the assertion requires at least one real comparison regardless.
         """
         from lib import release_verification as rv

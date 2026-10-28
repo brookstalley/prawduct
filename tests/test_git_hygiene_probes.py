@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import subprocess
 import time
 from pathlib import Path
@@ -102,7 +103,7 @@ class TestFires:
         merged(clone, "feat/a")
         (c,) = probe(clone)
         result = subprocess.run(
-            ["python3", str(HOOK), *c.recommended_action.split()[1:]], cwd=str(clone),
+            [sys.executable, str(HOOK), *c.recommended_action.split()[1:]], cwd=str(clone),
             capture_output=True, text=True, timeout=60, env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path / "h")},
         )
         assert result.returncode == 0, result.stderr

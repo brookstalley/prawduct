@@ -27,12 +27,15 @@ Claude Code is fantastic at writing code, but without discipline it makes assump
 ### Prerequisites
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- Python 3 (the plugin's governance hooks are Python, zero external dependencies)
+- Python 3.14 or newer, reachable as `python3.14` (or newer) or as `python3`, on every machine
+  that runs a governed repo — including repos that are not Python projects. The plugin's hooks
+  are Python with zero external dependencies; below 3.14 they re-run themselves under one they
+  find, and say so loudly when there is none.
 - git
 
 Prawduct is a **Claude Code plugin**: install it **once at the user level**, then **onboard each
 repo** you want governed — the same command for a new or existing repo. A project commits only a
-tiny install *reference*, never framework files.
+tiny install *reference* and a hook that warns when the plugin did not load, never framework files.
 
 ### 1. Install the plugin (once, for your machine)
 
@@ -116,7 +119,7 @@ All projects suffer drift over time. Each individual review can be executed perf
 
 ### Zero committed framework files
 
-A product repo commits only its own state plus a small install *reference* — no framework code. Governance comes from the plugin, which lives out-of-tree in the Claude Code plugin cache. The product's own `.prawduct/` state (learnings, backlog, decisions, artifacts) stays in the repo and is fully portable.
+A product repo commits only its own state plus a small install *reference* and one SessionStart hook beside it, which warns when the plugin did not load — no framework files. Governance comes from the plugin, which lives out-of-tree in the Claude Code plugin cache. The product's own `.prawduct/` state (learnings, backlog, decisions, artifacts) stays in the repo and is fully portable.
 
 This means:
 - Product repos stay clean — framework updates never show up in your diffs (the v1 stash/pop/merge papercut is eliminated)
@@ -189,7 +192,7 @@ pool answers (`documentation/running-tests.md`). To run the suites by hand:
 
 ```bash
 cd prawduct
-python3 -m pytest tests/
+uv run --extra dev python -m pytest tests/   # the suite needs Python 3.14+ (requires-python)
 node --test 'collector/test/*.test.mjs'
 ```
 
@@ -218,7 +221,7 @@ The coordinating Claude spawns a second session that does the work without seein
 
 ## Product Repo Structure
 
-A v2 product repo commits only its own state plus the install reference — no framework files. Governance (skills, hooks, methodology, Critic/PR protocols) comes from the plugin.
+A v2 product repo commits only its own state plus the install reference and the unloaded-plugin tripwire hook — no framework files. Governance (skills, hooks, methodology, Critic/PR protocols) comes from the plugin.
 
 ```
 my-product/

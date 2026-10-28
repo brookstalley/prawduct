@@ -262,7 +262,7 @@ def run_plugin_hook(
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), command, *args],
+        [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=90, input=stdin,
     )
 
@@ -889,7 +889,7 @@ class TestPluginSubcommandsResolveViaLib:
         # fallback message).
         self._repo(tmp_path)
         result = subprocess.run(
-            ["python3", str(HOOK), "advisory", "list"],
+            [sys.executable, str(HOOK), "advisory", "list"],
             capture_output=True, text=True, timeout=90,
             env={"HOME": str(tmp_path / "_home"), "CLAUDE_PROJECT_DIR": str(tmp_path),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": "/usr/bin:/bin",
@@ -1055,7 +1055,7 @@ def _run_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
-        ["python3", str(HOOK), *args],
+        [sys.executable, str(HOOK), *args],
         capture_output=True, text=True, timeout=90,
         env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
              "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -3687,7 +3687,7 @@ class TestJurisdictionSubcommand:
         home = repo.parent / "_home"
         home.mkdir(exist_ok=True)
         result = subprocess.run(
-            ["python3", str(HOOK), "jurisdiction"],
+            [sys.executable, str(HOOK), "jurisdiction"],
             input="adopt the telemetry substrate for tracing",
             capture_output=True, text=True, timeout=90,
             env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),

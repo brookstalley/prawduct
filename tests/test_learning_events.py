@@ -328,7 +328,7 @@ def _consolidate_env(repo: Path) -> dict[str, str]:
 
 def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-consolidate"],
+        [sys.executable, str(HOOK), "critic-consolidate"],
         cwd=str(repo), capture_output=True, text=True,
         env=_consolidate_env(repo), timeout=60,
     )

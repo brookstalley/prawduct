@@ -154,7 +154,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   by the harness, not by humans.
 - **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
   `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
-  — see § Error Model; `--chunks` names the build-plan chunks the review certifies — a comma list,
+  — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
+  (`methodology/planning.md` "Chunk state") — a comma list,
   repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
   alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
@@ -211,7 +212,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   tracking ref to what it pushed; a remote with no notes yet is not an error. Note lines carry the
   store line with the actor's locator fields reduced: `actor.worktree` cut to its basename, or to
   `.claude/worktrees/<name>` for a harness scratch worktree (so the receiving clone classifies the
-  fact as ephemeral too), never the path above it; `actor.session` dropped. Exit 0 ok; 1 a reported failure naming the failing `step`
+  fact as ephemeral too), never the path above it; `actor.session` dropped; `actor.plugin`,
+  `actor.branch` and `actor.build` (the plugin checkout's commit sha) travel as written. Exit 0 ok; 1 a reported failure naming the failing `step`
   (`fetch`, `merge`, `reconcile`, `ingest`, `push`), git's stderr scrubbed of credentials and
   nothing retried; 2 usage.
   `/prawduct:pr create|update` runs it after the branch push, and a failure there is reported
@@ -369,7 +371,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `## Status` tick read in memory, `built` is git-derived and certifies nothing (a commit naming the
   chunk in its subject or touching its deliverables, a change fragment still the `plan new` stub
   touching nothing; the short-plan Stop gate reads it only to arm its last-chunk block) and `reason` says why an entry that looked like an answer was not one (an
-  unreadable `dropped:` line, a fact whose anchor is not in the branch's history). It also
+  unreadable `dropped:` line, a fact whose anchor is not in the branch's history), and for a
+  `done` chunk certified by a fact that does not name it, that its review's interval carries a
+  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"). It also
   prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
   `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,
   `merged-unreleased`, `released`, `superseded`, `unknown`, observed from git, the review facts'
@@ -392,14 +396,14 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]` (mutating) withdraws one
   fact's certification of one chunk by appending a `chunk-retracted` fact (`{scope, chunk,
   fact_id, reason, retracted_at}`), attached as a note on HEAD like an import. `--fact` omitted
-  names the fact certifying the chunk now; `--plan` omitted, the bound plan. It can only reopen a
+  names the fact certifying the chunk now — by name or by its interval; `--plan` omitted, the bound plan. It can only reopen a
   chunk, so it needs no authority beyond the reason it records. Exit 0 written or already
   retracted (nothing written — the same command re-run included; `--json` `action` is `retracted` | `already-retracted`, beside
   `plan_path`, `scope`, `chunk`, `fact_id`, `retraction_id`, and `state` / `certified_by` — what the
   chunk reads after); 1 `refused: <code>` for `no-plan`, `archived-plan`, `store-unreadable`,
   `no-scope`, `unknown-chunk`, `box-import` (the chunk's `## Status` box is ticked, and certifies it
   after any withdrawal: untick it first), `not-certified`,
-  `unknown-fact`, `other-scope`, `not-named`, `fact-append-failed`; 2 usage or a path that is not
+  `unknown-fact`, `other-scope`, `not-named` (the fact neither names the chunk nor certifies it by its interval), `fact-append-failed`; 2 usage or a path that is not
   a build plan. Refused inside a scratch worktree.
   `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
   `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per
@@ -520,7 +524,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   (`gates.commit_coverage`); verdict token leads on stdout, degrades to `unknown` rather than a
   reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
-  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`, `install-tripwire`,
   `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`, `migrate-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
@@ -578,8 +582,8 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`reanchor`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`,
-`migrate-change-log`) default to a
+`reanchor`, `install-tripwire`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`,
+`cut-change-log`, `migrate-change-log`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
@@ -641,6 +645,14 @@ files to touch previews first. That framing is descriptive — the binding rule 
     separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
     to repair, the second is an anchor the owner has edited, which this command reports and
     declines to overwrite.
+  - `install-tripwire --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #1
+    runs the command and relays its human form. The shape is published for programmatic consumers
+    and carries keys `status` — the state found before any write, one of `present` / `absent` /
+    `stale` / `malformed` — plus `applied` (whether this run wrote), `path` (the settings file)
+    and `reason` (the malformed shape in words, `null` otherwise). Unlike `reanchor`, an
+    `--apply` that wrote still reports the status it found (`absent` or `stale`) with
+    `applied: true`. Dry run exits 0 when it ran and 1 on `malformed` (could not grade); `--apply`
+    exits 0 on a write or an already-current hook and 1 on `malformed` (nothing written).
   - `stale-plugin-caches --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #21
     runs the command and relays its human form. The key set is listed once, in the § Operations
     "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it
@@ -699,7 +711,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `schema_version` (see Versioning).
   - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the
     opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
-    `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
+    `schema_ahead`, and `by_version` keyed by plugin `major.minor`; with `--by-build`, also
+    `by_build`, keyed by `major.minor` then `actor.build` (`unstamped` when absent). The per-version keys are defined
     in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
   - `aggregate-stats --json` → **no skill consumer today**: top-level `schema_version`,
     `generated_at`, `sources` (`local`, `local_skipped`, `contributed` — `bundles`, `lines`,

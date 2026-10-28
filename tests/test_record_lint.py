@@ -45,7 +45,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
-        ["python3", str(HOOK), *args],
+        [sys.executable, str(HOOK), *args],
         cwd=str(repo),
         capture_output=True,
         text=True,
@@ -1143,6 +1143,78 @@ class TestGovernedByParsing:
 
     def test_no_frontmatter_yields_nothing(self):
         assert record_lint._parse_governed_by("# Plan\n\ngoverned_by:\n  - artifact: a\n") == []
+
+    def test_a_bare_path_is_an_entry_with_no_dispositions(self):
+        """`- .prawduct/artifacts/x.md` is the form most plans here use; read as
+        an entry it is graded, never skipped as though it disposed of nothing."""
+        text = "---\ngoverned_by:\n  - .prawduct/artifacts/architecture.md\n  - artifact: b\n---\n"
+        assert record_lint._parse_governed_by(text) == [
+            {"artifact": ".prawduct/artifacts/architecture.md", "dispositions": 0, "line": 3,
+             "path": True},
+            {"artifact": "b", "dispositions": 0, "line": 4},
+        ]
+
+    def test_an_item_no_form_reads_is_kept_as_unreadable(self):
+        text = "---\ngoverned_by:\n  - owner: someone\n---\n"
+        assert record_lint._parse_governed_by(text) == [
+            {"artifact": "owner: someone", "dispositions": 0, "line": 3, "unreadable": True}
+        ]
+
+
+class TestGovernedByBarePaths:
+    """A bare-path `governed_by:` entry used to parse as nothing, so the check
+    reported zero gaps for a plan that disposed of no norm at all."""
+
+    def _plan_text(self, entry: str) -> str:
+        return (
+            "---\nartifact: build-plan\nscope: demo\ngoverned_by:\n"
+            f"{entry}\nlast_validated: 2026-07-30\n---\n\n## Status\n\n- [ ] Chunk 01: x\n"
+        )
+
+    def _run(self, tmp_path, entry: str, name: str) -> list:
+        repo = _make_repo(tmp_path, name=name)
+        arts = repo / ".prawduct" / "artifacts"
+        (arts / "security-model.md").write_text(THREE_NORM_ARTIFACT)
+        (arts / "empty.md").write_text("# No norms\n\nNothing here.\n")
+        base = _commit(repo, "seed artifact")
+        (arts / "build-plan-demo.md").write_text(self._plan_text(entry))
+        head = _commit(repo, "add plan")
+        return _checks(_lint(repo, [".prawduct/artifacts/build-plan-demo.md"], base, head), "governed-by-gap")
+
+    def test_a_bare_path_to_an_artifact_with_norms_is_a_gap(self, tmp_path):
+        found = self._run(tmp_path, "  - .prawduct/artifacts/security-model.md", "barenorms")
+        assert len(found) == 1
+        assert "carries 3" in found[0]["detail"] and "disposes of 0" in found[0]["detail"]
+        assert "- artifact:" in found[0]["detail"]
+
+    def test_a_bare_path_to_an_artifact_with_no_norms_is_quiet(self, tmp_path):
+        assert self._run(tmp_path, "  - .prawduct/artifacts/empty.md", "barequiet") == []
+
+    def test_a_bare_path_naming_no_file_is_a_gap(self, tmp_path):
+        found = self._run(tmp_path, "  - .prawduct/artifacts/missing.md", "baremissing")
+        assert len(found) == 1 and "missing.md" in found[0]["detail"]
+
+    def test_an_unreadable_item_is_a_gap(self, tmp_path):
+        found = self._run(tmp_path, "  - owner: someone", "unreadable")
+        assert len(found) == 1 and "owner: someone" in found[0]["detail"]
+
+    def test_an_archived_plan_is_not_graded(self, tmp_path):
+        """A release moves every shipped plan into `archive/`, and an archived
+        record is no record (`is_record`), so grading bare paths raises nothing
+        on those moves. Control: the same plan, live, is graded."""
+        repo = _make_repo(tmp_path, name="archived")
+        arts = repo / ".prawduct" / "artifacts"
+        (arts / "security-model.md").write_text(THREE_NORM_ARTIFACT)
+        (arts / "archive").mkdir()
+        base = _commit(repo, "seed artifact")
+        text = self._plan_text("  - .prawduct/artifacts/security-model.md")
+        (arts / "archive" / "build-plan-demo.md").write_text(text)
+        (arts / "build-plan-live.md").write_text(text)
+        head = _commit(repo, "add plans")
+        found = _checks(_lint(repo, [
+            ".prawduct/artifacts/archive/build-plan-demo.md", ".prawduct/artifacts/build-plan-live.md",
+        ], base, head), "governed-by-gap")
+        assert [f["path"] for f in found] == [".prawduct/artifacts/build-plan-live.md"]
 
 
 # ---------------------------------------------------------------------------

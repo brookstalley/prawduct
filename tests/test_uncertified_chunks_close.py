@@ -68,7 +68,9 @@ def _close(
     return line, cache
 
 
-CLAUSE = "certified no chunk"
+# A review may certify chunks its interval builds without naming them, so the
+# clause says it NAMED none, never that it certified none.
+CLAUSE = "named no chunk"
 
 
 def test_a_cumulative_that_certifies_nothing_names_the_open_chunks(tmp_path):

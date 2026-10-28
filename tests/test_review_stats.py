@@ -21,6 +21,7 @@ pyc-cache learning, mirroring tests/test_governance_ledger.py.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -45,7 +46,7 @@ def _env(repo: Path) -> dict[str, str]:
 
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "review-stats", *args],
+        [sys.executable, str(HOOK), "review-stats", *args],
         cwd=str(repo), capture_output=True, text=True, env=_env(repo), timeout=30,
     )
 

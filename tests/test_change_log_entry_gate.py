@@ -20,6 +20,7 @@ name-only diffs behave as in production.
 from __future__ import annotations
 
 import re
+import sys
 import subprocess
 from pathlib import Path
 
@@ -81,7 +82,7 @@ def _run_probe(repo: Path) -> subprocess.CompletedProcess:
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     return subprocess.run(
-        ["python3", str(HOOK), "check-change-log-entry"],
+        [sys.executable, str(HOOK), "check-change-log-entry"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
 
@@ -251,7 +252,7 @@ def test_both_pr_gates_agree_on_the_same_diff(tmp_path, paths):
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     doc_only = subprocess.run(
-        ["python3", str(HOOK), "check-pr-doc-only"],
+        [sys.executable, str(HOOK), "check-pr-doc-only"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
     # doc-only exits 0 when the diff needs no review; the change-log gate exits 0
@@ -277,7 +278,7 @@ def test_the_two_gates_diverge_on_an_empty_diff_by_design(tmp_path):
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     doc_only = subprocess.run(
-        ["python3", str(HOOK), "check-pr-doc-only"],
+        [sys.executable, str(HOOK), "check-pr-doc-only"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
     assert _run_probe(repo).returncode == 0, "an empty diff owes no entry"

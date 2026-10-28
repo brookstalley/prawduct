@@ -98,7 +98,8 @@ All three nest under a `learning` key, under the same envelope:
   it.
 - **The span is the session's work, not its uncommitted work.** The Stop hook
   reaches `learning.written` off `gates.session_work_span`, which diffs the
-  session's base tree against the working tree — so a rule written and
+  session's base tree against the working tree, less history a pull, merge or
+  branch switch brought in — so a rule written and
   committed in one turn is still counted at that turn's Stop. Without the
   marker there is no base to diff, and then nothing is recorded and the Stop
   hook says so on stderr; that one missing state is also why the budget check
@@ -333,7 +334,7 @@ under a known family). This folds **values, not keys**, so `schema_version`
 holds; the raw id stays in each ledger line untouched, so the fold is a
 read-time view, not a rewrite.
 
-## `prawduct-hook stats [--json] [--since <stamp>] [--until <stamp>]`
+## `prawduct-hook stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]`
 
 What governance cost and what it caught, **per plugin version** (`major.minor`).
 It reads the clone-shared evidence store, not the ledger. Every fact there
@@ -420,6 +421,18 @@ Rates with no denominator print as `-` (`null` in `--json`), never as zero.
 `--json` carries `schema_version`, `project`, `generated_at`, `window`,
 `schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
 by `major.minor` (`unknown` when a fact names no version).
+
+`--by-build` splits each version by the plugin build that wrote the fact
+(`actor.build`: the plugin checkout's commit sha, `+dirty` for a working tree).
+Every dev build of one version shares its version string, so this is how two
+dev builds are told apart. Facts with no build (a marketplace install, or ones
+written before the field existed) form one `unstamped` row. Each row is defined
+exactly as a version's numbers are, over that build's facts, so rows need not
+sum to the version's totals: a session that ran on two builds counts in both.
+Builds are listed in the order the store first saw them. The human report prints one block per build instead of
+per version, and `--json` adds `by_build`, keyed by `major.minor` and then by
+build, beside an unchanged `by_version`. The contribution report never carries
+the build: it stays at `major.minor` plus the dev flag.
 
 ## `prawduct-hook contribute [--json]` and `contribute --send [--approve sha256:<digest>]`
 

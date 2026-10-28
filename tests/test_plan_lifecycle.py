@@ -157,6 +157,15 @@ def _fragment(repo: Path, scope: str = "unit") -> None:
     (changes / f"{scope}.md").write_text(_FRAGMENT.format(scope=scope))
 
 
+def _plan_in_base(repo: Path) -> None:
+    """Commit the plan to develop and push it: where any merge (merge commit,
+    squash, rebase) leaves a plan, and what the change-record inference asks."""
+    _plan(repo)
+    _git(repo, "add", "-f", ".prawduct/artifacts/build-plan-unit.md")
+    _git(repo, "commit", "-qm", "plan")
+    _git(repo, "push", "-q", "origin", "develop")
+
+
 def _observe(plan: Path, repo: Path, **kw) -> plan_lifecycle.Lifecycle:
     kw.setdefault("facts", _facts())
     return plan_lifecycle.observe(plan, repo_dir=repo, **kw)
@@ -357,16 +366,43 @@ class TestBranchGone:
         assert "review R1" in lc.reason
 
     def test_a_pending_fragment_infers_merged_unreleased_and_says_so(self, repo):
+        """The inference holds only for a plan in the base's tree, where the merge
+        put it — so the plan is committed to develop here, as the merge would."""
         _feature(repo)
         _merge_no_ff(repo)
         _delete(repo)
         _fragment(repo)
+        _plan_in_base(repo)
         lc = _observe(_plan(repo), repo)
         assert lc.state == "merged-unreleased", lc
         assert lc.reason == (
             f"inferred: `{BRANCH}` is on no local or remote branch, and its fragment for "
             "scope `unit` is pending release"
         )
+
+    def test_a_fragment_committed_with_an_unmerged_plan_infers_nothing(self, repo):
+        """#1106's control: the plan and its fragment are committed on a feature
+        branch the base never merged, and the plan claims a branch that does not
+        exist (a typo). `plan new` writes both together, so the pending fragment is
+        no evidence of a merge; the in-base sibling above keeps inferring."""
+        _git(repo, "checkout", "-q", "-b", "fix/real", "develop")
+        _plan(repo)
+        _fragment(repo)
+        _git(repo, "add", ".prawduct")
+        _git(repo, "commit", "-qm", "plan")
+        lc = _observe(_plan(repo), repo)
+        assert lc.state == "unknown", lc
+        assert "which is not in `develop`'s tree" in lc.reason
+
+    def test_a_fragment_beside_a_never_committed_plan_infers_nothing(self, repo):
+        """Right after `plan new`, before its commit: the plan and fragment are on
+        disk only. No merge brought them, so a mistyped `branch:` must not read as
+        release-pending."""
+        _plan(repo)
+        _fragment(repo)
+        lc = _observe(_plan(repo), repo)
+        assert lc.state == "unknown", lc
+        assert "which is not in `develop`'s tree" in lc.reason
 
     def test_another_scopes_fragment_infers_nothing(self, repo):
         _feature(repo)
@@ -383,6 +419,7 @@ class TestBranchGone:
         (repo / ".prawduct" / "change-log.md").write_text(
             "# Change Log\n\n## 2026-10-01: unit work\n<!-- prawduct: scope=unit -->\n\nBody.\n"
         )
+        _plan_in_base(repo)
         lc = _observe(_plan(repo), repo)
         assert lc.state == "merged-unreleased", lc
         assert "its change-log entry for scope `unit` is pending release" in lc.reason
@@ -427,6 +464,60 @@ class TestNotEvidenceOfAMerge:
         lc = _observe(_plan(repo), repo, facts=_facts(fresh, real))
         assert lc.state == "merged-unreleased", lc
         assert "review R-real's commit" in lc.reason
+
+    def test_a_dirty_tree_review_at_its_own_base_commit_merged_no_ff_is_a_merge(self, repo):
+        """#1079's shape, in the lifecycle: a review of uncommitted work is anchored
+        at its ``base_commit``, the branch HEAD the dirty tree sat on. A
+        ``--no-ff`` merge brings that commit into develop through its second
+        parent, off the first-parent history, so it shows the merge. The
+        fork-point sibling above is the control: the same anchor-equals-base
+        shape, on develop's first-parent history, shows nothing."""
+        head = _feature(repo)
+        _merge_no_ff(repo)
+        _delete(repo)
+        dirty = _review("R-dirty", None, dispatch_commit=head, base_commit=head)
+        lc = _observe(_plan(repo), repo, facts=_facts(dirty))
+        assert lc.state == "merged-unreleased", lc
+        assert "review R-dirty's commit" in lc.reason
+
+    def test_the_first_parent_question_failing_proves_no_merge(self, repo, monkeypatch):
+        """Git unable to say where the anchor sits on develop: the review
+        anchored at its own ``base_commit`` proves nothing (authority fails
+        closed), where it would otherwise show the ``--no-ff`` merge."""
+        head = _feature(repo)
+        _merge_no_ff(repo)
+        _delete(repo)
+        dirty = _review("R-dirty", None, dispatch_commit=head, base_commit=head)
+        assert _observe(_plan(repo), repo, facts=_facts(dirty)).state == "merged-unreleased"
+        real = evidence.run_git
+
+        def run_git(repo_dir, *args, **kw):
+            if args[:1] == ("rev-list",):
+                return 128, "", "fatal: injected failure"
+            return real(repo_dir, *args, **kw)
+
+        monkeypatch.setattr(evidence, "run_git", run_git)
+        assert _observe(_plan(repo), repo, facts=_facts(dirty)).state == "unknown"
+
+    def test_a_newer_base_commit_review_does_not_hide_the_older_one_after_a_fast_forward(self, repo):
+        """A committed review R1 anchored at the branch commit, then a newer
+        dirty-tree pass V1 dispatched at that same commit (so its anchor is its
+        own ``base_commit``), then a fast-forward and the branch deleted. On the
+        first-parent history V1's anchor cannot be told from a fork point, so
+        it proves nothing — and it must not stand in for R1, which proves the
+        merge from the same commit."""
+        fork = _git(repo, "rev-parse", "develop")
+        sha = _feature(repo)
+        _git(repo, "merge", "-q", "--ff-only", BRANCH)
+        _git(repo, "push", "-q", "origin", "develop")
+        _delete(repo)
+        older = _review("R1", sha, base_commit=fork, ts="2026-10-25T00:00:00Z")
+        newer = _review("V1", None, dispatch_commit=sha, base_commit=sha, ts="2026-10-26T00:00:00Z")
+        lc = _observe(_plan(repo), repo, facts=_facts(older, newer))
+        assert lc.state == "merged-unreleased", lc
+        assert "review R1's commit" in lc.reason
+        # Control: V1 alone is the fork-point shape there, and proves nothing.
+        assert _observe(_plan(repo), repo, facts=_facts(newer)).state == "unknown"
 
     def test_a_branch_with_no_commits_of_its_own_is_in_progress(self, repo):
         """A freshly cut branch's tip IS its base's tip, which git calls

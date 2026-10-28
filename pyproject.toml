@@ -2,8 +2,8 @@
 name = "prawduct"
 # Vestigial packaging metadata (the repo is not PyPI-published). The canonical
 # plugin version is VERSION / .claude-plugin/plugin.json; keep this in step on release.
-version = "3.8.0-dev.1"
-requires-python = ">=3.10"
+version = "3.8.0-dev.2"
+requires-python = ">=3.14"
 
 [project.optional-dependencies]
 dev = [
@@ -62,7 +62,7 @@ packages = []
 #
 #     ruff check .
 [tool.ruff]
-target-version = "py310"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [

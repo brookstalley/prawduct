@@ -9,8 +9,10 @@ one-file change nobody drew a plan for — got an advisory note and ended in
 silence, so the sessions least likely to have a plan were the ones whose lesson
 was never written down. And porcelain empties the moment you commit, so even a
 planned session could satisfy the gate by committing first. It now asks one
-question of `gates.session_work_span`: did judgeable code change between this
-session's base tree and the working tree, committed work included.
+question of `gates.session_work_span`: did this session author judgeable code
+between its base tree and the working tree, committed work included — history
+a pull, merge or branch switch brought in is not its work
+(`TestMovesThisSessionDidNotAuthor`).
 
 **What it grades.** The old floor was fifty characters, which graded nothing —
 "did the chunk, tests green, shipping it" cleared it, and so did two hundred
@@ -22,8 +24,7 @@ grades phrasing rather than whether the work was done.
 
 **The Critic gate reads the same span, pinned in `TestTheCriticGuardReadsTheSpan`.**
 Its firing guard and its doc-only carveout moved onto `session_work_span`
-together (#304); the merge-only case is confined by the verdict's merge-base
-fallback, not by the guard.
+together (#304), so a pull-only session leaves both silent.
 
 Fixture shape mirrors `tests/test_learnings_cutover_gate.py`: a real git repo,
 `cmd_stop` called in-process, stderr read back.
@@ -34,10 +35,12 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import json
+import os
 import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -205,58 +208,265 @@ class TestTheGateFiresOnCommittedPlanlessWork:
         assert BLOCKER in err
 
 
-class TestTheKnownFalseFire:
-    """The one class of fire nobody authored, measured rather than argued.
+class _Session:
+    """A session whose start is pinned on the clock, so the reflog can tell
+    history made before it from moves made during it.
 
-    The span is base tree → working tree with no authorship test, so judgeable
-    files that arrive by `git merge` or `git pull` mid-session are inside it and
-    the gate fires on work this session did not write. That is a recorded
-    assumption of the design, not an oversight: an authorship test means asking
-    git who wrote each hunk on every turn, and the cost of being wrong here is
-    two lines. The test exists so the claim is a reading rather than a belief,
-    and so that a future authorship exclusion has the case it must silence.
+    The span bounds its reflog walk by `.session-start`, and git stamps both
+    reflog entries and commits with the committer date. Fixture history is
+    written at the real clock; the session's start and every git move it makes
+    sit minutes later, so no fixture step can land in the session's first
+    second and be read as the session's own.
     """
 
-    def test_a_merge_that_brings_judgeable_files_fires(self, tmp_path, capsys):
-        repo = _repo(tmp_path)
-        _git(repo, "checkout", "-q", "-b", "other")
-        (repo / "theirs.py").write_text("their_work = 1\n")
-        # `add theirs.py`, not `add -A`: `-A` would stage the untracked
-        # `.prawduct/` too, and checking `main` back out would then delete the
-        # session state this fixture is about to write.
-        _git(repo, "add", "theirs.py")
-        _git(repo, "commit", "-q", "-m", "someone else's commit")
-        _git(repo, "checkout", "-q", "main")
-
-        _mark_base(repo)                       # session starts here, on main
-        _git(repo, "merge", "-q", "--no-ff", "-m", "merge other", "other")
-
-        rc, err = _stop(repo, capsys)
-        assert rc == 2, "documented false fire — if this goes silent, the design changed"
-        assert BLOCKER in err
-        assert "theirs.py" in gates.session_work_span(repo)["changed"]
-
-    def test_and_two_lines_end_it(self, tmp_path, capsys):
-        """The price of the false fire above, stated as a test: one reflection,
-        no re-run of anything, no review. That is the whole cost, and it is what
-        makes this class acceptable at the reflection gate and not at the Critic
-        gate, where the same fire would cost a review round."""
-        repo = _repo(tmp_path)
-        _git(repo, "checkout", "-q", "-b", "other")
-        (repo / "theirs.py").write_text("their_work = 1\n")
-        # `add theirs.py`, not `add -A`: `-A` would stage the untracked
-        # `.prawduct/` too, and checking `main` back out would then delete the
-        # session state this fixture is about to write.
-        _git(repo, "add", "theirs.py")
-        _git(repo, "commit", "-q", "-m", "someone else's commit")
-        _git(repo, "checkout", "-q", "main")
+    def __init__(self, repo: Path):
+        self.repo = repo
+        self.started = int(time.time()) + 600
         _mark_base(repo)
-        _git(repo, "merge", "-q", "--no-ff", "-m", "merge other", "other")
+        (repo / ".prawduct" / ".session-start").write_text(
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.started))
+        )
 
-        _reflect(repo, "Expected: sync only. Actual: same. No defect.\n")
+    def git(self, *args: str) -> str:
+        env = dict(os.environ, GIT_COMMITTER_DATE=f"@{self.started + 60} +0000")
+        return subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=str(self.repo), capture_output=True, text=True, timeout=15,
+            check=True, env=env,
+        ).stdout.strip()
+
+
+def _their_branch(repo: Path, path: str = "theirs.py") -> None:
+    """Someone else's commit on `other`, made before the session; `main` checked
+    back out. `add <path>`, not `add -A`: `-A` would stage the untracked
+    `.prawduct/` too, and checking `main` back out would then delete the
+    session state the fixture is about to write."""
+    _git(repo, "checkout", "-q", "-b", "other")
+    (repo / path).write_text("their_work = 1\n")
+    _git(repo, "add", path)
+    _git(repo, "commit", "-q", "-m", "someone else's commit")
+    _git(repo, "checkout", "-q", "main")
+
+
+def _delegate_commits(
+    s: "_Session", tmp_path: Path, branch: str = "agent", path: str = "delegate.py"
+) -> None:
+    """A commit on `branch` made during the session in another worktree — a
+    worktree agent's, or a concurrent session's — so it is in that worktree's
+    reflog, not this one's."""
+    agent = tmp_path / f"{branch}-wt"
+    s.git("worktree", "add", "-q", "-b", branch, str(agent))
+    (agent / path).write_text("by_the_agent = 1\n")
+    env = dict(os.environ, GIT_COMMITTER_DATE=f"@{s.started + 30} +0000")
+    for args in (["add", path], ["commit", "-q", "-m", "delegate's work"]):
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=str(agent), check=True, capture_output=True, env=env,
+        )
+
+
+class TestMovesThisSessionDidNotAuthor:
+    """Moves that bring in history this session did not write are not its work.
+
+    The span used to be base tree → working tree with no authorship test, so a
+    pull, merge or branch switch mid-session fired the reflection gate — and,
+    under an active plan, the Critic gate — on files nobody in the session
+    touched. That was a recorded assumption, priced at "asking git who wrote
+    each hunk on every turn". HEAD's reflog answers it far more cheaply: it
+    records why HEAD moved. These cases were the documented false fire and are
+    now silent; the ones below them keep the session's own commits firing.
+    """
+
+    def test_a_no_ff_merge_of_their_branch_is_silent(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("merge", "-q", "--no-ff", "-m", "merge other", "other")
+
+        span = gates.session_work_span(repo)
+        assert span["source"] == "base-tree"
+        assert "theirs.py" not in span["changed"]
         rc, err = _stop(repo, capsys)
-        assert rc == 0
+        assert rc == 0, err
         assert BLOCKER not in err
+
+    def test_a_fast_forward_pull_is_silent(self, tmp_path):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("pull", "-q", "--no-rebase", ".", "other")
+        assert (repo / "theirs.py").is_file()
+        assert gates.session_work_span(repo)["changed"] == []
+
+    def test_switching_to_their_branch_is_silent(self, tmp_path):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("checkout", "-q", "other")
+        assert gates.session_work_span(repo)["changed"] == []
+
+    def test_a_hard_reset_onto_their_commit_is_silent(self, tmp_path):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("reset", "-q", "--hard", "other")
+        assert gates.session_work_span(repo)["changed"] == []
+
+    def test_a_session_commit_still_fires_beside_a_pull(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        (repo / "code.py").write_text("x = 2\n")
+        s.git("commit", "-q", "-am", "mine")
+        s.git("pull", "-q", "--no-rebase", "--no-edit", ".", "other")
+
+        span = gates.session_work_span(repo)
+        assert span["changed"] == ["code.py"]
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_a_rebased_session_commit_still_fires(self, tmp_path):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        (repo / "code.py").write_text("x = 2\n")
+        s.git("commit", "-q", "-am", "mine")
+        s.git("rebase", "-q", "other")
+        assert gates.session_work_span(repo)["changed"] == ["code.py"]
+
+    def test_a_hand_concluded_merge_counts_only_what_it_resolved(self, tmp_path):
+        repo = _repo(tmp_path)
+        _git(repo, "checkout", "-q", "-b", "other")
+        (repo / "code.py").write_text("x = 'theirs'\n")
+        (repo / "theirs.py").write_text("their_work = 1\n")
+        _git(repo, "add", "code.py", "theirs.py")
+        _git(repo, "commit", "-q", "-m", "their conflicting commit")
+        _git(repo, "checkout", "-q", "main")
+        (repo / "code.py").write_text("x = 'ours'\n")
+        _git(repo, "commit", "-q", "-am", "our side, before the session")
+
+        s = _Session(repo)
+        # The identity matters even though a conflicted merge commits nothing:
+        # git checks it before merging, so without one (a runner with no global
+        # config) the merge refuses outright and there is nothing to conclude.
+        merge = subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "merge", "-q", "other"],
+            cwd=str(repo), capture_output=True,
+        )
+        assert merge.returncode != 0, "fixture must conflict"
+        assert (repo / ".git" / "MERGE_HEAD").is_file(), merge.stderr
+        (repo / "code.py").write_text("x = 'resolved'\n")
+        s.git("add", "code.py")
+        s.git("commit", "-q", "--no-edit")
+
+        assert gates.session_work_span(repo)["changed"] == ["code.py"]
+
+    def test_a_delegate_branch_merged_back_still_fires(self, tmp_path, capsys):
+        """A worktree agent commits on its own branch — in its own worktree's
+        reflog, not this one's — and the coordinator merges it back. That work
+        was made during the session, so the merge does not launder it."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _delegate_commits(s, tmp_path)
+        # Only the merge is in this checkout's reflog; the agent's commit is
+        # in its worktree's, which this session never reads.
+        assert "delegate's work" not in s.git("reflog", "show", "--format=%gs", "HEAD")
+        s.git("merge", "-q", "--no-ff", "-m", "merge agent", "agent")
+
+        assert gates.session_work_span(repo)["changed"] == ["delegate.py"]
+        rc, err = _stop(repo, capsys)
+        assert rc == 2
+        assert BLOCKER in err
+
+    def test_a_fast_forwarded_delegate_branch_still_fires(self, tmp_path):
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _delegate_commits(s, tmp_path)
+        s.git("merge", "-q", "--ff-only", "agent")
+        assert gates.session_work_span(repo)["changed"] == ["delegate.py"]
+
+    def test_history_pulled_in_from_during_the_session_still_counts(self, tmp_path):
+        """The rule is by age, not by who: a commit someone else made after the
+        session started is not excluded. That keeps a delegate's work in, at
+        the price of a concurrent session's — the class #1071 itself names."""
+        repo = _repo(tmp_path)
+        s = _Session(repo)
+        _delegate_commits(s, tmp_path, branch="other", path="theirs.py")
+        s.git("pull", "-q", "--no-rebase", ".", "other")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_no_session_start_keeps_the_whole_span(self, tmp_path):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        (repo / ".prawduct" / ".session-start").unlink()
+        s.git("merge", "-q", "--no-ff", "-m", "merge other", "other")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_a_reflog_that_does_not_reach_the_session_start_keeps_the_whole_span(
+        self, tmp_path
+    ):
+        """A reflog that begins after the session started (expired, or the
+        repo is younger than the marker) cannot vouch that nothing before its
+        first entry was the session's."""
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("reflog", "expire", "--expire=all", "--all")
+        s.git("merge", "-q", "--no-ff", "-m", "merge other", "other")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_uncommitted_work_on_their_branch_still_fires(self, tmp_path):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("checkout", "-q", "other")
+        (repo / "theirs.py").write_text("edited in session\n")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_an_unrecognised_reflog_subject_keeps_the_whole_span(self, tmp_path):
+        """git's reflog wording is not a contract. A move the classifier cannot
+        name gives up on authorship and answers the base-tree span."""
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("update-ref", "-m", "frobnicate: something new", "HEAD", "other")
+        s.git("reset", "-q", "--hard")
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_a_failing_reflog_keeps_the_whole_span(self, tmp_path, monkeypatch):
+        repo = _repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("merge", "-q", "--no-ff", "-m", "merge other", "other")
+        real = gates.evidence.run_git
+
+        def _no_reflog(project_dir, *args, **kwargs):
+            if args and args[0] == "reflog":
+                return 1, "", "simulated failure"
+            return real(project_dir, *args, **kwargs)
+
+        monkeypatch.setattr(gates.evidence, "run_git", _no_reflog)
+        assert gates.session_work_span(repo)["changed"] == ["theirs.py"]
+
+    def test_no_reflog_read_while_heads_tree_is_unmoved(self, tmp_path, monkeypatch):
+        """The Stop path runs every turn: a session that has not moved HEAD's
+        tree pays one `rev-parse` and never walks the reflog."""
+        repo = _repo(tmp_path)
+        _Session(repo)
+        (repo / "code.py").write_text("x = 2\n")
+        calls: list[str] = []
+        real = gates.evidence.run_git
+
+        def _recording(project_dir, *args, **kwargs):
+            calls.append(args[0] if args else "")
+            return real(project_dir, *args, **kwargs)
+
+        monkeypatch.setattr(gates.evidence, "run_git", _recording)
+        assert gates.session_work_span(repo)["changed"] == ["code.py"]
+        assert "rev-parse" in calls, "the guard must have been reached"
+        assert "reflog" not in calls and "diff-tree" not in calls
 
 
 # ---------------------------------------------------------------------------
@@ -594,6 +804,22 @@ class TestTheCriticGuardReadsTheSpan:
         assert rc == 2, err
         assert "gate: critic" in err
 
+    def test_a_pull_only_session_leaves_it_silent(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        """The Critic guard reads the same span, so a session that only pulled
+        under an active plan owes no review round for history it did not
+        write — the costlier half of the false fire."""
+        repo = self._plan_repo(tmp_path)
+        _their_branch(repo)
+        s = _Session(repo)
+        s.git("merge", "-q", "--no-ff", "-m", "merge other", "other")
+        self._verdict_says_uncovered(monkeypatch)
+
+        rc, err = _stop(repo, capsys)
+        assert rc == 0, err
+        assert "gate: critic" not in err
+
     def test_a_committed_designer_handoff_chunk_still_skips_it(
         self, tmp_path, capsys, monkeypatch
     ):
@@ -807,23 +1033,31 @@ class TestSessionWorkSpan:
         assert span["changed"] == ["notes.md"]
         assert span["judgeable"] is False
 
-    def test_it_costs_one_status_and_one_diff(self, tmp_path, monkeypatch):
+    def test_its_git_calls_are_bounded_by_what_the_session_did(
+        self, tmp_path, monkeypatch
+    ):
         """The requirement is a COST — this gate runs on every turn — so the
         assertion is over the operations that cost, not over a side effect that
         usually accompanies them.
 
         Two readers below need the porcelain snapshot and each would spawn its
         own `git status` if the span did not take one and thread it. Pass the
-        snapshot in (what `cmd_stop` does) and even that goes away, leaving the
-        single `git diff` this design is bounded by. `capture_tree` must not
-        appear at all: it writes an index file and walks the whole tree, which
-        is a review-time cost, not a per-turn one.
+        snapshot in (what `cmd_stop` does) and even that goes away. `capture_tree`
+        must not appear at all: it writes an index file and walks the whole tree,
+        which is a review-time cost, not a per-turn one.
+
+        The bound used to be one `git diff`. Telling the session's own commits
+        from history a pull or branch switch brought in costs more, and only
+        when there is something to tell: an empty span stops at the diff, an
+        unmoved HEAD tree at one `rev-parse`, and a moved one reads the reflog,
+        diffs the session's commits in one batch, and diffs the working tree.
         """
         from lib import evidence, gitstate
 
         repo = _repo(tmp_path)
-        _mark_base(repo)
-        _commit_code(repo)
+        s = _Session(repo)
+        (repo / "code.py").write_text("x = 2\n")
+        s.git("commit", "-q", "-am", "c2")
 
         git_calls: list[tuple] = []
         real_run_git = evidence.run_git
@@ -844,12 +1078,25 @@ class TestSessionWorkSpan:
         monkeypatch.setattr(gitstate, "git_status_output", spy_status)
         monkeypatch.setattr(evidence, "capture_tree", forbidden_capture)
 
+        moved = ["rev-parse", "reflog", "log", "diff-tree", "diff"]
         gates.session_work_span(repo)
-        assert [c[0] for c in git_calls] == ["status", "diff"], git_calls
+        assert [c[0] for c in git_calls] == ["status", "diff", *moved], git_calls
 
         git_calls.clear()
         snapshot = real_status(repo)
         gates.session_work_span(repo, snapshot)
+        assert [c[0] for c in git_calls] == ["diff", *moved], git_calls
+
+        # HEAD's tree back where the session started, the work uncommitted.
+        _git(repo, "reset", "-q", "HEAD~1")
+        git_calls.clear()
+        gates.session_work_span(repo, real_status(repo))
+        assert [c[0] for c in git_calls] == ["diff", "rev-parse"], git_calls
+
+        # Nothing changed: no authorship question to ask.
+        _git(repo, "checkout", "-q", "--", "code.py")
+        git_calls.clear()
+        gates.session_work_span(repo, real_status(repo))
         assert [c[0] for c in git_calls] == ["diff"], git_calls
 
     def test_a_pre_existing_untracked_file_is_not_this_session_s_work(

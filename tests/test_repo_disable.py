@@ -151,7 +151,7 @@ def _run(project_dir: Path, *args: str) -> subprocess.CompletedProcess:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "repo-disable", *args],
+        [sys.executable, str(HOOK), "repo-disable", *args],
         capture_output=True, text=True, env=env, timeout=20,
     )
 

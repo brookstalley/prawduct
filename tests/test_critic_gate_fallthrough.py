@@ -23,6 +23,7 @@ doc-only check, and the findings-freshness check all compose inside `cmd_stop`).
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -101,7 +102,7 @@ def _run_stop(
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "stop"],
+        [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, timeout=20,
     )
 

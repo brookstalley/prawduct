@@ -120,7 +120,7 @@ def _repo(tmp_path: Path, *, with_plan: bool = True, with_change_log: bool = Tru
 def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo))
     return subprocess.run(
-        ["python3", str(HOOK), "pr-review-payload", *args],
+        [sys.executable, str(HOOK), "pr-review-payload", *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=60,
     )
 
@@ -423,6 +423,9 @@ class TestDegradations:
                     # of the reason and pass even when both labels render the
                     # same, which is the defect it exists to catch.
                     return True, "a reason that does not vary by clause", self._c
+
+                def saved_flaky_lines(self, *a, **k):
+                    return []
 
             import unittest.mock as _m
             with _m.patch.object(
