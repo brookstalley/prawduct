@@ -67,9 +67,9 @@ section, and changes no other byte. The release file is the record that the rele
     says so rather than claiming every file was restored.
   - A release that ships nothing says it kept the headline file.
   - The release runbook treats the headline file as never committed.
-  - Known follow-up, #1073: `write_all_or_none` now writes line endings exactly as given, so on
-    Windows `archive-change-log`, `migrate-change-log` and `plan_mint` rewrite a CRLF file they
-    read with `read_text` as LF. POSIX bytes are unchanged.
+  - `write_all_or_none` now writes line endings exactly as given. The commands that rewrite a
+    file they read with `read_text` came out LF on a CRLF file as a result. That was #1073, and
+    `crlf-preserve` fixes it in the same release.
 
 ## Consumer note
 **Release notes now reach your own changelog.** Declare `consumer_digest:` with your changelog's

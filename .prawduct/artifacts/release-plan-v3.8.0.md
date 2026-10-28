@@ -39,3 +39,4 @@ Every row must account for one release-pending scope. Phase 1 adds the rest.
 |---|---|---|
 | consumer-digest | ships | |
 | final-review-chunks | ships | |
+| crlf-preserve | ships | |
