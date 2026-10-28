@@ -436,12 +436,13 @@ class _Reachability:
     which a merge commit brings in through its second parent; that anchor is
     accepted (#1079). A dirty-tree review dispatched before the branch's first
     commit is anchored at the fork point itself, on the first-parent history;
-    it is accepted when the commit carrying its reviewed tree, verbatim, sits on
-    a first-parent chain from the anchor and reached the base only through a
-    merge (:meth:`_merged_verbatim`). A fast-forward puts the branch's commits
+    it is accepted when the nearest commit carrying its reviewed tree, verbatim,
+    on a first-parent chain from the anchor (:func:`_verbatim_chain`, the commit
+    :class:`_Spans` reads) reached the base only through a merge
+    (:meth:`_merged_verbatim`). A fast-forward puts the branch's commits
     on the first-parent history too, so there such an anchor still reads as a
-    fork point — open, failing closed. When git cannot answer the first-parent
-    question the anchor is refused, and the reason says git failed.
+    fork point — open, failing closed. When git cannot answer either question
+    the anchor is refused, and the reason says git failed.
 
     :meth:`holder` names the ref that held an accepted anchor, which is where
     a dirty-tree review's verbatim commit is looked for (:class:`_Spans`).
@@ -467,33 +468,22 @@ class _Reachability:
             self._holder[anchor] = held
         return held is not None
 
-    def _merged_verbatim(self, anchor: str, tree: str, base: str) -> bool:
-        """Whether the reviewed ``tree`` was committed on a first-parent chain
-        from ``anchor`` and that commit reached ``base`` only through a merge.
-        It is how a dirty-tree review dispatched before the branch's first
-        commit — anchored at the fork point, which the base held all along —
-        still shows its work merged: the commit carrying the reviewed tree is
-        the branch's, and off the base's first-parent history."""
+    def _merged_verbatim(self, anchor: str, tree: str, base: str) -> "bool | str":
+        """Whether the commit carrying the reviewed ``tree`` verbatim — the end
+        of :func:`_verbatim_chain` from ``anchor``, the commit :class:`_Spans`
+        reads too — reached ``base`` only through a merge; or, when git fails,
+        the failure. It is how a dirty-tree review dispatched before the
+        branch's first commit — anchored at the fork point, which the base held
+        all along — still shows its work merged: the commit carrying the
+        reviewed tree is the branch's, and off the base's first-parent history."""
         commits = _log_commits(self._repo_dir, "--ancestry-path", f"{anchor}..{base}")
         if isinstance(commits, str):
+            return commits
+        chain = _verbatim_chain(commits, anchor, tree)
+        if not chain:
             return False
-        by_sha = {c.sha: c for c in commits}
-
-        def descends(commit: _Commit) -> bool:
-            while commit.parents:
-                parent = commit.parents[0]
-                if parent == anchor:
-                    return True
-                commit = by_sha.get(parent)
-                if commit is None:
-                    return False
-            return False
-
-        return any(
-            c.tree == tree and descends(c)
-            and first_parent_answer(self._repo_dir, c.sha, base) is False
-            for c in commits
-        )
+        answer = first_parent_answer(self._repo_dir, chain[-1].sha, base)
+        return answer if isinstance(answer, str) else not answer
 
     def holder(self, anchor: str) -> "str | None":
         """The ref an accepted ``anchor`` was found on, else ``None``."""
@@ -552,17 +542,47 @@ class _Reachability:
             if isinstance(answer, str):
                 return f"its commit could not be placed on `{where.base}`: {answer}"
             tree = body.get("head_tree")
-            if answer and not (
+            merged = answer and (
                 not gitstate.is_object_id(body.get("head_commit"))
                 and gitstate.is_object_id(tree)
                 and self._merged_verbatim(anchor, tree, where.base)
-            ):
+            )
+            if isinstance(merged, str):
+                return f"its commit could not be placed on `{where.base}`: {merged}"
+            if answer and not merged:
                 return (
                     f"its commit is the review's own base commit, which is on `{where.base}`'s "
                     "first-parent history, so the base held it before the review ran"
                 )
         self._holder[anchor] = where.base
         return None
+
+
+def _verbatim_chain(after: "list[_Commit]", start: str, tree: str) -> "list[_Commit]":
+    """The first-parent chain from ``start`` (exclusive) to the nearest commit
+    in ``after`` whose tree is ``tree``, else ``[]`` — a non-merge commit
+    preferred, so a merge carrying the same tree does not stand in for the
+    branch's commit. The one answer to "which commit holds a review's tree,
+    verbatim": :class:`_Spans` reads the chain, :meth:`_Reachability._merged_verbatim`
+    asks whether its last commit reached the base through a merge."""
+    children: dict[str, list[_Commit]] = {}
+    for commit in sorted(after, key=lambda c: len(c.parents) > 1):
+        if commit.parents:
+            children.setdefault(commit.parents[0], []).append(commit)
+    frontier: list[tuple[str, list[_Commit]]] = [(start, [])]
+    seen = {start}
+    while frontier:
+        nxt: list[tuple[str, list[_Commit]]] = []
+        for sha, chain in frontier:
+            for child in children.get(sha, ()):
+                if child.sha in seen:
+                    continue
+                seen.add(child.sha)
+                if child.tree == tree:
+                    return [*chain, child]
+                nxt.append((child.sha, [*chain, child]))
+        frontier = nxt
+    return []
 
 
 def first_parent_answer(repo_dir: Path, anchor: str, base: str) -> "bool | str":
@@ -640,29 +660,6 @@ class _Spans:
             self._logs[revs] = None if isinstance(commits, str) else commits
         return self._logs[revs]
 
-    @staticmethod
-    def _verbatim_chain(after: "list[_Commit]", start: str, tree: str) -> "list[_Commit]":
-        """The first-parent chain from ``start`` (exclusive) to the nearest
-        commit whose tree is ``tree``, else ``[]``."""
-        children: dict[str, list[_Commit]] = {}
-        for commit in sorted(after, key=lambda c: len(c.parents) > 1):
-            if commit.parents:
-                children.setdefault(commit.parents[0], []).append(commit)
-        frontier: list[tuple[str, list[_Commit]]] = [(start, [])]
-        seen = {start}
-        while frontier:
-            nxt: list[tuple[str, list[_Commit]]] = []
-            for sha, chain in frontier:
-                for child in children.get(sha, ()):
-                    if child.sha in seen:
-                        continue
-                    seen.add(child.sha)
-                    if child.tree == tree:
-                        return [*chain, child]
-                    nxt.append((child.sha, [*chain, child]))
-            frontier = nxt
-        return []
-
     def carried(self, body: dict, holder: "str | None") -> "set[str]":
         """The normalized ids of the chunks ``body``'s interval carries a
         commit for. ``holder`` is the ref the fact's anchor was found on."""
@@ -681,7 +678,7 @@ class _Spans:
             after = self._log("--ancestry-path", f"{dispatch}..{holder}")
             if before is None or after is None:
                 return set()
-            commits = [*before, *self._verbatim_chain(after, dispatch, head_tree)]
+            commits = [*before, *_verbatim_chain(after, dispatch, head_tree)]
         if not commits:
             return set()
         return _subject_chunks((c.subject for c in commits), self._plan.scope)

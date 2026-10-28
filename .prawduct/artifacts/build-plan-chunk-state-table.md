@@ -115,8 +115,7 @@ interval whose scoped subject names it; an unbuilt chunk has none, so no span ce
 - *Not settled by the goals:* `plan retract` may withdraw a span certification only while that
   span certifies the chunk (`retraction_target`); one blocked today cannot be withdrawn in advance.
 - *Not settled by the goals:* `data-model.md`'s 2026-10-24 ruling D1 gains a dated extension note
-  citing this plan's design decision rather than a rewritten statement; the owner's confirmation
-  of option 1 lives with the coordinator, not here.
+  citing the owner's ruling on #1082 (Goals) rather than a rewritten statement.
 - Left for the coordinator (outside this delegate's files): `critic_consolidate.uncertified_clause`
   says a whole-plan review that names nothing "certified no chunk" and "omitting it certifies only
   the proposal", both now false when its span certified some; and `plan_lifecycle`'s merge probe

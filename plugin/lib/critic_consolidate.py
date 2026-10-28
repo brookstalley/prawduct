@@ -851,7 +851,7 @@ def uncertified_clause(mode: str, open_chunks: "list[str]") -> str:
     return (
         f"This {mode} review named no chunk, and the plan still has open chunk(s) "
         f"{ids}: neither its proposal nor its interval found work for them (no commit "
-        "subject in it names them and no Deliverables path was touched). If they are "
+        "subject in it names them). If they are "
         f"this branch's work, pass `--chunks {','.join(open_chunks)}` on the next "
         "`/prawduct:critic` dispatch — without it, a review certifies only the chunks "
         "its interval builds."

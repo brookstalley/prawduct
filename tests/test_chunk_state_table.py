@@ -916,6 +916,24 @@ def test_F1_first_parent_rev_list_failing_refuses_the_anchor(repo, monkeypatch):
     assert "first-parent history, so the base held it" not in state.reason
 
 
+def test_F3_a_verbatim_merge_log_failing_refuses_with_the_git_failure(repo, monkeypatch):
+    """M10's shape: the anchor is the fork point, so only the verbatim commit's
+    merge can accept it. When git cannot list that history the chunk stays
+    open, and the reason names the git failure, not a fork point the base held."""
+    fork = _git(repo, "rev-parse", "HEAD")
+    tree = _stage(repo, "src/c01.py", "x\n")
+    fact = _review(repo, "R1", base=fork, dispatch=fork, head_tree=tree, chunks=["01"], mode="chunk")
+    _git(repo, "commit", "-qm", "feat(unit): one (Chunk 01)")
+    plan = _plan(repo)
+    _merge_no_ff(repo)
+    assert _states(plan, _facts(fact), repo)["01"] == "done"  # control: M10
+    _git_fails(monkeypatch, lambda a: a[:1] == ("log",) and "--ancestry-path" in a)
+    state = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["01"]
+    assert state.state == "open"
+    assert "could not be placed" in state.reason and "injected failure" in state.reason
+    assert "first-parent history, so the base held it" not in state.reason
+
+
 def test_F2_a_span_log_failing_certifies_nothing(repo, monkeypatch):
     head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
     plan = _plan(repo)
