@@ -1,6 +1,10 @@
-"""Post-sync advisory probe for the committed install reference.
+"""Post-sync advisory probes for the committed install reference.
 
-One probe: it nudges repair when a repo's ``.claude/settings.json`` has drifted
+Two probes. ``tripwire-missing`` (:func:`probe_tripwire_missing`) nudges adding
+the unloaded-plugin tripwire hook to an onboarded repo that lacks it; it is not
+part of the contract below, because the contract is compared leaf by leaf and a
+hook list is not a leaf. The rest of this docstring is ``contract-drift``, which
+nudges repair when a repo's ``.claude/settings.json`` has drifted
 from the install contract prawduct writes — **every field of**
 ``lib.migrate_plugin.INSTALL_REFERENCE``, which is the authority for what the
 contract *is*; no list in this docstring is (a transcribed list is exactly how
@@ -64,6 +68,7 @@ import time, so the infrastructure stays feature-agnostic.
 from __future__ import annotations
 
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
+from . import unloaded_tripwire
 from .migrate_plugin import INSTALL_REFERENCE, PLUGIN_ID, install_reference_drift
 
 FEATURE = "install-reference"
@@ -183,6 +188,85 @@ def probe_install_reference_drift(state: ProjectState, codebase: Codebase):
     ]
 
 
+#: Why the tripwire matters, shared by both shapes of the advisory.
+_TRIPWIRE_WHY = (
+    "every other prawduct check is delivered by the plugin, so in a session "
+    "that loads no plugin (a new Claude Code profile, a machine that never ran "
+    "the install) only a project hook can say governance is off"
+)
+_TRIPWIRE_COST = (
+    " — a session whose profile has no prawduct install for this repo would run "
+    "ungoverned with nothing saying so"
+)
+
+
+def probe_tripwire_missing(state: ProjectState, codebase: Codebase):
+    """Fire when an onboarded repo's settings lack the current unloaded-plugin
+    tripwire hook (``lib/unloaded_tripwire.py``).
+
+    The hook is what speaks in a session that loaded no prawduct plugin, and that
+    session is exactly the one where this probe cannot run — so the nudge has to
+    land here, in a session that did load it, for the hook to be there next time.
+    Gated on the marketplace entry like the drift probe: a repo that never
+    onboarded has nothing to add it to. A ``hooks`` shape the writer refuses
+    fires too, with evidence naming the shape, because that repo is just as
+    silent and no writer will fix it unasked.
+    """
+    if not install_reference_drift(codebase.root)["present"]:
+        return []
+    found, reason = unloaded_tripwire.read_settings(codebase.root)
+    if found == unloaded_tripwire.PRESENT:
+        return []
+    if found == unloaded_tripwire.MALFORMED:
+        return [
+            AdvisoryCandidate(
+                type="tripwire-missing",
+                evidence=(
+                    ".claude/settings.json has a shape the tripwire writer will not "
+                    f"edit: {reason}",
+                    _TRIPWIRE_WHY,
+                ),
+                trigger_summary=(
+                    "this repo's committed .claude/settings.json cannot take the "
+                    f"unloaded-plugin tripwire hook: {reason}{_TRIPWIRE_COST}"
+                ),
+                owner_action=(
+                    "Fix the `hooks` shape in .claude/settings.json by hand (it must be "
+                    "an object whose SessionStart is a list); after that, say go and the "
+                    "hook is added with everything else kept."
+                ),
+                recommended_action="/prawduct:doctor",
+                priority="info",
+            )
+        ]
+    what = (
+        "has no unloaded-plugin tripwire hook"
+        if found == unloaded_tripwire.ABSENT
+        else "carries an older copy of the unloaded-plugin tripwire hook"
+    )
+    return [
+        AdvisoryCandidate(
+            type="tripwire-missing",
+            evidence=(
+                ".claude/settings.json lacks the current SessionStart hook that "
+                "lib/unloaded_tripwire.py writes",
+                _TRIPWIRE_WHY,
+            ),
+            trigger_summary=f"this repo's committed .claude/settings.json {what}{_TRIPWIRE_COST}",
+            owner_action=(
+                "Say go — this adds one SessionStart hook to a committed settings file "
+                "and keeps everything else in it; you will see what it adds before "
+                "anything is written."
+            ),
+            recommended_action="/prawduct:doctor",
+            # `info`, the drift probe's priority and for its reason: this session is
+            # governed, and the cost lands on a session elsewhere.
+            priority="info",
+        )
+    ]
+
+
 def register() -> None:
-    """Register the install-reference probe. Idempotent (register_probe overwrites)."""
+    """Register the install-reference probes. Idempotent (register_probe overwrites)."""
     register_probe(FEATURE, "contract-drift", PROBE_VERSION, probe_install_reference_drift)
+    register_probe(FEATURE, "tripwire-missing", PROBE_VERSION, probe_tripwire_missing)

@@ -39,7 +39,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import core, learnings_files
+from . import core, learnings_files, unloaded_tripwire
 from .migrate_plugin import (
     BASE_BRANCH_KEY,
     DISTRIBUTION_VALUE,
@@ -109,7 +109,9 @@ def already_scaffolded(project_dir: Path) -> bool:
 
 
 def _install_reference_present(project_dir: Path) -> bool:
-    """True when ``.claude/settings.json`` already carries the full install reference."""
+    """True when ``.claude/settings.json`` already carries the full install
+    reference and the current unloaded-plugin tripwire hook — everything
+    ``transform_settings`` writes there."""
     path = Path(project_dir) / ".claude" / "settings.json"
     if not path.is_file():
         return False
@@ -126,7 +128,7 @@ def _install_reference_present(project_dir: Path) -> bool:
         for k, v in mapping.items():
             if existing.get(k) != v:
                 return False
-    return True
+    return unloaded_tripwire.tripwire_state(data) == unloaded_tripwire.PRESENT
 
 
 def init_product(
@@ -257,14 +259,19 @@ def init_product(
     if apply:
         apply_governance_anchor(project_dir)
 
-    # .claude/settings.json — committed install reference (merged, preserving any
-    # existing user keys/hooks/marketplaces).
+    # .claude/settings.json — committed install reference and the unloaded-plugin
+    # tripwire hook (merged, preserving any existing user keys/hooks/marketplaces).
     settings = project_dir / ".claude" / "settings.json"
     settings_exists = settings.is_file()
     if not _install_reference_present(project_dir):
         (edited if settings_exists else created).append(".claude/settings.json")
         if apply:
             transform_settings(project_dir)
+    # Said, never swallowed: a `hooks` shape the writer cannot add to leaves the
+    # repo without the tripwire, and a session that loads no plugin silent.
+    tripwire_skipped = unloaded_tripwire.skipped_warning(project_dir)
+    if tripwire_skipped:
+        warnings.append(tripwire_skipped)
 
     # distribution: plugin (the stand-down signal; also the idempotency marker).
     if apply:

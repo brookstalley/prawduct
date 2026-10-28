@@ -67,7 +67,8 @@ _HOME_GROWN = (
     "## Governance\n\n"
     "Prawduct governs this repo. If `/prawduct:*` is missing the plugin is not\n"
     f"installed and nothing here is enforced — run `{ar.NOTICE_PROBE}` first.\n"
-    f"Review rigor is {ar.STAGE_PROBE}: the mid-build review is the cheap one."
+    f"Review rigor is {ar.STAGE_PROBE}: the mid-build review is the cheap one.\n"
+    f"No {ar.BANNER_PROBE} at start? Then it is not loaded either — say so first."
 )
 
 
@@ -285,13 +286,14 @@ def test_a_fresh_scaffold_writes_the_agents_md_layout(tmp_path: Path):
 
 def test_a_healthy_grade_and_a_finished_repair_describe_the_same_anchor(tmp_path: Path):
     """Two user-facing sentences, one source: the `ok` detail and the post-repair
-    report both say what a current anchor carries — both load-bearing sentences
+    report both say what a current anchor carries — every load-bearing sentence
     by name — so neither can lag the other when the table grows."""
     healthy = ar.check(_write_agents(tmp_path / "healthy", STATIC_ANCHOR.strip()))["detail"]
     repaired = ar.repair(_write_claude(tmp_path / "repaired", ar.ANCHOR_V3), apply=True)["detail"]
     for detail in (healthy, repaired):
         assert ar.NOTICE_PROBE in detail
         assert ar.STAGE_PROBE in detail
+        assert ar.BANNER_PROBE in detail
     assert repaired.startswith("the governance anchor was moved to AGENTS.md")
     assert healthy.startswith("the anchor tells ")
 
@@ -354,6 +356,34 @@ def test_owner_rewrite_carrying_only_the_notice_is_stale_modified_and_says_what_
     assert result["repairable"] is False
     assert "stage-keyed review rule" in result["detail"]
     assert "plugin-absent notice" not in result["detail"]
+
+
+def test_the_last_shipped_anchor_is_stale_for_the_no_banner_rule_only(tmp_path: Path):
+    """V6 carries the notice and the stage rule, so its detail names only the
+    sentence it predates — and the repair puts the current anchor in its place."""
+    root = _write_agents(tmp_path / "v6", ar.ANCHOR_V6.strip())
+    result = ar.check(root)
+    assert result["status"] == ar.STATUS_STALE
+    assert result["repairable"] is True
+    assert "no-banner rule" in result["detail"]
+    assert "plugin-absent notice" not in result["detail"]
+    assert "stage-keyed review rule" not in result["detail"]
+    assert ar.BANNER_PROBE not in ar.ANCHOR_V6
+    repaired = ar.repair(root, apply=True)
+    assert repaired["status"] == ar.STATUS_OK
+    assert STATIC_ANCHOR.strip() in (root / "AGENTS.md").read_text(encoding="utf-8")
+
+
+def test_the_anchor_says_what_a_missing_banner_means():
+    """The line a repo without the tripwire hook relies on (#1078): the tell, the
+    first act, and the act to refuse — each, not just the probe token."""
+    text = " ".join(STATIC_ANCHOR.split())
+    check = text.split("**Check first:", 1)[1].split("**Then,", 1)[0]
+    claude_code = check.split("- **Claude Code:**", 1)[1]
+    assert claude_code.startswith(f" loaded if its {ar.BANNER_PROBE} appeared; if not,")
+    told = check.split("- **Claude Code:**", 1)[0]
+    assert "Tell the user before any work" in told
+    assert "or imitate its gates from its files" in told
 
 
 def test_a_shipped_stale_anchor_is_stale_even_when_the_file_names_the_command(tmp_path: Path):
@@ -836,6 +866,9 @@ class TestCommand:
             ("legacy-layout", ar.ANCHOR_V2, ar.STATUS_LEGACY_LAYOUT),
             ("absent", None, ar.STATUS_ABSENT),
         ],
+        # Explicit ids: an anchor's text makes pytest's generated id differ between
+        # interpreters, and a runner that collects a different id cannot run it.
+        ids=["legacy-layout", "absent"],
     )
     def test_apply_reports_the_write_not_the_defect_it_fixed(
         self, tmp_path: Path, start, anchor, was
@@ -895,6 +928,7 @@ class TestCommand:
         ("stale-apply", ar.ANCHOR_V2, ("--apply",), 0),    # wrote
         ("current-apply", STATIC_ANCHOR.strip(), ("--apply",), 0),  # idempotent no-op
     ],
+    ids=["current-dry", "stale-dry", "stale-apply", "current-apply"],  # anchor text varies the generated id
 )
 def test_exit_codes_for_graded_runs(tmp_path: Path, case, anchor, args, expected):
     write = _write_agents if case.startswith("current") else _write_claude

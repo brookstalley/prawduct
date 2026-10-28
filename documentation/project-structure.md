@@ -93,7 +93,7 @@ prawduct/
 
 ## Product repos (plugin-governed)
 
-A v2 product repo commits only its own state plus a small install reference — no framework files. Governance comes from the plugin.
+A v2 product repo commits only its own state plus a small install reference and the unloaded-plugin tripwire hook beside it in `.claude/settings.json` — no framework files. Governance comes from the plugin; the tripwire only says when the plugin did not load.
 
 ```
 my-product/
@@ -118,7 +118,7 @@ my-product/
 │   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file — review facts reach other clones as notes on refs/notes/prawduct)
 │   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `lib.ledger` — `ledger-append` for review events, the Stop hook and `critic-consolidate` for `learning.*`)
 ├── .claude/
-│   └── settings.json                  # the committed install reference (marketplace + enabled plugin)
+│   └── settings.json                  # the committed install reference (marketplace + enabled plugin) + the unloaded-plugin tripwire hook
 └── src/                               # product source code (+ the product's own skills, MCP servers, configs)
 ```
 

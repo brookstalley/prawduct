@@ -33,7 +33,8 @@ Prawduct is a **Claude Code plugin**, and it *is* its own single-plugin, git-bac
 - **Install once per machine, onboard per repo.** The user installs the plugin at the user level
   (`claude plugin marketplace add …` + `plugin install`); each repo they want governed is onboarded
   with `/prawduct:onboard`, which commits only a small **install reference** to the repo's
-  `.claude/settings.json` (marketplace + enabled plugin) plus a thin governance anchor in AGENTS.md (imported by CLAUDE.md). **No framework
+  `.claude/settings.json` (marketplace + enabled plugin), the unloaded-plugin tripwire hook in the same
+  file (it warns when a session loaded no plugin), and a thin governance anchor in AGENTS.md (imported by CLAUDE.md). **No framework
   files are committed to the repo.**
 - **Updates arrive through the marketplace with zero repo diff.** With auto-update, Claude Code
   re-resolves the latest release at session start — no sync step, no framework files to reconcile.
