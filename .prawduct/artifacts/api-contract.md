@@ -204,8 +204,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the branch's commits from the merge base, or every note with `--all`; it prints how many records
   it appended of how many it saw on how many commits, and a skipped class (malformed lines, kinds
   not transported) is counted in `reason`. When it appended records and the clone has no
-  `.critic-findings.json`, it derives one from the review anchored furthest along the branch and
-  says so (`cache` in `--json`); an existing cache is left as it is. Exit 0 when the ingest ran, appending nothing included;
+  `.critic-findings.json` naming the review anchored furthest along the branch, it points the cache
+  there and says so (`cache` in `--json`: `derived`, `current`, `none`, `skipped` while a review
+  is in flight, or `error`/`invalid` with a reason, which never fails the ingest). Exit 0 when the ingest ran, appending nothing included;
   1 on an error; 2 usage. A data-plane write: refused (exit 1) from a scratch
   worktree, so a disposable tree never races the main checkout's ingest, and by a foreign binary; session start
   runs it bounded at a session boundary. `evidence sync [--no-push] [--json]` (mutating; network)

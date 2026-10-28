@@ -227,8 +227,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # certifies anyway.
     # -4 on 2026-10-28 (second-clone-evidence): the Critic skill's "`critic-consolidate` is the
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
-    # clone that never consolidated one; the clause naming writers went. Ceiling lowered with it.
-    "single-pass-inner": 5807,
+    # clone that never consolidated one; the clause naming writers went, and `deferred`'s
+    # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
+    "single-pass-inner": 5806,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -300,8 +301,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # certifies anyway.
     # -4 on 2026-10-28 (second-clone-evidence): the Critic skill's "`critic-consolidate` is the
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
-    # clone that never consolidated one; the clause naming writers went. Ceiling lowered with it.
-    "single-pass-full": 11539,
+    # clone that never consolidated one; the clause naming writers went, and `deferred`'s
+    # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
+    "single-pass-full": 11538,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -439,15 +441,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # certifies anyway.
     # -4 on 2026-10-28 (second-clone-evidence): the Critic skill's "`critic-consolidate` is the
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
-    # clone that never consolidated one; the clause naming writers went. Ceiling lowered with it.
-    "coordinator-fork": 12133,
+    # clone that never consolidated one; the clause naming writers went, and `deferred`'s
+    # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
+    "coordinator-fork": 12132,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5808,
-    "single-pass-full": 11540,
+    "single-pass-inner": 5807,
+    "single-pass-full": 11539,
     "dispatched-reviewer": 11009,
-    "coordinator-fork": 12134,
+    "coordinator-fork": 12133,
 }
 
 

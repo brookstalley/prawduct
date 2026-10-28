@@ -64,7 +64,9 @@ return the first that fires:
   4. ``cumulative`` when the tree is clean and a committed bundle is
      dispatchable, since a ``chunk``/``final`` interval ends at the working
      tree and, with nothing unreviewed behind HEAD, would be empty (and
-     ``critic-begin`` answers an empty interval without a review) — except mid-plan, which answers as rule 2 does; otherwise ``chunk`` —
+     ``critic-begin`` answers an empty interval without a review) — except
+     mid-plan, which answers as rule 2 does, and on a branch the PR gate
+     already passes, which answers ``deferred``; otherwise ``chunk`` —
      grounded on the plan when one exists, and the bare default when none
      does. ``final`` is never a default: the stage-keyed rigor norm
      (`nonfunctional-requirements.md` § Direction) says unsure defaults to the
@@ -404,6 +406,14 @@ def infer_mode(
                 return mid
             if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
                 return "cumulative", f"rule-4 cumulative: {redirect}"
+            # A covered branch on a clean tree owes nothing: `chunk` would dispatch
+            # an empty interval, and `cumulative` would buy a review the PR gate
+            # does not need.
+            return MODE_DEFERRED, (
+                "rule-4 deferred: the working tree is clean and the PR gate already "
+                "passes for this branch (`prawduct-hook check-cumulative-critic`), so "
+                "no review is owed now"
+            )
     if total > 0:
         return "chunk", (
             f"rule-4 chunk: {_plan_relation_note(project_dir, plan)}, prior chunks "
@@ -443,9 +453,11 @@ def _explicit_mode(
 
     **Only where the redirect works.** :func:`_clean_tree_redirect` returns ""
     when `cumulative` would refuse in its own way (no resolvable base, nothing
-    committed beyond it, or a fresh cumulative record already covering HEAD).
-    Then the token stands and the operator gets the honest empty-interval
-    refusal instead of a redirect to a second one — the same rule rule 4 keeps.
+    committed beyond it, or a fresh cumulative record already covering HEAD),
+    and the token also stands on a branch the PR gate already passes
+    (:func:`_branch_already_covered`), where a ``cumulative`` would buy nothing.
+    Then the operator gets the honest empty-interval refusal instead of a
+    redirect to a second one — the same rule rule 4 keeps.
 
     **Nor mid-plan, where the interval is not empty.** A clean tree mid-plan
     still holds unreviewed commits when the builder committed the chunk before

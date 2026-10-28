@@ -646,8 +646,9 @@ class TestRule2AsksThePrGate:
         self._review(tmp_path, base_tree, head, mode="verify-resolutions (delta review, inner stage)")
         assert not (tmp_path / ".prawduct" / ".critic-findings.json").exists()
         mode, rationale = infer_mode(tmp_path, None)
-        assert mode != "cumulative", rationale
-        assert not rationale.startswith(("rule-2", "rule-4 cumulative")), rationale
+        assert mode == critic_mode.MODE_DEFERRED, rationale
+        assert rationale.startswith("rule-4 deferred:"), rationale
+        assert "check-cumulative-critic" in rationale
 
     def test_a_named_chunk_on_a_covered_clean_branch_stands(self, tmp_path: Path):
         """Naming `chunk` on a clean tree redirects to `cumulative` only where

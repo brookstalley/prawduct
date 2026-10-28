@@ -521,36 +521,47 @@ def ingest(project_dir: Path, *, bound: bool = True, known=None) -> dict:
 
 
 def cache_line(result: dict) -> "str | None":
-    """The line saying an ingest gave this clone its findings cache, or
-    ``None`` when it did not. One home for the wording, so session start,
-    ``evidence ingest`` and ``evidence sync`` say the same thing."""
-    review = result.get("cache")
-    if not review:
+    """The line saying what an ingest did to this clone's findings cache, or
+    ``None`` when there is nothing to say (no review on the branch, the cache
+    already current, a review in flight). One home for the wording, so session
+    start, ``evidence ingest`` and ``evidence sync`` say the same thing; a
+    failure is said too, rather than read as "nothing to derive"."""
+    cache = result.get("cache")
+    if not isinstance(cache, dict):
         return None
-    return (
-        f".prawduct/.critic-findings.json derived from ingested review {review} "
-        "(this clone had none), so verify-resolutions can anchor here"
-    )
+    if cache.get("status") == "derived":
+        return (
+            f".prawduct/.critic-findings.json now names review {cache.get('review')}, the newest "
+            "on this branch, so verify-resolutions can anchor here"
+        )
+    if cache.get("status") in ("error", "invalid"):
+        return (
+            f"NOTE: .prawduct/.critic-findings.json was not updated ({cache.get('reason')}) — "
+            "the facts are ingested; verify-resolutions may anchor on an older review here"
+        )
+    return None
 
 
-def _derive_cache(project_dir: Path, facts: "list[dict]") -> "str | None":
-    """After facts arrive, give a clone that never consolidated a review its
-    findings cache (:func:`critic_consolidate.derive_missing_cache`); the review
-    id it was derived from, or ``None``. ``facts`` is the store as ingest already
-    holds it — what it deduped against plus what it appended — so no second read.
-    Advice: a failure leaves the clone as it was before this existed, so it is
-    reported as ``None`` and ingest stays ok."""
+def _derive_cache(project_dir: Path, facts: "list[dict]") -> dict:
+    """After facts arrive, point this clone's findings cache at the newest
+    review on its branch (:func:`critic_consolidate.derive_branch_cache`).
+    ``facts`` is the store as ingest already holds it — what it deduped against
+    plus what it appended — so no second read.
+
+    Advice: the facts are already appended, so nothing here may fail the
+    ingest. Every failure comes back as ``{"status": "error", "reason"}``,
+    which :func:`cache_line` says out loud."""
     branch = _branch_commits(project_dir)
     if branch["status"] != "ok":
-        return None
+        return {"status": "none", "review": None, "reason": branch.get("reason")}
     from . import critic_consolidate  # noqa: PLC0415 — lazy; it imports this module
 
     try:
-        return critic_consolidate.derive_missing_cache(
+        return critic_consolidate.derive_branch_cache(
             project_dir / ".prawduct", facts, branch["ordered"]
         )
-    except OSError:
-        return None
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice after the append: a record this reader cannot render must not turn a completed ingest into a failure
+        return {"status": "error", "review": None, "reason": f"{type(exc).__name__}: {exc}"}
 
 
 def _result(status: str, *, appended: int = 0, seen: int = 0, commits: int = 0,

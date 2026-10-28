@@ -43,10 +43,14 @@ verdict, but three surfaces still read only what this clone wrote itself:
 **Success:**
 - Inference does not recommend a cumulative when the PR gate's own answer
   (`gates.branch_coverage_verdict`) is `covered` or `transferred`, in any clone.
-- After ingest brings a review fact for this branch into a clone with no findings cache, the cache
-  exists, derived from the newest such review (as consolidation would have written it), so
-  inference, the verify dispatch and the verify reviewer all work there. An existing cache is never
-  overwritten.
+- After an ingest that appended records, the findings cache names the newest review on this branch
+  (as consolidation would have written it), so inference, the verify dispatch and the verify
+  reviewer all work there — including a clone whose cache named another branch's review or an
+  older one. A cache already naming that review is left as written; a review in flight keeps the
+  slot; a failure is reported and never fails the ingest. *(Widened at the boundary review from
+  "only when no cache exists", which left #1057 open for a clone that had switched branches.)*
+- A covered branch on a clean tree is told no review is owed (`deferred`), not handed an empty
+  `chunk` or a needless `cumulative`.
 - `evidence status` names the range its no-note count covers.
 
 **Decisions:**

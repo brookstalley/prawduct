@@ -779,28 +779,110 @@ def _clone_b(origin: Path, tmp_path: Path, branch: str = "feature/unit") -> Path
 
 
 class TestASecondCloneGetsItsFindingsCache:
-    """A clone whose reviews arrived by ingest holds the facts but never wrote
-    the derived `.critic-findings.json` every cache reader starts from — the
-    verify dispatch's anchor and the verify reviewer's prior findings — so
-    verify-resolutions could not run there (#1057). Ingest derives it."""
+    """A clone whose reviews arrive by ingest holds the facts, but its derived
+    `.critic-findings.json` — what the verify dispatch anchors on and the verify
+    reviewer reads its prior findings from — names no review, another branch's,
+    or one a newer arrival passed (#1057). After an ingest it names the newest
+    review on this branch."""
 
-    def test_ingest_derives_the_cache_from_the_newest_branch_review(self, origin_and_clone, tmp_path):
+    @staticmethod
+    def _pushed(origin_and_clone) -> "tuple[Path, Path, dict]":
+        origin, a = origin_and_clone
+        refs = _reviewed_branch(a)
+        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+        return origin, a, refs
+
+    def test_a_clone_with_no_cache_gets_the_newest_branch_review(self, origin_and_clone, tmp_path):
         from lib import critic_consolidate, gates  # noqa: PLC0415
 
-        origin, a = origin_and_clone
-        _reviewed_branch(a)
-        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+        origin, _a, _refs = self._pushed(origin_and_clone)
         b = _clone_b(origin, tmp_path)
         cache = b / ".prawduct" / ".critic-findings.json"
         assert not cache.exists()
 
         result = evidence_notes.ingest(b)
         assert result["status"] == "ok" and result["appended"] == 3, result
-        assert result["cache"] == "rev-r2"
+        assert result["cache"]["status"] == "derived" and result["cache"]["review"] == "rev-r2"
         assert gates.validate_critic_findings(cache)
         assert json.loads(cache.read_text())["fact_id"] == "rev-r2"
         fact, reason = critic_consolidate._prior_review_fact(b, b / ".prawduct", evidence.read_facts(b))
         assert reason == "" and fact["id"] == "rev-r2"
+
+    def test_a_cache_already_naming_the_newest_review_is_left_as_written(self, origin_and_clone, tmp_path):
+        """This clone's own consolidation of the newest review carries advice
+        sentences a derived record cannot; it is not replaced."""
+        origin, _a, _refs = self._pushed(origin_and_clone)
+        b = _clone_b(origin, tmp_path)
+        cache = b / ".prawduct" / ".critic-findings.json"
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        own = json.dumps({"fact_id": "rev-r2", "own": "consolidation"})
+        cache.write_text(own)
+
+        result = evidence_notes.ingest(b)
+        assert result["cache"]["status"] == "current", result
+        assert cache.read_text() == own
+
+    def test_another_branchs_cache_is_replaced(self, origin_and_clone, tmp_path):
+        """The single slot survives a branch switch: a cache naming a review
+        off this lineage would make verify-resolutions refuse here."""
+        origin, _a, _refs = self._pushed(origin_and_clone)
+        b = _clone_b(origin, tmp_path)
+        cache = b / ".prawduct" / ".critic-findings.json"
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"fact_id": "rev-some-other-branch"}))
+
+        result = evidence_notes.ingest(b)
+        assert result["cache"]["status"] == "derived", result
+        assert json.loads(cache.read_text())["fact_id"] == "rev-r2"
+
+    def test_an_older_derived_cache_moves_to_a_newer_arrival(self, origin_and_clone, tmp_path):
+        """Clone B ingests R1 alone, then R2 arrives: its cache follows, so the
+        next verify pass checks R2's findings, not R1's."""
+        origin, a = origin_and_clone
+        seed = _git(a, "rev-parse", "main")
+        c1 = _commit(a, "src/app.py", "x = 1\n", "feat: work (Chunk 01)")
+        r1 = _consolidate(a, _manifest(
+            "rev-r1", commit_reviewed=c1, base_commit=seed, base_tree=_tree(a, seed),
+            head_tree=_tree(a, c1), head_commit=c1,
+        ), findings=BLOCKER)
+        assert r1.returncode == 0, r1.stderr
+        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+        b = _clone_b(origin, tmp_path)
+        assert evidence_notes.ingest(b)["cache"]["review"] == "rev-r1"
+
+        c2 = _commit(a, "src/app.py", "x = 2\n", "fix: the invariant")
+        r2 = _consolidate(a, _manifest(
+            "rev-r2", commit_reviewed=c2, base_commit=c1, base_tree=_tree(a, c1),
+            head_tree=_tree(a, c2), head_commit=c2, mode=VERIFY_MODE, roster=("reviewer",),
+        ), resolutions=[{"review_id": "rev-r1", "fid": "R-1", "disposition": "fixed"}])
+        assert r2.returncode == 0, r2.stderr
+        _git(a, "push", "-q", "-f", "origin", "feature/unit", f"+{NOTES_REF}:{NOTES_REF}")
+        _git(b, "pull", "-q", "origin", "feature/unit")
+        _git(b, "fetch", "-q", "origin", f"+{NOTES_REF}:{NOTES_REF}")
+
+        result = evidence_notes.ingest(b)
+        assert result["cache"]["status"] == "derived" and result["cache"]["review"] == "rev-r2", result
+
+    def test_a_review_in_flight_keeps_the_slot(self, origin_and_clone, tmp_path):
+        """Its consolidation owns the cache; ingest does not race it."""
+        origin, _a, _refs = self._pushed(origin_and_clone)
+        b = _clone_b(origin, tmp_path)
+        (b / ".prawduct").mkdir(parents=True, exist_ok=True)
+        (b / ".prawduct" / ".critic-active").write_text(json.dumps({"started_at": "now"}))
+
+        result = evidence_notes.ingest(b)
+        assert result["appended"] == 3 and result["cache"]["status"] == "skipped", result
+        assert not (b / ".prawduct" / ".critic-findings.json").exists()
+
+    def test_no_cache_when_no_ingested_review_anchors_on_this_branch(self, origin_and_clone, tmp_path):
+        """On `main` the reviews belong to another lineage: they are ingested
+        with `--all`, and no cache is pointed at them."""
+        origin, _a, _refs = self._pushed(origin_and_clone)
+        b = _clone_b(origin, tmp_path, branch="main")
+
+        result = evidence_notes.ingest(b, bound=False)
+        assert result["appended"] == 3 and result["cache"]["status"] == "none", result
+        assert not (b / ".prawduct" / ".critic-findings.json").exists()
 
     @pytest.mark.parametrize("order", ["older-first", "newer-first"])
     def test_two_reviews_in_one_second_resolve_to_the_one_further_along(self, repo, tmp_path, order):
@@ -818,43 +900,49 @@ class TestASecondCloneGetsItsFindingsCache:
         ordered = facts if order == "older-first" else list(reversed(facts))
         tied = [{**f, "ts": "2026-10-28T12:00:00Z"} for f in ordered]
         out = tmp_path / "clone-prawduct"
-        written = critic_consolidate.derive_missing_cache(out, tied, [refs["c2"], refs["c1"], refs["seed"]])
-        assert written == "rev-r2"
+        written = critic_consolidate.derive_branch_cache(out, tied, [refs["c2"], refs["c1"], refs["seed"]])
+        assert written["review"] == "rev-r2"
 
-    def test_an_existing_cache_is_never_overwritten(self, origin_and_clone, tmp_path):
-        origin, a = origin_and_clone
-        _reviewed_branch(a)
-        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+    def test_a_newer_schemas_record_is_never_rendered(self, repo, tmp_path):
+        """A record a newer plugin wrote is not this reader's to render, even
+        when it is the newest on the branch."""
+        from lib import critic_consolidate  # noqa: PLC0415
+
+        refs = _reviewed_branch(repo)
+        facts = evidence.read_facts(repo)["facts"]
+        r2 = next(f for f in facts if f.get("id") == "rev-r2")
+        ahead = {**r2, "schema": evidence.SCHEMA_VERSION + 1, "id": "rev-from-the-future",
+                 "ts": "2099-01-01T00:00:00Z"}
+        out = tmp_path / "clone-prawduct"
+        written = critic_consolidate.derive_branch_cache(
+            out, [*facts, ahead], [refs["c2"], refs["c1"], refs["seed"]]
+        )
+        assert written["review"] == "rev-r2", written
+
+    def test_a_derivation_failure_leaves_the_ingest_ok_and_says_so(self, origin_and_clone, tmp_path, monkeypatch):
+        from lib import critic_consolidate  # noqa: PLC0415
+
+        origin, _a, _refs = self._pushed(origin_and_clone)
         b = _clone_b(origin, tmp_path)
-        cache = b / ".prawduct" / ".critic-findings.json"
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text('{"own": "consolidation"}')
 
+        def boom(*_a, **_k):
+            raise ValueError("unrenderable record")
+
+        monkeypatch.setattr(critic_consolidate, "derive_branch_cache", boom)
         result = evidence_notes.ingest(b)
-        assert result["appended"] == 3 and result["cache"] is None, result
-        assert cache.read_text() == '{"own": "consolidation"}'
+        assert result["status"] == "ok" and result["appended"] == 3, result
+        assert result["cache"]["status"] == "error"
+        line = evidence_notes.cache_line(result)
+        assert line.startswith("NOTE:") and "unrenderable record" in line
 
-    def test_no_cache_when_no_ingested_review_anchors_on_this_branch(self, origin_and_clone, tmp_path):
-        """On `main` the reviews belong to another lineage: they are ingested
-        with `--all`, and no cache is pointed at them."""
-        origin, a = origin_and_clone
-        _reviewed_branch(a)
-        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
-        b = _clone_b(origin, tmp_path, branch="main")
-
-        result = evidence_notes.ingest(b, bound=False)
-        assert result["appended"] == 3 and result["cache"] is None, result
-        assert not (b / ".prawduct" / ".critic-findings.json").exists()
-
-    def test_the_cli_says_the_cache_was_derived(self, origin_and_clone, tmp_path):
-        origin, a = origin_and_clone
-        _reviewed_branch(a)
-        _git(a, "push", "-q", "origin", "feature/unit", NOTES_REF)
+    @pytest.mark.parametrize("command", [("evidence", "ingest"), ("evidence", "sync", "--no-push")])
+    def test_the_cli_says_where_the_cache_points(self, origin_and_clone, tmp_path, command):
+        origin, _a, _refs = self._pushed(origin_and_clone)
         b = _clone_b(origin, tmp_path)
 
-        proc = _run_hook(b, "evidence", "ingest")
+        proc = _run_hook(b, *command)
         assert proc.returncode == 0, proc.stderr
-        assert ".critic-findings.json derived from ingested review rev-r2" in proc.stdout
+        assert ".critic-findings.json now names review rev-r2" in proc.stdout
 
 
 class TestAppendEnvelope:
