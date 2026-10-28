@@ -317,15 +317,18 @@ def _deliver_stop_advisories(advisories: list[str]) -> None:
 #: How a blocked turn should answer the block, said once at the top of every
 #: Stop block reason. The turn's answer and its standing block are already
 #: above the block; a model that writes both again reads to the operator as
-#: the hook firing twice. The two exceptions are the closes the gates read
-#: from the LAST message: a `RUNNING` / `DO NOT CLEAR` close that defers the
-#: session-end gates (left off, the next Stop fires them), and a close an
-#: item says to change.
+#: the hook firing twice. A close is written again only when the one above
+#: would now be wrong, because the gates read the close from the LAST message:
+#: an item faults the close itself (the clear-verdict and clear-reason gates),
+#: or the turn must close `RUNNING` / `DO NOT CLEAR` — to keep a deferral of
+#: the session-end gates, or because the fix starts work a clear would kill,
+#: such as a dispatched review.
 STOP_BLOCK_ANSWER = (
     "Your answer above stands. Do only what the items below ask, then end with a short "
-    "note of what you did. Do not repeat your answer or write its closing block again, "
-    "unless you need to keep a `RUNNING` / `DO NOT CLEAR` close or an item tells you to "
-    "change the close."
+    "note of what you did. Do not repeat your answer. Write a closing block again only "
+    "if the one above would now be wrong: an item faults it, or you must close "
+    "`RUNNING` / `DO NOT CLEAR` (to keep a deferral, or because what you just started, "
+    "such as a review, would die on a clear)."
 )
 
 

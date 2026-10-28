@@ -691,13 +691,16 @@ def _answer_line(stderr: str) -> str:
 
 def assert_block_says_how_to_answer(stderr: str) -> None:
     """A blocked turn's answer and close are already written: the block asks
-    for only what is missing, and names the one close worth writing again —
-    the deferring `RUNNING` / `DO NOT CLEAR`, which the gates read from the
-    last message only."""
+    for only what is missing, and says when a close is written again — when
+    the one above would now be wrong, because the gates read the close from
+    the last message only: an item faults it, or the turn must close
+    `RUNNING` / `DO NOT CLEAR` (keeping a deferral, or having just started
+    work a clear would kill)."""
     line = _answer_line(stderr)
-    assert "Do not repeat your answer or write its closing block again" in line, line
-    assert "`RUNNING` / `DO NOT CLEAR`" in line, line
-    assert "an item tells you to change the close" in line, line
+    assert "Do not repeat your answer." in line, line
+    assert "Write a closing block again only if the one above would now be wrong" in line, line
+    assert "an item faults it" in line, line
+    assert "`RUNNING` / `DO NOT CLEAR` (to keep a deferral, or because what you just started" in line, line
 
 
 class TestABlockSaysHowToAnswerIt:
