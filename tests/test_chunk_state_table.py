@@ -412,6 +412,28 @@ def test_M9_gone_branch_with_an_unresolvable_base_is_open(repo):
     assert "names no ref" in state.reason
 
 
+@pytest.mark.parametrize("base_moved", [False, True])
+def test_M10_a_dirty_review_before_the_first_commit_merged_no_ff_is_done(repo, base_moved):
+    """The review ran over uncommitted work on a fresh branch, so its anchor is
+    the fork point, which the base held all along (M8's shape). The reviewed
+    tree was then committed verbatim and merged with a merge commit: that
+    commit reached the base only through the merge's second parent, which is
+    what tells this from M8. With the base moved on before the merge too."""
+    fork = _git(repo, "rev-parse", "HEAD")
+    tree = _stage(repo, "src/c01.py", "x\n")
+    named = _review(repo, "R1", base=fork, dispatch=fork, head_tree=tree, chunks=["01"], mode="chunk")
+    unnamed = _review(repo, "R2", base=fork, dispatch=fork, head_tree=tree, mode="chunk")
+    _git(repo, "commit", "-qm", "feat(unit): one (Chunk 01)")
+    if base_moved:
+        _git(repo, "checkout", "-q", "main")
+        _commit(repo, "other.txt", "x\n", "unrelated work on main")
+        _git(repo, "checkout", "-q", "feature/unit")
+    plan = _plan(repo)
+    _merge_no_ff(repo)
+    assert _states(plan, _facts(named), repo)["01"] == "done"
+    assert _states(plan, _facts(unnamed), repo)["01"] == "done"
+
+
 # ---------------------------------------------------------------------------
 # C — named vs span coverage
 # ---------------------------------------------------------------------------
@@ -436,11 +458,12 @@ def test_C2_an_unnamed_span_certifies_a_chunk_its_subject_carries(repo):
     assert states["01"].fact_id == "R1"
 
 
-def test_C3_an_unnamed_span_certifies_a_chunk_whose_deliverables_it_touches(repo):
+def test_C3_a_deliverables_touch_with_no_chunk_subject_certifies_nothing(repo):
+    """Owner ruling 2026-10-27: a path gives no span credit."""
     head = _commit(repo, "src/c02.py", "x\n", "feat(unit): the second part")
     plan = _plan(repo)
     fact = _review(repo, "R1", base="main", head=head)
-    assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "done", "03": "open"}
+    assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "open", "03": "open"}
 
 
 def test_C4_a_fact_naming_one_chunk_certifies_another_its_span_carries(repo):
@@ -459,12 +482,15 @@ def test_C5_a_span_with_no_commit_for_the_chunk_leaves_it_open(repo):
     assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open", "03": "open"}
 
 
-def test_C6_a_deliverable_touched_before_the_span_is_not_carried_by_it(repo):
+def test_C6_a_chunk_commit_before_the_span_is_not_carried_by_it(repo):
+    """The span is the fact's own interval: a `(Chunk 01)` commit before its
+    base, and a later commit touching 01's file with no chunk subject, carry
+    nothing into it."""
     early = _commit(repo, "src/c03.py", "stub\n", "feat(unit): one (Chunk 01)")
     head = _commit(repo, "src/c01.py", "x\n", "fix(unit): one again")
     plan = _plan(repo)
     fact = _review(repo, "R1", base=early, head=head)
-    assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open", "03": "open"}
+    assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "open", "03": "open"}
 
 
 def test_C7_a_chunk_only_an_unscoped_subject_carries_is_not_certified_by_a_span(repo):
@@ -551,6 +577,29 @@ def test_C14_issue_1082_after_merge_archives_with_no_unbuilt_chunk(repo):
     assert plan_archive.unbuilt_at_archive(plan, repo_dir=repo, facts=facts) is None
 
 
+def test_C15_a_commit_merged_in_from_the_base_carries_nothing(repo):
+    """A `(Chunk 02)` commit on the base, touching chunk 02's file, reaches the
+    branch through `git merge main` inside the review's interval. It is the
+    base's work, not the branch's: off the branch's first-parent history."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
+    _git(repo, "checkout", "-q", "main")
+    _commit(repo, "src/c02.py", "x\n", "feat(unit): two (Chunk 02)")
+    _git(repo, "checkout", "-q", "feature/unit")
+    _git(repo, "merge", "-q", "--no-ff", "-m", "merge main", "main")
+    head = _git(repo, "rev-parse", "HEAD")
+    plan = _plan(repo)
+    fact = _review(repo, "R1", base=base, head=head)
+    assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open", "03": "open"}
+
+
+def test_C16_a_commit_labelled_for_one_chunk_certifies_no_other_whose_file_it_touches(repo):
+    head = _commit(repo, "src/c03.py", "x\n", "feat(unit): two (Chunk 02)")
+    plan = _plan(repo)
+    fact = _review(repo, "R1", base="main", head=head)
+    assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "done", "03": "open"}
+
+
 # ---------------------------------------------------------------------------
 # K — mode labels do not matter
 # ---------------------------------------------------------------------------
@@ -573,20 +622,20 @@ def test_K2_an_unnamed_span_certifies_in_every_mode(repo, mode):
 
 
 # ---------------------------------------------------------------------------
-# S — a Deliverables path several chunks list attributes a commit to none
+# S — Deliverables paths: no span credit; the proposal names only a sole owner
 # ---------------------------------------------------------------------------
 
 SHARED = {"01": "`src/c01.py`; `src/shared.py`", "02": "`src/shared.py`; `src/c02.py`"}
 
 
-def test_S1_a_shared_path_certifies_neither_chunk_by_a_span(repo):
-    """Chunk 01's commit touches its own file and the file both chunks list;
-    the span certifies 01 by its own file, and 02, unbuilt, by nothing."""
+def test_S1_a_span_touching_owned_and_shared_paths_certifies_neither_chunk(repo):
+    """Chunk 01's own file and the file both chunks list, under a subject
+    naming no chunk: a path is no span credit, owned or shared."""
     _write(repo, "src/c01.py", "x\n")
     head = _commit(repo, "src/shared.py", "x\n", "feat(unit): the first part")
     plan = _plan(repo, ("01", "02"), deliverables=SHARED)
     fact = _review(repo, "R1", base="main", head=head)
-    assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open"}
+    assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "open"}
 
 
 def test_S2_a_scoped_subject_certifies_the_chunk_a_shared_path_cannot(repo):
@@ -596,15 +645,13 @@ def test_S2_a_scoped_subject_certifies_the_chunk_a_shared_path_cannot(repo):
     assert _states(plan, _facts(fact), repo) == {"01": "open", "02": "done"}
 
 
-def test_S3_a_path_one_chunk_owns_still_certifies_it(repo):
-    """The control, with a directory: chunk 01 lists `lib/pkg/`, chunk 02 lists
-    one file under it. A file only 01's directory covers certifies 01; the
-    file both cover certifies neither."""
-    _write(repo, "lib/pkg/a.py", "x\n")
-    head = _commit(repo, "lib/pkg/b.py", "x\n", "feat(unit): package work")
+def test_S3_the_proposal_names_a_sole_owner_by_path_even_under_a_directory(repo):
+    """The proposal keeps its path half, with the one-owner rule: 01 lists
+    `lib/pkg/`, 02 one file under it. A file only 01's directory covers
+    proposes 01; the file both cover proposes neither."""
     plan = _plan(repo, ("01", "02"), deliverables={"01": "`lib/pkg/`", "02": "`lib/pkg/b.py`"})
-    fact = _review(repo, "R1", base="main", head=head)
-    assert _states(plan, _facts(fact), repo) == {"01": "done", "02": "open"}
+    assert plan_status.propose_chunks(plan, _facts(), ["lib/pkg/a.py"], "chunk", repo_dir=repo) == ["01"]
+    assert plan_status.propose_chunks(plan, _facts(), ["lib/pkg/b.py"], "chunk", repo_dir=repo) == []
 
 
 def test_S4_the_proposal_names_no_chunk_by_a_shared_path_and_says_so(repo):
@@ -743,7 +790,10 @@ def test_B4_an_unnamed_span_with_an_unresolved_blocker_certifies_nothing(repo):
     head = _commit(repo, "src/c01.py", "x\n", "feat(unit): one (Chunk 01)")
     plan = _plan(repo)
     fact = _review(repo, "R1", base="main", head=head, blocking=("R-1",))
-    assert _states(plan, _facts(fact), repo)["01"] == "open"
+    state = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["01"]
+    assert state.state == "open"
+    # The span refusal says why, as a naming refusal does (one rule, cannot_certify).
+    assert state.reason == "review R1's interval carries its commit, but blocking R-1 not resolved"
 
 
 def test_B5_an_unnamed_span_whose_blocker_is_resolved_certifies(repo):
@@ -786,11 +836,14 @@ def test_X3_a_span_certification_can_be_retracted(repo):
     assert plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["01"].fact_id == "R1"
     target = plan_status.retraction_target(plan, _facts(fact), "01", repo_dir=repo)
     assert (target.status, target.fact_id) == ("ok", "R1")
-    state = plan_status.chunk_states(
-        plan, _facts(fact, _retracted("T1", "01", "R1")), repo_dir=repo
-    )["01"]
+    retracted = _facts(fact, _retracted("T1", "01", "R1"))
+    state = plan_status.chunk_states(plan, retracted, repo_dir=repo)["01"]
     assert state.state == "open"
     assert "retracted" in state.reason
+    # Re-run with the fact named: the recorded pair answers "already", as a
+    # named pair does, though the span no longer certifies the chunk.
+    again = plan_status.retraction_target(plan, retracted, "01", "R1", repo_dir=repo)
+    assert again.status == "already", again.detail
 
 
 # ---------------------------------------------------------------------------
@@ -858,7 +911,9 @@ def test_F1_first_parent_rev_list_failing_refuses_the_anchor(repo, monkeypatch):
     _git_fails(monkeypatch, lambda a: a[:1] == ("rev-list",))
     state = plan_status.chunk_states(plan, _facts(fact), repo_dir=repo)["01"]
     assert state.state == "open"
-    assert "first-parent history" in state.reason
+    # The reason names the git failure, not a fork point the base held.
+    assert "could not be placed" in state.reason and "injected failure" in state.reason
+    assert "first-parent history, so the base held it" not in state.reason
 
 
 def test_F2_a_span_log_failing_certifies_nothing(repo, monkeypatch):
@@ -921,7 +976,7 @@ def test_G1_a_dirty_tree_span_costs_its_two_interval_logs(repo, monkeypatch):
     assert _states(plan, _facts(fact, {**fact, "id": "R2"}), repo)["01"] == "done"
     assert [c[0] for c in calls] == ["merge-base", "log", "log"]
     assert [c[3:-1] for c in calls[1:]] == [
-        (f"{base}..{at}",), ("--ancestry-path", f"{at}..feature/unit"),
+        ("--first-parent", f"{base}..{at}"), ("--ancestry-path", f"{at}..feature/unit"),
     ]
 
 

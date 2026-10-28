@@ -1444,7 +1444,10 @@ LAST_MEASURED_TOKENS = {
     # +7 on 2026-10-27 (chunk-state-table review round 2): the span's path half says a
     # Deliverables path counts only when no other chunk lists it, since a shared path let one
     # chunk's commit certify its unbuilt neighbour. A CORRECTION of the clause above, in place.
-    "methodology/planning.md": 5886,
+    # +9 on 2026-10-27 (chunk-state-table, owner ruling on #1082): the span clause states the
+    # ruling — an edge the coverage gate composes, a first-parent commit whose scoped subject
+    # names the chunk, and no credit for a Deliverables path. A CORRECTION in place, as above.
+    "methodology/planning.md": 5895,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger

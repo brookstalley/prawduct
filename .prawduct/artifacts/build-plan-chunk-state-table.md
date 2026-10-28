@@ -11,9 +11,31 @@ depends_on:
   - brookstalley/prawduct#1079
   - brookstalley/prawduct#1082
 governed_by:
-  - .prawduct/artifacts/architecture.md
-  - .prawduct/artifacts/api-contract.md
-  - .prawduct/artifacts/data-model.md
+  - artifact: architecture
+    dispositions:
+      - "an independent reviewer never mutates the session it reviews → conforms: chunk state and the lint only read; no reviewer path changes"
+      - "authority fails closed; advice fails soft → conforms: an unplaceable anchor, a failed git call, a non-edge fact and a path-only commit each leave the chunk open with its reason (rows F1-F4, M5-M9, C8, C12, C3); the proposal's notes are advice"
+      - "local-first: process-spawn, atomic files and git only → conforms: every answer comes from the evidence store and local git; no network, no new dependency"
+      - "the plugin writes nothing into a governed repo but its own state → conforms: chunk_states and record_lint write nothing"
+      - "written in Python, never specific to Python → conforms: credit reads commit subjects, and the proposal reads paths; neither looks at a file's language"
+      - "guides and reviews, never implements → inapplicable because this changes prawduct's own readers, not a product's code"
+      - "goals and verification bind; prescribed method is advice → conforms: the build left the plan's inferred whole-branch walk where the code showed it wrong, recorded under Decisions"
+      - "every fact has one home → conforms: the chunk-to-commit rule (_subject_chunks, _deliverable_chunks, _log_commits) and the first-parent rule (first_parent_answer) each have one owner; planning.md 'Chunk state' is the rule's prose home and other surfaces point at it"
+  - artifact: api-contract
+    dispositions:
+      - "whole-surface semver; the evidence store schema-versioned → conforms: no fact shape and no `plan status --json` key changes"
+      - "exit codes are the contract; errors attributed, never raised → conforms: no exit code changes; a git failure is named in the open chunk's reason"
+      - "additive-first evolution → conforms: `plan retract`'s refusal codes, `plan status` keys and the `governed-by-gap` check name are unchanged; only reason prose and what a span counts move"
+  - artifact: data-model
+    dispositions:
+      - "verdicts come from the append-only fact ledger, no model in a fact's write path → conforms: done is computed from review facts and git; nothing is written"
+      - "facts immutable and append-only → conforms: a span certification is withdrawn by a new chunk-retracted fact, never an edit"
+      - "derived views never authoritative → conforms; ruling D1 beneath it is extended by the owner's ruling on #1082, which D1's dated note cites"
+      - "a governance document reaches a terminal state, never deleted → conforms: the lint stops grading archived plans and deletes nothing"
+      - "backlog issue titles conform to the standard → inapplicable because this plan writes no backlog issue"
+      - "a fact from a newer schema is a loud block → conforms: no store reader changes how it reads schema"
+      - "two stores, two lifetimes → conforms: nothing new is stored"
+      - "backlog_service_repo selects the authoritative store → inapplicable because nothing here reads the backlog"
 partition: Chunks 01-02 delegated to one isolated-worktree agent (they share plan_status.py); the coordinator integrates, runs the suite, Critic and PR
 ---
 
@@ -53,20 +75,20 @@ when it should not, and each fix exposing the next. Two are still open:
 - The previously shipped fixes (#1065, #1072, #1075, #1081) still hold: their tests stay green
   unchanged.
 
-**Design decision (coordinator, for #1082's open fork):** option 1, span-derived. A chunk is done
-when a clean review fact's tree span covers the chunk's built commit, whether or not the fact names
-it. Reason: the coverage gate already composes by span, and two instruments disagreeing over one
-span is the root cause #1092 names; option 2 (make every flow name every chunk) adds one more
-place to keep in sync. Naming still works: a fact that names a chunk keeps certifying it as today.
-*Inferred:* "the chunk's built commit" is the commit(s) the existing `_walk_branch` /
-`built_report` subject-and-deliverable walk already attributes to that chunk. An unbuilt chunk has
-no commit, so a span can never certify it, which keeps #1072 fixed. (That holds only once a path
-two chunks list attributes a commit to neither: see Decisions, Chunk 02 review round 2.)
+**Owner ruling (2026-10-27, on #1082's fork: https://github.com/brookstalley/prawduct/issues/1082#issuecomment-6456663316):** option 1, narrowed. A chunk is done
+when a review fact names it, as before. It is also done when a clean, in-scope review fact that is a
+coverage edge has, in its own interval and on the branch's first-parent history, a commit whose
+subject carries the plan's scope and the chunk: `<type>(<scope>): … (Chunk N)`. Touching a
+Deliverables path gives no span credit; a chunk whose commit does not name it in its subject still
+needs `--chunks`. Why narrowed: file-based credit certified chunks that were not the commit's work
+three ways in review (a path two chunks list, commits merged in from the base, a commit labelled for
+another chunk). "The chunk's built commit" is therefore a first-parent commit in the fact's own
+interval whose scoped subject names it; an unbuilt chunk has none, so no span certifies it (#1072).
 
 **Out of scope:** #1106 (the briefing's stale-plan predicate; a separate branch calls
 `plan_lifecycle.observe` and needs its signature unchanged). The remainder of #1071.
 
-**Level:** Medium. What would raise it: the case table itself, which is Chunk 01's deliverable.
+**Level:** High. The case table showed the derivation's authority rule changing the owner's ruling D1, and three review rounds each found a way span credit certified unbuilt work.
 
 **Decisions made mid-build:** *(appended while building)*
 - Chunk 01: the rows failing before Chunk 02 were M2 (#1079) and C2-C6, C10, C13, C14, K2, P4, B5,
@@ -118,6 +140,33 @@ two chunks list attributes a commit to neither: see Decisions, Chunk 02 review r
   39dcde20. Only one chunk here is span-certified at all (`build-plan-coverage-honesty.md` 04,
   archived), the same under both rules: this repo's reviews name their chunks, so the span path
   rarely decides.
+- Round 3, the owner's ruling (https://github.com/brookstalley/prawduct/issues/1082#issuecomment-6456663316): a span credits only first-parent commits of its
+  interval whose subject carries the plan's scope and the chunk (`_Spans.carried`). Path credit is
+  gone from the span, so rows C3, C6 and S1 became negative rows, and C15 (a commit merged in from
+  the base) and C16 (a commit labelled for another chunk) were added, both open.
+- Round 3, *not settled by the ruling:* the proposal KEEPS its path half, with the one-owner rule.
+  It is a name the dispatch prints and the builder keeps or narrows with `--chunks` before the
+  fact is written. The ruling kept naming "as before", and the Stop gate's deferral
+  (`critic_mode.extension_deferral_owed`) reads `chunk`-mode proposals, which have no subject walk.
+  C15's and C16's shapes can still reach a proposal over a tree diff: there the dispatch shows them.
+- Round 3: M10 (a dirty-tree review before the branch's first commit, then a `--no-ff` merge) is
+  done. The first-parent test separates it from M8 and M5: the commit carrying the reviewed tree,
+  on a first-parent chain from the fork point, reached the base only through the merge's second
+  parent (`_Reachability._merged_verbatim`). Where several commits carry that tree, a non-merge one
+  is preferred as the branch's commit. `plan_lifecycle`'s merge probe does not take this route; it
+  still has the pending-change-record inference for this shape.
+- Round 3: one closure, `cannot_certify`, answers "may this fact certify" for both the naming and
+  the span loop; a refused span records its reason on the chunks its interval would have carried.
+  A first-parent `rev-list` that fails is named in the reason (`first_parent_answer`).
+- Round 3, `record_lint`: a bare-path `governed_by:` entry is a supported form, parsed as an entry
+  with no dispositions and graded like any other; an item no form reads is a `governed-by-gap`.
+  Supported rather than flagged as a form, because a bare path to an artifact with no `## Direction`
+  norms is then quiet, where flagging the form would warn on it too. An archived plan is no record
+  (`record_lint.is_record`), so the release's archive moves raise nothing; a live plan with bare
+  paths reports its real gaps when a review next changes it.
+- Round 3 against this repo's 173 plans, vs 369e6f79: one chunk moved,
+  `archive/build-plan-coverage-honesty.md` 04, done to open. It was superseded by PR #734 and read
+  done only because the review's interval touched its Deliverables.
 
 ## Case table
 
@@ -125,12 +174,11 @@ Every situation `plan_status.chunk_states` answers, with the state it must answe
 test in `tests/test_chunk_state_table.py`, named `test_<row id>_…`. "Named" is a review fact whose
 `chunks` (else `chunk`) lists the chunk; "span" is a clean, in-scope review fact that is an edge in
 the coverage algebra's sense (`coverage_algebra.review_edges`: both trees recorded, every judgeable
-changed file reviewed) and whose interval carries a commit that builds the chunk — a commit subject
-carrying the chunk and the plan's scope, or a path the commit touches that ONLY that chunk's
-Deliverables cover (a path two chunks list attributes to neither; the `plan new` stub fragment
-touches nothing). A commit is in a fact's interval when it is in
-`base_commit..head_commit`, or, for a dirty-tree fact (`head_commit: null`), in
-`base_commit..dispatch_commit` or on the first-parent chain from `dispatch_commit` to the first
+changed file reviewed) whose interval, read along the branch's first parents, holds a commit whose
+subject carries the plan's scope and the chunk. A Deliverables path is no span credit (owner ruling
+above). A commit is in a fact's interval when it is on the first-parent chain of
+`base_commit..head_commit`, or, for a dirty-tree fact (`head_commit: null`), of
+`base_commit..dispatch_commit`, or on the first-parent chain from `dispatch_commit` to the first
 commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbatim).
 
 | Row | Situation | Expected |
@@ -154,13 +202,14 @@ commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbat
 | M7 | Branch deleted unmerged | open, names the gone branch |
 | M8 | Fork-point anchor (a review before the branch's first commit), branch deleted | open, "review's own base commit" |
 | M9 | Branch gone, plan's `base:` names no ref | open, says so |
+| M10 | A dirty-tree review before the branch's first commit (anchor = fork point = `base_commit`), committed verbatim, `--no-ff` merge, branch deleted; base moved on or not | done, named and by span: the commit carrying the reviewed tree reached the base only through the merge's second parent |
 | **C — named vs span coverage** | | |
 | C1 | Fact names chunk 01; its span ends before chunk 02's commit | 01 done, 02 open |
 | C2 | Unnamed span carries chunks 01 and 02 by scoped subject | both done, citing that fact |
-| C3 | Unnamed span carries chunk 02 by a Deliverables path, subject naming no chunk | 02 done |
+| C3 | Unnamed span touches chunk 02's Deliverables under a subject naming no chunk | open: a path is no span credit |
 | C4 | Fact names 01; its span also carries 02's commit | both done |
 | C5 | Unnamed `final` span carrying only chunk 01's commit (#1072's invariant) | 01 done, 02 and 03 open |
-| C6 | Chunk 03's Deliverable touched before the span starts | 03 open |
+| C6 | A `(Chunk 01)` commit before the span starts; in it, a commit touching 01's file with no chunk subject | all open |
 | C7 | Chunk carried only by an unscoped subject (`feat(other): … (Chunk 02)`) | open |
 | C8 | Span fact that reviewed less than it changed (no edge) | open |
 | C9 | Span fact of another scope | open |
@@ -169,6 +218,8 @@ commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbat
 | C12 | Span fact with no `base_commit` | open: the interval cannot be placed |
 | C13 | #1082 steps 1-7: cumulative names 01, 02; a clean verify-resolutions over chunk 03's uncommitted tree names nothing; committed verbatim as `(Chunk 03)` | all done, 03 citing the verify fact; finished |
 | C14 | C13, then `--no-ff` merge and branch deleted | all done; `unbuilt_at_archive` is `None` |
+| C15 | A `(Chunk 02)` commit on the base, touching 02's file, merged into the branch inside the interval | 02 open: off the branch's first-parent history; 01 done |
+| C16 | A `(Chunk 02)` commit touching chunk 03's file | 02 done, 03 open |
 | **K — mode labels do not matter** | | |
 | K1 | Named fact in `chunk` / `final` / `cumulative` / `verify-resolutions` | done in each |
 | K2 | Unnamed span fact in each of those modes | done in each |
@@ -187,20 +238,20 @@ commit whose tree is the fact's `head_tree` (the reviewed tree, committed verbat
 | **X — retraction** | | |
 | X1 | `chunk-retracted` for (fact, 01) on a fact naming 01, 02 | 01 open with the reason; 02 done |
 | X2 | A later fact naming the retracted chunk | done, citing the later fact |
-| X3 | A span certification: `plan retract` targets it, and retracting it | `retraction_target` ok; then open with the reason |
+| X3 | A span certification: `plan retract` targets it, retracting it, then `--fact` again | `retraction_target` ok; then open with the reason; then `already` |
 | **D / I — declarations and imports** | | |
 | D1 | `dropped:` with a reason | dropped; plan finished |
 | D2 | `dropped:` entry with no reason | open, says why |
 | I1 | Ticked `## Status` box, unmigrated | done, imported |
 | I2 | `chunk-imported` fact | done, imported, citing it |
-| **S — a Deliverables path several chunks list** | | |
-| S1 | Chunk 01's commit touches its own file and a file 01 and 02 both list; unnamed span | 01 done, 02 open |
+| **S — Deliverables paths** | | |
+| S1 | An unnamed span touching chunk 01's own file and a file 01 and 02 both list, no chunk subject | both open |
 | S2 | A `(Chunk 02)` scoped commit touching only the shared file | 02 done by subject, 01 open |
-| S3 | 01 lists `lib/pkg/`, 02 lists `lib/pkg/b.py`; a commit touches both `a.py` and `b.py` | 01 done by `a.py`, 02 open (the control: a path one chunk owns still certifies) |
+| S3 | The proposal: 01 lists `lib/pkg/`, 02 lists `lib/pkg/b.py` | a diff of `a.py` proposes 01; of `b.py`, neither |
 | S4 | A `chunk` proposal over only the shared file | proposes neither, and a note says why |
 | S5 | The `built` tag over only the shared file | tags both: it certifies nothing |
 | **F — git failing on an authority path** | | |
-| F1 | The first-parent `rev-list` fails (M2's shape) | open: the anchor is refused |
+| F1 | The first-parent `rev-list` fails (M2's shape) | open: the anchor is refused, and the reason names the git failure |
 | F2 | A span's `git log` fails (C2's shape) | open |
 | F3 | A dirty-tree span's descendant log fails (C10's shape) | open |
 | F4 | A dirty-tree span whose anchor's holding ref is unknown | open |

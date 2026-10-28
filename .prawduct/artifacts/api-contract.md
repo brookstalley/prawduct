@@ -371,8 +371,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   chunk in its subject or touching its deliverables, a change fragment still the `plan new` stub
   touching nothing; the short-plan Stop gate reads it only to arm its last-chunk block) and `reason` says why an entry that looked like an answer was not one (an
   unreadable `dropped:` line, a fact whose anchor is not in the branch's history), and for a
-  `done` chunk certified by a fact that does not name it, that its review's interval carries the
-  chunk's commit (the span rule, `methodology/planning.md` "Chunk state"). It also
+  `done` chunk certified by a fact that does not name it, that its review's interval carries a
+  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"). It also
   prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
   `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,
   `merged-unreleased`, `released`, `superseded`, `unknown`, observed from git, the review facts'
