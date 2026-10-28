@@ -63,7 +63,7 @@ if __name__ == "__main__":
                 sys.path.insert(0, str(PLUGIN))
                 from lib import host
                 sys.exit(host.block(reason + "\n".join(host.codex_stop_coverage()) + "\n"))
-        except ImportError:
+        except Exception:  # prawduct:allow prawduct/broad-except -- final Stop fallback must survive a broken canonical import
             pass
         sys.stderr.write(reason)
         sys.exit(2)

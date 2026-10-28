@@ -113,6 +113,26 @@ def test_unverified_source_refuses_before_state_writes(tmp_path, source):
     assert sorted(p.name for p in (repo / ".prawduct").iterdir()) == before
 
 
+def test_ungoverned_nested_startup_remains_silent(tmp_path):
+    repo = tmp_path / "ungoverned"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "develop"], cwd=repo, check=True)
+    nested = repo / "src"
+    nested.mkdir()
+    env = os.environ.copy()
+    env["PRAWDUCT_CANONICAL_PLUGIN_ROOT"] = str(CANONICAL_PLUGIN)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT)],
+        input=json.dumps({"cwd": str(nested), "source": "startup"}),
+        capture_output=True, text=True, cwd=nested, env=env, timeout=120,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not result.stdout
+    assert not (repo / ".prawduct").exists()
+    assert not (nested / ".prawduct").exists()
+
+
 def test_overflow_notice_is_first(tmp_path):
     spec = importlib.util.spec_from_file_location("codex_session_start", SCRIPT)
     module = importlib.util.module_from_spec(spec)
@@ -120,3 +140,27 @@ def test_overflow_notice_is_first(tmp_path):
     output = module._context([module.EXPERIMENTAL, "x" * 25000])
     assert output.startswith("Prawduct experimental Codex SessionStart context exceeds")
     assert module.EXPERIMENTAL in output
+
+
+@pytest.mark.parametrize("continuation", ["resume", "compact"])
+def test_nested_startup_initializes_root_and_continuation_preserves_it(tmp_path, monkeypatch, continuation):
+    repo = _repo(tmp_path)
+    nested = repo / "src"
+    nested.mkdir()
+    data = tmp_path / "plugin-data"
+    monkeypatch.setenv("PLUGIN_DATA", str(data))
+    output = _fire(nested, tmp_path, "startup")
+    assert "Keep the current project rules" in output
+    marker = repo / ".prawduct" / ".session-start"
+    assert marker.is_file()
+    marker.write_text("preserve boundary\n")
+    output = _fire(nested, tmp_path, continuation)
+    assert "Keep the current project rules" in output
+    assert marker.read_text() == "preserve boundary\n"
+    assert not (nested / ".prawduct").exists()
+    receipts = list((data / "prawduct-observed-hooks").glob("*.json"))
+    assert len(receipts) == 1
+    events = json.loads(receipts[0].read_text())["events"]
+    assert [(event["source"], event["boundary"]) for event in events] == [
+        ("startup", True), (continuation, False),
+    ]

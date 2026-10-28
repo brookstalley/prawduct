@@ -123,3 +123,27 @@ def test_ungoverned_stop_still_names_uncovered_gates(tmp_path):
     result = _fire(repo, {"last_assistant_message": None})
     assert result.returncode == 0
     _assert_uncovered(json.loads(result.stdout)["systemMessage"])
+
+
+@pytest.mark.parametrize("host_source,error", [
+    ('raise RuntimeError("broken host import")\n', "RuntimeError"),
+    ("def broken(:\n", "SyntaxError"),
+])
+def test_host_import_failure_still_blocks(tmp_path, host_source, error):
+    plugin = tmp_path / "broken-plugin"
+    for name in ("lib/host.py", "hooks/banner.py", "hooks/digest.py",
+                 "bin/prawduct-hook", "methodology/session-digest.md"):
+        path = plugin / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(host_source if name == "lib/host.py" else "")
+    env = os.environ.copy()
+    env["PRAWDUCT_CANONICAL_PLUGIN_ROOT"] = str(plugin)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT)], input=json.dumps({"cwd": str(tmp_path)}),
+        capture_output=True, text=True, cwd=tmp_path, env=env, timeout=120,
+    )
+    assert result.returncode == 2, result.stderr
+    assert not result.stdout
+    assert f"experimental Codex Stop entry error: {error}" in result.stderr
+    assert "Traceback" not in result.stderr

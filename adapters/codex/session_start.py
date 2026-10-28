@@ -101,7 +101,9 @@ def main() -> int:
     if not event.cwd:
         host.emit_session_context(f"{EXPERIMENTAL}\nPrawduct SessionStart refused: missing cwd.")
         return 0
-    project = Path(event.cwd).resolve()
+    from lib.gitstate import resolve_project_dir
+
+    project = resolve_project_dir(event.cwd, Path(event.cwd))
     if not (project / ".prawduct").is_dir():
         return 0
     from observation import record
