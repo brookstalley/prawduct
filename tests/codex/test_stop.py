@@ -1,5 +1,7 @@
 """Recorded Codex Stop shapes and the reflection-only boundary."""
 
+from __future__ import annotations
+
 import json
 import importlib.machinery
 import importlib.util
