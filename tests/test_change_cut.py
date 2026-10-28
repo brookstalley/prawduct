@@ -772,6 +772,27 @@ def test_the_cut_writes_the_bucket_archive_change_log_writes_for_the_same_entry(
     assert by_cut == by_archive
 
 
+def test_a_crlf_month_file_the_cut_merges_into_stays_crlf(tmp_path):
+    """The writer is ``newline=""``, so a month file rewritten from a
+    universal-newline read would come out LF in a CRLF repo (#1073)."""
+    project = _project(tmp_path, fragments={"alpha": _fragment("alpha")}, table="| alpha | ships | |\n")
+    archive = project / ".prawduct" / "change-log-archive"
+    archive.mkdir(parents=True)
+    held = (
+        change_log_archive._bucket_header("2026-10")
+        + "## 2026-10-01: earlier\n\n<!-- prawduct: type=fix | scope=earlier | release=v3.7.0 -->\n\nEarlier.\n"
+    )
+    (archive / "2026-10.md").write_bytes(held.replace("\n", "\r\n").encode("utf-8"))
+
+    result = _cut(project, "--release", "v3.8.0", "--apply")
+    assert result.returncode == 0, result.stderr
+    data = (archive / "2026-10.md").read_bytes()
+    assert b"\r\n" in data and data.count(b"\n") == data.count(b"\r\n")
+    entries = change_log.parse_change_log(data.decode("utf-8").replace("\r\n", "\n"))
+    assert sorted(e.tags["scope"] for e in entries) == ["alpha", "earlier"]
+    assert [e.tags["release"] for e in entries if e.tags["scope"] == "alpha"] == ["v3.8.0"]
+
+
 def test_a_cut_refuses_when_git_would_ignore_the_archive(tmp_path):
     project = _project(tmp_path, fragments={"alpha": _fragment("alpha")}, table="| alpha | ships | |\n")
     _write(project / ".gitignore", ".prawduct/change-log-archive/\n")

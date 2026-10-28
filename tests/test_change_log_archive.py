@@ -259,6 +259,50 @@ class TestApply:
         assert "wrong reader" not in july
 
 
+def _crlf(text: str) -> bytes:
+    return text.replace("\n", "\r\n").encode("utf-8")
+
+
+def _all_crlf(data: bytes) -> bool:
+    """Every line ends CRLF: there is at least one, and no bare LF."""
+    return b"\r\n" in data and data.count(b"\n") == data.count(b"\r\n")
+
+
+class TestLineEndings:
+    """The writer is ``newline=""``, so a file rewritten from a universal-newline
+    read would come out LF: a whole-file diff in a CRLF repo (#1073)."""
+
+    def test_a_crlf_live_log_and_month_files_stay_crlf(self, tmp_path: Path) -> None:
+        prawduct = _repo(tmp_path, "")
+        live = prawduct / "change-log.md"
+        live.write_bytes(_crlf(VERSIONED))
+        archive_dir = prawduct / cla.ARCHIVE_DIR_NAME
+        archive_dir.mkdir()
+        held = _entry("2026-07-02", "already archived", "scope=old | release=v0.9.0")
+        (archive_dir / "2026-07.md").write_bytes(_crlf(cla._bucket_header("2026-07") + held))
+
+        text = live.read_text(encoding="utf-8")
+        selection = cla.select(text, threshold=2000, versions=True)
+        assert selection.moved and "2026-07" in selection.buckets
+        assert set(selection.buckets) - {"2026-07"}, "fixture must also create a new month file"
+        cla.apply(prawduct, selection)
+
+        written = [live, *sorted(archive_dir.glob("*.md"))]
+        for path in written:
+            assert _all_crlf(path.read_bytes()), path.name
+        # The move is otherwise what it is on LF: lossless, and merged into the
+        # month file that already held an entry.
+        titles = [t for path in written for t in _titles(path.read_text(encoding="utf-8"))]
+        assert sorted(titles) == sorted(_titles(VERSIONED) + ["2026-07-02: already archived"])
+        assert "2026-07-02: already archived" in _titles((archive_dir / "2026-07.md").read_text(encoding="utf-8"))
+
+    def test_an_lf_repo_stays_lf(self, tmp_path: Path) -> None:
+        prawduct = _repo(tmp_path, VERSIONED)
+        _run(prawduct)
+        for path in [prawduct / "change-log.md", *(prawduct / cla.ARCHIVE_DIR_NAME).glob("*.md")]:
+            assert b"\r" not in path.read_bytes(), path.name
+
+
 class TestTheReleaseGateChecksTheResult:
     """The selection keeps pending entries by construction; the invariant is the
     check that does not trust the construction."""

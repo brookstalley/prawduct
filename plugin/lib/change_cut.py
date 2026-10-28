@@ -349,9 +349,7 @@ def plan_cut(
         block = _entry_block(fragment, version)
         by_bucket.setdefault(block.bucket or "undated", []).append(block)
     for bucket, blocks in sorted(by_bucket.items()):
-        path = archive_dir / f"{bucket}.md"
-        existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-        result.writes.append((path, change_log_archive._compose_bucket(existing, blocks, bucket)))
+        result.writes.append(change_log_archive.bucket_write(archive_dir, bucket, blocks))
         result.buckets.append(bucket)
 
     if decl is not None:

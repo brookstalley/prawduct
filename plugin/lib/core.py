@@ -187,6 +187,36 @@ def _read_exact(path: Path) -> str:
         return handle.read()
 
 
+def read_text_and_eol(path: Path) -> tuple[str, str]:
+    """``(text, eol)``: ``path``'s text as a universal-newline read gives it, and its line ending.
+
+    For a writer that rewrites a file it did not create through
+    :func:`write_all_or_none`, which writes ``newline=""``: parse ``text`` as
+    before, then write :func:`with_eol` of the result, so a CRLF file stays
+    CRLF. The parsers downstream keep seeing ``\\n`` only, which is why this
+    hands back normalized text rather than the exact bytes. ``eol`` is the
+    first line's terminator; a file with mixed endings comes back in that one.
+    Raises what ``Path.read_text`` raises.
+    """
+    exact = _read_exact(path)
+    return exact.replace("\r\n", "\n").replace("\r", "\n"), eol_of(exact)
+
+
+def eol_of(exact: str) -> str:
+    """The terminator of ``exact``'s first line — ``"\\n"`` when it has none."""
+    for index, char in enumerate(exact):
+        if char == "\n":
+            return "\n"
+        if char == "\r":
+            return "\r\n" if exact[index + 1 : index + 2] == "\n" else "\r"
+    return "\n"
+
+
+def with_eol(text: str, eol: str) -> str:
+    """``text`` (``\\n``-terminated lines) with every line ending ``eol``."""
+    return text if eol == "\n" else text.replace("\n", eol)
+
+
 class RollbackIncomplete(OSError):
     """A :func:`write_all_or_none` write failed, and the rollback left files changed.
 

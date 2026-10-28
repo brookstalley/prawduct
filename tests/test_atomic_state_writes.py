@@ -535,3 +535,28 @@ class TestWriteAllOrNone:
             core.write_all_or_none([(a, "\ufeff# C\r\n\r\n## v1.1.0\r\n\r\n## v1.0.0\r\nOld.\r\n"), (b, "B")])
         assert seen["n"] >= 3, "the restore was never attempted"
         assert a.read_bytes() == prior
+
+
+class TestReadTextAndEol:
+    """The read side of a ``write_all_or_none`` rewrite (#1073): parsers get \\n
+    text, and the writer gets back the file's own line ending."""
+
+    @pytest.mark.parametrize(
+        ("data", "eol"),
+        [(b"a\r\nb\r\n", "\r\n"), (b"a\nb\n", "\n"), (b"a\rb\r", "\r"), (b"no newline", "\n"), (b"", "\n"),
+         (b"a\r\nb\n", "\r\n")],
+    )
+    def test_the_eol_is_the_first_lines(self, tmp_path, data, eol):
+        path = tmp_path / "f.md"
+        path.write_bytes(data)
+        text, found = core.read_text_and_eol(path)
+        assert found == eol
+        assert text == path.read_text(encoding="utf-8"), "parsers see what a universal-newline read gives"
+
+    def test_a_round_trip_is_byte_for_byte(self, tmp_path):
+        path = tmp_path / "f.md"
+        data = "﻿# C\r\n\r\n## v1.0.0\r\nOld.\r\n".encode("utf-8")
+        path.write_bytes(data)
+        text, eol = core.read_text_and_eol(path)
+        core.write_all_or_none([(path, core.with_eol(text, eol))])
+        assert path.read_bytes() == data

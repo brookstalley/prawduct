@@ -394,15 +394,34 @@ def apply(prawduct_dir: Path, selection: Selection) -> list[Path]:
 
     archive_dir = prawduct_dir / ARCHIVE_DIR_NAME
     archive_dir.mkdir(parents=True, exist_ok=True)
-    writes: list[tuple[Path, str]] = []
-    for bucket, blocks in sorted(selection.buckets.items()):
-        path = archive_dir / f"{bucket}.md"
-        existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-        writes.append((path, _compose_bucket(existing, blocks, bucket)))
     live = prawduct_dir / LIVE_NAME
-    writes.append((live, selection.new_live))
+    # The selection was made over a universal-newline read, so its text is \n;
+    # the live log is written back in its own line ending, and a new month file
+    # takes the live log's, since what it holds moved from there.
+    _text, live_eol = core.read_text_and_eol(live)
+    writes = [
+        bucket_write(archive_dir, bucket, blocks, new_file_eol=live_eol)
+        for bucket, blocks in sorted(selection.buckets.items())
+    ]
+    writes.append((live, core.with_eol(selection.new_live, live_eol)))
     core.write_all_or_none(writes)
     return [path for path, _ in writes]
+
+
+def bucket_write(
+    archive_dir: Path, bucket: str, blocks: list[Block], *, new_file_eol: str = "\n"
+) -> tuple[Path, str]:
+    """``(path, text)`` for ``bucket``'s month file with ``blocks`` merged in.
+
+    The one reader of a month file that is about to be rewritten: it keeps the
+    file's own line ending (a CRLF month file stays CRLF under the ``newline=""``
+    writer), and a file that does not exist yet gets ``new_file_eol``.
+    """
+    from . import core  # noqa: PLC0415 — lazy keeps this module's import surface small
+
+    path = archive_dir / f"{bucket}.md"
+    existing, eol = core.read_text_and_eol(path) if path.is_file() else ("", new_file_eol)
+    return path, core.with_eol(_compose_bucket(existing, blocks, bucket), eol)
 
 
 def load_all_text(prawduct_dir: Path) -> str | None:
