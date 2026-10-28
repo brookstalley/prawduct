@@ -649,6 +649,22 @@ class TestRule2AsksThePrGate:
         assert mode != "cumulative", rationale
         assert not rationale.startswith(("rule-2", "rule-4 cumulative")), rationale
 
+    def test_a_named_chunk_on_a_covered_clean_branch_stands(self, tmp_path: Path):
+        """Naming `chunk` on a clean tree redirects to `cumulative` only where
+        one is owed; a branch the PR gate already covers keeps the named mode."""
+        base_tree, head = self._branch(tmp_path)
+        self._review(tmp_path, base_tree, head, mode="verify-resolutions (delta review, inner stage)")
+        mode, rationale = infer_mode(tmp_path, "chunk")
+        assert mode == "chunk", rationale
+        assert "redirected" not in rationale
+
+    def test_a_named_chunk_on_an_uncovered_clean_branch_is_redirected(self, tmp_path: Path):
+        """Control for the case above."""
+        self._branch(tmp_path)
+        mode, rationale = infer_mode(tmp_path, "chunk")
+        assert mode == "cumulative", rationale
+        assert "redirected" in rationale
+
     def test_still_fires_when_the_branch_is_not_covered(self, tmp_path: Path):
         """Control: no review fact, so the gate is uncovered — rule 2 fires."""
         self._branch(tmp_path)

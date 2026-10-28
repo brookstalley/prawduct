@@ -328,7 +328,9 @@ def infer_mode(
             f"rule-1b verify-resolutions (post-cumulative fix): {postfix_reason}"
         )
 
-    cumulative_reason = _rule_cumulative_fires(prawduct_dir, project_dir)
+    cumulative_reason = _rule_cumulative_fires(
+        prawduct_dir, project_dir, _facts_for(project_dir, progress)
+    )
     if cumulative_reason:
         ext = _extension(clean_tree=True)
         if ext:
@@ -400,7 +402,8 @@ def infer_mode(
             )
             if mid:
                 return mid
-            return "cumulative", f"rule-4 cumulative: {redirect}"
+            if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
+                return "cumulative", f"rule-4 cumulative: {redirect}"
     if total > 0:
         return "chunk", (
             f"rule-4 chunk: {_plan_relation_note(project_dir, plan)}, prior chunks "
@@ -474,7 +477,8 @@ def _explicit_mode(
                     f"explicit-args {token} (mid-plan, not redirected): "
                     f"{_mid_plan_note(project_dir, plan, progress)}; {_interval_note(start)}"
                 )
-            return "cumulative", f"explicit-args {token} redirected: {redirect}"
+            if not _branch_already_covered(project_dir, _facts_for(project_dir, progress)):
+                return "cumulative", f"explicit-args {token} redirected: {redirect}"
     return token, "explicit-args"
 
 
@@ -529,46 +533,50 @@ def _clean_tree_redirect(prawduct_dir: Path, project_dir: Path) -> str:
     return (
         "working tree is clean, so chunk/final would dispatch an empty "
         f"interval; branch is {commits_ahead} commit(s) ahead of {base_branch} "
-        "and no cumulative record or composed coverage covers current HEAD — "
-        "the committed bundle "
+        "and no cumulative record covers current HEAD — the committed bundle "
         "is cumulative's scope"
     )
 
 
 def _fresh_cumulative_covers_head(prawduct_dir: Path, project_dir: Path) -> bool:
-    """True when recommending the bundle review would be noise: the derived
-    cache records a ``cumulative`` review of this exact HEAD, or the PR gate's
-    own answer (:func:`gates.branch_coverage_verdict`) is already ``covered``
-    or ``transferred``.
-
-    The cache alone is a proxy for the gate, and it misreads two cases the
-    store answers: a cumulative followed by a clean verify pass (the cache then
-    holds the verify), and a clone that ingested another clone's reviews and has
-    no cache at all. Recommending a cumulative there buys a review the PR gate
-    does not need. The cache check stays first because it is one file read.
+    """True when the derived cache records a ``cumulative`` review of this exact
+    HEAD — i.e. the bundle review has already been run and re-recommending it
+    would be noise.
 
     One home for the question: rule 2 skips on it, and rule 4's clean-tree
     redirect must not undo that skip by routing to the mode rule 2 just declined.
+    Whether the branch is already covered some other way is a separate question
+    (:func:`_branch_already_covered`), asked only where a ``cumulative`` would
+    be named: mid-plan, the redirect still has to reach :func:`_mid_plan_answer`.
     """
     head_sha = gitstate._git_head_sha(project_dir)
-    if not head_sha:
-        return False
     findings_path = prawduct_dir / ".critic-findings.json"
+    if not head_sha or not findings_path.is_file():
+        return False
     try:
         data = json.loads(findings_path.read_text())
     except (json.JSONDecodeError, OSError):
-        data = None
-    if (
-        isinstance(data, dict)
-        and data.get("commit_reviewed") == head_sha
+        return False
+    return (
+        data.get("commit_reviewed") == head_sha
         and data.get("mode") == _MODE_CUMULATIVE_VERBOSE
-    ):
-        return True
+    )
+
+
+def _branch_already_covered(project_dir: Path, read: "dict | None") -> bool:
+    """True when the PR gate's own answer (:func:`gates.branch_coverage_verdict`)
+    is ``covered`` or ``transferred`` — so naming a ``cumulative`` would buy a
+    review the gate does not need.
+
+    The findings cache cannot answer this: it holds one review, so after a
+    cumulative and a clean verify pass it holds the verify, and a clone whose
+    reviews arrived as notes may have none. ``read`` is the inference's one
+    store read (:func:`_facts_for`). Failures come back as statuses
+    (``no-base``, ``store-precheck``, ...), and every one but these two leaves
+    the cumulative named, as before."""
     from . import gates  # noqa: PLC0415 — lazy; gates is heavy and one-way
 
-    # Failures come back as statuses (`no-base`, `store-precheck`, ...), and
-    # every one but these two leaves the cumulative recommended, as before.
-    answer = gates.branch_coverage_verdict(project_dir)
+    answer = gates.branch_coverage_verdict(project_dir, read=read)
     return answer.get("status") in ("covered", "transferred")
 
 
@@ -1072,7 +1080,7 @@ def _rule_postfix_fix_fires(prawduct_dir: Path, project_dir: Path) -> str:
 
 
 def _rule_cumulative_fires(
-    prawduct_dir: Path, project_dir: Path
+    prawduct_dir: Path, project_dir: Path, read: "dict | None" = None
 ) -> str:
     """Rule 2: no code in flight + ≥2 commits ahead + no fresh cumulative record.
 
@@ -1104,6 +1112,8 @@ def _rule_cumulative_fires(
     # died in the kernel-v3 chunk-06 vestige sweep: nothing writes the
     # field, so a record carrying it is v2-era state the gates ignore.)
     if _fresh_cumulative_covers_head(prawduct_dir, project_dir):
+        return ""
+    if _branch_already_covered(project_dir, read):
         return ""
 
     return (
