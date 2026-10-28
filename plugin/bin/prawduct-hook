@@ -2938,6 +2938,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     # Skip if no .prawduct directory
     if not prawduct_dir.is_dir():
+        if _host().host_name() == "codex":
+            _host().emit_stop_advisory("\n".join(_host().codex_stop_coverage()))
         return 0
 
     # A host this plugin cannot read or answer fails closed: the Stop blocks,
@@ -2956,6 +2958,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         _record_stop_block(project_dir, [blocker])
         return exit_code
     event = host.read_event("stop", stop_input or {})
+    if host.host_name() == "codex":
+        return _cmd_stop_codex(project_dir, prawduct_dir, event)
 
     # STH-3R8K: make STH-4K7N's silent worktree redirect observable. When the
     # session moved into a git worktree, get_project_dir() resolved .prawduct/ to
@@ -4177,6 +4181,59 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     _deliver_stop_advisories(stop_advisories)
     return 0
+
+
+def _cmd_stop_codex(project_dir: Path, prawduct_dir: Path, event) -> int:
+    """Run only the reflection gate in the experimental Codex Stop adapter."""
+    host = _host()
+    notices = host.codex_stop_coverage()
+    redirect = _worktree_redirect_note(project_dir)
+    if redirect:
+        notices.append(redirect)
+
+    gates = _gates()
+    waivers = gates._read_gates_waived(prawduct_dir)
+    unknown = sorted(set(waivers) - set(_WAIVER_KEY_BY_GATE.values()))
+    if unknown:
+        notices.append(f"GATE WAIVERS: unknown keys (no effect): {', '.join(unknown)}")
+    status = _gitstate().git_status_output(project_dir)
+    span = gates.session_work_span(project_dir, status)
+    reflected = prawduct_dir / ".session-reflected"
+    try:
+        reflection = reflected.read_text().strip() if reflected.is_file() else ""
+    except OSError:
+        reflection = ""
+    shape_ok, missing = gates.reflection_shape(reflection)
+    if not span["judgeable"] or shape_ok:
+        host.emit_stop_advisory("\n".join(notices))
+        return 0
+
+    waiver = waivers.get(_WAIVER_KEY_BY_GATE["reflection"])
+    if waiver:
+        notices.append(f"reflection: waived ({waiver})")
+        host.emit_stop_advisory("\n".join(notices))
+        return 0
+
+    defer_tasks, labels = gates.background_tasks_in_flight(event)
+    defer_turn, verdict = gates.turn_declares_in_flight(event)
+    if defer_tasks or defer_turn:
+        reason = (f"{len(labels)} background task(s) in flight" if defer_tasks
+                  else f"this turn says RUNNING and closes on {verdict}")
+        notices.append(f"REFLECTION DEFERRED: {reason}; the gate re-arms on the next Stop.")
+        host.emit_stop_advisory("\n".join(notices))
+        return 0
+
+    missing_lines = "\n".join(f"  - {item}" for item in missing)
+    blocker = _GateMessage(
+        "REFLECTION: This session changed judgeable code and "
+        ".prawduct/.session-reflected is missing its two reflection lines.\n"
+        f"Missing:\n{missing_lines}\nAppend the reflection, then end the turn again.",
+        "reflection",
+    )
+    reason = "\n".join([*notices, "", str(blocker), ""])
+    result = host.block(reason)
+    _record_stop_block(project_dir, [blocker])
+    return result
 
 
 # =============================================================================
@@ -11737,6 +11794,11 @@ def main() -> int:
         return _dispatch()
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- the boundary's floor: every unhandled error is attributed, never a traceback (error-model norm)
         command = sys.argv[1] if len(sys.argv) > 1 else "(no command)"
+        if command == "stop" and _host().host_name() == "codex":
+            return _host().block(
+                f"Prawduct experimental Codex Stop core error: {type(exc).__name__}: {exc}\n"
+                + "\n".join(_host().codex_stop_coverage()) + "\n"
+            )
         print(f"error: {command}: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
