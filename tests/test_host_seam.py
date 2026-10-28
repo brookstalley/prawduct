@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import copy_seam_files  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN = REPO_ROOT / "plugin"
@@ -423,17 +424,13 @@ class TestSeamLoaders:
     @pytest.mark.parametrize("script", ["bin/prawduct-hook", "hooks/banner.py", "hooks/digest.py"])
     def test_a_failed_load_is_not_cached(self, tmp_path, monkeypatch, script):
         tree = tmp_path / "plugin"
-        (tree / "lib").mkdir(parents=True)
-        (tree / "lib" / "host.py").write_text("raise RuntimeError('broken seam')\n")
         copy = tree / script
         copy.parent.mkdir(parents=True, exist_ok=True)
         copy.write_text((PLUGIN / script).read_text(encoding="utf-8"), encoding="utf-8")
-        # Every entry point loads the seam through the one shared loader, so the
-        # tree carries it; evicting a cached copy makes this tree's loader answer.
-        (tree / "bin").mkdir(exist_ok=True)
-        (tree / "bin" / "_host_seam.py").write_text(
-            (PLUGIN / "bin" / "_host_seam.py").read_text(encoding="utf-8"), encoding="utf-8"
-        )
+        # The tree carries this checkout's shared loader and a seam that raises
+        # on load; evicting a cached loader makes this tree's loader answer.
+        copy_seam_files(tree)
+        (tree / "lib" / "host.py").write_text("raise RuntimeError('broken seam')\n")
         monkeypatch.delitem(sys.modules, "_host_seam", raising=False)
         monkeypatch.delitem(sys.modules, "prawduct_host", raising=False)
         loader = importlib.machinery.SourceFileLoader(f"loader_{copy.stem}", str(copy))

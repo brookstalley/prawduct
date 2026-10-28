@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import copy_seam_files  # noqa: E402
 
 from lib import plugin_caches
 
@@ -251,8 +252,7 @@ class TestTheCommand:
         (running / "bin").mkdir(parents=True)
         shutil.copy2(HOOK, running / "bin" / "prawduct-hook")
         # A plugin tree carries the host seam its binary loads from beside it.
-        (running / "lib").mkdir()
-        shutil.copy2(HOOK.parent.parent / "lib" / "host.py", running / "lib" / "host.py")
+        copy_seam_files(running)
         env = {**os.environ, "HOME": str(home),
                "CLAUDE_PLUGIN_ROOT": str(HOOK.parent.parent)}  # the real lib/ to import
         env.pop("CLAUDE_CONFIG_DIR", None)
