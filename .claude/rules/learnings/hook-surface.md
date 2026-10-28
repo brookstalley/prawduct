@@ -21,7 +21,7 @@ Rules that fire while changing the hook, its ops, or a library reader.
 - A flag/enum that merges cases forces every downstream rule to hold for the WEAKEST member — enumerate the merged set and check each rule against every member; else split it or take the weakest's answer
 - When a cheap probe verifies an assumption, record the mechanism's FULL output, not the one field that answers you — unknowns live in the columns you didn't ask for
 - A `context:fork` skill (no Bash) cannot import `lib/` — its logic is prose the agent executes. So `lib/` carries only the DATA layer the runtime needs; a `lib/` 'logic helper' for the skill is dead code nothing imports
-- Pre-dispatch code in `prawduct-hook` `main()` fails open on a `lib/` ImportError (fall back to env/cwd), else it pre-empts each command's graceful handling — except the host seam (`bin/_host_seam.py`): a tree without it is not a plugin
+- Code in `prawduct-hook` `main()` that runs BEFORE command dispatch must fail open on a `lib/` ImportError (fall back to env/cwd) — an eager import pre-empts each command's own graceful import-error handling with a traceback
 - Denormalized/derived fields maintained by independent actors drift — compute them on demand from the source of truth, or validate them mechanically after writes; never trust the cache
 - Never name a `lib/` submodule the same as a function `__init__` re-exports — `lib.foo` then resolves to the function and monkeypatching the module breaks. Use the `_cmd.py` suffix convention; it exists to prevent this collision
 - Detect a structural characteristic by what the project's correctness depends on, not by surface markers (imports, hostnames, filenames)

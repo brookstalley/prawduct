@@ -19,7 +19,8 @@ prawduct/
 │   ├── VERSION                        # semver (mirrored by plugin.json and pyproject.toml)
 │   ├── CHANGELOG.md                   # consumer-facing release notes
 │   ├── hooks/hooks.json               # SessionStart (banner + briefing + digest), Stop (Critic + reflection gates), SubagentStop
-│   ├── bin/prawduct-hook              # the runtime: every gate, probe and state writer (Python, one file)
+│   ├── bin/prawduct-hook              # the runtime: every gate, probe and state writer (Python)
+│   ├── bin/_python_floor.py, _host_seam.py  # what every entry point loads first: the interpreter floor, the host seam
 │   ├── lib/                           # the bodies the hook reaches lazily (init_product, migrate_plugin, core,
 │   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …);
 │   │                                  #   host.py is the one seam to the host harness (payloads, roots, responses)
