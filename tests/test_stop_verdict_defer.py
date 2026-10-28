@@ -673,3 +673,48 @@ class TestVocabularyHasOneHome:
             *standing_block.CLEAR_LABELS,
         )
         assert len(set(standing_block.ALL_LABELS)) == len(standing_block.ALL_LABELS)
+
+
+# ---------------------------------------------------------------------------
+# How a blocked turn is told to answer (#1095)
+# ---------------------------------------------------------------------------
+
+_HEADING = "BLOCKED — resolve before ending session:"
+
+
+def _answer_line(stderr: str) -> str:
+    """The line right after the block heading — where every block says how to
+    answer it, ahead of the items."""
+    assert stderr.count(_HEADING) == 1, stderr
+    return stderr.split(_HEADING, 1)[1].lstrip("\n").splitlines()[0]
+
+
+def assert_block_says_how_to_answer(stderr: str) -> None:
+    """A blocked turn's answer and close are already written: the block asks
+    for only what is missing, and says when a close is written again — when
+    the one above would now be wrong, because the gates read the close from
+    the last message only: an item faults it, or the turn must close
+    `RUNNING` / `DO NOT CLEAR` (keeping a deferral, or having just started
+    work a clear would kill)."""
+    line = _answer_line(stderr)
+    assert "Do not repeat your answer." in line, line
+    assert "Write a closing block again only if the one above would now be wrong" in line, line
+    assert "an item faults it" in line, line
+    assert "`RUNNING` / `DO NOT CLEAR` (to keep a deferral, or because what you just started" in line, line
+
+
+class TestABlockSaysHowToAnswerIt:
+    def test_a_gate_block_says_it_before_the_items(self, tmp_path):
+        _plan_repo(tmp_path, reflected=True)
+        result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(SAFE_TURN))
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert_block_says_how_to_answer(result.stderr)
+        blocked = _blocked_section(result.stderr)
+        assert blocked.index("Do not repeat your answer") < blocked.index("CRITIC")
+
+    def test_a_turn_that_does_not_block_is_not_told(self, tmp_path):
+        """Control: the deferred Stop exits 0 and prints no block, so no answer line."""
+        _plan_repo(tmp_path, reflected=True)
+        result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_TURN))
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "Do not repeat your answer" not in result.stderr + result.stdout

@@ -330,6 +330,15 @@ class TestUnknownHost:
         assert result.returncode == 2
         assert "PRAWDUCT_HOST='bogus'" in result.stderr
 
+    def test_the_unknown_host_block_says_how_to_answer_it(self, tmp_path):
+        """It is a Stop block like any gate's, so it opens the same way (#1095)."""
+        from test_stop_verdict_defer import assert_block_says_how_to_answer
+
+        repo = _governed_repo(tmp_path)
+        result = _run([str(HOOK), "stop"], repo, tmp_path, "bogus")
+        assert result.returncode == 2
+        assert_block_says_how_to_answer(result.stderr)
+
     def test_the_unknown_host_block_is_recorded_as_a_gate_block(self, tmp_path):
         """Like every Stop block, it leaves one countable fact, under its own
         gate id, so a misconfigured adapter is a query and not a transcript."""

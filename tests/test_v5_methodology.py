@@ -1560,7 +1560,12 @@ LAST_MEASURED_TOKENS = {
     # ends the conversation and not the process. Consumers closed `YOUR TURN` +
     # `DO NOT CLEAR` over exactly that belief, and the gate refused them nine
     # times (#932). A READING, no ceiling.
-    "methodology/session-hygiene.md": 3095,
+    # +57 on 2026-10-28 (block-append, #1095): one sentence on answering a
+    # Stop block — add only what its items ask, and write a close again only
+    # when the one above is now wrong. Every blocked turn in the 3.8.0-dev
+    # survey re-wrote its whole close; the guide said nothing on it, and the
+    # hook's block now does. A READING, no ceiling.
+    "methodology/session-hygiene.md": 3152,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
