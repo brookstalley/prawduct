@@ -49,16 +49,17 @@ raises nothing. The CLI wrapper in ``bin/prawduct-hook`` maps it to an exit code
 from __future__ import annotations
 
 import json
-import os
 import shlex
 from pathlib import Path
+
+from . import host
 
 #: The plugin as the harness names it: ``<plugin>@<marketplace>``.
 PLUGIN_ID = "prawduct@prawduct"
 
-#: Where the harness records what is installed where. Overridable for tests and
-#: for a non-default ``CLAUDE_CONFIG_DIR``.
-DEFAULT_PLUGINS_FILE = Path("~/.claude/plugins/installed_plugins.json")
+#: Where, under the host's config home, the harness records what is installed
+#: where.
+PLUGINS_FILE_IN_CONFIG = ("plugins", "installed_plugins.json")
 
 #: ``scope`` values that make a record apply to every project rather than one.
 #: A user-scope install governs the target repo without naming it, so a record
@@ -128,15 +129,12 @@ def read_installed_plugins(path: Path) -> dict:
 
 
 def default_plugins_file() -> Path:
-    """The harness's installed-plugins manifest, honouring ``CLAUDE_CONFIG_DIR``.
+    """The harness's installed-plugins manifest, under ``host.config_home``.
 
     Resolved at call time rather than import time so a test or a caller that
     sets the environment variable is not defeated by import ordering.
     """
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-    if config_dir:
-        return Path(config_dir).expanduser() / "plugins" / "installed_plugins.json"
-    return DEFAULT_PLUGINS_FILE.expanduser()
+    return host.config_home().joinpath(*PLUGINS_FILE_IN_CONFIG)
 
 
 def checkout_paths(target: Path) -> list[Path]:

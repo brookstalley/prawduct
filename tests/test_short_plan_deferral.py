@@ -543,18 +543,28 @@ class TestStopGateOnShortPlans:
         assert result.stdout.strip() == ""
 
     def test_every_stop_exit_after_the_advisories_delivers_them(self):
-        """Each `return` in `cmd_stop` after `stop_advisories` is declared goes
-        through `_deliver_stop_advisories` on the line before it."""
+        """Each `return` in `cmd_stop` after `stop_advisories` is declared
+        delivers them shortly before it: an exit-0 return through
+        `_deliver_stop_advisories`, the blocking return by carrying them in the
+        block reason (`_stop_advisories_in_block`).
+
+        Renegotiated for #1037: the blocking exit used to be a literal
+        `return 2` with the advisories printed beside it; the host seam now
+        writes the block reason and picks the blocking exit, so that exit
+        returns what `host.block` gave it. Still four exits, still each one delivering."""
         src = HOOK.read_text()
         body = src[src.index("def cmd_stop("):]
         body = body[: body.index("\ndef ", 1)]
         after = body[body.index("stop_advisories: list[str] = []"):]
         lines = after.splitlines()
-        returns = [i for i, ln in enumerate(lines) if ln.strip() in ("return 0", "return 2")]
+        exits = {"return 0": "_deliver_stop_advisories(stop_advisories",
+                 "return exit_code": "_stop_advisories_in_block(stop_advisories)"}
+        returns = [i for i, ln in enumerate(lines) if ln.strip() in exits]
         assert len(returns) == 4, returns
+        assert sum(lines[i].strip() == "return exit_code" for i in returns) == 1
         for i in returns:
             window = "\n".join(lines[max(0, i - 12):i])
-            assert "_deliver_stop_advisories(stop_advisories" in window, lines[i - 3:i + 1]
+            assert exits[lines[i].strip()] in window, lines[i - 3:i + 1]
 
     def test_every_box_ticked_still_arms_the_gate(self, tmp_path: Path):
         """Renegotiated for #1051 (ST2): ticking the last box used to DISARM

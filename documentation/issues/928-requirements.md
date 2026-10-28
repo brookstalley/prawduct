@@ -308,14 +308,22 @@ Not host-specific but external: the Stop PR check shells out to `gh`; hooks.json
 
 ## Next step
 
-The inventory is merged (PR #944), its evidence is on #928, and it is ruled on (D-5 to D-12). Next
-is the R-8(a) probe. It passes on a recorded live refusal of a tool outside the reviewer's declared
-set. It does not need a witness that no other host configuration (cloud-managed hooks included) is
-in play. A separate `codex exec` reviewer session whose PreToolUse hook denies everything outside
-the declared set is an acceptable topology under D-5. Then design: the concrete seam, and the Codex
-feasibility spike (the issue's Phase 1) scoped to one skill, the session briefing and one Stop gate,
-with a live probe for each host-behaviour assumption. Target: the 3.8 release. 3.7 is closing
-without it.
+The inventory is merged (PR #944), its evidence is on #928, and it is ruled on (D-5 to D-12).
+R-8(a) is satisfied: the refusal receipt was posted on #928 on 2026-10-22
+([comment](https://github.com/brookstalley/prawduct/issues/928#issuecomment-6331682061)), which
+is the bar the owner set on 2026-10-21. R-8(b), R-8(c) and full R-8 parity stay open.
+
+The base the next step builds on is the host seam (#1037): every host payload read, `CLAUDE_*`
+root read and structured hook response write goes through `plugin/lib/host.py`, chosen by
+`PRAWDUCT_HOST`, behind a golden test of the SessionStart, Stop and SubagentStop output (R-2,
+R-3). Plain text the hooks print in place (the briefing, the Stop's notes ahead of its block) is
+not the seam's yet; #1038 moves it.
+
+Next:
+
+1. **The Codex Phase 1 spike (#1038).** Built on the seam, in `adapters/codex/`, labelled
+   experimental: one skill (`methodology`), the briefing, one Stop gate (`reflection`) and doctor
+   detection, with a live probe for each host-behaviour assumption. Target: the 3.8 release.
 
 **What the Codex source says about a deny-everything PreToolUse hook** (read from the source at
 tag `rust-v0.156.1`, commit `b412ff32`, on 2026-10-15; none of it was run). It shapes the R-8(a)

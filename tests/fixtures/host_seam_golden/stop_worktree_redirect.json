@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "",
+  "stderr": "WORKTREE: .prawduct/ state resolved to worktree <TMP>/wt for branch 'wt', not CLAUDE_PROJECT_DIR (<TMP>/repo) — the Stop gates read THIS worktree.\n"
+}
