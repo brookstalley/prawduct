@@ -11,8 +11,9 @@ from pathlib import Path
 import pytest
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "stop.py"
-PLUGIN = SCRIPT.parents[2] / "plugin"
+REPO = Path(__file__).resolve().parents[2]
+SCRIPT = REPO / "adapters" / "codex" / "stop.py"
+PLUGIN = REPO / "plugin"
 UNCOVERED = (
     "critic", "pr", "learnings-unmigrated", "learnings-budget",
     "clear-verdict", "clear-reason",

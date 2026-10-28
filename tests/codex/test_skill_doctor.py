@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-ADAPTER = Path(__file__).resolve().parents[1]
-PLUGIN = ADAPTER.parents[1] / "plugin"
+REPO = Path(__file__).resolve().parents[2]
+ADAPTER = REPO / "adapters" / "codex"
+PLUGIN = REPO / "plugin"
 sys.path.insert(0, str(ADAPTER))
 sys.path.insert(0, str(PLUGIN))
 

@@ -9,8 +9,9 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "session_start.py"
-CANONICAL_PLUGIN = SCRIPT.parents[2] / "plugin"
+REPO = Path(__file__).resolve().parents[2]
+SCRIPT = REPO / "adapters" / "codex" / "session_start.py"
+CANONICAL_PLUGIN = REPO / "plugin"
 
 
 def test_registration_uses_installed_adapter_root():

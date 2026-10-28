@@ -60,6 +60,7 @@ REQUIRED = [
 # development surface — not secret, but actively confusing in someone else's repo.
 FORBIDDEN = [
     ".prawduct",                        # backlog, learnings, change-log, every build/release plan
+    "adapters",                         # sibling host adapters are not Claude plugin content
     "tests",                            # prawduct's own suite (including this file)
     "documentation",                    # prawduct's own internal requirements/specs
     "CLAUDE.md",                        # prawduct's own operating instructions (the import)
@@ -184,6 +185,9 @@ def test_no_bytecode_in_tracked_package(shipped: set[str]):
 #: copied into a governed product — prawduct guides and reviews, it does not write
 #: a product's tooling — so it is excluded rather than moved under ``plugin/``.
 NOT_DISTRIBUTED_DIRS = {
+    # The experimental Codex adapter is a sibling of the Claude plugin root.
+    # It has its own host entry points and is not part of the Claude distribution.
+    "adapters",
     ".claude",
     ".claude-plugin",
     ".github",
