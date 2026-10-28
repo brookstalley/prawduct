@@ -66,27 +66,16 @@ from pathlib import Path
 def _host():
     """The host seam (``lib/host.py``): every host payload read, host
     environment read and structured hook response goes through it (what it
-    does not yet own is listed in its docstring).
-
-    Loaded by file path from the ``lib/`` beside this script rather than as
-    ``lib.host``, because it is what says where ``lib`` is — so it must load
-    before ``sys.path`` is seeded, and it cannot fail on a broken ``lib``
-    elsewhere. It imports nothing from ``lib``."""
-    module = sys.modules.get("prawduct_host")
-    if module is None:
-        import importlib.util  # noqa: PLC0415 — lazy keeps top-level cheap
-
-        path = Path(__file__).resolve().parent.parent / "lib" / "host.py"
-        spec = importlib.util.spec_from_file_location("prawduct_host", path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["prawduct_host"] = module
+    does not yet own is listed in its docstring). ``bin/_host_seam.py`` loads
+    it, before ``sys.path`` is seeded for ``lib``."""
+    if "prawduct_host" not in sys.modules:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
         try:
-            spec.loader.exec_module(module)
-        except BaseException:
-            # A half-built module must not be what the next caller gets.
-            del sys.modules["prawduct_host"]
-            raise
-    return module
+            import _host_seam  # noqa: PLC0415 — lazy keeps top-level cheap
+        finally:
+            del sys.path[0]
+        return _host_seam.load()
+    return sys.modules["prawduct_host"]
 
 
 def get_project_dir() -> Path:

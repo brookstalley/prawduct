@@ -91,3 +91,8 @@ codes. One edge case moves: if `CLAUDE_CONFIG_DIR` holds a literal `~`, the bann
 as the rest of prawduct already did. Host adapters set the new `PRAWDUCT_HOST` variable in their
 hook registration. Leave it unset under Claude Code, because an unrecognised value makes the Stop
 hook block until it is fixed.
+
+If your plugin is a git checkout you advance in place, update it while no session is ending a
+turn. A Stop that runs while the files are mid-swap, an old `prawduct-hook` with the new `lib/`
+or the reverse, can lose that turn's Stop deferrals and one clear-verdict block. A marketplace
+install swaps the whole tree at once and is not affected.

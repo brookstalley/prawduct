@@ -428,6 +428,13 @@ class TestSeamLoaders:
         copy = tree / script
         copy.parent.mkdir(parents=True, exist_ok=True)
         copy.write_text((PLUGIN / script).read_text(encoding="utf-8"), encoding="utf-8")
+        # Every entry point loads the seam through the one shared loader, so the
+        # tree carries it; evicting a cached copy makes this tree's loader answer.
+        (tree / "bin").mkdir(exist_ok=True)
+        (tree / "bin" / "_host_seam.py").write_text(
+            (PLUGIN / "bin" / "_host_seam.py").read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        monkeypatch.delitem(sys.modules, "_host_seam", raising=False)
         monkeypatch.delitem(sys.modules, "prawduct_host", raising=False)
         loader = importlib.machinery.SourceFileLoader(f"loader_{copy.stem}", str(copy))
         spec = importlib.util.spec_from_loader(f"loader_{copy.stem}", loader)

@@ -313,14 +313,15 @@ R-8(a) is satisfied: the refusal receipt was posted on #928 on 2026-10-22
 ([comment](https://github.com/brookstalley/prawduct/issues/928#issuecomment-6331682061)), which
 is the bar the owner set on 2026-10-21. R-8(b), R-8(c) and full R-8 parity stay open.
 
-Next, in order:
+The base the next step builds on is the host seam (#1037): every host payload read, `CLAUDE_*`
+root read and structured hook response write goes through `plugin/lib/host.py`, chosen by
+`PRAWDUCT_HOST`, behind a golden test of the SessionStart, Stop and SubagentStop output (R-2,
+R-3). Plain text the hooks print in place (the briefing, the Stop's notes ahead of its block) is
+not the seam's yet; #1038 moves it.
 
-1. **The host seam (#1037).** Every host payload read, `CLAUDE_*` root read and structured hook
-   response write moves into `plugin/lib/host.py`, chosen by `PRAWDUCT_HOST`, behind a golden
-   test of the SessionStart, Stop and SubagentStop output (R-2, R-3). Plain text the hooks print
-   in place (the briefing, the Stop's notes ahead of its block) stays where it is for #1038 to
-   move.
-2. **The Codex Phase 1 spike (#1038).** Built on the seam, in `adapters/codex/`, labelled
+Next:
+
+1. **The Codex Phase 1 spike (#1038).** Built on the seam, in `adapters/codex/`, labelled
    experimental: one skill (`methodology`), the briefing, one Stop gate (`reflection`) and doctor
    detection, with a live probe for each host-behaviour assumption. Target: the 3.8 release.
 

@@ -73,7 +73,6 @@ except (NameError, ImportError):
 if _python_floor is not None and __name__ == "__main__":
     _python_floor.ensure(__file__)
 
-import importlib.util  # noqa: E402 -- after the Python floor check
 import json  # noqa: E402 -- after the Python floor check
 import re  # noqa: E402 -- after the Python floor check
 import subprocess  # noqa: E402 -- after the Python floor check
@@ -92,22 +91,16 @@ _SHA_CHARS = 7
 
 def _host():
     """The host seam (``lib/host.py``), which owns every read of the host's
-    environment and every structured hook response. Loaded by file path, because
-    this script runs before ``lib`` is importable; it imports nothing from
-    ``lib``."""
-    module = sys.modules.get("prawduct_host")
-    if module is None:
-        path = Path(__file__).resolve().parent.parent / "lib" / "host.py"
-        spec = importlib.util.spec_from_file_location("prawduct_host", path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["prawduct_host"] = module
+    environment and every structured hook response. ``bin/_host_seam.py``
+    loads it, because this script runs before ``lib`` is importable."""
+    if "prawduct_host" not in sys.modules:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bin"))
         try:
-            spec.loader.exec_module(module)
-        except BaseException:
-            # A half-built module must not be what the next caller gets.
-            del sys.modules["prawduct_host"]
-            raise
-    return module
+            import _host_seam  # noqa: PLC0415 — lazy keeps top-level cheap
+        finally:
+            del sys.path[0]
+        return _host_seam.load()
+    return sys.modules["prawduct_host"]
 
 
 def plugin_root() -> Path:
