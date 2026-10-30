@@ -93,6 +93,15 @@ prawduct/
 > does ship. A pointer to `docs/principles.md` is wrong on both counts; it is
 > `plugin/docs/principles.md`.
 
+`plugin/` holds real files, not symlinks into the repo. A symlink farm was tried first and breaks
+on any checkout without symlink support: with `core.symlinks=false`, the Git-for-Windows default,
+every entry becomes a few-byte text stub and the plugin installs inert.
+
+`tests/test_plugin_packaging.py` pins the `plugin/` boundary in both directions. A required file
+going missing breaks governance for every consumer at once, and a leak puts prawduct's own
+documentation in their plugin cache. Neither shows up locally, because `--plugin-dir` resolves
+against the checkout.
+
 ## Product repos (plugin-governed)
 
 A v2 product repo commits only its own state plus a small install reference and the unloaded-plugin tripwire hook beside it in `.claude/settings.json` — no framework files. Governance comes from the plugin; the tripwire only says when the plugin did not load.
