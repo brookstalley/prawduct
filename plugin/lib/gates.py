@@ -984,8 +984,9 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
 
     ``DO NOT CLEAR`` under ``YOUR TURN`` or ``COMPLETE`` does NOT defer. A turn
     that hands the session over is one the reader may clear, hours or days
-    later, so it owes ``SAFE TO CLEAR`` and faces the session-end gates like
-    any other; the Stop hook refuses that pairing outright
+    later, so it faces the session-end gates like any other. The Stop hook
+    refuses ``COMPLETE`` with ``DO NOT CLEAR`` outright, and ``YOUR TURN`` with
+    it unless it observes work a clear would kill
     (:func:`turn_contradicts_its_verdict`). A pending question is never a
     reason not to clear — what it needs is written down.
 
@@ -1026,10 +1027,11 @@ def turn_contradicts_its_verdict(event) -> str | None:
 
     The reader of ``YOUR TURN`` / ``DO NOT CLEAR`` is told it is their move
     and that they must not end the session, and may sit on both for days. The
-    pairing is never true: if something a clear would kill is running, the
-    disposition is ``RUNNING`` (the ask rides in its copy); if nothing is, what
-    only the conversation holds can be written down and the verdict is
-    ``SAFE TO CLEAR``. Only a clearly stated pair returns a label
+    pairing is true only while something a clear would kill is running; if
+    nothing is, what only the conversation holds can be written down and the
+    verdict is ``SAFE TO CLEAR``. This reads the message alone, so it returns
+    ``YOUR TURN`` either way: the Stop hook lets that pair stand when it
+    observes the work, and ``COMPLETE`` never. Only a clearly stated pair returns a label
     (``standing_block.contradiction``); a missing field or an ambiguous block
     returns ``None``, because the caller blocks on it.
     """

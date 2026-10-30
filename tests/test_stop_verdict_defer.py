@@ -9,9 +9,12 @@ deferral uses. Every other gate keeps blocking, and every uncertain reading of
 the turn keeps blocking, because this relaxes an authority gate and authority
 fails closed.
 
-``YOUR TURN`` or ``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the
-reader is handed the session and told not to end it, and may sit on both for
-days — so it defers nothing and the clear-verdict gate refuses it. The
+``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the reader is handed
+the session and told not to end it, and may sit on both for days — so it defers
+nothing and the clear-verdict gate refuses it. So does ``YOUR TURN`` with
+``DO NOT CLEAR``, unless the hook observes work a clear would kill (a harness
+background task or a live Critic review): then the hold is as true as
+``RUNNING``'s and the pair stands. The
 clear-reason gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
 questions are in this message"), because a clear deletes exactly that (#977).
 
@@ -593,11 +596,11 @@ class TestClearVerdictGate:
         assert "GATES DEFERRED" not in result.stderr
 
     def test_background_work_defers_the_gates_but_not_the_contradiction(self, tmp_path):
-        """In-flight work defers every session-end blocker; the message is still
+        """In-flight work defers every session-end blocker; `COMPLETE` is still
         wrong for the person reading it, so the contradiction still blocks."""
         _plan_repo(tmp_path, reflected=True)
         stdin = _payload(
-            ASK_DNC_TURN,
+            COMPLETE_DNC_TURN,
             background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
         )
         result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
@@ -606,6 +609,33 @@ class TestClearVerdictGate:
         blocked = _blocked_section(result.stderr)
         assert "gate: clear-verdict" in blocked
         assert "gate: critic-review" not in blocked
+
+    def test_your_turn_beside_observed_background_work_stands(self, tmp_path):
+        """The hold is true while work a clear would kill runs, and the ask is
+        the reader's either way: `YOUR TURN` + `DO NOT CLEAR` is not refused."""
+        self._quiet_repo(tmp_path)
+        stdin = _payload(
+            ASK_DNC_TURN,
+            background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
+        )
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=stdin)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
+
+    def test_your_turn_beside_a_live_review_stands(self, tmp_path):
+        from lib import critic_marker
+
+        self._quiet_repo(tmp_path)
+        assert critic_marker.write_marker(tmp_path / ".prawduct")
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(ASK_DNC_TURN))
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
+
+    def test_your_turn_with_nothing_observed_names_what_it_looked_for(self, tmp_path):
+        self._quiet_repo(tmp_path)
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(ASK_DNC_TURN))
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "this hook sees nothing a clear would kill" in _blocked_section(result.stderr)
 
     @pytest.mark.parametrize(("reason", "phrase"), SELF_CITING_REASONS[:3])
     def test_a_self_citing_safe_to_clear_blocks(self, tmp_path, reason, phrase):

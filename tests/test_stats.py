@@ -351,13 +351,21 @@ class TestRefusalReasons:
     @pytest.mark.parametrize(
         "observed, verdict",
         [
-            ({"notes_present": False, "work_live": False}, "catch"),
-            ({"notes_present": True, "work_live": False}, "slip"),
-            ({"notes_present": None, "work_live": False}, "unclassified"),
+            ({"notes_present": False, "session_changed": True}, "catch"),
+            ({"notes_present": True, "session_changed": True}, "slip"),
+            ({"notes_present": True, "session_changed": False}, "slip"),
+            ({"notes_present": None, "session_changed": True}, "unclassified"),
+            # A read-only session: the turn is an answer its reader just read.
+            ({"notes_present": False, "session_changed": False}, "unclassified"),
+            ({"notes_present": False, "session_changed": None}, "unclassified"),
+            # Recorded before the observation existed: it could not tell.
+            ({"notes_present": False, "work_live": False}, "unclassified"),
             (None, "unclassified"),
         ],
     )
-    def test_clear_reason_is_a_catch_only_when_nothing_was_written_down(self, observed, verdict):
+    def test_clear_reason_is_a_catch_only_when_changed_work_was_not_written_down(
+        self, observed, verdict
+    ):
         facts = [_block("clear-reason", "x1", reason="in-this-message", observed=observed)]
         verdicts = _v(facts)["stop_blocks"]["verdicts"]["clear-reason"]
         assert verdicts[verdict] == 1 and sum(verdicts.values()) == 1
@@ -478,7 +486,9 @@ class TestCli:
             details={
                 "clear-reason": {
                     "reason": "in-this-message",
-                    "observed": {"notes_present": False, "work_live": False},
+                    "observed": {
+                        "notes_present": False, "work_live": False, "session_changed": True,
+                    },
                 }
             },
         )

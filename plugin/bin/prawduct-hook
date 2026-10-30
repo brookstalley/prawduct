@@ -757,27 +757,44 @@ class _GateMessage(str):
         return obj
 
 
-def _clear_observations(prawduct_dir: Path, work_in_flight: bool) -> dict:
+def _clear_observations(project_dir: Path, work_in_flight: bool) -> dict:
     """What a clear gate could see when it fired, for the reader that tells a
-    catch from a slip (``stats``). ``work_live``: harness background work or a
+    catch from a slip (``stats``). ``work_live`` also DECIDES one verdict: the
+    clear-verdict gate lets ``YOUR TURN`` + ``DO NOT CLEAR`` stand only on an
+    observed True, so every failure here must read as ``None``, never True. ``work_live``: harness background work or a
     live Critic review, either of which makes ``DO NOT CLEAR`` true (an
     unreaped delegate is invisible here, so it can read False when the hold
     was right). ``notes_present``: a non-empty ``.handoff-notes.md``, so what
-    the turn held may already have a home. ``None`` where it could not tell."""
+    the turn held may already have a home. ``session_changed``: the session
+    authored a non-metadata change, committed or not
+    (``gates.session_work_span``), so a turn in a session that changed nothing
+    is an answer its reader has just read, not work a clear would orphan.
+    ``None`` where it could not tell."""
     from lib import evidence  # noqa: PLC0415 — lazy keeps top-level cheap
 
+    prawduct_dir = get_prawduct_dir(project_dir)
     try:
         work_live = work_in_flight or _critic_marker().review_active(prawduct_dir)[0]
-    except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; it must never change a Stop's verdict
+    except Exception:  # prawduct:allow prawduct/broad-except -- None keeps the clear-verdict gate blocking (it passes only on True) and must not crash the Stop
         work_live = None
     notes = prawduct_dir / ".handoff-notes.md"
     try:
         notes_present = notes.is_file() and bool(notes.read_text().strip())
     except (OSError, UnicodeDecodeError):
         notes_present = None
+    try:
+        span = _gates().session_work_span(project_dir)
+        # The porcelain fallback cannot see committed work, so its "nothing
+        # changed" is "could not tell".
+        session_changed = (
+            True if span["changed"] else (False if span["source"] == "base-tree" else None)
+        )
+    except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; it must never change a Stop's verdict
+        session_changed = None
     return {
         evidence.OBSERVED_WORK_LIVE: work_live,
         evidence.OBSERVED_NOTES_PRESENT: notes_present,
+        evidence.OBSERVED_SESSION_CHANGED: session_changed,
     }
 
 
@@ -2932,7 +2949,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     (``lib/gates.turn_declares_in_flight``). The same field drives the
     clear-verdict gate, which neither deferral touches: a turn that hands the
     session over (``YOUR TURN`` / ``COMPLETE``) while saying ``DO NOT CLEAR``
-    is refused (``lib/gates.turn_contradicts_its_verdict``), and so is a
+    is refused (``lib/gates.turn_contradicts_its_verdict``) — ``YOUR TURN``
+    only when no work a clear would kill is observed — and so is a
     ``SAFE TO CLEAR`` whose reason is the turn itself (the ``clear-reason``
     gate, ``lib/gates.turn_self_citation``).
     """
@@ -3010,15 +3028,32 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 
     handed_over = _gates().turn_contradicts_its_verdict(event)
     if handed_over:
-        from lib import standing_block  # noqa: PLC0415 — lazy keeps top-level cheap
+        from lib import evidence, standing_block  # noqa: PLC0415 — lazy keeps top-level cheap
 
+        handed_over_observed = _clear_observations(project_dir, defer_active)
+        # `YOUR TURN` beside work a clear would kill holds the session no longer
+        # than `RUNNING` would, and the ask is the reader's to answer either
+        # way, so the pair stands while this hook can SEE that work. Only an
+        # observed True passes: an unreadable observation, or work this hook
+        # cannot see (an unread delegate's finished output), still blocks.
+        if (
+            handed_over == standing_block.YOUR_TURN
+            and handed_over_observed.get(evidence.OBSERVED_WORK_LIVE) is True
+        ):
+            handed_over = None
+    if handed_over:
+        why = (
+            "  and this hook sees nothing a clear would kill (no background task, no\n"
+            "  live review). `YOUR TURN` hands the session to someone who may read it\n"
+            "  hours or days from now, so without that work it must be `SAFE TO CLEAR`.\n"
+            if handed_over == standing_block.YOUR_TURN else
+            "  which contradict each other. `COMPLETE` says nothing produces the next\n"
+            "  turn, and `DO NOT CLEAR` says something a clear would kill is running.\n"
+        )
         clear_blockers.append(_attributed("clear-verdict",
             f"CLEAR VERDICT: this turn closes on `{handed_over}` and `DO NOT CLEAR`,\n"
-            "  which contradict each other. `DO NOT CLEAR` means you are still working\n"
-            "  (a live review, an unreaped delegate, background work a clear would kill),\n"
-            f"  and that is `RUNNING`. `{handed_over}` hands the session to someone who may\n"
-            "  read it hours or days from now, so it must be `SAFE TO CLEAR`. Rewrite the\n"
-            "  close:\n"
+            f"{why}"
+            "  Rewrite the close:\n"
             "    - Nothing running: write what only this conversation holds (findings,\n"
             "      the pending decision, where you stopped) to .prawduct/.handoff-notes.md,\n"
             "      reflect if you have not, then close `SAFE TO CLEAR`.\n"
@@ -3029,7 +3064,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  Name it in the copy and close `SAFE TO CLEAR`.\n"
             "  See `/prawduct:methodology session-hygiene`.\n",
             reason=standing_block.handed_over_reason(handed_over),
-            observed=_clear_observations(prawduct_dir, defer_active),
+            observed=handed_over_observed,
         ))
     # The other way a clear verdict misleads: `SAFE TO CLEAR` whose reason is
     # the turn itself, which is exactly what a clear deletes. Its own gate id,
@@ -3047,7 +3082,7 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             "  commit, file or issue that already holds it.\n"
             "  See `/prawduct:methodology session-hygiene`.\n",
             reason=citation_kind,
-            observed=_clear_observations(prawduct_dir, defer_active),
+            observed=_clear_observations(project_dir, defer_active),
         ))
 
     # v5: Compliance canary (informational)
