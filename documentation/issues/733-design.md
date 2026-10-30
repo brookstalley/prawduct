@@ -179,7 +179,7 @@ from the fragment. A note may be several lines.
 
 | Layout | Default `entry` | Separator | Continuation of a multi-line note |
 |---|---|---|---|
-| `paragraphs` | `` **`{scope}`**: {note} `` | blank line between entries | verbatim (today's form) |
+| `paragraphs` | `` **`{scope}`**: {note} `` | blank line between entries | verbatim (today's form); a note opening with a list item starts below the label, after a blank line |
 | `bullets` | `- {note}` | none | each later line indented 2 spaces; a blank line inside a note stays an empty line |
 | `by-type` | `- {note}` | none, inside each subsection | as `bullets` |
 

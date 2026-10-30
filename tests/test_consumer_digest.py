@@ -294,6 +294,25 @@ class TestRendering:
         out = cd.render_section(decl, "v1.0.0", "2026-10-25", None, [_fragment("s", note="Line one.  \nLine two.")])
         assert out[-2:] == ["**`s`**: Line one.  ", "Line two."]
 
+    def test_a_paragraph_note_that_opens_a_list_starts_below_its_label(self):
+        # Glued to the label, the first item renders as inline text and only the rest as a list.
+        decl = self._decl(layout="paragraphs")
+        for opener in ("- ", "* ", "1. ", "2) "):
+            note = f"{opener}First item.\n  Wrapped.\n{opener}Second item."
+            out = cd.render_section(decl, "v1.0.0", "2026-10-25", None, [_fragment("s", note=note)])
+            assert out[2:] == ["**`s`**:", "", f"{opener}First item.", "  Wrapped.", f"{opener}Second item."]
+
+    def test_a_paragraph_note_that_merely_mentions_a_dash_stays_on_its_label_line(self):
+        decl = self._decl(layout="paragraphs")
+        for note in ("-1 is now refused.", "Line one.\n- a later item."):
+            out = cd.render_section(decl, "v1.0.0", "2026-10-25", None, [_fragment("s", note=note)])
+            assert out[2] == f"**`s`**: {note.splitlines()[0]}"
+
+    def test_a_list_note_under_a_template_with_nothing_before_the_note_gains_no_blank_line(self):
+        decl = self._decl(layout="paragraphs", entry="{note}\n({scope})")
+        out = cd.render_section(decl, "v1.0.0", "2026-10-25", None, [_fragment("s", note="- One.")])
+        assert out[2:] == ["- One.", "(s)"]
+
     def test_a_headline_is_kept_verbatim_inside_its_trimmed_edges(self):
         decl = self._decl(headline="required")
         out = cd.render_section(decl, "v1.0.0", "2026-10-25", "\n**Big.** Line one.  \nLine two.\n\n", [])
