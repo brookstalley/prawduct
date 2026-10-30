@@ -347,7 +347,9 @@ class TestUnknownHost:
         repo = _governed_repo(tmp_path)
         result = _run([str(HOOK), "stop"], repo, tmp_path, "bogus")
         assert result.returncode == 2
-        assert "[prawduct v" in result.stderr and "gate: unknown-host]" in result.stderr
+        # The stamp gains "· NEW this release (vX)" while the running version is the
+        # gate's `since`, so it must match before and after the release that ships it.
+        assert re.search(r"\[prawduct v[^\]\n]* · gate: unknown-host(?: · NEW this release \(v[^)]+\))?\]", result.stderr)
         facts = evidence.facts_of_kind(evidence.read_facts(repo), "guard-refusal")
         assert [f["body"].get("guard") for f in facts] == ["stop-gate:host"]
 
