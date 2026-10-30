@@ -1570,7 +1570,14 @@ LAST_MEASURED_TOKENS = {
     # when the one above is now wrong. Every blocked turn in the 3.8.0-dev
     # survey re-wrote its whole close; the guide said nothing on it, and the
     # hook's block now does. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3152,
+    # +91 on 2026-10-29 (clear-gate-telemetry, owner ruling): `YOUR TURN` may
+    # close on `DO NOT CLEAR` beside work a clear would kill, which the hook
+    # observes (a background task, a live review). The Clear line, the
+    # precedence rule, the Stop-hook paragraph, the outstanding paragraph and
+    # the wrong-label list each now say when the pair stands and what the hook
+    # cannot see. In the 3.8.0-dev survey 7 of 10 refusals were this pair with
+    # live work, a relabel and nothing more. A READING, no ceiling.
+    "methodology/session-hygiene.md": 3243,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -2101,8 +2108,13 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # disarms the Critic gate" bullet became one sentence naming `plan status` and
     # pointing at planning.md's rule; nothing derives from a tick any more, so there is
     # no timing to teach. Digest 1911 -> 1883 tokens, 9494 -> 9423 characters.
-    "framework": 3080,
-    "product": 2198,
+    # framework 3080 -> 3079, product 2198 -> 2197 on 2026-10-29 (clear-gate-telemetry,
+    # owner ruling): `YOUR TURN` may hold `DO NOT CLEAR` beside work a clear would
+    # kill. Paid in place: "only `RUNNING` may" became "`COMPLETE` never says", and
+    # the precedence exception now says when the hold applies instead of sending it
+    # to `RUNNING`. Digest 9423 -> 9416 characters.
+    "framework": 3079,
+    "product": 2197,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2264,8 +2276,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reading, one over.
     # 3109 -> 3081, 2227 -> 2199 on 2026-10-25 (chunk-status): ratcheted with the
     # reading's cut, one over each.
-    "framework": 3081,
-    "product": 2199,
+    # 3081 -> 3080, 2199 -> 2198 on 2026-10-29 (clear-gate-telemetry): ratcheted
+    # with the reading, one over each.
+    "framework": 3080,
+    "product": 2198,
 }
 
 
@@ -2935,7 +2949,7 @@ class TestBuildingMethodology:
         the trigger. Both are pinned: a rule reworded in one carrier is two
         rules that no single-file guard sees."""
         hygiene = read_file("methodology/session-hygiene.md")
-        verdict = hygiene[hygiene.index("**Only `RUNNING` may say `DO NOT CLEAR`.**"):]
+        verdict = hygiene[hygiene.index("**Only work a clear would kill earns `DO NOT CLEAR`.**"):]
         verdict = verdict[: verdict.index("\n")]
         assert "runs on its own" in verdict
         assert "a clear ends the conversation, not the process" in verdict
@@ -3020,28 +3034,29 @@ class TestBuildingMethodology:
                 "the job may answer its own question"
             )
 
-    def test_only_running_may_say_do_not_clear_on_every_carrier(self):
+    def test_do_not_clear_needs_work_a_clear_would_kill_on_every_carrier(self):
         """`YOUR TURN` / `DO NOT CLEAR` tells the reader it is their move AND that
         they must not end the session — and they may sit on both for days.
 
-        Both carriers once PRESCRIBED that pair: the precedence rule sent any
-        needed utterance to `YOUR TURN` even with a review running, and a live
-        review is `DO NOT CLEAR`. So each carrier must state the invariant, and
-        the precedence rule must carry its exception (work a clear would kill
-        goes to `RUNNING`, the ask in its copy) — the invariant stated beside an
-        unqualified precedence rule is two rules that contradict each other.
+        That pair is honest only while work a clear would kill runs, and
+        `COMPLETE` beside `DO NOT CLEAR` never is (the owner's 2026-10-29 ruling
+        narrowed the earlier "only `RUNNING`" invariant to this, on the 3.8.0-dev
+        survey). So each carrier must state that `COMPLETE` never holds the
+        session, and its precedence rule must tie the hold to work a clear would
+        kill: an unqualified precedence rule beside a live review prescribes the
+        pair with nothing to say when it is true.
         """
         for surface in ("methodology/session-hygiene.md", "methodology/session-digest.md"):
             text = " ".join(read_file(surface).split())
-            assert "Only `RUNNING` may say `DO NOT CLEAR`" in text, (
-                f"{surface} no longer states that only `RUNNING` may close on "
-                "`DO NOT CLEAR` — the pair `YOUR TURN` + `DO NOT CLEAR` reads as legal"
+            assert "`COMPLETE` never" in text, (
+                f"{surface} no longer states that `COMPLETE` never closes on "
+                "`DO NOT CLEAR`"
             )
             precedence = text[text.index("`YOUR TURN` even when"):][:400]
             assert "clear would kill" in precedence or "clear kills" in precedence, (
-                f"{surface}'s precedence rule lost its exception: with a live "
-                "review and a needed decision it prescribes `YOUR TURN`, and the "
-                "review makes that `DO NOT CLEAR`"
+                f"{surface}'s precedence rule no longer ties `DO NOT CLEAR` to work "
+                "a clear would kill, so `YOUR TURN` + `DO NOT CLEAR` reads as legal "
+                "for anything running"
             )
         digest = " ".join(read_file("methodology/session-digest.md").split())
         start = digest.index("## Enforcement")

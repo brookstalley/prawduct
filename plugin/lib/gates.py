@@ -1026,10 +1026,11 @@ def turn_contradicts_its_verdict(event) -> str | None:
 
     The reader of ``YOUR TURN`` / ``DO NOT CLEAR`` is told it is their move
     and that they must not end the session, and may sit on both for days. The
-    pairing is never true: if something a clear would kill is running, the
-    disposition is ``RUNNING`` (the ask rides in its copy); if nothing is, what
-    only the conversation holds can be written down and the verdict is
-    ``SAFE TO CLEAR``. Only a clearly stated pair returns a label
+    pairing is true only while something a clear would kill is running; if
+    nothing is, what only the conversation holds can be written down and the
+    verdict is ``SAFE TO CLEAR``. This reads the message alone, so it returns
+    ``YOUR TURN`` either way: the Stop hook lets that pair stand when it
+    observes the work, and ``COMPLETE`` never. Only a clearly stated pair returns a label
     (``standing_block.contradiction``); a missing field or an ambiguous block
     returns ``None``, because the caller blocks on it.
     """

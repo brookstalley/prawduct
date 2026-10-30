@@ -31,13 +31,14 @@ that says both, all read as "no verdict" — which the gate treats as a session
 end and blocks. Labels match case-sensitively: the block's labels are
 upper-case tokens, and lower-case "do not clear" in a sentence is prose.
 
-The two lines are not independent. ``DO NOT CLEAR`` says the agent is still
-working — something a clear would kill is in flight — and that is ``RUNNING``.
-``YOUR TURN`` and ``COMPLETE`` hand the session to someone who may read it
-hours or days later, so both owe ``SAFE TO CLEAR``: whatever only the
-conversation holds is written to disk before the turn is handed over. A block
-pairing either with ``DO NOT CLEAR`` tells its reader two incompatible things,
-and :func:`contradiction` names it so the Stop hook can refuse it.
+The two lines are not independent. ``DO NOT CLEAR`` says something a clear
+would kill is in flight. ``COMPLETE`` says nothing is, so it owes
+``SAFE TO CLEAR``. ``YOUR TURN`` hands the session to someone who may read it
+hours or days later, so it owes ``SAFE TO CLEAR`` too, unless that work really
+is running: whatever only the conversation holds is written to disk before the
+turn is handed over. :func:`contradiction` names a handed-over disposition
+paired with ``DO NOT CLEAR``. It reads the text alone, so the Stop hook decides
+whether the work behind a ``YOUR TURN`` is observable.
 
 ``SAFE TO CLEAR`` is a claim about disk and process state, so its stated reason
 must point at something a clear leaves behind. A reason that points at the turn

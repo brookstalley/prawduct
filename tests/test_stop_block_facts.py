@@ -162,8 +162,9 @@ class TestAClearGateRecordsWhyItFired:
 
     def test_background_work_is_observed_as_live(self, tmp_path, capsys):
         repo = _repo(tmp_path)
+        # `COMPLETE`: a `YOUR TURN` beside observed live work is not refused.
         stop_input = {
-            "last_assistant_message": ASK_DNC_TURN,
+            "last_assistant_message": _block("COMPLETE", "DO NOT CLEAR"),
             "background_tasks": [{"id": "t1", "description": "suite"}],
         }
         assert _hook.cmd_stop(repo, stop_input) == 2
@@ -174,7 +175,7 @@ class TestAClearGateRecordsWhyItFired:
 
         repo = _repo(tmp_path)
         assert critic_marker.write_marker(repo / ".prawduct")
-        assert _stop(repo, ASK_DNC_TURN) == 2
+        assert _stop(repo, _block("COMPLETE", "DO NOT CLEAR")) == 2
         assert _clear_fact(repo, "clear-verdict")["observed"]["work_live"] is True
 
     def test_written_handoff_notes_are_observed(self, tmp_path, capsys):
