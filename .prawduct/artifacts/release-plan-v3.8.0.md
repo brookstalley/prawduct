@@ -27,6 +27,9 @@ the requirement. The cut does not decide it.
 - **`host-seam`**: #1037 (owner ruling 2026-10-21, "before 3.8"; confirmed for this release
   2026-10-28). One module owns what the hooks read from and write to their harness, so #1038's
   Codex adapter builds against a seam rather than patching each site.
+- **`changelog-list-notes`** (owner, 2026-10-30). The `paragraphs` layout put a list note's first
+  item on the label line as plain text: 16 of this release's 29 notes would have rendered that
+  way, and the cut writes this release's public changelog.
 
 **How this is enforced, not just stated.** Each requirement has a `ships` row in the table below
 before its work merges. Until the scope's fragment reaches `develop`, `check-releasability
@@ -46,3 +49,4 @@ Every row must account for one release-pending scope. Phase 1 adds the rest.
 | crlf-preserve | ships | |
 | block-append | ships | |
 | second-clone-evidence | ships | |
+| changelog-list-notes | ships | |

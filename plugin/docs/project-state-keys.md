@@ -204,6 +204,9 @@ The dry run prints the exact section, which you can paste into a release PR as t
 
 Quote `heading` and `entry`: YAML reads an unquoted `#` as the start of a comment.
 
+Under `paragraphs`, a note that opens with a list item starts below the template's text on its
+line, after a blank line: a list glued after a label renders its first item as plain text.
+
 **With another release tool** (release-please, semantic-release, a script that dates or tags), run
 the cut first and the tool after it. The cut writes a finished section and never needs a heading
 renamed.

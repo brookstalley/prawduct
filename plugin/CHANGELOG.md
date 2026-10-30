@@ -14,11 +14,15 @@ release process keeps the two in sync (one headline per shipped release).
 
 **Products can now record each change as its own file, so parallel branches stop colliding over `change-log.md`; `/prawduct:doctor` offers the move.** Also in this release: a `tidy-available` advisory and `git-tidy` clean up merged branches and dead worktrees only on proof nothing is lost, the alignment pass judges whether the goals under the work are grounded, record-lint reports surviving copies of a retired claim, and a 57-item backlog burndown that retires the `Type: trivial` Stop gate.
 
-**`network-git-budget`**: - `git-tidy`'s fetch, `ls-remote`, `push --delete` and `gh` calls now wait up to 60 seconds,
+**`network-git-budget`**:
+
+- `git-tidy`'s fetch, `ls-remote`, `push --delete` and `gh` calls now wait up to 60 seconds,
   instead of 15, before counting as failed. Set `PRAWDUCT_GIT_TIMEOUT` above 60 to allow longer.
   Setting it below 60 now shortens only local git calls.
 
-**`git-hygiene`**: - A repo with merged branches or dead worktrees sees one new advisory at session start,
+**`git-hygiene`**:
+
+- A repo with merged branches or dead worktrees sees one new advisory at session start,
   `tidy-available`. It changes nothing until the owner approves the dry run. Dismissing it holds
   until the set of removals changes. To turn it off, set `Branch cleanup: off` in
   `project-preferences.md`.
@@ -29,7 +33,9 @@ release process keeps the two in sync (one headline per shipped release).
 - The online dry run fetches with `--prune` and calls `gh pr list` against the product's own
   repo. Without `gh`, remote deletions are listed as unchecked and not performed.
 
-**`retired-claim-survives`**: - A new record-lint check, `retired-claim-survives`, reads `Retires:` phrases (`docs/norms.md`
+**`retired-claim-survives`**:
+
+- A new record-lint check, `retired-claim-survives`, reads `Retires:` phrases (`docs/norms.md`
   § Anatomy). A repo that declares none sees only a new zero in the review fact's `record_lint`
   counts. A repo whose norms already carry a `Retires:` line with quoted phrases gets a WARNING
   for each surviving copy at its next boundary review. Rewrite each one, or waive a quotation
@@ -38,7 +44,9 @@ release process keeps the two in sync (one headline per shipped release).
   A cache that was never synced, or cannot be read, reports `retired-claim-survives unchecked`
   until `prawduct-hook backlog sync` runs.
 
-**`backlog-burndown`**: - The `Type: trivial` Stop gate is retired. `trivial` remains a chunk type the Critic reviews: a
+**`backlog-burndown`**:
+
+- The `Type: trivial` Stop gate is retired. `trivial` remains a chunk type the Critic reviews: a
   rationale the diff contradicts blocks, and a missing one is a warning.
 - `stamp-merged` and `regen-views` are removed. Both had been inert no-ops and were never
   registered in a shipped `hooks.json`, so nothing that ran them did anything. That is why this
