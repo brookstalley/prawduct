@@ -713,6 +713,7 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
 #: hook) and its reader (``stats``' verdict rules) cannot drift apart.
 OBSERVED_WORK_LIVE = "work_live"
 OBSERVED_NOTES_PRESENT = "notes_present"
+OBSERVED_SESSION_CHANGED = "session_changed"
 
 #: Prefix of the ``guard`` a Stop-hook block is recorded under; the gate id
 #: follows it. Readers select Stop blocks from other control firings by it.

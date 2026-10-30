@@ -151,7 +151,9 @@ class TestAClearGateRecordsWhyItFired:
         assert _stop(repo, ASK_DNC_TURN) == 2
         fact = _clear_fact(repo, "clear-verdict")
         assert fact["reason"] == "handed-over-your-turn"
-        assert fact["observed"] == {"work_live": False, "notes_present": False}
+        assert fact["observed"] == {
+            "work_live": False, "notes_present": False, "session_changed": False,
+        }
 
     def test_complete_is_its_own_reason(self, tmp_path, capsys):
         repo = _repo(tmp_path)
@@ -186,6 +188,18 @@ class TestAClearGateRecordsWhyItFired:
         (repo / ".prawduct" / ".handoff-notes.md").write_text("  \n")
         assert _stop(repo, SELF_CITING_TURN) == 2
         assert _clear_fact(repo, "clear-reason")["observed"]["notes_present"] is False
+
+    def test_a_session_that_changed_nothing_is_observed_as_unchanged(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        assert _stop(repo, SELF_CITING_TURN) == 2
+        assert _clear_fact(repo, "clear-reason")["observed"]["session_changed"] is False
+
+    def test_a_session_that_committed_work_is_observed_as_changed(self, tmp_path, capsys):
+        """Committed counts: the span is the session base tree, not porcelain."""
+        repo = _repo(tmp_path)
+        _commit_code(repo)
+        _stop(repo, SELF_CITING_TURN)
+        assert _clear_fact(repo, "clear-reason")["observed"]["session_changed"] is True
 
     def test_clear_reason_names_the_citation_kind_and_never_the_phrase(self, tmp_path, capsys):
         repo = _repo(tmp_path)

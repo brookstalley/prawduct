@@ -64,12 +64,21 @@ LOOP_THRESHOLD = 3
 UNSPECIFIED = "unspecified"
 #: Per Stop gate, the observation that says the harm the gate guards against
 #: was already handled when it fired. True: a slip (the turn's words were wrong,
-#: the situation was not). False: a catch. Absent or unreadable: unclassified.
-#: The verdict is derived here and never stored, so a revised rule re-reads
-#: every recorded firing. Rationale per rule: ``docs/governance-telemetry.md``.
+#: the situation was not). False: a catch, unless the gate also names a
+#: precondition below that is not observed True. Absent or unreadable:
+#: unclassified. The verdict is derived here and never stored, so a revised
+#: rule re-reads every recorded firing. Rationale per rule:
+#: ``docs/governance-telemetry.md``.
 SLIP_WHEN_OBSERVED = {
     "clear-reason": evidence.OBSERVED_NOTES_PRESENT,
     "clear-verdict": evidence.OBSERVED_WORK_LIVE,
+}
+#: Per Stop gate, the observation that must be True for a non-slip to count as
+#: a catch: without it the harm was not observable. A ``clear-reason`` firing
+#: in a session that changed nothing is an answer its reader has just read, and
+#: whether clearing it loses anything is a judgment no observation makes.
+CATCH_REQUIRES_OBSERVED = {
+    "clear-reason": evidence.OBSERVED_SESSION_CHANGED,
 }
 VERDICTS = ("catch", "slip", "unclassified")
 
@@ -215,10 +224,13 @@ def _reason(body: dict) -> str:
 
 def _verdict(gate: str, body: dict) -> str:
     observed = body.get("observed")
-    seen = observed.get(SLIP_WHEN_OBSERVED[gate]) if isinstance(observed, dict) else None
+    if not isinstance(observed, dict):
+        return "unclassified"
+    seen = observed.get(SLIP_WHEN_OBSERVED[gate])
     if seen is True:
         return "slip"
-    if seen is False:
+    required = CATCH_REQUIRES_OBSERVED.get(gate)
+    if seen is False and (required is None or observed.get(required) is True):
         return "catch"
     return "unclassified"
 

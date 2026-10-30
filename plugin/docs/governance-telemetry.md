@@ -186,8 +186,8 @@ The Stop gates that record a reason today:
 
 | Gate | `reason` | `observed` |
 |---|---|---|
-| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md` |
-| `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same two |
+| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
+| `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
 
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
@@ -385,8 +385,13 @@ The definitions (their one home):
     absent or `null`. The rules can be revised, because they are applied at read
     time:
     - `clear-reason` is a slip when `notes_present`: the content had a home, and
-      the reason only failed to name it. Otherwise a clear would have lost what
-      only the turn held, which is a catch.
+      the reason only failed to name it. It is a catch when notes were absent
+      and `session_changed`: a clear would have lost what only the turn held
+      about work the session did. In a session that changed nothing, the turn
+      is an answer its reader has just read, and whether clearing it loses
+      anything is a judgment no observation makes, so it is unclassified, as is
+      a firing recorded before `session_changed` existed
+      (`stats.CATCH_REQUIRES_OBSERVED`).
     - `clear-verdict` is a slip when `work_live`: the hold was right, and only
       the disposition label was wrong. Otherwise a reader was told to keep a
       session open for nothing, which is a catch. An unreaped delegate is not
