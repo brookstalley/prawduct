@@ -260,7 +260,7 @@ design_decisions:
     scheme: "only work a clear would kill earns `DO NOT CLEAR`: `COMPLETE` never carries it, and `YOUR TURN` carries it only beside that work, which the Stop hook lets stand when it observes a background task or a live Critic review"
     status: active
     rationale: "owner ruling 2026-10-29, answering the 3.8.0-dev field survey ('yes to all'): 7 of 10 observed clear-verdict refusals were YOUR TURN + DO NOT CLEAR with live work, a relabel and nothing more. Narrowed ahead of #1044's data, on purpose. Survey and ruling posted at https://github.com/brookstalley/prawduct/issues/1044#issuecomment-6514023834"
-    retires: ["only `RUNNING` may say `DO NOT CLEAR`", "test_only_running_may_say_do_not_clear_on_every_carrier"]
+    retires: ["only `RUNNING` may say `DO NOT CLEAR`", "test_only_running_may_say_do_not_clear_on_every_carrier", "only `RUNNING` may close on `DO NOT CLEAR`"]
     date: 2026-10-29
   integration_branch_protection:
     scheme: "none — `develop` accepts direct pushes, and CI on it is advisory rather than gating"

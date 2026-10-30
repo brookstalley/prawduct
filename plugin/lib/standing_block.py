@@ -66,7 +66,8 @@ DISPOSITION_LABELS: tuple[str, ...] = (RUNNING, YOUR_TURN, COMPLETE)
 CLEAR_LABELS: tuple[str, ...] = (SAFE_TO_CLEAR, DO_NOT_CLEAR)
 
 #: The dispositions that hand the session over — to the person, or to nobody.
-#: Each owes ``SAFE TO CLEAR``; only ``RUNNING`` may close on ``DO NOT CLEAR``.
+#: ``COMPLETE`` always owes ``SAFE TO CLEAR``; ``YOUR TURN`` does unless work a
+#: clear would kill is running, which ``cmd_stop`` decides from what it observes.
 HANDED_OVER_DISPOSITIONS: tuple[str, ...] = (YOUR_TURN, COMPLETE)
 
 
