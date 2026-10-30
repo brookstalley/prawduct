@@ -984,8 +984,9 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
 
     ``DO NOT CLEAR`` under ``YOUR TURN`` or ``COMPLETE`` does NOT defer. A turn
     that hands the session over is one the reader may clear, hours or days
-    later, so it owes ``SAFE TO CLEAR`` and faces the session-end gates like
-    any other; the Stop hook refuses that pairing outright
+    later, so it faces the session-end gates like any other. The Stop hook
+    refuses ``COMPLETE`` with ``DO NOT CLEAR`` outright, and ``YOUR TURN`` with
+    it unless it observes work a clear would kill
     (:func:`turn_contradicts_its_verdict`). A pending question is never a
     reason not to clear — what it needs is written down.
 

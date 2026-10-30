@@ -1549,7 +1549,7 @@ LAST_MEASURED_TOKENS = {
     # that only the closing line counts, and what misusing the label costs —
     # the gate now reads the verdict, so its readers are owed the rule. A
     # READING, no ceiling.
-    # +275 on 2026-09-27 (clear-verdict-coherence): the Clear line gains "only
+    # +275 on 2026-09-27 (clear-verdict-coherence): the Clear line gains "only prawduct:allow prawduct/retired-claim-survives -- dated budget history quoting the rule as it stood
     # `RUNNING` may say `DO NOT CLEAR`" with its reason, `YOUR TURN` states it is
     # always `SAFE TO CLEAR`, the precedence rule gains its exception (work a
     # clear would kill), and the Stop-hook paragraph names the gate that refuses
@@ -1570,14 +1570,14 @@ LAST_MEASURED_TOKENS = {
     # when the one above is now wrong. Every blocked turn in the 3.8.0-dev
     # survey re-wrote its whole close; the guide said nothing on it, and the
     # hook's block now does. A READING, no ceiling.
-    # +91 on 2026-10-29 (clear-gate-telemetry, owner ruling): `YOUR TURN` may
+    # +101 on 2026-10-29 (clear-gate-telemetry, owner ruling): `YOUR TURN` may
     # close on `DO NOT CLEAR` beside work a clear would kill, which the hook
     # observes (a background task, a live review). The Clear line, the
     # precedence rule, the Stop-hook paragraph, the outstanding paragraph and
     # the wrong-label list each now say when the pair stands and what the hook
     # cannot see. In the 3.8.0-dev survey 7 of 10 refusals were this pair with
     # live work, a relabel and nothing more. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3243,
+    "methodology/session-hygiene.md": 3253,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -2068,7 +2068,7 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # +2 on both shapes, 2026-09-27 (clear-verdict-coherence): the digest taught
     # `YOUR TURN` + `DO NOT CLEAR` as a legal pair (its precedence rule plus "a
     # live review is `DO NOT CLEAR`"), and its Enforcement line read as "close on
-    # `DO NOT CLEAR` to pass the Stop hook". It now states that only `RUNNING`
+    # `DO NOT CLEAR` to pass the Stop hook". It now states that only `RUNNING` prawduct:allow prawduct/retired-claim-survives -- dated budget history quoting the rule as it stood
     # may say `DO NOT CLEAR`, and gives the precedence rule its exception. Paid
     # mostly in place: the new rule absorbed the findings-only sentence, which
     # stated the same obligation (persist, then `SAFE TO CLEAR`) for two of

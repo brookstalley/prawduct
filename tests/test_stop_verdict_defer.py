@@ -628,7 +628,8 @@ class TestClearVerdictGate:
         self._quiet_repo(tmp_path)
         assert critic_marker.write_marker(tmp_path / ".prawduct")
         result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(ASK_DNC_TURN))
-        assert "CLEAR VERDICT" not in result.stderr, result.stderr
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
 
     def test_your_turn_with_nothing_observed_names_what_it_looked_for(self, tmp_path):
         self._quiet_repo(tmp_path)

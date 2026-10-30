@@ -759,7 +759,9 @@ class _GateMessage(str):
 
 def _clear_observations(project_dir: Path, work_in_flight: bool) -> dict:
     """What a clear gate could see when it fired, for the reader that tells a
-    catch from a slip (``stats``). ``work_live``: harness background work or a
+    catch from a slip (``stats``). ``work_live`` also DECIDES one verdict: the
+    clear-verdict gate lets ``YOUR TURN`` + ``DO NOT CLEAR`` stand only on an
+    observed True, so every failure here must read as ``None``, never True. ``work_live``: harness background work or a
     live Critic review, either of which makes ``DO NOT CLEAR`` true (an
     unreaped delegate is invisible here, so it can read False when the hold
     was right). ``notes_present``: a non-empty ``.handoff-notes.md``, so what
@@ -773,7 +775,7 @@ def _clear_observations(project_dir: Path, work_in_flight: bool) -> dict:
     prawduct_dir = get_prawduct_dir(project_dir)
     try:
         work_live = work_in_flight or _critic_marker().review_active(prawduct_dir)[0]
-    except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; it must never change a Stop's verdict
+    except Exception:  # prawduct:allow prawduct/broad-except -- None keeps the clear-verdict gate blocking (it passes only on True) and must not crash the Stop
         work_live = None
     notes = prawduct_dir / ".handoff-notes.md"
     try:
@@ -781,7 +783,12 @@ def _clear_observations(project_dir: Path, work_in_flight: bool) -> dict:
     except (OSError, UnicodeDecodeError):
         notes_present = None
     try:
-        session_changed = bool(_gates().session_work_span(project_dir)["changed"])
+        span = _gates().session_work_span(project_dir)
+        # The porcelain fallback cannot see committed work, so its "nothing
+        # changed" is "could not tell".
+        session_changed = (
+            True if span["changed"] else (False if span["source"] == "base-tree" else None)
+        )
     except Exception:  # prawduct:allow prawduct/broad-except -- an observation is advice; it must never change a Stop's verdict
         session_changed = None
     return {

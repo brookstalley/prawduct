@@ -393,7 +393,11 @@ The definitions (their one home):
       a firing recorded before `session_changed` existed
       (`stats.CATCH_REQUIRES_OBSERVED`).
     - `clear-verdict` is a slip when `work_live`: the hold was right, and only
-      the disposition label was wrong. Otherwise a reader was told to keep a
+      the disposition label was wrong. Since `clear-gate-telemetry` the gate no
+      longer fires on `YOUR TURN` with `work_live`, so its slips are only
+      `COMPLETE` turns, and its counts on either side of that release do not
+      compare. Nor do `clear-reason`'s catches, which then began to require
+      `session_changed`. Otherwise a reader was told to keep a
       session open for nothing, which is a catch. An unreaped delegate is not
       observable, so this rule leans towards catch, which is the direction
       that keeps a gate.

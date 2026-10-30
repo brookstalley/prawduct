@@ -7,8 +7,21 @@ base: develop
 working-branches: []
 last_validated: 2026-10-29
 governed_by:
-  - .prawduct/artifacts/architecture.md
-  - .prawduct/artifacts/api-contract.md
+  - artifact: architecture
+    dispositions:
+      - "an independent reviewer never mutates the session it reviews → inapplicable because no reviewer path changes"
+      - "authority fails closed; advice fails soft → conforms: the clear-verdict narrowing passes only on an observed work_live True; None blocks"
+      - "local-first governance coordination → conforms: no network; one git diff the Stop hook already runs"
+      - "the plugin writes nothing into a governed repo but its own state → conforms: one more key on an existing fact"
+      - "never specific to Python → inapplicable because no language dispatch changes"
+      - "guides and reviews, never implements → inapplicable because no product code is touched"
+      - "goals and verification bind; prescribed method is advice → conforms"
+      - "every fact has one home → conforms: the observation key is named once in evidence.py and read through it by the hook and stats"
+  - artifact: api-contract
+    dispositions:
+      - "whole-surface semantic versioning → conforms: ships in the next release; no evidence-store schema bump, since an observed key is additive"
+      - "exit codes are the contract → conforms: Stop's exit codes keep their meanings; one more case exits 0"
+      - "additive-first evolution → conforms: one new observed key; no --json key removed or repurposed"
 partition: serial — both chunks edit the Stop hook's clear-gate block and the same telemetry doc
 ---
 
