@@ -523,22 +523,19 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
    > *Adjudicated, not derived: the file's own comment asks for this bump;
    > `documentation/release-process.md` step 2 didn't name it until v3.1.1.*
 
-10. **On a minor or major bump — not a patch — refresh `README.md`'s `## Recent Changes`** so the
-    current line is represented there. (`plugin/CHANGELOG.md` needs nothing here: step 3 wrote its
-    `## vX.Y.Z` section, and `develop` carries no open `-dev` section to rename.) If the README
-    already has a section for this line under a prerelease heading, bring that one up to date
-    rather than adding a second. Rewrite the section; do not append a
-    per-release bullet. A patch has nothing to say on that surface, so skipping it is the correct
-    outcome and not an omission.
+10. **On a minor or major bump — not a patch — reread `README.md` against this release.** The
+    README carries no release notes; `plugin/CHANGELOG.md` does, and step 3 already wrote its
+    `## vX.Y.Z` section. Check what the README does claim: the prerequisites, the install and
+    onboard steps, the commands it names, and what "How it works" says the hooks enforce. Fix
+    anything this line made false. A patch has nothing to say on that surface, so skipping it is
+    the correct outcome and not an omission.
 
     > *Why it is conditional, and why it lives here: the README is the first thing a
-    > prospective user reads, and no release had ever updated it — it sat two minor
-    > versions and eight releases stale (3.1.0 through 3.2.4) because no release document
-    > named the file. A per-release step would no-op on every patch, and a step that
-    > usually does nothing is a step you stop reading. A minor-bump-only step fires rarely
-    > and has something to say every time it does. `documentation/release-process.md` step 5
-    > points here for both files rather than restating them, so deleting this paragraph is
-    > what makes that pointer dangle.*
+    > prospective user reads, and it went eight releases stale (3.1.0 through 3.2.4) while no
+    > release document named it. A per-release step would no-op on every patch, and a step that
+    > usually does nothing is a step you stop reading. `documentation/release-process.md` step 5
+    > points here rather than restating it, so deleting this paragraph is what makes that
+    > pointer dangle.*
 
 11. **Clear the pointer if one is still set, then archive the plans this release shipped.**
     On gitflow the closing PR deliberately RETAINS each plan — the work is not released yet
@@ -671,7 +668,7 @@ installed consumer, unrecallably. This phase is the second question (REL-8P6M).*
 
 `origin/develop` now holds the whole release: bumped version, the shipped scopes in the
 change-log archive tagged `release=vX.Y.Z` with their fragments removed, cleared plan
-pointer — and, on a minor or major bump, a `## Recent Changes` section that covers this line. Everything up to here
+pointer — and, on a minor or major bump, a README still true of this line. Everything up to here
 is undone by an ordinary commit on `develop`, so this is a safe place to stop
 and come back.
 
