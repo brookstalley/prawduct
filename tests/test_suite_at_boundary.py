@@ -25,6 +25,33 @@ def _read(rel: str) -> str:
     return (PLUGIN / rel).read_text(encoding="utf-8")
 
 
+
+def _pending_fragments() -> list[Path]:
+    """The pending change fragments, walked from the directory, not a resolver."""
+    return sorted((PLUGIN.parent / ".prawduct" / "changes").glob("*.md"))
+
+
+def _consumer_note(path: Path) -> str:
+    """A fragment's `## Consumer note`, the part the cut publishes.
+
+    Read through `change_fragments.parse_fragment`, the format's one reader. The
+    narrative above the note stays in the archive and may quote a retired phrase
+    while describing its removal; only the note reaches consumers.
+    """
+    import sys
+
+    if str(PLUGIN) not in sys.path:
+        sys.path.insert(0, str(PLUGIN))
+    from lib import change_fragments
+
+    text = path.read_text(encoding="utf-8")
+    try:
+        return change_fragments.parse_fragment(text, filename=path.name).consumer_note or ""
+    except change_fragments.FragmentError:
+        # Unparseable frontmatter: the release gate refuses this fragment, so
+        # scan all of it rather than let a malformed file hide a retired phrase.
+        return text
+
 class TestTheBuilderIsToldWhenTheSuiteIsOwed:
     def test_the_ceiling_paragraph_moves_the_suite_to_the_boundary(self):
         text = _read("methodology/building.md")
@@ -121,21 +148,30 @@ class TestNoCarrierStillAsksForAPerChunkRun:
             and "__pycache__" not in p.parts
         ) + [PLUGIN / "bin" / "prawduct-hook"]
         corpus = {str(p.relative_to(PLUGIN)): p.read_text(encoding="utf-8") for p in files}
-        # The release notes: released sections are history and may quote the
-        # old default, but the UNRELEASED section — the first `## ` heading's
-        # body — makes live claims to consumers, so it is scanned.
-        notes = (PLUGIN / "CHANGELOG.md").read_text(encoding="utf-8")
-        first = notes.index("\n## ")
-        second = notes.find("\n## ", first + 1)
-        corpus["CHANGELOG.md#unreleased"] = notes[first:second if second != -1 else None]
+        # The unreleased release notes make live claims to consumers, so they are
+        # scanned. Since #733's release-file model they are not a changelog
+        # section (CHANGELOG.md holds only released, historical sections) but the
+        # pending fragments' consumer notes and the pending headline, which the
+        # cut turns into the next release's section.
+        for fragment in _pending_fragments():
+            corpus[f"changes#{fragment.stem}"] = _consumer_note(fragment)
+        headline = PLUGIN.parent / ".prawduct" / "release-headline.md"
+        if headline.is_file():
+            corpus["release-headline"] = headline.read_text(encoding="utf-8")
         return corpus
 
     def test_the_scan_reaches_the_carriers_it_once_missed(self):
         corpus = self._corpus()
         for rel in ("skills/janitor/SKILL.md", "lib/briefing.py",
-                    "templates/build-plan.md", "methodology/building.md",
-                    "CHANGELOG.md#unreleased"):
+                    "templates/build-plan.md", "methodology/building.md"):
             assert rel in corpus, f"the scan never read {rel}"
+        # Every pending note is read. Right after a release there are none, and
+        # that emptiness is the phase, not a broken join: what is rejected is a
+        # pending fragment the scan did not read, or a directory it could not find
+        # (an empty glob over a wrong path would read as "just released").
+        assert (PLUGIN.parent / ".prawduct" / "changes").is_dir(), "the fragment directory moved"
+        missing = [p.stem for p in _pending_fragments() if f"changes#{p.stem}" not in corpus]
+        assert not missing, f"the scan never read the pending notes of {missing}"
 
     def test_each_pattern_matches_the_wording_it_retires(self):
         samples = [
@@ -186,8 +222,8 @@ class TestTheReplacementsSayTheNewRule:
 
     def test_the_release_note_names_the_default_change(self):
         # The entry is looked up in whichever version section carries it, not in the
-        # first one: a release reopens an empty prerelease section above it, so a
-        # "first section" pin goes red at every cut without anything having changed.
+        # first one: every later release adds its own section above it, so a "first
+        # section" pin goes red at the next cut without anything having changed.
         notes = (PLUGIN / "CHANGELOG.md").read_text(encoding="utf-8")
         sections = [s for s in notes.split("\n## ")[1:] if "**`suite-at-boundary`**" in s]
         assert len(sections) == 1, "the suite-at-boundary note must appear in exactly one version section"

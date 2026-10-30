@@ -120,7 +120,11 @@ prawduct ever placed," only known framework files.
   a setup step for the next person: `claude plugin install prawduct@prawduct`, once per machine.
   Until they run it their clone has no hooks, no `/prawduct:*` and no gates, with nothing said
   about it; the governance anchor (in `AGENTS.md`, imported by `CLAUDE.md`) is the one surface that reaches that session, and
-  `/prawduct:doctor` Health Check #4 keeps it current.
+  `/prawduct:doctor` Health Check #4 keeps it current. A fresh clone also starts with an empty
+  evidence store: it shows a branch's review coverage after one `prawduct-hook evidence sync` run
+  with that branch checked out (or, once `evidence configure --apply` has set the refspec, after a
+  plain `git fetch` and a session start), which brings in the review facts other clones pushed on
+  `refs/notes/prawduct`.
 
 ## Rollback
 
@@ -157,7 +161,8 @@ the papercuts v2.0 removes:
   a successful pull.
 
 In v2.0 the framework ships as a **Claude Code plugin**. Your repo commits *zero* framework
-files — only the small install reference. The framework code lives out-of-tree in the plugin
+files — only the small install reference, and one SessionStart hook beside it that warns when
+the plugin did not load. The framework code lives out-of-tree in the plugin
 cache and updates with zero repo diff.
 
 | Concern | v1.x (file-sync) | v2.0 (plugin) |

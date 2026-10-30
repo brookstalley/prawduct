@@ -13,7 +13,8 @@ consumer migration, C9 tier 1).
 **Envelope (D2).** One JSON object per line::
 
     {"schema": 1, "kind": "review", "id": "...", "ts": "...",
-     "actor": {"session": ..., "worktree": ..., "plugin": ..., "branch": ...},
+     "actor": {"session": ..., "worktree": ..., "plugin": ..., "branch": ...,
+               "build": ...},
      "body": {...}}
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
@@ -25,6 +26,9 @@ today; ``pr-review``/``promotion`` are reserved for later constituent plans);
 is OPTIONAL and omitted (never null) when HEAD is detached or unreadable; it
 was added by #648 because ``worktree`` alone stopped being able to say whether
 a tree was disposable, and no reader can probe a tree that is already deleted.
+Its ``build`` is OPTIONAL by the same rule: the plugin checkout's commit sha
+(12 hex), ``+dirty`` when the plugin tree has uncommitted changes, omitted when
+the plugin is not a git checkout (a marketplace install) or git fails (#1086).
 
 **Keying (D3).** Facts reference *tree SHAs* captured via a temporary index
 (``capture_tree``): objects are written to the shared odb, the session's real
@@ -51,6 +55,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -94,15 +99,67 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # resume) — the denominator that turns a count of Stop-hook blocks or guard
 # firings into a per-session rate (:func:`append_session_start`). No gate reads
 # it.
+#
+# ``chunk-imported`` records one ``## Status`` box the MG2 migration converted
+# (``{scope, chunk, source: "status-box", imported_at}``), so a ticked box
+# keeps answering "done" after the block is removed. Its one reader is
+# ``plan_status.chunk_states`` (``plan_status.IMPORTED_KIND``); it spans no
+# trees, so the coverage verdict never sees it. Added as a kind, not a schema
+# bump: an older reader keeps an unknown kind in the digest and lets it coexist,
+# never satisfy a gate (build-plan-chunk-status.md, Level item 2).
+#
+# ``chunk-retracted`` withdraws one fact's certification of one chunk
+# (``{scope, chunk, fact_id, reason, retracted_at}``, written by ``plan
+# retract``): facts are never edited, so a wrong certification is answered by a
+# new one. Same reader and same footing as ``chunk-imported``; an older reader
+# keeps it in the digest and goes on reading the chunk as done, which is what
+# that reader did before the retraction existed.
 KNOWN_KINDS = frozenset(
-    {"review", "resolution", "disposition", "guard-refusal", "test-run", "session-start"}
+    {
+        "review",
+        "resolution",
+        "disposition",
+        "guard-refusal",
+        "test-run",
+        "session-start",
+        "chunk-imported",
+        "chunk-retracted",
+    }
 )
 
 #: Kinds the coverage verdict never reads, so their lines are left out of
 #: ``coverage_fingerprint`` (:func:`read_facts`). Membership is a claim about
 #: ``coverage_algebra.coverage_verdict``'s inputs — review edges and the
 #: resolution index — and a kind joins only if that function cannot see it.
-OBSERVATIONAL_KINDS = frozenset({"guard-refusal", "test-run", "session-start"})
+OBSERVATIONAL_KINDS = frozenset(
+    {"guard-refusal", "test-run", "session-start", "chunk-imported", "chunk-retracted"}
+)
+
+#: Kinds whose facts travel between clones on ``refs/notes/prawduct``
+#: (:mod:`evidence_notes`). ``review`` and ``resolution`` are what the coverage
+#: verdict composes; ``chunk-imported`` and ``chunk-retracted`` ride too because
+#: ``plan_status.chunk_states`` reads them, and one made in one clone is
+#: otherwise invisible to every other — an unseen retraction leaves those clones
+#: certifying the chunk it withdrew. Every other kind is about the clone that wrote it (a
+#: suite run, a session boundary, a guard firing, a builder's disposition) and
+#: stays in that clone's store.
+TRANSPORTED_KINDS = frozenset({"review", "resolution", "chunk-imported", "chunk-retracted"})
+
+
+def review_anchor(body: object) -> "str | None":
+    """The commit a review fact is anchored on: ``head_commit``, else — for a
+    dirty-tree review, which records none — ``dispatch_commit``.
+
+    The one home of that rule: the note a fact travels on hangs here, and
+    chunk status, lifecycle and the verify anchor all ask the same question.
+    ``None`` when the body is not a dict or carries neither; a caller putting
+    the answer in a git argv still passes it through ``gitstate.is_object_id``.
+    """
+    if not isinstance(body, dict):
+        return None
+    anchor = body.get("head_commit") or body.get("dispatch_commit")
+    return anchor if isinstance(anchor, str) and anchor else None
+
 
 STORE_SUBDIR = "prawduct"
 STORE_BASENAME = "evidence.jsonl"
@@ -193,6 +250,11 @@ def store_path(project_dir: Path) -> Path | None:
     return common / STORE_SUBDIR / STORE_BASENAME
 
 
+def _plugin_root() -> Path:
+    """The plugin tree this module runs from (the directory holding ``VERSION``)."""
+    return Path(__file__).resolve().parent.parent
+
+
 def _plugin_version() -> str | None:
     """The bundled VERSION, nullable — never invented.
 
@@ -201,12 +263,73 @@ def _plugin_version() -> str | None:
     would crash the gate rather than null a field.
     """
     try:
-        text = (Path(__file__).resolve().parent.parent / "VERSION").read_text(
-            encoding="utf-8"
-        )
+        text = (_plugin_root() / "VERSION").read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
     return text.strip() or None
+
+
+#: Length of the commit sha ``actor.build`` records.
+BUILD_SHA_LENGTH = 12
+#: Suffix on ``actor.build`` when the plugin tree differs from its commit.
+BUILD_DIRTY_SUFFIX = "+dirty"
+#: Git's repository-locating variables. A hook can run under a git hook or a
+#: caller that exported them for the PRODUCT repo, and git would then answer
+#: about the product rather than the plugin checkout.
+_REPO_LOCATING_ENV = (
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX",
+    "GIT_NAMESPACE",
+)
+_UNREAD = object()
+_build_memo: object = _UNREAD
+
+
+def read_plugin_build(plugin_root: Path) -> str | None:
+    """The build ``plugin_root`` is: its checkout's commit sha (first
+    :data:`BUILD_SHA_LENGTH` hex), plus :data:`BUILD_DIRTY_SUFFIX` when the
+    plugin tree has uncommitted or untracked-unignored changes. ``None`` when
+    it is not a git checkout, or any git call fails or times out.
+
+    A plugin root merely sitting inside some unrelated repository (a home
+    directory under version control holding a marketplace copy) must not
+    borrow that repository's sha, so the root's own ``VERSION`` has to be a
+    tracked file of the checkout. The dirty check is scoped to the plugin
+    directory: a dirty sibling outside it did not change the code that ran.
+    Runs with ``GIT_OPTIONAL_LOCKS=0``, so it never rewrites that index.
+    Never raises (:func:`run_git` converts every failure)."""
+    env = {k: v for k, v in os.environ.items() if k not in _REPO_LOCATING_ENV}
+    # A read must never refresh the checkout's index: this one is often a
+    # developer's working tree, where a lock collides with their own git and a
+    # rewritten index reads as activity to whatever watches its mtime.
+    env["GIT_OPTIONAL_LOCKS"] = "0"
+    rc, _, _ = run_git(plugin_root, "ls-files", "--error-unmatch", "--", "VERSION", env=env)
+    if rc != 0:
+        return None
+    rc, out, _ = run_git(
+        plugin_root, "status", "--porcelain=v2", "--branch", "--", ".", env=env, strip=False
+    )
+    if rc != 0:
+        return None
+    sha, dirty = None, False
+    for line in out.splitlines():
+        if line.startswith("# branch.oid "):
+            sha = line[len("# branch.oid "):].strip()
+        elif line and not line.startswith("#"):
+            dirty = True
+    if not sha or not re.fullmatch(r"[0-9a-f]{40,64}", sha):
+        return None  # "(initial)": a checkout with no commit has no build
+    return sha[:BUILD_SHA_LENGTH] + (BUILD_DIRTY_SUFFIX if dirty else "")
+
+
+def _plugin_build() -> str | None:
+    """:func:`read_plugin_build` of the running plugin, read once per process:
+    the code that runs cannot change under a running process, so neither can
+    its build, and a hook appending several facts pays the git calls once."""
+    global _build_memo
+    if _build_memo is _UNREAD:
+        _build_memo = read_plugin_build(_plugin_root())
+    return _build_memo  # type: ignore[return-value]
 
 
 def _session_epoch(project_dir: Path) -> str | None:
@@ -270,6 +393,13 @@ def append_fact(
     branch = gitstate.current_branch(project_dir)
     if branch:
         actor["branch"] = branch
+    # `actor.build` (#1086) — the plugin checkout's commit, same omitted-not-
+    # null rule. Every dev build of one version shares `plugin`, so without it
+    # facts from different builds are indistinguishable. A marketplace install
+    # is no git checkout and records none; its released version identifies it.
+    build = _plugin_build()
+    if build:
+        actor["build"] = build
     envelope = {
         "schema": SCHEMA_VERSION,
         "kind": kind,
@@ -278,7 +408,63 @@ def append_fact(
         "actor": actor,
         "body": body,
     }
-    line = json.dumps(envelope) + "\n"
+    failed = _append_line(path, envelope_line(envelope))
+    if failed is not None:
+        return failed
+    # `envelope` is handed back so a caller that forwards the fact (the notes
+    # transport) sends the record the store holds rather than a rebuilt one.
+    return {"status": "appended", "path": str(path), "id": fact_id, "envelope": envelope}
+
+
+def envelope_line(envelope: dict) -> str:
+    """The store's serialisation of one envelope: one JSON object on one
+    newline-terminated line. The one home of that format, shared by the store's
+    writers and the notes transport, so a fact read back from a note and
+    appended here is byte-identical to the line the note carries — its
+    writer's line less the actor's locator fields
+    (:func:`evidence_notes.sent_envelope`)."""
+    return json.dumps(envelope) + "\n"
+
+
+def append_envelope(project_dir: Path, envelope: dict) -> dict:
+    """Append an envelope another writer built — a fact read from the notes
+    transport — as it stands. Returns what :func:`append_fact` returns.
+
+    Unlike :func:`append_fact` it refuses neither an unknown kind nor a schema
+    ahead of this reader: the record was valid where it was written, and
+    dropping it here would hide a newer plugin's write from the
+    ``schema_ahead`` block :func:`read_facts` raises for it. It refuses only a
+    record that is not an envelope (no ``kind``/``id``, a non-integer
+    ``schema``, a non-object ``body``) — a line :func:`read_facts` would
+    exclude anyway. It does not dedupe: the caller holds the store it read and
+    decides what is new."""
+    if not isinstance(envelope, dict):
+        return {"status": "error", "reason": "an envelope must be an object"}
+    kind, fact_id, schema = envelope.get("kind"), envelope.get("id"), envelope.get("schema")
+    if not isinstance(kind, str) or not kind.strip():
+        return {"status": "error", "reason": "envelope kind must be a non-empty string"}
+    if not isinstance(fact_id, str) or not fact_id.strip():
+        return {"status": "error", "reason": "envelope id must be a non-empty string"}
+    if not isinstance(schema, int) or isinstance(schema, bool):
+        return {"status": "error", "reason": "envelope schema must be an integer"}
+    if not isinstance(envelope.get("body"), dict):
+        return {"status": "error", "reason": "envelope body must be an object"}
+    path = store_path(project_dir)
+    if path is None:
+        return {
+            "status": "error",
+            "reason": f"no git repository at {project_dir} — the evidence store "
+            "lives in the clone's git common dir and has no fallback location",
+        }
+    failed = _append_line(path, envelope_line(envelope))
+    if failed is not None:
+        return failed
+    return {"status": "appended", "path": str(path), "id": fact_id, "envelope": envelope}
+
+
+def _append_line(path: Path, line: str) -> "dict | None":
+    """Append one serialised record to the store at ``path``. ``None`` on
+    success, else the ``{"status": "error", "reason"}`` the caller returns."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         # Self-heal a torn tail (D9): a crashed writer can leave a final line
@@ -306,7 +492,7 @@ def append_fact(
             os.close(fd)
     except OSError as exc:
         return {"status": "error", "reason": f"store unwritable ({exc})"}
-    return {"status": "appended", "path": str(path), "id": fact_id}
+    return None
 
 
 def append_guard_refusal(
@@ -316,6 +502,8 @@ def append_guard_refusal(
     *,
     dedupe_key: "str | None" = None,
     known_facts: "list[dict] | None" = None,
+    reason: "str | None" = None,
+    observed: "dict | None" = None,
 ) -> dict:
     """Record that a pre-dispatch guard fired. One sink for the whole class.
 
@@ -354,8 +542,9 @@ def append_guard_refusal(
        class and names this sink; a second path for the same class is the thing
        it forbids.
 
-    **Neither store answers a cross-CLONE question** — this one lives inside
-    ``.git`` and is never committed, exactly like the ledger. The axis this
+    **A refusal stays in the clone that recorded it** — this store lives inside
+    ``.git`` and is never committed, and ``guard-refusal`` is not among the
+    kinds the notes transport carries (``TRANSPORTED_KINDS``). The axis this
     ruling turns on is cross-*worktree* durability plus an existing reader, not
     cross-clone reach, and a yield question spanning clones still needs an
     exporter nobody has built.
@@ -371,6 +560,22 @@ def append_guard_refusal(
     lands, so a store error must never convert it into an error exit. It must
     not be silent either (``core.md``: "'advice fails soft' is not 'advice
     fails silent'") — attribute it on stderr and carry on.
+
+    **``reason`` and ``observed`` say WHY it fired**, for every control alike, so
+    "is this firing a catch or a slip?" is a read rather than a transcript
+    search. ``reason`` names which of the control's checks failed, from a closed
+    set the control declares; ``observed`` holds the few facts the control could
+    see when it fired (is work running? is a note on disk?). The verdict a
+    reader draws from them is derived at read time and never stored here, so
+    its definition can change without the record losing anything. Both are
+    machine-shaped (a slug, and a flat map of slug keys to booleans, integers,
+    slugs or ``None``). That shape keeps a sentence out but not a short phrase:
+    what keeps turn text out is that producers pass declared constants and
+    observations, never the turn's words. A value of the wrong shape is DROPPED,
+    not the firing: its name goes in ``refused_fields`` and the firing still
+    counts, as ``unspecified``, because a lost count is the worse error. The
+    result carries ``refused_fields`` too, so the caller can say so. Each
+    accepted value lands in the body under its own name.
 
     **``dedupe_key`` is for a guard that fires on a POLLED path**, where the
     default one-record-per-firing shape is wrong twice over. ``critic-begin``
@@ -403,6 +608,26 @@ def append_guard_refusal(
         return {"status": "error", "reason": "guard name must be a non-empty string"}
     if not isinstance(body, dict):
         return {"status": "error", "reason": "fact body must be an object"}
+    refused = []
+    if reason is not None:
+        if _is_slug(reason):
+            body = {**body, "reason": reason}
+        else:
+            refused.append("reason")
+    if observed is not None:
+        if _is_observation(observed):
+            body = {**body, "observed": dict(observed)}
+        else:
+            refused.append("observed")
+    if refused:
+        body = {**body, "refused_fields": refused}
+        return {**_append_guard_fact(project_dir, guard, body, dedupe_key, known_facts),
+                "refused_fields": refused}
+    return _append_guard_fact(project_dir, guard, body, dedupe_key, known_facts)
+
+
+def _append_guard_fact(project_dir, guard, body, dedupe_key, known_facts) -> dict:
+    """:func:`append_guard_refusal`'s write, after its arguments are checked."""
     if dedupe_key is not None:
         if not isinstance(dedupe_key, str) or not dedupe_key.strip():
             return {
@@ -439,6 +664,26 @@ def append_guard_refusal(
     )
 
 
+#: A machine-shaped value: lowercase words joined by hyphens or underscores,
+#: capped in length. It keeps a sentence out, not a short phrase.
+_SLUG = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*")
+_SLUG_MAX = 48
+
+
+def _is_slug(value) -> bool:
+    return isinstance(value, str) and len(value) <= _SLUG_MAX and bool(_SLUG.fullmatch(value))
+
+
+def _is_observation(value) -> bool:
+    """A flat map of slug keys to booleans, integers, slugs or ``None``."""
+    if not isinstance(value, dict):
+        return False
+    return all(
+        _is_slug(k) and (v is None or isinstance(v, (bool, int)) or _is_slug(v))
+        for k, v in value.items()
+    )
+
+
 def append_test_run(project_dir: Path, body: dict) -> dict:
     """Record one suite run as a ``test-run`` fact. Returns
     :func:`append_fact`'s result.
@@ -464,6 +709,12 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     return append_fact(project_dir, "test-run", fact_id, body)
 
 
+#: Observation keys a clear gate records, named once so its writer (the Stop
+#: hook) and its reader (``stats``' verdict rules) cannot drift apart.
+OBSERVED_WORK_LIVE = "work_live"
+OBSERVED_NOTES_PRESENT = "notes_present"
+OBSERVED_SESSION_CHANGED = "session_changed"
+
 #: Prefix of the ``guard`` a Stop-hook block is recorded under; the gate id
 #: follows it. Readers select Stop blocks from other control firings by it.
 STOP_GATE_PREFIX = "stop-gate:"
@@ -474,7 +725,9 @@ STOP_GATE_PREFIX = "stop-gate:"
 TRANSFER_GRANT_GUARD = "base-advance-transfer"
 
 
-def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
+def append_stop_block(
+    project_dir: Path, gates: "list[str]", details: "dict | None" = None
+) -> "list[dict]":
     """Record one blocked Stop: a ``guard-refusal`` fact per blocking gate.
 
     A Stop gate is a control like any pre-dispatch guard, so it records through
@@ -485,6 +738,9 @@ def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
     the facts of one Stop together and ``co_gates`` names the others, so "which
     gates fire together?" needs no join. Each blocked Stop is a separate event
     (the model was sent back once per block), so there is no dedupe key.
+    ``details`` maps a gate id to the ``reason`` and ``observed`` that gate
+    reported, passed to the sink as they are; a gate absent from it records
+    neither.
 
     Returns each sink result. Callers treat a failure as soft: the block is
     correct whether or not its record lands.
@@ -503,6 +759,8 @@ def append_stop_block(project_dir: Path, gates: "list[str]") -> "list[dict]":
                     "stop": stop_id,
                     "co_gates": [g for g in gates if g != gate],
                 },
+                reason=(details or {}).get(gate, {}).get("reason"),
+                observed=(details or {}).get(gate, {}).get("observed"),
             )
         )
     return results
@@ -731,6 +989,10 @@ def _is_observational(record: object) -> bool:
         and isinstance(record.get("id"), str)
         and isinstance(record.get("body"), dict)
     )
+
+
+#: The range `evidence status` counts facts with no note over, said on the line.
+UNATTACHED_SCOPE = ", on this branch's commits (merge base..HEAD)"
 
 
 def facts_of_kind(read_result: dict, kind: str) -> list[dict]:
@@ -1053,14 +1315,24 @@ def capture_tree(project_dir: Path) -> dict:
     excluded) as a tree object in the shared odb, via a TEMPORARY index.
 
     Returns ``{"status": "ok", "tree", "head_commit", "head_tree", "clean",
-    "seed"}`` or ``{"status": "error", "reason", "seed"}``. ``seed`` names how
+    "seed", "untracked"}`` or ``{"status": "error", "reason", "seed"}``. ``seed`` names how
     the temp index was filled (:func:`_seed_temp_index`) — it rides on both
     outcomes because a capture that degraded to the slow seed and a capture
     that never had a fast one to lose are the same symptom and different
     bugs. The session's real index and working tree are never touched (R1) —
     asserted by tests, verified by the D3 spike.
     ``clean`` is True when the captured tree equals ``HEAD^{tree}`` (a verbatim
-    commit of this state will carry the same tree SHA)."""
+    commit of this state will carry the same tree SHA).
+
+    ``untracked`` lists the files the capture took in that the repo's own index
+    does not track (gitignored and ``.git/info/exclude``-d files are in neither).
+    They are what "verbatim" quietly includes: ``git commit`` of the tracked files
+    alone records a tree WITHOUT them, which is not the tree a review of this
+    capture vouched for. Kept in the capture rather than dropped from it, because
+    the common case is a new source file nobody has ``git add``-ed yet, and that
+    is real work a review must see. ``None`` when the listing failed — unknown,
+    not empty. The review data plane reads it from here rather than asking git
+    again, so the list always describes the very tree this capture returned."""
     tmp_fd, tmp_name = tempfile.mkstemp(prefix="prawduct-idx-")
     os.close(tmp_fd)
     os.unlink(tmp_name)  # git wants to create the index file itself
@@ -1090,6 +1362,12 @@ def capture_tree(project_dir: Path) -> dict:
                 "reason": f"write-tree failed (seed: {seed}) — {err}",
                 "seed": seed,
             }
+        # The REAL index, not the temp one: "untracked" means what a commit of
+        # the session's own index would leave out.
+        rc, listed, _ = run_git(
+            project_dir, "ls-files", "-z", "--others", "--exclude-standard", strip=False
+        )
+        untracked = sorted(p for p in listed.split("\0") if p) if rc == 0 else None
         return {
             "status": "ok",
             "tree": tree,
@@ -1097,6 +1375,7 @@ def capture_tree(project_dir: Path) -> dict:
             "head_tree": head_tree,
             "clean": tree == head_tree,
             "seed": seed,
+            "untracked": untracked,
         }
     finally:
         # The lock as well as the index. `GIT_INDEX_FILE` moves git's index
@@ -1259,8 +1538,11 @@ def tree_entries(project_dir: Path, tree: str) -> "list[tuple[str, str, str]] | 
 
 
 # ---------------------------------------------------------------------------
-# CLI (``prawduct-hook evidence <status|list>``) — the stable allowlistable
-# surface (R4); skills scope to ``Bash(prawduct-hook evidence*)``.
+# CLI (``prawduct-hook evidence <status|list|ingest>``). ``status`` and ``list``
+# are reads, the stable allowlistable surface (R4); ``ingest`` appends to the
+# store, a data-plane write. A ``Bash(prawduct-hook evidence*)`` grant therefore
+# admits a write — a read-only skill scopes to ``evidence status`` and
+# ``evidence list`` by name.
 # ---------------------------------------------------------------------------
 
 # The store is append-only, shared by every worktree of the clone, and never
@@ -1297,17 +1579,52 @@ def distinct_trees(facts: list[dict]) -> set[str]:
     return trees
 
 
-_CLI_USAGE = "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]}"
+#: Every op ``prawduct-hook evidence`` takes, as the hook's own usage line
+#: offers them (a test holds the two rosters equal) — the text an unknown op,
+#: or a ``list`` or ``ingest`` usage error, prints.
+_CLI_USAGE = (
+    "Usage: prawduct-hook evidence {status|list [--kind <k>] [-n <count>]"
+    "|ingest [--all] [--json]|sync [--no-push] [--json]|configure [--apply] [--json]}"
+)
 
 
 def evidence_cmd(project_dir: Path, argv: list[str]) -> int:
+    """``prawduct-hook evidence <op>`` — the one router for every op; the hook
+    calls it and nothing else.
+
+    Exit codes, one convention for every op: **0** ok, **1** a reported
+    failure, **2** usage (an unknown op, a bad flag). ``status`` adds its
+    documented sentinel, **2** = schema-ahead records present; it takes no
+    flags and ignores any argument, so no usage error shares that code.
+
+    ``ingest`` lives in :mod:`evidence_notes`, ``sync`` and ``configure`` in
+    :mod:`evidence_sync`; each is imported only when its op runs, so a store
+    read never loads the transport."""
     sub = argv[0] if argv else "status"
     if sub == "status":
         return _cmd_status(project_dir)
     if sub == "list":
         return _cmd_list(project_dir, argv[1:])
-    print(_CLI_USAGE, file=sys.stderr)
-    return 1
+    if sub == "ingest":
+        from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
+
+        return evidence_notes.ingest_cmd(project_dir, argv[1:], usage=_CLI_USAGE)
+    if sub in ("sync", "configure"):
+        try:
+            from . import evidence_sync  # noqa: PLC0415 — lazy; only these two ops reach it
+            run = getattr(evidence_sync, f"cmd_evidence_{sub}")
+        except (ImportError, AttributeError) as exc:
+            # A writer: a lib that cannot run it fails closed rather than
+            # reading as a sync that ran.
+            print(
+                f"evidence {sub} unavailable (the plugin lib/ does not provide it: {exc}) "
+                "— nothing was fetched, pushed or configured",
+                file=sys.stderr,
+            )
+            return 1
+        return run(project_dir, argv[1:])
+    print(f"evidence: unknown op {sub!r}\n{_CLI_USAGE}", file=sys.stderr)
+    return 2
 
 
 def is_ephemeral_fact(fact: dict) -> bool:
@@ -1392,6 +1709,59 @@ def _store_size_line(path: Path) -> str | None:
     return f"size: {len(raw) / 1_000_000:.2f} MB, {len(lines)} lines; largest kinds: {kinds}"
 
 
+def _print_note_transport(project_dir: Path, path: Path, result: dict) -> None:
+    """The durable view of the two legs a fact travels after the store, each
+    otherwise said once, in the output of the act that lost it: how many of
+    this branch's transported facts have no note on their commit (an attach
+    that failed or never ran), and how many note commits the push remote's
+    tracking ref does not hold (a push that failed or never ran).
+
+    Both read the roster ingest reads — the local ref and every fetched
+    tracking ref — so a fact that arrived on a fetched note is not called
+    unsent. A clone with no notes ref pays no subprocess here: the roster is
+    read from the files under the git common dir (the store sits at
+    ``<common>/prawduct/evidence.jsonl``), and the store count already in hand
+    stands in for the bounded one. The unpushed count costs nothing unless
+    the local ref exists; then one ``rev-list --count`` — over the local ref
+    alone when no tracking ref does (a first push that failed or never ran),
+    else against the push remote's tracking ref."""
+    from . import evidence_notes  # noqa: PLC0415 — lazy; evidence_notes imports this module
+
+    remedy = "  `prawduct-hook evidence sync` attaches this branch's and sends them"
+    refs = evidence_notes.notes_refs(project_dir, common_dir=path.parent.parent)
+    if refs is not None and not refs:
+        transported = sum(1 for f in result["facts"] if f.get("kind") in TRANSPORTED_KINDS)
+        if transported:
+            print(
+                f"notes: no {evidence_notes.NOTES_REF} (or fetched "
+                f"refs/notes/<remote>/prawduct) in this clone — none of the "
+                f"store's {transported} transported fact(s) is on a note"
+            )
+            print(remedy)
+        return
+    found = evidence_notes.unattached(project_dir, known=result, refs=refs)
+    if found["status"] != "ok":
+        print(f"notes: facts with no note not counted — {found['reason']}")
+    else:
+        # Counted over this branch's commits only (`evidence_notes.unattached`
+        # bounds it, as sync's reconcile does): older facts with no note are not
+        # owed one, and a bare count read as the whole store's after a sync.
+        print(
+            f"{len(found['missing'])} transported fact(s) with no note on their commit"
+            f"{UNATTACHED_SCOPE}"
+        )
+        if found["missing"]:
+            print(remedy)
+    ahead = evidence_notes.unpushed(project_dir, refs or [])
+    sync = " — run `prawduct-hook evidence sync`"
+    if ahead is None:
+        return
+    if not ahead["tracked"]:
+        print(f"{ahead['count']} note commit(s) never pushed from this clone{sync}")
+    else:
+        print(f"{ahead['count']} note commit(s) not yet pushed{sync if ahead['count'] else ''}")
+
+
 def _cmd_status(project_dir: Path) -> int:
     path = store_path(project_dir)
     if path is None:
@@ -1418,6 +1788,7 @@ def _cmd_status(project_dir: Path) -> int:
         print(size_line)
     trees = distinct_trees(result["facts"])
     print(f"trees referenced: {len(trees)}")
+    _print_note_transport(project_dir, path, result)
     # Only COVERAGE-BEARING kinds belong in the wasted-cost sentence. A
     # `guard-refusal` recorded from a disposable worktree covers no branch
     # either, but saying "the review cost was spent" of it is exactly backwards
@@ -1467,11 +1838,11 @@ def _cmd_list(project_dir: Path, argv: list[str]) -> int:
                 limit = max(1, int(argv[i + 1]))
             except ValueError:
                 print(_CLI_USAGE, file=sys.stderr)
-                return 1
+                return 2
             i += 2
         else:
             print(_CLI_USAGE, file=sys.stderr)
-            return 1
+            return 2
     result = read_facts(project_dir)
     if result["status"] == "error":
         print(f"evidence: {result['reason']}", file=sys.stderr)

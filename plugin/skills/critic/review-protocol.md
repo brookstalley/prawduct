@@ -44,7 +44,7 @@ applicability is recorded, never assumed. Stale registry → NOTE: `/prawduct:do
 downgrade.
 
 ### 1. Nothing Is Broken
-- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** at `cumulative`; at `final` an observation that the suite is owed before the work lands — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**. Review test *quality and coverage* through code analysis only.
+- **Do not run tests.** Run `prawduct-hook test-status`: exit 0 = current; stale/missing → **WARNING** at `cumulative`; at `final` an observation that the suite is owed before the work lands — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**. A `flaky:` line tagged `flaky_policy: warn` → **WARNING** at the boundary, an observation inside. Review test *quality and coverage* through code analysis only.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change record.

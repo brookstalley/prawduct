@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -162,7 +163,6 @@ class TestConvertedWriteSites:
         pr = tmp_path / ".prawduct"
         pr.mkdir()
         (pr / ".session-reflected").write_text("a reflection long enough to persist")
-        monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
         monkeypatch.setattr(briefing.gitstate, "_get_session_changed_files", lambda d: [])
         monkeypatch.setattr(briefing, "_git_session_commits", lambda d: [])
         briefing.generate_session_handoff(tmp_path)
@@ -246,7 +246,7 @@ def _run_clear(project_dir: Path) -> subprocess.CompletedProcess:
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "clear", "--session-start"],
+        [sys.executable, str(HOOK), "clear", "--session-start"],
         capture_output=True, text=True, env=env, timeout=20,
     )
 
@@ -433,6 +433,45 @@ class TestWriteAllOrNone:
         assert "ROLLBACK FAILED" in err and str(a) in err
         assert a.read_text(encoding="utf-8") == "new A"  # the state it names
 
+    def test_a_rollback_that_cannot_restore_raises_the_paths_it_left(
+        self, tmp_path, monkeypatch
+    ):
+        """The caller's message comes from the state, not from hope: a refusal
+        that says every file was restored, after one was not, sends the
+        operator to the re-run this function exists to make safe."""
+        core = self._core()
+        a, b = tmp_path / "a.md", tmp_path / "b.md"
+        a.write_text("old A", encoding="utf-8")
+        real = core.atomic_write_text
+        calls: list = []
+
+        def _full(path, text, *args, **kwargs):
+            calls.append(path)
+            if len(calls) == 1:
+                return real(path, text, *args, **kwargs)
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(core, "atomic_write_text", _full)
+        with pytest.raises(core.RollbackIncomplete) as info:
+            core.write_all_or_none([(a, "new A"), (b, "B")])
+        assert info.value.unrestored == [a]
+        outcome = core.write_failure_outcome(info.value)
+        assert str(a) in outcome and "do not re-run" in outcome
+        assert "Every file was restored" not in outcome
+        assert core.write_failure_outcome(OSError("disk full")).startswith("Every file was restored")
+
+    def test_no_caller_claims_a_restore_of_its_own(self):
+        """Every caller of `write_all_or_none` reports through
+        `write_failure_outcome`, the one place that knows whether it is true."""
+        root = Path(__file__).resolve().parent.parent / "plugin"
+        claims = [
+            f"{path.relative_to(root)}:{number}"
+            for path in [*root.joinpath("lib").rglob("*.py"), root / "bin" / "prawduct-hook"]
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+            if re.search(r"(?i)every file was restored", line) and path.name != "core.py"
+        ]
+        assert claims == []
+
     def test_the_original_error_survives_a_failing_rollback(
         self, tmp_path, monkeypatch
     ):
@@ -463,3 +502,61 @@ class TestWriteAllOrNone:
             core.write_all_or_none([(a, "new A"), (b, "new B")])
 
         assert seen["n"] >= 3, "the restore was never attempted — branch ungraded"
+
+    def test_crlf_and_a_bom_go_through_byte_for_byte(self, tmp_path):
+        """A product's CRLF file written through here keeps its bytes (#733)."""
+        core = self._core()
+        a = tmp_path / "CHANGELOG.md"
+        text = "\ufeff# C\r\n\r\n## v1.0.0\r\n"
+        core.write_all_or_none([(a, text)])
+        assert a.read_bytes() == b"\xef\xbb\xbf# C\r\n\r\n## v1.0.0\r\n"
+
+    def test_a_rollback_restores_a_crlf_file_byte_for_byte(self, tmp_path, monkeypatch):
+        """The restore is the path meant to leave a file as it was.
+
+        A universal-newline read of the prior turns ``\\r\\n`` into ``\\n``, so a
+        failed write would hand a CRLF product file back re-line-ended (#733).
+        """
+        core = self._core()
+        a, b = tmp_path / "CHANGELOG.md", tmp_path / "b.md"
+        prior = b"\xef\xbb\xbf# C\r\n\r\n## v1.0.0\r\nOld.\r\n"
+        a.write_bytes(prior)
+        real = core.atomic_write_text
+        seen = {"n": 0}
+
+        def _explode(path, text, **kwargs):
+            seen["n"] += 1
+            if seen["n"] == 2:
+                raise OSError("disk full")
+            return real(path, text, **kwargs)
+
+        monkeypatch.setattr(core, "atomic_write_text", _explode)
+        with pytest.raises(OSError):
+            core.write_all_or_none([(a, "\ufeff# C\r\n\r\n## v1.1.0\r\n\r\n## v1.0.0\r\nOld.\r\n"), (b, "B")])
+        assert seen["n"] >= 3, "the restore was never attempted"
+        assert a.read_bytes() == prior
+
+
+class TestReadTextAndEol:
+    """The read side of a ``write_all_or_none`` rewrite (#1073): parsers get \\n
+    text, and the writer gets back the file's own line ending."""
+
+    @pytest.mark.parametrize(
+        ("data", "eol"),
+        [(b"a\r\nb\r\n", "\r\n"), (b"a\nb\n", "\n"), (b"a\rb\r", "\r"), (b"no newline", "\n"), (b"", "\n"),
+         (b"a\r\nb\n", "\r\n")],
+    )
+    def test_the_eol_is_the_first_lines(self, tmp_path, data, eol):
+        path = tmp_path / "f.md"
+        path.write_bytes(data)
+        text, found = core.read_text_and_eol(path)
+        assert found == eol
+        assert text == path.read_text(encoding="utf-8"), "parsers see what a universal-newline read gives"
+
+    def test_a_round_trip_is_byte_for_byte(self, tmp_path):
+        path = tmp_path / "f.md"
+        data = "﻿# C\r\n\r\n## v1.0.0\r\nOld.\r\n".encode("utf-8")
+        path.write_bytes(data)
+        text, eol = core.read_text_and_eol(path)
+        core.write_all_or_none([(path, core.with_eol(text, eol))])
+        assert path.read_bytes() == data

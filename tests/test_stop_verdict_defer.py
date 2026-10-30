@@ -9,9 +9,12 @@ deferral uses. Every other gate keeps blocking, and every uncertain reading of
 the turn keeps blocking, because this relaxes an authority gate and authority
 fails closed.
 
-``YOUR TURN`` or ``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the
-reader is handed the session and told not to end it, and may sit on both for
-days — so it defers nothing and the clear-verdict gate refuses it. The
+``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the reader is handed
+the session and told not to end it, and may sit on both for days — so it defers
+nothing and the clear-verdict gate refuses it. So does ``YOUR TURN`` with
+``DO NOT CLEAR``, unless the hook observes work a clear would kill (a harness
+background task or a live Critic review): then the hold is as true as
+``RUNNING``'s and the pair stands. The
 clear-reason gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
 questions are in this message"), because a clear deletes exactly that (#977).
 
@@ -36,7 +39,7 @@ from pathlib import Path
 import pytest
 
 from conftest import SHAPED_REFLECTION
-from lib import gates, standing_block
+from lib import gates, host, standing_block
 from test_plugin_runtime import _make_session_start, run_plugin_hook
 
 PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
@@ -309,9 +312,15 @@ class TestSelfCitation:
 # ---------------------------------------------------------------------------
 
 
+def _on_event(gate, payload):
+    """Ask ``gate`` as the Stop hook does: the raw payload, garbage included,
+    read through the host seam (``host.read_event``) first."""
+    return gate(host.read_event("stop", payload))
+
+
 class TestTurnDeclaresInFlight:
     def test_dnc_turn_defers(self):
-        assert gates.turn_declares_in_flight(json.loads(_payload(DNC_TURN))) == (
+        assert _on_event(gates.turn_declares_in_flight, json.loads(_payload(DNC_TURN))) == (
             True, "DO NOT CLEAR",
         )
 
@@ -335,7 +344,7 @@ class TestTurnDeclaresInFlight:
              "your-turn-dnc", "complete-dnc", "dnc-no-disposition"],
     )
     def test_everything_else_blocks(self, stop_input):
-        assert gates.turn_declares_in_flight(stop_input) == (False, None)
+        assert _on_event(gates.turn_declares_in_flight, stop_input) == (False, None)
 
     @pytest.mark.parametrize(
         ("stop_input", "expected"),
@@ -352,7 +361,7 @@ class TestTurnDeclaresInFlight:
              "empty", "str"],
     )
     def test_contradiction_ladder(self, stop_input, expected):
-        assert gates.turn_contradicts_its_verdict(stop_input) == expected
+        assert _on_event(gates.turn_contradicts_its_verdict, stop_input) == expected
 
     @pytest.mark.parametrize(
         ("stop_input", "expected"),
@@ -369,7 +378,7 @@ class TestTurnDeclaresInFlight:
         ids=["self-citing", "your-turn-safe", "your-turn-dnc", "null", "empty", "str"],
     )
     def test_self_citation_ladder(self, stop_input, expected):
-        assert gates.turn_cites_itself_as_record(stop_input) == expected
+        assert _on_event(gates.turn_cites_itself_as_record, stop_input) == expected
 
     def test_transcript_is_not_a_fallback(self, tmp_path):
         """With the field absent, a transcript that DOES close on DO NOT CLEAR is
@@ -379,7 +388,7 @@ class TestTurnDeclaresInFlight:
             "type": "assistant",
             "message": {"content": [{"type": "text", "text": DNC_TURN}]},
         }) + "\n")
-        assert gates.turn_declares_in_flight({"transcript_path": str(transcript)}) == (
+        assert _on_event(gates.turn_declares_in_flight, {"transcript_path": str(transcript)}) == (
             False, None,
         )
 
@@ -587,11 +596,11 @@ class TestClearVerdictGate:
         assert "GATES DEFERRED" not in result.stderr
 
     def test_background_work_defers_the_gates_but_not_the_contradiction(self, tmp_path):
-        """In-flight work defers every session-end blocker; the message is still
+        """In-flight work defers every session-end blocker; `COMPLETE` is still
         wrong for the person reading it, so the contradiction still blocks."""
         _plan_repo(tmp_path, reflected=True)
         stdin = _payload(
-            ASK_DNC_TURN,
+            COMPLETE_DNC_TURN,
             background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
         )
         result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
@@ -600,6 +609,33 @@ class TestClearVerdictGate:
         blocked = _blocked_section(result.stderr)
         assert "gate: clear-verdict" in blocked
         assert "gate: critic-review" not in blocked
+
+    def test_your_turn_beside_observed_background_work_stands(self, tmp_path):
+        """The hold is true while work a clear would kill runs, and the ask is
+        the reader's either way: `YOUR TURN` + `DO NOT CLEAR` is not refused."""
+        self._quiet_repo(tmp_path)
+        stdin = _payload(
+            ASK_DNC_TURN,
+            background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
+        )
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=stdin)
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
+
+    def test_your_turn_beside_a_live_review_stands(self, tmp_path):
+        from lib import critic_marker
+
+        self._quiet_repo(tmp_path)
+        assert critic_marker.write_marker(tmp_path / ".prawduct")
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(ASK_DNC_TURN))
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
+
+    def test_your_turn_with_nothing_observed_names_what_it_looked_for(self, tmp_path):
+        self._quiet_repo(tmp_path)
+        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(ASK_DNC_TURN))
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "this hook sees nothing a clear would kill" in _blocked_section(result.stderr)
 
     @pytest.mark.parametrize(("reason", "phrase"), SELF_CITING_REASONS[:3])
     def test_a_self_citing_safe_to_clear_blocks(self, tmp_path, reason, phrase):
@@ -667,3 +703,48 @@ class TestVocabularyHasOneHome:
             *standing_block.CLEAR_LABELS,
         )
         assert len(set(standing_block.ALL_LABELS)) == len(standing_block.ALL_LABELS)
+
+
+# ---------------------------------------------------------------------------
+# How a blocked turn is told to answer (#1095)
+# ---------------------------------------------------------------------------
+
+_HEADING = "BLOCKED — resolve before ending session:"
+
+
+def _answer_line(stderr: str) -> str:
+    """The line right after the block heading — where every block says how to
+    answer it, ahead of the items."""
+    assert stderr.count(_HEADING) == 1, stderr
+    return stderr.split(_HEADING, 1)[1].lstrip("\n").splitlines()[0]
+
+
+def assert_block_says_how_to_answer(stderr: str) -> None:
+    """A blocked turn's answer and close are already written: the block asks
+    for only what is missing, and says when a close is written again — when
+    the one above would now be wrong, because the gates read the close from
+    the last message only: an item faults it, or the turn must close
+    `RUNNING` / `DO NOT CLEAR` (keeping a deferral, or having just started
+    work a clear would kill)."""
+    line = _answer_line(stderr)
+    assert "Do not repeat your answer." in line, line
+    assert "Write a closing block again only if the one above would now be wrong" in line, line
+    assert "an item faults it" in line, line
+    assert "`RUNNING` / `DO NOT CLEAR` (to keep a deferral, or because what you just started" in line, line
+
+
+class TestABlockSaysHowToAnswerIt:
+    def test_a_gate_block_says_it_before_the_items(self, tmp_path):
+        _plan_repo(tmp_path, reflected=True)
+        result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(SAFE_TURN))
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert_block_says_how_to_answer(result.stderr)
+        blocked = _blocked_section(result.stderr)
+        assert blocked.index("Do not repeat your answer") < blocked.index("CRITIC")
+
+    def test_a_turn_that_does_not_block_is_not_told(self, tmp_path):
+        """Control: the deferred Stop exits 0 and prints no block, so no answer line."""
+        _plan_repo(tmp_path, reflected=True)
+        result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_TURN))
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "Do not repeat your answer" not in result.stderr + result.stdout

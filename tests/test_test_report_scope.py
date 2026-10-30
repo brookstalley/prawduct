@@ -545,6 +545,19 @@ class TestTheWriter:
         ok, reason, cause = report_scope.read_scope_record(report)
         assert ok is False and "because" in reason
 
+    def test_the_record_it_writes_reads_no_clock(self, tmp_path):
+        """`at` stays out of what this producer writes.
+
+        The record is first written from `pytest_configure`, outside any test,
+        so a clock read there is charged to every test in the process by a
+        result cache that will not reuse a clock-reading test (testament's).
+        The report's own `timestamp` already says when the run happened, and
+        the reader treats `at` as optional.
+        """
+        report = tmp_path / "r.xml"
+        written = write_scope_record(_Config(tmp_path, xmlpath=str(report)), PARTIAL, "x")
+        assert "at" not in json.loads(written.read_text())
+
     def test_a_write_that_fails_degrades_to_absence_and_says_so(self, tmp_path, capsys):
         """Both halves, because the contract now demands both of every producer.
 

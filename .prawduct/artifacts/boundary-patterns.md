@@ -62,11 +62,15 @@ worktree's own record does not vouch; `evidence list`. Nothing on the coverage d
 `coverage_algebra.VERDICT_INPUT_KINDS` is the set it reads, and `evidence.OBSERVATIONAL_KINDS`
 (which `test-run` joins) is kept out of the verdict cache's key.
 **Contract:** body `tree`, `passed`/`failed`/`skipped`, `duration_seconds`, `source`, and `head`
-and `degraded` when present. The store is a fallback, asked after the worktree's own record declines;
+and `degraded` when present; a run recorded from a scratch worktree (DG2, #1051) also carries
+`narrowed: true` and `ceiling` (the command it ran). A narrowed fact is attribution only:
+`_store_run_vouching` skips it, so it neither vouches (a few files are not the suite) nor
+denies (it cannot overrule a real run on the same tree), and `test-status` lists it by worktree.
+The store is a fallback, asked after the worktree's own record declines;
 among its candidates (that record included) the newest run that met the tree decides it.
 **Sweep rule:** a kind joining `OBSERVATIONAL_KINDS` is a claim that `coverage_algebra` never
 reads it — `tests/test_test_run_facts.py` derives the read set from the module's own `fact.get("kind")`
-comparisons, so check that test before adding one.
+comparisons, so check that test before adding one. `chunk-imported` (#1051) and `chunk-retracted` (#1072) joined on that claim.
 
 ### `.claude/rules/learnings/` — the rules layout
 

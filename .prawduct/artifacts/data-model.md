@@ -46,7 +46,9 @@ out where reality still lags.
 5. **Two stores, two lifetimes, deliberately split.** Shared, committed *answers* (what a team
    decided — `project-state.yaml`) are distinct from per-clone, gitignored *nags and caches*
    (`.advisories.json`, the evidence store, session state). A teammate's committed decision resolves
-   an advisory for everyone; local nag state never pollutes the shared record.
+   an advisory for everyone; local nag state never pollutes the shared record. The evidence store
+   stays per clone, but its review, resolution and chunk-imported facts are shared *answers* too:
+   they travel as notes on `refs/notes/prawduct` (Evidence Store, below), never as a committed file.
 
 ## Direction
 
@@ -62,14 +64,16 @@ out where reality still lags.
 - **Derived views are disposable and never authoritative — no gate reads a view to reach a verdict.**
   Why: a view (`.critic-findings.json` and kin) exists for human/agent read-speed and may be regenerated or deleted at will; letting a gate trust one would smuggle mutable, model-adjacent state back into the authority path.
   Status: steady-state.
-  Rulings: none live. **[[regen-views-is-advice]] retired 2026-08-08 — subject removed, recorded here rather than deleted (GD4).** It extended this norm from who may **read** a view to what posture a view *writer* holds, for the one writer that existed. `regen-views` and the three views it wrote are gone; the build-plan `## Status` block that was the contested one is now hand-authored state, not a view at all. **This norm is strengthened rather than weakened by the retirement** — it now has no subsystem in which a governance-relevant derived view exists to be trusted. Its live subject is `.critic-findings.json` and kin, and the read-side rule below is unchanged. The writer-posture question returns only if a view writer does, and the sentence that answers it now sits on `architecture.md`'s side of the old collision.
+  Rulings: none live. **[[regen-views-is-advice]] retired 2026-08-08 — subject removed, recorded here rather than deleted (GD4).** It extended this norm from who may **read** a view to what posture a view *writer* holds, for the one writer that existed. `regen-views` and the three views it wrote are gone; the build-plan `## Status` block that was the contested one is no longer state of any kind (Ruled 2026-10-24, below): chunk state is computed from facts, and `prawduct-hook plan status` is its view, which no gate reads. **This norm is strengthened rather than weakened by the retirement** — it now has no subsystem in which a governance-relevant derived view exists to be trusted. Its live subject is `.critic-findings.json` and kin, and the read-side rule below is unchanged. The writer-posture question returns only if a view writer does, and the sentence that answers it now sits on `architecture.md`'s side of the old collision.
+  Ruled 2026-10-24 (owner, ruling D1 — `documentation/issues/1050-design.md` "Rulings recorded"; `documentation/issues/1050-requirements.md` DV3): **the `## Status` block is no longer hand-authored authoritative state; the governance event's review fact is the carrier.** A chunk is done when a `review` fact names it with no unresolved blocking finding and its anchor commit is in the branch's history, computed by `plan_status.chunk_states`; a chunk the plan will not build is declared in its frontmatter `dropped:` with a reason. DV3's why is preserved verbatim, and it is why the carrier is a governance event and not a commit: *"a chunk's last commit lands before its Critic pass and its reflection."* A commit marks the end of coding, not governance, so nothing here reads a commit as completion. What changes is only that a hand edit is no longer the carrier — the tick's roles (arming the gate, picking the current chunk, feeding advisory readers) were never a verdict. A live plan's ticked boxes are carried as `chunk-imported` facts (in memory until `doctor`'s import writes them), so no plan is reinterpreted. Extended 2026-10-27 by the owner's ruling on #1082 (https://github.com/brookstalley/prawduct/issues/1082#issuecomment-6456663316): a chunk is also done when a clean review fact that is a coverage edge has, in its own interval and on the branch's first-parent history, a commit whose subject carries the plan's scope and the chunk (`<type>(<scope>): … (Chunk N)`), though the fact does not name it. Touching a Deliverables path gives no such credit; a chunk whose commit does not name it still needs a review that names it. `methodology/planning.md` "Chunk state" states the rule.
 - **A governance document reaches a terminal state; it is never deleted. Archival records what became of it and moves it out of the live directory — and a live document always outranks an archived namesake.** Three rules, one norm, because they are only correct together: (1) a build plan ends in one of exactly two terminal states — *completed* (shipped) or *superseded* (stopped, descoped, absorbed elsewhere) — stamped into its own frontmatter AND moved under `archive/`; (2) every reader that scans `artifacts/` treats `archive/` as history, never as a live assertion, and prunes it at directory level rather than walking and filtering; (3) a reader resolving a document by *name or scope* searches live first, then archive, and a live file wins.
-  Why: the framework had assigned these documents the wrong lifetime, and both halves of the mistake cost real work. Deleting a completed plan stranded the requirements, hazards and findings that lived only in it — every reference into it dangled *by design*, and an authoring discipline (the ephemeral-ref firewall) existed solely to cope. Keeping every plan forever in the live directory is the mirror failure: `artifacts/` stops answering "what is in flight" and becomes a pile that has to be read to be sorted, and the scan that walks it runs at every session start and every session end. Two terminal states rather than one is load-bearing: a plan whose work was descoped can never satisfy "all boxes ticked", so a lifecycle with only *completed* leaves exactly those plans sitting live and reading as active — which is the confusion the norm exists to remove, and it is the common case, not a corner.
+  Why: the framework had assigned these documents the wrong lifetime, and both halves of the mistake cost real work. Deleting a completed plan stranded the requirements, hazards and findings that lived only in it — every reference into it dangled *by design*, and an authoring discipline (the ephemeral-ref firewall) existed solely to cope. Keeping every plan forever in the live directory is the mirror failure: `artifacts/` stops answering "what is in flight" and becomes a pile that has to be read to be sorted, and the scan that walks it runs at every session start and every session end. Two terminal states rather than one is load-bearing: a plan whose work stopped can never be finished, so a lifecycle with only *completed* leaves exactly those plans sitting live and reading as active — which is the confusion the norm exists to remove, and it is the common case, not a corner.
   Scope: documents under `.prawduct/artifacts/`. It does NOT reach the append-only evidence store, which is governed by the immutability norm above — archival moves a *document*, it never rewrites a fact.
   Status: steady-state as of v3.2.8. Mechanism: `plan_archive.archive_plan` (stamp-then-move, refusing rather than half-completing), `plan_index.iter_scoped_plan_candidates` (directory-level prune, live-walked-first when the archive is included), `plan_index.unscoped_candidates` (the same prune on the cold path that publishes the plans that walk omits), `release_readiness._find_release_plan` (live, then archive).
   Retroactivity: **migrate**, not contain — and this is the departure from the backlog-title norm above, so the reason is recorded rather than assumed. Accumulated live plans reading as active IS the confusion, so a rule that only bound new plans would leave every existing repo in the state the norm exists to fix. `plan-backfill` performs the sweep mechanically off the change log's `release=` tags; **checkbox state is explicitly not a precondition and is not corrected on the way in**, which is what keeps the migration free of the judgment that would otherwise put a model in the write path of state the Stop hook's gates read.
   Ruled 2026-08-08 (owner, requirements v0.4): backfilling existing shipped plans is required for this repo and for consumers, not deferred to "from now on".
-  Ruled 2026-08-11 (owner, in-session, v3.3.1 / #634), amending the Retroactivity clause above: **checkbox state IS a precondition of the mechanical sweep. It remains no precondition at all of an explicit `archive-plan <path>`.** The sentence it amends said "explicitly not a precondition" without qualification, and read against the sweep that is now false; the half about not correcting boxes on the way in is untouched and still holds on both routes. Engaging the stated why, which is what makes this an amendment rather than a reversal: the concern was **keeping a model out of the write path** of state the Stop hook's gates read, and that is preserved exactly — the new precondition is a deterministic count of unticked `## Status` items (`buildplan_refs.incompleteness_reason`), with no model anywhere in it. What the sweep now does with a plan it cannot evidence as finished is *decline and name the chunk*, which moves the judgment to a human and OUT of the write path rather than into it. The norm's own two-terminal-state reasoning supplies the escape hatch and is why this does not resurrect the failure that reasoning names: a plan that can never satisfy "all boxes ticked" was never meant to be archived *completed*, it was meant to be archived **superseded**, which only a human can name a reason for — so a plan the sweep declines is one command from its correct terminal state, not stranded live forever. Occasioned by a consumer repo (hallucinote) archiving a plan as `completed`/`released_in: v1.8.0` with two chunks unbuilt and still live: selection by change-log `release=` answers "did the scope ship", never "did the plan finish", and those come apart whenever a scope ships partially. That product had declined the identical proposal at two consecutive cuts and recorded the decline both times before the third went through — the cost of a judgement the tooling re-asks every release.
+  Ruled 2026-08-11 (owner, in-session, v3.3.1 / #634), amending the Retroactivity clause above: **checkbox state IS a precondition of the mechanical sweep. It remains no precondition at all of an explicit `archive-plan <path>`.** (Carrier amended 2026-10-24, below.) The sentence it amends said "explicitly not a precondition" without qualification, and read against the sweep that is now false; the half about not correcting boxes on the way in is untouched and still holds on both routes. Engaging the stated why, which is what makes this an amendment rather than a reversal: the concern was **keeping a model out of the write path** of state the Stop hook's gates read, and that is preserved exactly — the new precondition is a deterministic count of unticked `## Status` items (`buildplan_refs.incompleteness_reason`), with no model anywhere in it. What the sweep now does with a plan it cannot evidence as finished is *decline and name the chunk*, which moves the judgment to a human and OUT of the write path rather than into it. The norm's own two-terminal-state reasoning supplies the escape hatch and is why this does not resurrect the failure that reasoning names: a plan that can never satisfy "all boxes ticked" was never meant to be archived *completed*, it was meant to be archived **superseded**, which only a human can name a reason for — so a plan the sweep declines is one command from its correct terminal state, not stranded live forever. Occasioned by a consumer repo (hallucinote) archiving a plan as `completed`/`released_in: v1.8.0` with two chunks unbuilt and still live: selection by change-log `release=` answers "did the scope ship", never "did the plan finish", and those come apart whenever a scope ships partially. That product had declined the identical proposal at two consecutive cuts and recorded the decline both times before the third went through — the cost of a judgement the tooling re-asks every release.
+  Ruled 2026-10-24 (owner, ruling D1 — `documentation/issues/1050-design.md` "Rulings recorded"), amending the carrier of the 2026-08-11 ruling and not its substance: **the sweep's precondition is `plan_status.is_finished` — every chunk done or dropped — in place of the count of unticked boxes. An explicit `archive-plan <path>` still has no such precondition.** Still deterministic, still no model in the path; what the sweep declines is still one `--state superseded` from its terminal state. `unbuilt_at_archive` is stamped from the same answer.
 - **Every issue written to the backlog store conforms to the issue standard's §1 title rules — on every write path, `file` / `update` / `import` / `file-upstream` alike. Where a source title does not conform, the agent rewrites it; a non-conforming title is not written.**
   Why: the title is the handle every later reader triages by, and a non-conforming one fails silently — it reads badly forever and nothing complains. The failure is proven at scale: a 396-item migration reached GitHub with parsed titles up to 2319 characters against a 72-character budget, and only the handful breaching GitHub's own 256 cap announced themselves. Enforcing at the write path is what makes the standard binding rather than aspirational, and the standard (`documentation/backlog-service-issue-standard.md` §1) stays the one home for the rules themselves — this norm binds *that* they are enforced, never restates them.
   Scope: the backlog adapter's write paths. NOT the markdown backend's hand-authored bullets, which are the *source* a migration scrub rewrites.
@@ -103,19 +107,37 @@ The append-only fact log. One JSON envelope per line. Lives *inside* `.git` (the
 by every worktree of a clone), so it is uncommitted by construction and shared across all worktrees.
 An absent file is the empty store.
 
+**Reach beyond the clone.** The kinds in `evidence.TRANSPORTED_KINDS` — `review`, `resolution`,
+`chunk-imported`, `chunk-retracted` — are also written, as their store lines with the actor's locator fields
+reduced (the worktree's basename, or `.claude/worktrees/<name>` for a harness scratch tree; no
+session; never the path above it), into a note on
+`refs/notes/prawduct` on the fact's anchor commit (a review's `head_commit`, or its
+`dispatch_commit` for a dirty tree; a resolution on its verifying review's anchor; an import or
+a retraction on the HEAD it was written at). `evidence ingest` appends note lines this store lacks, deduplicated by
+`(kind, id)`, bounded to the branch's commits from the merge base unless `--all`; a schema-ahead
+line is appended verbatim so the receiving clone blocks on it exactly as the writer's would.
+`evidence sync` fetches, merges (`cat_sort_uniq`), ingests and pushes the ref. A note is a copy
+and a locator: gates read only this store, and verdicts compose by the tree ids inside each fact,
+so a clone that lacks a fact's tree reads that interval as a gap. Every other kind stays in the
+clone that wrote it.
+
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start` today; `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start`, `chunk-imported`, `chunk-retracted` today; `pr-review`, `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
-| `actor` | object | `{session, worktree, plugin}` plus optional `branch` — provenance: which session, which worktree, which plugin version wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted |
+| `actor` | object | `{session, worktree, plugin}` plus optional `branch` and `build` — provenance: which session, which worktree, which plugin version and build wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted. `build` is the plugin checkout's commit sha (12 hex), with `+dirty` when the plugin tree has uncommitted or untracked changes; omitted (never null) when the plugin is not a git checkout (a marketplace install, which its released `plugin` already identifies) or git fails. It exists because every dev build of one version shares `plugin` (#1086) |
 | `body` | object | Kind-specific payload (see below) |
 
 - **Review fact `body`** — the tree interval reviewed (`base_tree`/`head_tree` and their commits),
   `mode`, `stage` (`inner` | `boundary`, derived once at dispatch from the mode's interval; null on a
   fact consolidated from a manifest written before the field), `roster` (roles + models),
-  `files_reviewed`/`files_changed`, `findings[]` (each with a
+  `files_reviewed`/`files_changed`, `chunks[]` (the build-plan chunks this review **names**, each of which it certifies (as it
+  does an unnamed chunk a scoped commit subject in its interval names), in plan order — declared at dispatch with `critic-begin --chunks`, or exactly the code-derived
+  proposal when omitted; ST8 of #1050), `chunks_proposed[]` (that proposal, recorded beside the
+  declaration so an edit to it is visible on the record, never silent), `chunk` (`chunks[0]` or
+  null — kept one release for readers of the singular field), `findings[]` (each with a
   stable `fid`, `goal`, `severity`, `title`, `recommendation`), `counts`, and `observations[]` —
   what an inner-stage pass DEMOTED, each with an `oid`, `goal`, `title` and
   `recommendation` and no severity. A `verify-resolutions` pass keeps only observations whose
@@ -193,6 +215,31 @@ An absent file is the empty store.
   shared by the facts of one Stop, and `co_gates` (the others that blocked it). A blocker carrying no
   gate id records as `unattributed`. A deferred gate records nothing, since it did not block. Written
   by `evidence.append_stop_block`.
+- **Chunk-imported fact `body`** — that a build-plan chunk's completion was **imported from a
+  legacy `## Status` tick** rather than evidenced by a review (MG2 of #1050; owner ruling D1,
+  2026-10-24). Carries `scope` (the unit), `chunk` (the id as the plan spells it), `source`
+  (`status-box` — the only value today) and `imported_at`. Written by `prawduct-hook plan
+  import-status --apply`, code-reading the box with no judgment in the path; `plan_status.
+  chunk_states` counts it as `done` and tags it `imported` in every rendering, so history is not
+  rewritten and no gate loses its answer at cutover. Until a plan's block is imported, the same
+  reader derives the identical answer from the boxes in memory and writes nothing. **This kind is
+  observational for coverage** — it spans no trees and contributes neither node nor edge to
+  composition — but it is **authoritative for chunk completion**, which is a plan-progress answer,
+  not a coverage verdict. **Droppability:** it sits on no coverage path and targets no other fact,
+  yet dropping one un-completes a chunk and re-arms the plan it belongs to as unfinished, so it is
+  droppable only once the plan it names is archived — the archive renders its own history and
+  reads no facts. Nothing drops one yet (no compaction).
+- **Chunk-retracted fact `body`** — that one fact's certification of one chunk is **withdrawn**
+  (#1072): a review that named a chunk nobody built certified it, and a fact is never edited, so
+  the correction is a new fact. Carries `scope`, `chunk` (the id as the plan prints it),
+  `fact_id` (the `review` or `chunk-imported` fact withdrawn), `reason` and `retracted_at`.
+  Written by `prawduct-hook plan retract` behind `plan_status.retraction_target`'s check;
+  `plan_status.chunk_states` then skips that one (fact, chunk) pair — the fact's other chunks stay
+  done, a later fact naming the chunk certifies it again, and the open chunk's `reason` quotes the
+  retraction. It can only reopen a chunk, so it needs no authority beyond its reason; an entry
+  missing its fact id, chunk or reason withdraws nothing. Observational for coverage, like an
+  import, and transported. **Droppability:** dropping one re-certifies a chunk, so it is droppable
+  only with the fact it withdraws, or once the plan it names is archived. Nothing drops one yet.
 - **Session-start fact `body`** — empty: the envelope (`ts`, `actor.session`, `actor.plugin`) is the
   record. One per session boundary (startup or `/clear`; a resume, compact or fork is a continuation
   and records none), written by `evidence.append_session_start` from `cmd_clear`. It is the
@@ -296,7 +343,7 @@ before the key existed lack it; read absence as *not recorded*, never as any par
 
 The shared "answer store." Long-lived, hand- and tool-edited, committed. Holds product identity,
 `classification.structural` (the six structural characteristics that drive artifact coverage),
-`dependency_graph` (recorded design decisions and what they affect), `active_build_plan`, the
+`dependency_graph` (recorded design decisions and what they affect), the deprecated `active_build_plan`, the
 governance flags (`coverage_required`, `operator_verification_required`, `base_branch`), and
 resolution-condition state that advisory probes read (so a committed answer clears a nag for the
 whole team).
@@ -351,7 +398,8 @@ release-pending entries into fragments.
 ### Tier 3 — Ephemeral / derived (per-session or regenerable)
 
 - **`.critic-findings.json`** (gitignored) — derived *view* of the latest review fact, carrying a
-  `fact_id` back-pointer. Regenerated by code on every consolidation; read only for content
+  `fact_id` back-pointer. Regenerated by code on every consolidation, and by an evidence ingest
+  that brings this branch a newer review than the one it names; read only for content
   (briefing, builders), never for a verdict. It carries the fact's `observations` as well as its
   findings, because the `O-n` ids are assigned at consolidation — the reviewer wrote prose and
   never saw one — so this is the only surface on which a builder told it may ACCEPT an observation
@@ -400,8 +448,8 @@ release-pending entries into fragments.
 - A **resolution fact** references exactly one finding (`{review_id, fid}`) and is attested by
   exactly one later **review fact** (`verified_by`). Findings ← resolutions is one-to-many over time
   (a finding may be re-addressed), but a gate reads the latest attesting resolution.
-- **`.critic-findings.json`** is derived from the single latest **review fact** (view → fact, via
-  `fact_id`).
+- **`.critic-findings.json`** is derived from one **review fact** — the latest consolidated here,
+  or the newest on the branch after an ingest — (view → fact, via `fact_id`).
 - **Advisory records** (per-clone nag log) reconcile against **resolution-condition state** in
   `project-state.yaml` (shared answer store): the committed answer is the input, the advisory state
   is the output.
@@ -442,7 +490,9 @@ probe-version bump supersedes the old advisory id with a fresh one.
   observation** — fail-closed. A `waived` disposition requires a non-empty rationale; an observation
   takes `fixed` only.
 - **The evidence store is shared per-clone via the git common dir**; every worktree appends to and
-  reads the same log. Single-syscall append writes keep concurrent whole-line writes safe.
+  reads the same log. Single-syscall append writes keep concurrent whole-line writes safe. Its
+  transported kinds cross clones only through `refs/notes/prawduct` and `evidence ingest`, which
+  appends lines verbatim and never re-derives one.
 - **Committed vs. gitignored is a deliberate boundary, not incidental**: shared decisions are
   committed (`project-state.yaml`, `backlog.md`, `learnings*.md`, `operator-verification.md`,
   `change-log.md`); per-clone nags, caches, and session state are gitignored; the evidence store is

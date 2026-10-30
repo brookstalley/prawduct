@@ -2,7 +2,7 @@
 
 The timeout-method and worker-restart flags are read from the ``addopts`` pytest itself
 loaded (``pytestconfig.getini``) rather than restated, so the test follows the config it
-protects. Not ``tomllib``: it is 3.11+, and CI's floor leg runs 3.10.
+protects.
 """
 
 from __future__ import annotations

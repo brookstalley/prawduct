@@ -44,7 +44,8 @@ last_validated: null
   referring path when it moves (the sibling #13 cite two lines below already carries the
   post-archive form, and had to be edited by hand to get there).
   Live exception: **the `clear-verdict` Stop gate** (shipped with `clear-verdict-coherence`,
-  2026-09-27; it refuses a turn closing `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR`) is a
+  2026-09-27; it refuses a turn closing `COMPLETE` with `DO NOT CLEAR`, and `YOUR TURN` with it
+  unless the hook observes work a clear would kill, narrowed by `clear-gate-telemetry`, 2026-10-29) is a
   recorded **bounded exception** to the emission arm, on the `check-branch-pushed` grounds above:
   the ledger's non-review kinds are the derived `learning.*` pair, and a `gate.*` kind for one
   Stop gate is a persisted-format lock-in taken for a single control. The right home is one

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
 from . import context, core, ids, query, upstream
 
@@ -132,6 +133,8 @@ _OP_USAGE: dict[str, str] = {
         "           --working-branch must name a PUSHED branch, repo-qualified\n"
         "           --refs/--revisit/--closed-by edit the prawduct: block; an empty "
         "value clears the field\n"
+        "           --closed-by takes scope:<slug> (a unit this repo declares), a PR "
+        "number or URL, or a release tag\n"
     ),
     "comment": "  comment  <id> --body B [--repo owner/repo]\n",
     "list": (
@@ -788,8 +791,32 @@ def _run_update(rest: list[str], transport, project_dir):
             default_repo=default_repo,
             absorb=absorb,
             own_repos=_own_repos(project_dir),
+            scope_known=_scope_known(project_dir),
         ),
     )
+
+
+def _scope_known(project_dir):
+    """The running repo's "does this unit exist" for ``closed-by: scope:<slug>``.
+
+    Lazy, and read at most once per call: the scope set walks every plan and the
+    whole change history, which only a write naming a scope should pay for.
+    ``None`` from the answer means the history could not be read; with no
+    project directory nothing can be known, and ``core`` refuses rather than
+    storing an unchecked identity."""
+    if project_dir is None:
+        return None
+    cache: list = []
+
+    def known(slug: str):
+        if not cache:
+            from .. import plan_mint  # noqa: PLC0415 — lazy: identity checks are the only reader
+
+            cache.append(plan_mint.known_scopes(Path(project_dir)))
+        scopes = cache[0]
+        return None if scopes is None else slug in scopes
+
+    return known
 
 
 def _run_comment(rest: list[str], transport, project_dir):

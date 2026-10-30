@@ -6,7 +6,8 @@ answer — *did version N cost more or protect more than N-1?* — so it reads t
 clone-shared evidence store, where every fact carries the plugin version that
 wrote it (``actor.plugin``) and nothing is lost when a worktree is deleted.
 
-Every number is bucketed by plugin ``major.minor`` and defined in
+Every number is bucketed by plugin ``major.minor`` (and, under ``--by-build``,
+by the build within it, ``actor.build``) and defined in
 ``docs/governance-telemetry.md`` (§ ``prawduct-hook stats``), which is the one
 home of the definitions; the code below implements them and does not restate
 them.
@@ -36,7 +37,7 @@ from . import dispositions, evidence, gitstate
 from .review_dispatch import fact_interval_seconds
 from .timewindow import in_window, is_usable_bound
 
-REPORT_SCHEMA_VERSION = 1
+REPORT_SCHEMA_VERSION = 2
 
 #: Severities whose findings a review is expected to act on.
 _ACTIONABLE = ("blocking", "warning")
@@ -51,12 +52,35 @@ _OUTCOME_OF_STATE = {
     dispositions.STATE_WAIVED: "waived",
     dispositions.STATE_OPEN: "undispositioned",
 }
-_OUTCOMES = (*_OUTCOME_OF_STATE.values(), "other")
+#: Public: ``review-stats`` reports the same names, in this order.
+OUTCOMES = (*_OUTCOME_OF_STATE.values(), "other")
 #: Outcomes that say the defect is gone. ``fixed_unreviewed`` counts: it is a
 #: fix nobody re-reviewed, not a fix that did not happen.
 _FIXED = ("fixed", "fixed_unreviewed")
 #: One gate blocking this many times in one session is reported as a loop.
 LOOP_THRESHOLD = 3
+
+#: A firing whose control recorded no reason, or one this reader cannot use.
+UNSPECIFIED = "unspecified"
+#: Per Stop gate, the observation that says the harm the gate guards against
+#: was already handled when it fired. True: a slip (the turn's words were wrong,
+#: the situation was not). False: a catch, unless the gate also names a
+#: precondition below that is not observed True. Absent or unreadable:
+#: unclassified. The verdict is derived here and never stored, so a revised
+#: rule re-reads every recorded firing. Rationale per rule:
+#: ``docs/governance-telemetry.md``.
+SLIP_WHEN_OBSERVED = {
+    "clear-reason": evidence.OBSERVED_NOTES_PRESENT,
+    "clear-verdict": evidence.OBSERVED_WORK_LIVE,
+}
+#: Per Stop gate, the observation that must be True for a non-slip to count as
+#: a catch: without it the harm was not observable. A ``clear-reason`` firing
+#: in a session that changed nothing is an answer its reader has just read, and
+#: whether clearing it loses anything is a judgment no observation makes.
+CATCH_REQUIRES_OBSERVED = {
+    "clear-reason": evidence.OBSERVED_SESSION_CHANGED,
+}
+VERDICTS = ("catch", "slip", "unclassified")
 
 
 def version_bucket(plugin) -> str:
@@ -73,6 +97,36 @@ def version_bucket(plugin) -> str:
 def _bucket(fact: dict) -> str:
     actor = fact.get("actor")
     return version_bucket(actor.get("plugin") if isinstance(actor, dict) else None)
+
+
+#: The build row for facts that recorded no ``actor.build``: a marketplace
+#: install, a plugin root git could not read, or a fact older than the field.
+#: Never a value a writer stamps — a build is hex, with at most ``+dirty``.
+UNSTAMPED = "unstamped"
+
+
+def build_of(fact: dict) -> str:
+    """The fact's ``actor.build``, or :data:`UNSTAMPED`."""
+    actor = fact.get("actor")
+    build = actor.get("build") if isinstance(actor, dict) else None
+    return build if isinstance(build, str) and build else UNSTAMPED
+
+
+def aggregate_by_build(facts: list[dict], since=None, until=None) -> dict:
+    """``{major.minor: {build: report body}}`` — :func:`aggregate` with each
+    version split by build. Builds are listed in the order the store first
+    saw them, which is the order they ran, since a sha says nothing of its
+    age. Each body is defined exactly as a ``by_version`` one is, over that
+    build's facts; rows need not sum to the version's totals, because a
+    session or scope that ran on two builds counts in both."""
+    first_seen: dict = {}
+    for i, fact in enumerate(facts):
+        first_seen.setdefault((_bucket(fact), build_of(fact)), i)
+    rows = aggregate(facts, since, until, bucket=lambda f: (_bucket(f), build_of(f)))
+    nested: dict = {}
+    for version, build in sorted(rows, key=lambda key: (key[0], first_seen[key])):
+        nested.setdefault(version, {})[build] = rows[(version, build)]
+    return nested
 
 
 def _body(fact: dict) -> dict:
@@ -111,6 +165,17 @@ def _rate(numerator, denominator):
     return round(numerator / denominator, 3) if denominator else None
 
 
+def acted_on(counts) -> "tuple[int, int, float | None]":
+    """``(acted, answered, rate)`` over outcome counts keyed by this report's
+    outcome names. The one definition of the rate, which ``review-stats``
+    reports per grouping as well: two reports reading one store must not
+    disagree about what "acted on" means. ``undispositioned`` and ``other``
+    are in neither count."""
+    acted = sum(counts.get(o, 0) for o in _FIXED) + counts.get("filed", 0)
+    answered = acted + counts.get("accepted", 0) + counts.get("waived", 0)
+    return acted, answered, _rate(acted, answered)
+
+
 def finding_outcome(store: dict):
     """A function ``(review_id, fid)`` → this report's outcome name, using
     :func:`dispositions.finding_state`, the rule ``render-dispositions`` uses,
@@ -142,11 +207,36 @@ def _new_bucket() -> dict:
         "stops": [],  # (stop id, session) per blocking-gate fact
         "blocks_by_gate": Counter(),
         "blocks_by_session": defaultdict(Counter),
+        "reasons_by_gate": defaultdict(Counter),
+        "verdicts_by_gate": defaultdict(Counter),
         "guard_refusals": [],  # (guard, session)
+        "reasons_by_guard": defaultdict(Counter),
         "transfer_grants": [],  # (guard, session)
         "test_runs": 0,
         "red_test_runs": 0,
     }
+
+
+def _reason(body: dict) -> str:
+    reason = body.get("reason")
+    return reason if isinstance(reason, str) and reason else UNSPECIFIED
+
+
+def _verdict(gate: str, body: dict) -> str:
+    observed = body.get("observed")
+    if not isinstance(observed, dict):
+        return "unclassified"
+    seen = observed.get(SLIP_WHEN_OBSERVED[gate])
+    if seen is True:
+        return "slip"
+    required = CATCH_REQUIRES_OBSERVED.get(gate)
+    if seen is False and (required is None or observed.get(required) is True):
+        return "catch"
+    return "unclassified"
+
+
+def _counts(by_key) -> dict:
+    return {key: dict(counter.most_common()) for key, counter in by_key.items()}
 
 
 def aggregate(facts: list[dict], since=None, until=None, bucket=None) -> dict:
@@ -189,10 +279,14 @@ def aggregate(facts: list[dict], since=None, until=None, bucket=None) -> dict:
                 b["stops"].append((stop, session))
                 b["blocks_by_gate"][gate] += 1
                 b["blocks_by_session"][session][gate] += 1
+                b["reasons_by_gate"][gate][_reason(body)] += 1
+                if gate in SLIP_WHEN_OBSERVED:
+                    b["verdicts_by_gate"][gate][_verdict(gate, body)] += 1
             elif guard == evidence.TRANSFER_GRANT_GUARD:
                 b["transfer_grants"].append((guard, session))
             elif isinstance(guard, str) and guard:
                 b["guard_refusals"].append((guard, session))
+                b["reasons_by_guard"][guard][_reason(body)] += 1
         elif kind == "test-run":
             b["test_runs"] += 1
             failed = body.get("failed")
@@ -272,15 +366,14 @@ def _finish(b: dict) -> dict:
     stops = list(dict.fromkeys(b["stops"]))  # one entry per blocked Stop
     findings = {}
     for severity, c in b["findings"].items():
-        acted = sum(c[o] for o in _FIXED) + c["filed"]
-        answered = acted + c["accepted"] + c["waived"]
+        _acted, answered, rate = acted_on(c)
         findings[severity] = {
             "raised": c["raised"],
-            **{o: c[o] for o in _OUTCOMES},
+            **{o: c[o] for o in OUTCOMES},
             # The rate's denominator, exported so a reader that floors on it
             # (the contribution report) uses this count rather than its own.
             "answered": answered,
-            "acted_on_rate": _rate(acted, answered),
+            "acted_on_rate": rate,
         }
     loops = sum(
         1
@@ -316,12 +409,18 @@ def _finish(b: dict) -> dict:
             "stops_blocked": len(stops),
             "stops_blocked_per_session": _per_session(stops, sessions),
             "by_gate": dict(b["blocks_by_gate"].most_common()),
+            "by_gate_reason": _counts(b["reasons_by_gate"]),
+            "verdicts": {
+                gate: {v: counter[v] for v in VERDICTS}
+                for gate, counter in b["verdicts_by_gate"].items()
+            },
             "loops": loops,
         },
         "guard_refusals": {
             "total": len(b["guard_refusals"]),
             "per_session": _per_session(b["guard_refusals"], sessions),
             "by_guard": dict(refusals.most_common()),
+            "by_guard_reason": _counts(b["reasons_by_guard"]),
         },
         "transfer_grants": {
             "total": len(b["transfer_grants"]),
@@ -351,18 +450,48 @@ def _minutes(seconds) -> str:
     return "-" if seconds is None else f"{seconds / 60:.1f}m"
 
 
+def _reason_lines(stop_blocks: dict) -> list:
+    """One line per Stop gate that recorded a reason or has a verdict rule; a
+    gate whose every block is unspecified and unclassifiable adds nothing the
+    by-gate tally does not already say."""
+    lines = []
+    for gate, reasons in stop_blocks["by_gate_reason"].items():
+        verdicts = stop_blocks["verdicts"].get(gate)
+        if set(reasons) == {UNSPECIFIED} and verdicts is None:
+            continue
+        line = f"{gate}: " + ", ".join(f"{r} {n}" for r, n in reasons.items())
+        if verdicts is not None:
+            line += " (" + ", ".join(f"{k} {verdicts[k]}" for k in VERDICTS) + ")"
+        label = "stop reasons" if not lines else ""
+        lines.append(f"    {label:<19}{line}")
+    return lines
+
+
+def _labelled_buckets(report: dict) -> list:
+    """``(heading, body)`` per block of the human report: one per version, or,
+    when the report carries ``by_build``, one per build of each version."""
+    by_build = report.get("by_build")
+    if by_build is None:
+        return [(f"plugin {version}", v) for version, v in report["by_version"].items()]
+    return [
+        (f"plugin {version} build {build}", v)
+        for version, builds in by_build.items()
+        for build, v in builds.items()
+    ]
+
+
 def render_human(report: dict) -> str:
     lines = [f"prawduct stats — {report['project']}"]
     window = report["window"]
     if window["since"] or window["until"]:
         lines.append(f"window: {window['since'] or 'start'} → {window['until'] or 'now'}")
-    for version, v in report["by_version"].items():
+    for heading, v in _labelled_buckets(report):
         f = v["findings"]
         sb = v["stop_blocks"]
         measured = v["review_seconds"]["measured"]
         lines += [
             "",
-            f"plugin {version}: {v['sessions']} session(s), {v['scopes']} scope(s), "
+            f"{heading}: {v['sessions']} session(s), {v['scopes']} scope(s), "
             f"{v['reviews']['total']} review(s)",
             "  cost",
             f"    rounds per scope   median {_fmt(v['rounds_per_scope']['median'])}, "
@@ -380,6 +509,7 @@ def render_human(report: dict) -> str:
                 " — " + ", ".join(f"{g} {n}" for g, n in sb["by_gate"].items())
                 if sb["by_gate"] else ""
             ),
+            *_reason_lines(sb),
             f"    guard refusals     {v['guard_refusals']['total']} "
             f"({_fmt(v['guard_refusals']['per_session'])} per recorded session)",
             "  benefit",
@@ -415,14 +545,16 @@ def render_human(report: dict) -> str:
 def stats_cmd(project_dir: Path, argv: list[str]) -> int:
     """Body of ``prawduct-hook stats``. Exit 0 with a report (an empty store
     is an answer); exit 1 on bad arguments or a store that cannot be read."""
-    usage = "usage: stats [--json] [--since <stamp>] [--until <stamp>]"
-    as_json = False
+    usage = "usage: stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]"
+    as_json = by_build = False
     since = until = None
     rest = list(argv)
     while rest:
         arg = rest.pop(0)
         if arg == "--json":
             as_json = True
+        elif arg == "--by-build":
+            by_build = True
         elif arg in ("--since", "--until"):
             if not rest:
                 print(f"stats: {arg} needs a value ({usage})", file=sys.stderr)
@@ -455,6 +587,10 @@ def stats_cmd(project_dir: Path, argv: list[str]) -> int:
         "schema_ahead": len(read.get("schema_ahead") or []),
         "by_version": aggregate(read["facts"], since, until),
     }
+    if by_build:
+        # Present only when asked for, so the default shape is unchanged and
+        # REPORT_SCHEMA_VERSION does not move.
+        report["by_build"] = aggregate_by_build(read["facts"], since, until)
     if as_json:
         print(json.dumps(report, indent=2))
     else:

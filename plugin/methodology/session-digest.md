@@ -27,9 +27,8 @@ coding without it is the most common governance failure.
   long-lived spec carries its *why* inline — never a chunk number that renumbers or a count copied
   from a nearby line. Bookkeeping that records the work is exempt, and a pointer to a plan resolves
   (completed plans are archived).
-- **The build plan's `## Status` boxes are yours to tick** — nothing derives them, and every
-  reader believes them. Tick after the chunk's review — a short plan's earlier chunks at commit: the LAST tick
-  disarms the Critic gate.
+- **`prawduct-hook plan status` shows each chunk's state**, derived from review facts and
+  never hand-edited (`/prawduct:methodology planning` "Chunk state").
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
   a new requirement, domain term, or rule surfacing mid-build sends you back to write it, not
   forward into design (`/prawduct:methodology building` "A Requirement Surfaced Mid-Build" tripwires).
@@ -127,9 +126,9 @@ committed?; suite green?) · what produces the next turn: `RUNNING` (a machine e
 what you do if it never lands) / `YOUR TURN` (only they can — lead with the ask) / `COMPLETE`
 (nothing, and no next action to propose) · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the
 verdict, the copy the reason). If they must speak it is `YOUR TURN` even when something also runs,
-unless a clear would kill it (then `RUNNING`, ask in the copy) — a server or recorder running on
+naming it (`DO NOT CLEAR` only if a clear would kill it) — a server or recorder running on
 its own survives one; never predict that they will need to — a running job may answer its own question. Work in flight — a dispatched review, an unread
-background agent — is `RUNNING`, never `COMPLETE`. Only `RUNNING` may say `DO NOT CLEAR`; a live
+background agent — is `RUNNING`, never `COMPLETE`. `COMPLETE` never says `DO NOT CLEAR`; a live
 review is `DO NOT CLEAR`, its copy giving a deadline from elapsed time and roster when priceable.
 A handed-over turn may sit for days: first persist a findings-only turn's or a delegate's output to
 `.prawduct/.handoff-notes.md` — a `SAFE TO CLEAR` whose reason cites the message itself is wrong.

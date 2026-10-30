@@ -67,7 +67,7 @@ does it in three lines.
 | `scope` | yes | The reader's verdict: `"full"` (this invocation ran the runner's whole default selection) or `"partial"` (anything else). |
 | `why` | when `partial` | Printed in the refusal, so the operator knows what narrowed the run rather than being told only that something did. |
 | `report` | yes | The absolute path of the report this record describes, as the producer resolved it. The reader compares it with the report it was handed, so a record cannot vouch for a file it was not written beside. |
-| `at` | no | Printed in the refusal — which run wrote this. |
+| `at` | no | Printed in the refusal — which run wrote this. Prawduct's own producer leaves it out: the JUnit report already carries a `timestamp`, and a clock read in a run-level hook such as `pytest_configure` is charged to every test in the process by a result cache that refuses to reuse clock-reading tests. |
 
 Unknown keys are ignored, so the record can grow without breaking a reader shipped at `v: 1`.
 
@@ -106,6 +106,13 @@ consult the record, because there is no declaration standing behind that invocat
 is the reader's own guess at the suite, so the scope it actually selected is the only evidence of
 what it covered.
 
+A report that marks a runner's own retries, Surefire's `<flakyFailure>`/`<flakyError>`, is read as
+a pass that carries a flake. It is recorded in the evidence's `flaky` list and judged against the
+branch by `flaky_policy` (`docs/project-state-keys.md`). `<rerunFailure>` sits beside a final
+`<failure>`, so that test failed every attempt. pytest-rerunfailures writes no such marker (pytest's
+JUnit writer drops its `rerun` reports), so its retries are invisible here. Use the recorder's
+`--rerun-failed` instead.
+
 ## Producing one
 
 **Advice, not contract.** What binds is the two properties above and the record this reads;
@@ -126,7 +133,6 @@ A worked pytest producer, which is what this repo itself runs:
 ```python
 # conftest.py
 import json, os, sys, tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
 def _write(config, scope, why):
@@ -134,8 +140,7 @@ def _write(config, scope, why):
     if not xml or hasattr(config, "workerinput"):
         return  # no report to describe, or an xdist worker rather than the controller
     report = Path(xml).resolve()
-    record = {"v": 1, "scope": scope, "report": str(report),
-              "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    record = {"v": 1, "scope": scope, "report": str(report)}
     if why:
         record["why"] = why
     target = report.with_name(report.name + ".scope.json")
@@ -252,8 +257,8 @@ advisory that fails *silently* manufactures the confidence it exists to check.
   the invocation rather than measuring the result. Drop the flag to record the run.
 - **It says nothing about *when* the run happened.** Ingesting any old report stamps today's tree
   onto that run, which is the standing posture of `--from-junit` and not something this changes; the
-  boundary deletion above is what keeps it from becoming routine. `at` is in the record for an
-  operator to check, and the reader does not compare it.
+  boundary deletion above is what keeps it from becoming routine. `at`, where a producer writes
+  it, is for an operator to check, and the reader does not compare it.
 - **A report carried away from where it was produced, WITH its record, is refused.** The record
   names the report it describes by absolute path, so a report and record downloaded from CI and
   ingested on a developer's machine do not match and the ingest refuses. That is deliberate — a

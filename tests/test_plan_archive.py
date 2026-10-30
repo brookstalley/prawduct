@@ -332,19 +332,24 @@ class TestArchivePlan:
         archived = Path(result["destination"]).read_text(encoding="utf-8")
         assert plan_archive.UNBUILT_KEY not in archived
 
-    def test_a_plan_with_no_readable_status_is_stamped_not_filed_clean(
+    def test_a_plan_whose_chunk_cannot_be_read_is_stamped_not_filed_clean(
         self, tmp_path: Path
     ):
         """The case that would otherwise be silent, and the reason the field is
         derived rather than passed in.
 
-        A plan predating the Status convention, or one whose roster failed to
-        parse, produces the same empty item list as a fully-ticked plan. Reading
-        that silence as completion is exactly the failure the key exists to end,
-        so `incompleteness_reason` returns a SENTENCE there — and it must be
-        stamped like any other.
+        Renegotiated by #1051 (was `..._with_no_readable_status_...`). The stamp
+        is now `plan_status`' answer, and under it a plan with NO chunks is
+        finished (`1050-design.md` § 3: "finished everywhere"), so a
+        Status-less plan is no longer the silent case — the next test pins that.
+        The silent case is now a chunk heading the parser rejects: it reads as
+        no chunk to a heading walker, and `plan_status` keeps it OPEN so it is
+        stamped like any other unfinished chunk, with its reason.
         """
-        body = "---\nartifact: build-plan\nscope: demo\n---\n\nNo status section here.\n"
+        body = (
+            "---\nartifact: build-plan\nscope: demo\n---\n\n"
+            "## Build Chunks\n\n#### Chunk 01: too deep for the parser\n"
+        )
         project = _repo(tmp_path, body=body)
         result = plan_archive.archive_plan(
             _artifacts(project) / "build-plan-demo.md",
@@ -352,7 +357,35 @@ class TestArchivePlan:
             state=plan_archive.COMPLETED,
             date="2026-08-11",
         )
-        assert "no readable" in result["fields"][plan_archive.UNBUILT_KEY]
+        assert "unparseable-chunk-heading" in result["fields"][plan_archive.UNBUILT_KEY]
+
+    def test_a_plan_with_no_chunks_is_finished_and_unstamped(self, tmp_path: Path):
+        """The other half of the renegotiation above: no chunks at all is
+        `is_finished`, so nothing is unbuilt and the key is absent."""
+        body = "---\nartifact: build-plan\nscope: demo\n---\n\nNo chunks here.\n"
+        project = _repo(tmp_path, body=body)
+        result = plan_archive.archive_plan(
+            _artifacts(project) / "build-plan-demo.md",
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-08-11",
+        )
+        assert plan_archive.UNBUILT_KEY not in result["fields"]
+
+    def test_the_stamp_lists_the_open_chunks_and_not_a_dropped_one(self, tmp_path: Path):
+        """`unbuilt_at_archive` is stamped from `plan_status.chunk_states`: the
+        open chunks are named, and a chunk the plan DROPPED is not unbuilt."""
+        body = (
+            "---\nartifact: build-plan\nscope: demo\ndropped:\n  - 03: descoped\n---\n\n"
+            "## Build Chunks\n\n### Chunk 01: one\n\n### Chunk 02: two\n\n### Chunk 03: three\n"
+        )
+        project = _repo(tmp_path, body=body)
+        stamp = plan_archive.unbuilt_at_archive(
+            _artifacts(project) / "build-plan-demo.md", repo_dir=project
+        )
+        assert stamp is not None
+        assert stamp.startswith("2 of 3 chunks not done (Chunk 01, Chunk 02)")
+        assert "Chunk 03" not in stamp
 
     @pytest.mark.parametrize("declared", ["release-plan", "discovery", "design"])
     def test_a_document_that_is_not_a_build_plan_is_never_stamped(
@@ -496,7 +529,97 @@ class TestArchivePlan:
             date="2026-08-08",
         )
         assert result["status"] == "archived"
-        assert Path(result["destination"]) == artifacts / "plans" / "alpha" / "archive" / "build-plan.md"
+        assert (
+            Path(result["destination"])
+            == artifacts / "plans" / "alpha" / "archive" / "build-plan-demo.md"
+        )
+
+
+class TestArchivedNameCarriesTheScope:
+    """One `archive/` holds many plans' history, so the archived filename has to
+    say which plan it is. A plan at the generic `build-plan.md` used to archive
+    under that bare name, telling a reader nothing and refusing the next plan
+    archived from the same directory."""
+
+    def _archive(self, project: Path, rel: str) -> dict:
+        return plan_archive.archive_plan(
+            project / ".prawduct" / rel,
+            _artifacts(project),
+            state=plan_archive.COMPLETED,
+            date="2026-10-25",
+        )
+
+    def test_a_generic_name_gains_its_scope(self, tmp_path: Path):
+        project = _repo(tmp_path, rel="artifacts/build-plan.md")
+        result = self._archive(project, "artifacts/build-plan.md")
+        assert result["status"] == "archived"
+        assert Path(result["destination"]) == (
+            _artifacts(project) / "archive" / "build-plan-demo.md"
+        )
+
+    def test_successive_generic_plans_archive_side_by_side(self, tmp_path: Path):
+        """The collision the bare name produced: the second plan to pass through
+        `build-plan.md` was refused because the first already held the name."""
+        project = _repo(tmp_path, rel="artifacts/build-plan.md")
+        assert self._archive(project, "artifacts/build-plan.md")["status"] == "archived"
+        (_artifacts(project) / "build-plan.md").write_text(
+            PLAN.replace("scope: demo", "scope: other"), encoding="utf-8"
+        )
+        second = self._archive(project, "artifacts/build-plan.md")
+        assert second["status"] == "archived"
+        assert sorted(p.name for p in (_artifacts(project) / "archive").iterdir()) == [
+            "build-plan-demo.md",
+            "build-plan-other.md",
+        ]
+
+    @pytest.mark.parametrize("name", ["build-plan-demo.md", "build-plan-demo-v2.md", "demo.md"])
+    def test_a_name_already_carrying_the_scope_is_kept(self, tmp_path: Path, name):
+        project = _repo(tmp_path, rel=f"artifacts/{name}")
+        result = self._archive(project, f"artifacts/{name}")
+        assert Path(result["destination"]).name == name
+
+    def test_a_scope_inside_a_longer_word_does_not_count_as_carried(self, tmp_path: Path):
+        """`demolition` is not scope `demo` — only a hyphen-delimited segment is."""
+        project = _repo(tmp_path, rel="artifacts/build-plan-demolition.md")
+        result = self._archive(project, "artifacts/build-plan-demolition.md")
+        assert Path(result["destination"]).name == "build-plan-demolition-demo.md"
+
+    @pytest.mark.parametrize(
+        "scope_line",
+        ["scope: ../../escape", "scope: a/b", "scope: .hidden", "scope: null", ""],
+    )
+    def test_an_absent_or_unsafe_scope_keeps_the_plan_name(self, tmp_path: Path, scope_line):
+        """The scope becomes part of a path, so a value with a separator or a
+        leading dot must not steer where the archived copy is written."""
+        body = PLAN.replace("scope: demo\n", f"{scope_line}\n" if scope_line else "")
+        project = _repo(tmp_path, rel="artifacts/build-plan.md", body=body)
+        result = self._archive(project, "artifacts/build-plan.md")
+        assert result["status"] == "archived"
+        assert Path(result["destination"]) == _artifacts(project) / "archive" / "build-plan.md"
+
+    def test_a_renamed_release_plan_is_still_found_by_the_release_gate(self, tmp_path: Path):
+        """BP8: archival never changes whether a plan is found by name. The
+        release gate finds release plans by the prefix glob
+        `release-plan-<version>*.md`, so the scope is appended after the stem —
+        a prefixed name would make `check-releasability` report `no-release-plan`
+        for a release that shipped."""
+        from lib import release_readiness
+
+        body = PLAN.replace("scope: demo", "scope: golive")
+        project = _repo(tmp_path, rel="artifacts/release-plan-v9.9.9.md", body=body)
+        result = self._archive(project, "artifacts/release-plan-v9.9.9.md")
+        assert Path(result["destination"]).name == "release-plan-v9.9.9-golive.md"
+        assert release_readiness._find_release_plan(project, "v9.9.9") == Path(
+            result["destination"]
+        )
+
+    def test_the_preview_names_the_same_destination_the_write_uses(self, tmp_path: Path):
+        project = _repo(tmp_path, rel="artifacts/build-plan.md")
+        proc = _run_hook(
+            project, ".prawduct/artifacts/build-plan.md", "--state", "completed", "--dry-run"
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "archive/build-plan-demo.md" in proc.stdout
 
 
 # =============================================================================

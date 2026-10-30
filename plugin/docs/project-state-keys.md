@@ -8,16 +8,20 @@ the state file. Read it as `/prawduct:methodology project-state`.
 The sections discovery fills (classification, product definition, decisions, open questions)
 keep their guidance inline in the template, because that is where it is read.
 
-## active_build_plan (optional)
+## active_build_plan (optional, deprecated 2026-10-24)
+
+**Deprecated.** A plan binds to a checkout by declaring `branch:` in its frontmatter
+(`methodology/planning.md` "Which plan governs a checkout"); this scalar is served only when no
+live plan declares `branch:`, as the legacy route, and the `plan-unbound-legacy` advisory names
+each checkout it served. Migrate with `prawduct-hook plan bind <path> --branch <name>`. The window
+closes no earlier than two minor releases after the deprecation, and only after that advisory has
+been observed firing on no known consumer.
 
 Names the in-progress build plan when it isn't the conventional `artifacts/build-plan.md` —
 scope-named plans (`artifacts/build-plan-<scope>.md`) keep release-pending plans distinct under
 gitflow. The value is a path relative to `.prawduct/` (a repo-relative `.prawduct/...` spelling is
-tolerated). It is the FALLBACK, not the first answer: a plan that declares `branch:` in its
-frontmatter claims the branch it names, and this scalar answers for every branch no live plan
-claims (the build-plan template's `branch:` comment points at the full rule). It also breaks a TIE
-among several plans claiming one branch — that is its remaining job once branches carry their own
-plans. Unset → `artifacts/build-plan.md`.
+tolerated). A plan that declares `branch:` is never served by this scalar, on any branch. Unset →
+`artifacts/build-plan.md`.
 
 A pointer to a file that doesn't exist means governance sees no active plan by this route — the
 session briefing warns when resolution actually took it.
@@ -129,10 +133,8 @@ fallback, and reorganising your layout later cannot retroactively fail an old re
 `project.version` and nothing has to decide which table of a manifest wins. A key name containing
 a literal dot is not expressible — point at a `bare` or `json` file instead.
 
-`toml` needs Python 3.11+ (`tomllib`); on 3.10 such an entry reports `unverifiable` rather than
-failing, since an interpreter's stdlib is not evidence about your release. Block style only. An
-empty list is a deliberate "this product ships no version file" and reports that nothing was
-checked.
+Block style only. An empty list is a deliberate "this product ships no version file" and reports
+that nothing was checked.
 
 ```yaml
 release_version_files:
@@ -146,6 +148,84 @@ release_version_files:
     key: package.version
 ```
 
+## consumer_digest (opt-in)
+
+Your changelog, so `prawduct-hook cut-change-log` writes each release's notes into it. Every
+fragment's `## Consumer note` is required. Without this key, those notes stay in
+`.prawduct/change-log-archive/` and reach no consumer.
+
+**What the cut does with it.** At `--apply`, it renders the shipping notes into a new file,
+`.prawduct/releases/<version>.md`: a heading, your headline, then the notes. It then inserts that
+section into your changelog:
+- directly below `marker` if you declare one;
+- otherwise above the first `## ` heading that *leads with* a version (`## 1.4.0`, `## v1.4.0`,
+  `## [1.4.0] - …`), as `heading` must, so `## [Unreleased]` or `## Contents` stays on top;
+- with no such heading at all, at the end.
+
+If your history spells headings another way (`## Release 1.4.0`), none of them leads with a
+version, so the first cut would land at the bottom of the file. Declare a `marker` line above
+your newest release to place it instead. Do the same if you file patch releases as `### [1.0.1]`
+under a minor's `## ` heading: only `## ` headings count, so the new section would land below
+those patches.
+
+No other byte changes: line endings, a BOM, and the trailing newline are kept. The cut never
+searches for an open section and never renames one. The release file is also the record that the
+release is cut, so a re-run writes nothing twice. Commit it, along with `.prawduct/changes/` and
+the archive, and keep every one: release files are permanent history, never pruned.
+
+**The headline** is the release's one-line judgement, kept in `.prawduct/release-headline.md`
+before the cut. The cut puts it under the heading and removes the file. With `headline: required`,
+the cut refuses `no-headline` without it, and Phase 0 (`check-releasability`) warns first.
+
+**Refusals**, each with nothing written. `check-releasability` warns ahead of the cut about every
+one from `digest-missing` to `releases-ignored`:
+- `digest-declaration-invalid`: the block below is malformed, or `project-state.yaml` cannot be
+  read;
+- `digest-missing`, `digest-unreadable`: the changelog is not a file, or not UTF-8;
+- `marker-missing`: the declared marker line is not in the changelog;
+- `release-in-changelog`: a section already names this release (remove it, or move its first
+  paragraph into the headline file);
+- `no-headline`;
+- `releases-ignored`: git ignores `.prawduct/releases/`;
+- `release-already-cut`: a fragment the release file doesn't hold is pending; it belongs to the
+  next release.
+
+The dry run prints the exact section, which you can paste into a release PR as the notes preview.
+
+| Field | Values | Default |
+|---|---|---|
+| `path` | the changelog, repo-relative; must stay in the repo, outside `.git/` and `.prawduct/` | required |
+| `heading` | quoted template: `{version}` (`v1.4.0`), `{version_no_prefix}` (`1.4.0`), `{date}` (your local date, `YYYY-MM-DD`); must start `## ` and lead with the version | `"## {version} - {date}"` |
+| `headline` | `required` or `none` | `none` |
+| `layout` | `paragraphs`, `bullets`, or `by-type` (a `### ` subsection per fragment type) | `bullets` |
+| `entry` | quoted per-note template: `{note}` (required), `{scope}`, `{type}`, `{title}`; `{{` `}}` for literal braces | `"- {note}"`, or `` "**`{scope}`**: {note}" `` for `paragraphs` |
+| `types` | `by-type` only, one flow mapping on one line: `{feature: Added, fix: Fixed}` | `feature`→Added, `fix`→Fixed, others→Changed |
+| `marker` | a literal line; the section is inserted directly below it | none |
+
+Quote `heading` and `entry`: YAML reads an unquoted `#` as the start of a comment.
+
+Under `paragraphs`, a note that opens with a list item starts below the template's text on its
+line, after a blank line: a list glued after a label renders its first item as plain text.
+
+**With another release tool** (release-please, semantic-release, a script that dates or tags), run
+the cut first and the tool after it. The cut writes a finished section and never needs a heading
+renamed.
+
+```yaml
+# Keep a Changelog
+consumer_digest:
+  path: CHANGELOG.md
+  heading: "## [{version_no_prefix}] - {date}"
+  layout: by-type
+
+# prawduct's own
+consumer_digest:
+  path: plugin/CHANGELOG.md
+  heading: "## {version}"
+  headline: required
+  layout: paragraphs
+```
+
 ## coverage_required (opt-in, default false)
 
 When true, the Critic requires every changed file the verifier can judge to appear in
@@ -156,10 +236,10 @@ at `bin/test-reference-verify` emits the floor; products with non-trivial covera
 plug in a stronger verifier. See `/prawduct:methodology building` "Test Discipline". Default off —
 schema is checked but content is not enforced.
 
-## test_command, test_commands, tests_dirs (optional, gate-soundness)
+## test_command, test_commands, test_rerun_command, test_rerun_commands, flaky_policy, tests_dirs (optional, gate-soundness)
 
-`prawduct-hook test-evidence record` defaults to running `sys.executable -m pytest` from the repo
-root and grepping a single `tests/` dir. When the repo's real shape differs (uv/venv-managed
+`prawduct-hook test-evidence record` defaults to running `-m pytest`, under the `python3` the hook
+was invoked with, from the repo root and grepping a single `tests/` dir. When the repo's real shape differs (uv/venv-managed
 interpreter, no root pytest config, monorepo test trees), declare it — don't wrap it.
 
 **`test_command:`** — the canonical suite invocation (the exact command CI runs), shlex-split and
@@ -185,6 +265,31 @@ test_commands:
   - pipenv run pytest --junit-xml={junit_xml} -q
   - npm run test:ci -- --junit --outputFile={junit_xml}
 ```
+
+**`test_rerun_command:` / `test_rerun_commands:`** — how `test-evidence record --rerun-failed`
+retries only a run's failing tests. A declared command is never retried by appending ids to it,
+because one that already names a selection (`pytest tests/ -m "…"`) would rerun all of it.
+`test_rerun_command:` pairs with `test_command:`. `test_rerun_commands:` pairs by position with
+`test_commands:`, one entry per command, and `none` means that command is not retried. A length
+mismatch is refused. Each template is shlex-split, needs `{junit_xml}`, and takes
+`{pytest_node_ids}` as a separate argument, which becomes one argument per failing test
+(`tests/test_x.py::TestY::test_z`). Without a declared command, the fallback pytest path builds
+its own rerun. Checked before any suite runs.
+
+```yaml
+test_command: uv run pytest tests --junit-xml={junit_xml} -q
+test_rerun_command: uv run pytest --junit-xml={junit_xml} -q {pytest_node_ids}
+```
+
+**`flaky_policy:`** (`accept` | `warn` | `block`, default `warn`) — what a flake earns when this
+branch touched it. A flake is a test that passed only on retry, whether the recorder's
+`--rerun-failed` or a runner that reports it (`<flakyFailure>`). Each flake is judged at record
+time against the branch's changed files. The test file comes from the report, or from the
+classname (pytest's module path, or the class's own file in any language). One whose file or
+diff cannot be read counts as touched, and its status line says why. The policy's answer is
+decided then and printed with the flake: `accept` notes it; `warn` has the boundary Critic warn;
+`block` leaves it failed, so the record stays red. A flake outside the branch's diff is noted
+under every policy. An unknown value is refused.
 
 **`tests_dirs:`** — whitespace-separated test trees for the coverage verifier (default: `tests`).
 One verifier run unions discovery across all of them.
@@ -262,7 +367,8 @@ the other), and on a trunk-based repo the merge-base span is zeroed by every pus
 branch-counted rule could never fire. A dispatch that resolves no scope is not budgeted at all.
 
 The scope's rounds are still bounded — the evidence store is shared by every worktree of the
-clone, so something has to separate them. On a branch that is its lineage. Where the `base..HEAD`
+clone, and holds the rounds other clones ran on this branch once their notes are ingested, so
+something has to separate them. On a branch that is its lineage. Where the `base..HEAD`
 span holds NO COMMITS, it is the worktree the rounds were recorded from, and on a trunk repo that
 is the only reason the ceiling can fire at all.
 

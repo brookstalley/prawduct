@@ -205,6 +205,8 @@ _REFUSAL_AUDITED = {
     "pr-review-dispatch": "names the token; exits 1 (valid --begin exits 0)",
     "pr-review-payload": "names the token; exits 1 — same code as a base-less "
                          "valid run, message differs",
+    "plan": "names the token; exits 2 (valid resolve exits 0) — every op parses "
+            "through `_parse_plan_args`, which refuses any unknown dash token",
 }
 
 # Empty, and it must stay that way by argument rather than by neglect: an entry
@@ -240,6 +242,8 @@ _VALID_INVOCATIONS = {
     # the other reads git and `.prawduct/` state and opens no socket.
     "pr-review-dispatch": ["pr-review-dispatch", "--begin"],
     "pr-review-payload": ["pr-review-payload", "--json"],
+    # The read-only op; `new`/`bind` share its parser (`_parse_plan_args`).
+    "plan": ["plan", "resolve"],
 }
 
 _UNKNOWN_TOKEN = "--zzz-unrecognised-token"
@@ -506,6 +510,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("evidence", ["list", "--kind", "review"]),
         ("bug-inbox", []),
         ("version", []),
+        ("python-floor", []),
         ("print-install-reference", []),
         ("advisory", ["list", "--state=active"]),
         ("backlog", ["list", "--repo", "o/r", "--json"]),
@@ -519,6 +524,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("norm-index-scaffold", ["--apply", "--json"]),
         ("learnings-obligation", ["--apply", "--json"]),
         ("reanchor", ["--apply", "--json"]),
+        ("install-tripwire", ["--apply", "--json"]),
         ("lifecycle-repair", ["--apply", "--json"]),
         ("plan-backfill", ["--apply", "--date", "2026-01-01"]),
         ("repo-disable", ["--local", "--apply"]),
@@ -560,7 +566,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "check-learnings-pairing", "learnings-migrate", "learnings-compact",
         "build-index", "user-prompt-submit",
         "infer-critic-mode", "resolve-base", "disposition", "render-dispositions",
-        "evidence", "bug-inbox", "version", "print-install-reference", "advisory",
+        "evidence", "bug-inbox", "version", "python-floor", "print-install-reference", "advisory",
         "backlog", "coverage-status", "coverage-scaffold", "migrate-plugin",
         "init-product", "update-gitignore", "audit-learnings", "norm-index-scaffold",
         "learnings-files",
@@ -569,9 +575,11 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "change-record",
         "repo-disable",
         "reanchor",
+        "install-tripwire",
         "worktrees",
         "git-tidy",
         "stale-plugin-caches",
+        "plan",
     }
     assert set(_dispatch_branches()) == listed
 

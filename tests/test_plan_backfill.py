@@ -230,8 +230,14 @@ class TestBackfill:
             "lifecycle: completed"
         ]
 
-    def test_unticked_boxes_block_the_AUTOMATIC_sweep(self, tmp_path: Path) -> None:
-        """Unticked chunks route to ``blocked``, naming them (#634).
+    def test_an_unfinished_plan_blocks_the_AUTOMATIC_sweep(self, tmp_path: Path) -> None:
+        """Open chunks route to ``blocked``, naming them (#634).
+
+        Renegotiated by #1051 (was `test_unticked_boxes_block_the_AUTOMATIC_sweep`):
+        the precondition is now ``not plan_status.is_finished`` — here an
+        unticked box with no review fact leaves Chunk 01 open — and the reason
+        names the open chunk by id (``Chunk 01``) rather than echoing the box's
+        text. The history below is unchanged and still binding.
 
         **This assertion was inverted on 2026-08-11, and the reason it used to
         read the other way still stands — it is now served differently.** The
@@ -274,8 +280,22 @@ class TestBackfill:
         assert len(blocked) == 1
         # The chunk is NAMED — an operator who cannot see which chunk is unbuilt
         # cannot make the call the block exists to hand them.
-        assert "Chunk 01: the work" in blocked[0]["reason"]
-        assert "1 of 1" in blocked[0]["reason"]
+        assert "1 of 1 chunks not done (Chunk 01)" in blocked[0]["reason"]
+
+    def test_a_finished_plan_with_a_dropped_chunk_is_swept(self, tmp_path: Path) -> None:
+        """The other side of `is_finished`: a chunk the plan DROPPED (frontmatter
+        `dropped:`, with a reason) is not open, so a plan whose remaining chunk
+        is done archives — the sweep does not need every box ticked. The
+        unfinished case above is the control: same plan, no `dropped:`."""
+        prawduct = _make_repo(tmp_path, plans=())
+        body = _plan("alpha", ticked=False).replace(
+            "scope: alpha\n", "scope: alpha\ndropped:\n  - 01: descoped before it was built\n"
+        )
+        (prawduct / "artifacts" / "build-plan-alpha.md").write_text(body, encoding="utf-8")
+        assert plan_backfill.survey(prawduct)["blocked"] == []
+        result = plan_backfill.backfill(prawduct, date=DATE, apply=True)
+        assert [Path(a["source"]).name for a in result["archived"]] == ["build-plan-alpha.md"]
+        assert (prawduct / "artifacts" / "archive" / "build-plan-alpha.md").is_file()
 
     def test_the_explicit_route_still_archives_an_unfinished_plan(
         self, tmp_path: Path
@@ -308,21 +328,25 @@ class TestBackfill:
         # keeping, which was the original test's other half and survives intact.
         assert "- [ ] Chunk 01: the work" in archived.read_text()
 
-    def test_a_plan_with_no_status_roster_is_refused_not_passed(
+    def test_a_plan_predating_the_status_roster_is_refused_by_its_headings(
         self, tmp_path: Path
     ) -> None:
-        """Absence of a roster is unreadable, not complete.
+        """Renegotiated by #1051 (was `test_a_plan_with_no_status_roster_is_refused_not_passed`).
 
-        `unticked_chunk_items` returns `[]` for a plan with no Status section,
-        identically to a fully-ticked one, so the obvious one-line version of
-        this fix has a hole: a plan predating the Status convention sails
-        through as finished. Two such plans were live in hallucinote when #634
-        was found. Same rule the Critic applies rating `chunk-ref-missing
-        unchecked` at BLOCKING — a check that could not run must not read as a
-        pass.
+        The fear was a plan predating the Status convention sailing through as
+        finished — two such plans were live in hallucinote when #634 was found.
+        `plan_status` reads chunks from their HEADINGS, so such a plan's chunks
+        are open (no review fact certifies them) and it is still refused, by
+        name. What changed: a plan with no chunk at all — no heading, no roster
+        — is finished by `1050-design.md` § 3 ("a plan with no chunks is
+        finished everywhere"), so it is no longer the unreadable case; the next
+        test pins that half so the change is visible rather than incidental.
         """
         prawduct = _make_repo(tmp_path, plans=())
-        rosterless = _plan("alpha").replace("## Status", "## Notes")
+        rosterless = (
+            "---\nartifact: build-plan\nscope: alpha\n---\n\n"
+            "## Build Chunks\n\n### Chunk 01: the work\n"
+        )
         (prawduct / "artifacts" / "build-plan-alpha.md").write_text(
             rosterless, encoding="utf-8"
         )
@@ -331,7 +355,29 @@ class TestBackfill:
         assert result["archived"] == []
         blocked = plan_backfill.survey(prawduct)["blocked"]
         assert len(blocked) == 1
-        assert "no readable `## Status` roster" in blocked[0]["reason"]
+        assert "Chunk 01" in blocked[0]["reason"]
+
+    def test_a_plan_with_no_chunks_at_all_is_finished(self, tmp_path: Path) -> None:
+        prawduct = _make_repo(tmp_path, plans=())
+        (prawduct / "artifacts" / "build-plan-alpha.md").write_text(
+            "---\nartifact: build-plan\nscope: alpha\n---\n\nNo chunks.\n",
+            encoding="utf-8",
+        )
+        assert plan_backfill.survey(prawduct)["blocked"] == []
+
+    def test_an_unparseable_chunk_heading_is_refused_not_passed(self, tmp_path: Path) -> None:
+        """What is left of "unreadable is not complete": a heading the chunk
+        parser rejects is an open chunk to `plan_status`, so the sweep refuses
+        and says why."""
+        prawduct = _make_repo(tmp_path, plans=())
+        (prawduct / "artifacts" / "build-plan-alpha.md").write_text(
+            "---\nartifact: build-plan\nscope: alpha\n---\n\n"
+            "## Build Chunks\n\n#### Chunk 01: too deep for the parser\n",
+            encoding="utf-8",
+        )
+        blocked = plan_backfill.survey(prawduct)["blocked"]
+        assert len(blocked) == 1
+        assert "unparseable-chunk-heading" in blocked[0]["reason"]
 
     def test_running_twice_is_a_no_op_the_second_time(self, tmp_path: Path) -> None:
         prawduct = _make_repo(tmp_path)

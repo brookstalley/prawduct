@@ -85,7 +85,7 @@ def _run(repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     return subprocess.run(
-        ["python3", str(HOOK), "cost-of-commit", *args],
+        [sys.executable, str(HOOK), "cost-of-commit", *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
 

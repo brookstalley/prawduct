@@ -54,6 +54,8 @@ def register_all() -> None:
     from .stranded_branch_probes import register as register_stranded_branch
     from .evidence_size_probes import register as register_evidence_size
     from .git_hygiene_probes import register as register_git_hygiene
+    from .work_unit_probes import register as register_work_unit
+    from .testament_cache_probes import register as register_testament_cache
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe
@@ -65,9 +67,11 @@ def register_all() -> None:
     register_stale_base()  # stale remote-base / unpromoted-release-prep nudge (COV-7K4N)
     register_gitattributes()  # change-log merge=union recommendation (top-append conflicts)
     register_retired_state()  # retired build_state.test_tracking strip nudge
-    register_onboarding()  # plugin enabled but /prawduct:onboard never run in this repo
+    register_onboarding()  # plugin enabled but /prawduct:onboard (or a file-sync repo's /prawduct:migrate) never run
     register_adhoc_delegate()  # ad-hoc delegate worktree left unintegrated (its brief is the signal)
     register_oversized_state()  # governance files over this repo's size threshold
     register_evidence_size()  # clone-shared evidence store over its size threshold (#953)
     register_stranded_branch()  # local branch checked out nowhere, commits no remote has (#843's local arm)
     register_git_hygiene()  # merged branches and dead worktrees whose removal loses nothing
+    register_work_unit()  # plan-unbound-legacy: a plan governing through the retiring legacy window (#1050)
+    register_testament_cache()  # causes that alone keep tests uncacheable, from testament's offline snapshot

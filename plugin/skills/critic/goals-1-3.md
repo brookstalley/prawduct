@@ -60,16 +60,15 @@ recount it. Each entry carries its explanation — raise it. `chunk-ref-missing`
 no-subject — …` is **NOTE**: the scope is real (the change-log declares it) but plan-less → nothing
 to grade.
 `chunk-ref-missing
-graded chunk … of <plan>: …` is an **assumption, not a failure** — it DID run (`chunk_graded`
-non-null), but half of "whose deliverables" was guessed — the chunk
-inferred from build-plan Status, or the plan from the `active_build_plan` pointer — the line names
-which → **NOTE**. Blocking it is a false blocker no `--chunk` can clear.
+graded chunk … of <plan>: …` is an **assumption, not a failure** — it ran, but half of "whose deliverables" was guessed — the chunk
+inferred as the plan's first open chunk, or the plan from the `active_build_plan` pointer or conventional path — the line names
+which → **NOTE**. Blocking it is a false blocker no `--chunks` can clear.
 State every entry. `chunk_graded`/`plan_graded` name the subject.
 `null` there, or in any `counts` entry, means **no answer** — not a zero.
 
 ## 1. Nothing Is Broken
 
-- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**.
+- `prawduct-hook test-status`: exit 0 = current; stale/missing → no finding (**WARNING** only at the boundary, where the suite runs) — that exit code is the *only* freshness signal. Test failures in evidence → **BLOCKING**. A `flaky:` line tagged `flaky_policy: warn` → **WARNING** at the boundary, an observation inside.
 - No "pre-existing" exception — every finding is yours regardless of when introduced. RATE it regardless; the bound is on the BUILDER, whose obligation to FIX is limited to BLOCKING (below that a recorded accept discharges it). Never omit or downgrade a finding on this ground.
 - Tests verify behavior, not implementation.
 - Tests deleted or assertions weakened without documented reason → **BLOCKING**. Legitimate consolidation needs a change record.

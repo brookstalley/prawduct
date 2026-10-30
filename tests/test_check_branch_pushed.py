@@ -81,7 +81,7 @@ def _run(repo: Path) -> subprocess.CompletedProcess:
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     return subprocess.run(
-        ["python3", str(HOOK), "check-branch-pushed"],
+        [sys.executable, str(HOOK), "check-branch-pushed"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
 
@@ -232,7 +232,7 @@ def test_an_unreadable_repository_takes_the_third_outcome_and_says_nothing_was_c
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     r = subprocess.run(
-        ["python3", str(HOOK), "check-branch-pushed"],
+        [sys.executable, str(HOOK), "check-branch-pushed"],
         cwd=str(outside), capture_output=True, text=True, env=env, timeout=30,
     )
     assert r.returncode == 3
@@ -270,7 +270,7 @@ def _run_for(repo: Path, branch: str) -> subprocess.CompletedProcess:
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     return subprocess.run(
-        ["python3", str(HOOK), "check-branch-pushed", branch],
+        [sys.executable, str(HOOK), "check-branch-pushed", branch],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
 
@@ -522,7 +522,7 @@ def test_a_flag_is_refused_and_nothing_runs(tmp_path):
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     r = subprocess.run(
-        ["python3", str(HOOK), "check-branch-pushed", "--json"],
+        [sys.executable, str(HOOK), "check-branch-pushed", "--json"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
     assert r.returncode == 2

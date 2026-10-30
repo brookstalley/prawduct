@@ -297,7 +297,7 @@ def _run_real(command: str, repo: Path, *args: str):
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(root / "bin" / "prawduct-hook"), command, *args],
+        [sys.executable, str(root / "bin" / "prawduct-hook"), command, *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
 
@@ -1464,6 +1464,12 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/bin/prawduct-hook", "cmd_clear", "clear_marker()"):
             "tests/test_critic_session_guard.py::TestClearGuardCLI"
             "::test_force_overrides_active_marker",
+        # Asks only: what a clear gate saw, recorded, and whether the
+        # clear-verdict gate lets YOUR TURN + DO NOT CLEAR stand. It never
+        # decides whether the marker stays.
+        ("plugin/bin/prawduct-hook", "_clear_observations", "review_active()"):
+            "tests/test_stop_block_facts.py::TestAClearGateRecordsWhyItFired"
+            "::test_a_live_critic_review_is_observed_as_live",
         ("plugin/bin/prawduct-hook", "cmd_critic_begin", "write_marker()"):
             "tests/test_critic_session_guard.py::TestCriticBeginEndCLI"
             "::test_begin_writes_then_end_removes",
@@ -1512,6 +1518,14 @@ class TestMarkerAndFindingsReaderInventory:
         ("plugin/lib/critic_mode.py", "_rule_postfix_fix_fires", ".critic-findings.json"):
             "tests/test_critic_mode_inference.py::TestRule1bPostCumulativeFix"
             "::test_fires_for_committed_fix_after_clean_cumulative",
+        # The one writer outside consolidation: a clone whose reviews arrived
+        # as notes gets the view consolidation would have written.
+        ("plugin/lib/critic_consolidate.py", "derive_branch_cache", "review_active()"):
+            "tests/test_evidence_notes.py::TestASecondCloneGetsItsFindingsCache"
+            "::test_a_review_in_flight_keeps_the_slot",
+        ("plugin/lib/critic_consolidate.py", "derive_branch_cache", ".critic-findings.json"):
+            "tests/test_evidence_notes.py::TestASecondCloneGetsItsFindingsCache"
+            "::test_another_branchs_cache_is_replaced",
         ("plugin/lib/critic_mode.py", "_fresh_cumulative_covers_head", ".critic-findings.json"):
             "tests/test_critic_mode_inference.py::TestRule2Cumulative"
             "::test_does_not_fire_when_cumulative_record_covers_head",

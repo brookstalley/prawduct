@@ -181,10 +181,12 @@ def test_every_refusal_code_has_a_fixture():
     )
     migrate_tests = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migrate_tests)
+    # `scope-misspells-plan` judges a fragment against its repo's plans, so its
+    # fixtures are repo layouts (TestFragmentScopeNamesItsPlan), not texts.
     covered = (
         {code for code, _, _ in REFUSALS}
         | {code for _, code in migrate_tests.REFUSALS}
-        | {"unreadable"}
+        | {"unreadable", "scope-misspells-plan"}
     )
     # The scan must have found the codes it polices, or an empty set passes.
     assert {"no-frontmatter", "missing-consumer-note", "schema-ahead", "bad-closes"} <= emitted
@@ -214,6 +216,34 @@ class TestLoadPending:
         assert loaded[0].ok
         assert not loaded[1].ok
         assert loaded[1].problems[0].code == "no-frontmatter"
+
+
+class TestUnwrittenStub:
+    """The stub ``plan new`` mints is no chunk's work (#1075): both chunk-progress
+    readers ask :func:`cf.is_unwritten_stub` before a fragment path counts."""
+
+    def test_a_stub_is_unwritten_with_or_without_a_title(self):
+        assert cf.is_unwritten_stub(fragment_text(narrative="", note=""))
+        assert cf.is_unwritten_stub(fragment_text(with_("title", ""), narrative="", note=""))
+        assert cf.is_unwritten_stub(fragment_text(narrative="", note_heading=False))
+
+    def test_either_half_written_makes_it_written(self):
+        assert not cf.is_unwritten_stub(fragment_text())
+        assert not cf.is_unwritten_stub(fragment_text(narrative=""))
+        assert not cf.is_unwritten_stub(fragment_text(note=""))
+        assert not cf.is_unwritten_stub(fragment_text(narrative="", note="none: internal"))
+
+    def test_text_that_does_not_parse_is_not_a_stub(self):
+        """``plan new`` never writes one, so someone else did."""
+        assert not cf.is_unwritten_stub("no frontmatter here\n")
+        assert not cf.is_unwritten_stub("")
+
+    def test_a_fragment_path_is_a_markdown_file_directly_in_the_directory(self):
+        assert cf.is_fragment_path(".prawduct/changes/unit.md")
+        assert not cf.is_fragment_path(".prawduct/changes/.gitkeep")
+        assert not cf.is_fragment_path(".prawduct/changes/sub/unit.md")
+        assert not cf.is_fragment_path("x/.prawduct/changes/unit.md")
+        assert not cf.is_fragment_path("unit.md")
 
 
 class TestRenderEntry:
@@ -249,21 +279,21 @@ class TestRenderEntry:
             cf.render_entry(self.fragment(), release="unreleased")
 
 
-class TestConsumerSection:
+class TestNoneReasons:
+    """The note order the release section uses is `consumer_digest.ordered_notes`'s,
+    tested there; what stays here is the operator's list of `none:` notes."""
+
     def make(self, scope, when, note):
         text = fragment_text({**FRONT, "scope": scope, "date": when}, note=note)
         return cf.parse_fragment(text, filename=f"{scope}.md")
 
-    def test_newest_first_then_scope_and_none_notes_are_left_out(self):
+    def test_each_none_note_is_listed_with_its_reason_and_others_are_not(self):
         fragments = [
             self.make("b-scope", "2026-10-17", "B note."),
-            self.make("a-scope", "2026-10-17", "A note."),
-            self.make("newer", "2026-10-18", "Newer note."),
             self.make("internal", "2026-10-19", "none: test-only"),
+            self.make("another", "2026-10-18", "none: refactor"),
         ]
-        section = cf.render_consumer_section(fragments)
-        assert section == "**`newer`**: Newer note.\n\n**`a-scope`**: A note.\n\n**`b-scope`**: B note."
-        assert cf.none_reasons(fragments) == [("internal", "test-only")]
+        assert cf.none_reasons(fragments) == [("another", "refactor"), ("internal", "test-only")]
 
 
 def problems_of(text, filename="backlog-file-path.md"):
@@ -291,3 +321,125 @@ def test_a_quoted_value_keeps_its_colon_and_loses_its_quotes():
         fragment_text(with_("title", '"backlog file: own repo only"')), filename="backlog-file-path.md"
     )
     assert fragment.title == "backlog file: own repo only"
+
+
+# ---------------------------------------------------------------------------
+# WU2 at write time: a fragment's scope names its plan, or no plan near it
+# ---------------------------------------------------------------------------
+
+
+def _plan_file(root, rel, scope):
+    path = root / ".prawduct" / "artifacts" / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"---\nartifact: build-plan\nscope: {scope}\n---\n\n## Status\n")
+    return path
+
+
+def _fragment_file(root, scope):
+    directory = root / cf.FRAGMENT_DIR_REL
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{scope}.md"
+    path.write_text(fragment_text(with_("scope", scope)))
+    return path
+
+
+def _scope_codes(item):
+    return [p.code for p in item.problems if p.code == "scope-misspells-plan"]
+
+
+class TestFragmentScopeNamesItsPlan:
+    """The fragment's ``scope:`` must equal the plan's (FRG2), and until this check
+    nothing compared them before release (CL7). Each fixture is a whole repo
+    layout, because the check is about the fragment's neighbours, not its text."""
+
+    @pytest.mark.parametrize("plan_scope,fragment_scope", [
+        ("work_unit_binding", "work-unit-binding"),   # `_` vs `-`
+        ("Work-Unit-Binding", "work-unit-binding"),   # case
+        ("release-v3.7.1", "release-v3-7-1"),         # `.` vs `-`
+        ("work-unit-binding", "work-binding"),        # a dropped interior segment
+        ("work-binding", "work-unit-binding"),        # an added interior segment
+    ])
+    def test_a_scope_a_plan_spells_differently_is_refused_at_write(
+        self, tmp_path, plan_scope, fragment_scope
+    ):
+        _plan_file(tmp_path, "build-plan-x.md", plan_scope)
+        item = cf.read_fragment_file(_fragment_file(tmp_path, fragment_scope))
+        assert _scope_codes(item) == ["scope-misspells-plan"]
+        detail = next(p.detail for p in item.problems if p.code == "scope-misspells-plan")
+        assert plan_scope in detail and "build-plan-x.md" in detail
+
+    def test_an_archived_plan_is_searched_too(self, tmp_path):
+        _plan_file(tmp_path, "archive/build-plan-x.md", "work_unit_binding")
+        item = cf.read_fragment_file(_fragment_file(tmp_path, "work-unit-binding"))
+        assert _scope_codes(item) == ["scope-misspells-plan"]
+
+    def test_the_check_runs_wherever_the_fragment_is_validated(self, tmp_path):
+        # Every consumer reaches validation through one of these three doors;
+        # the PR gate's `git show` path passes text and a path, so the path
+        # alone must be enough to find the repo.
+        _plan_file(tmp_path, "build-plan-x.md", "work_unit_binding")
+        path = _fragment_file(tmp_path, "work-unit-binding")
+        assert _scope_codes(cf.check_fragment_text(path.read_text(), path))
+        assert [_scope_codes(i) for i in cf.load_pending(tmp_path)] == [["scope-misspells-plan"]]
+
+    @pytest.mark.parametrize("plan_scope,fragment_scope", [
+        ("work-unit-binding", "work-unit-binding"),          # names its plan exactly
+        ("goal-grounding", "goal-grounding-discovery"),      # a trailing follow-up: a new unit (D4)
+        ("norm-lifecycle", "fix-norm-lifecycle"),            # a leading verb: also a new unit
+        ("backlog-file-path", "backlog-file-path-reopen-1"),  # the template's reopen naming
+        ("docs", "docs-fix"),                                # one-word scopes never near-match
+        ("work-unit-binding", "evidence-store"),             # unrelated
+    ])
+    def test_a_scope_naming_its_plan_or_no_plan_near_it_is_accepted(
+        self, tmp_path, plan_scope, fragment_scope
+    ):
+        _plan_file(tmp_path, "build-plan-x.md", plan_scope)
+        item = cf.read_fragment_file(_fragment_file(tmp_path, fragment_scope))
+        assert item.ok, item.problems
+
+    def test_a_plan_less_fix_is_its_own_declaration(self, tmp_path):
+        # Small fixes have no plan; the fragment is then the unit.
+        item = cf.read_fragment_file(_fragment_file(tmp_path, "work-unit-binding"))
+        assert item.ok, item.problems
+
+    def test_an_exact_live_plan_wins_over_a_near_archived_one(self, tmp_path):
+        _plan_file(tmp_path, "build-plan-x.md", "work-unit-binding")
+        _plan_file(tmp_path, "archive/build-plan-old.md", "work_unit_binding")
+        item = cf.read_fragment_file(_fragment_file(tmp_path, "work-unit-binding"))
+        assert item.ok, item.problems
+
+    def test_a_fragment_outside_a_repo_layout_is_judged_on_its_text_alone(self, tmp_path):
+        # A fixture path, or text with nowhere to look: no plan can be found, so
+        # none can be near — the schema checks still run.
+        path = tmp_path / "work-unit-binding.md"
+        path.write_text(fragment_text(with_("scope", "work-unit-binding")))
+        assert cf.read_fragment_file(path).ok
+
+    def test_this_repo_s_history_stays_clean(self):
+        """The rule measured on the real corpus: every recorded scope in this
+        repo's change history against every live and archived plan. A
+        near-match rule that refused a shipped scope would refuse its next
+        sibling; the two trailing-suffix follow-ups the corpus holds
+        (`goal-grounding-discovery`, `norm-lifecycle-stopgaps`) are why the
+        segment rule is interior-only."""
+        from lib import change_log_archive
+        from lib import plan_index
+
+        repo = _REPO_ROOT.parent
+        plans = plan_index.build_scope_to_plan_map(
+            repo / ".prawduct" / "artifacts", include_archived=True
+        )
+        text = change_log_archive.load_all_text(repo / ".prawduct") or ""
+        recorded = {
+            e.tags["scope"] for e in change_log.parse_change_log(text)
+            if isinstance(e.tags.get("scope"), str)
+        }
+        # The corpus was reached, or "nothing near-matched" means nothing was read.
+        assert len(plans) > 50 and len(recorded) > 100
+        hits = [
+            (s, p) for s in recorded if s not in plans for p in plans if cf.scope_near_match(s, p)
+        ]
+        assert hits == []
+        # And the rule is live on this corpus: the two follow-ups ARE adjacent
+        # to their parents by one segment, which only the interior bound excuses.
+        assert not cf.scope_near_match("norm-lifecycle-stopgaps", "norm-lifecycle")

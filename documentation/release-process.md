@@ -46,18 +46,17 @@ and you dogfood nothing while believing otherwise. Keep `develop` on a prereleas
 is heading for — `3.4.1-dev.2` — bumping the `.N` as you promote work into it. The release then sets
 the final version in the same three files (below), which is a new cache key again.
 
-**An intra-cycle `.N` bump moves FOUR files, not three** — rename the open `## vX.Y.Z-dev.N`
-heading in `plugin/CHANGELOG.md` in the same commit. `test_changelog_has_current_version_entry`
-requires a section keyed by the **exact** manifest string, prerelease suffix included, so bumping
-the three version files alone turns `develop` red on the next push. This is the one version move
+**An intra-cycle `.N` bump moves the three version files and nothing else.** `plugin/CHANGELOG.md`
+carries no section for a prerelease: the cut writes the release's section itself, and
+`test_changelog_matches_the_current_version` fails on a prerelease that has one. This is the one version move
 the runbook does not cover: it has the cut (Phase 1 step 10) and the reopen (Phase 3 step 22), and
 the bump between them happens here.
 
 **The bump rides the work PR that promotes the work — never a PR of its own.** Commit it on the
 work branch as `chore: develop opens X.Y.Z-dev.N for <branch>` (or `moves to` within an open
-cycle), so the work PR's review covers the four-line diff. A standalone bump PR costs a full
+cycle), so the work PR's review covers the three-line diff. A standalone bump PR costs a full
 cumulative Critic round for a change whose correctness is already machine-checked
-(`test_version_is_semver`, `test_changelog_has_current_version_entry`, `release_verification`'s
+(`test_version_is_semver`, `test_changelog_matches_the_current_version`, `release_verification`'s
 declared-carrier checks); the coverage ruling in `coverage_algebra.is_judgeable_path` deliberately
 does not exempt it.
 
@@ -156,8 +155,8 @@ not ship.** Always bump `version` in `plugin/.claude-plugin/plugin.json` (and `p
 When `develop` is ready to release as `vX.Y.Z`:
 
 **The numbering below is the checklist's order, not the running order.** Every prep item in it —
-the version bump across the three files, the change-record cut, the `active_build_plan` clear and
-the plan sweep, the `plugin/CHANGELOG.md` section rename — is committed on `develop` **before**
+the version bump across the three files, the change-record cut and
+the plan sweep (plus, on a repo still on the deprecated `active_build_plan` scalar, its clear), the release section the cut writes into `plugin/CHANGELOG.md` — is committed on `develop` **before**
 the promotion, not edited onto `main` after it; the reason is in the ordering note that closes
 "Step 1 mechanics" below. `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` Phase 1 is the
 same set in executable running order, and is the document to work from when actually cutting.
@@ -181,11 +180,14 @@ same set in executable running order, and is the document to work from when actu
    prawduct-hook cut-change-log --release vX.Y.Z --apply
    ```
    For each shipping fragment it writes an entry tagged `release=vX.Y.Z` into
-   `.prawduct/change-log-archive/YYYY-MM.md`, adds the fragment's consumer note under the open
-   `plugin/CHANGELOG.md` section's headline, and removes the fragment. A `withheld` fragment stays
-   in the directory and is still pending at the next release. The cut writes nothing on any
-   refusal, and a re-run adds nothing twice. It never writes the headline, so write that first
-   (step 5): a section with no headline is refused as `no-headline`. The dry run also lists every
+   `.prawduct/change-log-archive/YYYY-MM.md`, then removes the fragment. It renders the shipping
+   notes, under a `## vX.Y.Z` heading and `.prawduct/release-headline.md`'s headline, into
+   `.prawduct/releases/vX.Y.Z.md`, and inserts that section into `plugin/CHANGELOG.md` above the
+   newest release. Prawduct declares this as `consumer_digest:` in `.prawduct/project-state.yaml`,
+   the same key a governed product sets. A `withheld` fragment stays in the directory and is still
+   pending at the next release. The cut writes nothing on any refusal, and once the release file
+   exists a re-run writes nothing and only finishes removals. Write the headline first (step 5): the
+   cut refuses `no-headline` without it. The dry run prints the exact section and lists every
    fragment whose note is `none: <reason>`, so read those reasons before applying.
 
    Which scopes ship is the release plan's decision, not the cut's: a pending fragment the table
@@ -204,7 +206,7 @@ same set in executable running order, and is the document to work from when actu
    something this step fixes.
 
 4. **Archive the plans this release shipped.** On gitflow the closing PR deliberately
-   RETAINS the plan and its `active_build_plan` pointer — the work is not released yet — so
+   RETAINS the plan — the work is not released yet — so
    the release is where that retention ends, and without this step the live artifacts
    directory re-accumulates exactly the pile the archive exists to prevent. Step 3 has just
    written the record the sweep reads, so run the sweep rather than picking by hand:
@@ -215,11 +217,12 @@ same set in executable running order, and is the document to work from when actu
    It archives every live plan whose scope has an entry tagged `release=` in the change log or
    its archive, stamping each with `lifecycle: completed` and `released_in:`. It is a **no-op
    for anything still pending**, so running it on a pruned release cannot archive withheld work:
-   a withheld scope is still a fragment, and step 3 wrote no archived entry for it. **Clear `active_build_plan` BEFORE the
-   sweep**, not after: the sweep refuses to archive the plan the pointer names — archiving
-   it would leave the pointer at a moved file, which every gate reads as "no active build
-   plan" and goes quiet rather than failing — so a pointer left set is a plan left live,
-   and the run reports it under the plans it kept rather than the ones it moved.
+   a withheld scope is still a fragment, and step 3 wrote no archived entry for it. A repo still on the deprecated
+   `active_build_plan` scalar clears it BEFORE the sweep, not after: the sweep refuses to
+   archive the plan the pointer names — archiving it would leave the pointer at a moved file,
+   which the legacy route reads as "no active build plan" and goes quiet rather than failing —
+   so a pointer left set is a plan left live, and the run reports it under the plans it kept
+   rather than the ones it moved. A plan bound by its `branch:` has no pointer to clear.
    The preview also lists, separately, plans the change log says shipped but which the
    sweep **refuses** (a name already in the archive, a plan already carrying a terminal
    state, one it cannot read, or — since v3.3.1 — one whose `## Status` does not evidence
@@ -252,9 +255,10 @@ same set in executable running order, and is the document to work from when actu
 
 5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
    `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
-   **minor or major bump only**. In the CHANGELOG, the cut (step 3) writes each shipping scope's
-   note from its fragment; you write the headline, the section's first line, which the
-   version-delta banner shows every repo crossing this version. Both files are written at **Phase 1** of
+   **minor or major bump only**. The cut (step 3) writes the whole CHANGELOG section from the
+   fragments' notes; you write the headline in `.prawduct/release-headline.md` before it runs. The
+   headline becomes the section's first line, which the version-delta banner shows every repo
+   crossing this version. Both files are written at **Phase 1** of
    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this checklist names them rather
    than restating them, because the README went eight releases stale precisely while no release
    document named it at all.
@@ -263,7 +267,7 @@ same set in executable running order, and is the document to work from when actu
    every tag this repo had ever pushed, which is what consumers reported as "no tag on GitHub".
 
    ```
-   awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+   tail -n +3 .prawduct/releases/vX.Y.Z.md > /tmp/notes-vX.Y.Z.md   # the section without its heading
    gh release create vX.Y.Z --target "$(git rev-parse main)" \
      --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
    ```
@@ -296,18 +300,16 @@ same set in executable running order, and is the document to work from when actu
    gate newly active in the range.
 
 10. **Reopen `develop` at the next `-dev` version.** Bump the same three files from step 2 to the
-    next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), open a
-    `## vX.Y.Z-dev` section at the top of `plugin/CHANGELOG.md` with a non-empty first line, and
-    add a change fragment for the release itself (`.prawduct/changes/release-vX.Y.Z.md`) — all in
-    one commit on `develop`.
+    next **patch** plus a `-dev` suffix (after cutting `v3.4.0`, write `3.4.1-dev`), and add a
+    change fragment for the release itself (`.prawduct/changes/release-vX.Y.Z.md`), in one commit
+    on `develop`. Open no `plugin/CHANGELOG.md` section: the next cut writes it.
 
     > **Why `develop` must never report the released number:** the verdict cache keys on the
     > plugin version, so a prerelease codebase reporting the released number replays `covered`
     > verdicts across a judgeability change; and a consumer pinned to the `develop` ref can only
     > tell which plugin it is running if the banner says so. `-dev` and `-dev.N` are the only
-    > suffixes `test_version_is_semver` permits. The CHANGELOG section is not optional —
-    > `test_changelog_has_current_version_entry` requires one for the current version, so the
-    > version files and the digest move together or `develop` goes red.
+    > suffixes `test_version_is_semver` permits. A prerelease has no CHANGELOG section, and
+    > `test_changelog_matches_the_current_version` fails on one that does.
 
     > **Guess low.** A prerelease sorts just below its own release, so from `3.4.1-dev` every
     > possible next cut is a forward move; from a high guess like `3.5.0-dev` a patch cut is a
@@ -326,12 +328,12 @@ same set in executable running order, and is the document to work from when actu
   consumers with protected integration branches into a second, bookkeeping-only PR, so it was
   retired). `check-releasability` enumerates every fragment's scope as pending and advises when
   that scope resolves to no plan file — work shipping with nothing describing it. **The PLAN is
-  retained until the release**; what happens to the `active_build_plan` pointer depends on how
-  the plan resolves, and `/prawduct:pr`’s
-  Merge Flow *"Confirm the bookkeeping merged WITH the PR"* step owns that split — a plan declaring `branch:` has its pointer cleared at the merge (its
-  branch is gone, so it resolves for nobody and reads live-but-inactive), while a
-  pointer-resolved plan keeps it, because clearing that one is what makes governance blind. The
-  gate reads the plan by scope either way, which is why it does not depend on the pointer.
+  retained until the release**, and a plan declaring `branch:` needs nothing at the merge: it
+  governs only the checkouts of its own branch, which is gone, so it reads live-but-inactive
+  (`prawduct-hook plan resolve` reports what a checkout is bound to, `work_unit.resolve` being
+  the one owner of that answer). `/prawduct:pr`’s Merge Flow
+  *"Confirm the bookkeeping merged WITH the PR"* step owns what the merge does owe. The gate
+  reads the plan by scope, which is why it does not depend on any binding.
 - **Shipped** — an entry in `.prawduct/change-log-archive/` tagged `release=vX.Y.Z`. Step 3's
   cut writes it and removes the fragment in the same run, and that is the whole transition.
 
@@ -412,7 +414,7 @@ git diff --stat origin/develop HEAD          # MUST be empty — this shape only
 git push origin main
 
 # One call creates the tag AND the Release — see below for why not `git tag` first.
-awk '/^## vX.Y.Z$/{f=1;next} /^## v/{f=0} f' plugin/CHANGELOG.md > /tmp/notes-vX.Y.Z.md
+tail -n +3 .prawduct/releases/vX.Y.Z.md > /tmp/notes-vX.Y.Z.md
 gh release create vX.Y.Z --target "$(git rev-parse main)" \
   --title vX.Y.Z --notes-file /tmp/notes-vX.Y.Z.md
 git fetch origin --tags                            # the tag was created on the remote
@@ -449,12 +451,12 @@ each shipped Python file's imports against its `develop` counterpart.
 The executable procedure is `.prawduct/runbooks/promote-a-pruned-release.md`; the worked example is
 `.prawduct/artifacts/release-plan-v3.1.2-pruned.md`.
 
-Note on **step 2 ordering**: the version bump + the change-record cut and CHANGELOG updates +
-`active_build_plan` clear are done as a **release-prep commit on `develop`** *before* the promotion
+Note on **step 2 ordering**: the version bump + the change-record cut and CHANGELOG updates
+are done as a **release-prep commit on `develop`** *before* the promotion
 above, not as edits on `main` after the merge. That puts the release bookkeeping inside the promoted
 tree under **either** shape — the whole-develop tree-set inherits it, and the pruned candidate picks
 it up because the release-prep commit is the tip of the ship-set range. Nothing in the step reads a
-build plan, so the `active_build_plan` clear can happen anywhere in the prep commit.
+build plan.
 
 ## `/prawduct:pr` is not the release vehicle
 
@@ -479,7 +481,7 @@ benign**, not a gate to satisfy:
   bumps (zero added signal — the CRT-7M2D treadmill), and do **not** write `.gates-waived` — a waiver
   means "this gate cannot be satisfied this session," which is false here (the gate is perfectly
   satisfiable in a feature context; it simply isn't the release's gate). The stop hook also stands
-  down on its own: release-prep clears `active_build_plan`, so its Critic gate sees no active plan.
+  down on its own: a release-prep branch is claimed by no plan, so its checkout is unbound and its Critic gate sees no active plan.
   The operative pre-promotion check is the one that matches the promotion shape: the empty
   `git diff --stat origin/develop HEAD` for a whole-develop promotion, or the path partition for a
   pruned one.

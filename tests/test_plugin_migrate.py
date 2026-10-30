@@ -311,13 +311,19 @@ def test_claude_block_stripped_product_content_kept(repo: Path):
     assert "Don't touch this product instruction." in text
 
 
-def test_settings_mixed_sessionstart_keeps_only_user_group(repo: Path):
-    # The hallucinote shape: SessionStart has a prawduct group AND a user group.
+def test_settings_mixed_sessionstart_keeps_user_group_and_adds_tripwire(repo: Path):
+    # The hallucinote shape: SessionStart has a legacy prawduct group AND a user
+    # group. The legacy group goes, the user group stays first, and the one group
+    # migrate adds is the unloaded-plugin tripwire — the only prawduct hook a
+    # plugin repo commits, because it must run when the plugin does not load.
+    from lib.unloaded_tripwire import TRIPWIRE_GROUP
+
     run_migrate(repo, "--apply")
     data = json.loads((repo / ".claude" / "settings.json").read_text())
     ss = data["hooks"]["SessionStart"]
-    assert len(ss) == 1, "the prawduct SessionStart group must be removed, the user group kept"
+    assert len(ss) == 2, "the legacy SessionStart group must be removed, the user group kept"
     assert "session-start.sh" in ss[0]["hooks"][0]["command"]
+    assert ss[1] == TRIPWIRE_GROUP
     assert all("product-hook" not in g["hooks"][0]["command"] for g in ss)
 
 
@@ -1129,7 +1135,7 @@ def test_the_cutover_owns_no_second_notion_of_a_main_family_branch(tmp_path: Pat
     from lib import coverage
 
     src = Path(_migrate_plugin.__file__).read_text()
-    assert "coverage._MAIN_FAMILY" in src, (
+    assert "coverage.MAIN_FAMILY" in src, (
         "the cutover restated the resolver's family test instead of reading it"
     )
     assert not re.search(r'["\']master["\']', src), (
@@ -1137,7 +1143,7 @@ def test_the_cutover_owns_no_second_notion_of_a_main_family_branch(tmp_path: Pat
         "that vocabulary"
     )
     # And the shared predicate is what it claims to be.
-    assert coverage._MAIN_FAMILY == frozenset({"main", "master"})
+    assert coverage.MAIN_FAMILY == frozenset({"main", "master"})
 
 
 def test_human_output_names_the_recorded_base_branch(tmp_path: Path):

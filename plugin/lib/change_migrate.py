@@ -93,7 +93,9 @@ def plan_migration(
     if not log_path.is_file():
         return [], (), ()
     try:
-        text = log_path.read_text(encoding="utf-8")
+        # Parsed as \n text, written back in the log's own line ending: the
+        # writer is newline="", so a CRLF log would otherwise come out LF.
+        text, eol = core.read_text_and_eol(log_path)
     except (OSError, UnicodeDecodeError) as exc:
         raise MigrationRefused([change_fragments.Problem("unreadable", f"{log_path.name}: {exc}")]) from exc
     conversion = change_fragments.legacy_entries_as_fragments(text, default_type=default_type)
@@ -137,7 +139,11 @@ def plan_migration(
                 )
             ]
         )
-    writes = [(directory / f"{scope}.md", fragment) for scope, fragment in conversion.fragments]
+    # A fragment is the log's entry moved out, so it keeps the log's line ending.
+    writes = [
+        (directory / f"{scope}.md", core.with_eol(fragment, eol))
+        for scope, fragment in conversion.fragments
+    ]
     # The directory is how readers know the repo records fragments, and git drops
     # an empty one: without this, the first release that ships every fragment
     # leaves a fresh clone that looks like a repo still on the single-file log.
@@ -148,7 +154,7 @@ def plan_migration(
         writes.append((keep, ""))
     if not conversion.fragments:
         return writes, (), ()
-    writes.append((log_path, conversion.remaining))
+    writes.append((log_path, core.with_eol(conversion.remaining, eol)))
     return writes, conversion.defaulted, conversion.split
 
 
@@ -202,7 +208,7 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
             try:
                 core.write_all_or_none(writes)
             except OSError as exc:
-                print(f"refused: write-failed: {exc}. Every file was restored.", file=sys.stderr)
+                print(f"refused: write-failed: {exc}. {core.write_failure_outcome(exc)}", file=sys.stderr)
                 return 1
             print("  wrote it; commit it.")
         else:
@@ -229,7 +235,7 @@ def migrate_cmd(project_dir: Path, argv: list[str]) -> int:
     try:
         core.write_all_or_none(writes)
     except OSError as exc:
-        print(f"refused: write-failed: {exc}. Every file was restored.", file=sys.stderr)
+        print(f"refused: write-failed: {exc}. {core.write_failure_outcome(exc)}", file=sys.stderr)
         return 1
     print(
         f"  wrote {len(fragments)} fragment(s) and removed their entries from "

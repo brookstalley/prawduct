@@ -212,9 +212,12 @@ def _write_mock_git(mock_bin: Path, *, status: str = "", branch: str = "main", h
         'if [[ "$1" == "rev-parse" ]]; then echo ".git"; exit 0; fi\n'
         'if [[ "$1" == "status" ]]; then cat "%s"; exit 0; fi\n'
         'if [[ "$1" == "branch" && "$2" == "--show-current" ]]; then echo "%s"; exit 0; fi\n'
+        # The branch probe `work_unit.resolve` reads: without it the checkout is
+        # a detached HEAD, which is unbound and arms no Critic gate.
+        'if [[ "$1" == "symbolic-ref" && "${@: -1}" == "HEAD" ]]; then echo "%s"; exit 0; fi\n'
         'if [[ "$1" == "worktree" ]]; then exit 0; fi\n'
         'if [[ "$1" == "ls-files" ]]; then exit 1; fi\n'
-        "exit 0\n" % (head, status_file, branch)
+        "exit 0\n" % (head, status_file, branch, branch)
     )
     git.chmod(0o755)
     gh = mock_bin / "gh"
@@ -259,7 +262,7 @@ def run_plugin_hook(
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), command, *args],
+        [sys.executable, str(HOOK), command, *args],
         capture_output=True, text=True, env=env, timeout=90, input=stdin,
     )
 
@@ -886,7 +889,7 @@ class TestPluginSubcommandsResolveViaLib:
         # fallback message).
         self._repo(tmp_path)
         result = subprocess.run(
-            ["python3", str(HOOK), "advisory", "list"],
+            [sys.executable, str(HOOK), "advisory", "list"],
             capture_output=True, text=True, timeout=90,
             env={"HOME": str(tmp_path / "_home"), "CLAUDE_PROJECT_DIR": str(tmp_path),
                  "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": "/usr/bin:/bin",
@@ -1052,7 +1055,7 @@ def _run_in(repo: Path, *args: str) -> subprocess.CompletedProcess:
     home = repo.parent / "_home"
     home.mkdir(exist_ok=True)
     return subprocess.run(
-        ["python3", str(HOOK), *args],
+        [sys.executable, str(HOOK), *args],
         capture_output=True, text=True, timeout=90,
         env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),
              "CLAUDE_PLUGIN_ROOT": str(ROOT), "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
@@ -3684,7 +3687,7 @@ class TestJurisdictionSubcommand:
         home = repo.parent / "_home"
         home.mkdir(exist_ok=True)
         result = subprocess.run(
-            ["python3", str(HOOK), "jurisdiction"],
+            [sys.executable, str(HOOK), "jurisdiction"],
             input="adopt the telemetry substrate for tracing",
             capture_output=True, text=True, timeout=90,
             env={"HOME": str(home), "CLAUDE_PROJECT_DIR": str(repo),

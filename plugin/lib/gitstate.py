@@ -195,13 +195,24 @@ _EPHEMERAL_DIR_PATTERNS = (
 _EPHEMERAL_BRANCH_PATTERN = re.compile(r"^worktree-agent-[0-9a-f]{6,}$")
 
 
-def _under_claude_worktrees(project_dir: Path) -> bool:
+def is_scratch_branch(name: str | None) -> bool:
+    """Whether ``name`` is the harness scratch-branch pattern — by name alone.
+
+    The branch half of :func:`ephemeral_kind_of`, for a caller that has a
+    branch name and no tree (a branch about to be created or claimed)."""
+    return isinstance(name, str) and _EPHEMERAL_BRANCH_PATTERN.match(name) is not None
+
+
+def under_claude_worktrees(project_dir: Path) -> bool:
     """True when some ancestor pair of ``project_dir`` is ``.claude/worktrees``.
 
     Pure string work on an already-resolved path — no filesystem access and no
     subprocess. This is deliberately the FIRST test in
     :func:`is_ephemeral_worktree` so the common case (every session that is not
     inside a harness-managed worktree) costs nothing on the hook's hot path.
+
+    Public because :func:`evidence_notes.sent_envelope` must ask the same
+    question of a recorded path — a second spelling there drifted looser.
     """
     parts = project_dir.parts
     return any(
@@ -246,7 +257,7 @@ def ephemeral_kind_of(path: str | Path, branch: str | None) -> str | None:
         candidate = Path(path)
     except TypeError:
         return None
-    if not _under_claude_worktrees(candidate):
+    if not under_claude_worktrees(candidate):
         return None
     dir_label = _dir_label(candidate.name)
     if dir_label == "workflow":
@@ -258,7 +269,7 @@ def ephemeral_kind_of(path: str | Path, branch: str | None) -> str | None:
     # can never promote a disposable tree to durable.
     if not isinstance(branch, str) or not branch:
         branch = None
-    scratch = branch is not None and _EPHEMERAL_BRANCH_PATTERN.match(branch) is not None
+    scratch = is_scratch_branch(branch)
     if dir_label == "agent":
         return "agent" if (branch is None or scratch) else None
     return "agent" if scratch else None
@@ -361,7 +372,7 @@ def is_ephemeral_worktree(project_dir: Path) -> str | None:
     # Path shape first, and the ancestor test exactly once: the common case (any
     # tree not under `.claude/worktrees`) answers here having spawned no
     # subprocess, which is what keeps this off the hook's hot path.
-    if not _under_claude_worktrees(project_dir):
+    if not under_claude_worktrees(project_dir):
         return None
 
     # Only an `agent-` tree's answer depends on the branch, so only it pays for
@@ -591,6 +602,45 @@ def local_branches(project_dir: Path) -> set[str] | None:
         return {line.strip() for line in result.stdout.splitlines() if line.strip()}
     except Exception:  # prawduct:allow prawduct/broad-except -- git failure must not crash hook
         return None
+
+
+def ref_is_branch(ref: str, branch: str) -> bool:
+    """Whether the full ref name ``ref`` is exactly ``branch``, local or on one
+    remote: ``refs/heads/<branch>`` or ``refs/remotes/<remote>/<branch>``.
+
+    ``for-each-ref`` patterns also match by prefix up to a slash
+    (``refs/heads/feature`` lists ``refs/heads/feature/x``), so every ref a
+    pattern lists is checked for the exact name here. One rule, shared by the
+    plan lifecycle observer and the chunk-state probe (#1065), so a branch
+    present to one is present to the other."""
+    if ref == f"refs/heads/{branch}":
+        return True
+    prefix = "refs/remotes/"
+    if not ref.startswith(prefix) or not ref.endswith(f"/{branch}"):
+        return False
+    remote = ref[len(prefix) : -len(branch) - 1]
+    return bool(remote) and "/" not in remote
+
+
+def branch_refs(project_dir: Path, branches: "tuple[str, ...]") -> "dict[str, str] | None":
+    """``full ref name → object id`` for every local or single-remote ref that is
+    exactly one of ``branches`` (:func:`ref_is_branch`), or ``None`` when git
+    could not be asked — which, as for :func:`local_branches`, is not evidence
+    that the branches are missing."""
+    if not branches:
+        return {}
+    patterns = [p for b in branches for p in (f"refs/heads/{b}", f"refs/remotes/*/{b}")]
+    code, out, _err = _git_text(
+        project_dir, "for-each-ref", "--format=%(objectname) %(refname)", *patterns
+    )
+    if code != 0:
+        return None
+    refs: dict[str, str] = {}
+    for line in out.splitlines():
+        sha, _sp, ref = line.strip().partition(" ")
+        if is_object_id(sha) and any(ref_is_branch(ref, b) for b in branches):
+            refs[ref] = sha
+    return refs
 
 
 def _git_text(project_dir: Path, *args: str) -> tuple[int, str, str]:

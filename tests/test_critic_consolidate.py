@@ -103,7 +103,7 @@ def _commit_file(repo: Path, rel: str, content: str, msg: str) -> str:
 
 def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-consolidate"],
+        [sys.executable, str(HOOK), "critic-consolidate"],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -159,7 +159,7 @@ def _write_manifest(repo: Path, head: str, *, roster=None, **overrides) -> None:
 
 def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-begin", *args],
+        [sys.executable, str(HOOK), "critic-begin", *args],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -175,7 +175,7 @@ def _abandon(repo: Path) -> subprocess.CompletedProcess:
     a caller genuinely does, so the setup models the lifecycle instead of a path
     the guard now refuses."""
     return subprocess.run(
-        ["python3", str(HOOK), "critic-end"],
+        [sys.executable, str(HOOK), "critic-end"],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -3621,7 +3621,7 @@ class TestConsolidateIntegration:
         _write_manifest(repo, head)
         _full_roster_partials(repo, head)
         result = subprocess.run(
-            ["python3", str(HOOK), "subagent-stop"],
+            [sys.executable, str(HOOK), "subagent-stop"],
             input=json.dumps({"cwd": str(repo),
                               "agent_type": "prawduct:critic-reviewer"}),
             cwd=str(repo), capture_output=True, text=True,
@@ -4294,6 +4294,115 @@ class TestResolutionFacts:
 
 
 # ---------------------------------------------------------------------------
+# Integration: each appended fact goes onto the notes transport (#1052)
+# ---------------------------------------------------------------------------
+
+
+_NOTES_REF = "refs/notes/prawduct"
+
+
+def _note_lines(repo: Path, commit: str) -> list[str]:
+    proc = subprocess.run(
+        ["git", "notes", "--ref", _NOTES_REF, "show", commit],
+        cwd=str(repo), capture_output=True, text=True, env=_git_env(repo), timeout=10,
+    )
+    return [ln for ln in proc.stdout.splitlines() if ln.strip()] if proc.returncode == 0 else []
+
+
+def _sent(lines: list[str]) -> list[str]:
+    """Store lines as a note carries them (O-16): identical except the actor's
+    locator fields — ``actor.worktree`` cut to its basename (these fixtures
+    are no harness scratch tree, which would keep ``.claude/worktrees/<name>``),
+    ``actor.session`` dropped. Derived by hand so the test states the contract."""
+    out = []
+    for line in lines:
+        record = json.loads(line)
+        actor = {k: v for k, v in record["actor"].items() if k != "session"}
+        actor["worktree"] = Path(actor["worktree"]).name
+        out.append(evidence.envelope_line({**record, "actor": actor}).rstrip("\n"))
+    return out
+
+
+class TestFactsAttachAsNotes:
+    def test_a_review_and_its_resolution_are_attached_as_appended(self, tmp_path):
+        """The two write sites: the review fact, then the resolution fact,
+        each carried as its store line — less the actor's locator fields —
+        onto the verifying round's anchor (`dispatch_commit` here — the
+        manifests record `head_commit: null`)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        prior_id = _seed_prior_review_with_blocker(repo, c1)
+        assert _note_lines(repo, c1) == _sent(_store_lines(repo)), "the prior review's note"
+
+        c2 = _commit_file(repo, "src/app.py", "x = 2\n", "fix")
+        _set_marker(repo)
+        _write_manifest(repo, c2, id="rev-verify-0002", mode=VERIFY_MODE, roster=["reviewer"])
+        _write_partial(repo, "reviewer", c2, resolutions=[
+            {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        lines = _store_lines(repo)
+        assert len(lines) == 3
+        assert _note_lines(repo, c2) == _sent(lines[1:]), "the verify review, then its resolution"
+        assert _note_lines(repo, c1) == _sent(lines[:1])
+        assert "NOTE" not in result.stderr
+
+    def test_a_note_that_cannot_be_written_never_fails_consolidation(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        # A ref UNDER the notes ref's name makes git refuse to create it.
+        _git(repo, "update-ref", f"{_NOTES_REF}/blocker", "HEAD")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _full_roster_partials(repo, head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert [f["id"] for f in _store_facts(repo, "review")] == [FAKE_REVIEW_ID]
+        assert (repo / FINDINGS_REL).is_file()
+        assert "git note was not written" in result.stderr
+        assert _note_lines(repo, head) == []
+
+    def test_a_retry_attaches_the_notes_a_failed_first_attempt_could_not_write(self, tmp_path):
+        """Both write sites, on the already-appended path: the first attempt
+        stores the verify review and its resolution but cannot write either
+        note; the replayed dispatch finds both facts present and must still put
+        them on the note — otherwise nothing in this clone ever re-sends them."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        c1 = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "update-ref", f"{_NOTES_REF}/blocker", "HEAD")
+        prior_id = _seed_prior_review_with_blocker(repo, c1)
+        c2 = _commit_file(repo, "src/app.py", "x = 2\n", "fix")
+
+        def verify() -> subprocess.CompletedProcess:
+            _set_marker(repo)
+            _write_manifest(repo, c2, id="rev-verify-0002", mode=VERIFY_MODE, roster=["reviewer"])
+            _write_partial(repo, "reviewer", c2, resolutions=[
+                {"review_id": prior_id, "fid": "R-1", "disposition": "fixed"}
+            ])
+            return _run_consolidate(repo)
+
+        first = verify()
+        assert first.returncode == 0, f"stderr={first.stderr!r}"
+        assert "git note was not written" in first.stderr
+        assert _note_lines(repo, c2) == []
+
+        _git(repo, "update-ref", "-d", f"{_NOTES_REF}/blocker")
+        retry = verify()
+        assert retry.returncode == 0, f"stderr={retry.stderr!r}"
+        lines = _store_lines(repo)
+        assert len(lines) == 3, "the retry appends nothing"
+        assert _note_lines(repo, c2) == _sent(lines[1:]), "the verify review, then its resolution"
+        assert "NOTE" not in retry.stderr
+        # A third replay finds both lines on the note and writes nothing more.
+        assert verify().returncode == 0
+        assert _note_lines(repo, c2) == _sent(lines[1:])
+
+
+# ---------------------------------------------------------------------------
 # Integration: the span verdict rides the clean verify close
 # ---------------------------------------------------------------------------
 
@@ -4446,7 +4555,15 @@ class TestCriticBeginCLI:
         assert manifest["base_tree"] != manifest["head_tree"]
         assert manifest["files_changed"] == ["src/app.py"]
         assert manifest["files_reviewed"] == ["src/app.py"]
-        assert manifest["scope"] == "demo" and manifest["chunk"] == "03"
+        # Renegotiated in the open (#1051, ST8): a chunk id is now validated
+        # against the plan it names a chunk OF, and `--scope demo` resolves to
+        # no plan file here — so there is nothing `03` could be a chunk of, and
+        # the review records `chunks: []` / `chunk: null` and says why in a
+        # note, rather than carrying an id no reader can place. The scope still
+        # rides through.
+        assert manifest["scope"] == "demo"
+        assert (manifest["chunks"], manifest["chunk"]) == ([], None)
+        assert "no build plan resolves for this review, so the declared chunk(s) 03" in result.stderr
         # The marker is set (the session-mutation guard rides the dispatch).
         assert (repo / MARKER_REL).is_file()
         # And the working tree/index were not touched by the capture (R1) —
@@ -4649,7 +4766,7 @@ class TestStageReachesEveryReader:
         assert len(events) == 1 and events[0]["review"]["stage"] == "inner"
 
         stats = subprocess.run(
-            ["python3", str(HOOK), "review-stats", "--json"],
+            [sys.executable, str(HOOK), "review-stats", "--json"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
@@ -4658,6 +4775,46 @@ class TestStageReachesEveryReader:
         assert by_stage["inner"]["reviews"] == 1
         assert by_stage["inner"]["observations"] == 1
         assert "boundary" not in by_stage
+
+    def test_the_ledger_event_joins_its_fact_so_review_stats_reads_the_disposition(self, tmp_path):
+        """The join key, end to end through the real writers. `review-stats`
+        matches a ledger event to its stored review by `review.fact_id` and a
+        finding by `fid`; every unit test hand-writes both, so a hop that
+        stopped carrying either would turn every review unjoined, silently."""
+        repo = self._dirty(tmp_path)
+        begin = _run_begin(repo, "--mode", "chunk", "--scope", "demo")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = self._manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[
+            {"name": "Missing test", "goal": "Nothing Is Missing", "severity": "warning",
+             "recommendation": "Add one", "files": ["a.py"]},
+        ])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+
+        fact = _store_facts(repo, "review")[0]
+        (finding,) = fact["body"]["findings"]
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
+                  if '"review.critic"' in ln]
+        assert len(events) == 1
+        assert events[0]["review"]["fact_id"] == fact["id"]
+        assert [f.get("fid") for f in events[0]["review"]["findings"]] == [finding["fid"]]
+
+        env = {**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
+        filed = subprocess.run(
+            [sys.executable, str(HOOK), "disposition", fact["id"], finding["fid"], "--file", "#1"],
+            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        )
+        assert filed.returncode == 0, filed.stderr
+        stats = subprocess.run(
+            [sys.executable, str(HOOK), "review-stats", "--json"],
+            cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
+        )
+        assert stats.returncode == 0, stats.stderr
+        block = json.loads(stats.stdout)["overall"]["dispositions"]
+        assert (block["status"], block["joined_reviews"], block["unjoined_reviews"]) == (
+            "available", 1, 0)
+        assert block["by_outcome"]["filed"] == 1
 
     def test_the_fact_body_and_cache_carry_a_null_stage_for_an_old_manifest(self):
         body = cc.build_fact_body(_manifest_dict(), [_partial("reviewer", "abc123")])
@@ -5160,7 +5317,7 @@ class TestBeginMarksFindingsSuperseded:
         repo, _head, prior_id = self._repo_with_a_completed_review(tmp_path)
         assert _run_begin(repo, "--mode", "chunk").returncode == 0  # B dispatched…
         subprocess.run(  # …and abandoned without consolidating
-            ["python3", str(HOOK), "critic-end"],
+            [sys.executable, str(HOOK), "critic-end"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
@@ -6142,7 +6299,7 @@ class TestWorktreeVisibility:
         (repo_b / ".prawduct").mkdir()  # onboarded, so we reach the refuse
         (repo_b / "b.py").write_text("y = 2\n")
         result = subprocess.run(
-            ["python3", str(HOOK), "critic-begin", "--mode", "chunk"],
+            [sys.executable, str(HOOK), "critic-begin", "--mode", "chunk"],
             cwd=str(repo_a), capture_output=True, text=True,
             env={**_git_env(repo_a), "CLAUDE_PLUGIN_ROOT": str(ROOT),
                  "CLAUDE_PROJECT_DIR": str(repo_b)}, timeout=30,
@@ -6205,8 +6362,11 @@ class TestRecordLintInManifest:
     def test_manifest_carries_a_record_lint_block(self, tmp_path):
         _repo, manifest, _res = self._dispatch(tmp_path)
         lint = manifest["record_lint"]
+        # `chunks_graded` added in the open (#1051): record-lint grades every
+        # chunk the review fact names, and lists them; `chunk_graded` stays.
         assert set(lint) == {
-            "records", "chunk_graded", "plan_graded", "findings", "unchecked", "counts",
+            "records", "chunk_graded", "chunks_graded", "plan_graded", "findings",
+            "unchecked", "counts",
         }
         # Every check is present with an explicit tally, so a zero is visibly a
         # zero rather than a key a consumer has to interpret — and a check that
@@ -6360,15 +6520,27 @@ class TestRecordLintInManifest:
         assert cc.build_fact_body(manifest, [])["record_lint"] is None
 
 
-class TestScopeAttribution:
-    """Which plan the RECORD says the review was of.
+#: Every value a new manifest may write as ``scope_chosen_by``: the dispatch's
+#: override, else the work-unit binding's route. ``branch-name`` and
+#: ``not-resolved`` are history — readers accept them in old facts, and nothing
+#: writes them (additive-first: a retired value is never repurposed).
+SCOPE_CHOSEN_BY_WRITTEN = {"binding", "legacy-pointer", "legacy-default", "explicit-args", "none"}
+SCOPE_CHOSEN_BY_RETIRED = {"branch-name", "not-resolved"}
 
-    An unbounded `active_build_plan` has attributed the manifest, the review
-    fact and the ledger event to an unrelated plan — with the pointer correct
-    every time, which is why nothing here repoints it.
+
+class TestScopeAttribution:
+    """Which unit the RECORD says the review was of: the checkout's work-unit
+    binding (``lib.work_unit``), or the dispatch's explicit override.
+
+    An unbounded `active_build_plan` attributed the manifest, the review fact
+    and the ledger event to an unrelated plan — with the pointer correct every
+    time, which is why nothing here repoints it.
     """
 
     def _repo_with_scoped_plan(self, tmp_path, branch: str) -> Path:
+        """`mine` claims `fix/mine`; `other` is the pointer's plan and claims
+        nothing. A claim existing anywhere closes the legacy window, so on any
+        other branch the pointer answers nothing."""
         repo = tmp_path / "r"
         _init_repo(repo)
         _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -6383,7 +6555,7 @@ class TestScopeAttribution:
             "### Chunk 01: other\n\n- **Deliverables:** `src/app.py`\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n# Plan\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n# Plan\n\n"
             "## Status\n\n- [ ] Chunk 01: mine\n\n"
             "### Chunk 01: mine\n\n- **Deliverables:** `src/app.py`\n"
         )
@@ -6392,10 +6564,11 @@ class TestScopeAttribution:
         (repo / "src/app.py").write_text("x = 2\n")
         return repo
 
-    def test_scope_is_derived_from_the_branch_when_the_dispatch_omits_it(
-        self, tmp_path
-    ):
-        """No `--scope`, and the record still names this branch's plan.
+    def _manifest(self, repo) -> dict:
+        return json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+    def test_scope_is_the_binding_when_the_dispatch_omits_it(self, tmp_path):
+        """No `--scope`, and the record still names the plan claiming this branch.
 
         Derived in code rather than left to the dispatching agent to read off
         the pointer — that read is where the misattribution enters.
@@ -6403,16 +6576,18 @@ class TestScopeAttribution:
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
         result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
-        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        manifest = self._manifest(repo)
         assert manifest["scope"] == "mine"
-        assert manifest["scope_chosen_by"] == "branch-name"
+        assert manifest["scope_chosen_by"] == "binding"
+        assert manifest["scope_unresolved_cause"] is None
+        assert manifest["scope_reason"] is None
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-mine.md")
 
     def test_an_explicit_scope_still_wins(self, tmp_path):
         repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
         result = _run_begin(repo, "--mode", "chunk", "--chunk", "01", "--scope", "other")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
-        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        manifest = self._manifest(repo)
         assert manifest["scope"] == "other"
         assert manifest["scope_chosen_by"] == "explicit-args"
         assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
@@ -6432,7 +6607,7 @@ class TestScopeAttribution:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "record-lint graded chunk 01 of" in result.stdout
         assert "build-plan-mine.md" in result.stdout
-        assert "scope mine, branch-name" in result.stdout
+        assert "scope mine, binding" in result.stdout
 
     def test_a_dispatch_with_no_gradable_chunk_says_what_did_not_run(self, tmp_path):
         """A check with no subject is reported as not-run, not as a clean pass."""
@@ -6453,28 +6628,158 @@ class TestScopeAttribution:
         result = _run_begin(repo, "--mode", "chunk")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert "NOT run: chunk-ref-missing" in result.stdout, result.stdout
-        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        manifest = self._manifest(repo)
         assert manifest["record_lint"]["counts"]["chunk-ref-missing"] is None
 
-    def test_a_branch_matching_no_declared_scope_infers_nothing(self, tmp_path):
-        """The inference can only ADD attribution, never redirect it.
+    def test_a_branch_no_plan_claims_records_none_through_to_the_ledger(self, tmp_path):
+        """The #1049 event shape. A review of a branch no plan claims recorded no
+        scope in its manifest, and then the ledger event — written without a
+        `--scope` — filled one in from the pointer's plan, so the two records of
+        one review named different work. Unbound records `none` everywhere.
 
-        A branch name matching nothing leaves every caller on the behaviour it
-        had before — which is the whole safety argument for reading a branch
-        name at all.
+        The control is the claimed branch, whose scope reaches every record.
         """
         repo = self._repo_with_scoped_plan(tmp_path, "fix/unrelated-name")
         result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
         assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "none"
+        # A short code, and the binding's sentence in its own field: the cause
+        # field stays the countable code it always was (api-contract.md:
+        # additive-first, no field repurposed). `no-claim`: the fixture's plan
+        # is uncommitted, so it reads as written on this branch.
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        # The pointer names a branchless plan, so the binding's sentence goes on
+        # to name it and the bind command; the field is that sentence verbatim.
+        assert manifest["scope_reason"].startswith(
+            "no live plan claims `fix/unrelated-name` — `active_build_plan` names build-plan-other.md"
+        )
+
+        assert manifest["roster"] == ["reviewer"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        consolidated = _run_consolidate(repo)
+        assert consolidated.returncode == 0, f"stderr={consolidated.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        assert fact["body"]["scope"] is None
+        assert fact["body"]["scope_chosen_by"] == "none"
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines() if ln.strip()]
+        assert [e["event"] for e in events] == ["review.critic"]
+        assert events[0]["scope"] is None
+
+    def test_the_claimed_branch_carries_its_scope_to_the_ledger(self, tmp_path):
+        """The control for the #1049 shape: the same fixture on the branch
+        `mine` claims puts `mine` on the manifest, the fact and the event."""
+        repo = self._repo_with_scoped_plan(tmp_path, "fix/mine")
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "01")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = self._manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        consolidated = _run_consolidate(repo)
+        assert consolidated.returncode == 0, f"stderr={consolidated.stderr!r}"
+        assert _store_facts(repo, "review")[-1]["body"]["scope"] == "mine"
+        events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines() if ln.strip()]
+        assert events[-1]["scope"] == "mine"
+
+
+class TestScopeChosenByVocabulary:
+    """What a new manifest may write as ``scope_chosen_by``, across every
+    binding route — and what it may never write again."""
+
+    def _repo(self, tmp_path, plans: dict, branch: str, state: str = "") -> Path:
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (repo / ".prawduct" / "project-state.yaml").write_text(f"project_name: t\n{state}")
+        for name, body in plans.items():
+            (artifacts / name).write_text(body)
+        _commit_file(repo, ".prawduct/keep", "", "seed prawduct")
+        _git(repo, "checkout", "-b", branch, "--quiet")
+        (repo / "src/app.py").write_text("x = 2\n")
+        return repo
+
+    PLAN = "---\nartifact: build-plan\n{fm}---\n\n# Plan\n\n## Status\n\n- [ ] Chunk 01: a\n"
+
+    @pytest.mark.parametrize(
+        "plans, state, extra, expected",
+        [
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/work\n")},
+                "", (), "binding", id="claimed",
+            ),
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\n")},
+                "active_build_plan: artifacts/build-plan-a.md\n", (), "legacy-pointer",
+                id="legacy-pointer",
+            ),
+            pytest.param(
+                {"build-plan.md": PLAN.format(fm="scope: a\n")},
+                "", (), "legacy-default", id="legacy-default",
+            ),
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/other\n")},
+                "", (), "none", id="unbound",
+            ),
+            pytest.param(
+                {
+                    "build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/work\n"),
+                    "build-plan-b.md": PLAN.format(fm="scope: b\nbranch: feat/work\n"),
+                },
+                "", (), "none", id="broken",
+            ),
+            pytest.param(
+                {"build-plan-a.md": PLAN.format(fm="scope: a\nbranch: feat/other\n")},
+                "", ("--scope", "a"), "explicit-args", id="explicit",
+            ),
+        ],
+    )
+    def test_every_route_writes_a_current_value(self, tmp_path, plans, state, extra, expected):
+        repo = self._repo(tmp_path, plans, "feat/work", state)
+        result = _run_begin(repo, "--mode", "chunk", *extra)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope_chosen_by"] == expected
+        assert manifest["scope_chosen_by"] in SCOPE_CHOSEN_BY_WRITTEN
+        assert manifest["scope_chosen_by"] not in SCOPE_CHOSEN_BY_RETIRED
+
+    def test_a_broken_binding_records_no_scope_and_says_why(self, tmp_path):
+        """Two claimants are reported, never resolved by precedence: neither
+        plan's scope is recorded, and the note names both."""
+        plan = self.PLAN
+        repo = self._repo(
+            tmp_path,
+            {
+                "build-plan-a.md": plan.format(fm="scope: a\nbranch: feat/work\n"),
+                "build-plan-b.md": plan.format(fm="scope: b\nbranch: feat/work\n"),
+            },
+            "feat/work",
+        )
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["scope"] is None
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        assert manifest["record_lint"]["plan_graded"].endswith("build-plan-other.md")
+        assert manifest["scope_unresolved_cause"] == "broken"
+        assert "2 live plans claim `feat/work`" in manifest["scope_reason"]
+        assert "this review resolved no build-plan scope" in result.stderr
+        assert "build-plan-a.md, build-plan-b.md" in result.stderr
+
+    def test_a_historical_fact_with_a_retired_value_still_builds(self):
+        """Additive-first: a manifest written before the binding carries a
+        retired value, and consolidating it must not refuse or rewrite it."""
+        manifest = _manifest_dict(scope=None, scope_chosen_by="not-resolved",
+                                  scope_unresolved_cause="no-claim")
+        ok, why = cc.validate_manifest(manifest)
+        assert ok, why
+        body = cc.build_fact_body(manifest, [])
+        assert body["scope_chosen_by"] == "not-resolved"
+        assert body["scope_unresolved_cause"] == "no-claim"
 
 
 class TestUnresolvedScopeCause:
-    """When a dispatch resolves no scope, `critic-begin` says why and what edit
-    fixes it, and records the cause in the manifest.
+    """When a dispatch records no scope, the manifest records the binding's
+    reason, and `critic-begin` says what edit fixes it where there is one.
 
     Before this the only trace was a parenthetical on the record-lint line, and
     a third of reviews across the fleet resolved no scope unnoticed — each one
@@ -6509,20 +6814,26 @@ class TestUnresolvedScopeCause:
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         return result, manifest
 
-    def test_a_claim_with_no_scope_is_named(self, tmp_path):
+    def test_a_claim_with_no_scope_binds_and_is_named(self, tmp_path):
+        """A claimant without `scope:` governs its branch — so the record says
+        `binding` — but records no unit, and the reason says to add one."""
         repo = self._repo(
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nbranch: feat/work\n---\n\n# Plan\n"},
             "feat/work",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "binding"
         assert manifest["scope_unresolved_cause"] == "claim-no-scope"
-        assert "build-plan-a.md claims branch 'feat/work' but declares no `scope:`" in result.stderr
+        assert "build-plan-a.md claims `feat/work` but declares no `scope:`" in (
+            manifest["scope_reason"]
+        )
+        assert "build-plan-a.md claims `feat/work` but declares no `scope:`" in result.stderr
 
-    def test_a_claimant_whose_scope_is_a_duplicate_is_not_told_to_add_one(self, tmp_path):
-        # The scope map keeps one plan per scope; the shadowed claimant still
-        # declares one, so "add one" would be wrong advice.
+    def test_a_claimant_whose_scope_another_plan_shares_still_binds(self, tmp_path):
+        # The claim answers, not the scope map: a plan sharing the claimant's
+        # scope does not shadow the claimant.
         repo = self._repo(
             tmp_path,
             {
@@ -6534,11 +6845,10 @@ class TestUnresolvedScopeCause:
             "feat/work",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        # b claims the branch and declares a scope; its scope is shadowed, and
-        # the branch edited no plan, so there is no advice worth printing.
-        assert manifest["scope_unresolved_cause"] is None
-        assert "declares no `scope:`" not in result.stderr
+        assert manifest["scope"] == "dup"
+        assert manifest["scope_chosen_by"] == "binding"
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
+        assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_a_branch_line_below_the_frontmatter_is_named(self, tmp_path):
         repo = self._repo(
@@ -6552,7 +6862,9 @@ class TestUnresolvedScopeCause:
             "feat/work",
         )
         result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "none"
         assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert manifest["scope_reason"] == "no live plan claims `feat/work`"
         assert "build-plan-a.md names branch 'feat/work' below its frontmatter" in result.stderr
         assert "move `branch: feat/work` into the `---` block" in result.stderr
         # It has a scope, so the fix is the one line — no second edit is asked for.
@@ -6563,7 +6875,7 @@ class TestUnresolvedScopeCause:
             tmp_path, {"build-plan-a.md": "# Plan\n\nbranch: feat/work\n"}, "feat/work"
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_unresolved_cause"] == "body-branch"
+        assert manifest["scope_chosen_by"] == "none"
         assert "together with a `scope:`" in result.stderr
 
     def test_an_active_plan_claiming_another_branch_is_named(self, tmp_path):
@@ -6579,6 +6891,8 @@ class TestUnresolvedScopeCause:
             state="active_build_plan: artifacts/build-plan-p.md\n",
         )
         result, manifest = self._dispatch(repo)
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "none"
         assert manifest["scope_unresolved_cause"] == "pointer-claims-other"
         assert "build-plan-p.md claims branch 'develop', not 'feat/work'" in result.stderr
 
@@ -6590,6 +6904,7 @@ class TestUnresolvedScopeCause:
             edit="build-plan-a.md",
         )
         result, manifest = self._dispatch(repo)
+        assert manifest["scope_chosen_by"] == "none"
         assert manifest["scope_unresolved_cause"] == "no-claim"
         assert (
             "build-plan-a.md was edited on this branch but no live plan declares "
@@ -6603,23 +6918,24 @@ class TestUnresolvedScopeCause:
             "---\nartifact: build-plan\nscope: new\n---\n\n# Plan\n"
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert manifest["scope_chosen_by"] == "none"
         assert "build-plan-new.md was edited on this branch" in result.stderr
 
     def test_a_branch_that_touched_no_plan_says_nothing(self, tmp_path):
         """Plan-less work — a chore, a small fix — is normal, and the plans that
         exist belong to other work. A note telling it to add `branch:` to "the
         plan this work belongs to" would fire on every such review with nothing
-        to act on. The sibling test above, identical but for the edit, is the
-        control."""
+        to act on, so the reason is recorded and not printed. The sibling test
+        above, identical but for the edit, is the control."""
         repo = self._repo(
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
             "chore/bump",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        assert manifest["scope_unresolved_cause"] is None
+        assert manifest["scope_chosen_by"] == "none"
+        assert manifest["scope_unresolved_cause"] == "unbound"
+        assert manifest["scope_reason"] == "no live plan claims `chore/bump`"
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_the_integration_branch_says_nothing(self, tmp_path):
@@ -6631,8 +6947,9 @@ class TestUnresolvedScopeCause:
             "main",
         )
         result, manifest = self._dispatch(repo)
-        assert manifest["scope_chosen_by"] == "not-resolved"
-        assert manifest["scope_unresolved_cause"] is None
+        assert manifest["scope_chosen_by"] == "none"
+        assert manifest["scope_unresolved_cause"] == "unbound"
+        assert manifest["scope_reason"] == "no live plan claims `main`"
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_a_resolved_or_explicit_scope_says_nothing(self, tmp_path):
@@ -6644,17 +6961,17 @@ class TestUnresolvedScopeCause:
         repo = self._repo(tmp_path, plans, "feat/work")
         result, manifest = self._dispatch(repo)
         assert manifest["scope"] == "a"
-        assert manifest["scope_unresolved_cause"] is None
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
         assert "this review resolved no build-plan scope" not in result.stderr
 
         repo = self._repo(tmp_path / "explicit", {}, "feat/other")
         result, manifest = self._dispatch(repo, "--scope", "anything")
         assert manifest["scope_chosen_by"] == "explicit-args"
-        assert manifest["scope_unresolved_cause"] is None
+        assert (manifest["scope_unresolved_cause"], manifest["scope_reason"]) == (None, None)
         assert "this review resolved no build-plan scope" not in result.stderr
 
     def test_the_cause_reaches_the_review_fact(self, tmp_path):
-        """The note's yield must be queryable from the store, not only printed."""
+        """The reason must be queryable from the store, not only printed."""
         repo = self._repo(
             tmp_path,
             {"build-plan-a.md": "---\nartifact: build-plan\nscope: a\n---\n\n# Plan\n"},
@@ -6669,6 +6986,59 @@ class TestUnresolvedScopeCause:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         fact = _store_facts(repo, "review")[-1]
         assert fact["body"]["scope_unresolved_cause"] == "no-claim"
+        assert fact["body"]["scope_reason"] == "no live plan claims `feat/work`"
+        assert fact["body"]["scope_chosen_by"] == "none"
+
+    def test_the_unbound_cases_about_no_plan_get_their_own_codes(self, tmp_path):
+        """`scratch-worktree`, `detached-head` and `no-work-tree` are mapped from
+        the binding's case (`critic_consolidate.SCOPE_CAUSE_BY_CASE`), and each is
+        resolved FOR REAL here, so the resolver emitting a case and the map
+        reading it are pinned together. A legacy binding with no scope is the
+        bound control."""
+        from lib import work_unit
+
+        def code(project):
+            binding = work_unit.resolve(project)
+            return cc._unresolved_scope_cause(project, project / ".prawduct", binding)
+
+        repo = self._repo(tmp_path / "repo", {}, "feat/work")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _git(repo, "checkout", "--detach", head, "--quiet")
+        assert code(repo) == ("detached-head", None)
+
+        plain = tmp_path / "plain"
+        (plain / ".prawduct" / "artifacts").mkdir(parents=True)
+        assert code(plain) == ("no-work-tree", None)
+
+        primary = self._repo(tmp_path / "primary", {}, "feat/work")
+        wid = "a287823214767feaa"
+        scratch = primary / ".claude" / "worktrees" / f"agent-{wid}"
+        scratch.parent.mkdir(parents=True)
+        _git(primary, "worktree", "add", "-q", "-b", f"worktree-agent-{wid}", str(scratch), "HEAD")
+        assert code(scratch) == ("scratch-worktree", None)
+
+        legacy = self._repo(
+            tmp_path / "legacy", {"build-plan.md": "---\nartifact: build-plan\n---\n\n# Plan\n"},
+            "feat/work",
+        )
+        got, advice = code(legacy)
+        assert got == "legacy"
+        assert advice.startswith(f"{work_unit.LEGACY_ADVISORY_KEY}:")
+
+
+    def test_every_binding_case_has_a_cause_code(self):
+        """The map is keyed on `work_unit.Case`, enumerated from the module, not
+        typed here: a case added to the resolver with no entry would fall
+        through to the `no-claim` diagnosis and record a cause that is not its
+        own. Unknown keys are refused too — a map entry for a case the resolver
+        no longer emits is a stale second spelling."""
+        import typing
+
+        from lib import work_unit
+
+        cases = set(typing.get_args(work_unit.Case))
+        assert len(cases) >= 10, cases
+        assert set(cc.SCOPE_CAUSE_BY_CASE) == cases
 
 
 # ---------------------------------------------------------------------------
@@ -8174,7 +8544,7 @@ class TestGuardRefusalsReachTheirOwnQuery:
 
     def _list(self, repo: Path) -> str:
         proc = subprocess.run(
-            ["python3", str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
+            [sys.executable, str(HOOK), "evidence", "list", "--kind", "guard-refusal"],
             cwd=str(repo), capture_output=True, text=True,
             env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
         )
@@ -8582,7 +8952,7 @@ class TestOneFixOrderEverywhere:
 
 def _run_consolidate_args(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-consolidate", *args],
+        [sys.executable, str(HOOK), "critic-consolidate", *args],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -8761,3 +9131,493 @@ class TestTreeUnchangedDuringReview:
         (repo / ".prawduct" / ".critic-active").write_text("{}")  # NOT this project's
         state, detail = cc.tree_changed_since_dispatch(proj, {"dispatch_tree": before})
         assert (state, detail) == ("changed", [".prawduct/.critic-active"])
+
+
+# ---------------------------------------------------------------------------
+# Untracked files in a reviewed working tree (#1003)
+# ---------------------------------------------------------------------------
+
+
+class TestUntrackedFilesInTheReviewedTree:
+    """A review that anchors on the working tree vouches for a tree built with
+    `git add -A`, so it includes untracked files. Committing only the tracked
+    files records a tree without them: the interval from the reviewed tree to
+    that commit deletes a judgeable path, and the gate reads `uncovered`. The
+    builder must hear about it while excluding the file is still free, and the
+    "commit verbatim" advice has to say what verbatim includes.
+    """
+
+    NOTE = "the reviewed tree includes untracked file(s)"
+
+    @staticmethod
+    def _seed_and_fix(repo: Path) -> str:
+        _init_repo(repo)
+        # Session state is ignored in a real repo; without this the dispatch's
+        # own manifest and marker are untracked files that move the tree.
+        (repo / ".git" / "info" / "exclude").write_text(".prawduct/\n")
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct").mkdir(exist_ok=True)
+        _seed_prior_review_with_blocker(repo, head, head_tree=head_tree, head_commit=head)
+        (repo / "src/app.py").write_text("x = 2  # fixed\n")
+        return head
+
+    @staticmethod
+    def _notes(stderr: str) -> "list[str]":
+        return [line for line in stderr.splitlines() if "untracked file(s)" in line]
+
+    def test_dispatch_names_an_untracked_stray_file(self, tmp_path):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        (repo / "stray.txt").write_text("os metadata\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        notes = self._notes(result.stderr)
+        assert len(notes) == 1, result.stderr
+        assert "untracked file(s) stray.txt," in notes[0]
+        assert "`git add -A`" in notes[0]
+        assert ".git/info/exclude" in notes[0]
+        assert "critic-end" in notes[0], "the re-dispatch remedy must be reachable"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        names = _git(repo, "ls-tree", "-r", "--name-only", manifest["head_tree"]).stdout
+        assert "stray.txt" in names.splitlines(), "the note must describe the reviewed tree"
+
+    def test_no_untracked_file_means_no_note(self, tmp_path):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert self._notes(result.stderr) == []
+
+    def test_an_excluded_file_is_neither_captured_nor_named(self, tmp_path):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        (repo / "stray.txt").write_text("os metadata\n")
+        with (repo / ".git" / "info" / "exclude").open("a") as fh:
+            fh.write("stray.txt\n")
+        result = _run_begin(repo, "--mode", "verify-resolutions")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert self._notes(result.stderr) == []
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        names = _git(repo, "ls-tree", "-r", "--name-only", manifest["head_tree"]).stdout
+        assert "stray.txt" not in names.splitlines()
+        assert "src/app.py" in names.splitlines()
+
+    def test_an_unlistable_set_says_so_rather_than_reading_as_none(
+        self, tmp_path, monkeypatch
+    ):
+        repo = tmp_path / "r"
+        self._seed_and_fix(repo)
+        real = evidence.capture_tree
+
+        def unlisted(project_dir):
+            return {**real(project_dir), "untracked": None}
+
+        monkeypatch.setattr(evidence, "capture_tree", unlisted)
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result["status"] == "ok", result
+        assert any(
+            "untracked files in the reviewed tree could not be listed" in n
+            for n in result["notes"]
+        ), result["notes"]
+
+    def test_a_committed_head_anchor_names_nothing(self, tmp_path):
+        """`cumulative` reviews committed HEAD, which never held the untracked
+        file — a note there would describe a tree this review did not see."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _git(repo, "checkout", "-q", "-b", "feature/demo")
+        (repo / ".prawduct").mkdir()
+        _commit_file(repo, "src/app.py", "x = 2\n", "work")
+        (repo / "stray.txt").write_text("os metadata\n")
+        result = _run_begin(repo, "--mode", "cumulative")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert self._notes(result.stderr) == []
+
+    def test_the_close_names_the_files_verbatim_includes(self, tmp_path):
+        repo = tmp_path / "r"
+        head = self._seed_and_fix(repo)
+        (repo / "stray.txt").write_text("os metadata\n")
+        begun = _run_begin(repo, "--mode", "verify-resolutions")
+        assert begun.returncode == 0, f"stderr={begun.stderr!r}"
+        # A warning, so the close still carries a fix decision — the cost lead
+        # leads only that arm; a zero-finding close has nothing to price.
+        _write_partial(repo, "reviewer", head, resolutions=[
+            {"review_id": "rev-prior-0001", "fid": "R-1", "disposition": "fixed"}
+        ], findings=[{"name": "Naming", "goal": "Nothing Is Broken",
+                      "severity": "warning", "recommendation": "Rename",
+                      "files": ["src/app.py"]}])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert (
+            "commit this tree verbatim, including the untracked stray.txt"
+            " (`git add -A`)"
+        ) in result.stdout, result.stdout
+
+
+class TestCostLeadNamesUntracked:
+    DIRTY = {"paths": ["a.py"], "judgeable": ["a.py"], "free": []}
+
+    def test_the_covered_arm_names_untracked_files(self):
+        lead = cc.cost_lead(self.DIRTY, True, ["stray.txt"])
+        assert "including the untracked stray.txt (`git add -A`)" in lead
+
+    def test_an_empty_or_unknown_list_leaves_the_advice_unchanged(self):
+        plain = cc.cost_lead(self.DIRTY, True)
+        assert "commit this tree verbatim and stop" in plain
+        assert cc.cost_lead(self.DIRTY, True, []) == plain
+        assert cc.cost_lead(self.DIRTY, True, None) == plain
+
+    def test_only_the_covered_arm_reads_the_list(self):
+        assert cc.cost_lead(self.DIRTY, False, ["stray.txt"]) == cc.cost_lead(self.DIRTY, False)
+        clean = {"paths": [], "judgeable": [], "free": []}
+        assert "stray.txt" not in cc.cost_lead(clean, True, ["stray.txt"])
+
+    def test_a_long_list_is_capped(self):
+        # The module's shared path-list spelling, not a second one.
+        paths = [f"f{i:02d}.bin" for i in range(13)]
+        lead = cc.cost_lead(self.DIRTY, True, paths)
+        assert cc.name_paths(paths) in lead
+        assert "f12.bin" not in lead
+
+
+class TestJudgeableUntracked:
+    def test_metadata_and_prose_are_dropped(self):
+        capture = {"status": "ok", "untracked": [".prawduct/x.json", "notes.md", ".DS_Store"]}
+        assert cc.judgeable_untracked(capture) == [".DS_Store"]
+
+    def test_unknown_stays_unknown(self):
+        assert cc.judgeable_untracked({"status": "ok", "untracked": None}) is None
+        assert cc.judgeable_untracked({"status": "error"}) is None
+
+
+# ---------------------------------------------------------------------------
+# ST8 (#1051): the review names its chunks — `chunks`, `chunks_proposed`, `chunk`
+# ---------------------------------------------------------------------------
+
+
+_ST8_PLAN = (
+    "---\nartifact: build-plan\nscope: cs\nbranch: feat/cs\nbase: main\n---\n\n# Plan\n\n"
+    "### Chunk 01: one\n\n- **Deliverables:** `src/one.py`\n\n"
+    "### Chunk 02: two\n\n- **Deliverables:** `src/two.py`\n\n"
+    "### Chunk 03: three\n\n- **Deliverables:** `src/three.py`\n"
+)
+
+
+def _st8_repo(tmp_path: Path, *, plan: "str | None" = _ST8_PLAN) -> Path:
+    """A branch claimed by a three-chunk plan (no `## Status` block), with
+    uncommitted work touching chunks 01's and 03's Deliverables — so a `chunk`
+    dispatch proposes exactly 01 and 03. ``plan=None`` leaves the checkout
+    unbound (no plan at all)."""
+    repo = tmp_path / "r"
+    _init_repo(repo)
+    for name in ("one", "two", "three"):
+        _commit_file(repo, f"src/{name}.py", f"{name} = 0\n", f"init {name}")
+    _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+    if plan is not None:
+        _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", plan, "plan")
+    _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+    (repo / "src/one.py").write_text("one = 1\n")
+    (repo / "src/three.py").write_text("three = 1\n")
+    return repo
+
+
+def _st8_manifest(repo: Path) -> dict:
+    return json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+
+
+class TestTheReviewNamesItsChunks:
+    """`begin_review(chunks=…)` (the `--chunks` flag's library half; `--chunk`
+    stays as its one-element alias) — the manifest and the review fact carry
+    `chunks`, `chunks_proposed`, and `chunk = chunks[0]`, so
+    `plan_status.chunk_states` can certify every chunk one review covered."""
+
+    def test_a_fact_names_two_chunks_and_chunk_is_the_first(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        result = cc.begin_review(repo, "chunk", chunks=["01", "03"])
+        assert result["status"] == "ok", result
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == ["01", "03"]
+        assert manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunk"] == "01"
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        (fact,) = _store_facts(repo, "review")
+        body = fact["body"]
+        assert (body["chunks"], body["chunk"], body["chunks_proposed"]) == (
+            ["01", "03"], "01", ["01", "03"]
+        )
+        # And the one reader certifies both, and only both.
+        from lib import plan_status
+
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", evidence.read_facts(repo),
+            repo_dir=repo,
+        )
+        assert {k: s.state for k, s in states.items()} == {
+            "01": "done", "02": "open", "03": "done"
+        }
+
+    def test_omitted_flags_declare_the_proposal(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, result.stderr
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+        assert manifest["chunk"] == "01"
+        assert "WARNING: declared chunk" not in result.stderr
+
+    def test_final_proposes_the_chunks_its_interval_built_not_every_open_one(self, tmp_path):
+        """#1072: a `final` once proposed every open chunk, so a mid-plan keystone
+        review certified 02, which nothing in the interval touches and no commit
+        names. A mode sets depth, not reach: the proposal, and so the fact, is
+        what the interval built — here the uncommitted work on 01 and 03."""
+        repo = _st8_repo(tmp_path)
+        assert cc.begin_review(repo, "final")["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+
+    def test_the_chunk_alias_is_one_element_and_normalized_to_the_plan(self, tmp_path):
+        """`--chunk 1` against a plan printing `01`: recorded as the plan prints it."""
+        repo = _st8_repo(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "1")
+        assert result.returncode == 0, result.stderr
+        manifest = _st8_manifest(repo)
+        assert (manifest["chunks"], manifest["chunk"]) == (["01"], "01")
+
+    def test_a_declared_chunk_outside_the_proposal_warns_and_is_recorded(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "02")
+        assert result.returncode == 0, result.stderr
+        assert "WARNING: declared chunk(s) 02 are not in the proposal" in result.stderr
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == ["02"]
+        assert manifest["chunks_proposed"] == ["01", "03"]
+        # Control: declaring inside the proposal says nothing.
+        _abandon(repo)
+        inside = _run_begin(repo, "--mode", "chunk", "--chunk", "03")
+        assert inside.returncode == 0, inside.stderr
+        assert "WARNING: declared chunk" not in inside.stderr
+
+    def test_an_id_the_plan_does_not_declare_is_refused(self, tmp_path):
+        repo = _st8_repo(tmp_path)
+        lib = cc.begin_review(repo, "chunk", chunks=["01", "09"])
+        assert lib["status"] == "error" and lib["kind"] == cc.UNKNOWN_CHUNK_KIND, lib
+        assert "09" in lib["reason"] and "declares 01, 02, 03" in lib["reason"]
+        cli = _run_begin(repo, "--mode", "chunk", "--chunk", "09")
+        assert cli.returncode == 1, cli.stderr
+        assert "chunk id(s) 09 are not chunks of" in cli.stderr
+        assert not (repo / PARTIALS_REL / "manifest.json").exists()
+        # Control: the same dispatch naming a real chunk is accepted.
+        assert _run_begin(repo, "--mode", "chunk", "--chunk", "01").returncode == 0
+
+    def test_a_rejected_heading_key_is_not_a_chunk_id(self, tmp_path):
+        repo = _st8_repo(tmp_path, plan=_ST8_PLAN + "\n#### Chunk 4x: oops\n")
+        from lib import plan_status
+
+        states = plan_status.chunk_states(
+            repo / ".prawduct/artifacts/build-plan-cs.md", {"facts": []}, repo_dir=repo
+        )
+        (synthetic,) = [k for k, s in states.items() if s.synthetic]
+        result = cc.begin_review(repo, "chunk", chunks=[synthetic])
+        assert result["status"] == "error" and result["kind"] == cc.UNKNOWN_CHUNK_KIND, result
+
+    def test_an_unbound_checkout_names_no_chunks(self, tmp_path):
+        repo = _st8_repo(tmp_path, plan=None)
+        result = cc.begin_review(repo, "chunk")
+        assert result["status"] == "ok", result
+        manifest = _st8_manifest(repo)
+        assert (manifest["chunks"], manifest["chunks_proposed"], manifest["chunk"]) == ([], [], None)
+
+    def test_an_unbound_checkout_drops_a_declared_chunk_and_says_so(self, tmp_path):
+        repo = _st8_repo(tmp_path, plan=None)
+        result = cc.begin_review(repo, "chunk", chunk="01")
+        assert result["status"] == "ok", result
+        manifest = _st8_manifest(repo)
+        assert (manifest["chunks"], manifest["chunk"]) == ([], None)
+        assert any("no build plan resolves for this review" in n for n in result["notes"]), result["notes"]
+
+
+class TestTheDispatchProposalLeavesOutTheStubAndSaysWhyItNamedFewer:
+    """#1075 at the dispatch: `critic-begin` hands the proposal the tree its
+    diff ends at, and prints the proposal's notes."""
+
+    _STUB = (
+        "---\nschema: 1\ntype: fix\nscope: cs\ndate: 2026-10-26\ntitle: t\n---\n\n"
+        "## Consumer note\n"
+    )
+
+    def _repo(self, tmp_path: Path) -> Path:
+        """`plan new`'s commit on the branch — the plan and the fragment stub,
+        which Chunk 04 lists — then Chunk 01's commit. A clean tree with no
+        review behind it starts a `chunk` interval at the merge-base, so the
+        stub is in it (#733's Chunk 01 review)."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/one.py", "one = 0\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "state")
+        _git(repo, "checkout", "-b", "feat/cs", "--quiet")
+        (repo / ".prawduct/changes").mkdir(parents=True)
+        (repo / ".prawduct/changes/cs.md").write_text(self._STUB)
+        _git(repo, "add", ".prawduct/changes/cs.md")
+        _commit_file(repo, ".prawduct/artifacts/build-plan-cs.md", _ST8_PLAN + (
+            "\n### Chunk 04: record\n\n- **Deliverables:** `.prawduct/changes/cs.md`\n"
+        ), "docs(cs): build plan")
+        _commit_file(repo, "src/one.py", "one = 1\n", "feat(cs): Chunk 01 — one")
+        assert not _git(repo, "status", "--porcelain").stdout.strip()
+        return repo
+
+    def test_a_chunk_01_review_over_the_plan_commit_does_not_propose_the_change_record(self, tmp_path):
+        repo = self._repo(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, result.stderr
+        manifest = _st8_manifest(repo)
+        assert ".prawduct/changes/cs.md" in manifest["files_changed"]  # the stub IS in the interval
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01"]
+
+    def test_the_fragment_is_read_at_the_tree_the_diff_ends_at(self, tmp_path):
+        """The dispatch's snapshot, never whatever the working tree holds by the
+        time the proposal reads it."""
+        repo = self._repo(tmp_path)
+        stub_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        (repo / ".prawduct/changes/cs.md").write_text(
+            self._STUB.replace("---\n\n", "---\nWhat changed.\n", 1)
+        )
+        plan = repo / ".prawduct/artifacts/build-plan-cs.md"
+        files = [".prawduct/changes/cs.md"]
+        read = lambda: evidence.read_facts(repo)  # noqa: E731
+        at_tree = cc._proposed_chunks(repo, plan, read, files, "chunk", None, None, stub_tree)
+        assert at_tree == ([], ())
+        # Control: with no tree, the working tree's written fragment is read.
+        assert cc._proposed_chunks(repo, plan, read, files, "chunk") == (["04"], ())
+
+    def test_a_whole_plan_proposal_git_cannot_walk_says_so_in_the_dispatch_notes(
+        self, tmp_path, monkeypatch
+    ):
+        """When the subject walk cannot run, a chunk named only by its subject is
+        not proposed, and the dispatch's notes (which `critic-begin` prints) say
+        why. Control: the walk running names 02 from its subject, silently."""
+        from lib import plan_status
+
+        repo = self._repo(tmp_path)
+        _commit_file(repo, "notes.txt", "x\n", "docs(cs): the docs (Chunk 02)")
+        assert cc.begin_review(repo, "cumulative", force=True)["manifest"]["chunks_proposed"] == ["01", "02"]
+        _abandon(repo)
+        monkeypatch.setattr(plan_status, "_walk_branch", lambda *a, **k: "`git log` failed (boom)")
+        result = cc.begin_review(repo, "cumulative", force=True)
+        assert result["status"] == "ok", result
+        assert result["manifest"]["chunks_proposed"] == ["01"]  # the diff's answer alone
+        assert (
+            "no chunk named only by a commit subject is proposed: `git log` failed (boom)"
+            in result["notes"]
+        ), result["notes"]
+
+
+class TestRecordLintGradesTheChunksTheFactNames:
+    """Record-lint runs AFTER the chunk set is resolved, so the deliverables it
+    grades are the chunks the review fact will certify — every one of them, not
+    the plan's first open chunk."""
+
+    def _repo_touching_two_and_three(self, tmp_path: Path) -> Path:
+        repo = _st8_repo(tmp_path)
+        (repo / "src/one.py").write_text("one = 0\n")  # back to committed
+        (repo / "src/two.py").write_text("two = 1\n")
+        return repo
+
+    def test_no_declared_chunks_grades_the_whole_proposal(self, tmp_path):
+        repo = self._repo_touching_two_and_three(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, result.stderr
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == ["02", "03"]
+        lint = manifest["record_lint"]
+        assert lint["chunks_graded"] == ["02", "03"], lint
+        assert lint["chunk_graded"] == "02"
+        assert "record-lint graded chunk 02, 03 of" in result.stdout
+
+    def test_an_explicit_chunk_grades_that_chunk(self, tmp_path):
+        repo = self._repo_touching_two_and_three(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk", "--chunk", "03")
+        assert result.returncode == 0, result.stderr
+        lint = _st8_manifest(repo)["record_lint"]
+        assert (lint["chunks_graded"], lint["chunk_graded"]) == (["03"], "03"), lint
+
+
+class TestAVerifyPassProposesTheChunksItVerifies:
+    """`verify-resolutions` resolves findings of the review it is anchored to,
+    so its proposal is that review's chunks, inherited along its chain — a
+    verify naming the same set is silent; one naming a new chunk still warns."""
+
+    _WARN = {"name": "Tighten", "goal": "Nothing Is Unintended", "severity": "warning",
+             "recommendation": "Tighten", "files": ["src/one.py"]}
+
+    def _reviewed(self, tmp_path: Path) -> Path:
+        repo = _st8_repo(tmp_path)
+        assert cc.begin_review(repo, "chunk", chunks=["01", "03"])["status"] == "ok"
+        manifest = _st8_manifest(repo)
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=[self._WARN])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        (repo / "src/one.py").write_text("one = 2  # the warning, fixed\n")
+        return repo
+
+    def test_omitted_flags_inherit_the_verified_reviews_chunks(self, tmp_path):
+        repo = self._reviewed(tmp_path)
+        result = cc.begin_review(repo, "verify-resolutions")
+        assert result["status"] == "ok", result
+        manifest = _st8_manifest(repo)
+        assert manifest["chunks"] == manifest["chunks_proposed"] == ["01", "03"]
+        assert not any(n.startswith("WARNING: declared chunk") for n in result["notes"])
+
+    def test_naming_the_same_set_is_silent(self, tmp_path):
+        repo = self._reviewed(tmp_path)
+        result = cc.begin_review(repo, "verify-resolutions", chunks=["03", "1"])
+        assert result["status"] == "ok", result
+        assert _st8_manifest(repo)["chunks"] == ["01", "03"]
+        assert not any(n.startswith("WARNING: declared chunk") for n in result["notes"]), result["notes"]
+
+    def test_naming_a_new_chunk_still_warns(self, tmp_path):
+        repo = self._reviewed(tmp_path)
+        result = cc.begin_review(repo, "verify-resolutions", chunks=["02"])
+        assert result["status"] == "ok", result
+        assert any(
+            n.startswith("WARNING: declared chunk(s) 02 are not in the proposal") and "(01, 03)" in n
+            for n in result["notes"]
+        ), result["notes"]
+
+
+class TestManifestChunkFields:
+    def test_chunks_and_proposal_are_typed_lists(self):
+        ok, _ = cc.validate_manifest(_manifest_dict(chunks=["01", "03"], chunks_proposed=["01"]))
+        assert ok
+        bad, why = cc.validate_manifest(_manifest_dict(chunks="01"))
+        assert not bad and "'chunks'" in why
+        bad, why = cc.validate_manifest(_manifest_dict(chunks_proposed=[""]))
+        assert not bad and "'chunks_proposed'" in why
+
+    def test_chunk_must_be_the_first_of_chunks(self):
+        bad, why = cc.validate_manifest(_manifest_dict(chunks=["03", "01"], chunk="01"))
+        assert not bad and "first of 'chunks'" in why
+        ok, _ = cc.validate_manifest(_manifest_dict(chunks=[], chunk=None))
+        assert ok
+
+    def test_a_manifest_without_chunks_keeps_the_bare_chunk(self):
+        """A manifest from before `chunks` existed still validates, and its fact
+        carries `chunk` alone — inventing `chunks` would claim a declaration
+        nobody made; `plan_status.fact_chunks` reads the bare field."""
+        manifest = _manifest_dict()
+        assert "chunks" not in manifest and cc.validate_manifest(manifest)[0]
+        body = cc.build_fact_body(manifest, [_partial("reviewer", "abc123")])
+        assert body["chunk"] == "01" and "chunks" not in body and "chunks_proposed" not in body
+
+    def test_the_fact_body_writes_all_three(self):
+        manifest = _manifest_dict(chunks=["02", "03"], chunks_proposed=["03"], chunk="02")
+        body = cc.build_fact_body(manifest, [_partial("reviewer", "abc123")])
+        assert (body["chunks"], body["chunks_proposed"], body["chunk"]) == (["02", "03"], ["03"], "02")
+        empty = cc.build_fact_body(
+            _manifest_dict(chunks=[], chunks_proposed=[], chunk=None), [_partial("reviewer", "abc123")]
+        )
+        assert (empty["chunks"], empty["chunk"]) == ([], None)

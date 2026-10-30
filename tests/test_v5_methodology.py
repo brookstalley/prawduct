@@ -504,7 +504,24 @@ LAST_MEASURED_TOKENS = {
     # +2 on 2026-10-21 (#187): "Auto-cleared next session" names its sources (`/clear` or
     # startup) now that the widened session-boundary pin sees the past participle; spends the
     # two words the #695/#846 cuts left, so the reading is back where this branch began.
-    "methodology/building.md": 5320,
+    # -5 on 2026-10-24 (work-unit binding): the delegating section's "tell it not to write
+    # `.prawduct/`" gave way to the scratch-worktree-is-unbound sentence, placed where the
+    # coordinator's role is stated so it replaces "The subagent implements; the main agent
+    # governs." instead of sitting beside it; paid in place by the shared-worktree briefing
+    # clause and the canary's reflection note. A READING; the ceiling follows it down.
+    # -22 on 2026-10-25 (chunk-status, owner ruling D1): chunk-close step 5 ("update build plan Status") went with the box it
+    # ticked and the steps renumbered 1-6; the handoff line names `plan status`; the
+    # scratch-worktree sentence lost its refusal list ("writes no fact" is false once a
+    # delegate records narrowed test runs). One clause points the Critic step at
+    # planning.md's rule. A READING; the ceiling follows it down.
+    # +4 on 2026-10-25 (evidence-transport), DECLARED: the evidence-model sentence says
+    # `/prawduct:pr` carries the store's review facts to other clones; mostly paid in place by
+    # dropping its `evidence status|list` pointer, which `review-cycle.md` — cited at the
+    # paragraph's end as the full model — states in the same sentence.
+    # +10 on 2026-10-26 (flaky-rerun, #1087), DECLARED: the Verify bullet names `--rerun-failed`
+    # beside the other record flags, so a builder whose boundary run lost one test to load reruns
+    # that test rather than the declared suite (on this repo ~18 min per suite run).
+    "methodology/building.md": 5307,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -672,7 +689,9 @@ LAST_MEASURED_TOKENS = {
     # +30 on 2026-10-21 (#706): Goal 2 checks a declared Exposed API surface against the contract
     # artifact, after tightening the bullet's two decision clauses (net of that). DECLARED, a READING.
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
-    "skills/critic/review-protocol.md": 3926,
+    # +18 on 2026-10-26 (flaky-rerun, #1087): Goal 1 rates a `flaky:` test-status line carrying
+    # `flaky_policy: warn`. DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
+    "skills/critic/review-protocol.md": 3944,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -785,7 +804,11 @@ LAST_MEASURED_TOKENS = {
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
     # -3 on 2026-10-22 (retired-claim-survives): the record-lint WARNING line names the new
     # `retired-claim-survives` check, paid by tightening the chunk-ref-missing parenthesis. A READING.
-    "skills/critic/goals-1-3.md": 2684,
+    # +4 on 2026-10-25 (chunk-status, owner ruling D1): the inferred-chunk caveat names the plan's first open chunk, which is what
+    # record_lint emits now, in place of the first unticked Status box; `--chunks`.
+    # +18 on 2026-10-26 (flaky-rerun, #1087): the same `flaky_policy` clause as review-protocol.md.
+    # DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
+    "skills/critic/goals-1-3.md": 2706,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -972,7 +995,18 @@ LAST_MEASURED_TOKENS = {
     # +204 on 2026-10-21 (#95), DECLARED: the integrator section (stage-and-`chunk` pattern, the
     # `.prawduct/` gitignore trap, in-session vs unattended invocation). No review mode loads this
     # file (see test_critic_skill_metadata), so no reviewer route pays it; it serves integrators.
-    "skills/critic/review-cycle.md": 7711,
+    # -10 on 2026-10-25 (#1050 work-unit binding): the ledger `scope` sentence now says scope
+    # is taken from the checkout's binding (`plan resolve`), or null when unbound; paid in place
+    # by cutting the restated don't-pick-a-plan reason, which `SKILL.md` step 4 owns, to a
+    # pointer. The ceiling lowered with it. A READING.
+    # -3 on 2026-10-25 (chunk-status, owner ruling D1): the final-nudge advisory, the plan-override's current chunk and the
+    # mid-plan count read open chunks instead of unticked boxes; the free-writes list no
+    # longer names a Status block. A READING; the ceiling follows it down.
+    # +68 on 2026-10-25 (evidence-transport), DECLARED: one consequence bullet in the evidence
+    # model — review facts reach other clones on `refs/notes/prawduct`, and a clone lacking a
+    # fact's tree reads a gap, so only committed reviews count everywhere. No review mode loads
+    # this file, so no reviewer route pays it.
+    "skills/critic/review-cycle.md": 7766,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1116,7 +1150,34 @@ LAST_MEASURED_TOKENS = {
     # -9 in the same wave, DECLARED: fixes from the wave's own review: pointers into
     # deleted text repaired, and the adopted-norm scope inlined so goals-1-3.md stays self-contained.
     # -12 on 2026-09-28 (opus-55-w3b), C-20: the coordinator bullet points at coordinator.md instead of restating it; the ceiling lowered with it.
-    "skills/critic/SKILL.md": 3139,
+    # -27 on 2026-10-25 (#1050 work-unit binding): step 4's `--scope` derivation names the binding
+    # (`prawduct-hook plan resolve`) in place of the branch-name match and the retired
+    # `active_build_plan` pointer argument; the ceiling lowered with it. A READING.
+    # -17 on 2026-10-25 (chunk-status, owner ruling D1): step 4's `--chunk`/first-unchecked-box paragraph became `--chunks` — the
+    # code proposal, confirm-or-edit, and the off-proposal edit recorded beside it as
+    # `chunks_proposed` — and the addition was paid in place: the leftover-partials
+    # archive's retention mechanics (newest 3, degrade to delete) left the parenthetical,
+    # since the hook states them on stderr and no reader decides by them. The every-mode
+    # payload therefore SHRANK. A READING; the ceiling follows it down.
+    # +12 on 2026-10-25 (evidence-transport), DECLARED: the `evidence*` grant (both spellings)
+    # narrowed to `evidence status*` and `evidence list*`, because `evidence ingest` is a store
+    # write a reviewer must not reach — four grants where two stood. Not paid by trimming: the
+    # grant line is the reviewer boundary, and no prose in this file restates another's.
+    # -7 on 2026-10-26 (final-review-chunks, #1072): step 4's proposal sentence points to
+    # `plan_status.propose_chunks` instead of restating a per-mode rule that changed (whole-plan
+    # modes propose what the interval built, not every open chunk). A READING; the ceiling follows it down.
+    # +5 on 2026-10-27 (chunk-state-table, #1082), DECLARED: the Critic skill's step 4 said
+    # `--chunks` names "the chunks this review certifies", which a dispatcher reads as the whole
+    # set; a review's span now certifies chunks it does not name, so the sentence says so. Not paid by
+    # trimming: no other clause of step 4 restates the rule. Priced against the route sums:
+    # ~5 tokens per review against a narrower `--chunks` passed to hold a chunk back that the span
+    # certifies anyway.
+    # -4 on 2026-10-28 (second-clone-evidence): "`critic-consolidate` is the only writer of both"
+    # stopped being true when ingest began deriving the findings cache in a clone that never
+    # consolidated one. The reviewer needs only "you never write them", so the clause naming
+    # writers went, shorter than the claim it replaced. -1 more the same day: `deferred`'s
+    # "mid-plan nothing is unreviewed" lost "mid-plan", since a covered branch now defers too.
+    "skills/critic/SKILL.md": 3100,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1131,7 +1192,9 @@ LAST_MEASURED_TOKENS = {
     # -10 on 2026-10-22 (retired-claim-survives): one severity row for the new
     # `retired-claim-survives` check, paid in place. The section intro stops calling the pass one over
     # the changed records (two arms are repo-wide), and two reasons lost words. Ceiling lowered with it.
-    "skills/critic/cross-checks.md": 3390,
+    # -4 on 2026-10-25 (chunk-status, owner ruling D1): the inferred-chunk caveat names the plan's first open chunk;
+    # `--chunks`. A READING; the ceiling follows it down.
+    "skills/critic/cross-checks.md": 3386,
     "skills/critic/coordinator.md": 594,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -1357,7 +1420,39 @@ LAST_MEASURED_TOKENS = {
     # over-declaration blocker left with the retired file-set gate; the Critic's rationale check
     # is stated in one sentence instead. A READING.
     # +3 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
-    "methodology/planning.md": 5859,
+    # +31 on 2026-10-25 (branch-claimed-plan-no-fallback): the precedence paragraph states that
+    # a plan declaring `branch:` governs that branch only (neither fallback resolves it
+    # elsewhere), and the retention sentence drops its pointer step, citing that rule rather
+    # than restating it. A READING.
+    # -169 on 2026-10-24 (work-unit binding): the two branch-resolution paragraphs and their
+    # precedence list became one paragraph (a plan claims its branch; unbound is normal; two
+    # claimants is broken, never tie-broken), and the lifecycle paragraph lost the pointer
+    # bookkeeping split. A READING.
+    # +75 on 2026-10-25 (chunk-status, owner ruling D1): the one statement of chunk state — done, dropped (with its frontmatter
+    # form), open, `plan status` as a view no gate reads, and the Stop gate arming on the
+    # binding — replaces the paragraph defining a Status tick, and the short-plan bullet's
+    # tick-at-commit instruction gives way to the boundary review naming its chunks. A
+    # RAISE, on-demand class, and the home the other surfaces now point at instead of
+    # restating: the digest, template and PR skill shed more than this costs.
+    # +15 on 2026-10-25 (merged-plan-chunk-state, #1065): the chunk-state sentence names where
+    # a review's commit is placed once the merge has deleted the branch (its base). A RAISE:
+    # the rule's one home gains the clause; nothing elsewhere restates it.
+    # +23 on 2026-10-26 (final-review-chunks, #1072): the chunk-state rule says a wrong
+    # certification is withdrawn with `plan retract`, never edited. A RAISE: the rule's one home
+    # gains the clause, and it is the only place a builder learns a certification can be undone.
+    # +23 on 2026-10-26 (stub-not-built, #1075): "no gate reads that view" was false — the
+    # short-plan Stop gate reads the `built` tag to arm. A CORRECTION, not a raise to spend: the
+    # sentence now says no gate certifies from it and names the one arming reader.
+    # +22 on 2026-10-27 (chunk-state-table, #1082): a review also completes a chunk whose commit
+    # its interval reviewed, though it does not name it. A RAISE: the rule's one home gains the
+    # clause; building.md and the Critic skill point at it without restating it.
+    # +7 on 2026-10-27 (chunk-state-table review round 2): the span's path half says a
+    # Deliverables path counts only when no other chunk lists it, since a shared path let one
+    # chunk's commit certify its unbuilt neighbour. A CORRECTION of the clause above, in place.
+    # +9 on 2026-10-27 (chunk-state-table, owner ruling on #1082): the span clause states the
+    # ruling — an edge the coverage gate composes, a first-parent commit whose scoped subject
+    # names the chunk, and no credit for a Deliverables path. A CORRECTION in place, as above.
+    "methodology/planning.md": 5895,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1442,7 +1537,9 @@ LAST_MEASURED_TOKENS = {
     # +57 on 2026-10-09 (requirements-alignment w2, #975): a mid-build decision the owner
     # corrects is an alignment-pass miss, and the reflection names what the pass should have
     # asked. New obligation, no duplicate to fund it. A READING.
-    "methodology/reflection.md": 2709,
+    # -16 on 2026-10-25 (chunk-status, owner ruling D1): the work-cycle close lost "update the build plan Status section" and
+    # renumbered. A READING.
+    "methodology/reflection.md": 2693,
     # First reading, 2026-09-03, taken at birth: the standing block and the
     # forward notes, moved verbatim out of `reflection.md` (D2) so the learning
     # loop's guide is about the learning loop. On-demand class: a reading, no
@@ -1452,7 +1549,7 @@ LAST_MEASURED_TOKENS = {
     # that only the closing line counts, and what misusing the label costs —
     # the gate now reads the verdict, so its readers are owed the rule. A
     # READING, no ceiling.
-    # +275 on 2026-09-27 (clear-verdict-coherence): the Clear line gains "only
+    # +275 on 2026-09-27 (clear-verdict-coherence): the Clear line gains "only prawduct:allow prawduct/retired-claim-survives -- dated budget history quoting the rule as it stood
     # `RUNNING` may say `DO NOT CLEAR`" with its reason, `YOUR TURN` states it is
     # always `SAFE TO CLEAR`, the precedence rule gains its exception (work a
     # clear would kill), and the Stop-hook paragraph names the gate that refuses
@@ -1468,7 +1565,19 @@ LAST_MEASURED_TOKENS = {
     # ends the conversation and not the process. Consumers closed `YOUR TURN` +
     # `DO NOT CLEAR` over exactly that belief, and the gate refused them nine
     # times (#932). A READING, no ceiling.
-    "methodology/session-hygiene.md": 3095,
+    # +57 on 2026-10-28 (block-append, #1095): one sentence on answering a
+    # Stop block — add only what its items ask, and write a close again only
+    # when the one above is now wrong. Every blocked turn in the 3.8.0-dev
+    # survey re-wrote its whole close; the guide said nothing on it, and the
+    # hook's block now does. A READING, no ceiling.
+    # +101 on 2026-10-29 (clear-gate-telemetry, owner ruling): `YOUR TURN` may
+    # close on `DO NOT CLEAR` beside work a clear would kill, which the hook
+    # observes (a background task, a live review). The Clear line, the
+    # precedence rule, the Stop-hook paragraph, the outstanding paragraph and
+    # the wrong-label list each now say when the pair stands and what the hook
+    # cannot see. In the 3.8.0-dev survey 7 of 10 refusals were this pair with
+    # live work, a relabel and nothing more. A READING, no ceiling.
+    "methodology/session-hygiene.md": 3253,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1589,7 +1698,13 @@ LAST_MEASURED_TOKENS = {
     # RAISE, on-demand class: paid only by a session about to delegate.
     # -1 on 2026-10-22 (git-hygiene): reaping now names `git-tidy --reap`, paid in
     # place by tightening the reaping paragraph's own next sentence.
-    "methodology/delegation.md": 2896,
+    # +23 on 2026-10-24 (work-unit binding): the scratch-worktree-is-unbound sentence replaces
+    # the clause describing `prawduct-hook`'s refusal of `.prawduct/` writes; the rule is now
+    # a property of the binding, not a refusal list. A READING, on-demand class.
+    # -27 on 2026-10-25 (chunk-status, owner ruling D1): "it builds, you govern" is stated once, where the coordinator's role is,
+    # and the dispatch paragraph points at it; the governing-delegate tell no longer
+    # names a Status box. A READING.
+    "methodology/delegation.md": 2892,
 }
 
 
@@ -1953,7 +2068,7 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # +2 on both shapes, 2026-09-27 (clear-verdict-coherence): the digest taught
     # `YOUR TURN` + `DO NOT CLEAR` as a legal pair (its precedence rule plus "a
     # live review is `DO NOT CLEAR`"), and its Enforcement line read as "close on
-    # `DO NOT CLEAR` to pass the Stop hook". It now states that only `RUNNING`
+    # `DO NOT CLEAR` to pass the Stop hook". It now states that only `RUNNING` prawduct:allow prawduct/retired-claim-survives -- dated budget history quoting the rule as it stood
     # may say `DO NOT CLEAR`, and gives the precedence rule its exception. Paid
     # mostly in place: the new rule absorbed the findings-only sentence, which
     # stated the same obligation (persist, then `SAFE TO CLEAR`) for two of
@@ -1988,8 +2103,18 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # framework unchanged at 3108 the same day: this repo's contract moved from
     # CLAUDE.md to AGENTS.md and the shape gained AGENTS.md as a member; the
     # import line's cost was paid in place in AGENTS.md's routing sentence.
-    "framework": 3108,
-    "product": 2226,
+    # framework 3108 -> 3080, product 2226 -> 2198 on 2026-10-25 (chunk-status, owner
+    # ruling D1): the digest's "`## Status` boxes are yours to tick ... the LAST tick
+    # disarms the Critic gate" bullet became one sentence naming `plan status` and
+    # pointing at planning.md's rule; nothing derives from a tick any more, so there is
+    # no timing to teach. Digest 1911 -> 1883 tokens, 9494 -> 9423 characters.
+    # framework 3080 -> 3079, product 2198 -> 2197 on 2026-10-29 (clear-gate-telemetry,
+    # owner ruling): `YOUR TURN` may hold `DO NOT CLEAR` beside work a clear would
+    # kill. Paid in place: "only `RUNNING` may" became "`COMPLETE` never says", and
+    # the precedence exception now says when the hold applies instead of sending it
+    # to `RUNNING`. Digest 9423 -> 9416 characters.
+    "framework": 3079,
+    "product": 2197,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2149,8 +2274,12 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # each reading; the product raise is declared in the reading table.
     # 2233 -> 2227 product on 2026-10-14 (agents-md-anchor): ratcheted with the
     # reading, one over.
-    "framework": 3109,
-    "product": 2227,
+    # 3109 -> 3081, 2227 -> 2199 on 2026-10-25 (chunk-status): ratcheted with the
+    # reading's cut, one over each.
+    # 3081 -> 3080, 2199 -> 2198 on 2026-10-29 (clear-gate-telemetry): ratcheted
+    # with the reading, one over each.
+    "framework": 3080,
+    "product": 2198,
 }
 
 
@@ -2765,7 +2894,9 @@ class TestBuildingMethodology:
 
         The clear verdict is not a free-standing judgement: it is owed against
         THIS file's chunk-close sequence, and no other surface enumerates those
-        seven steps. So the trim above is bounded from below here — cut the
+        steps. Renumbered 1-7 -> 1-6 on 2026-10-24 (owner ruling D1): the
+        "update build plan Status" step went with the box it ticked, since a
+        chunk's state is now computed from its review fact. So the trim above is bounded from below here — cut the
         pointer or the binding as well and this goes red, which is what stops
         "stop restating the shape" from sliding into "stop mentioning it".
 
@@ -2775,7 +2906,8 @@ class TestBuildingMethodology:
         this guide holding a verdict with no shape to put it in.
         """
         assert "standing block" in self.content
-        assert "steps 1-7" in self.content
+        assert "steps 1-6" in self.content
+        assert "steps 1-7" not in self.content, "a stale step count survived the renumbering"
         assert "in flight included" in self.content
         # The shape itself is gone: no fenced example, and none of the labels
         # the carriers above pin. Negative and positive together are the
@@ -2817,7 +2949,7 @@ class TestBuildingMethodology:
         the trigger. Both are pinned: a rule reworded in one carrier is two
         rules that no single-file guard sees."""
         hygiene = read_file("methodology/session-hygiene.md")
-        verdict = hygiene[hygiene.index("**Only `RUNNING` may say `DO NOT CLEAR`.**"):]
+        verdict = hygiene[hygiene.index("**Only work a clear would kill earns `DO NOT CLEAR`.**"):]
         verdict = verdict[: verdict.index("\n")]
         assert "runs on its own" in verdict
         assert "a clear ends the conversation, not the process" in verdict
@@ -2902,28 +3034,29 @@ class TestBuildingMethodology:
                 "the job may answer its own question"
             )
 
-    def test_only_running_may_say_do_not_clear_on_every_carrier(self):
+    def test_do_not_clear_needs_work_a_clear_would_kill_on_every_carrier(self):
         """`YOUR TURN` / `DO NOT CLEAR` tells the reader it is their move AND that
         they must not end the session — and they may sit on both for days.
 
-        Both carriers once PRESCRIBED that pair: the precedence rule sent any
-        needed utterance to `YOUR TURN` even with a review running, and a live
-        review is `DO NOT CLEAR`. So each carrier must state the invariant, and
-        the precedence rule must carry its exception (work a clear would kill
-        goes to `RUNNING`, the ask in its copy) — the invariant stated beside an
-        unqualified precedence rule is two rules that contradict each other.
+        That pair is honest only while work a clear would kill runs, and
+        `COMPLETE` beside `DO NOT CLEAR` never is (the owner's 2026-10-29 ruling
+        narrowed the earlier "only `RUNNING`" invariant to this, on the 3.8.0-dev
+        survey). So each carrier must state that `COMPLETE` never holds the
+        session, and its precedence rule must tie the hold to work a clear would
+        kill: an unqualified precedence rule beside a live review prescribes the
+        pair with nothing to say when it is true.
         """
         for surface in ("methodology/session-hygiene.md", "methodology/session-digest.md"):
             text = " ".join(read_file(surface).split())
-            assert "Only `RUNNING` may say `DO NOT CLEAR`" in text, (
-                f"{surface} no longer states that only `RUNNING` may close on "
-                "`DO NOT CLEAR` — the pair `YOUR TURN` + `DO NOT CLEAR` reads as legal"
+            assert "`COMPLETE` never" in text, (
+                f"{surface} no longer states that `COMPLETE` never closes on "
+                "`DO NOT CLEAR`"
             )
             precedence = text[text.index("`YOUR TURN` even when"):][:400]
             assert "clear would kill" in precedence or "clear kills" in precedence, (
-                f"{surface}'s precedence rule lost its exception: with a live "
-                "review and a needed decision it prescribes `YOUR TURN`, and the "
-                "review makes that `DO NOT CLEAR`"
+                f"{surface}'s precedence rule no longer ties `DO NOT CLEAR` to work "
+                "a clear would kill, so `YOUR TURN` + `DO NOT CLEAR` reads as legal "
+                "for anything running"
             )
         digest = " ".join(read_file("methodology/session-digest.md").split())
         start = digest.index("## Enforcement")
@@ -3479,7 +3612,11 @@ class TestBuildingMethodology:
         # the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5080 -> 5295 (requirements-alignment w1, 2026-10-09) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5295 -> 5328 (requirements-alignment w1 boundary review) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5322, f"building.md is ~{tokens} tokens, should be <5322"
+        # LOWERED 5322 -> 5316 (work-unit binding, 2026-10-24): one over the reading — see LAST_MEASURED_TOKENS.
+        # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
+        # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5308, f"building.md is ~{tokens} tokens, should be <5308"
 
 
 # =============================================================================
@@ -4771,21 +4908,81 @@ class TestOtherMethodology:
         # and only where they live moved.
         assert ".claude/rules/learnings/" in content
 
-    def test_a_status_tick_has_one_pinned_meaning(self):
-        """Owner decision 2026-09-22: a tick means built, committed and reviewed on
-        the branch — never merged or released. Readers had assumed three different
-        meanings; `planning.md` is the one home, and the template's Status comment
-        must say the same. Bound to the defining sentence, not the whole file, so a
-        stray phrase elsewhere cannot satisfy it."""
+    def test_chunk_state_has_one_home_and_the_others_point_at_it(self):
+        """Renegotiated 2026-10-25 from `test_a_status_tick_has_one_pinned_meaning`.
+
+        Owner ruling D1 (2026-10-24, `documentation/issues/1050-design.md`
+        "Rulings recorded"): a chunk's state is computed from review facts, so
+        there is no tick left to give a meaning to. What survives of the old pin
+        is its shape — ONE statement of the rule, in `planning.md` — and its
+        invariant that done is never merged or released. The new half is the
+        reason the old one existed: readers had assumed three meanings because
+        three surfaces each described the box. So each surface that used to
+        describe it must now POINT at the rule, and must not restate it.
+
+        Bound to the smallest span each surface carries the rule in — the
+        defining paragraph, the digest bullet, the template's frontmatter
+        legend, building.md's Critic-review step — so a stray phrase elsewhere
+        cannot satisfy it. The control: the restatement markers ARE present in
+        the defining paragraph, so their absence elsewhere is a fact about those
+        spans, not about markers that match nothing.
+        """
         planning = read_file("methodology/planning.md")
-        definition = next(
-            (para for para in planning.split("\n\n") if "`## Status` tick means" in para), ""
+        rule = next(
+            (p for p in planning.split("\n\n") if p.startswith("**Chunk state is a query")), ""
         )
-        assert "built, committed and reviewed on the branch" in definition, definition
-        assert "never merged or released" in definition, definition
+        assert rule, "planning.md lost the one statement of chunk state"
+        # Each clause of the rule, so a trim that drops one goes red.
+        for clause in (
+            "`critic-begin --chunks`",
+            "no unresolved blocking finding",
+            "anchor commit is in the branch's history",
+            "`- <id>: <reason>`",
+            "the reason is required",
+            "an unquoted ` #` starts a YAML comment",
+            "never merged or released",
+            "`prawduct-hook plan status`",
+            "no gate certifies from it",
+            "only to arm",
+            "arms on the branch's binding",
+            "no box to tick and no last-box exception",
+        ):
+            assert clause in rule, f"the chunk-state rule lost {clause!r}"
+        # Words only a restatement would carry: the definition's own terms.
+        restated = ("no unresolved blocking finding", "anchor commit", "the reason is required")
+        assert all(m in rule for m in restated), "control: the markers must match the rule"
+
+        pointer = '"Chunk state"'
+        digest = read_file("methodology/session-digest.md")
+        bullet = next(
+            (b for b in digest.split("\n- ") if "`prawduct-hook plan status`" in b), ""
+        )
         template = read_file("templates/build-plan.md")
-        status_comment = template[template.index("## Status"):].split("-->", 1)[0]
-        assert "never merged or released" in status_comment, status_comment
+        legend = template[template.index("# dropped:"):template.index("depends_on:")]
+        building = read_file("methodology/building.md")
+        critic_step = next(
+            (p for p in building.split("\n\n") if p.startswith("**Critic review.**")), ""
+        )
+        for name, span in (("session-digest.md", bullet), ("templates/build-plan.md", legend),
+                           ("building.md", critic_step)):
+            assert span, f"{name}: the span that should reference the rule is gone"
+            assert pointer in span and "planning" in span, (
+                f"{name} no longer points at planning.md's \"Chunk state\" rule"
+            )
+            for marker in restated:
+                assert marker not in span, (
+                    f"{name} restates the chunk-state rule ({marker!r}) instead of "
+                    "pointing at it — a second statement is how three meanings arose"
+                )
+        # The retired instruction must be gone from every surface that taught it.
+        for name, text in (("planning.md", planning), ("session-digest.md", digest),
+                           ("templates/build-plan.md", template), ("building.md", building)):
+            assert "## Status" not in text, (
+                f"{name} still describes a `## Status` block"
+            )
+            assert "yours to tick" not in text and "marked `[x]`" not in text, (
+                f"{name} still tells the reader to tick a box"
+            )
 
     def test_discovery_operationalizes_coverage_expectation(self):
         # Recording structural characteristics is tied to the strategy-class
@@ -5210,7 +5407,8 @@ class TestCriticSkill:
         # LOWERED 3804 -> 3795 (requirements-alignment w1, 2026-10-09) with the reading.
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
-        assert tokens < 3928, f"review-protocol.md is ~{tokens} tokens, should be <3928"
+        # RAISED 3928 -> 3945 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 3945, f"review-protocol.md is ~{tokens} tokens, should be <3945"
 
 
 # =============================================================================
@@ -5516,7 +5714,8 @@ class TestCriticGoals13:
         # LOWERED 2668 -> 2660 (requirements-alignment w1, 2026-10-09) with the reading.
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
-        assert tokens < 2689, f"goals-1-3.md is ~{tokens} tokens, should be <2689"
+        # RAISED 2689 -> 2707 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 2707, f"goals-1-3.md is ~{tokens} tokens, should be <2707"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5787,7 +5986,15 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3681 -> 3685 (#820, 2026-09-23) — see LAST_MEASURED_TOKENS.
         # RAISED 3685 -> 3720 (review-friction, 2026-09-25) — see LAST_MEASURED_TOKENS.
         # RAISED 3720 -> 3721 (review-friction, 2026-09-26) — see LAST_MEASURED_TOKENS.
-        assert tokens < 3140, f"SKILL.md is ~{tokens} tokens, should be <3140"
+        # RATCHETED 3140 -> 3113 (#1050 work-unit binding, 2026-10-25) with the reading.
+        # RATCHETED 3113 -> 3096 (chunk-status, 2026-10-25) with the reading.
+        # RAISED 3096 -> 3108 (evidence-transport, 2026-10-25): the `evidence` grant narrowed
+        # to `status`/`list` — see LAST_MEASURED_TOKENS. Declared.
+        # LOWERED 3108 -> 3101 (final-review-chunks, 2026-10-26) — see LAST_MEASURED_TOKENS.
+        # RAISED 3101 -> 3106 (chunk-state-table, 2026-10-27): `--chunks` no longer bounds what a
+        # review certifies — see LAST_MEASURED_TOKENS. Declared.
+        # LOWERED 3106 -> 3101 (second-clone-evidence, 2026-10-28) with the reading.
+        assert tokens < 3101, f"SKILL.md is ~{tokens} tokens, should be <3101"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6113,7 +6320,10 @@ class TestReviewCycle:
         # RAISED 7461 -> 7538 (#992, 2026-10-10) — see LAST_MEASURED_TOKENS. Declared.
         # RATCHETED 7538 -> 7518 (empty-verify-rounds, 2026-10-13) with the reading.
         # RATCHETED 7518 -> 7508 (agents-md-anchor, 2026-10-14) with the reading.
-        assert tokens < 7712, f"review-cycle.md is ~{tokens} tokens, should be <7712"
+        # RATCHETED 7712 -> 7702 (#1050 work-unit binding, 2026-10-25) with the reading.
+        # RATCHETED 7702 -> 7699 (chunk-status, 2026-10-25) with the reading.
+        # RAISED 7699 -> 7767 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 7767, f"review-cycle.md is ~{tokens} tokens, should be <7767"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
@@ -6122,7 +6332,8 @@ class TestReviewCycle:
         # addition trims or relocates; it does not bump.
         tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
         # RATCHETED 3405 -> 3391 (retired-claim-survives, 2026-10-22) with the reading.
-        assert tokens < 3391, f"cross-checks.md is ~{tokens} tokens, should be <3391"
+        # RATCHETED 3391 -> 3387 (chunk-status, 2026-10-25) with the reading.
+        assert tokens < 3387, f"cross-checks.md is ~{tokens} tokens, should be <3387"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).

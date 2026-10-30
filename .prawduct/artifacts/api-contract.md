@@ -144,22 +144,33 @@ in `docs/governance-telemetry.md`.
   [[deprecation-requires-an-inert-retention-window]] — that ruling still governs every retirement
   whose retained behaviour is inert rather than itself non-conforming.
 
+  Decision: 2026-10-25 (evidence-transport) — `[DECISION: one router and one exit convention for every `evidence` op (0 ok / 1 failure / 2 usage), which moves `evidence list`'s bad-flag exit and the unknown-op exit from 1 to 2 | the Critic's cumulative found two routers with two conventions on a surface this branch doubled in size, and a usage error on `list` was never documented as a meaning distinct from a failure — but it IS an existing exit code changed, so it is recorded here as the departure it is rather than as "nothing repurposed"; the consumer note names it | user can veto/override — reverting restores exit 1 for those two cases and keeps the router]`
 ## Operations
 
 The CLI groups by responsibility. Every subcommand is read-only unless marked mutating.
 
-- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary — `--brief-only` skips it, mutating),
+- **Hook lifecycle** — `clear` (orientation always; session reset only at a boundary, which also ingests the branch's notes and prints `N evidence fact(s) ingested from refs/notes/prawduct` when N > 0 — `--brief-only` skips both, mutating),
   `stop` (session-end gate), `subagent-stop` (consolidate, mutating). Called
   by the harness, not by humans.
-- **Critic data plane** — `critic-begin [--force]` (write dispatch manifest, mutating; `--force`
-  overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted — see
-  § Error Model), `critic-consolidate`
+- **Critic data plane** — `critic-begin [--force] [--chunks a,b]` (write dispatch manifest, mutating;
+  `--force` overrides both pre-dispatch refusals, exit-3 no-review-needed and exit-4 budget-exhausted
+  — see § Error Model; `--chunks` names build-plan chunks the review certifies, beside any its span certifies
+  (`methodology/planning.md` "Chunk state") — a comma list,
+  repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
+  alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
+  does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
+  usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note),
+  `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
   the ledger append after it still consumes the mark), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
-  inverse), `evidence status|list`, `ledger-append`
+  inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
+  their commit, on this branch's commits (merge base..HEAD)` — what `evidence sync` re-attaches
+  before it pushes; older facts are not counted;
+  every `evidence` op exits 0 ok, 1 a reported failure, 2 usage — an unknown op or a bad flag —
+  and `status`, which takes no flags, keeps its 2 = schema-ahead sentinel below), `ledger-append`
   (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
   as well as `review.pr`, and writes the optional `dispatched_at` envelope key when one is present;
   `--trigger subagent-stop|explicit|session-end-backstop` is required for `review.critic` and
@@ -180,6 +191,50 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `classify-diff-risk`, `verify-chunk-refs`), plus `verify-records` (the deterministic record
   checks, read-only and advisory — `critic-begin` runs the same pass into the manifest).
 - **Test evidence** — `test-evidence record` (mutating), `test-status` (freshness), `validate-evidence`.
+  From a harness scratch worktree, `test-evidence record` is admitted through the ephemeral guard
+  into the shared store only: it appends the `test-run` fact with `narrowed: true` and `ceiling`
+  (the paths/args run) and writes no per-worktree `.test-evidence.json`; `--no-rerun` and
+  `--from-counts` there exit 2, since neither records a fact. A narrowed fact is attribution only —
+  the freshness fallback neither vouches nor denies by it. `test-status` prints its verdict line
+  first, then one line per scratch worktree's newest narrowed run (at most 10); its exit code is
+  unchanged.
+- **Evidence transport** — `review`, `resolution`, `chunk-imported` and `chunk-retracted` facts travel between clones
+  as their store lines in notes on `refs/notes/prawduct` (`data-model.md` § Evidence Store).
+  `evidence ingest [--all] [--json]` (mutating) appends the note lines the store lacks, bounded to
+  the branch's commits from the merge base, or every note with `--all`; it prints how many records
+  it appended of how many it saw on how many commits, and a skipped class (malformed lines, kinds
+  not transported) is counted in `reason`. When it appended records and the clone has no
+  `.critic-findings.json` naming the review anchored furthest along the branch, it points the cache
+  there and says so (`cache` in `--json`: `derived`, `current`, `none`, `skipped` while a review
+  is in flight, or `error`/`invalid` with a reason, which never fails the ingest). Exit 0 when the ingest ran, appending nothing included;
+  1 on an error; 2 usage. A data-plane write: refused (exit 1) from a scratch
+  worktree, so a disposable tree never races the main checkout's ingest, and by a foreign binary; session start
+  runs it bounded at a session boundary. `evidence sync [--no-push] [--json]` (mutating; network)
+  fetches the remote's notes into the tracking ref `refs/notes/<remote>/prawduct`, merges them into
+  `refs/notes/prawduct` with `cat_sort_uniq`, reconciles (re-attaches any transported fact in the
+  bound whose note is missing), ingests, and pushes the ref unless `--no-push`, then moves the
+  tracking ref to what it pushed; a remote with no notes yet is not an error. Note lines carry the
+  store line with the actor's locator fields reduced: `actor.worktree` cut to its basename, or to
+  `.claude/worktrees/<name>` for a harness scratch worktree (so the receiving clone classifies the
+  fact as ephemeral too), never the path above it; `actor.session` dropped; `actor.plugin`,
+  `actor.branch` and `actor.build` (the plugin checkout's commit sha) travel as written. Exit 0 ok; 1 a reported failure naming the failing `step`
+  (`fetch`, `merge`, `reconcile`, `ingest`, `push`), git's stderr scrubbed of credentials and
+  nothing retried; 2 usage.
+  `/prawduct:pr create|update` runs it after the branch push, and a failure there is reported
+  without blocking the PR; `evidence status` then shows it as `N note commit(s) not yet pushed`
+  (the local ref against the push remote's tracking ref), or, when no tracking ref exists — a
+  first push that failed or never ran — `N note commit(s) never pushed from this clone` (every
+  commit on the local ref); with no local ref, no line.
+  `evidence configure [--apply] [--json]` previews, and with `--apply`
+  writes, the clone's two keys: the fetch refspec
+  `+refs/notes/prawduct*:refs/notes/<remote>/prawduct*` in `remote.<remote>.fetch` — a pattern,
+  because a configured exact refspec makes every plain `git fetch` fail while the remote has no
+  notes (so a plain `git fetch` brings the remote's notes into the tracking ref, which
+  `evidence ingest`, session start and `evidence status` read beside the local ref; `evidence sync`
+  merges it before pushing) and
+  `notes.rewriteRef=refs/notes/prawduct` (so amend and rebase carry them); a repo with no remote
+  reports so and changes nothing. Exit 0 ok; 1 a failure; 2 usage. `/prawduct:doctor` offers it
+  and `/prawduct:onboard` runs it.
 - **Session handoff** — `handoff preview`: renders the handoff the next session would receive,
   through the same function `clear` uses, without writing it or consuming the forward notes.
 - **Stranded work** — `worktrees [--json]` (read-only): every worktree with its inferred liveness
@@ -286,6 +341,90 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   and no gate reads it. **Exit 1 on `--apply` when anything is `blocked`
   or `refused`** — an apply that could not move work the change log says shipped is not a clean run;
   a preview stays 0, having attempted nothing.
+  `plan new [<scope>] [--branch B] [--base BASE] [--title T] [--kind K] [--working]`, `plan bind <path>
+  --branch B` and `plan resolve [--json]` are the work-unit surface. `new` and `bind` are
+  state-mutating writers of tracked files: exit 0 when written or already so, 1 refused
+  (`refused: <code>: <detail>` — a taken scope, a second claim on the branch, the harness scratch
+  branch, a scope one spelling from an existing one, or `no-scope-suggestion` when the scope is
+  omitted and the branch name yields no slug), 2 usage. With the scope omitted, `new` derives it
+  from the branch and says so on stdout. `plan resolve` is the read-only query
+  every skill told to "resolve the plan the way governance does" runs; it is allowed inside a scratch
+  worktree. Exit 0 for `bound` and `unbound` (both are ordinary answers), 1 for `broken` — the query
+  returned, and the failing answer is that no binding can be decided until the plans it names are
+  repaired; 3 is not used because two clean claimants read fine. Its `--json` carries the `Binding`
+  keys and nothing else: `state` (`bound|unbound|broken`), `scope` (string or null — null when the
+  bound plan declares no `scope:` or the binding is a legacy one), `plan_path` (repo-relative or
+  null), `role` (`integration|working|null`), `reason` (one sentence or null), `chosen_by`
+  (`binding|legacy-pointer|legacy-default|none`), `claimants` (repo-relative paths, empty unless
+  bound or broken), `case` (the stable route code the resolver decided by — `claim`,
+  `legacy-pointer`, `legacy-default`, `no-claim`, `pointer-dangling`, `scratch-worktree`,
+  `detached-head`, `no-work-tree`, `two-claimants`, `unreadable-plan` — the one key a consumer
+  branches on, never the `reason` prose) and `base` (the bound plan's declared base branch or
+  null; base-branch resolution for the gates and the PR payload consults it first). Additive-first binds here as everywhere: `chosen_by` values are added, never
+  repurposed, and readers of historical review facts still meet the retired `branch-name` and
+  `not-resolved`.
+  `plan status [<path>] [--json] [--probe-pr]` is the read-only rendering of chunk progress — the one view of
+  `plan_status.chunk_states` (the sole walker of a plan's chunk states; no gate reads this view).
+  `<path>` defaults to the bound plan. Exit 0 with the table; 1 when no plan resolves (an unbound
+  checkout and no path given — one reason line); 2 on a path that is not a plan. Allowed inside a
+  scratch worktree. `--json` carries `plan_path` (repo-relative), `scope`, `finished` (bool),
+  `built_unavailable` (null when git answered, else the cause — the plan unreadable, a declared
+  `base:` naming no ref, `git log` failing — and the table ends with `built: unavailable (<cause>)`)
+  and `chunks`, a list in plan order of `{id, state (open|done|dropped), fact_id, date, imported,
+  built, reason}`; `imported` marks a chunk completed by a `chunk-imported` fact or a legacy
+  `## Status` tick read in memory, `built` is git-derived and certifies nothing (a commit naming the
+  chunk in its subject or touching its deliverables, a change fragment still the `plan new` stub
+  touching nothing; the short-plan Stop gate reads it only to arm its last-chunk block) and `reason` says why an entry that looked like an answer was not one (an
+  unreadable `dropped:` line, a fact whose anchor is not in the branch's history), and for a
+  `done` chunk certified by a fact that does not name it, that its review's interval carries a
+  commit whose scoped subject names the chunk (the span rule, `methodology/planning.md` "Chunk state"). It also
+  prints `lifecycle: <state>[ <released_in>] — <reason>`, and `--json` carries the same as
+  `lifecycle: {state, reason, released_in, probed}` — `state` one of `in-progress`,
+  `merged-unreleased`, `released`, `superseded`, `unknown`, observed from git, the review facts'
+  anchors, the change record and the archive stamp (`plan_lifecycle.observe`, the one derivation;
+  nothing is stored). `--probe-pr` lets an `unknown` answer ask `gh pr list` for a merged PR on the
+  plan's branch (`probed: true`) — the one network call here, never made by a hook or the
+  briefing. Keys are added, never repurposed; both `state` enums are closed sets that grow
+  additively.
+  `plan import-status <path> [--apply] [--remove-block] [--json]` (mutating with `--apply`) is the
+  MG2 migration: for each chunk `chunk_states` reads as done-by-tick with no fact yet, it appends
+  one `chunk-imported` fact, code-written from the box; `--remove-block` then rewrites the plan
+  without its `## Status` section — opt-in, because the imported facts reach another clone only once
+  their notes are pushed (`evidence sync`) and ingested there; until then that clone reads a plan
+  with no block as every chunk open. Facts are written first and the block edited only after all succeed; every block
+  refusal precedes any write. Exit 0 for a preview or a successful write; 1 `refused: <code>` for
+  `archived-plan`, `no-scope`, `store-unreadable`, `status-block-ambiguous`,
+  `status-block-undelimited`, `status-block-trailing-comment`, `fact-append-failed`,
+  `plan-write-failed`; 2 usage or a path that is not a build plan. The preview is allowed inside a
+  scratch worktree; `--apply` is a governance write and is refused there.
+  `plan retract <chunk> --reason R [--fact ID] [--plan <path>] [--json]` (mutating) withdraws one
+  fact's certification of one chunk by appending a `chunk-retracted` fact (`{scope, chunk,
+  fact_id, reason, retracted_at}`), attached as a note on HEAD like an import. `--fact` omitted
+  names the fact certifying the chunk now — by name or by its interval; `--plan` omitted, the bound plan. It can only reopen a
+  chunk, so it needs no authority beyond the reason it records. Exit 0 written or already
+  retracted (nothing written — the same command re-run included; `--json` `action` is `retracted` | `already-retracted`, beside
+  `plan_path`, `scope`, `chunk`, `fact_id`, `retraction_id`, and `state` / `certified_by` — what the
+  chunk reads after); 1 `refused: <code>` for `no-plan`, `archived-plan`, `store-unreadable`,
+  `no-scope`, `unknown-chunk`, `box-import` (the chunk's `## Status` box is ticked, and certifies it
+  after any withdrawal: untick it first), `not-certified`,
+  `unknown-fact`, `other-scope`, `not-named` (the fact neither names the chunk nor certifies it by its interval), `fact-append-failed`; 2 usage or a path that is not
+  a build plan. Refused inside a scratch worktree.
+  `plan check-claims [--json]` (read-only) asks, for every live plan declaring `branch:` or
+  `working-branches:`, whether each named branch exists locally or on a remote. Three outcomes per
+  claim, each reported distinctly and carried in `--json` as `outcome`: `exists` (nothing printed);
+  `release-pending` (the branch is gone and the plan is observed merged and unreleased by
+  `plan_lifecycle.observe` — the derivation `plan status` prints: a review anchored in the base's
+  history, the integration branch merged, or a pending change record for the scope — the gitflow
+  retention policy working, printed as `<plan>: <field> claims <branch>, which no longer exists;
+  merged-unreleased (<reason>) — archive at the release`, never a defect); `missing` (gone, and the
+  plan is in any other lifecycle state — so a `working-branches:` entry that is gone while the
+  integration branch is still in progress is `missing`, whatever pending record the scope has),
+  printed as `<plan>: <field> <branch> does not exist`, with one stderr line per plan that has a
+  miss: `plan check-claims: <plan> is not release-pending (<state>: <reason>)`. A plan whose claim
+  cannot be read is listed too, and is not a resolving claim. Exit 0 when nothing is `missing` and
+  nothing is unreadable, 1 otherwise, 3 when git cannot list branches (nothing checked), 2 usage.
+  `--json`: `{ok, claims: [{plan, field, branch, where, outcome}], unreadable: [{plan, reason}]}`,
+  `where` being `local`, `remote` or null.
   `archive-change-log [--apply] [--json]` (mutating with `--apply`) keeps `.prawduct/change-log.md`
   bounded: past the repo's oversized threshold it moves entries verbatim into
   `.prawduct/change-log-archive/YYYY-MM.md` until the live log is at most half the threshold,
@@ -298,15 +437,21 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `moved`, `pinned_bytes`, `buckets{YYYY-MM: count}`, `written[]`.
   `cut-change-log --release vX.Y.Z [--scope S]... [--apply]` (mutating with `--apply`) ships
   pending change fragments: the release plan's `ships` rows, or exactly the named scopes. It
-  renders each into the archive's month bucket tagged `release=`, writes its consumer note under
-  the open `plugin/CHANGELOG.md` section's headline (never the headline itself), and removes it;
-  a `withheld` fragment stays. The dry run lists every `none:` consumer note with its reason.
+  renders each into the archive's month bucket tagged `release=` and removes it; a `withheld`
+  fragment stays. Where the repo declares `consumer_digest:` (`plugin/lib/consumer_digest.py`), it
+  also renders the shipping consumer notes, under a generated heading and
+  `.prawduct/release-headline.md`'s headline, into `.prawduct/releases/vX.Y.Z.md`, and inserts that
+  section into the declared changelog above the newest release, changing no other byte. The dry
+  run prints that section verbatim and lists every `none:` consumer note with its reason.
   Exit 0 when it ran or had nothing to cut; **1 `refused: <code>:`** with nothing written
   (`bad-version`, `no-change-log`, `invalid-pending-set`, `archive-ignored`, `unknown-scope`,
-  `no-release-plan`, `bad-release-plan`, `unclassified-fragment`, `no-headline`, `wrong-section`
-  (the top section is not this release's), `write-failed`),
-  or `removal-failed` after the archive and notes are written, which a re-run completes without
-  duplicating; 2 on a usage error. No `--json`.
+  `no-release-plan`, `bad-release-plan`, `unclassified-fragment`, `digest-declaration-invalid`,
+  `digest-missing`, `digest-unreadable`, `marker-missing`, `release-in-changelog`, `no-headline`,
+  `releases-ignored`, `release-already-cut`, `write-failed`), or `removal-failed` after the writes
+  landed, which a re-run completes without duplicating because the release file marks the release
+  cut; 2 on a usage error. No `--json`. *2026-10-26 (#733): `wrong-section` retired with the
+  open-section model it guarded. This is a Repo-lifecycle command, not the stable tier, so the
+  code set may change at a minor.*
   `migrate-change-log [--apply]` (mutating with `--apply`) converts the legacy log's
   release-pending entries into fragments and removes them from the log; shipped and untagged
   entries stay. Exit 0 when it ran or had nothing to convert; **1 `refused: <code>:`** with
@@ -383,7 +528,7 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   (`gates.commit_coverage`); verdict token leads on stdout, degrades to `unknown` rather than a
   reassuring `free`).
 - **Repo lifecycle** — `migrate-plugin`, `init-product`, `update-gitignore [--dry-run]`,
-  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`,
+  `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`, `reanchor`, `install-tripwire`,
   `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`, `migrate-change-log`, `repo-disable` (dry-run-by-default where they mutate, with
   one stated exception). **`update-gitignore` is the exception: it repairs by default and
   previews only under `--dry-run`.** It is called as a repair step by `/prawduct:doctor`,
@@ -441,8 +586,8 @@ allowlist; `#667` carries the audit.
 Safe/idempotent notes: consolidation and fact-appends are **idempotent** (identity fixed at
 dispatch); state-mutating lifecycle commands (`migrate-plugin`, `init-product`, `coverage-scaffold`,
 `repo-disable`, `audit-learnings`, `learnings-obligation`, `norm-index-scaffold`,
-`reanchor`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`, `cut-change-log`,
-`migrate-change-log`) default to a
+`reanchor`, `install-tripwire`, `lifecycle-repair`, `plan-backfill`, `archive-change-log`,
+`cut-change-log`, `migrate-change-log`) default to a
 **dry run** and require
 `--apply` to write. The split is **scope, not danger**: a command acting on one file the operator
 named writes on invocation (`archive-plan`), one that walks a tree and decides for itself which
@@ -456,7 +601,13 @@ files to touch previews first. That framing is descriptive — the binding rule 
   and — for the hook subcommands — a JSON event payload on **stdin** (e.g. `stop` reads
   `background_tasks` and `last_assistant_message`, the second only for the turn's closing block — its
   clear verdict and disposition;
-  `subagent-stop` reads `cwd`/`agent_type`).
+  `subagent-stop` reads `cwd`/`agent_type`). Every payload key, host environment variable,
+  structured hook response and the Stop's blocking exit is read or written in one module,
+  `plugin/lib/host.py`, chosen by `PRAWDUCT_HOST` (unset means `claude`, the only host
+  implemented). Plain text the hooks print in place (the briefing, the banner, the Stop's notes
+  ahead of its block) is not yet routed there. An unknown value blocks
+  `stop` (exit 2, naming the variable) and makes the SessionStart and SubagentStop hooks note it
+  on stderr and do nothing.
 - **Human-readable output:** most subcommands print prefixed text (see Error Model). Skills consume
   their **exit codes**, not parsed text.
 - **Machine-readable output (`--json`):** a defined subset emits structured JSON on stdout, each with
@@ -498,6 +649,14 @@ files to touch previews first. That framing is descriptive — the binding rule 
     separate statuses on purpose** and a consumer must not collapse them: the first is prawduct's
     to repair, the second is an anchor the owner has edited, which this command reports and
     declines to overwrite.
+  - `install-tripwire --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #1
+    runs the command and relays its human form. The shape is published for programmatic consumers
+    and carries keys `status` — the state found before any write, one of `present` / `absent` /
+    `stale` / `malformed` — plus `applied` (whether this run wrote), `path` (the settings file)
+    and `reason` (the malformed shape in words, `null` otherwise). Unlike `reanchor`, an
+    `--apply` that wrote still reports the status it found (`absent` or `stale`) with
+    `applied: true`. Dry run exits 0 when it ran and 1 on `malformed` (could not grade); `--apply`
+    exits 0 on a write or an already-current hook and 1 on `malformed` (nothing written).
   - `stale-plugin-caches --json` → **no JSON consumer today.** `/prawduct:doctor` Health Check #21
     runs the command and relays its human form. The key set is listed once, in the § Operations
     "Stale plugin caches" entry. A profile with a non-null `ungraded_reason` has nothing in it
@@ -556,7 +715,8 @@ files to touch previews first. That framing is descriptive — the binding rule 
     `schema_version` (see Versioning).
   - `stats --json` → **no skill consumer today**. `/prawduct:janitor` reads the human form, and the
     opt-in contribution payload a later wave builds is derived from this shape: top-level `schema_version`, `project`, `generated_at`, `window` (`since`, `until`),
-    `schema_ahead`, and `by_version` keyed by plugin `major.minor`. The per-version keys are defined
+    `schema_ahead`, and `by_version` keyed by plugin `major.minor`; with `--by-build`, also
+    `by_build`, keyed by `major.minor` then `actor.build` (`unstamped` when absent). The per-version keys are defined
     in `docs/governance-telemetry.md` § `prawduct-hook stats`, their one home.
   - `aggregate-stats --json` → **no skill consumer today**: top-level `schema_version`,
     `generated_at`, `sources` (`local`, `local_skipped`, `contributed` — `bundles`, `lines`,

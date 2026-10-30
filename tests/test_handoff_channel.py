@@ -47,7 +47,6 @@ def _quiet_git(monkeypatch) -> None:
     """Silence the git-backed handoff sources so assembly is the only variable."""
     monkeypatch.setattr(briefing.gitstate, "_get_session_changed_files", lambda d: [])
     monkeypatch.setattr(briefing, "_git_session_commits", lambda d: [])
-    monkeypatch.setattr(briefing.buildplan_refs, "_parse_build_plan_status", lambda d: {})
 
 
 # =============================================================================

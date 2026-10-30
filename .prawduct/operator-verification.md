@@ -1218,11 +1218,11 @@ different governance version).
 3. Confirm the version-as-cache-key assumption end to end: bump `develop` to the next `-dev.N`,
    push, restart the sibling's session, and confirm the briefing follows. A briefing that does not
    move means the cache key is not the version and the recipe loses a step.
-   **That bump is FOUR files, not three** — the three version files *and* the open
-   `## vX.Y.Z-dev.N` heading in `plugin/CHANGELOG.md`, in one commit.
-   `test_changelog_has_current_version_entry` keys on the exact manifest string, so a three-file
-   bump reddens `develop` and you will be debugging the suite instead of the thing you came to
-   verify.
+   **That bump is the three version files only — no `## vX.Y.Z-dev.N` heading in
+   `plugin/CHANGELOG.md`.** Since #733 the cut writes each release's section itself, and
+   `test_changelog_matches_the_current_version` fails when a prerelease has a section, so opening
+   one reddens `develop` and you will be debugging the suite instead of the thing you came to
+   verify. (Before #733 this step said FOUR files, with the open heading; that rule is inverted.)
 4. Confirm `main` is untouched throughout, and that no other repo on this machine changed track.
 5. Walk the documented way back off: delete the `prawduct-dev` block, re-enable `prawduct@prawduct`,
    restart, and confirm the briefing reports the released version again.
@@ -1326,7 +1326,12 @@ rather than as an error the reader should go fix.
 
 ## VRF-020 — Chunk 04 (review-stages) — the deferral WARNING's channel, observed from the model's seat
 
-**Status:** pending
+**Status:** accepted
+**Accepted:** 2026-10-27 — no longer applicable; must NOT be drained by running its steps. Scope
+`stop-deferral-quiet` (owner: the notice is "pure noise") made the deferral WARNING log-only at
+exit 0: no `systemMessage` and no `additionalContext` carries it there any more, so the steps
+below would report a missing message as a bug. At exit 2 it rides the block text, which
+`tests/test_short_plan_deferral.py` pins.
 
 **Raised:** 2026-09-17, from the bundle review's R-9 (accepted) — the static half is pinned in
 `tests/test_short_plan_deferral.py`; the harness half has never been observed.

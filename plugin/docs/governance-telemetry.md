@@ -31,8 +31,8 @@ kind-named key (`review` for `review.*`):
 ```
 
 - `schema_version` is **per line** — a long-lived ledger can mix versions.
-- `scope` is the build-plan feature key (derived by `critic-begin` from the branch name, or passed explicitly as an override;
-  the `active_build_plan` pointer is only the fallback).
+- `scope` is the build-plan feature key (taken by `critic-begin` from the checkout's work-unit binding, or passed explicitly as an override;
+  `null` when the checkout is bound to no plan).
 - `duration_seconds` and `actor.model` are nullable — recorded, never invented.
   `duration_seconds` is the reviewing model's **own estimate**, never a clock. The clock is the
   optional `dispatched_at` key, written only when the review's dispatch was marked before the
@@ -98,7 +98,8 @@ All three nest under a `learning` key, under the same envelope:
   it.
 - **The span is the session's work, not its uncommitted work.** The Stop hook
   reaches `learning.written` off `gates.session_work_span`, which diffs the
-  session's base tree against the working tree — so a rule written and
+  session's base tree against the working tree, less history a pull, merge or
+  branch switch brought in — so a rule written and
   committed in one turn is still counted at that turn's Stop. Without the
   marker there is no base to diff, and then nothing is recorded and the Stop
   hook says so on stderr; that one missing state is also why the budget check
@@ -165,6 +166,29 @@ Their writers are `lib/evidence.py`'s `append_stop_block` and
 `append_session_start`. Neither is read by any gate. A failed append prints a `NOTE:` and changes
 nothing else.
 
+**Why a control fired.** Any control firing, blocking or not, may carry two
+more fields in its body, through the sink's `reason` and `observed` arguments:
+
+- `reason`: which of the control's checks failed, a slug from a closed set the
+  control declares.
+- `observed`: a flat map of the few facts the control could see when it fired,
+  each a boolean, integer, slug or `null` ("could not tell").
+
+A value of any other shape is dropped and named in the body's `refused_fields`,
+and the firing still counts, as `unspecified`. The shape keeps a sentence out,
+not a short phrase. What keeps turn text out of the shared store is that
+producers pass declared constants and observations, never the turn's words.
+Each firing records what was observed, never a judgment of it. A reader derives the
+judgment (below), so a revised definition re-reads every recorded firing. A
+control that records neither is counted as `unspecified`.
+
+The Stop gates that record a reason today:
+
+| Gate | `reason` | `observed` |
+|---|---|---|
+| `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
+| `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
+
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
 Aggregates `review.*` events and tallies `learning.*` ones; skips corrupt
@@ -182,7 +206,8 @@ Per grouping — overall, `actor.role` × `actor.model` × review mode,
 per-`scope`, and per review `stage` — it reports: review count; duration led by the **clocked**
 population (reviews whose dispatch was marked) and then the **unclocked** reviews' self-reported
 estimate, labelled as one — two disjoint populations, never pooled; findings by severity, **actionable rate** (share of reviews with ≥1
-blocking/warning), and findings-per-review. Plus a findings-by-file rollup
+blocking/warning: what a reviewer *labelled*), **what the builder did** with those findings
+(`dispositions`, below), and findings-per-review. Plus a findings-by-file rollup
 from per-finding `files` attribution (top paths by actionable findings,
 capped at 10 with the total attributed count alongside).
 
@@ -199,6 +224,8 @@ project          the repo's identity: product_identity.name, else the push
 generated_at     ISO-8601 UTC
 window           {since, until} — the bounds in force, stated even when both
                  are null so a slice is never mistaken for the whole corpus
+dispositions     {status: available, as_of} or {status: unavailable, reason}
+                 — whether the evidence store could be joined (below)
 events_total     reportable review.* events
 skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
@@ -231,7 +258,8 @@ two disjoint populations, because a median over the mixture measures
 neither; schema 6 added them — the human line leads with the first and labels the second an
 estimate), `findings`
 (`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
-`actionable_rate` (0–1), `observations` (items an inner-stage pass demoted —
+`actionable_rate` (0–1; severity-labelled — the human line calls it `severity-actionable`),
+`dispositions` (below), `observations` (items an inner-stage pass demoted —
 never counted in `findings`), `reviews_recording_observations`
 (reviews whose event carried the array; events written before it existed are
 excluded, so `observations: 0` over `0` recording reviews means *not measured*,
@@ -246,6 +274,28 @@ key at all) is a different claim from **blank**, because the PR reviewer's findi
 `{goal, severity, file, line, summary}` and have no remedy field in their schema. `rate` is over
 findings whose schema HAS the field, and is `null` when none does — reporting 0% there would be a
 claim about a population's behaviour that its schema cannot support. Schema 7 added the key.
+
+`dispositions` reports what the builder **did** with the blocking and warning findings of the
+block's reviews, which `actionable_rate` cannot: a finding that was fixed and one that was accepted
+and left carry the same severity. It is read from the clone-shared evidence store, once per run.
+A ledger `review.*` event joins when its `review.fact_id` names a review the store holds. Each
+finding's outcome comes from `stats.finding_outcome`, the rule `prawduct-hook stats` and
+`render-dispositions` use, so the reports never disagree about a finding.
+
+- `status`: `available`, or `unavailable` with a `reason` (outside git, no store yet, unreadable).
+  When it is unavailable, the block carries no counts and no rate rather than a 0%, and every
+  severity figure is unchanged.
+- `joined_reviews` / `unjoined_reviews`: every review in the block is in one of the two. A
+  `review.pr` event carries no `fact_id`, so it is always unjoined, and so is an event whose fact
+  is not in this clone's store. The rate is over the joined reviews only.
+- `by_outcome`: blocking and warning findings of the joined reviews, by `stats`'s outcome names
+  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `undispositioned`, `other`). A
+  finding with no `fid` is `other`.
+- `answered` and `acted_on_rate`: the same definition as `stats` (§ below, through the one
+  helper `stats.acted_on`). `acted_on_rate` is `null` when nothing was answered.
+
+The window selects reviews; their outcomes are read as the store stands now, and the top-level
+`dispositions` header states that moment as `as_of`. Schema 9 added the key.
 
 ### Windowing (`--since` / `--until`)
 
@@ -284,12 +334,14 @@ under a known family). This folds **values, not keys**, so `schema_version`
 holds; the raw id stays in each ledger line untouched, so the fold is a
 read-time view, not a rewrite.
 
-## `prawduct-hook stats [--json] [--since <stamp>] [--until <stamp>]`
+## `prawduct-hook stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]`
 
 What governance cost and what it caught, **per plugin version** (`major.minor`).
 It reads the clone-shared evidence store, not the ledger. Every fact there
 carries the plugin version that wrote it, and nothing is lost when a worktree is
-deleted. `review-stats` answers a different question: what a review costs, by
+deleted. The store also holds the review and resolution facts ingested from other
+clones' notes (`refs/notes/prawduct`), so two clones of one product count those
+reviews in both. `review-stats` answers a different question: what a review costs, by
 mode and model, in this worktree. Exit 0 with a report (an empty store is an
 answer); exit 1 on bad arguments or a store that cannot be read. `--since` and
 `--until` scope facts by their `ts`, and take the same bounds `review-stats`
@@ -324,9 +376,35 @@ The definitions (their one home):
   - *loops*: (session, gate) pairs where one gate blocked three or more times in
     a session. A Stop that passes records nothing, so "consecutive" cannot be
     measured.
+  - Blocks by gate and reason (`by_gate_reason`), with `unspecified` for a
+    block that recorded none.
+  - *verdicts*, for a gate with a rule (`stats.SLIP_WHEN_OBSERVED`): each block
+    is a **catch** when the harm the gate guards against was real when it
+    fired, a **slip** when the turn's words were wrong but the situation was
+    already handled, and **unclassified** when the deciding observation is
+    absent or `null`. The rules can be revised, because they are applied at read
+    time:
+    - `clear-reason` is a slip when `notes_present`: the content had a home, and
+      the reason only failed to name it. It is a catch when notes were absent
+      and `session_changed`: a clear would have lost what only the turn held
+      about work the session did. In a session that changed nothing, the turn
+      is an answer its reader has just read, and whether clearing it loses
+      anything is a judgment no observation makes, so it is unclassified, as is
+      a firing recorded before `session_changed` existed
+      (`stats.CATCH_REQUIRES_OBSERVED`).
+    - `clear-verdict` is a slip when `work_live`: the hold was right, and only
+      the disposition label was wrong. Since `clear-gate-telemetry` the gate no
+      longer fires on `YOUR TURN` with `work_live`, so its slips are only
+      `COMPLETE` turns, and its counts on either side of that release do not
+      compare. Nor do `clear-reason`'s catches, which then began to require
+      `session_changed`. Otherwise a reader was told to keep a
+      session open for nothing, which is a catch. An unreaped delegate is not
+      observable, so this rule leans towards catch, which is the direction
+      that keeps a gate.
 - **guard refusals**: control firings other than Stop blocks, per recorded
-  session (the same rule) and by guard. A base-advance transfer grant shares
-  their sink, but it is a pass, so it is counted under Benefit instead.
+  session (the same rule), by guard, and by guard and reason
+  (`by_guard_reason`). A base-advance transfer grant shares their sink, but it
+  is a pass, so it is counted under Benefit instead.
 
 **Benefit**
 - **findings**: per severity, raised, then what became of each one.
@@ -352,6 +430,18 @@ Rates with no denominator print as `-` (`null` in `--json`), never as zero.
 `--json` carries `schema_version`, `project`, `generated_at`, `window`,
 `schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
 by `major.minor` (`unknown` when a fact names no version).
+
+`--by-build` splits each version by the plugin build that wrote the fact
+(`actor.build`: the plugin checkout's commit sha, `+dirty` for a working tree).
+Every dev build of one version shares its version string, so this is how two
+dev builds are told apart. Facts with no build (a marketplace install, or ones
+written before the field existed) form one `unstamped` row. Each row is defined
+exactly as a version's numbers are, over that build's facts, so rows need not
+sum to the version's totals: a session that ran on two builds counts in both.
+Builds are listed in the order the store first saw them. The human report prints one block per build instead of
+per version, and `--json` adds `by_build`, keyed by `major.minor` and then by
+build, beside an unchanged `by_version`. The contribution report never carries
+the build: it stays at `major.minor` plus the dev flag.
 
 ## `prawduct-hook contribute [--json]` and `contribute --send [--approve sha256:<digest>]`
 

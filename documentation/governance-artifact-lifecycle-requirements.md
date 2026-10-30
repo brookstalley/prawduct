@@ -174,6 +174,13 @@ MUST unless marked SHOULD.
   written by hand too, in its fragment's `## Consumer note`, and `cut-change-log` copies it under
   the headline once, at the release. The file is written once and never regenerated, so it is
   still not a derived view.
+  *Amended 2026-10-26 (#733):* the headline is written by hand in `.prawduct/release-headline.md`
+  before the cut, and the cut writes the release's whole section at once: it renders
+  `.prawduct/releases/vX.Y.Z.md` from the fragments' notes and inserts it as a new section. It
+  changes no other byte, and prawduct declares this path as `consumer_digest:` like any product.
+  Each section is still written once and never regenerated (regenerating from release files is out
+  of #733's scope, with a revisit trigger in its requirements' Decision 3), so the file is still not
+  a derived view.
 
 ### CL — Change log
 

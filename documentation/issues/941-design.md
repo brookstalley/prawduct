@@ -1,7 +1,10 @@
 # Issue #941 — review-stats: Actionable Rate Ignores Recorded Dispositions: Design
 
-`status: draft · stage: design · area: governance/telemetry · added: 2026-10-02 · source: scheduled
+`status: implemented · area: governance/telemetry · added: 2026-10-02 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/941`
+
+Where this doc differs from the issue body, the body and `plugin/docs/governance-telemetry.md`
+§ review-stats describe what shipped.
 
 Related: #563 (the `gate.blocked` / `probe.fired` event kinds, split out of #263 with this item),
 `plugin/docs/governance-telemetry.md` (the `--json` contract this extends).

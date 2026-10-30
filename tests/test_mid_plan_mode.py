@@ -186,12 +186,14 @@ class TestTheBoundaryIsKept:
         assert mode == "cumulative", why
 
     def test_a_plan_not_shown_to_be_this_branchs_keeps_rule_2(self, tmp_path):
-        """A plan reached only through the active-plan pointer is assumed
-        related, and the boundary is never inferred away on an assumption."""
+        """A plan reached only through the legacy window is assumed related,
+        and the boundary is never inferred away on an assumption."""
+        from lib import work_unit
+
         repo = _repo(tmp_path, scoped=False)
-        plan = buildplan_refs.resolve_branch_plan(repo, repo / ".prawduct")
-        assert plan.path is not None  # the plan IS found — just not as this branch's
-        assert plan.source != buildplan_refs.SOURCE_SCOPE_NAMED
+        binding = work_unit.resolve(repo)
+        assert binding.plan_path is not None  # the plan IS bound — just not by a claim
+        assert binding.chosen_by == "legacy-default"
         _commit_first(repo, 2)
         mode, why = infer_mode(repo, None)
         assert mode == "cumulative", why
@@ -261,21 +263,26 @@ class TestNothingOwedNow:
         assert mode == MODE_DEFERRED, why
         assert why.startswith("short-plan deferral:"), why
 
-    def test_boxes_held_for_a_review_never_given_name_their_remedy(self, tmp_path):
-        """Every chunk of a short plan committed, no box ticked, a clean tree:
-        the builder held each box for a per-chunk review a short plan never
-        gives. Ticks are the only signal inference has -- git cannot tell
-        "committed, not ticked" from "not built" -- so the answer stays
-        `deferred`, and the rationale must say the box does not wait, or the
-        builder waits for a `cumulative` that is never inferred. What turns
-        this red: dropping the tick instruction from the non-final rationale.
-        Control: ticking the two earlier boxes reaches the boundary review."""
+    def test_chunks_committed_without_naming_them_name_their_remedy(self, tmp_path):
+        """Every chunk of a short plan committed under subjects that name no
+        chunk, no box ticked, a clean tree. Renegotiated (#1051): inference
+        now reads a committed chunk as `built` — but only when its subject
+        names it (or its diff touches the chunk's Deliverables paths), and
+        these do neither, so the answer stays `deferred`. The rationale must
+        therefore say how a commit makes a chunk count, or the builder waits
+        for a `cumulative` that is never inferred. What turns this red:
+        dropping the subject instruction from the non-final rationale.
+        Controls: a commit naming the chunks reaches the boundary review, and
+        so (until migration) does ticking the boxes."""
         repo = _repo(tmp_path, chunks=3)
         for name in ("one", "two", "three"):
             _commit_first(repo, 1, name=name)
         mode, why = infer_mode(repo, None)
         assert mode == MODE_DEFERRED, why
-        assert "tick its box" in why and "does not wait" in why, why
+        assert "naming it in the subject" in why and "waits for none" in why, why
+        _commit_file(repo, "src/named.py", "# named\n", "feat: land them (Chunk 1) (Chunk 2)")
+        mode, why = infer_mode(repo, None)
+        assert mode == "cumulative", why
         _tick(repo, 2, chunks=3)
         mode, why = infer_mode(repo, None)
         assert mode == "cumulative", why

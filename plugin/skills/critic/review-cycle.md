@@ -15,7 +15,7 @@ Work-scaled review lifecycle. Review depth matches the size of the work.
 | **Any work merging a multi-cycle branch** | `cumulative` review before opening the PR (on a `cumulative-final` plan it doubles as the last chunk's review, not a second pass). |
 | **Re-review after fixing prior BLOCKING/WARNING findings** | `verify-resolutions` — delta review against the prior pass's scope. Falls through to `chunk`/`final` when the anchor is missing or scope widens past the demotion threshold. |
 
-The stop hook enforces review for code changes when a build plan exists: it asks whether composed review coverage spans the session's base tree → the current working tree with zero unresolved blocking findings (facts in the shared evidence store; see "Evidence and Composition" below). It also surfaces an advisory WARNING when all chunks are `[x]` but the most recent review ran Goals 1-3 only — run `/prawduct:critic final` before pushing.
+The stop hook enforces review for code changes when a build plan exists: it asks whether composed review coverage spans the session's base tree → the current working tree with zero unresolved blocking findings (facts in the shared evidence store; see "Evidence and Composition" below). It also surfaces an advisory WARNING when no chunk is open (`prawduct-hook plan status`) but the latest review fact is neither `final` nor `cumulative` — run `/prawduct:critic final` before pushing.
 
 `/prawduct:pr create` is gated by `prawduct-hook check-cumulative-critic` — composed review coverage must span `merge-base...HEAD` by tree, with zero unresolved blocking findings on the path. No single run needs to carry any particular mode label: chunk, final, cumulative, and verify-resolutions facts compose identically.
 
@@ -24,8 +24,8 @@ The stop hook enforces review for code changes when a build plan exists: it asks
 Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. The canonical caller is `/prawduct:critic` (no args) — the SKILL forwards any invocation arguments verbatim to `prawduct-hook infer-critic-mode`, which owns the full precedence and records `mode_chosen_by` as its verbatim rationale string. Three precedence layers, highest first, all implemented inside the helper:
 
 1. **Per-invocation override** — an explicit mode argument (`/prawduct:critic chunk` etc.). Rationale: `"explicit-args"` — except a named `chunk`/`final` on a clean tree, whose interval is provably empty: the helper answers `cumulative`, rationale `explicit-args <token> redirected: …` — the operator's word survives into `mode_chosen_by`. Not mid-plan (below): there the token stands.
-2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the first unticked `## Status` box). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
-3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress still gets rule 1's review, and a committed bundle rule 2's at the boundary. **Mid-plan** (2+ unticked chunks of the branch's own plan), a clean tree answers `chunk` over the unreviewed interval, or `deferred` (nothing unreviewed, or a short plan).
+2. **Plan-level override** — the active build plan's current chunk's `Critic mode:` field (the current chunk is the plan's first open chunk). A valid value wins over inference with rationale `plan-override: <mode>`; an absent, blank, or unrecognized value is ignored.
+3. **Inference** — the four rules (`verify-resolutions > cumulative > final > chunk`), with the short-plan deferral between the second and third: an eligible plan with code in flight answers `deferred` (rationale `short-plan deferral: …`), which dispatches nothing; a fix-in-progress still gets rule 1's review, and a committed bundle rule 2's at the boundary. **Mid-plan** (2+ open chunks of the branch's own plan), a clean tree answers `chunk` over the unreviewed interval, or `deferred` (nothing unreviewed, or a short plan).
 
 Authoring heuristic (what inference picks per plan shape, when an explicit declaration earns the override): `methodology/planning.md` "Critic Mode Per Chunk".
 
@@ -97,6 +97,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 - A rebase or amend changes the tree → a gap composition cannot close (the transfer below closes one case). A squash-merge preserves the tree, so squashed PRs stay covered.
 - A **selective commit** (only part of the reviewed state) produces a tree nobody reviewed — a gap. `/prawduct:critic verify-resolutions` reviews that delta and closes it.
 - Blocking findings don't die with re-runs: they stay on the path until a `verify-resolutions` pass appends resolution facts for them.
+- Review and resolution facts reach other clones as notes on `refs/notes/prawduct`, pushed by `/prawduct:pr` (`evidence sync`) and ingested at session start. A clone lacking a fact's tree reads that interval as a gap, so only reviews of committed trees — the PR gate's `cumulative` among them — count in every clone.
 
 ### Cumulative mode and the PR gate
 
@@ -300,8 +301,7 @@ findings, so the builder meets it holding the findings rather than remembering i
 
 **Which writes are free while a review is in flight** — the question the builder actually has
 mid-review, answered by `coverage_algebra.is_judgeable_path`. Free: **everything under
-`.prawduct/`** (change-log, backlog, `project-state.yaml`, plan prose including its
-`## Status` boxes, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
+`.prawduct/`** (change-log, backlog, `project-state.yaml`, plan prose, and the gitignored session files), `.claude/settings.json`, and `.md` outside the protected
 set — README, `docs/**`, product prose. These are **non-judgeable**: a commit touching only those
 composes as a free edge, so it never needs new coverage and a fix confined to them cannot mandate
 another review. Two traps, both in the direction of *more* review than the extension suggests: a
@@ -347,7 +347,7 @@ Every review cycle must produce a record — governance without an audit trail i
 
 The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: every consolidation path appends one `review.critic` event naming itself as `trigger` (the PR skill appends `review.pr`). `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
 
-Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **derived in code** from the branch name matched against the scopes build plans declare, or passed explicitly as an override. `active_build_plan` is only the last fallback. Do not derive scope yourself and pass it: an agent reading that pointer is what attributed manifests, review facts and ledger events to unrelated plans.
+Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **taken in code** from the checkout's work-unit binding (`prawduct-hook plan resolve` prints it), or `null` when the checkout is bound to no plan, or passed explicitly as an override. Do not derive scope yourself and pass it — `SKILL.md` step 4 owns why.
 
 Each line is one event with an envelope/payload split:
 

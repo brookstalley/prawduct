@@ -10,16 +10,19 @@ session banner, no ``/prawduct:*`` skills, no hooks. Project-scope *enablement*
 is not *installation*. The harness additionally requires a record in
 ``~/.claude/plugins/installed_plugins.json`` whose ``projectPath`` is that repo.
 
-**Why this cannot be a session probe, which is the whole design.** Every other
-"is this repo healthy" check prawduct owns runs *inside* the repo's own session —
-an advisory probe, or a ``/prawduct:doctor`` step. Neither can reach this failure,
-because both are delivered BY the plugin: when the plugin does not load, the
-probe does not run and the skill cannot be invoked. The agent reads the anchor,
-and unless it notices the plugin is absent, proceeds ungoverned. So the detector has to run from
-*outside* the repo — from the onboarding session, which lives elsewhere and can
-see the target. That is why this module takes an explicit ``project_dir`` rather
-than inferring one, and why its caller is ``/prawduct:onboard`` rather than a
-probe registry.
+**Why this cannot be a session probe.** Every other "is this repo healthy"
+check prawduct owns runs *inside* the repo's own session — an advisory probe, or
+a ``/prawduct:doctor`` step. Neither can reach this failure, because both are
+delivered BY the plugin: when the plugin does not load, the probe does not run
+and the skill cannot be invoked. So this rule runs in two places that the plugin
+does not deliver. Here, from *outside* the repo — the onboarding session, which
+lives elsewhere and can see the target, which is why this module takes an
+explicit ``project_dir`` and its caller is ``/prawduct:onboard`` rather than a
+probe registry. And inside the repo's own sessions, as the project-level
+SessionStart hook ``lib/unloaded_tripwire.py`` writes into the repo's committed
+settings: a self-contained copy of this rule, because the plugin it would import
+is the thing that is absent. ``tests/test_unloaded_tripwire.py`` holds the two to
+the same verdicts.
 
 **Fail-soft, and never in the direction of a false accusation.**
 ``installed_plugins.json`` is a Claude Code *internal* file — not a documented
@@ -46,16 +49,17 @@ raises nothing. The CLI wrapper in ``bin/prawduct-hook`` maps it to an exit code
 from __future__ import annotations
 
 import json
-import os
 import shlex
 from pathlib import Path
+
+from . import host
 
 #: The plugin as the harness names it: ``<plugin>@<marketplace>``.
 PLUGIN_ID = "prawduct@prawduct"
 
-#: Where the harness records what is installed where. Overridable for tests and
-#: for a non-default ``CLAUDE_CONFIG_DIR``.
-DEFAULT_PLUGINS_FILE = Path("~/.claude/plugins/installed_plugins.json")
+#: Where, under the host's config home, the harness records what is installed
+#: where.
+PLUGINS_FILE_IN_CONFIG = ("plugins", "installed_plugins.json")
 
 #: ``scope`` values that make a record apply to every project rather than one.
 #: A user-scope install governs the target repo without naming it, so a record
@@ -125,15 +129,39 @@ def read_installed_plugins(path: Path) -> dict:
 
 
 def default_plugins_file() -> Path:
-    """The harness's installed-plugins manifest, honouring ``CLAUDE_CONFIG_DIR``.
+    """The harness's installed-plugins manifest, under ``host.config_home``.
 
     Resolved at call time rather than import time so a test or a caller that
     sets the environment variable is not defeated by import ordering.
     """
-    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
-    if config_dir:
-        return Path(config_dir).expanduser() / "plugins" / "installed_plugins.json"
-    return DEFAULT_PLUGINS_FILE.expanduser()
+    return host.config_home().joinpath(*PLUGINS_FILE_IN_CONFIG)
+
+
+def checkout_paths(target: Path) -> list[Path]:
+    """The resolved directories an install record may name to cover ``target``.
+
+    ``target`` itself, and — when ``target`` is a linked git worktree — the main
+    checkout it belongs to: a project- or local-scope record names the checkout
+    it was installed from, and a worktree of that checkout loads the plugin
+    too. A linked worktree's ``.git`` is a file reading ``gitdir: <path>``, and
+    that gitdir's ``commondir`` file leads to the main checkout's ``.git``. A
+    submodule's ``.git`` file names a gitdir with no ``commondir``, so it adds
+    nothing. Read from files, never by running git, because the tripwire hook
+    holds the same rule in a self-contained copy.
+    """
+    paths = [target]
+    try:
+        pointer = (target / ".git").read_text(encoding="utf-8").strip()
+        if not pointer.startswith("gitdir:"):
+            return paths
+        gitdir = target / pointer[len("gitdir:"):].strip()
+        common = (gitdir / "commondir").read_text(encoding="utf-8").strip()
+        common_dir = (gitdir / common).resolve()
+    except (OSError, ValueError, RuntimeError):
+        return paths
+    if common and common_dir.name == ".git":
+        paths.append(common_dir.parent)
+    return paths
 
 
 def _same_path(a: str, b: Path) -> bool:
@@ -190,6 +218,8 @@ def plugin_activation_status(
             f"the target path could not be resolved ({exc.__class__.__name__})",
         )
 
+    covered = checkout_paths(target)
+
     read = read_installed_plugins(path)
     version = read["version"]
     if read["status"] != MANIFEST_OK:
@@ -245,7 +275,7 @@ def plugin_activation_status(
         if not isinstance(project_path, str):
             malformed += 1
             continue
-        if _same_path(project_path, target):
+        if any(_same_path(project_path, c) for c in covered):
             return {
                 "status": ACTIVE,
                 "reason": (
@@ -348,7 +378,8 @@ def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
     this module was written for. From ``/prawduct:doctor`` it cannot mean that:
     doctor IS a plugin skill, so the plugin demonstrably loaded, and the only
     thing an ``inactive`` can indicate there is that the manifest's record does
-    not name *this* path — a worktree, a moved, renamed or symlinked checkout.
+    not name *this* path — a moved or renamed checkout, or a worktree of one (a
+    worktree of a recorded checkout is covered: :func:`checkout_paths`).
     Relaying the onboard consequence there would send an operator to reinstall a
     working install, which is the false accusation the rest of this module
     refuses to make.
@@ -370,8 +401,8 @@ def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
             "",
             "The plugin plainly DID load — you are running one of its skills — so "
             "this is not an ungoverned repo. What it means is that the manifest "
-            "holds no record for this exact path: a git worktree, or a checkout "
-            "that was moved, renamed, or is reached through a symlink. Session "
+            "holds no record for this exact path: a checkout that was moved or "
+            "renamed, or a worktree of one. Session "
             "state still resolves, but the record no longer describes reality.",
             "",
             f"Re-point it if you want the record accurate: "
@@ -391,8 +422,8 @@ def report_lines(result: dict, *, context: str = ONBOARD) -> list[str]:
             "names this path. If this session loaded the plugin with "
             "`--plugin-dir`, migrating leaves this repo with NO governance from "
             "the next session on: the legacy hook stands down and nothing "
-            "replaces it. If this is a git worktree or a moved, renamed or "
-            "symlinked checkout, the plugin is installed and the record is only "
+            "replaces it. If this checkout was moved or renamed, or is a "
+            "worktree of one, the plugin is installed and the record is only "
             "stale. Either way, install before applying:",
             "",
             f"Fix: {remediation_command(result['project_path'])}",

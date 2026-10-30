@@ -35,6 +35,41 @@ HOOK = ROOT / "bin" / "prawduct-hook"
 PLUGIN_VERSION = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
 
 
+def _changelog_problem(version: str, changelog: str, banner) -> str | None:
+    """Why ``changelog`` does not fit plugin ``version``, else ``None`` (CD15)."""
+    if "-" not in version:
+        pairs = dict(_parse_text(banner, changelog))
+        if version not in pairs:
+            return f"CHANGELOG.md must carry the released version {version}"
+        if not pairs[version]:
+            return f"the {version} section's headline must be non-empty"
+        return None
+    # The cut's own heading recogniser, so this test and the cut agree on what
+    # a version heading is (three- and four-part versions alike).
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from lib import consumer_digest
+
+    base = version.split("-", 1)[0]
+    for line in changelog.splitlines():
+        found = consumer_digest.heading_version(line)
+        if found is not None and found.split("-", 1)[0] == base:
+            return (
+                f"prerelease {version} must have no section for {base} (found {line!r}): the cut writes "
+                "the release's section itself and refuses release-in-changelog while one exists"
+            )
+    return None
+
+
+def _parse_text(banner, changelog: str):
+    """``banner.parse_changelog`` over text rather than a plugin root."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        Path(tmp, "CHANGELOG.md").write_text(changelog, encoding="utf-8")
+        return banner.parse_changelog(Path(tmp))
+
+
 @pytest.fixture(scope="module")
 def banner():
     """Import hooks/banner.py as a module (its main() runs only under __main__)."""
@@ -78,19 +113,38 @@ def _repo(tmp_path: Path) -> Path:
 
 
 class TestBundledData:
-    def test_changelog_has_current_version_entry(self, banner):
-        """The shipped version's headline must exist, keyed by the EXACT manifest
-        string — a prerelease included.
+    def test_changelog_matches_the_current_version(self, banner):
+        """A released version has its section and headline; a prerelease has none.
 
-        Not the release it is a prerelease of. `develop` runs on `X.Y.Z-dev.N` and
-        opens `## vX.Y.Z-dev.N` with a headline; the cut writes that cycle's fragment
-        notes under it and renames it to `## vX.Y.Z`. Stripping the suffix here would look for a section describing
-        a release that has not happened, and would pass on a file carrying no notes
-        for the build actually running.
+        Renegotiated with #733's release-file model (CD15), not relaxed. The cut
+        now writes a release's section itself, as a new section, and refuses
+        `release-in-changelog` while one already names the release. So `develop`
+        carries no open `## vX.Y.Z-dev` section: the pending notes live in
+        `.prawduct/changes/` and the headline in `.prawduct/release-headline.md`.
+        What still holds, unchanged, is that a released version's section
+        exists with a headline the banner can show. What is new is that a
+        prerelease must NOT have one. A leftover `-dev` section would ship in the
+        released changelog beside the section the cut writes, and a hand-written
+        final `## vX.Y.Z` section would make the cut refuse `release-in-changelog`.
         """
-        pairs = dict(banner.parse_changelog(ROOT))
-        assert PLUGIN_VERSION in pairs, f"CHANGELOG.md must carry the current version {PLUGIN_VERSION}"
-        assert pairs[PLUGIN_VERSION], "the current version's changelog headline must be non-empty"
+        problem = _changelog_problem(PLUGIN_VERSION, CHANGELOG.read_text(encoding="utf-8"), banner)
+        assert problem is None, problem
+
+    @pytest.mark.parametrize(
+        ("version", "changelog", "bad"),
+        [
+            ("3.8.0", "# C\n\n## v3.8.0\n\nHeadline.\n\n## v3.7.2\n\nOld.\n", False),
+            ("3.8.0", "# C\n\n## v3.7.2\n\nOld.\n", True),                       # released, no section
+            ("3.8.0", "# C\n\n## v3.8.0\n\n## v3.7.2\n\nOld.\n", True),        # released, no headline
+            ("3.8.0-dev", "# C\n\n## v3.7.2\n\nOld.\n", False),
+            ("3.8.0-dev.2", "# C\n\n## v3.8.0-dev.2\n\nRolling.\n\n## v3.7.2\n", True),  # leftover open section
+            ("3.8.0-dev", "# C\n\n## v3.8.0\n\nToo early.\n\n## v3.7.2\n", True),        # final section before the cut
+            ("3.7.1.1-dev", "# C\n\n## v3.7.1.1-dev\n\nRolling.\n\n## v3.7.1\n", True),  # four-part leftover
+            ("3.7.1.1-dev", "# C\n\n## v3.7.1\n\nOld.\n", False),                          # its base's parent is history
+        ],
+    )
+    def test_the_contract_both_ways(self, banner, version, changelog, bad):
+        assert (_changelog_problem(version, changelog, banner) is not None) is bad
 
     def test_gates_json_well_formed(self):
         data = json.loads(GATES_JSON.read_text())
@@ -123,11 +177,12 @@ class TestVersionMath:
     def test_version_tuple_orders_a_dev_prerelease(self, banner):
         """`develop` carries `X.Y.Z-dev`; the cut promotes it to `X.Y.Z`.
 
-        Asserted directly because nothing else does. The only incidental coverage
-        of this path is `test_changelog_has_current_version_entry`, and that
-        coverage **evaporates at every release cut** — the version is bare again,
-        so the released plugin ships this branch untested by construction. That
-        is exactly backwards from what the suffix is for.
+        Asserted directly because nothing else does: no other test parses a
+        `-dev` version through the banner. Coverage that came incidentally from
+        the live manifest's version would **evaporate at every release cut**,
+        when the version is bare again, so the released plugin would ship this
+        branch untested by construction. That is exactly backwards from what the
+        suffix is for.
 
         Both directions, and the trailing sentinel is the reason both are needed:
         before it, any prerelease collapsed to the malformed `(-1,)`, which sorts
@@ -246,6 +301,46 @@ class TestVersionMath:
         ]}))
         lines = banner.render_delta("2.0.0", "2.1.0", root)
         assert any("new gate" in line and "cumulative-critic" in line for line in lines)
+
+    def _rollback_root(self, tmp_path: Path) -> Path:
+        """The plugin a downgrade actually runs: the OLDER one, whose changelog
+        and gates stop at its own version."""
+        root = tmp_path / "plugin"
+        (root / "hooks").mkdir(parents=True, exist_ok=True)
+        (root / "CHANGELOG.md").write_text("# CL\n\n## v2.0.0\nThe older release.\n")
+        (root / "hooks" / "gates.json").write_text(json.dumps({"gates": [
+            {"id": "old-gate", "name": "old-gate", "since": "2.0.0"}
+        ]}))
+        return root
+
+    def test_a_downgrade_is_not_announced_as_an_update(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[0] == "↓ Prawduct downgraded: v2.1.0 → v2.0.0"
+        assert not any("updated" in line for line in lines)
+
+    def test_a_downgrade_names_the_rollback_and_lists_no_highlight(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[1] == "  changes after v2.0.0 are no longer running"
+        assert not any(line.startswith(("  • ", "  ⊕ ")) for line in lines), lines
+        # Control: the same root does carry a highlight an upgrade into it lists.
+        up = banner.render_delta("1.9.0", "2.0.0", self._rollback_root(tmp_path))
+        assert "  • The older release." in up
+
+    def test_a_dev_prerelease_downgrade_is_a_downgrade(self, banner):
+        # The case that surfaced this: develop at -dev.2, then the -dev.1 beta.
+        lines = banner.render_delta("3.8.0-dev.2", "3.8.0-dev.1", ROOT)
+        assert lines[0] == "↓ Prawduct downgraded: v3.8.0-dev.2 → v3.8.0-dev.1"
+
+    def test_an_unorderable_change_says_changed(self, banner):
+        # An unparseable marker sorts below everything, so the move cannot be
+        # called a downgrade; nor is it known to be an update.
+        lines = banner.render_delta("garbage", "2.0.0", ROOT)
+        assert lines[0] == "Prawduct changed: vgarbage → v2.0.0"
+
+    def test_a_downgrade_still_relays(self, banner, tmp_path):
+        lines = banner.render_delta("2.1.0", "2.0.0", self._rollback_root(tmp_path))
+        assert lines[-1].startswith(banner.RELAY_MARKER)
+        assert "rolled back" in lines[-1] and "above" not in lines[-1]
 
 
 class TestUpgradeRelay:
@@ -772,18 +867,20 @@ def test_every_attributed_gate_id_has_a_registry_row():
     which is the one thing the registry exists to prevent. Three did (the
     learnings cutover and budget gates), found by a Critic review; this makes
     the set the code attributes the thing the registry is checked against.
-    The ids come from the source (the `_attributed("...")` literals) plus the
-    one dynamic site, record-lint's budget checks, which `cmd_stop` passes
-    through `_attributed(_check, ...)`.
+    The ids come from the source (the `_attributed("...")` literals, and the
+    `_gate_attribution('...')` literal of the unknown-host block, which runs
+    before `_attributed` exists) plus the one dynamic site, record-lint's
+    budget checks, which `cmd_stop` passes through `_attributed(_check, ...)`.
     """
     hook = (ROOT / "bin" / "prawduct-hook").read_text()
     literal_ids = set(re.findall(r'_attributed\("([a-z-]+)"', hook))
+    literal_ids |= set(re.findall(r"""_gate_attribution\(['"]([a-z-]+)['"]""", hook))
     sys.path.insert(0, str(ROOT))
     from lib import record_lint  # noqa: PLC0415 — the dynamic site's id set
 
     attributed = literal_ids | set(record_lint._BUDGET_CHECKS)
     # Reachability: the scan must have found the sites it exists to check.
-    assert {"reflection", "critic", "learnings-unmigrated", "learnings-over-budget"} <= attributed
+    assert {"reflection", "critic", "learnings-unmigrated", "learnings-over-budget", "host"} <= attributed
     registered = {g["id"] for g in json.loads(GATES_JSON.read_text())["gates"]}
     missing = sorted(attributed - registered)
     assert not missing, (

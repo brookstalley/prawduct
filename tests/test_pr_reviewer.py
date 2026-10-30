@@ -8,6 +8,7 @@ PR-reviewer template/skill content. The file-sync init/sync/manifest behavior
 from __future__ import annotations
 
 import json
+import sys
 import re
 import subprocess
 from pathlib import Path
@@ -77,7 +78,7 @@ def run_hook(
         env.update(env_extra)
 
     return subprocess.run(
-        ["python3", str(HOOK_PATH), command],
+        [sys.executable, str(HOOK_PATH), command],
         capture_output=True,
         text=True,
         env=env,
@@ -707,16 +708,29 @@ class TestPrReviewSkillContent:
         release — retire at the release surface (in the closing PR, per
         create-flow Step 1d), RETAIN while release-pending — not
         unconditionally delete. Guards against a revert to the old
-        develop-merge=release assumption."""
+        develop-merge=release assumption.
+
+        It also pinned that the step named `active_build_plan`, so retirement
+        resolved the pointer rather than a hardcoded path. #1050 removed the
+        pointer bookkeeping from the Merge Flow (a plan claims its branch, and
+        a merged, deleted branch's claim resolves for nobody), so that anchor
+        now pins the opposite: the Merge Flow says a `branch:`-declaring plan
+        needs nothing at the merge, and names no pointer to maintain."""
         content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
+        start = content.index("## Merge Flow")
+        merge_flow = content[start:content.index("\n## ", start + 1)]
         # The discriminator is resolve-base, and BOTH branches must be present.
-        assert "resolve-base" in content, "cleanup step must branch on resolve-base"
-        assert "RETAIN" in content, "cleanup step must keep the plan while release-pending"
-        assert "active_build_plan" in content, (
-            "deletion must resolve the pointer, not a hardcoded build-plan.md path"
-        )
+        assert "resolve-base" in merge_flow, "cleanup step must branch on resolve-base"
+        assert "RETAIN" in merge_flow, "cleanup step must keep the plan while release-pending"
         # The release-pending branch must be tied to the develop base / statusless entry.
-        assert "release-pending" in content
+        assert "release-pending" in merge_flow
+        assert "A plan declaring `branch:` needs nothing at this merge" in merge_flow, (
+            "the Merge Flow must say a claiming plan needs no merge-time bookkeeping"
+        )
+        assert "active_build_plan" not in merge_flow, (
+            "the Merge Flow must not prescribe pointer bookkeeping — a plan's "
+            "claim, not the pointer, is what binds it (#1050)"
+        )
 
     def test_no_flow_requires_post_merge_integration_branch_commit(self):
         """single-pr-bookkeeping: the whole point — no flow may instruct a
@@ -1167,6 +1181,42 @@ class TestPrReviewerScoping:
             "Step 5 no longer says WHY a force-push is the wrong answer -- "
             "without the evidence-voiding reason it reads as mere preference"
         )
+
+    def test_create_step_5_syncs_the_evidence_notes_between_push_and_push_gate(self):
+        """The notes ride the branch push (#1052): `evidence sync` runs after
+        the push it travels with and before `check-branch-pushed`, which
+        certifies the push and must stay the last word before `gh pr create`.
+        Read in the order an agent reads Step 5, once each."""
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        assert step5.count("prawduct-hook evidence sync") == 1, step5
+        push = step5.index("Push branch with `-u`")
+        sync = step5.index("prawduct-hook evidence sync")
+        gate = step5.index("prawduct-hook check-branch-pushed")
+        assert push < sync < gate, (push, sync, gate)
+
+    def test_a_failed_sync_is_reported_and_never_blocks_the_pr(self):
+        """Coverage is the PR's gate; transport is not. Bound to the sentence
+        that runs the sync, so a reword elsewhere cannot satisfy it."""
+        step5 = self.skill.split("### Step 5: Create PR", 1)[1].split("\n## ", 1)[0]
+        at = step5.index("prawduct-hook evidence sync")
+        sentence = step5[at: step5.index("check-branch-pushed", at)]
+        assert "never blocks the PR" in sentence
+        assert "report" in sentence
+
+    def test_the_update_flow_syncs_once_right_after_its_push(self):
+        update = self.skill.split("## Update Flow", 1)[1].split("\n## ", 1)[0]
+        assert update.count("prawduct-hook evidence sync") == 1, update
+        first = update.split("\n2. ", 1)[0]
+        assert first.index("Push new commits") < first.index("prawduct-hook evidence sync")
+        assert "never blocks" in first
+
+    def test_the_sync_is_granted_in_both_spellings(self):
+        """The bare form a governed product runs, and this repo's
+        `python3 plugin/bin/...` form — a self-hosted grant never stands alone
+        (`tests/test_skill_command_grants.py`)."""
+        frontmatter = self.skill.split("---", 2)[1]
+        assert "Bash(prawduct-hook evidence sync*)" in frontmatter
+        assert "Bash(python3 plugin/bin/prawduct-hook evidence sync*)" in frontmatter
 
     def test_learnings_and_backlog_not_rescanned(self):
         """The cumulative Critic owns the Learnings Cross-Check and Backlog

@@ -113,7 +113,7 @@ def _load_hook():
 
 def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-begin", *args],
+        [sys.executable, str(HOOK), "critic-begin", *args],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -121,7 +121,7 @@ def _run_begin(repo: Path, *args: str) -> subprocess.CompletedProcess:
 
 def _run_consolidate(repo: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["python3", str(HOOK), "critic-consolidate"],
+        [sys.executable, str(HOOK), "critic-consolidate"],
         cwd=str(repo), capture_output=True, text=True,
         env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
     )
@@ -1353,3 +1353,55 @@ class TestTheClockFailsSoft:
 def _raise_oserror(*_args, **_kwargs):
     """A writer that fails the way a full or read-only filesystem does."""
     raise OSError("injected: marker unwritable")
+
+
+class TestTheManifestRecordsTheBinding:
+    """`critic-begin` records the unit a review was about, or none (#1050 BR4).
+
+    The manifest's `scope`, `scope_chosen_by`, `scope_unresolved_cause` and
+    `scope_reason` are what `critic_consolidate.build_fact_body` copies into the review fact, so
+    the dispatch is where a borrowed plan would enter the record.
+    """
+
+    def _repo_on_unclaimed_branch(self, tmp_path: Path) -> Path:
+        """`fix/mine` matches `mine`'s scope by NAME, and `other` claims a branch,
+        so the legacy window is closed: no plan claims `fix/mine`."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\n---\n\n# Plan\n\n"
+            "## Status\n\n- [ ] Chunk 01: mine\n"
+        )
+        (artifacts / "build-plan-other.md").write_text(
+            "---\nartifact: build-plan\nscope: other\nbranch: feat/other\n---\n\n"
+            "# Plan\n\n## Status\n\n- [ ] Chunk 01: other\n"
+        )
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "plans")
+        _git(repo, "checkout", "--quiet", "-b", "fix/mine")
+        (repo / "src" / "app.py").write_text("x = 2\n")
+        return repo
+
+    def test_an_unclaimed_branch_records_no_unit(self, tmp_path):
+        repo = self._repo_on_unclaimed_branch(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] is None
+        assert manifest["scope_chosen_by"] == "none"
+        # The cause stays a short code; the binding's sentence has its own field.
+        # `no-claim`, not `unbound`: the fixture's plans are written on this
+        # branch (untracked), which is the evidence the branch has a plan.
+        assert manifest["scope_unresolved_cause"] == "no-claim"
+        assert "no live plan claims `fix/mine`" in (manifest["scope_reason"] or "")
+
+    def test_an_explicit_scope_is_recorded_as_explicit_args(self, tmp_path):
+        """The control: the override survives, labelled as one."""
+        repo = self._repo_on_unclaimed_branch(tmp_path)
+        result = _run_begin(repo, "--mode", "chunk", "--scope", "other")
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["scope"] == "other"
+        assert manifest["scope_chosen_by"] == "explicit-args"

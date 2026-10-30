@@ -196,6 +196,49 @@ class TestEnvelope:
         assert len(read["facts"]) == 2
         assert [f["id"] for f in evidence.facts_of_kind(read, "review")] == ["r-1"]
 
+    def test_chunk_imported_appends_and_reads_back(self, tmp_path):
+        """#1051's MG2 kind: written through the one writer, read back by kind,
+        and named by the one constant its reader (`plan_status`) filters on."""
+        from lib import plan_status
+
+        repo = _make_repo(tmp_path)
+        body = {"scope": "s", "chunk": "01", "source": "status-box",
+                "imported_at": "2026-10-25T00:00:00Z"}
+        result = evidence.append_fact(repo, plan_status.IMPORTED_KIND, "imp-1", body)
+        assert result["status"] == "appended", result
+        read = evidence.read_facts(repo)
+        (fact,) = evidence.facts_of_kind(read, "chunk-imported")
+        assert (fact["id"], fact["body"]) == ("imp-1", body)
+
+    def test_chunk_imported_is_outside_the_coverage_fingerprint(self, tmp_path):
+        """Observational: it spans no trees, so appending one leaves the
+        coverage verdict's memo key where it was; a review moves it (control)."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {})
+        before = evidence.read_facts(repo)["coverage_fingerprint"]
+        evidence.append_fact(repo, "chunk-imported", "imp-1", {"scope": "s", "chunk": "01"})
+        assert evidence.read_facts(repo)["coverage_fingerprint"] == before
+        evidence.append_fact(repo, "review", "r-2", {})
+        assert evidence.read_facts(repo)["coverage_fingerprint"] != before
+
+    def test_an_older_reader_lets_chunk_imported_coexist(self, tmp_path, monkeypatch):
+        """Level item (2): a reader whose KNOWN_KINDS predates the kind (the
+        `-live` plugin beside this repo-local one) keeps the line — same
+        schema, so not `schema_ahead`, no block — and it satisfies no other
+        kind's filter."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {})
+        evidence.append_fact(repo, "chunk-imported", "imp-1", {"scope": "s", "chunk": "01"})
+        monkeypatch.setattr(evidence, "KNOWN_KINDS", evidence.KNOWN_KINDS - {"chunk-imported"})
+        monkeypatch.setattr(
+            evidence, "OBSERVATIONAL_KINDS", evidence.OBSERVATIONAL_KINDS - {"chunk-imported"}
+        )
+        read = evidence.read_facts(repo)
+        assert read["status"] == "ok", read
+        assert read["schema_ahead"] == []
+        assert {f["id"] for f in read["facts"]} == {"r-1", "imp-1"}
+        assert [f["id"] for f in evidence.facts_of_kind(read, "review")] == ["r-1"]
+
     def test_concurrent_appends_stay_whole(self, tmp_path):
         repo = _make_repo(tmp_path)
         # Pre-create the store so threads race only on the append write.
@@ -389,6 +432,29 @@ class TestCaptureTree:
         names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"])
         assert "untracked.py" in names.splitlines()
         assert "secret.txt" not in names.splitlines()
+
+    def test_capture_lists_untracked_but_not_ignored_or_excluded(self, tmp_path):
+        repo = _make_repo(tmp_path)
+        (repo / ".gitignore").write_text("secret.txt\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "ignore")
+        (repo / ".git" / "info" / "exclude").write_text("local.bin\n")
+        (repo / "untracked.py").write_text("y = 1\n")
+        (repo / "sub").mkdir()
+        (repo / "sub" / "deep.txt").write_text("d\n")
+        (repo / "secret.txt").write_text("no\n")
+        (repo / "local.bin").write_text("no\n")
+        (repo / "code.py").write_text("x = 9\n")  # tracked edit: not untracked
+        result = evidence.capture_tree(repo)
+        assert result["status"] == "ok"
+        assert result["untracked"] == ["sub/deep.txt", "untracked.py"]
+        names = _git(repo, "ls-tree", "-r", "--name-only", result["tree"]).splitlines()
+        assert "local.bin" not in names and "untracked.py" in names
+
+    def test_capture_untracked_is_empty_on_a_clean_tree(self, tmp_path):
+        result = evidence.capture_tree(_make_repo(tmp_path))
+        assert result["status"] == "ok"
+        assert result["untracked"] == []
 
     def test_clean_tree_equals_head_tree(self, tmp_path):
         repo = _make_repo(tmp_path)
@@ -796,6 +862,18 @@ class TestEvidenceCli:
         assert proc.returncode == 0
         assert "r-1" in proc.stdout and "s-1" not in proc.stdout
 
+    @pytest.mark.parametrize("argv", [("--bogus",), ("-n", "many"), ("--kind",)],
+                             ids=["unknown-flag", "non-integer-count", "flag-without-value"])
+    def test_list_usage_errors_exit_2(self, tmp_path, argv):
+        """R-6: one usage convention for every `evidence` op — 2, never the 1
+        a reported failure exits with. Control: a well-formed list exits 0."""
+        repo = _make_repo(tmp_path)
+        evidence.append_fact(repo, "review", "r-1", {"head_tree": "a" * 40})
+        proc = _run_hook(repo, "evidence", "list", *argv)
+        assert proc.returncode == 2, (proc.returncode, proc.stderr)
+        assert "Usage" in proc.stderr
+        assert _run_hook(repo, "evidence", "list", "-n", "1").returncode == 0
+
     def test_list_tolerates_opaque_body_values(self, tmp_path):
         repo = _make_repo(tmp_path)
         # Valid envelope, body fields this lister doesn't understand — a
@@ -844,10 +922,12 @@ class TestEvidenceCli:
         assert proc.returncode == 1
         assert "no git repository" in proc.stderr
 
-    def test_unknown_subcommand_usage(self, tmp_path):
+    def test_unknown_subcommand_is_a_usage_error_exit_2(self, tmp_path):
+        """Renegotiated (R-6): an unknown op exited 1, the code a reported
+        failure uses; every `evidence` op now answers a usage error with 2."""
         repo = _make_repo(tmp_path)
         proc = _run_hook(repo, "evidence", "wipe")
-        assert proc.returncode == 1
+        assert proc.returncode == 2
         assert "Usage" in proc.stderr
 
 

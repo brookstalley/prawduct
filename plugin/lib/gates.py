@@ -24,11 +24,11 @@ scope subsets, the ledger fallback) are deleted by design, not preserved.
 ``cmd_stop`` itself STAYS in the hook (it is the deliberately-inline hot-path
 gate per design constraint 1 + Chunk 7, and it uses the hook-resident gate
 *attribution* machinery shared with ``cmd_clear``); it calls these helpers via
-``_gates()``. ``_has_active_build_plan_file`` was reassigned here (it is gate
-logic, lib-clean) from the briefing region.
+``_gates()``. Whether those gates arm is ``plan_status.gate_arms`` (#1051).
 
-Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``
-(build-plan Status parsing, including ``_count_build_plan_chunks``),
+Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
+``plan_status`` (chunk progress, the one walker — #1051), ``work_unit`` (the
+checkout's binding),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
 ``standing_block`` (the closing block the Stop deferral and clear-verdict gate read), and ``core``
@@ -40,6 +40,8 @@ mirror), plus the stdlib.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -51,9 +53,11 @@ from . import (
     evidence,
     gitstate,
     learnings_files,
+    plan_status,
     standing_block,
     tree_key_memo,
     verdict_cache,
+    work_unit,
 )
 from .core import read_bool_yaml_key, suite_coupled_prefixes
 
@@ -165,6 +169,97 @@ def name_failing_tests(ids: object, failed: int) -> str:
         *([f"{unnamed} unnamed"] if unnamed > 0 else []),
     ]
     return ", ".join(shown) + (f" (+{'; +'.join(rest)})" if rest else "")
+
+
+def flaky_entries(value: object) -> list[dict]:
+    """The well-formed entries of a record's ``flaky`` value, in record order.
+
+    ``flaky`` lists the tests that passed only after failing — on the
+    recorder's own retry or, per the report, the runner's. Like
+    ``failed_tests`` it is **deliberately NOT in the schema**: it is printed and
+    carried, never read for a verdict, so a malformed value is dropped here
+    rather than refused there, where it could turn a passing record stale."""
+    if not isinstance(value, list):
+        return []
+    return [e for e in value if isinstance(e, dict) and isinstance(e.get("id"), str)]
+
+
+def name_flaky_tests(value: object) -> str:
+    """The first few flakes as ``id (failed N×)``, and how many more there are."""
+    entries = flaky_entries(value)
+    shown = entries[:_FAILING_NAMES_SHOWN]
+    parts = []
+    for e in shown:
+        attempts = e.get("attempts")
+        n = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else "?"
+        parts.append(f"{e['id']} (failed {n}×)")
+    rest = len(entries) - len(shown)
+    return ", ".join(parts) + (f" (+{rest} more in .prawduct/.test-evidence.json)" if rest else "")
+
+
+def flaky_lines(value: object, *, prefix: str = "flaky: ") -> list[str]:
+    """One line per flake for a status surface: what passed only on retry, how
+    often it failed first, the branch judgment and the policy's outcome, and
+    the first failure's text. Every surface that lists flakes renders them
+    through this, so the handoff, ``test-status`` and the PR payload say the
+    same thing about the same run; each surface picks its own ``prefix``."""
+    lines = []
+    for e in flaky_entries(value):
+        attempts = e.get("attempts")
+        n = attempts if isinstance(attempts, int) and not isinstance(attempts, bool) else "?"
+        via = "the runner's retry" if e.get("source") == "junit" else "the recorder's retry"
+        first = e.get("first_failure") if isinstance(e.get("first_failure"), str) else ""
+        lines.append(
+            f"{prefix}{e['id']} — passed on {via} after {n} failure(s)"
+            + _flake_judgment_tag(e)
+            + (f"; first: {first}" if first else "")
+        )
+    return lines
+
+
+#: The printed judgment, by ``touched``. A record written before the judgment
+#: existed has no ``touched`` key and gets no tag, which is not the same claim
+#: as ``null``: judged, and the answer could not be found.
+_FLAKY_TOUCH_TEXT = {
+    True: "touched by this branch",
+    False: "outside this branch's diff",
+    None: "branch touch unknown",
+}
+
+#: The policy's answer, decided at record time and printed with the flake, so
+#: the Critic reads it rather than re-deriving it from a policy that may have
+#: changed since. Its rule matches ``flaky_policy: warn`` and nothing else.
+_FLAKY_OUTCOME_TEXT = {
+    "warn": "; flaky_policy: warn",
+    "accepted": "; accepted by flaky_policy",
+    "blocked": "; BLOCKED by flaky_policy, counted as failed",
+}
+
+
+def _flake_judgment_tag(entry: dict) -> str:
+    """`` [<touch>[ — why][; <outcome>]]``, or ``""`` when never judged. A
+    value of the wrong type is read as not judged: these fields are printed,
+    never a verdict, so a malformed one must not take the status line down."""
+    touched = entry.get("touched", "absent")
+    if not (touched is None or isinstance(touched, bool)):
+        return ""
+    why = entry.get("touched_why") if touched is None else ""
+    outcome = entry.get("outcome")
+    return (
+        f" [{_FLAKY_TOUCH_TEXT[touched]}"
+        + (f" — {why}" if isinstance(why, str) and why else "")
+        + (_FLAKY_OUTCOME_TEXT.get(outcome, "") if isinstance(outcome, str) else "")
+        + "]"
+    )
+
+
+def saved_flaky_lines(project_dir: Path, *, prefix: str = "flaky: ") -> list[str]:
+    """:func:`flaky_lines` for the saved run, whatever its freshness — the one
+    answer ``test-status``, the session handoff and the PR payload print. A
+    record that cannot be read or fails its schema has no flakes to report;
+    its other readers say why."""
+    record, _ = _parse_test_evidence(gitstate.get_prawduct_dir(project_dir))
+    return flaky_lines((record or {}).get("flaky"), prefix=prefix)
 
 
 def _load_test_evidence(prawduct_dir: Path) -> "tuple[dict | None, str]":
@@ -551,6 +646,12 @@ def _store_run_vouching(
         body = fact.get("body")
         if not isinstance(body, dict):
             continue
+        if body.get("narrowed") is True:
+            # A scratch worktree's run of a few files (DG2) is attribution
+            # only: it neither vouches — a green 3-file run is not the suite —
+            # nor denies, which would let the newest narrowed fact overrule a
+            # real run on the same tree.
+            continue
         tree = body.get("tree")
         if not isinstance(tree, str) or not tree:
             continue
@@ -817,9 +918,10 @@ def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
     return out
 
 
-def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
+def background_tasks_in_flight(event) -> tuple[bool, list[str]]:
     """Decide whether harness-tracked background work is still in flight, from
-    the Stop-hook ``background_tasks`` array (Claude Code v2.1.145+; STH-3W7F).
+    the Stop event's ``background_tasks`` labels (``lib/host.read_event``;
+    STH-3W7F).
 
     When a coordinating agent launches a background ``Workflow``/``Task`` and
     yields, the Stop hook fires while the diff is still being produced — the
@@ -832,42 +934,23 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
     taken ONLY on a clearly-present, non-empty list; every uncertain case falls
     to the blocking default (fail-closed for a gate = keep blocking):
 
-      - ``background_tasks`` ABSENT (older client, registry unreachable, no
-        stdin) → ``(False, [])`` — behave exactly as without the signal.
-      - present & EMPTY (genuinely idle) → ``(False, [])`` — block as today.
-      - present & NON-EMPTY → ``(True, [labels])`` — defer.
-      - any malformed shape (non-dict input, non-list value, list with no
-        usable entries) → ``(False, [])`` — never defer on garbage.
+      - no ``background_tasks`` in the payload (older client, registry
+        unreachable, no stdin), or not an event at all → ``(False, [])`` —
+        behave exactly as without the signal.
+      - present but labelling nothing (genuinely idle, or a malformed array
+        with no usable entry) → ``(False, [])`` — block as today; never defer
+        on garbage.
+      - one or more labels → ``(True, [labels])`` — defer.
 
-    ``labels`` summarize each in-flight task as ``<type>:<name|id>`` for the
+    The labels (``<type>:<name|id>``, see ``host.read_event``) feed the
     deferral note. No filtering by task type: a session with any live tracked
     task is "paused waiting" anyway, and the deferral re-arms every Stop, so
     over-deferral is cheap (the gate fires the instant the array empties).
     """
-    if not isinstance(stop_input, dict):
-        return False, []
-    tasks = stop_input.get("background_tasks")
-    if not isinstance(tasks, list) or not tasks:
-        return False, []
-    labels: list[str] = []
-    for task in tasks:
-        if not isinstance(task, dict):
-            continue
-        ttype = task.get("type")
-        ttype = ttype.strip() if isinstance(ttype, str) and ttype.strip() else "task"
-        # Prefer the human-meaningful identifier per type, fall back to id.
-        ident = None
-        for key in ("name", "agent_type", "description", "command", "id"):
-            val = task.get(key)
-            if isinstance(val, str) and val.strip():
-                ident = val.strip()
-                break
-        label = f"{ttype}:{ident}" if ident else ttype
-        # Keep the note compact — a description/command can be long.
-        labels.append(label[:80])
+    labels = getattr(event, "background_tasks", None)
     if not labels:
         return False, []
-    return True, labels
+    return True, list(labels)
 
 
 #: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
@@ -877,18 +960,16 @@ def background_tasks_in_flight(stop_input) -> tuple[bool, list[str]]:
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
 
 
-def _last_message(stop_input) -> str | None:
-    """The Stop payload's ``last_assistant_message``, or ``None`` when the
-    payload is not a dict or the field is absent, non-string or blank."""
-    if not isinstance(stop_input, dict):
-        return None
-    message = stop_input.get("last_assistant_message")
+def _last_message(event) -> str | None:
+    """The Stop event's last assistant message, or ``None`` when it is not an
+    event or the message is absent, non-string or blank."""
+    message = getattr(event, "last_assistant_message", None)
     if not isinstance(message, str) or not message.strip():
         return None
     return message
 
 
-def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
+def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     """Decide whether the turn that just ended told the user NOT to end the
     session, from the Stop-hook ``last_assistant_message`` field.
 
@@ -903,8 +984,9 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
 
     ``DO NOT CLEAR`` under ``YOUR TURN`` or ``COMPLETE`` does NOT defer. A turn
     that hands the session over is one the reader may clear, hours or days
-    later, so it owes ``SAFE TO CLEAR`` and faces the session-end gates like
-    any other; the Stop hook refuses that pairing outright
+    later, so it faces the session-end gates like any other. The Stop hook
+    refuses ``COMPLETE`` with ``DO NOT CLEAR`` outright, and ``YOUR TURN`` with
+    it unless it observes work a clear would kill
     (:func:`turn_contradicts_its_verdict`). A pending question is never a
     reason not to clear — what it needs is written down.
 
@@ -927,7 +1009,7 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
         disposition, or one other than ``RUNNING`` → ``(False, None)``;
       - ``RUNNING`` with ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
     """
-    message = _last_message(stop_input)
+    message = _last_message(event)
     if message is None:
         return False, None
     verdict = standing_block.clear_verdict(message)
@@ -939,26 +1021,27 @@ def turn_declares_in_flight(stop_input) -> tuple[bool, str | None]:
     return False, None
 
 
-def turn_contradicts_its_verdict(stop_input) -> str | None:
+def turn_contradicts_its_verdict(event) -> str | None:
     """The disposition a turn hands the session over with while also saying
     ``DO NOT CLEAR`` — ``YOUR TURN`` or ``COMPLETE`` — or ``None``.
 
     The reader of ``YOUR TURN`` / ``DO NOT CLEAR`` is told it is their move
     and that they must not end the session, and may sit on both for days. The
-    pairing is never true: if something a clear would kill is running, the
-    disposition is ``RUNNING`` (the ask rides in its copy); if nothing is, what
-    only the conversation holds can be written down and the verdict is
-    ``SAFE TO CLEAR``. Only a clearly stated pair returns a label
+    pairing is true only while something a clear would kill is running; if
+    nothing is, what only the conversation holds can be written down and the
+    verdict is ``SAFE TO CLEAR``. This reads the message alone, so it returns
+    ``YOUR TURN`` either way: the Stop hook lets that pair stand when it
+    observes the work, and ``COMPLETE`` never. Only a clearly stated pair returns a label
     (``standing_block.contradiction``); a missing field or an ambiguous block
     returns ``None``, because the caller blocks on it.
     """
-    message = _last_message(stop_input)
+    message = _last_message(event)
     if message is None:
         return None
     return standing_block.contradiction(message)
 
 
-def turn_cites_itself_as_record(stop_input) -> str | None:
+def turn_cites_itself_as_record(event) -> str | None:
     """The phrase by which a turn closing ``SAFE TO CLEAR`` gives itself as the
     record (``standing_block.self_citation``), or ``None``.
 
@@ -968,10 +1051,18 @@ def turn_cites_itself_as_record(stop_input) -> str | None:
     :func:`turn_contradicts_its_verdict`: a missing field or an unclear block
     returns ``None``, because the caller blocks on it.
     """
-    message = _last_message(stop_input)
+    match = turn_self_citation(event)
+    return match[0] if match else None
+
+
+def turn_self_citation(event) -> "tuple[str, str] | None":
+    """:func:`turn_cites_itself_as_record` with the citation's kind beside the
+    phrase (``standing_block.self_citation_match``) — the kind is what the gate
+    records, since the phrase is the turn's own words."""
+    message = _last_message(event)
     if message is None:
         return None
-    return standing_block.self_citation(message)
+    return standing_block.self_citation_match(message)
 
 
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
@@ -1193,7 +1284,10 @@ def session_work_span(
     The span is the ``.session-base-tree`` marker (the ``HEAD^{tree}`` recorded
     at session start) against the WORKING TREE, so a session that commits its
     work is still holding that work — which the porcelain span, empty the
-    moment you commit, is not. ``judgeable`` is
+    moment you commit, is not. Paths that differ only because a pull, merge,
+    branch switch or reset brought in history the session did not write are
+    dropped (:func:`_session_authored_paths`), so the span holds what the
+    session AUTHORED, never more than the base-tree diff. ``judgeable`` is
     ``coverage_algebra.judgeable_files`` over the non-metadata paths: the one
     judgeability predicate, never a second copy of it.
 
@@ -1206,8 +1300,10 @@ def session_work_span(
     uncommitted work — it never widens it — which is the direction authority
     must fail in.
 
-    **Cost bound: at most one ``git status`` and one ``git diff``, and no
-    temp-index capture.** This runs on every Stop, which is every turn.
+    **Cost bound: one ``git status`` and one ``git diff`` when nothing changed,
+    one ``rev-parse`` more when HEAD's tree has not moved, and a reflog read,
+    one batched ``diff-tree`` and one ``git diff`` beyond that only when it has;
+    never a temp-index capture.** This runs on every Stop, which is every turn.
     ``evidence.capture_tree`` — which writes an index file and walks the whole
     tree — is deliberately not used: it belongs to the review data plane, whose
     callers run once per review rather than once per turn. ``status_output`` is
@@ -1247,10 +1343,143 @@ def session_work_span(
     if rc != 0:
         return _span(porcelain, "porcelain")
     changed = [p for p in out.split("\0") if p]
-    changed += [
-        p for p in _session_untracked_paths(project_dir, snapshot) if p not in changed
-    ]
-    return _span([f for f in changed if not gitstate._is_metadata_path(f)], "base-tree")
+    untracked = _session_untracked_paths(project_dir, snapshot)
+    changed += [p for p in untracked if p not in changed]
+    changed = [f for f in changed if not gitstate._is_metadata_path(f)]
+    authored = (
+        _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+        if changed
+        else None
+    )
+    if authored is not None:
+        changed = [p for p in changed if p in authored]
+    return _span(changed, "base-tree")
+
+
+# HEAD reflog subjects, classified by whether the move carries work this
+# session wrote. A pick-type rebase step replays a commit onto a new base, so
+# its diff is the commit's own change; the rebase's start/finish only move HEAD
+# onto someone else's history. `pull --rebase` logs the same steps under its
+# own prefix.
+_REBASE_STEP = re.compile(r"^(?:pull --rebase|rebase(?: -i)?) \((\w+)\)")
+_REBASE_IMPORTED_STEPS = frozenset({"start", "finish", "abort"})
+_AUTHORED_SUBJECTS = (
+    "commit:", "commit (amend):", "commit (initial):", "commit (cherry-pick):",
+    "cherry-pick:", "revert:",
+)
+_IMPORTED_SUBJECTS = ("checkout:", "pull:", "pull ", "merge ", "reset:")
+
+
+def _classify_reflog_subject(subject: str) -> "str | None":
+    """``"authored"``, ``"merge-commit"``, ``"imported"``, or ``None`` for a
+    subject this reader does not recognise — which makes the caller give up on
+    authorship rather than guess, because git's wording is not a contract."""
+    step = _REBASE_STEP.match(subject)
+    if step:
+        return "imported" if step.group(1) in _REBASE_IMPORTED_STEPS else "authored"
+    if subject.startswith("commit (merge):"):
+        return "merge-commit"
+    if subject.startswith(_AUTHORED_SUBJECTS):
+        return "authored"
+    if subject.startswith(_IMPORTED_SUBJECTS):
+        return "imported"
+    return None
+
+
+def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
+    """The ``.session-start`` stamp and its epoch seconds, or ``None`` when the
+    marker is missing or not the ``YYYY-MM-DDTHH:MM:SSZ`` stamp ``cmd_clear``
+    writes."""
+    stamp = _read_session_start(prawduct_dir)
+    try:
+        when = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    return stamp, int(when.timestamp())
+
+
+def _session_authored_paths(
+    project_dir: Path, prawduct_dir: Path, base: str, untracked: "list[str]"
+) -> "set[str] | None":
+    """The paths this session wrote, or ``None`` when that cannot be told —
+    the caller then keeps the whole base-tree span.
+
+    A pull, merge, branch switch or reset moves HEAD onto history, and the
+    base-tree diff cannot tell those files from the session's own. What it
+    brought in that is OLDER than the session cannot be the session's work;
+    what is newer may be — a delegate's branch merged back is exactly that — so
+    it counts. The session's work is therefore: commits HEAD reaches that were
+    made since the session started; the commits its own reflog records it
+    making, even ones HEAD has since moved away from; the paths a merge it
+    concluded by hand resolved; and whatever the working tree holds against
+    HEAD now.
+
+    The walk is bounded by ``.session-start`` and must reach an entry older than
+    it, or the reflog does not cover the session and cannot vouch for it. Every
+    failure, and any subject the classifier does not recognise, returns
+    ``None``: authorship narrows the span only on a reflog it fully read, so a
+    gate loses a false fire and never a real one.
+
+    Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
+    — the common case, which returns at once — else a reflog read, one ``log``,
+    a batched ``diff-tree`` per kind of commit the session made, and one
+    ``diff``.
+    """
+    rc, head_tree, _err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc != 0 or head_tree == base:
+        return None
+    started = _session_started_epoch(prawduct_dir)
+    if started is None:
+        return None
+    stamp, started_at = started
+    rc, out, _err = evidence.run_git(
+        project_dir, "reflog", "show", "--date=unix", "--format=%H%x00%gd%x00%gs", "HEAD"
+    )
+    if rc != 0:
+        return None
+    commits: list[str] = []
+    merges: list[str] = []
+    reached_start = False
+    for line in out.splitlines():
+        sha, selector, subject = (line.split("\0") + ["", ""])[:3]
+        moved_at = re.search(r"@\{(\d+)\}$", selector)
+        if not moved_at:
+            return None
+        if int(moved_at.group(1)) < started_at:
+            reached_start = True
+            break
+        kind = _classify_reflog_subject(subject)
+        if kind is None:
+            return None
+        if kind == "authored":
+            commits.append(sha)
+        elif kind == "merge-commit":
+            merges.append(sha)
+    if not reached_start:
+        return None
+    authored: set[str] = set(untracked)
+    rc, out, _err = evidence.run_git(
+        project_dir, "log", "--no-merges", f"--since={stamp}", "--format=", "--name-only",
+        "-z", "HEAD",
+    )
+    if rc != 0:
+        return None
+    authored.update(p for p in out.split("\0") if p)
+    for shas, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
+        if not shas:
+            continue
+        rc, out, _err = evidence.run_git(
+            project_dir, "diff-tree", "--stdin", "--no-commit-id", "--name-only", "-z",
+            *flags, input="\n".join(shas) + "\n",
+        )
+        if rc != 0:
+            return None
+        authored.update(p for p in out.split("\0") if p)
+    rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", "HEAD")
+    if rc != 0:
+        return None
+    authored.update(p for p in out.split("\0") if p)
+    return authored
 
 
 #: The two lines a reflection must carry, and the words the blocker uses for
@@ -1558,8 +1787,14 @@ def covered_frontier(
     project_dir: Path,
     why: "list[str] | None" = None,
     absent: "list[str] | None" = None,
+    *,
+    read: "dict | None" = None,
 ) -> "dict | None":
     """The newest commit on this branch whose tree a REVIEW already covers.
+
+    ``read`` is the caller's ``evidence.read_facts`` result when it holds one
+    (mode inference reads the store once per call and threads it); otherwise
+    the store is read here.
 
     Walks HEAD's first-parent history back toward the merge-base and returns
     ``{"commit", "tree"}`` for the first commit whose tree composition reaches
@@ -1607,7 +1842,8 @@ def covered_frontier(
         if absent is not None:
             absent.append(code)
 
-    read = evidence.read_facts(project_dir)
+    if read is None:
+        read = evidence.read_facts(project_dir)
     precheck = _store_precheck(read)
     if precheck is not None:
         _unreadable(f"the evidence store could not be read ({precheck[1]})")
@@ -1869,9 +2105,11 @@ def _merge_base_verdict(
     }
 
 
-_CRITIC_MODE_GOALS_1_3_ONLY = frozenset({
-    _CRITIC_MODE_CHUNK,
-    _CRITIC_MODE_VERIFY_RESOLUTIONS,
+#: The modes that run the end-of-cycle goals; any other latest mode on a
+#: finished plan earns the synthesis nudge.
+_CRITIC_MODE_SYNTHESIS = frozenset({
+    _CRITIC_MODE_FINAL,
+    _CRITIC_MODE_CUMULATIVE,
 })
 
 
@@ -1880,33 +2118,51 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
 
     Returns ``(True, "")`` when the gate is satisfied, ``(False, reason)``
     otherwise. The gate is advisory: it fires when a multi-chunk build plan
-    has all chunks marked ``[x]`` but the most recent Critic review ran
-    Goals 1-3 only — ``chunk`` and ``verify-resolutions`` modes both skip
+    is finished — every chunk ``done`` or ``dropped`` by
+    ``plan_status.is_finished``, never by a ticked box (#1051) — but the most
+    recent Critic review was not a ``final`` or ``cumulative`` one, so the
     end-of-cycle goals (Coherence, Design, Learnings Cross-Check, Backlog
-    Reconciliation, Framework-Specific Checks). The mode is telemetry read
-    from the latest ``review`` FACT in the evidence store (kernel-v3 chunk
-    04: no gate — even an advisory one — reads the ``.critic-findings.json``
-    cache); it steers a workflow nudge, never evidence acceptance (D4).
+    Reconciliation, Framework-Specific Checks) have not run. The mode is
+    telemetry read from the latest ``review`` FACT in the evidence store
+    (kernel-v3 chunk 04: no gate — even an advisory one — reads the
+    ``.critic-findings.json`` cache); it steers a workflow nudge, never
+    evidence acceptance (D4).
 
     Specific cases (in order):
-    1. No build plan, or no chunks declared → satisfied (non-chunked work).
+    0. A broken work-unit binding (two live plans claim this branch) →
+       unsatisfied, naming the claimants.
+    1. No build plan bound, or no chunks declared → satisfied (non-chunked work).
     2. Single-chunk plan → satisfied (the one Critic run is the final).
-    3. Multi-chunk plan with incomplete chunks → satisfied (mid-cycle).
-    4. Multi-chunk plan, all chunks ``[x]``, latest review fact's mode is in
-       ``_CRITIC_MODE_GOALS_1_3_ONLY`` (chunk or verify-resolutions)
-       → unsatisfied. Run ``/prawduct:critic final`` for end-of-cycle synthesis.
-    5. Multi-chunk plan, all chunks ``[x]``, latest mode is final/cumulative
-       (or no review fact from this worktree and branch — nothing to judge)
+    3. Multi-chunk plan not finished → satisfied (mid-cycle).
+    4. Finished multi-chunk plan, latest review fact from this worktree and
+       branch is neither ``final`` nor ``cumulative`` → unsatisfied. Run
+       ``/prawduct:critic final`` for end-of-cycle synthesis.
+    5. Finished multi-chunk plan, latest mode is final/cumulative (or no
+       review fact from this worktree and branch — nothing to judge)
        → satisfied.
     """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    plan_path = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).path
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
-    if total == 0:
+    binding = work_unit.resolve(project_dir)
+    if binding.state == "broken":
+        # Authority fails closed: two plans claiming one branch is not "no
+        # plan", so the nudge fires with the binding's reason rather than going
+        # quiet — which plan's chunks are complete cannot be known until the
+        # claim is repaired.
+        return False, (
+            f"This branch's work-unit binding is broken: {binding.reason}. Which "
+            "plan's chunks are complete cannot be judged until it is repaired; "
+            "repair the claim, then run /prawduct:critic final for end-of-cycle "
+            "synthesis before pushing."
+        )
+    if binding.plan_path is None:
         return True, ""
-    if total == 1:
+    facts = evidence.read_facts(project_dir)
+    states = plan_status.chunk_states(binding.plan_path, facts, repo_dir=project_dir)
+    total = len(states)
+    if total <= 1:
         return True, ""
-    if complete < total:
+    if not plan_status.is_finished(
+        binding.plan_path, facts, repo_dir=project_dir, states=states
+    ):
         return True, ""
 
     # The store is clone-global; this session's latest review is the latest one
@@ -1917,7 +2173,7 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     branch = gitstate.current_branch(project_dir)
     review_facts = [
         f
-        for f in evidence.facts_of_kind(evidence.read_facts(project_dir), "review")
+        for f in evidence.facts_of_kind(facts, "review")
         if (f.get("actor") or {}).get("worktree") == here
         and (f.get("actor") or {}).get("branch", branch) == branch
     ]
@@ -1925,9 +2181,9 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
         return True, ""
     latest_body = review_facts[-1].get("body") or {}
     mode = latest_body.get("mode", _CRITIC_MODE_FINAL)
-    if mode in _CRITIC_MODE_GOALS_1_3_ONLY:
+    if mode not in _CRITIC_MODE_SYNTHESIS:
         return False, (
-            f"All {total} chunks complete; last Critic review was "
+            f"All {total} chunks done or dropped; last Critic review was "
             f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
             "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
             "Reconciliation) before pushing. "
@@ -2067,92 +2323,16 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def _has_build_plan_in_state(prawduct_dir: Path) -> bool:
-    """Check if project-state.yaml contains an ACTIVE build plan.
-
-    Uses string matching rather than YAML parsing for speed and zero dependencies.
-    Returns True only when chunks exist with non-complete status. Returns False for:
-    - chunks: [] (empty plan, template default)
-    - All chunks with status: complete (finished plan)
-    - No build_plan section at all
-    """
-    state_path = prawduct_dir / "project-state.yaml"
-    if not state_path.is_file():
-        return False
-    try:
-        content = state_path.read_text()
-        if not (content.startswith("build_plan:") or "\nbuild_plan:" in content):
-            return False
-        if not ("\n  chunks:" in content or content.startswith("  chunks:")):
-            return False
-
-        # Scan chunks section for non-complete status entries
-        in_chunks = False
-        for line in content.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("chunks:"):
-                in_chunks = True
-                if "[]" in stripped:
-                    return False  # Empty array
-                continue
-            if in_chunks:
-                # Exit chunks on line at same or lesser indent (not blank/comment)
-                if line and not line.startswith("    ") and stripped and not stripped.startswith("#"):
-                    break
-                if stripped.startswith("status:"):
-                    status_val = stripped.split(":", 1)[1].strip().strip("\"'")
-                    if status_val != "complete":
-                        return True
-        return False
-    except Exception:  # prawduct:allow prawduct/broad-except -- build plan check must not crash gate check
-        return False
-
-
-def _has_active_build_plan_file(
-    prawduct_dir: Path, plan_path: "Path | None" = None
-) -> bool:
-    """Return True if the build plan has at least one incomplete chunk.
-
-    ``plan_path`` names the plan to read, defaulting to this repo's active
-    build plan. The Stop hook and the SessionStart advisory both pass the BRANCH's
-    plan, so the gate's "should I run" and its "what does the chunk declare"
-    cannot answer about different files.
-
-    A completed plan (all [x]) or a missing file both return False — only an
-    in-progress plan with remaining work triggers governance gates.
-
-    Deliberately the **checkbox** reading, and never a commit-derived one.
-    The two answer different questions: commits answer "which chunk is in
-    flight", which is right for reporting; this gate asks "is there still
-    governed work", and **a chunk's last commit lands BEFORE its Critic pass and
-    its reflection.** Routing this through a git signal once made the blocking
-    reflection and Critic gates switch themselves off the moment the final chunk
-    was committed — through the whole complete-but-unmerged window, which is
-    exactly when the PR-fix and finding-resolution sessions happen. It failed
-    silently, because a gate that stops firing looks identical to a gate with
-    nothing to say.
-
-    The git-derived progress reading that caused it is gone, so that exact route
-    back in is closed. **The rule is not.** A commit-derived chunk signal still
-    exists for reporting — ``buildplan_refs.unticked_committed_chunk_notice``,
-    which flags a finished-but-unticked chunk — and it is the obvious thing for a
-    future editor to reach for here. It must not be: it reports precisely the
-    state (work committed, box not yet ticked) in which this gate must still say
-    "governed", and consuming it here would reproduce the incident with a
-    different callee.
-    """
-    total, complete = buildplan_refs._count_build_plan_chunks(prawduct_dir, plan_path)
-    return total > 0 and complete < total
-
-
 def test_status(project_dir: Path) -> int:
     """Print whether saved test evidence is fresh enough to trust.
 
     Used by builders, the Critic, and the PR reviewer to decide whether to
     re-run the test suite.
 
-    stdout: one line — :data:`CURRENT_TREE_LABEL`,
-    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason.
+    stdout: the verdict line first — :data:`CURRENT_TREE_LABEL`,
+    :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason —
+    then one ``flaky:`` line per test the saved run passed only on retry
+    (:func:`flaky_lines`), which inform and never change the exit code.
     The parenthetical names which of :func:`tests_are_current`'s two disjuncts
     answered, because they are different guarantees and a bare `current` told
     every reader it had the stronger one. Both still mean "safe to skip the
@@ -2169,6 +2349,11 @@ def test_status(project_dir: Path) -> int:
         print(f"{label}: {reason}")
     else:
         print(f"stale: {reason}")
+    # After the verdict, never instead of it: the saved run's flakes. Printed
+    # whatever the verdict, since a stale green that passed only on retry is
+    # still worth a backlog item, and never changing the exit code.
+    for line in saved_flaky_lines(project_dir):
+        print(line)
     return 0 if is_current else 1
 
 
@@ -2594,7 +2779,9 @@ def check_cumulative_critic(project_dir: Path) -> int:
             )
 
 
-def branch_coverage_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:
+def branch_coverage_verdict(
+    project_dir: Path, *, record_grants: bool = False, read: "dict | None" = None
+) -> dict:
     """:func:`check_cumulative_critic`'s verdict as DATA — the same span, the
     same composition, the same base-advance transfer, with no printing and no
     exit code.
@@ -2613,11 +2800,15 @@ def branch_coverage_verdict(project_dir: Path, *, record_grants: bool = False) -
     authority that spent it. An advisory read appending one would file a grant
     under a gate that never ran.
 
+    ``read`` is a :func:`evidence.read_facts` result the caller already holds
+    (inference threads its one read), else the store is read here.
+
     Returns what :func:`_branch_coverage` documents, minus the private
     rendering context: a caller that wants the answer never sees the memo
     closures the printer needs.
     """
-    read = evidence.read_facts(project_dir)
+    if read is None:
+        read = evidence.read_facts(project_dir)
     cache = verdict_cache.VerdictCache.for_read(project_dir, read)
     try:
         answer = _branch_coverage(

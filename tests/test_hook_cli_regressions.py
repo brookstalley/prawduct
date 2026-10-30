@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
@@ -105,6 +106,88 @@ class TestVerifyChunkRefsExitMessagesStayDistinct:
         assert "cannot-verify:" not in err
         assert "no_such_module_here.py" in err  # names the deliverable, not the plan
 
+_TWO_CHUNK_PLAN = """---
+artifact: build-plan
+scope: unit
+branch: main
+---
+
+# Build Plan
+
+## Status
+
+- [ ] Chunk 01: first
+- [ ] Chunk 02: second
+
+## Build Chunks
+
+### Chunk 01: first
+
+- **Deliverables:** `code.py`
+
+### Chunk 02: second
+
+- **Deliverables:** `code.py`
+"""
+
+
+def _review_fact(repo: Path, chunk: str) -> None:
+    """A clean review naming ``chunk``, anchored at HEAD (reachable from `main`)."""
+    import sys
+
+    if str(_ROOT) not in sys.path:
+        sys.path.insert(0, str(_ROOT))
+    from lib import evidence
+
+    result = evidence.append_fact(repo, "review", f"rev-test-{chunk}", {
+        "scope": "unit", "chunk": chunk, "findings": [],
+        "head_commit": _git(repo, "rev-parse", "HEAD"),
+    })
+    assert result["status"] == "appended", result
+
+
+class TestVerifyChunkRefsGradesTheFirstOpenChunk:
+    """#1051: with no chunk named, the chunk graded is `plan_status`'s first
+    OPEN chunk, from the review facts, never the first unticked box. The
+    unticked-box reading graded Chunk 01 forever on a plan that reviews
+    without ticking (the BLD-7K3Q shape)."""
+
+    def test_a_reviewed_chunk_is_not_graded_again(self, tmp_path, capsys):
+        """Red against the box reading: both boxes are unticked, but a clean
+        review fact names 01, so 02 is current."""
+        repo = _plan_repo(tmp_path, _TWO_CHUNK_PLAN)
+        _review_fact(repo, "01")
+        rc = _hook.cmd_verify_chunk_refs(repo, None)
+        out, err = capsys.readouterr()
+        assert rc == 0, err
+        assert "ok: chunk 02" in out
+        assert "chunks are open" not in err  # one open chunk: nothing to point out
+
+    def test_several_open_chunks_say_which_is_graded_and_name_the_rest(self, tmp_path, capsys):
+        repo = _plan_repo(tmp_path, _TWO_CHUNK_PLAN)
+        rc = _hook.cmd_verify_chunk_refs(repo, None)
+        out, err = capsys.readouterr()
+        assert rc == 0, err
+        assert "ok: chunk 01" in out
+        assert "2 chunks are open (01, 02); grading the first, 01" in err
+
+    def test_a_named_chunk_is_graded_without_the_note(self, tmp_path, capsys):
+        repo = _plan_repo(tmp_path, _TWO_CHUNK_PLAN)
+        rc = _hook.cmd_verify_chunk_refs(repo, "02")
+        out, err = capsys.readouterr()
+        assert rc == 0, err
+        assert "ok: chunk 02" in out and "chunks are open" not in err
+
+    def test_no_open_chunk_grades_nothing(self, tmp_path, capsys):
+        repo = _plan_repo(tmp_path, _TWO_CHUNK_PLAN)
+        _review_fact(repo, "01")
+        _review_fact(repo, "02")
+        rc = _hook.cmd_verify_chunk_refs(repo, None)
+        out, _err = capsys.readouterr()
+        assert rc == 0
+        assert "ok: no open chunk in this plan; nothing to verify" in out
+
+
 class TestCriticBeginRendersABranchlessSiblingWorktree:
     """Driven as a real CLI in a real bare-repo worktree, not in-process:
     ``critic-begin`` refuses outright when the shell's cwd differs from the
@@ -145,7 +228,7 @@ class TestCriticBeginRendersABranchlessSiblingWorktree:
 
         proc = subprocess.run(
             [
-                "python3", str(_ROOT / "bin" / "prawduct-hook"),
+                sys.executable, str(_ROOT / "bin" / "prawduct-hook"),
                 "critic-begin", "--mode", "chunk", "--chosen-by", "test",
             ],
             cwd=str(work),

@@ -23,6 +23,7 @@ doc-only check, and the findings-freshness check all compose inside `cmd_stop`).
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -43,25 +44,27 @@ _CODE_DIFF = " M src/app.py"
 
 
 def _write_mock_git(
-    mock_bin: Path, *, status: str, branch: str = "main", symbolic_ref: str = ""
+    mock_bin: Path, *, status: str, branch: str = "main", symbolic_ref: str = "main"
 ) -> None:
     """A mock git for the stop path.
 
     ``symbolic_ref`` answers ``git symbolic-ref --short HEAD``, which is what
-    ``gitstate.current_branch`` reads — a different probe from ``branch
-    --show-current`` above it. Empty (the default) means the probe fails, so
-    branch-derived scope inference finds nothing and the pointer stands: exactly
-    the state every pre-existing fixture here is in.
+    ``gitstate.current_branch`` — and so ``work_unit.resolve`` — reads; a
+    different probe from ``branch --show-current`` above it. The default is
+    ``main``, so a fixture whose plans declare no ``branch:`` sits in the legacy
+    window and its conventional plan governs. Empty means the probe fails: a
+    detached HEAD, which is unbound and arms no plan gate. Every other
+    ``symbolic-ref`` (``origin/HEAD``) fails, as it always has here.
     """
     mock_bin.mkdir(parents=True, exist_ok=True)
     status_file = mock_bin / "_status"
     status_file.write_text(status)
     git = mock_bin / "git"
     symref = (
-        f'if [[ "$1" == "symbolic-ref" ]]; then echo "{symbolic_ref}"; exit 0; fi\n'
+        f'if [[ "$1" == "symbolic-ref" && "${{@: -1}}" == "HEAD" ]]; then echo "{symbolic_ref}"; exit 0; fi\n'
         if symbolic_ref
-        else 'if [[ "$1" == "symbolic-ref" ]]; then exit 1; fi\n'
-    )
+        else ""
+    ) + 'if [[ "$1" == "symbolic-ref" ]]; then exit 1; fi\n'
     # f-strings throughout: `+`-concatenating a pre-formatted fragment into a
     # `%`-formatted literal silently applies `%` to the LAST literal only.
     git.write_text(
@@ -82,7 +85,7 @@ def _write_mock_git(
 
 
 def _run_stop(
-    project_dir: Path, *, status: str, symbolic_ref: str = ""
+    project_dir: Path, *, status: str, symbolic_ref: str = "main"
 ) -> subprocess.CompletedProcess:
     """Invoke `bin/prawduct-hook stop` as Claude Code would, with a mock git on
     PATH and the plugin/project roots wired. mock_bin + HOME live OUTSIDE
@@ -99,7 +102,7 @@ def _run_stop(
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     return subprocess.run(
-        ["python3", str(HOOK), "stop"],
+        [sys.executable, str(HOOK), "stop"],
         capture_output=True, text=True, env=env, timeout=20,
     )
 
@@ -254,6 +257,26 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         ok, reason = _critic_session_satisfies_gate(repo)
         assert ok, f"final must satisfy the synthesis advisory: {reason!r}"
 
+    def test_a_broken_binding_trips_the_advisory_with_its_reason(self, tmp_path):
+        """Authority fails closed: two plans claiming the branch is not "no
+        plan". The same repo with one claimant is the control — a final review
+        on it satisfies the advisory."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo = _all_complete_plan_repo(tmp_path, mode=_MODE_FINAL)
+        artifacts = repo / ".prawduct" / "artifacts"
+        claimed = (
+            "---\nartifact: build-plan\nscope: {s}\nbranch: main\n---\n\n"
+            "# Build Plan\n\n## Status\n- [x] Chunk 01: A\n- [x] Chunk 02: B\n"
+        )
+        (artifacts / "build-plan.md").write_text(claimed.format(s="a"))
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
+        (artifacts / "build-plan-rival.md").write_text(claimed.format(s="b"))
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok
+        assert "binding is broken" in reason and "2 live plans claim `main`" in reason
+
     def test_no_review_fact_means_nothing_to_judge(self, tmp_path):
         from lib.gates import _critic_session_satisfies_gate
 
@@ -272,6 +295,94 @@ class TestSynthesisAdvisoryAcceptsCumulative:
         ok, reason = _critic_session_satisfies_gate(repo)
         assert not ok, f"{mode!r} must trip the synthesis advisory"
         assert "/prawduct:critic final" in reason
+
+
+def _fact_finished_plan_repo(tmp_path: Path) -> "tuple[Path, str]":
+    """A committed two-chunk plan with NO boxes ticked — `## Status` lists both
+    unticked — whose chunks are finished only by the facts: a clean `chunk`
+    review naming both, anchored at HEAD on the plan's `branch:`. Returns the
+    repo and HEAD. A box count reads this plan as unfinished; `plan_status`
+    reads it as finished — the case that tells the two readers apart."""
+    import os
+    import sys
+
+    sys.path.insert(0, str(ROOT))
+    from lib import evidence
+
+    repo = tmp_path / "repo"
+    artifacts = repo / ".prawduct" / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "build-plan-s.md").write_text(
+        "---\nartifact: build-plan\nscope: s\nbranch: main\n---\n\n"
+        "## Status\n- [ ] Chunk 01: A\n- [ ] Chunk 02: B\n\n"
+        "## Build Chunks\n\n### Chunk 01: A\n\n### Chunk 02: B\n"
+    )
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+    for args in (
+        ("init", "-q", "-b", "main"),
+        ("config", "user.email", "t@example.com"),
+        ("config", "user.name", "T"),
+        ("add", "-A"),
+        ("commit", "-q", "-m", "plan"),
+    ):
+        subprocess.run(["git", *args], cwd=str(repo), env=env, check=True, timeout=15,
+                       capture_output=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=str(repo), capture_output=True, text=True,
+        check=True, timeout=15,
+    ).stdout.strip()
+    appended = evidence.append_fact(repo, "review", "rev-chunks-1", {
+        "mode": _MODE_CHUNK, "scope": "s", "chunks": ["01", "02"], "chunk": "01",
+        "counts": {"blocking": 0}, "head_commit": head, "findings": [],
+    })
+    assert appended["status"] == "appended", appended
+    return repo, head
+
+
+class TestSynthesisAdvisoryReadsPlanStatus:
+    """#1051 Chunk 04: the nudge fires when `plan_status.is_finished` — every
+    chunk done or dropped by the FACTS — and the latest review from here is not
+    `final`/`cumulative`. A ticked box no longer decides "finished"."""
+
+    def test_a_fact_finished_plan_whose_latest_review_is_chunk_trips_it(self, tmp_path):
+        """Red against the box count: both boxes are unticked, so the old
+        reading said "mid-cycle" and stayed quiet."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo, _head = _fact_finished_plan_repo(tmp_path)
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert not ok, "a finished plan closed by `chunk` reviews must nudge a final"
+        assert "All 2 chunks done or dropped" in reason
+        assert "/prawduct:critic final" in reason
+
+    def test_a_cumulative_after_it_satisfies_it(self, tmp_path):
+        """The control: the same plan, plus a later `cumulative` from here."""
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from lib import evidence
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo, head = _fact_finished_plan_repo(tmp_path)
+        evidence.append_fact(repo, "review", "rev-cumulative-1", {
+            "mode": _MODE_CUMULATIVE, "scope": "s", "chunks": [], "counts": {"blocking": 0},
+            "head_commit": head, "findings": [],
+        })
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
+
+    def test_an_open_chunk_keeps_it_quiet(self, tmp_path):
+        """Mid-cycle: a plan whose chunk 02 no fact certifies is not finished,
+        so a `chunk` review is the expected latest mode and nothing nudges."""
+        from lib.gates import _critic_session_satisfies_gate
+
+        repo, _head = _fact_finished_plan_repo(tmp_path)
+        plan = repo / ".prawduct" / "artifacts" / "build-plan-s.md"
+        plan.write_text(plan.read_text().replace(
+            "### Chunk 02: B\n", "### Chunk 02: B\n\n### Chunk 03: C\n"
+        ))
+        ok, reason = _critic_session_satisfies_gate(repo)
+        assert ok, reason
 
 
 def _append_foreign_review(repo: Path, mode: str, *, worktree: str, branch: str) -> None:
@@ -337,9 +448,12 @@ class TestGateReadsTheBranchsPlanNotThePointer:
     `active_build_plan` answers "which plan is in progress in this repo". On a
     repo running several plans across worktrees that is not "which plan is this
     branch building" — and the gate's Type-driven carveouts were being decided
-    by a chunk of a plan the session never touched. Both fields now resolve from
-    the branch's plan when the branch names one; when it names nothing (every
-    other fixture in this file) the pointer stands, unchanged.
+    by a chunk of a plan the session never touched. Both fields come from the
+    checkout's binding (`work_unit.resolve`): the plan whose `branch:` claims
+    this branch. A branch no plan claims borrows none — not the pointer's, not a
+    name-matched one (#1050 BR3) — unless the repo is in the legacy window,
+    where no plan claims anything and the conventional plan governs (every
+    other fixture in this file).
     """
 
     def _two_plan_repo(self, tmp_path: Path, *, branch_type: str, pointer_type: str):
@@ -352,8 +466,10 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: Pointed\n\n"
             f"### Chunk 01: Pointed\n**Type:** {pointer_type}\n\nBody.\n"
         )
+        # This branch's plan — it CLAIMS `fix/mine`. A name match alone binds
+        # nothing any more; the claim is what makes it the branch's plan.
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: Mine\n\n"
             f"### Chunk 01: Mine\n**Type:** {branch_type}\n\nBody.\n"
         )
@@ -395,18 +511,70 @@ class TestGateReadsTheBranchsPlanNotThePointer:
         )
         assert "CRITIC" in result.stderr
 
-    def test_an_unmatched_branch_still_uses_the_pointer(self, tmp_path):
-        """The fallback, pinned: no declared scope matches, nothing changes."""
+    def test_an_unclaimed_branch_borrows_no_plan(self, tmp_path):
+        """Renegotiated for #1050 (it was `..._still_uses_the_pointer`).
+
+        The old contract was the fallback: a branch no scope matched read the
+        pointer's plan. That fallback is the defect class — it looks right while
+        being wrong — so it is gone. Here a plan in the repo claims `fix/mine`,
+        which closes the legacy window, so `fix/unrelated-name` is UNBOUND: no
+        plan governs it and the Critic gate does not arm. The pointer's plan is
+        `code`, so the old reading blocks; seeing exit 0 needs the binding.
+        """
         self._two_plan_repo(
-            tmp_path, branch_type="code", pointer_type="designer-handoff"
+            tmp_path, branch_type="designer-handoff", pointer_type="code"
         )
         result = _run_stop(
             tmp_path, status=_CODE_DIFF, symbolic_ref="fix/unrelated-name"
         )
         assert result.returncode == 0, (
-            "no branch match → the pointer's designer-handoff decides, exactly as "
-            f"before. stdout={result.stdout!r} stderr={result.stderr!r}"
+            "no plan claims this branch, so none governs it and no Critic gate "
+            f"arms. stdout={result.stdout!r} stderr={result.stderr!r}"
         )
+        assert "CRITIC" not in result.stderr
+        assert "designer-handoff" not in result.stderr, (
+            "the claimed plan's carveout must not be what let this through"
+        )
+
+    def test_a_broken_binding_fails_closed_and_says_why(self, tmp_path):
+        """Two live plans claiming one branch is a BROKEN binding (BR5): no plan
+        can be chosen, so none may be chosen by precedence — and authority fails
+        closed. The gate arms as a bound plan's would, no claimant's carveout
+        applies (both declare `designer-handoff` here, so honouring either one
+        would let this through), and the block names the reason."""
+        self._two_plan_repo(
+            tmp_path, branch_type="designer-handoff", pointer_type="designer-handoff"
+        )
+        pointed = tmp_path / ".prawduct" / "artifacts" / "build-plan.md"
+        pointed.write_text(
+            pointed.read_text().replace("scope: pointed\n", "scope: pointed\nbranch: fix/mine\n")
+        )
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="fix/mine")
+        assert result.returncode == 2, (
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        # The note is wrapped to the block's width; compare its words.
+        block = " ".join(result.stderr[result.stderr.index("CRITIC REVIEW"):].split())
+        assert "plan binding for this checkout is broken" in block
+        assert "2 live plans claim `fix/mine`" in block
+
+    def test_the_legacy_window_still_serves_the_conventional_plan(self, tmp_path):
+        """The other half of the fallback's demotion (MG3): while NO plan in the
+        repo declares `branch:`, the conventional plan still governs every
+        branch — so a pre-claims repo keeps its gate until it binds."""
+        self._two_plan_repo(
+            tmp_path, branch_type="designer-handoff", pointer_type="code"
+        )
+        mine = tmp_path / ".prawduct" / "artifacts" / "build-plan-mine.md"
+        mine.write_text(mine.read_text().replace("branch: fix/mine\n", ""))
+        result = _run_stop(
+            tmp_path, status=_CODE_DIFF, symbolic_ref="fix/unrelated-name"
+        )
+        assert result.returncode == 2, (
+            "no claims anywhere → the conventional plan (`code`) governs and the "
+            f"Critic gate fires. stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "CRITIC" in result.stderr
 
     def test_whether_the_gate_runs_follows_the_branchs_plan_too(self, tmp_path):
         """The gate's WHETHER must read the same plan as its WHAT.
@@ -425,11 +593,13 @@ class TestGateReadsTheBranchsPlanNotThePointer:
         fixture pre-satisfies reflection; the added negative pins that, so the
         exit code can only have come from the gate this test names.
 
-        This fixture is built to DISCRIMINATE, which the three above it are not:
-        the POINTER's plan is entirely `[x]`, so `_has_active_build_plan_file`
-        reads False through it and the Critic gate goes silent; the BRANCH's
-        plan has an open chunk, so it reads True. Revert `gate_plan` out of the
-        `has_build_plan` line and this sees exit 0 instead of the Critic block.
+        This fixture was built to discriminate the box-counting arm: the
+        POINTER's plan is entirely ticked and the BRANCH's has an open chunk.
+        Since #1051 (ST2) no box is read here at all — `has_build_plan` is
+        `plan_status.gate_arms(binding)`, and a plan with every box ticked arms
+        exactly as one with none ticked (`TestTheGateArmsOnTheBinding` below
+        pins that directly). What this still pins is the WHETHER following the
+        branch's binding rather than the pointer.
         """
         prawduct = tmp_path / ".prawduct"
         artifacts = prawduct / "artifacts"
@@ -440,7 +610,7 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "### Chunk 01: shipped\n**Type:** code\n\nBody.\n"
         )
         (artifacts / "build-plan-mine.md").write_text(
-            "---\nartifact: build-plan\nscope: mine\n---\n\n"
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
             "# Build Plan\n\n## Status\n- [ ] Chunk 01: in progress\n\n"
             "### Chunk 01: in progress\n**Type:** code\n\nBody.\n"
         )
@@ -459,3 +629,146 @@ class TestGateReadsTheBranchsPlanNotThePointer:
             "the exit code must come from the Critic gate, not from the "
             f"reflection gate this fixture pre-satisfies. stderr={result.stderr!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# ST2/ST7 (#1051): the gate arms on the binding, never on chunk progress
+# ---------------------------------------------------------------------------
+
+
+def _bound_plan_repo(tmp_path: Path, *, ticked: tuple[bool, ...], claims: str = "main") -> Path:
+    """A plan that CLAIMS ``claims`` (frontmatter `branch:`), with one Status box
+    per entry of ``ticked`` and a `code` chunk heading for each. Reflection is
+    pre-satisfied, so the Critic gate is the only one in play."""
+    prawduct = tmp_path / ".prawduct"
+    artifacts = prawduct / "artifacts"
+    artifacts.mkdir(parents=True)
+    boxes = "".join(
+        f"- [{'x' if t else ' '}] Chunk 0{i + 1}: C{i + 1}\n" for i, t in enumerate(ticked)
+    )
+    bodies = "".join(
+        f"### Chunk 0{i + 1}: C{i + 1}\n**Type:** code\n\nBody.\n\n" for i in range(len(ticked))
+    )
+    (artifacts / "build-plan-unit.md").write_text(
+        f"---\nartifact: build-plan\nscope: unit\nbranch: {claims}\n---\n\n"
+        f"# Build Plan\n\n## Status\n{boxes}\n## Build Chunks\n\n{bodies}"
+    )
+    (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+    (prawduct / ".session-git-baseline").write_text("")
+    ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+    (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    return prawduct
+
+
+class TestTheGateArmsOnTheBinding:
+    """`cmd_stop`'s `has_build_plan` is `plan_status.gate_arms(binding)` (ST2).
+
+    Renegotiated in the open: the old predicate was "the bound plan has an
+    unticked box, OR project-state.yaml's `build_plan.chunks` lists one that is
+    not complete". So ticking the last box disarmed the gate before any review
+    had run, and a state record no binding names armed a branch no plan claims.
+    Both were inputs a builder edits by hand. Now the gate arms when the binding
+    is `bound` to a live plan or `broken`, whatever the boxes say. Its verdict
+    is still the session's coverage, so a reviewed tree passes; only arming
+    moved. Each case pairs with a control that differs in one input only.
+    """
+
+    def test_a_bound_plan_with_every_box_unticked_arms(self, tmp_path):
+        _bound_plan_repo(tmp_path, ticked=(False, False))
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="main")
+        assert result.returncode == 2, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "CRITIC REVIEW" in result.stderr, result.stderr
+
+    def test_a_bound_plan_with_every_box_ticked_still_arms(self, tmp_path):
+        """The tick no longer disarms: red against the box-counting rule, which
+        read this plan as finished and let unreviewed code stop silently."""
+        _bound_plan_repo(tmp_path, ticked=(True, True))
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="main")
+        assert result.returncode == 2, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "CRITIC REVIEW" in result.stderr, result.stderr
+
+    def test_an_unbound_branch_does_not_arm(self, tmp_path):
+        """Control for the two above: the same plan claiming another branch
+        closes the legacy window and leaves `main` unbound — no plan governs it."""
+        _bound_plan_repo(tmp_path, ticked=(False, False), claims="feature/elsewhere")
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="main")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "CRITIC REVIEW" not in result.stderr
+
+    def test_a_broken_binding_arms_with_every_box_ticked(self, tmp_path):
+        """Two live plans claiming `main`, both fully ticked: `broken` fails
+        closed whatever the boxes say, and the block names why."""
+        prawduct = _bound_plan_repo(tmp_path, ticked=(True,))
+        rival = prawduct / "artifacts" / "build-plan-rival.md"
+        rival.write_text(
+            (prawduct / "artifacts" / "build-plan-unit.md").read_text().replace(
+                "scope: unit", "scope: rival"
+            )
+        )
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="main")
+        assert result.returncode == 2, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        block = " ".join(result.stderr[result.stderr.index("CRITIC REVIEW"):].split())
+        assert "plan binding for this checkout is broken" in block
+
+    def test_unfinished_state_chunks_on_an_unbound_branch_arm_nothing(self, tmp_path):
+        """ST7, red against develop's rule: `project-state.yaml` lists a chunk
+        whose `status` is not complete, and the branch is unbound. The state arm
+        made this block; with it gone, a record no binding names arms nothing."""
+        prawduct = _bound_plan_repo(tmp_path, ticked=(False,), claims="feature/elsewhere")
+        (prawduct / "project-state.yaml").write_text(
+            "product:\n  name: demo\nbuild_plan:\n  strategy: s\n  chunks:\n"
+            "    - id: 1\n      status: in_progress\n"
+        )
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="main")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "CRITIC REVIEW" not in result.stderr
+
+
+class TestTheCarveoutReadsTheFirstOpenChunk:
+    """The `Type:` carveout reads the CURRENT chunk's type. Since #1051 the
+    current chunk is `plan_status.current_chunks(...)[0]`, the first chunk no
+    clean review fact certifies, not the first unticked box. Both boxes stay
+    unticked here: the box reading names Chunk 01 (`code`) and blocks; the
+    fact reading names Chunk 02 (`designer-handoff`) and skips. The control
+    without the review fact shows the skip comes from the fact."""
+
+    def _repo(self, tmp_path: Path, *, reviewed: bool) -> Path:
+        import sys
+
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from lib import evidence
+
+        # The store lives in the clone's git common dir; a real `git init` gives
+        # this process one, and the stop subprocess's mock git answers `.git`.
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=str(tmp_path), check=True, timeout=15)
+        prawduct = tmp_path / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan-unit.md").write_text(
+            "---\nartifact: build-plan\nscope: unit\nbranch: main\n---\n\n"
+            "# Build Plan\n\n## Status\n- [ ] Chunk 01: built\n- [ ] Chunk 02: handoff\n\n"
+            "## Build Chunks\n\n### Chunk 01: built\n**Type:** code\n\nBody.\n\n"
+            "### Chunk 02: handoff\n**Type:** designer-handoff\n\nBody.\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        (prawduct / ".session-git-baseline").write_text("")
+        ts = datetime.now(timezone.utc) - timedelta(seconds=60)
+        (prawduct / ".session-start").write_text(ts.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        if reviewed:
+            result = evidence.append_fact(tmp_path, "review", "rev-chunk-01", {
+                "scope": "unit", "chunk": "01", "findings": [], "head_commit": "a" * 40,
+            })
+            assert result["status"] == "appended", result
+        return prawduct
+
+    def test_a_reviewed_first_chunk_moves_the_carveout_to_the_next(self, tmp_path):
+        self._repo(tmp_path, reviewed=True)
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="main")
+        assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "Chunk 02 declares Type: designer-handoff" in result.stdout + result.stderr
+
+    def test_the_control_without_the_review_grades_chunk_01(self, tmp_path):
+        self._repo(tmp_path, reviewed=False)
+        result = _run_stop(tmp_path, status=_CODE_DIFF, symbolic_ref="main")
+        assert result.returncode == 2, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        assert "CRITIC REVIEW" in result.stderr

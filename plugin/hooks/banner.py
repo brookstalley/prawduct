@@ -52,12 +52,32 @@ project context (e.g. a bare unit test) never mutates whatever repo is cwd.
 """
 from __future__ import annotations
 
-import json
-import os
-import re
-import subprocess
-import sys
-from pathlib import Path
+# The Python floor, checked before anything newer is imported: below it, re-run
+# this entry point under an interpreter that qualifies, or fail loudly. This WHOLE
+# file must parse on old interpreters: Python compiles a file before running any
+# of it, so newer syntax anywhere fails before this check (tests/test_python_floor.py).
+import os as _os
+import sys as _sys
+
+try:
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.realpath(__file__)), "..", "bin"))
+    try:
+        import _python_floor  # noqa: E402
+    finally:
+        del _sys.path[0]
+except (NameError, ImportError):
+    # Run without a `__file__` (exec'd source) or copied without its sibling
+    # module: there is no floor check to run, so run as before rather than
+    # tracing back ahead of every command's own error handling.
+    _python_floor = None
+if _python_floor is not None and __name__ == "__main__":
+    _python_floor.ensure(__file__)
+
+import json  # noqa: E402 -- after the Python floor check
+import re  # noqa: E402 -- after the Python floor check
+import subprocess  # noqa: E402 -- after the Python floor check
+import sys  # noqa: E402 -- after the Python floor check
+from pathlib import Path  # noqa: E402 -- after the Python floor check
 
 _SEMVER_HEADER = re.compile(r"^##\s+v(\d+\.\d+\.\d+(?:-dev(?:\.\d+)?)?)\b")
 
@@ -69,38 +89,45 @@ _GIT_TIMEOUT_SECONDS = 5
 _SHA_CHARS = 7
 
 
-def plugin_root() -> Path:
-    """Resolve the plugin root.
+def _host():
+    """The host seam (``lib/host.py``), which owns every read of the host's
+    environment and every structured hook response. ``bin/_host_seam.py``
+    loads it, because this script runs before ``lib`` is importable."""
+    if "prawduct_host" not in sys.modules:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bin"))
+        try:
+            import _host_seam  # noqa: PLC0415 — lazy keeps top-level cheap
+        finally:
+            del sys.path[0]
+        return _host_seam.load()
+    return sys.modules["prawduct_host"]
 
-    Prefers ``CLAUDE_PLUGIN_ROOT`` (set by Claude Code when the hook fires).
-    Falls back to the parent of this file's directory (``hooks/`` -> root) so
-    the script is also runnable directly, e.g. from tests.
+
+def plugin_root() -> Path:
+    """Resolve the plugin root: ``host.plugin_root``, the host's plugin-root
+    variable (set by Claude Code when the hook fires), else the plugin tree
+    this script sits in, so it is also runnable directly, e.g. from tests.
     """
-    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    if env_root:
-        return Path(env_root)
-    return Path(__file__).resolve().parent.parent
+    return Path(_host().plugin_root())
 
 
 def project_dir() -> Path | None:
-    """The consuming repo, from ``CLAUDE_PROJECT_DIR``.
+    """The consuming repo, from the host's launch dir (``host.project_dir_hint``;
+    Claude Code's ``CLAUDE_PROJECT_DIR``).
 
     Returns ``None`` when unset. Deliberately does NOT fall back to cwd: the
     marker write must never land in an unexpected repo just because the script
     was run without project context.
     """
-    env_proj = os.environ.get("CLAUDE_PROJECT_DIR")
-    return Path(env_proj) if env_proj else None
+    hint = _host().project_dir_hint()
+    return Path(hint) if hint else None
 
 
 def managed_plugin_home() -> Path:
-    """Claude Code's managed plugin directory (``~/.claude/plugins``).
-
-    Honors ``CLAUDE_CONFIG_DIR`` so an alternate config home resolves correctly.
+    """Claude Code's managed plugin directory (``~/.claude/plugins``), under
+    ``host.config_home`` so an alternate config home resolves correctly.
     """
-    cfg = os.environ.get("CLAUDE_CONFIG_DIR")
-    base = Path(cfg) if cfg else Path.home() / ".claude"
-    return base / "plugins"
+    return _host().config_home() / "plugins"
 
 
 def is_managed_install(root: Path) -> bool:
@@ -385,12 +412,17 @@ def new_gates_in_range(gates: list[dict], last: str, current: str) -> list[dict]
 
 #: Leading glyph of the relay directive. A *directive to the agent*, not a severity
 #: signal, so it sits outside the ``CRITICAL:``/``WARNING:``/``NOTE:`` vocabulary and
-#: alongside the banner's own ``↑``/``•``/``⊕`` line glyphs.
+#: alongside the banner's own ``↑``/``↓``/``•``/``⊕`` line glyphs.
 RELAY_MARKER = "⇒ "
 
 
 def render_delta(last: str, current: str, root: Path) -> list[str]:
     """Lines for the delta block shown when the version changed.
+
+    The direction comes from :func:`version_tuple`: a higher version lists the
+    highlights and gates it brings, a lower one says it rolled back (the running
+    plugin is the older one, so it cannot list what it lacks), and a move with an
+    unparseable side, or two versions that sort equal, says only that it changed.
 
     Closes with a **relay directive**. The delta block goes to stdout — the
     agent-facing channel — and ``write_marker`` advances the marker the moment it
@@ -401,6 +433,24 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
     it refers to the lines above it; placed first it would read as being about the
     version line alone.
     """
+    old, new = version_tuple(last), version_tuple(current)
+    # An unparseable side sorts below everything, so its "direction" is an
+    # artifact of the parser, not a fact about the move: say only that it changed.
+    if old == (-1,) or new == (-1,) or old == new:
+        return [
+            f"Prawduct changed: v{last} → v{current}",
+            f"{RELAY_MARKER}Tell the user the plugin version changed, in your first "
+            "reply this session — they do not see this banner.",
+        ]
+    if new < old:
+        # The running plugin is the OLDER one, so its changelog and gates hold
+        # nothing from the range being rolled back: there is no list to give.
+        return [
+            f"↓ Prawduct downgraded: v{last} → v{current}",
+            f"  changes after v{current} are no longer running",
+            f"{RELAY_MARKER}Tell the user the plugin was rolled back, in your first "
+            "reply this session — they do not see this banner.",
+        ]
     lines = [f"↑ Prawduct updated: v{last} → v{current}"]
     for _v, headline in highlights_in_range(parse_changelog(root), last, current):
         if headline:
@@ -418,6 +468,15 @@ def render_delta(last: str, current: str, root: Path) -> list[str]:
 
 
 def main() -> int:
+    # A host this plugin cannot answer gets no banner: noted, never blocking.
+    try:
+        unknown = _host().unknown_host_reason()
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- a banner failure must never break session start
+        print(f"NOTE: Prawduct banner could not load its host seam: {exc}", file=sys.stderr)
+        return 0
+    if unknown:
+        print(f"NOTE: Prawduct banner did nothing: {unknown}", file=sys.stderr)
+        return 0
     try:
         root = plugin_root()
         version = read_version(root)

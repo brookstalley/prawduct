@@ -176,12 +176,72 @@ def atomic_write_text(
     the next write overwrites it.
     """
     tmp = path.with_name(path.name + ".tmp")
-    # `open` rather than `write_text(newline=…)`: the latter wants Python 3.10+,
-    # and the hook runs under whatever `python3` a product's PATH resolves to —
-    # 3.9.6 on a stock macOS. `open` has taken both keywords since forever.
     with tmp.open("w", encoding=encoding, newline=newline) as handle:
         handle.write(text)
     os.replace(tmp, path)
+
+
+def _read_exact(path: Path) -> str:
+    """``path``'s text with its line endings untouched (no universal-newline read)."""
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def read_text_and_eol(path: Path) -> tuple[str, str]:
+    """``(text, eol)``: ``path``'s text as a universal-newline read gives it, and its line ending.
+
+    For a writer that rewrites a file it did not create through
+    :func:`write_all_or_none`, which writes ``newline=""``: parse ``text`` as
+    before, then write :func:`with_eol` of the result, so a CRLF file stays
+    CRLF. The parsers downstream keep seeing ``\\n`` only, which is why this
+    hands back normalized text rather than the exact bytes. ``eol`` is the
+    first line's terminator; a file with mixed endings comes back in that one.
+    Raises what ``Path.read_text`` raises.
+    """
+    exact = _read_exact(path)
+    return exact.replace("\r\n", "\n").replace("\r", "\n"), eol_of(exact)
+
+
+def eol_of(exact: str) -> str:
+    """The terminator of ``exact``'s first line — ``"\\n"`` when it has none."""
+    for index, char in enumerate(exact):
+        if char == "\n":
+            return "\n"
+        if char == "\r":
+            return "\r\n" if exact[index + 1 : index + 2] == "\n" else "\r"
+    return "\n"
+
+
+def with_eol(text: str, eol: str) -> str:
+    """``text`` (``\\n``-terminated lines) with every line ending ``eol``."""
+    return text if eol == "\n" else text.replace("\n", eol)
+
+
+class RollbackIncomplete(OSError):
+    """A :func:`write_all_or_none` write failed, and the rollback left files changed.
+
+    ``unrestored`` names the files that kept their new content. Its message is
+    the original failure's, and ``__cause__`` is that failure.
+    """
+
+    def __init__(self, cause: BaseException, unrestored: "list[Path]") -> None:
+        super().__init__(str(cause))
+        self.unrestored = unrestored
+
+
+def write_failure_outcome(exc: BaseException) -> str:
+    """What a failed :func:`write_all_or_none` left behind, as a sentence for the refusal.
+
+    The one place a caller learns whether "every file was restored" is true, so
+    no caller reports a restore that did not happen.
+    """
+    if isinstance(exc, RollbackIncomplete):
+        names = ", ".join(str(path) for path in exc.unrestored)
+        return (
+            f"The rollback could not restore {names}, which kept its new content while the "
+            "rest were restored; do not re-run until it is reconciled by hand."
+        )
+    return "Every file was restored; re-run when the cause is fixed."
 
 
 def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
@@ -204,9 +264,12 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     Rollback is best-effort by construction: if restoring also fails there is
     nothing left to try, and the original exception is the one worth raising, so
     an ``OSError`` from a restore does not mask it — but it is NOT silent: every
-    path the rollback could not restore is named on stderr, because the pair is
-    then half-applied and the documented recovery (run it again) would duplicate
-    every moved entry into an append-only file. Only ``OSError`` is caught there
+    path the rollback could not restore is named on stderr, and an ordinary
+    failure is raised as :class:`RollbackIncomplete` carrying those paths, so
+    the caller's message comes from that state (:func:`write_failure_outcome`).
+    The pair is then half-applied, and the documented recovery (run it again)
+    would duplicate every moved entry into an append-only file. An interrupt is
+    still re-raised unchanged. Only ``OSError`` is caught there
     — anything else escaping a restore is a bug in this function, not a disk
     that filled, and swallowing it would hide it forever.
 
@@ -218,29 +281,40 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
     replaces is exactly the half-applied pair this function exists to prevent,
     and it is not an error in the ordinary sense — but it is still the moment to
     restore, and the interrupt is re-raised unchanged.
+
+    **Text goes through byte for byte, both ways.** Every write and every
+    restore uses ``newline=""``, and every prior is read the same way, so
+    neither direction translates line endings. A caller's ``\n`` is written as
+    ``\n`` and a CRLF file it rewrites keeps its ``\r\n``. A universal-newline
+    read of the prior would quietly turn a product's CRLF file into LF on the one
+    path meant to leave it as it was: the rollback.
     """
     priors: list[str | None] = []
     for path, _text in writes:
-        priors.append(path.read_text(encoding="utf-8") if path.exists() else None)
+        priors.append(_read_exact(path) if path.exists() else None)
     written: list[tuple[Path, str | None]] = []
     try:
         for (path, text), prior in zip(writes, priors):
-            atomic_write_text(path, text)
+            atomic_write_text(path, text, newline="")
             written.append((path, prior))
-    except BaseException:
+    except BaseException as exc:
+        unrestored: list[Path] = []
         for path, prior in reversed(written):
             try:
                 if prior is None:
                     path.unlink(missing_ok=True)
                 else:
-                    atomic_write_text(path, prior)
+                    atomic_write_text(path, prior, newline="")
             except OSError as restore_exc:
+                unrestored.append(path)
                 print(
                     f"ROLLBACK FAILED for {path}: {restore_exc} — this file kept its NEW "
                     "content while the others were restored; do not re-run until it is "
                     "reconciled by hand",
                     file=sys.stderr,
                 )
+        if unrestored and isinstance(exc, Exception):
+            raise RollbackIncomplete(exc, unrestored) from exc
         raise
 
 
@@ -249,47 +323,6 @@ def write_all_or_none(writes: "Sequence[tuple[Path, str]]") -> None:
 # repos that don't set it keep their existing behavior.
 BUILD_PLAN_POINTER_KEY = "active_build_plan"
 DEFAULT_BUILD_PLAN_REL = "artifacts/build-plan.md"
-
-
-class BranchClaim(NamedTuple):
-    """Which plan governs the checked-out branch, and what else claimed it.
-
-    ``chosen`` is the plan; ``claimants`` is every live plan that declared this
-    branch, ``chosen`` included, in path order. ``basis`` names the precedence
-    step that decided it (see :func:`resolve_branch_claim`), so a surface can
-    say *why* this plan and not the others.
-
-    ``open_claimants`` is the subset still holding unticked chunks — carried
-    rather than recomputed because the sentence a reader gets **must be derived
-    from the state, not asserted about it**: the ``order`` basis is reached both
-    when nothing has open work and when several plans do, and one sentence
-    covering both tells half its readers the opposite of the truth. ``None``
-    means *not computed* (the uncontested path never asks), which is different
-    from an empty tuple and is why it is not one.
-
-    This tuple exists because attribution is what a multi-claim branch is owed.
-    Returning the winner alone would make governing by one of three plans look
-    exactly like governing by the only one — which is the failure mode the
-    branch declaration was supposed to remove, not introduce.
-    """
-
-    chosen: Path
-    claimants: "list[Path]"
-    branch: str
-    basis: str
-    open_claimants: "list[Path] | None" = None
-    #: What ``active_build_plan`` resolved to when the tie-break consulted it,
-    #: or ``None`` for unset — and also ``None`` on the paths that never asked
-    #: (a sole claimant, or one claimant with chunks left). Carried for the same
-    #: reason as ``open_claimants``: the sentence a reader gets must be derived
-    #: from what the scalar actually says, and "names none of them" was asserted
-    #: on a repo whose scalar named one.
-    pointer: "Path | None" = None
-
-    @property
-    def contested(self) -> bool:
-        """Whether more than one live plan claimed this branch."""
-        return len(self.claimants) > 1
 
 
 #: The three answers a column-0 scalar read can give. ``read_str_yaml_key``
@@ -771,11 +804,10 @@ def pointer_plan_path(prawduct_dir: Path) -> Path | None:
     """The ``active_build_plan:`` scalar as a path, or ``None`` when unset.
 
     The one place the scalar becomes a PATH, and that is now true by
-    construction rather than by convention: the resolution path (the tie-break
-    in :func:`resolve_branch_claim`, the fallback in
-    :func:`resolve_build_plan_path`), the release sweep's archive guard
-    (:func:`plan_backfill._active_plan_path`) and both operator notices in
-    ``prawduct-hook`` route through here. They previously spelled the prefix rule
+    construction rather than by convention: the legacy window of the work-unit
+    binding (``work_unit.resolve``), the release sweep's archive guard
+    (:func:`plan_backfill._active_plan_path`) and the operator notices route
+    through here. They previously spelled the prefix rule
     themselves — four copies of one rule, so widening or tightening the accepted
     spelling here would have left the sweep and the notices resolving a different
     file from the same line of YAML. (The raw string is still read directly
@@ -796,180 +828,48 @@ def pointer_plan_path(prawduct_dir: Path) -> Path | None:
     return prawduct_dir / pointer if pointer else None
 
 
-def resolve_branch_claim(prawduct_dir: Path) -> BranchClaim | None:
-    """Which live plan governs the checked-out branch, or ``None`` for no claim.
+def fallback_plan_path(prawduct_dir: Path) -> Path:
+    """The plan the fallback routes name: the ``active_build_plan`` pointer, else
+    the conventional ``artifacts/build-plan.md``. May not exist.
 
-    **Several live plans may claim one branch, and that is an ordinary
-    arrangement — not an error.** A `release/2-0` branch can carry a telemetry
-    plan and a documentation plan; one consumer repo carries three plans on a
-    single fix branch. An earlier reading treated the second claimant as an
-    authority failure and refused to resolve at all, which blocked the very
-    workflow the declaration was added to serve. Refusing is the right posture
-    when a control cannot know the answer; it is the wrong posture when the
-    answer is "all of them, and here is the one being worked."
-
-    Precedence over the claimants, and every step is stated because the choice
-    is reported (``basis``):
-
-    1. **A sole claimant wins outright** — no further test. Deliberately ahead
-       of step 2: the unfinished-chunk signal goes false the moment the last box
-       is ticked, which happens *during* the closing PR, and a plan that stopped
-       governing between its final review and its merge would take the gates
-       with it.
-    2. **The one claimant with unfinished chunks** — of several plans on a
-       branch, the one still holding open work is the one governance is about.
-    3. **The ``active_build_plan`` pointer**, when it names a plan **still in
-       contention** — that is, one of the claimants step 2 left standing, not
-       merely any claimant. This is what the scalar is *for* once branches carry
-       their own plans: the operator's explicit choice, used to break a tie
-       within a branch rather than to name one plan for a whole product. The
-       narrowing is deliberate and is the case to keep in mind: with two plans
-       still open and the scalar naming a third whose boxes are all ticked, the
-       scalar is stale evidence and the open ones are live evidence, so the
-       pointer does not resurrect a finished plan. The reader is told that is
-       what happened — see :func:`describe_branch_claim`, which derives the
-       pointer's clause rather than asserting one.
-    4. **Path order**, as the last resort. Arbitrary, so it is never silent —
-       ``basis`` says ``order`` and the caller names the plans it passed over.
-
-    ``None`` — and therefore the pointer — on a detached HEAD, outside a work
-    tree, and when no live plan claims this branch.
-
-    **The plan scan runs before the branch probe deliberately.** A repo where no
-    plan has opted in gets its answer from a walk it was already paying for on
-    every session boundary, and never spawns git; ordering it the other way
-    would add a subprocess to every resolve in every repo to answer a question
-    that is almost always "nobody claims anything."
+    The raw candidate, before ``work_unit.resolve`` asks whether the legacy
+    window may serve it — exposed so the resolver and a diagnosis of *why*
+    nothing resolved (``buildplan_refs.unresolved_scope_cause``) read the same
+    file rather than re-spelling the two routes.
     """
+    return pointer_plan_path(prawduct_dir) or prawduct_dir / DEFAULT_BUILD_PLAN_REL
+
+
+def foreign_fallback_claim(prawduct_dir: Path) -> tuple[Path, str] | None:
+    """``(plan, its branch)`` when the fallback plan declares a branch other than
+    the one checked out, else ``None``.
+
+    A diagnosis, not a resolution: ``buildplan_refs.unresolved_scope_cause``
+    explains a scope-less review by it. The refusal it explains is
+    ``work_unit.resolve``'s — a plan declaring a branch is never served to
+    another, and its claim closes the legacy window for the whole repo.
+    ``None`` too when the plan is missing, unreadable or claims nothing, and on
+    a detached HEAD or outside a work tree, where there is no branch for a
+    claim to contradict.
+    """
+    fallback = fallback_plan_path(prawduct_dir)
     from . import plan_index  # noqa: PLC0415 — lazy: core's top level stays stdlib-only
 
-    artifacts_dir = prawduct_dir / "artifacts"
-    claims = plan_index.branch_claiming_plans(artifacts_dir)
-    if not claims:
+    try:
+        declared = plan_index.parse_build_plan_frontmatter_branch(
+            fallback.read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeDecodeError):
+        return None  # missing or unreadable: each caller already says so
+    if declared is None:
         return None
 
     from . import gitstate  # noqa: PLC0415 — same reason; also a git subprocess
 
     branch = gitstate.current_branch(prawduct_dir.parent)
-    if not branch:
-        return None
-    matched = sorted(path for path, claimed in claims if claimed == branch)
-    if not matched:
-        return None
-    if len(matched) == 1:
-        return BranchClaim(matched[0], matched, branch, "sole")  # open set not asked
-
-    unfinished = [p for p in matched if plan_index.has_unfinished_chunk(p)]
-    if len(unfinished) == 1:
-        return BranchClaim(unfinished[0], matched, branch, "unfinished", unfinished)
-    # An empty `unfinished` means every claimant reads finished, which is the
-    # post-tick window rather than an absence of candidates — fall back to the
-    # full claimant set rather than to the pointer, so a branch whose plans are
-    # all ticked still resolves among ITS plans.
-    pool = unfinished or matched
-    pointed = pointer_plan_path(prawduct_dir)
-    if pointed is not None and pointed in pool:
-        return BranchClaim(pointed, matched, branch, "pointer", unfinished, pointed)
-    return BranchClaim(pool[0], matched, branch, "order", unfinished, pointed)
-
-
-def describe_branch_claim(claim: BranchClaim, artifacts_dir: Path) -> str:
-    """One sentence naming the governing plan and what else claimed the branch.
-
-    **One caller today: the session briefing.** That is deliberate, not an
-    accident waiting to be spread — the gates already name the plan they graded
-    (``record-lint``'s ``plan_graded``), so what a gate is missing is not the
-    choice but the context for it, which is session-scoped and arrives before
-    any gate runs. It lives here rather than inline in the briefing so a second
-    caller inherits the wording instead of paraphrasing it; the wording is not
-    yet shared, and this docstring does not get to claim it is.
-
-    Empty for an uncontested claim — there is nothing to disambiguate, and a
-    sentence printed on every ordinary session is a sentence nobody reads by the
-    time it matters.
-    """
-    from . import plan_index  # noqa: PLC0415 — lazy: core's top level stays stdlib-only
-
-    if not claim.contested:
-        return ""
-    others = [
-        plan_index.display_path(p, artifacts_dir)
-        for p in claim.claimants
-        if p != claim.chosen
-    ]
-    if claim.basis == "unfinished":
-        why = "it is the only one with chunks left"
-    elif claim.basis == "pointer":
-        why = "`active_build_plan` names it"
-    else:
-        # The `order` case is arbitrary, so it says so AND names the remedy. Its
-        # first clause is DERIVED, because this basis is reached from two states
-        # that want opposite sentences: several plans still holding open work
-        # (the shipped headline case — a release branch with two live
-        # workstreams and no pointer set), and none of them holding any (the
-        # post-tick window). Asserting either one tells the other's reader the
-        # opposite of the truth about their own repo.
-        open_count = len(claim.open_claimants or ())
-        distinguish = (
-            f"{open_count} of them still hold open work"
-            if open_count > 1
-            else "none of them has chunks left"
-        )
-        # The pointer's clause is derived for the same reason the count is, and
-        # it is the reason this sentence needed fixing twice: "names none of
-        # them" was asserted, and it is false on the repo whose scalar names a
-        # claimant that step 2 had already ruled out for being finished.
-        if claim.pointer is None:
-            scalar = "`active_build_plan` is unset"
-        elif claim.pointer in claim.claimants:
-            scalar = (
-                f"`active_build_plan` names "
-                f"{plan_index.display_path(claim.pointer, artifacts_dir)}, which is "
-                "not among them — its chunks are all ticked, so the plans still "
-                "holding work outrank it"
-            )
-        else:
-            scalar = "`active_build_plan` names no plan on this branch"
-        why = (
-            f"{distinguish} and {scalar}, so this is path order rather than a "
-            "judgement — point the scalar at the plan you are building to decide it"
-        )
-    return (
-        f"{len(claim.claimants)} live plans declare `branch: {claim.branch}` — "
-        f"governing by {plan_index.display_path(claim.chosen, artifacts_dir)} "
-        f"because {why}. Also claiming: {', '.join(others)}."
-    )
-
-
-def resolve_build_plan_path(prawduct_dir: Path) -> Path:
-    """Resolve the active build-plan path. Branch-scoped first, pointer second.
-
-    Precedence:
-
-    1. **The live plan that claims this branch.** A build plan may declare
-       ``branch: <name>`` in its frontmatter; a non-archived plan under
-       ``artifacts/`` whose declaration matches the checked-out branch governs
-       it. Which branch a plan governs is a fact about the plan, so the plan is
-       where it belongs — held in a product-level scalar instead, two concurrent
-       branches conflict on one line every time, and after the merge one of the
-       two plans is invisible to every pointer-resolved surface. Several plans
-       may claim one branch; :func:`resolve_branch_claim` states which wins and
-       why, and callers that report the active plan report that too.
-    2. **The ``active_build_plan:`` pointer** in ``project-state.yaml`` (a path
-       relative to the ``.prawduct/`` dir), letting a project name its plan by
-       scope (``artifacts/v1.6.0-foo-plan.md``).
-    3. **The conventional** ``artifacts/build-plan.md``.
-
-    A repo whose plans declare no ``branch:`` therefore resolves exactly as it
-    did before step 1 existed — opting in is per plan, and nothing migrates.
-
-    The returned path may not exist; callers treat a missing plan as "no active
-    build plan."
-    """
-    claim = resolve_branch_claim(prawduct_dir)
-    if claim is not None:
-        return claim.chosen
-    return pointer_plan_path(prawduct_dir) or prawduct_dir / DEFAULT_BUILD_PLAN_REL
+    if branch and branch != declared:
+        return fallback, declared
+    return None
 
 
 def extract_block(content: str) -> tuple[str | None, str, str]:

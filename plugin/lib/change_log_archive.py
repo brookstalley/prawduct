@@ -35,7 +35,8 @@ log the run would leave is re-read by ``release_readiness``'s own predicates: th
 release-pending and unclassifiable sets must be identical and no tag diagnostic may
 appear. Any difference refuses the run. The move is then written all-or-nothing
 across every file it touches (:func:`core.write_all_or_none`), so an interrupted
-run leaves the log as it was rather than entries in two places.
+run leaves the log as it was rather than entries in two places, or, if the
+rollback itself fails, names the files it could not restore.
 """
 
 from __future__ import annotations
@@ -330,32 +331,62 @@ def _with_pointer(preamble: str) -> str:
     return preamble.rstrip("\n") + "\n\n" + ARCHIVE_POINTER + "\n\n"
 
 
-def archive_would_be_ignored(project_root: Path) -> bool:
-    """True when git tracks the change record but would ignore the archive.
+def record_is_tracked(project_root: Path) -> bool:
+    """True when git tracks the change record: the live log or the fragment directory.
 
-    The record is the live log or the fragment directory, whichever this repo
-    commits. A repo that commits only that out of an ignored ``.prawduct/`` would
-    commit the entries' or fragments' REMOVAL and silently drop the archive they
-    moved to — history leaving git with no error. Asked before writing, so the
-    run can refuse instead. Where neither is tracked, nothing is committed on
-    either side and there is nothing to lose.
+    A repo that commits its record commits a cut's or a move's removals from it,
+    so whatever those removals are written into must be committed too, or
+    history leaves git with no error. Where neither is tracked, nothing is
+    committed on either side and there is nothing to lose. A git that cannot be
+    asked counts as untracked, the answer a repo without git gives.
     """
     from . import change_fragments  # noqa: PLC0415 — lazy; change_fragments imports this module
     from . import gitstate  # noqa: PLC0415 — lazy; git is only asked on the write path
 
-    if not any(
+    return any(
         gitstate.git_path_is_tracked(project_root, rel) is True
         for rel in (change_log.CHANGE_LOG_REL_PATH, change_fragments.FRAGMENT_DIR_REL)
-    ):
+    )
+
+
+def archive_would_be_ignored(project_root: Path) -> bool:
+    """True when git tracks the change record but would ignore the archive.
+
+    A repo that commits only its record out of an ignored ``.prawduct/`` would
+    commit the entries' or fragments' REMOVAL and silently drop the archive they
+    moved to. Asked before writing, so the run can refuse instead.
+    """
+    from . import gitstate  # noqa: PLC0415 — lazy; git is only asked on the write path
+
+    if not record_is_tracked(project_root):
         return False
     return gitstate.git_path_is_ignored(project_root, f"{ARCHIVE_DIR_REL}/0000-00.md")
+
+
+def holds_entry(prawduct_dir: Path, block: Block) -> bool:
+    """Whether ``block``'s entry is already in its month file of the archive.
+
+    Identity is the entry's :attr:`Block.key`, the identity
+    :func:`_compose_bucket` dedupes by, and never its scope name: scope names are
+    reused from release to release, so a name lookup would call a new change
+    shipped. A month file that cannot be read proves nothing is held, so a
+    caller never removes a fragment on the strength of a file it could not read.
+    """
+    path = prawduct_dir / ARCHIVE_DIR_NAME / f"{block.bucket or 'undated'}.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    _preamble, blocks = split(text)
+    return any(held.key == block.key for held in blocks)
 
 
 def apply(prawduct_dir: Path, selection: Selection) -> list[Path]:
     """Write the move, all-or-nothing across the live log and every month file.
 
-    Returns the files written. Raises ``OSError`` with every file restored when any
-    write fails (:func:`core.write_all_or_none`).
+    Returns the files written. Raises ``OSError`` when any write fails, with every
+    file restored, or :class:`core.RollbackIncomplete` naming those the rollback
+    could not restore (:func:`core.write_all_or_none`).
     """
     if not selection.moved:
         return []
@@ -363,15 +394,34 @@ def apply(prawduct_dir: Path, selection: Selection) -> list[Path]:
 
     archive_dir = prawduct_dir / ARCHIVE_DIR_NAME
     archive_dir.mkdir(parents=True, exist_ok=True)
-    writes: list[tuple[Path, str]] = []
-    for bucket, blocks in sorted(selection.buckets.items()):
-        path = archive_dir / f"{bucket}.md"
-        existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-        writes.append((path, _compose_bucket(existing, blocks, bucket)))
     live = prawduct_dir / LIVE_NAME
-    writes.append((live, selection.new_live))
+    # The selection was made over a universal-newline read, so its text is \n;
+    # the live log is written back in its own line ending, and a new month file
+    # takes the live log's, since what it holds moved from there.
+    _text, live_eol = core.read_text_and_eol(live)
+    writes = [
+        bucket_write(archive_dir, bucket, blocks, new_file_eol=live_eol)
+        for bucket, blocks in sorted(selection.buckets.items())
+    ]
+    writes.append((live, core.with_eol(selection.new_live, live_eol)))
     core.write_all_or_none(writes)
     return [path for path, _ in writes]
+
+
+def bucket_write(
+    archive_dir: Path, bucket: str, blocks: list[Block], *, new_file_eol: str = "\n"
+) -> tuple[Path, str]:
+    """``(path, text)`` for ``bucket``'s month file with ``blocks`` merged in.
+
+    The one reader of a month file that is about to be rewritten: it keeps the
+    file's own line ending (a CRLF month file stays CRLF under the ``newline=""``
+    writer), and a file that does not exist yet gets ``new_file_eol``.
+    """
+    from . import core  # noqa: PLC0415 — lazy keeps this module's import surface small
+
+    path = archive_dir / f"{bucket}.md"
+    existing, eol = core.read_text_and_eol(path) if path.is_file() else ("", new_file_eol)
+    return path, core.with_eol(_compose_bucket(existing, blocks, bucket), eol)
 
 
 def load_all_text(prawduct_dir: Path) -> str | None:

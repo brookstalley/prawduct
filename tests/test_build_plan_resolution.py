@@ -1,10 +1,20 @@
-"""Tests for active build-plan resolution (v1.6.0 Chunk 06).
+"""Tests for build-plan resolution: the work-unit binding's plan answer, and
+the chunk readers that resolve "the active plan" through it.
 
-The build-plan-consuming tooling resolves the active plan via an optional
-`active_build_plan:` pointer in project-state.yaml, falling back to the
-conventional `artifacts/build-plan.md`. The resolver lives in lib/core.py
-and is mirrored inline in bin/prawduct-hook (kept import-light on the hot path).
-A parity test pins the two implementations together, like the GITIGNORE mirror.
+Which plan governs a checkout is ``lib.work_unit.resolve``'s answer (#1050):
+the live plan whose ``branch:`` claims the checked-out branch, else — only in a
+repo where no live plan declares a branch — the ``active_build_plan`` pointer
+or the conventional ``artifacts/build-plan.md`` (the legacy window). Two
+claimants, or a plan that cannot be read, is ``broken`` and serves nothing.
+The cases below pin that answer — the bound plan, or ``None`` — asked of
+``work_unit.resolve`` through :func:`_bound_plan`. They once asked
+``core.resolve_build_plan_path``, a shim kept "for one release" that no
+deployment could reach (a pinned plugin imports its own ``lib/``); it was
+deleted (R-8) and every assertion kept, through the owner.
+
+There is no inline mirror of the resolver in ``bin/prawduct-hook`` any more,
+and nothing pins one: the hook asks ``work_unit`` like every other caller
+(``TestProductHookMirrorParity`` pins that the mirror stays retired).
 """
 
 from __future__ import annotations
@@ -24,22 +34,32 @@ import sys
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 from lib import core as _mod  # noqa: E402
-resolve_build_plan_path = _mod.resolve_build_plan_path
+from lib import work_unit as _work_unit  # noqa: E402
 read_str_yaml_key = _mod.read_str_yaml_key
 BUILD_PLAN_POINTER_KEY = _mod.BUILD_PLAN_POINTER_KEY
 DEFAULT_BUILD_PLAN_REL = _mod.DEFAULT_BUILD_PLAN_REL
 
 # chunk-ref parsing + verification moved to lib/buildplan_refs (STH-9V4K ch.3) —
 # test the parsers where they now live, not via the hook (which only keeps a
-# thin wrapper + the import-light resolver mirror, parity-tested below).
+# thin wrapper).
 from lib import buildplan_refs as _bpr  # noqa: E402
 from lib import plan_index as _plan_index  # noqa: E402
+from lib import evidence as _evidence  # noqa: E402
+from lib import plan_status as _plan_status  # noqa: E402
 
-# plugin-runtime inline mirror via SourceFileLoader (extensionless shebang script)
+# The hook, loaded via SourceFileLoader (extensionless shebang script), for the
+# pins that ask what it does NOT carry.
 _hook_loader = importlib.machinery.SourceFileLoader("prawduct_hook_res", str(_ROOT / "bin" / "prawduct-hook"))
 _hook_spec = importlib.util.spec_from_loader("prawduct_hook_res", _hook_loader)
 _hook = importlib.util.module_from_spec(_hook_spec)
 _hook_loader.exec_module(_hook)
+
+
+def _bound_plan(prawduct: Path) -> "Path | None":
+    """The plan the checkout governing ``prawduct`` is bound to, or ``None``
+    when it is unbound or broken — the answer the deleted shim returned."""
+    binding = _work_unit.resolve(prawduct.parent)
+    return binding.plan_path if binding.state == "bound" else None
 
 
 def _prawduct(tmp_path: Path, state: str = "") -> Path:
@@ -49,30 +69,41 @@ def _prawduct(tmp_path: Path, state: str = "") -> Path:
     return p
 
 
-class TestResolveBuildPlanPath:
-    def test_pointer_set_returns_pointed_file(self, tmp_path: Path):
+class TestPointerSpelling:
+    """How the ``active_build_plan`` scalar becomes a path (``core.pointer_plan_path``
+    and ``core.fallback_plan_path``, the raw candidate the legacy window reads).
+
+    These pinned ``resolve_build_plan_path`` until it became a shim over the
+    binding (#1050); the spelling rules they pin now live in the two helpers the
+    binding reads, so they are asked there — the binding answers only about a plan
+    that exists and binds, which no fixture here builds.
+    """
+
+    def test_pointer_set_names_the_pointed_file(self, tmp_path: Path):
         prawduct = _prawduct(tmp_path, "active_build_plan: artifacts/v1.6.0-foo-plan.md\n")
-        resolved = resolve_build_plan_path(prawduct)
-        assert resolved == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
+        assert _mod.fallback_plan_path(prawduct) == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
 
     def test_pointer_absent_falls_back_to_default(self, tmp_path: Path):
         prawduct = _prawduct(tmp_path, "coverage_required: true\n")
-        resolved = resolve_build_plan_path(prawduct)
-        assert resolved == prawduct / "artifacts" / "build-plan.md"
+        assert _mod.pointer_plan_path(prawduct) is None
+        assert _mod.fallback_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
 
     def test_no_project_state_falls_back_to_default(self, tmp_path: Path):
         prawduct = tmp_path / ".prawduct"
         prawduct.mkdir()
-        resolved = resolve_build_plan_path(prawduct)
-        assert resolved == prawduct / "artifacts" / "build-plan.md"
+        assert _mod.fallback_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
 
-    def test_pointer_to_missing_file_still_returned(self, tmp_path: Path):
-        # The resolver returns the pointed path even if it doesn't exist;
-        # callers treat a missing plan as "no active build plan".
-        prawduct = _prawduct(tmp_path, "active_build_plan: artifacts/gone-plan.md\n")
-        resolved = resolve_build_plan_path(prawduct)
-        assert resolved == prawduct / "artifacts" / "gone-plan.md"
-        assert not resolved.is_file()
+    def test_pointer_to_missing_file_is_a_candidate_the_binding_refuses(self, tmp_path: Path):
+        """The raw candidate is still the pointed path; the old resolver returned
+        it and left "does it exist" to each caller. The binding answers that once,
+        through the binding: a pointer naming no live plan binds nothing."""
+        repo = _branch_repo(tmp_path, "feat/x", "active_build_plan: artifacts/gone-plan.md\n")
+        prawduct = repo / ".prawduct"
+        assert _mod.fallback_plan_path(prawduct) == prawduct / "artifacts" / "gone-plan.md"
+        assert _bound_plan(prawduct) is None
+        # The control: the same pointer naming a plan that exists binds it.
+        _plan(prawduct, "gone-plan.md")
+        assert _bound_plan(prawduct) == prawduct / "artifacts" / "gone-plan.md"
 
     def test_repo_relative_pointer_accepted(self, tmp_path: Path):
         # STH-5P2W: the natural repo-relative spelling (".prawduct/artifacts/…")
@@ -81,8 +112,7 @@ class TestResolveBuildPlanPath:
         prawduct = _prawduct(
             tmp_path, "active_build_plan: .prawduct/artifacts/v1.6.0-foo-plan.md\n"
         )
-        resolved = resolve_build_plan_path(prawduct)
-        assert resolved == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
+        assert _mod.pointer_plan_path(prawduct) == prawduct / "artifacts" / "v1.6.0-foo-plan.md"
 
     def test_prefix_stripped_only_at_start(self, tmp_path: Path):
         # The strip is a leading-prefix fix, not a path rewrite — an interior
@@ -90,16 +120,15 @@ class TestResolveBuildPlanPath:
         prawduct = _prawduct(
             tmp_path, "active_build_plan: artifacts/.prawduct/odd-plan.md\n"
         )
-        resolved = resolve_build_plan_path(prawduct)
-        assert resolved == prawduct / "artifacts" / ".prawduct" / "odd-plan.md"
+        assert _mod.pointer_plan_path(prawduct) == prawduct / "artifacts" / ".prawduct" / "odd-plan.md"
 
     def test_null_pointer_falls_back_to_default(self, tmp_path: Path):
         # VWS-7N3K: `active_build_plan: null` must behave like an absent pointer
         # (fall back to the default plan), NOT resolve to the phantom
         # `.prawduct/null` that mis-fired the STH-5P2W briefing guard.
         prawduct = _prawduct(tmp_path, "active_build_plan: null\n")
-        resolved = resolve_build_plan_path(prawduct)
-        assert resolved == prawduct / "artifacts" / "build-plan.md"
+        assert _mod.pointer_plan_path(prawduct) is None
+        assert _mod.fallback_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
 
     def test_default_constant(self):
         assert DEFAULT_BUILD_PLAN_REL == "artifacts/build-plan.md"
@@ -153,266 +182,129 @@ def _plan(
 
 
 class TestBranchScopedResolution:
-    """Precedence (1) the live plan claiming the checked-out branch, (2) the
-    ``active_build_plan`` scalar, (3) the conventional default.
+    """The work-unit binding's answer: (1) the one live plan claiming
+    the checked-out branch, else (2) — only while no live plan in the repo
+    declares a branch — the ``active_build_plan`` pointer or (3) the
+    conventional default, else nothing.
 
     The pointer is branch state kept in a product-level scalar: two concurrent
     branches conflict on that one line every time, and after the merge one plan
     is invisible to every pointer-resolved surface. Inverting it — the plan
-    declares its branch — is what these pin.
+    declares its branch — is what these pin. Several cases here pinned the
+    precedence the old resolver applied among several claimants (open chunks,
+    then the pointer, then path order); #1050 retired it (BR5: a branch has one
+    unit, and two claimants are reported, never chosen between), so those cases
+    now pin that no tie-break of any kind serves a plan.
     """
 
     def test_branch_claim_wins_over_the_scalar(self, tmp_path: Path):
-        # Precedence is demonstrated against a scalar pointing SOMEWHERE ELSE.
-        # Pointing it at the same plan would make both routes agree and test
-        # nothing.
+        # Demonstrated against a scalar pointing SOMEWHERE ELSE. Pointing it at
+        # the same plan would make both routes agree and test nothing.
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
         claimed = _plan(prawduct, "branch-plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == claimed
+        assert _bound_plan(prawduct) == claimed
 
-    def test_scalar_still_wins_when_no_plan_claims_the_branch(self, tmp_path: Path):
+    def test_a_claim_elsewhere_closes_the_scalar_route(self, tmp_path: Path):
+        """Was ``test_scalar_still_wins_when_no_plan_claims_the_branch``. The
+        legacy window is per REPO, not per branch: once any live plan claims a
+        branch, claims are how this repo binds, and a pointer-only plan serves
+        no branch (MG3) — the old answer handed every unclaimed branch the
+        pointed plan, which is the misattribution class itself."""
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
         _plan(prawduct, "branch-plan.md", branch="feat/somewhere-else")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+        assert _bound_plan(prawduct) is None
+        binding = _work_unit.resolve(repo)
+        assert binding.state == "unbound"
+        assert "`active_build_plan` names other-plan.md" in binding.reason
 
-    def test_default_when_neither_claims_nor_points(self, tmp_path: Path):
+    def test_nothing_when_neither_claims_nor_points(self, tmp_path: Path):
+        """Was ``test_default_when_neither_claims_nor_points``, which answered
+        the conventional path for a file that did not exist. The binding answers
+        existence once: no plan, no path."""
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "branch-plan.md", branch="feat/other")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+        assert _bound_plan(prawduct) is None
 
     def test_a_repo_with_no_opt_in_is_unchanged(self, tmp_path: Path):
         # The compatibility contract: existing repos behave identically until a
-        # plan opts in. Nothing here declares `branch:`, so both the scalar and
-        # the default routes must answer exactly as they did before.
+        # plan opts in. Nothing here declares `branch:`, so the scalar route
+        # answers exactly as it did before — through the legacy window.
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/pointed-plan.md\n"
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "pointed-plan.md")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "pointed-plan.md"
+        assert _bound_plan(prawduct) == prawduct / "artifacts" / "pointed-plan.md"
+        assert _work_unit.resolve(repo).chosen_by == "legacy-pointer"
 
-    def test_several_plans_may_claim_one_branch(self, tmp_path: Path):
-        # A branch can legitimately carry several plans — a release branch with a
-        # telemetry plan and a documentation plan, or the three plans one consumer
-        # repo built on a single fix branch. Resolution picks among them and names
-        # what it passed over; it never refuses, and it never falls back to a
-        # scalar pointing OUTSIDE the branch's own plans.
-        repo = _branch_repo(
-            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
-        )
-        prawduct = repo / ".prawduct"
-        _plan(prawduct, "other-plan.md")
-        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        assert claim.contested
-        assert claim.branch == "feat/x"
-        assert {p.name for p in claim.claimants} == {"a-plan.md", "b-plan.md"}
-        assert claim.chosen in claim.claimants
-        assert resolve_build_plan_path(prawduct) == claim.chosen
-        # Nothing distinguishes the two, so the basis says so rather than
-        # implying a judgement was made.
-        assert claim.basis == "order"
-        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
-        assert "a-plan.md" in described and "b-plan.md" in described
-        assert "feat/x" in described
-        # BOTH plans have chunks left here, so the sentence must not claim
-        # otherwise — and it must name the act that would decide it.
-        assert "2 of them still hold open work" in described
-        assert "none of them has chunks left" not in described
-        assert "point the scalar" in described
-
-    def test_the_order_sentence_tracks_the_state_it_describes(self, tmp_path: Path):
-        # The `order` basis is reached from two opposite states, and one sentence
-        # for both tells half its readers something false about their own repo.
-        # This is the other state: every claimant ticked.
-        repo = _branch_repo(tmp_path, "feat/x")
-        prawduct = repo / ".prawduct"
-        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
-        assert claim.basis == "order"
-        assert "none of them has chunks left" in described
-        assert "still hold open work" not in described
-
-    def test_the_order_sentence_derives_the_pointer_clause_in_every_state(
-        self, tmp_path: Path
+    @pytest.mark.parametrize(
+        "case,state,plans",
+        [
+            # Every shape the retired tie-break decided, and the one it named.
+            ("both-open-no-pointer", "", {"a-plan.md": "open", "b-plan.md": "open"}),
+            ("both-done", "", {"a-plan.md": "done", "b-plan.md": "done"}),
+            ("one-open", "", {"a-plan.md": "open", "b-plan.md": "done"}),
+            ("pointer-names-one", "active_build_plan: artifacts/b-plan.md\n",
+             {"a-plan.md": "open", "b-plan.md": "open"}),
+            ("pointer-names-a-finished-one", "active_build_plan: artifacts/c-plan.md\n",
+             {"a-plan.md": "open", "b-plan.md": "open", "c-plan.md": "done"}),
+            ("pointer-elsewhere", "active_build_plan: artifacts/elsewhere.md\n",
+             {"a-plan.md": "done", "b-plan.md": "done"}),
+            ("three-open", "", {"a-plan.md": "open", "b-plan.md": "open", "c-plan.md": "open"}),
+        ],
+    )
+    def test_several_claimants_bind_nothing_and_are_all_named(
+        self, tmp_path: Path, case: str, state: str, plans: dict
     ):
-        """The `order` sentence has TWO derived clauses, and each has its own
-        states. This is the class that had to be fixed twice: the first fix
-        derived the open-work count and left the pointer clause asserted, which
-        then read "names none of them" on a repo whose scalar named one. Every
-        combination the basis can be reached in is enumerated here so a third
-        state cannot be added without a failing test.
-        """
-        def _claim(case: str, state: str, plans: dict) -> tuple:
-            repo = _branch_repo(tmp_path / case, "feat/x", state)
-            prawduct = repo / ".prawduct"
-            for name, chunks in plans.items():
-                _plan(prawduct, name, branch="feat/x", chunks=chunks)
-            claim = _mod.resolve_branch_claim(prawduct)
-            return claim, _mod.describe_branch_claim(claim, prawduct / "artifacts")
-
-        open_, done = "- [ ] Chunk 01: open\n", "- [x] Chunk 01: shipped\n"
-
-        # (a) two open, scalar unset.
-        claim, text = _claim("a", "", {"a-plan.md": open_, "b-plan.md": open_})
-        assert claim.basis == "order"
-        assert "2 of them still hold open work" in text
-        assert "`active_build_plan` is unset" in text
-
-        # (b) two open, scalar names something that is not on this branch.
-        claim, text = _claim(
-            "b",
-            "active_build_plan: artifacts/elsewhere.md\n",
-            {"a-plan.md": open_, "b-plan.md": open_},
-        )
-        assert claim.basis == "order"
-        assert "names no plan on this branch" in text
-
-        # (c) THE RECURRENCE: two open, scalar names a claimant that is finished.
-        # Step 3 rules it out (it is not in the pool), so the basis is `order` —
-        # and the sentence must not then claim the scalar names nothing.
-        claim, text = _claim(
-            "c",
-            "active_build_plan: artifacts/c-plan.md\n",
-            {"a-plan.md": open_, "b-plan.md": open_, "c-plan.md": done},
-        )
-        assert claim.basis == "order"
-        assert claim.chosen.name in ("a-plan.md", "b-plan.md")
-        assert "c-plan.md" in text and "its chunks are all ticked" in text
-        assert "names none of them" not in text
-        assert "names no plan on this branch" not in text
-
-        # (d) none open, scalar unset — the post-tick window.
-        claim, text = _claim("d", "", {"a-plan.md": done, "b-plan.md": done})
-        assert claim.basis == "order"
-        assert "none of them has chunks left" in text
-
-    def test_the_pointer_does_not_resurrect_a_finished_plan(self, tmp_path: Path):
-        """Step 3's narrowing, as behaviour rather than as wording. The scalar is
-        the operator's choice among plans still in contention; a plan whose boxes
-        are all ticked is not in contention, and live evidence outranks a stale
-        scalar."""
-        repo = _branch_repo(
-            tmp_path, "feat/x", "active_build_plan: artifacts/done-plan.md\n"
-        )
+        """Replaces the precedence cases (``several_plans_may_claim_one_branch``,
+        the ``order``-sentence states, ``pointer_breaks_a_tie``,
+        ``claimant_with_open_chunks_wins``, ``pointer_does_not_resurrect``,
+        ``three_claimants_are_all_named``, ``all_claimants_complete``). They
+        pinned a choice among claimants; the choice is gone (BR5), so each shape
+        now binds nothing — ``broken`` — whatever the boxes say and whatever the
+        pointer names, and the reason names every claimant so the author can
+        archive or re-bind all but one."""
+        repo = _branch_repo(tmp_path, "feat/x", state)
         prawduct = repo / ".prawduct"
-        _plan(prawduct, "done-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        _plan(prawduct, "open-a.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        _plan(prawduct, "open-b.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        assert claim.chosen.name != "done-plan.md"
-        assert claim.basis == "order"
-
-    def test_each_basis_renders_its_own_reason(self, tmp_path: Path):
-        # The whole replacement for the deleted refusal is this sentence, so each
-        # branch of it is pinned — otherwise the wordings can be swapped or
-        # falsified and the suite stays green.
-        repo = _branch_repo(
-            tmp_path, "feat/x", "active_build_plan: artifacts/b-plan.md\n"
-        )
-        prawduct = repo / ".prawduct"
-        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        pointer_claim = _mod.resolve_branch_claim(prawduct)
-        assert "`active_build_plan` names it" in _mod.describe_branch_claim(
-            pointer_claim, prawduct / "artifacts"
-        )
-
-        # ...and the unfinished basis, on the same repo, once one plan is ticked.
-        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        open_claim = _mod.resolve_branch_claim(prawduct)
-        assert open_claim.basis == "unfinished"
-        assert "the only one with chunks left" in _mod.describe_branch_claim(
-            open_claim, prawduct / "artifacts"
-        )
-
-    def test_three_claimants_are_all_named(self, tmp_path: Path):
-        # The plan's acceptance criterion, asserted rather than assumed: three
-        # plans claiming one branch resolve to one, and the reader is told about
-        # the other two by name.
-        repo = _branch_repo(tmp_path, "feat/x")
-        prawduct = repo / ".prawduct"
-        for name in ("a", "b", "c"):
-            _plan(prawduct, f"{name}-plan.md", branch="feat/x",
-                  chunks="- [ ] Chunk 01: open\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        described = _mod.describe_branch_claim(claim, prawduct / "artifacts")
-        assert "3 live plans declare `branch: feat/x`" in described
-        for name in ("a", "b", "c"):
-            assert f"{name}-plan.md" in described
-        assert "3 of them still hold open work" in described
-
-    def test_the_claimant_with_open_chunks_wins(self, tmp_path: Path):
-        repo = _branch_repo(tmp_path, "feat/x")
-        prawduct = repo / ".prawduct"
-        _plan(prawduct, "done-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        _plan(prawduct, "live-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        assert claim.chosen.name == "live-plan.md"
-        assert claim.basis == "unfinished"
-
-    def test_the_pointer_breaks_a_tie_within_the_branch(self, tmp_path: Path):
-        # The scalar's job once branches carry their own plans: the operator's
-        # explicit choice among THIS branch's plans, not a product-wide singleton.
-        repo = _branch_repo(
-            tmp_path, "feat/x", "active_build_plan: artifacts/b-plan.md\n"
-        )
-        prawduct = repo / ".prawduct"
-        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [ ] Chunk 01: open\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        assert claim.chosen.name == "b-plan.md"
-        assert claim.basis == "pointer"
+        boxes = {"open": "- [ ] Chunk 01: open\n", "done": "- [x] Chunk 01: shipped\n"}
+        for name, kind in plans.items():
+            _plan(prawduct, name, branch="feat/x", chunks=boxes[kind])
+        assert _bound_plan(prawduct) is None
+        binding = _work_unit.resolve(repo)
+        assert binding.state == "broken"
+        assert f"{len(plans)} live plans claim `feat/x`" in binding.reason
+        assert {p.name for p in binding.claimants} == set(plans)
+        for name in plans:
+            assert name in binding.reason
 
     def test_a_sole_claimant_governs_after_its_last_box_is_ticked(self, tmp_path: Path):
-        # The closing-PR case. The unfinished-chunk signal goes false the moment
-        # the last box is ticked — which happens BEFORE the merge — so a sole
-        # claimant must not stop governing between its final review and its PR.
+        # The closing-PR case. Every box is ticked BEFORE the merge, so a sole
+        # claimant must not stop governing between its final review and its PR
+        # — and a scalar naming another plan does not displace it.
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
         )
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
-        _plan(prawduct, "the-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        assert claim.chosen.name == "the-plan.md"
-        assert claim.basis == "sole"
-        assert not claim.contested
-        # And an uncontested claim has nothing to disambiguate, so it says nothing.
-        assert _mod.describe_branch_claim(claim, prawduct / "artifacts") == ""
-
-    def test_all_claimants_complete_still_resolves_within_the_branch(self, tmp_path: Path):
-        # Every claimant ticked is the post-tick window, not an absence of
-        # candidates: resolution stays among the branch's own plans rather than
-        # falling through to a scalar naming something else entirely.
-        repo = _branch_repo(
-            tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
-        )
-        prawduct = repo / ".prawduct"
-        _plan(prawduct, "other-plan.md")
-        _plan(prawduct, "a-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        _plan(prawduct, "b-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
-        claim = _mod.resolve_branch_claim(prawduct)
-        assert claim.chosen.name in ("a-plan.md", "b-plan.md")
-        assert claim.chosen != prawduct / "artifacts" / "other-plan.md"
+        plan = _plan(prawduct, "the-plan.md", branch="feat/x", chunks="- [x] Chunk 01: shipped\n")
+        assert _bound_plan(prawduct) == plan
 
     def test_the_consumer_shape_that_found_this_resolves(self, tmp_path: Path):
         # The population that produced the defect: a repo carrying five plans
         # that declare `branch:` as free-text documentation, three of them naming
         # one branch, one of them naming something that is not a branch name at
-        # all. Every one of those branches must resolve without raising.
+        # all. Every branch answers without raising: the triple-claimed branch is
+        # broken (named, not chosen — it was resolved by precedence before
+        # #1050), the singly-claimed one binds its plan.
         shapes = {
             "prompt-type-registry": "fix/research-forced-synthesis-never-empty",
             "research-forced-synthesis": "fix/research-forced-synthesis-never-empty",
@@ -427,21 +319,27 @@ class TestBranchScopedResolution:
             for name, claimed in shapes.items():
                 _plan(prawduct, f"build-plan-{name}.md", branch=claimed,
                       chunks="- [x] Chunk 01: shipped\n")
-            claim = _mod.resolve_branch_claim(prawduct)
-            assert claim is not None and claim.branch == branch
-            assert resolve_build_plan_path(prawduct) == claim.chosen
+            binding = _work_unit.resolve(repo)
+            expected = [n for n, c in shapes.items() if c == branch]
+            assert {p.name for p in binding.claimants} == {f"build-plan-{n}.md" for n in expected}
             # The prose-valued claim is inert wherever it appears: git cannot
             # name a branch that, so nothing ever matches it.
-            assert all(p.name != "build-plan-reasoning-token-telemetry.md"
-                       for p in claim.claimants)
+            if len(expected) == 1:
+                assert binding.state == "bound"
+                assert _bound_plan(prawduct) == binding.plan_path
+            else:
+                assert binding.state == "broken"
+                assert _bound_plan(prawduct) is None
 
     def test_an_archived_plan_claims_nothing(self, tmp_path: Path):
         # Archiving ends the claim, which is what makes the move the whole
-        # retirement step — no pointer to un-set afterwards.
+        # retirement step — no pointer to un-set afterwards. With no live plan
+        # left, nothing binds (the old answer named a nonexistent default).
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "archive/old-plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+        assert _bound_plan(prawduct) is None
+        assert _work_unit.resolve(repo).claimants == ()
 
     def test_an_archived_twin_does_not_make_a_live_claim_ambiguous(self, tmp_path: Path):
         # The pair of the case above: the live plan still resolves, rather than
@@ -450,9 +348,111 @@ class TestBranchScopedResolution:
         prawduct = repo / ".prawduct"
         _plan(prawduct, "archive/plan.md", branch="feat/x")
         live = _plan(prawduct, "plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == live
+        assert _bound_plan(prawduct) == live
 
-    def test_detached_head_falls_through_to_the_scalar(self, tmp_path: Path):
+    def test_a_default_plan_claiming_another_branch_governs_nothing_here(
+        self, tmp_path: Path
+    ):
+        """The defect this rule closes: a finished plan retained live at the
+        conventional path for its release kept governing every branch no plan
+        claimed — its gates armed, reviews and ledger events attributed to its
+        scope — and clearing the pointer could not end it."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan.md", branch="feature/finished", chunks="- [x] Chunk 01: a\n")
+        assert _bound_plan(prawduct) is None
+
+    def test_a_pointed_plan_claiming_another_branch_governs_nothing_here(
+        self, tmp_path: Path
+    ):
+        repo = _branch_repo(
+            tmp_path, "fix/unrelated", "active_build_plan: artifacts/build-plan-other.md\n"
+        )
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan-other.md", branch="feature/other")
+        assert _bound_plan(prawduct) is None
+
+    def test_a_fallback_plan_declaring_no_branch_still_governs(self, tmp_path: Path):
+        """The control: only a DECLARED other branch refuses. A plan that claims
+        nothing is the pointer-only repo, which must resolve as before."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        prawduct = repo / ".prawduct"
+        plan = _plan(prawduct, "build-plan.md")
+        assert _bound_plan(prawduct) == plan
+
+    def test_detached_head_binds_nothing_even_to_a_branchless_fallback(self, tmp_path: Path):
+        """Was ``test_detached_head_keeps_a_fallback_that_claims_a_branch``,
+        which pinned the fallback answering on a detached HEAD. On a detached
+        HEAD which branch's plan governs is unknowable — mid-rebase, a bisect —
+        and serving the pointer there is the misattribution class (#1050,
+        Chunk 01 ruling). It is unbound even inside the legacy window, and
+        re-binds the moment a branch is checked out."""
+        repo = _branch_repo(tmp_path, "feature/finished")
+        prawduct = repo / ".prawduct"
+        plan = _plan(prawduct, "build-plan.md")
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        _git(repo, "checkout", "-q", "--detach", head)
+        assert _bound_plan(prawduct) is None
+        assert _work_unit.resolve(repo).reason == "HEAD is detached, so no branch can be claimed"
+        _git(repo, "checkout", "-q", "feature/finished")
+        assert _bound_plan(prawduct) == plan
+
+    def test_chunk_readers_say_no_plan_governs_rather_than_naming_a_file(
+        self, tmp_path: Path
+    ):
+        """Both chunk readers report the refusal in words: the plan FILE exists,
+        so "missing build-plan: <its path>" would send the reader to a file that
+        is right there. Pinned at the CLI too, where the Critic meets it."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan.md", branch="feature/finished")
+        governs = "no build plan governs this branch"
+        assert governs in _bpr._parse_build_plan_chunk_refs(prawduct, "01")["error"]
+        assert governs in _bpr._parse_build_plan_chunk_type(prawduct, "01")[1]
+        proc = subprocess.run(
+            [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs", "01"],
+            cwd=str(repo), capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 1
+        assert governs in proc.stderr
+        # The control: on the branch the plan claims, the same call reads it.
+        _git(repo, "checkout", "-q", "-b", "feature/finished")
+        assert governs not in (_bpr._parse_build_plan_chunk_refs(prawduct, "01")["error"] or "")
+
+    def test_verify_chunk_refs_with_no_chunk_named_says_no_plan_governs(
+        self, tmp_path: Path
+    ):
+        """The inference path on an unbound checkout: nothing to verify, said in
+        words with the binding's reason — not another plan's current chunk."""
+        repo = _branch_repo(tmp_path, "fix/unrelated")
+        _plan(repo / ".prawduct", "build-plan.md", branch="feature/finished")
+        proc = subprocess.run(
+            [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs"],
+            cwd=str(repo), capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert "no plan governs this checkout" in proc.stdout
+        assert "no live plan claims `fix/unrelated`" in proc.stdout
+
+    def test_verify_chunk_refs_on_a_broken_binding_cannot_verify(self, tmp_path: Path):
+        """Two claimants: neither may be chosen, so the check does not run and
+        says why (exit 1, the can't-evaluate signal) rather than grading one."""
+        repo = _branch_repo(tmp_path, "feat/x")
+        prawduct = repo / ".prawduct"
+        _plan(prawduct, "build-plan-a.md", branch="feat/x")
+        _plan(prawduct, "build-plan-b.md", branch="feat/x")
+        proc = subprocess.run(
+            [sys.executable, str(_ROOT / "bin" / "prawduct-hook"), "verify-chunk-refs", "01"],
+            cwd=str(repo), capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 1
+        assert "cannot-verify: the plan binding is broken" in proc.stderr
+        assert "2 live plans claim `feat/x`" in proc.stderr
+
+    def test_detached_head_does_not_fall_through_to_the_scalar(self, tmp_path: Path):
+        """Was ``test_detached_head_falls_through_to_the_scalar``. The rule it
+        pinned is retired for the reason the case above states: a detached
+        HEAD is ``unbound``, and neither the claim nor the pointer answers."""
         repo = _branch_repo(
             tmp_path, "feat/x", "active_build_plan: artifacts/other-plan.md\n"
         )
@@ -461,23 +461,32 @@ class TestBranchScopedResolution:
         _plan(prawduct, "branch-plan.md", branch="feat/x")
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
         _git(repo, "checkout", "-q", "--detach", head)
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+        assert _bound_plan(prawduct) is None
+        assert _work_unit.resolve(repo).state == "unbound"
 
-    def test_outside_a_work_tree_falls_through_to_the_scalar(self, tmp_path: Path):
-        # No git at all: the claim cannot be evaluated, so the pre-existing
-        # route answers rather than the resolver failing.
+    def test_outside_a_work_tree_binds_nothing(self, tmp_path: Path):
+        """Was ``test_outside_a_work_tree_falls_through_to_the_scalar``. With no
+        git at all there is no branch for any plan to claim, so the checkout is
+        ``unbound`` and says so (#1050, BR3) — the pointer is not consulted,
+        because "which branch is this" has no answer to check it against. A
+        branchless pointed plan is the control: even that one is not served."""
         prawduct = _prawduct(tmp_path, "active_build_plan: artifacts/other-plan.md\n")
-        _plan(prawduct, "branch-plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+        _plan(prawduct, "other-plan.md")
+        assert _bound_plan(prawduct) is None
+        binding = _work_unit.resolve(tmp_path)
+        assert binding.reason == "not inside a git work tree, so no branch can be claimed"
 
     def test_a_non_plan_artifact_cannot_claim_a_branch(self, tmp_path: Path):
         # `branch:` on a design note must not make that note the document every
         # gate reads chunk Status from — it has no roster, so governance would
-        # go quiet rather than fail.
+        # go quiet rather than fail. Nor does it close the legacy window: a
+        # branchless plan at the conventional path still binds beside it.
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         _plan(prawduct, "a-design-note.md", branch="feat/x", artifact="design")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+        assert _bound_plan(prawduct) is None
+        plan = _plan(prawduct, "build-plan.md")
+        assert _bound_plan(prawduct) == plan
 
     def test_a_plan_declaring_no_artifact_type_may_still_claim(self, tmp_path: Path):
         # Inherits `plan_index`'s fail-safe direction: at least one real plan in
@@ -485,7 +494,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         claimed = _plan(prawduct, "typeless-plan.md", branch="feat/x", artifact=None)
-        assert resolve_build_plan_path(prawduct) == claimed
+        assert _bound_plan(prawduct) == claimed
 
     def test_a_nested_plan_can_claim(self, tmp_path: Path):
         # Discovery is recursive, as it is for `scope:` — repos that organize
@@ -493,7 +502,7 @@ class TestBranchScopedResolution:
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         claimed = _plan(prawduct, "plans/007/build-plan.md", branch="feat/x")
-        assert resolve_build_plan_path(prawduct) == claimed
+        assert _bound_plan(prawduct) == claimed
 
     def test_long_frontmatter_still_yields_its_claim(self, tmp_path: Path):
         # The bounded header read must not become a silent correctness knob: a
@@ -504,7 +513,7 @@ class TestBranchScopedResolution:
         filler = "\n".join(f"note_{i}: {'x' * 200}" for i in range(200))
         path.write_text(f"---\nartifact: build-plan\n{filler}\nbranch: feat/x\n---\n\n# P\n")
         assert len(path.read_text()) > _plan_index._FRONTMATTER_PROBE_CHARS
-        assert resolve_build_plan_path(prawduct) == path
+        assert _bound_plan(prawduct) == path
 
     def test_a_null_branch_claims_nothing(self, tmp_path: Path):
         repo = _branch_repo(
@@ -513,15 +522,73 @@ class TestBranchScopedResolution:
         prawduct = repo / ".prawduct"
         _plan(prawduct, "other-plan.md")
         _plan(prawduct, "opted-out.md", branch="null")
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "other-plan.md"
+        assert _bound_plan(prawduct) == prawduct / "artifacts" / "other-plan.md"
 
     def test_a_nested_branch_key_does_not_claim(self, tmp_path: Path):
+        # Indented under another key, `branch:` is not a claim — the file binds
+        # nothing (the old answer named a nonexistent default), and it does not
+        # close the window either.
         repo = _branch_repo(tmp_path, "feat/x")
         prawduct = repo / ".prawduct"
         (prawduct / "artifacts" / "nested.md").write_text(
             "---\nartifact: build-plan\nwip:\n  branch: feat/x\n---\n\n# P\n"
         )
-        assert resolve_build_plan_path(prawduct) == prawduct / "artifacts" / "build-plan.md"
+        assert _bound_plan(prawduct) is None
+        assert _work_unit.resolve(repo).claimants == ()
+
+
+class TestTheBindingStatesThroughTheirConsumers:
+    """Each binding state, read by the two consumer-facing answers that
+    replaced the shims: the governing plan (``_bound_plan``) and the
+    scope-less review subject (``buildplan_refs.resolve_reviewed_plan`` with
+    no scope). Both must agree with the binding on every state."""
+
+    def _shapes(self, tmp_path: Path):
+        bound = _branch_repo(tmp_path / "bound", "feat/x")
+        (bound / ".prawduct" / "artifacts" / "build-plan-x.md").write_text(
+            "---\nartifact: build-plan\nscope: x\nbranch: feat/x\n---\n\n"
+            "## Status\n\n- [ ] Chunk 01: a chunk\n"
+        )
+        legacy = _branch_repo(tmp_path / "legacy", "feat/x")
+        _plan(legacy / ".prawduct", "build-plan.md")
+        unbound = _branch_repo(tmp_path / "unbound", "fix/y")
+        _plan(unbound / ".prawduct", "build-plan-x.md", branch="feat/x")
+        broken = _branch_repo(tmp_path / "broken", "feat/x")
+        _plan(broken / ".prawduct", "build-plan-a.md", branch="feat/x")
+        _plan(broken / ".prawduct", "build-plan-b.md", branch="feat/x")
+        return {"bound": bound, "legacy": legacy, "unbound": unbound, "broken": broken}
+
+    def test_the_governing_plan_is_the_bound_plan_or_none(self, tmp_path: Path):
+        for state, repo in self._shapes(tmp_path).items():
+            binding = _work_unit.resolve(repo)
+            expected = binding.plan_path if binding.state == "bound" else None
+            assert _bound_plan(repo / ".prawduct") == expected, state
+            assert (expected is not None) == (state in ("bound", "legacy")), state
+
+    def test_the_scopeless_review_subject_carries_the_binding_and_its_reason(self, tmp_path: Path):
+        shapes = self._shapes(tmp_path)
+        for state, repo in shapes.items():
+            binding = _work_unit.resolve(repo)
+            plan = _bpr.resolve_reviewed_plan(repo, repo / ".prawduct", None)
+            assert plan.path == (binding.plan_path if binding.state == "bound" else None), state
+            assert plan.gap == binding.reason, state
+        claimed = _bpr.resolve_reviewed_plan(shapes["bound"], shapes["bound"] / ".prawduct", None)
+        assert (claimed.scope, claimed.gap, claimed.rel) == (
+            "x", None, ".prawduct/artifacts/build-plan-x.md",
+        )
+        assert _work_unit.resolve(shapes["bound"]).case == "claim"
+        # #1007(a): a legacy-window answer is never silent, even on a repo with
+        # one plan — it was, and read exactly like a grounded one. Which route
+        # answered is the binding's case (the review answer no longer restates it).
+        legacy = _bpr.resolve_reviewed_plan(shapes["legacy"], shapes["legacy"] / ".prawduct", None)
+        assert _work_unit.resolve(shapes["legacy"]).case == "legacy-default"
+        assert legacy.gap.startswith(f"{_work_unit.LEGACY_ADVISORY_KEY}:")
+
+    def test_the_retired_shims_stay_deleted(self):
+        """R-8: two public names answering the question `work_unit.resolve`
+        owns are how the next consumer gets a second walker."""
+        assert not hasattr(_mod, "resolve_build_plan_path")
+        assert not hasattr(_bpr, "resolve_branch_plan")
 
 
 class TestTheCliResolvesRatherThanRefusing:
@@ -664,7 +731,7 @@ class TestProductHookMirrorParity:
 
     The RESOLVER half of this mirror is gone. ``_resolve_build_plan_path`` lost
     its last caller when ``staleness_scan`` moved to ``lib/briefing.py`` and was
-    rewritten onto ``core.resolve_build_plan_path``, so the cases deleted here
+    rewritten onto the lib resolver (now ``work_unit.resolve``), so the cases deleted here
     pinned two implementations of which only one was ever run — and branch-scoped
     resolution would have meant duplicating a directory walk and a git subprocess
     into the unreachable one. What is asserted instead is that the mirror is
@@ -876,7 +943,7 @@ class TestChunkLineForms:
         """The end-to-end shape of the original defect, now single-sided: the id
         must come out of a real Status line including its `- [ ] ` prefix."""
         line = "- [ ] **Chunk 03** — the adapter"
-        items = list(_bpr._iter_status_section_items(f"## Status\n\n{line}\n"))
+        items = list(_plan_index.iter_status_section_items(f"## Status\n\n{line}\n"))
         assert items == [(False, "**Chunk 03** — the adapter")]
         assert _bpr._chunk_id_from_item_text(items[0][1]) == "03"
 
@@ -945,9 +1012,12 @@ class TestActiveBuildPlanChunkHeadingsParse:
     """
 
     def test_active_plan_status_chunks_have_parseable_headings(self):
-        plan_path = resolve_build_plan_path(_ROOT / ".prawduct")
-        if not plan_path.is_file():
-            pytest.skip(f"no active build plan resolved at {plan_path}")
+        # The repo's own `.prawduct/`: `_ROOT` is `plugin/`, and resolving under
+        # it found no plan in any state, so this guard skipped unconditionally.
+        binding = _work_unit.resolve(_ROOT.parent)
+        plan_path = binding.plan_path
+        if plan_path is None or not plan_path.is_file():
+            pytest.skip(f"no build plan governs this checkout ({binding.reason})")
         content = plan_path.read_text()
         status_ids = _status_chunk_ids(content)
         if not status_ids:
@@ -998,11 +1068,27 @@ class TestActiveBuildPlanChunkHeadingsParse:
 # =============================================================================
 
 
+def _work_tree(project: Path) -> None:
+    """Make ``project`` a git work tree on ``main``, with nothing committed.
+
+    The readers these fixtures exercise resolve "the active plan" through the
+    work-unit binding, and outside a work tree there is no branch to bind, so
+    the checkout is unbound and no plan is read (#1050: the old resolver fell
+    through to the conventional path there). A fixture whose subject is the
+    parser, not the binding, is therefore a work tree; its plan declares no
+    ``branch:``, so the legacy window binds it. Unborn on purpose: the branch is
+    read from HEAD, and a test that commits its own seed still can.
+    """
+    project.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=project, check=True)
+
+
 def _project_with_chunk(tmp_path: Path, chunk_body: str) -> tuple[Path, Path]:
     """Create a project root with a one-chunk build-plan. Returns (project, prawduct)."""
     project = tmp_path / "proj"
     prawduct = project / ".prawduct"
     (prawduct / "artifacts").mkdir(parents=True)
+    _work_tree(project)
     (prawduct / "project-state.yaml").write_text("")
     plan = (
         "---\nartifact: build-plan\n---\n\n"
@@ -1018,11 +1104,12 @@ def _project_with_chunk(tmp_path: Path, chunk_body: str) -> tuple[Path, Path]:
 def _project_with_status_and_chunk(
     tmp_path: Path, status: str, chunk_body: str
 ) -> tuple[Path, Path]:
-    """Like `_project_with_chunk` but with a real `## Status` roster, so
-    `resolve_chunk_progress` has something to read."""
+    """Like `_project_with_chunk` but with a real `## Status` roster, which
+    `plan_status.chunk_states` reads as done (in memory) for a ticked box."""
     project = tmp_path / "proj"
     prawduct = project / ".prawduct"
     (prawduct / "artifacts").mkdir(parents=True)
+    _work_tree(project)
     (prawduct / "project-state.yaml").write_text("")
     plan = (
         "---\nartifact: build-plan\n---\n\n"
@@ -1034,26 +1121,23 @@ def _project_with_status_and_chunk(
     return project, prawduct
 
 
-class TestUntickedChunkNoticeNarrowing:
-    """The tripwire's silence conditions, in a NON-git tree.
+class TestBuiltNotDoneNoticeNarrowing:
+    """The built-but-not-done notice's silence conditions (#1051; it replaced
+    the unticked-committed-chunk tripwire, whose silences this class pinned).
 
-    This class replaces one that pinned the opposite notice: when the retired
-    git-derived reading bailed, the checkbox reading taking over was the one
-    known to be wrong, and nothing said so. The checkbox reading is now simply
-    correct, so that notice has no subject. What remains worth pinning is the
-    narrowing — the successor control must stay quiet unless it has something to
-    say, since a control that fires on every session stops being read
-    (`nonfunctional-requirements.md` § Direction).
-
-    Deliberately non-git fixtures: they exercise the paths where the tripwire has
-    no evidence at all. Its POSITIVE behaviour needs real commits and is pinned
-    in `test_handoff_parser_correctness.py` against real `git init` repos.
+    A control that fires on every session stops being read
+    (`nonfunctional-requirements.md` § Direction), so it must stay quiet unless
+    it has something to say — and say nothing before paying for a git walk it
+    does not need. Its POSITIVE behaviour, and both call sites, are pinned in
+    `test_handoff_parser_correctness.py::TestBuiltNotDoneNotice`.
     """
 
-    def _repo(self, tmp_path: Path, *, status: str) -> Path:
+    def _repo(self, tmp_path: Path, *, status: str, work_tree: bool = True) -> Path:
         project = tmp_path / "proj"
         prawduct = project / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)
+        if work_tree:
+            _work_tree(project)
         (prawduct / "project-state.yaml").write_text("base_branch: main\n")
         (prawduct / "artifacts" / "build-plan.md").write_text(
             "---\nartifact: build-plan\n---\n\n"
@@ -1063,34 +1147,45 @@ class TestUntickedChunkNoticeNarrowing:
         return project
 
     def test_silent_outside_a_git_work_tree(self, tmp_path: Path):
-        # No git, so no commits to compare the boxes against. Silence is the
-        # honest answer; a claim here would be manufactured from nothing.
-        project = self._repo(tmp_path, status="- [ ] Chunk 01: a chunk\n")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
+        # No work tree, so no branch binds a plan and none is borrowed.
+        project = self._repo(tmp_path, status="- [ ] Chunk 01: a chunk\n", work_tree=False)
+        assert _plan_status.built_not_done_notice(project) is None
 
     def test_silent_when_there_is_no_plan(self, tmp_path: Path):
         project = tmp_path / "proj"
         (project / ".prawduct" / "artifacts").mkdir(parents=True)
-        (project / ".prawduct" / "project-state.yaml").write_text("base_branch: main\n")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
+        _work_tree(project)
+        assert _plan_status.built_not_done_notice(project) is None
 
-    def test_silent_when_the_plan_has_no_status_roster(self, tmp_path: Path):
-        # "plan read, nothing to compare" must be distinguishable from "no plan".
-        project = self._repo(tmp_path, status="")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
-
-    def test_silent_when_every_box_is_ticked(self, tmp_path: Path):
-        # Nothing unticked means nothing to report, before git is consulted at
-        # all — the cheap exit that keeps this off the cost budget.
+    def test_silent_when_nothing_is_open_and_git_is_never_walked(
+        self, tmp_path: Path, monkeypatch
+    ):
+        # Nothing open means nothing to report, before `built_chunks` runs —
+        # the cheap exit that keeps the walk off the boundary's budget.
         project = self._repo(tmp_path, status="- [x] Chunk 01: a chunk\n")
-        assert _bpr.unticked_committed_chunk_notice(project) is None
+
+        def no_walk(*_a, **_k):
+            raise AssertionError("built_report walked git for a plan with nothing open")
+
+        monkeypatch.setattr(_plan_status, "built_report", no_walk)
+        assert _plan_status.built_not_done_notice(project) is None
+
+    def test_an_open_chunk_does_walk_git(self, tmp_path: Path, monkeypatch):
+        # The control for the test above: with a chunk open the walk runs, so
+        # the stub's silence there is the cheap exit, not an unreached stub.
+        project = self._repo(tmp_path, status="- [ ] Chunk 01: a chunk\n")
+        calls = []
+        monkeypatch.setattr(
+            _plan_status, "built_report",
+            lambda *a, **k: calls.append(a) or _plan_status.BuiltReport(set()),
+        )
+        assert _plan_status.built_not_done_notice(project) is None
+        assert len(calls) == 1
 
     def test_the_token_is_stable_and_greppable(self):
-        # The proportionality norm: a control whose findings are printed and
-        # forgotten can never be retired on evidence, so the token is a stable
-        # literal rather than a reworded sentence. This control is NEW, so it
-        # owes that evidence from the start.
-        assert _bpr.UNTICKED_CHUNK_TOKEN == "unticked-committed-chunk"
+        # A control whose findings are printed and forgotten can never be
+        # retired on evidence, so the token is a fixed literal, pinned absolute.
+        assert _plan_status.BUILT_NOT_DONE_TOKEN == "built-not-done"
 
 
 class TestChunkRefWaiver:
@@ -1185,6 +1280,46 @@ class TestNewQualifierExpiry:
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
         assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
 
+    def _scoped_project(self, tmp_path: Path) -> tuple[Path, Path]:
+        project = tmp_path / "proj"
+        prawduct = project / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        _work_tree(project)
+        (prawduct / "project-state.yaml").write_text("")
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "---\nartifact: build-plan\nscope: expiry\n---\n\n"
+            "## Build Chunks\n\n### Chunk 01: a chunk\n\n- creates new `lib/created.py`\n"
+            "\n## Next Section\n"
+        )
+        return project, prawduct
+
+    def test_a_fact_certified_chunk_expires_its_exemption(self, tmp_path: Path):
+        """#1051: done is `plan_status.chunk_states`' answer, read from the
+        fact store — no box involved. The control is the same plan before the
+        fact lands."""
+        project, prawduct = self._scoped_project(tmp_path)
+        assert _bpr._parse_build_plan_chunk_refs(prawduct, "01")["file_paths"] == []
+        appended = _evidence.append_fact(project, "chunk-imported", "chunk-imported-x", {
+            "scope": "expiry", "chunk": "01", "source": "status-box",
+            "imported_at": "2026-10-25T00:00:00Z",
+        })
+        assert appended.get("status") == "appended", appended
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
+
+    def test_facts_the_caller_holds_are_the_ones_read(self, tmp_path: Path):
+        """`facts=` is honoured instead of the store: an empty store on disk,
+        and the done answer comes from what the caller passed."""
+        _project, prawduct = self._scoped_project(tmp_path)
+        facts = {"status": "ok", "facts": [{
+            "schema": 1, "kind": "chunk-imported", "id": "chunk-imported-y",
+            "ts": "2026-10-25T00:00:00Z", "actor": {},
+            "body": {"scope": "expiry", "chunk": "01", "source": "status-box",
+                     "imported_at": "2026-10-25T00:00:00Z"},
+        }]}
+        refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01", facts=facts)
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
+
     def test_uncertain_completion_fails_toward_the_exemption(self, tmp_path: Path):
         # No `## Status` roster at all — nothing to reason about, so nothing
         # expires. A false missing-ref fires on every review of an open chunk;
@@ -1215,6 +1350,7 @@ class TestNewQualifierExpiry:
         project = tmp_path / "proj"
         prawduct = project / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)
+        _work_tree(project)
         (prawduct / "project-state.yaml").write_text("")
         (prawduct / "artifacts" / "build-plan.md").write_text(
             "---\nartifact: build-plan\n---\n\n"
@@ -1243,16 +1379,24 @@ class TestNewQualifierExpiry:
     # route back. The non-contiguous case itself is still covered — by the
     # checkbox test directly above, which is where it now belongs.
 
-    def test_unparseable_roster_entry_fails_toward_the_exemption(
+    def test_a_non_chunk_roster_entry_does_not_withhold_a_done_chunks_expiry(
         self, tmp_path: Path
     ):
+        """Renegotiated by #1051 Chunk 06 (was
+        `test_unparseable_roster_entry_fails_toward_the_exemption`, which
+        asserted the exemption was KEPT). The old reader reasoned by roster
+        POSITION, so one entry naming no chunk made every placement unsafe and
+        it answered "cannot tell". Done is now `plan_status.chunk_states`' answer
+        per chunk id, which a non-chunk entry cannot shift: chunk 01 is done, so
+        its `new` exemption expires. What still fails toward the exemption — a
+        plan that cannot be read, a rejected heading — reads `open` there."""
         _project, prawduct = _project_with_status_and_chunk(
             tmp_path,
             "- [x] Chunk 01: a chunk\n- [x] not a chunk line at all\n",
             "- creates new `lib/created.py`\n",
         )
         refs = _bpr._parse_build_plan_chunk_refs(prawduct, "01")
-        assert refs["file_paths"] == []
+        assert [r["ref"] for r in refs["file_paths"]] == ["lib/created.py"]
 
     def test_completed_chunk_still_exempts_a_file_that_now_exists(
         self, tmp_path: Path
@@ -2130,6 +2274,7 @@ class TestVerifyChunkRefsForwardRefScope:
         project = tmp_path / "proj"
         prawduct = project / ".prawduct"
         (prawduct / "artifacts").mkdir(parents=True)
+        _work_tree(project)
         (prawduct / "project-state.yaml").write_text("")
         (prawduct / "artifacts" / "build-plan.md").write_text(
             "---\nartifact: build-plan\n---\n\n"

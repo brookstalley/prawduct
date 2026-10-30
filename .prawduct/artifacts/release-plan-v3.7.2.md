@@ -1,7 +1,7 @@
 # Release Plan — v3.7.2, Whole-Develop Promotion
 
-**Status:** Phase 1 prepared 2026-10-24. Re-derive with `prawduct-hook check-releasability --release
-v3.7.2` before Phase 2, and with `prawduct-hook check-released v3.7.2` after it.
+**Status:** COMPLETE as measured 2026-10-24: `main` promoted at `eea2be2d`, tag and Release `v3.7.2` published in one call, `check-released v3.7.2` verified 3 of 3, develop reopened on `3.7.3-dev`. Re-derive rather than reading this as a measurement:
+`prawduct-hook check-released v3.7.2`, `git log --oneline origin/main -1`.
 
 **Version:** v3.7.2, a **patch**, by owner decision (2026-10-24: "yes to all of your
 recommendations"). This follows the ratified conservative-versioning norm (`operational-spec.md` §

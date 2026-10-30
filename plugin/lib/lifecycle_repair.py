@@ -12,9 +12,9 @@ checkboxes are derived and must not be hand-edited.
 
 The last of those is the one that still does damage. The other three are inert
 — nothing reads them — but a comment saying *do not hand-flip these boxes* is
-read by a human or an agent and obeyed, and the boxes are now the only reading
-of chunk progress that the session gates have. A repo that keeps it converges
-its data and still behaves the old way.
+read by a human or an agent and obeyed, and until a plan is migrated
+``plan_status`` still reads a ticked box as an imported ``done`` (#1051 MG1). A
+repo that keeps it converges its data and still behaves the old way.
 
 The fifth is ``build_state.test_tracking`` — a hand-maintained count of tests
 (and, in most repos, an ``assertion_count``, a ``test_files``, and a ``history``
@@ -504,23 +504,32 @@ def _plan_documents(artifacts_dir: Path) -> "list[Path]":
 
 
 def stale_status_reports(artifacts_dir: Path) -> list[dict]:
-    """Live plans whose Status was a derived view and has unticked chunks.
+    """Live plans whose Status was a derived view and has chunks built but not done.
 
     **Report only — this never writes, and the prohibition is the point.** A
-    derived Status block is stale on an in-flight chunk, only a session with the
-    work in context can say which chunk is actually done, and the session gates
-    read that state. So a model must not write it (``data-model.md``: no model
-    in a fact's write path). Naming the plan is the most this may do.
+    chunk's state is ``plan_status.chunk_states``' answer from the review facts
+    (#1051), and only a review — or a hand-written ``dropped:`` — may change it
+    (``data-model.md``: no model in a fact's write path). Naming the plan is the
+    most this may do.
 
-    Narrowed to *live* plans: an archived plan's boxes are read by nothing, so
-    reporting them would be noise that never goes quiet.
+    The chunks named are the ones ``plan_status.built_chunks`` sees work for on
+    the plan's branch (git-walking; it certifies nothing) whose state is still ``open``:
+    committed work no review has certified. An open chunk with nothing built is
+    simply future work and is not named.
+
+    Narrowed to *live* plans: an archived plan is read by nothing, so reporting
+    it would be noise that never goes quiet.
 
     **Expected yield, stated so it can be judged rather than defended:** it
     names the plans a human must look at once, per repo, during this transition
-    — and it prints the plan and the specific chunks, so a reader can settle
-    each without re-deriving anything and the check can be retired when it stops
-    firing.
+    — and it prints the plan and the specific chunks (``Chunk <id>``), so a
+    reader can settle each without re-deriving anything and the check can be
+    retired when it stops firing.
     """
+    from . import evidence, plan_status  # noqa: PLC0415 — lazy; only plans with the comment pay for it
+
+    repo_dir = Path(artifacts_dir).parent.parent
+    facts = None
     reports: list[dict] = []
     for plan_path in _plan_documents(artifacts_dir):
         try:
@@ -529,12 +538,25 @@ def stale_status_reports(artifacts_dir: Path) -> list[dict]:
             continue
         if not plan_comment_findings(content):
             continue  # never carried a derived-Status instruction
-        # The finished answer from the module that owns Status parsing — this
-        # must not walk the section itself, because walking Status and testing
-        # checkboxes IS re-deriving currency, and that derivation has one home.
-        unticked = buildplan_refs.unticked_chunk_items(content)
-        if unticked:
-            reports.append({"path": plan_path, "chunks": unticked})
+        if facts is None:
+            facts = evidence.read_facts(repo_dir)
+        states = plan_status.chunk_states(plan_path, facts, repo_dir=repo_dir)
+        report = plan_status.built_report(plan_path, repo_dir)
+        if report.unavailable is not None:
+            # Git could not say what is built, so "nothing to name" would be a
+            # guess read as a clean answer. Name the plan with the cause instead
+            # (advice fails soft and says what it could not do — architecture.md).
+            reports.append(
+                {"path": plan_path, "chunks": [], "unavailable": report.unavailable}
+            )
+            continue
+        pending = [
+            f"Chunk {chunk_id}"
+            for chunk_id, st in states.items()
+            if st.state == "open" and not st.synthetic and chunk_id in report.built
+        ]
+        if pending:
+            reports.append({"path": plan_path, "chunks": pending, "unavailable": None})
     return reports
 
 

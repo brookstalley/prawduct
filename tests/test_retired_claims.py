@@ -207,6 +207,19 @@ class TestHistoryAndDeclarationsAreNotSurvivors:
         )
         assert _found(_lint(repo)) == [("docs/live.md", 1)]
 
+    def test_what_the_release_cut_writes_is_history_whatever_its_name(self, tmp_path):
+        """A release file and the declared changelog hold text that shipped and
+        is never edited, so a retired phrase quoted there is history. The same
+        name undeclared is an ordinary doc, and still reports."""
+        quoted = "The release retired " + PHRASE + ".\n"
+        files = {".prawduct/releases/v1.4.0.md": quoted, "docs/NEWS.md": quoted, "NOTES.md": quoted}
+        declared = _make_repo(
+            tmp_path / "declared", files, state="consumer_digest:\n  path: docs/NEWS.md\n"
+        )
+        assert _found(_lint(declared)) == [("NOTES.md", 1)]
+        undeclared = _make_repo(tmp_path / "undeclared", files)
+        assert _found(_lint(undeclared)) == [("NOTES.md", 1), ("docs/NEWS.md", 1)]
+
     def test_a_retires_line_outside_a_direction_section_declares_nothing(self, tmp_path):
         """The field is read on Direction norm entries only. A `Retires:` in a
         plan's prose or a section of notes is ordinary text."""
@@ -652,3 +665,57 @@ class TestThisRepoIsClean:
         assert not [r for r in unchecked if "tracked files" in r], unchecked
         in_files = [f"{f['path']}:{f['line']}" for f in findings if f["line"] is not None]
         assert in_files == []
+
+
+class TestTheInlineFormTestIsLinear:
+    """The inline-form test used `\\S.*?(?:\\*{1,2}|_{1,2})?\\bRetires:`, which
+    re-scans to the end of the line from every non-space start: quadratic in a
+    long line with no `Retires:` in it. 83 searches over this repo's governing
+    artifacts took 3.2s of the dogfood scan above, which then hit its 30s wall
+    clock on a loaded machine. `_has_inline_retires` answers the same question
+    in one pass."""
+
+    _OLD = __import__("re").compile(r"\S.*?(?:\*{1,2}|_{1,2})?\bRetires:")
+
+    @pytest.mark.parametrize("text", [
+        "Retires: \"x\"",
+        "  **Retires:** \"x\"",
+        "- **A norm.** Detail. Retires: \"x\"",
+        "Detail.\nRetires: \"x\"",
+        "Detail.\n  Retires: \"x\"",
+        "NotRetires: \"x\"",
+        "x Retires:",
+        "x_Retires:",
+        "x **Retires:**",
+        "",
+        "no field here",
+    ])
+    def test_it_agrees_with_the_regex_it_replaced(self, text):
+        assert retired_claims._has_inline_retires(text) == bool(self._OLD.search(text))
+
+    def test_it_agrees_on_every_real_line_that_carries_the_field(self):
+        """The corpus that made the old one slow is the one it must agree on.
+        Asserted non-empty, or agreement over nothing would pass."""
+        root = _TESTS_DIR.parent
+        tracked = subprocess.run(
+            ["git", "ls-files", "*.md"], cwd=str(root), capture_output=True, text=True,
+            check=True, timeout=30,
+        ).stdout.splitlines()
+        lines = [
+            line
+            for rel in tracked
+            if (root / rel).is_file()
+            for line in (root / rel).read_text(encoding="utf-8", errors="replace").splitlines()
+            if "Retires:" in line
+        ]
+        assert len(lines) >= 5, lines
+        disagree = [l for l in lines if retired_claims._has_inline_retires(l) != bool(self._OLD.search(l))]
+        assert disagree == []
+
+    def test_a_long_line_without_the_field_is_one_pass(self):
+        import time
+
+        line = "word " * 40000
+        start = time.perf_counter()
+        assert retired_claims._has_inline_retires(line) is False
+        assert time.perf_counter() - start < 1.0

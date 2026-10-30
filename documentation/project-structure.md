@@ -19,9 +19,11 @@ prawduct/
 │   ├── VERSION                        # semver (mirrored by plugin.json and pyproject.toml)
 │   ├── CHANGELOG.md                   # consumer-facing release notes
 │   ├── hooks/hooks.json               # SessionStart (banner + briefing + digest), Stop (Critic + reflection gates), SubagentStop
-│   ├── bin/prawduct-hook              # the runtime: every gate, probe and state writer (Python, one file)
+│   ├── bin/prawduct-hook              # the runtime: every gate, probe and state writer (Python)
+│   ├── bin/_python_floor.py, _host_seam.py  # what every entry point loads first: the interpreter floor, the host seam
 │   ├── lib/                           # the bodies the hook reaches lazily (init_product, migrate_plugin, core,
-│   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …)
+│   │                                  #   change_log, plan_index, plan_archive, critic_consolidate, release_readiness, …);
+│   │                                  #   host.py is the one seam to the host harness (payloads, roots, responses)
 │   ├── skills/                        # framework skills → /prawduct:* (critic, pr, backlog, doctor, janitor,
 │   │   │                              #   methodology, migrate, onboard, report-bug, runbook, advisory, …)
 │   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,
@@ -75,6 +77,8 @@ prawduct/
 │   ├── changes/                       # one fragment per release-pending scope (<scope>.md); the cut removes shipped ones
 │   ├── change-log.md                  # shipped history from before fragments, with release= tags
 │   ├── change-log-archive/            # shipped entries by month: moved verbatim (archive-change-log) or cut from fragments (cut-change-log)
+│   ├── releases/                      # one file per release since v3.8.0: the section the cut inserted into plugin/CHANGELOG.md
+│   ├── release-headline.md            # the next release's headline, until the cut consumes it (absent between)
 │   ├── cross-cutting-concerns.md      # Concern-to-pipeline coverage registry
 │   ├── artifacts/                     # this repo's own specs and plans (+ archive/)
 │   ├── runbooks/                      # operational procedures (release cut, pruned promotion)
@@ -91,7 +95,7 @@ prawduct/
 
 ## Product repos (plugin-governed)
 
-A v2 product repo commits only its own state plus a small install reference — no framework files. Governance comes from the plugin.
+A v2 product repo commits only its own state plus a small install reference and the unloaded-plugin tripwire hook beside it in `.claude/settings.json` — no framework files. Governance comes from the plugin; the tripwire only says when the plugin did not load.
 
 ```
 my-product/
@@ -103,6 +107,8 @@ my-product/
 │   ├── backlog.md                     # deferred work items (out-of-scope captures)
 │   ├── changes/                       # the change record: one fragment per change, all release-pending
 │   ├── change-log-archive/            # shipped history by month, written by the release cut
+│   ├── releases/                      # with `consumer_digest:` declared: one file per release, the section the cut inserted into the changelog
+│   ├── release-headline.md            # with `consumer_digest:` declared: the next release's headline, until the cut consumes it
 │   ├── change-log.md                  # repos onboarded before fragments: the legacy log, until `migrate-change-log`
 │   ├── artifacts/                     # generated specifications
 │   │   ├── boundary-patterns.md       # contract surfaces between components
@@ -111,10 +117,10 @@ my-product/
 │   │                                  #   history, pruned at directory level by every scan on a hot path
 │   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
-│   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file)
+│   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file — review facts reach other clones as notes on refs/notes/prawduct)
 │   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `lib.ledger` — `ledger-append` for review events, the Stop hook and `critic-consolidate` for `learning.*`)
 ├── .claude/
-│   └── settings.json                  # the committed install reference (marketplace + enabled plugin)
+│   └── settings.json                  # the committed install reference (marketplace + enabled plugin) + the unloaded-plugin tripwire hook
 └── src/                               # product source code (+ the product's own skills, MCP servers, configs)
 ```
 

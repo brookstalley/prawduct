@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "",
+  "stderr": "\nGATES DEFERRED — this turn says RUNNING and closed on DO NOT CLEAR, so it is still working, not a session end; the session-end gate(s) below are deferred to the next Stop (NOT skipped — they fire on the first turn that does not):\n  deferred: [prawduct v<VERSION> · gate: reflection]\n"
+}

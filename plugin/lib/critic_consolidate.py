@@ -67,6 +67,7 @@ staleness" defect class this plan deletes.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import sys
@@ -74,7 +75,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, gates, gitstate, ledger
+from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -637,6 +638,25 @@ def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> boo
     return capture.get("tree") == anchor_tree
 
 
+def judgeable_untracked(capture: "dict | None") -> "list[str] | None":
+    """The untracked files in ``capture`` that a verbatim commit must carry, or
+    ``None`` when the capture could not list them.
+
+    Narrowed to the coverage gate's own predicate because that is the gate the
+    advice is about: leaving out a prose or metadata file rides a free edge, so
+    naming one would be noise; leaving out anything judgeable (an OS metadata
+    file included) opens an interval no review covers.
+    """
+    if not capture or capture.get("status") != "ok":
+        return None
+    listed = capture.get("untracked")
+    if listed is None:
+        return None
+    from . import coverage_algebra  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    return [p for p in listed if coverage_algebra.is_judgeable_path(p)]
+
+
 
 #: The mechanical question, answered — not handed to the builder to go run.
 #:
@@ -667,7 +687,11 @@ def tree_is_covered_by(capture: "dict | None", anchor_tree: "str | None") -> boo
 #: ledger once per consolidation and passes both results in, so the two
 #: carriers of this sentence cannot quote different numbers and no digit is
 #: restated in this module (``architecture.md``: every fact has one home).
-def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
+def cost_lead(
+    cost: "dict | None",
+    tree_now_covered: bool = False,
+    untracked: "list[str] | None" = None,
+) -> str:
     """The leading sentence of a zero-blocking close: what fixing costs here,
     and what that implies.
 
@@ -688,6 +712,11 @@ def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
     and the next edit opens a NEW delta needing its own pass whatever its paths
     are. Measured live on 2026-09-19 building this scope's own predecessor: the
     close said a batch of fixes was free, and it bought a full round.
+
+    ``untracked`` (:func:`judgeable_untracked` of the same capture) is read only
+    by that arm: the covered tree includes those files, so "verbatim" has to say
+    so, or a commit of the tracked files alone deletes them from the reviewed
+    tree and the gate reads ``uncovered``.
 
     Returns ``""`` when ``cost`` is absent, so a caller that did not compute it
     renders exactly the message it rendered before this existed.
@@ -716,11 +745,15 @@ def cost_lead(cost: "dict | None", tree_now_covered: bool = False) -> str:
             if cost.get("paths")
             else "and your tree is clean, so there is nothing left to pay for"
         )
-        act = (
-            "Recommended: commit this tree verbatim and stop;"
-            if cost.get("paths")
-            else "Recommended: stop here;"
-        )
+        if not cost.get("paths"):
+            act = "Recommended: stop here;"
+        elif untracked:
+            act = (
+                "Recommended: commit this tree verbatim, including the untracked"
+                f" {name_paths(untracked)} (`git add -A`), and stop;"
+            )
+        else:
+            act = "Recommended: commit this tree verbatim and stop;"
         return (
             f"This review covers your working tree as it stands, {carry}, and"
             " the next edit after it, judgeable or not, opens a new delta that"
@@ -805,7 +838,54 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     return out
 
 
+def uncertified_clause(mode: str, open_chunks: "list[str]") -> str:
+    """The sentence a whole-plan review that named no chunk ends on, while
+    chunks stay open after it (#1081).
+
+    Its proposal prints only to ``critic-begin``'s stderr, inside the forked
+    critic, so without this a boundary review that proposed nothing left the
+    plan's shipped chunks open in silence until the release archived them as
+    unbuilt. The review may still have certified other chunks by its tree span
+    (a commit in its interval building them), so the sentence speaks only of
+    the chunks ``open_chunks`` lists, which are read after that."""
+    ids = ", ".join(open_chunks)
+    return (
+        f"This {mode} review named no chunk, and the plan still has open chunk(s) "
+        f"{ids}: neither its proposal nor its interval found work for them (no commit "
+        "subject in it names them). If they are "
+        f"this branch's work, pass `--chunks {','.join(open_chunks)}` on the next "
+        "`/prawduct:critic` dispatch — without it, a review certifies only the chunks "
+        "its interval builds."
+    )
+
+
 def next_action_line(
+    fact_id: "str | None",
+    blocking: int,
+    warning: int,
+    note: int,
+    price_sentence: "str | None" = None,
+    carried: "list[dict] | None" = None,
+    span: "str | None" = None,
+    observations: int = 0,
+    cost: "str | None" = None,
+    rides_next_review: "str | None" = None,
+    uncertified: "tuple[str, list[str]] | None" = None,
+) -> str:
+    """:func:`_next_action_core`'s sentence, ending on :func:`uncertified_clause`
+    when ``uncertified`` (the review's mode and the plan's open chunks) says a
+    whole-plan review certified nothing. Every arm carries it: a fix round does
+    not change which chunks this review left open."""
+    line = _next_action_core(
+        fact_id, blocking, warning, note, price_sentence, carried, span,
+        observations, cost, rides_next_review,
+    )
+    if uncertified:
+        line += " " + uncertified_clause(*uncertified)
+    return line
+
+
+def _next_action_core(
     fact_id: "str | None",
     blocking: int,
     warning: int,
@@ -2201,10 +2281,8 @@ def _prior_review_fact(
         if fact.get("id") != fact_id:
             continue
         body = fact.get("body") or {}
-        # A dirty-tree review records no `head_commit`; its `dispatch_commit` is
-        # the commit it was dispatched from, and that is the anchor to place.
-        anchor = body.get("head_commit") or body.get("dispatch_commit")
-        if isinstance(anchor, str) and anchor.strip():
+        anchor = evidence.review_anchor(body)
+        if anchor:
             from . import critic_mode  # noqa: PLC0415 — lazy; avoids an import cycle
 
             if not critic_mode._commit_is_ancestor(project_dir, anchor):
@@ -2603,8 +2681,14 @@ def working_tree_interval_base(
     head_commit: str,
     head_tree: str,
     why: "list[str] | None" = None,
+    *,
+    read: "dict | None" = None,
 ) -> dict:
     """Where a ``chunk``/``final`` review's interval starts — the one owner.
+
+    ``read`` is the caller's ``evidence.read_facts`` result, passed through to
+    ``gates.covered_frontier`` so a caller that already read the store (mode
+    inference) does not read it again.
 
     Returns ``{"origin", "commit", "tree", "absent"}``; ``origin`` is one of the
     ``BASE_AT_*`` constants above, and ``absent`` is the ``gates.FRONTIER_ABSENT_*``
@@ -2639,7 +2723,7 @@ def working_tree_interval_base(
 
     frontier_why: list[str] = []
     absent: list[str] = []
-    frontier = gates.covered_frontier(project_dir, frontier_why, absent)
+    frontier = gates.covered_frontier(project_dir, frontier_why, absent, read=read)
     if why is not None:
         why.extend(frontier_why)
     absent_code = absent[0] if absent else None
@@ -2688,6 +2772,183 @@ def merge_base_start_reason(absent: "str | None") -> str:
     return "nothing on this branch is reviewed yet"
 
 
+#: The ``scope_unresolved_cause`` code each binding case records, for a
+#: dispatch whose binding carried no scope. Keyed on ``Binding.case`` — the
+#: resolver's own discriminant — so a reworded reason cannot move a code.
+#: ``None`` means the case says only "no plan claims this branch", and the code
+#: is :func:`buildplan_refs.unresolved_scope_cause`'s diagnosis of why.
+#: ``tests/test_critic_consolidate.py`` pins that every ``work_unit.Case`` has
+#: an entry, so a case added to the resolver cannot fall through unmapped.
+SCOPE_CAUSE_BY_CASE: "dict[str, str | None]" = {
+    "claim": "claim-no-scope",
+    "legacy-pointer": "legacy",
+    "legacy-default": "legacy",
+    "two-claimants": "broken",
+    "unreadable-plan": "broken",
+    "scratch-worktree": "scratch-worktree",
+    "detached-head": "detached-head",
+    "no-work-tree": "no-work-tree",
+    "no-claim": None,
+    "pointer-dangling": None,
+}
+
+
+def _unresolved_scope_cause(
+    project_dir: Path, prawduct_dir: Path, binding
+) -> "tuple[str, str | None]":
+    """``(code, advice)`` for a dispatch whose binding carried no scope.
+
+    ``code`` is the short cause the manifest's ``scope_unresolved_cause``
+    records — a code, as it was before the binding existed, so a count over
+    the store groups by it (``api-contract.md``: additive-first; the binding's
+    sentence goes to the new ``scope_reason`` field instead):
+
+    - ``broken`` — two live plans claim the branch, or one cannot be read;
+    - ``legacy`` — a legacy-window plan (pointer or conventional path) that
+      declares no ``scope:``;
+    - ``claim-no-scope`` — a plan claims the branch and declares no ``scope:``;
+    - ``scratch-worktree``, ``detached-head``, ``no-work-tree`` — the unbound
+      cases that are not about any plan;
+    - for any other unbound checkout, the code
+      :func:`buildplan_refs.unresolved_scope_cause` finds (``body-branch``,
+      ``pointer-claims-other``, ``no-claim``), else ``unbound``.
+
+    ``advice`` is the remedy to print, or ``None``. A broken binding and a
+    bound plan without ``scope:`` are always worth a line: both are a plan the
+    author meant to govern this branch, and the binding's own reason names the
+    edit. An **unbound** checkout is normal — a chore, a fix, the integration
+    branch — so its generic reason would fire on every such review with
+    nothing to act on; it gets a line only when ``unresolved_scope_cause``
+    finds evidence the branch has a plan that fails to claim it.
+    """
+    code = SCOPE_CAUSE_BY_CASE.get(binding.case or "")
+    if code is not None:
+        # A broken binding and a bound plan without `scope:` carry the author's
+        # repair in the reason; the unbound cases before any plan is read have
+        # nothing to act on.
+        return code, (binding.reason if binding.state != "unbound" else None)
+    from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    cause = buildplan_refs.unresolved_scope_cause(project_dir, prawduct_dir)
+    if cause is None:
+        return "unbound", None
+    return cause
+
+
+#: The refusal ``kind`` for a declared chunk id the reviewed plan does not
+#: declare. Not one of the CLI's mapped kinds, so it exits 1 (the generic
+#: dispatch error): the remedy is to fix the id, not to demote the mode.
+UNKNOWN_CHUNK_KIND = "unknown-chunk"
+
+
+def _declared_chunks(
+    project_dir: Path, plan_path: "Path | None", chunks: "list | None"
+) -> "tuple[list[str] | None, dict | None]":
+    """``(declared, refusal)`` for a dispatch's declared chunk set.
+
+    ``declared`` is ``None`` when nothing was declared (the proposal stands in
+    later), ``[]`` when no plan is bound (nothing can be named), else the ids
+    as the plan prints them, deduplicated, in plan order. ``refusal`` is the
+    ``unknown-chunk`` error result when an id is not one the plan declares —
+    read from :func:`plan_status.chunk_states` over no facts, so the roster
+    costs no git; a synthetic key (an unreadable plan ``?``, a rejected heading
+    ``?L<n>``) is not a chunk id and is refused like any other unknown one.
+    """
+    if chunks is None:
+        return None, None
+    wanted = [str(c).strip() for c in chunks if str(c).strip()]
+    if plan_path is None:
+        return [], None
+    from . import buildplan_refs, plan_status, work_unit  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    states = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
+    roster = [k for k, s in states.items() if not s.synthetic]
+    by_norm = {buildplan_refs._normalize_chunk_id(k): k for k in roster}
+    unknown = [c for c in wanted if buildplan_refs._normalize_chunk_id(c) not in by_norm]
+    if unknown:
+        unreadable = [s.reason for s in states.values() if s.synthetic and s.reason]
+        why = f" ({'; '.join(unreadable)})" if unreadable else ""
+        return None, {
+            "status": "error",
+            "kind": UNKNOWN_CHUNK_KIND,
+            "reason": (
+                f"chunk id(s) {', '.join(unknown)} are not chunks of "
+                f"{work_unit.repo_rel(Path(plan_path), project_dir)}, which declares "
+                f"{', '.join(roster) or 'none'}{why} — name a chunk the plan declares, "
+                "or omit the flag and the review names the proposed set"
+            ),
+        }
+    named = {by_norm[buildplan_refs._normalize_chunk_id(c)] for c in wanted}
+    return [k for k in roster if k in named], None
+
+
+def _proposed_chunks(
+    project_dir: Path,
+    plan_path: "Path | None",
+    read_store,
+    files_changed: list,
+    mode_token: str,
+    verify_anchor: "dict | None" = None,
+    base_commit: "str | None" = None,
+    head_tree: "str | None" = None,
+) -> "tuple[list[str], tuple[str, ...]]":
+    """The chunk set this dispatch proposes to name, and the proposal's notes
+    for the dispatch to print: ``files_changed`` is the interval, ending at
+    ``head_tree``, ``read_store`` the dispatch's one store read. ``[]`` with no
+    plan bound, or when the store cannot be read (the proposal is advice beside
+    a declaration; a store that cannot be read certifies nothing).
+
+    ``chunk``/``final``/``cumulative``: :func:`plan_status.chunk_proposal`.
+    ``verify-resolutions`` resolves findings of the review it is anchored to
+    (``verify_anchor``), so its proposal is THAT review's chunks — the newest
+    naming fact on the anchor's chain (``critic_mode.chain_named_chunks``),
+    spelled and ordered as the plan prints them, less any chunk a
+    ``chunk-retracted`` fact withdrew from a fact on that chain: a retraction
+    withdraws a certification, and a verify pass copying it forward would
+    restore it. A verify pass naming the same set is then silent, and one
+    naming a new chunk still warns. ``base_commit`` is the interval's base,
+    which bounds a whole-plan mode's subject walk to the commits this review
+    covers (:func:`plan_status.chunk_proposal`, ``since``)."""
+    if plan_path is None:
+        return [], ()
+    from . import plan_status  # noqa: PLC0415 — lazy; pulls the plan readers
+
+    store = read_store()
+    if store.get("status") == "error":
+        return [], ()
+    if mode_token == "verify-resolutions":
+        if verify_anchor is None:
+            return [], ()
+        from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+        chain = critic_mode.review_chain(store.get("facts") or [], verify_anchor)
+        named = {
+            buildplan_refs._normalize_chunk_id(c) for c in critic_mode.chain_named_chunks(chain)
+        }
+        from . import plan_index  # noqa: PLC0415 — lazy, as above
+
+        try:
+            content = Path(plan_path).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return [], ()
+        _present, scope = plan_index.parse_build_plan_frontmatter_scope(content)
+        chain_ids = {f.get("id") for f in chain}
+        named -= {
+            n for (fid, n) in plan_status.retractions(store, scope) if fid in chain_ids
+        }
+        roster = plan_status.chunk_states(Path(plan_path), {"facts": []}, repo_dir=Path(project_dir))
+        return [
+            k for k, s in roster.items()
+            if not s.synthetic and buildplan_refs._normalize_chunk_id(k) in named
+        ], ()
+    proposal = plan_status.chunk_proposal(
+        Path(plan_path), store, list(files_changed), mode_token, repo_dir=Path(project_dir),
+        since=base_commit if gitstate.is_object_id(base_commit) else None,
+        head_tree=head_tree,  # chunk_proposal guards it: a malformed id names fewer
+    )
+    return proposal.chunks, proposal.notes
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -2696,8 +2957,29 @@ def begin_review(
     scope: str | None = None,
     tier: str | None = None,
     force: bool = False,
+    chunks: "list[str] | None" = None,
 ) -> dict:
     """Derive and write the dispatch manifest for one review. All code.
+
+    **Which chunks the review names (ST8, #1051).** ``chunks`` is the declared
+    set; ``chunk`` is its one-element alias for one release (``chunks is None``
+    and ``chunk`` given → ``[chunk]``). The code-derived proposal,
+    ``chunks_proposed``, is :func:`plan_status.chunk_proposal` over this
+    dispatch interval's ``files_changed`` (``chunk`` mode: the open chunks whose
+    Deliverables it touches; ``final``/``cumulative``: those and the open
+    chunks a scoped commit subject in the interval names — a mode sets depth,
+    never reach; ``verify-resolutions``: the chunks the review it verifies
+    names, inherited along that review's chain). The proposal's own notes —
+    why it named fewer than a reader might expect — join ``notes``. With
+    nothing declared, the declared set IS the proposal. A declared id the reviewed plan does not declare is refused
+    (``{"status": "error", "kind": "unknown-chunk"}``, exit 1 through the CLI's
+    error path) before the tree is captured; a declared set that leaves the
+    proposal is recorded as declared, with a ``WARNING:`` note, so the edit is
+    on the record and never silent. Both lists ride the manifest in plan order
+    (ids as the plan prints them), and ``chunk`` there is ``chunks[0]`` or
+    ``None``. No plan to grade (an unbound checkout): ``chunks == []``,
+    ``chunks_proposed == []``, ``chunk`` ``None``, and a declared set is noted
+    as dropped.
 
     Returns ``{"status": "ok", "id", "roster", "path", "notes": [...],
     "cleared_leftovers": bool, "manifest": {...}}`` or ``{"status": "error",
@@ -2805,34 +3087,62 @@ def begin_review(
             "reason": active_dispatch_refusal(prawduct_dir, age_s, active),
         }
 
-    # Which plan this review is OF. An unbounded `active_build_plan` has
-    # attributed the manifest, the review fact and the ledger event to an
-    # unrelated plan — with the pointer *correct* every time, which is why this
-    # resolves around it rather than asking anyone to repoint it. Derived here,
-    # in code, rather than left to the dispatching agent to read off the
-    # pointer: that read is where the misattribution enters.
-    from . import buildplan_refs  # noqa: PLC0415 — lazy; pulls the plan readers
+    # Which unit this review is OF: the dispatch's explicit override, else the
+    # checkout's work-unit binding — computed in code (`work_unit.resolve`), the
+    # one answer every gate and record shares, rather than read off a pointer by
+    # the dispatching agent, which is where misattribution entered. `chosen_by`
+    # is the binding's own route, so the record says which one answered; an
+    # unbound or broken checkout records no scope and says so, and never borrows
+    # another unit's.
+    from . import buildplan_refs, work_unit  # noqa: PLC0415 — lazy; pulls the plan readers
 
     scope = (scope or "").strip() or None
     scope_chosen_by = "explicit-args" if scope else None
     scope_unresolved_cause: "str | None" = None
-    if scope is None:
-        scope = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir).scope
-        scope_chosen_by = "branch-name" if scope else "not-resolved"
-
-    # Say WHY a scope did not resolve, and what edit fixes it. Advice: it rides
-    # `notes` and changes nothing about the dispatch. The code goes in the
-    # manifest so how often each cause fires can be counted afterwards.
+    scope_reason: "str | None" = None
     notes_scope: list[str] = []
-    if scope_chosen_by == "not-resolved":
-        cause = buildplan_refs.unresolved_scope_cause(project_dir, prawduct_dir)
-        if cause is not None:
-            scope_unresolved_cause, sentence = cause
-            notes_scope.append(
-                "this review resolved no build-plan scope, so it records none and "
-                "controls keyed on scope (the round budget among them) cannot see "
-                f"it: {sentence}"
+    # The plan this review's deliverable check will grade: the scope's when the
+    # dispatch named one, the binding's otherwise — the same split `record_lint`
+    # makes, so the dispatch-time note names the file that is actually graded.
+    graded_plan: "Path | None" = None
+    if scope is not None:
+        graded_plan = buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path
+    else:
+        binding = work_unit.resolve(project_dir)
+        graded_plan = binding.plan_path
+        scope = binding.scope
+        scope_chosen_by = binding.chosen_by
+        if scope is None:
+            # A short code, so how often each cause fires can be counted from
+            # the store afterwards, and the binding's sentence beside it.
+            scope_unresolved_cause, sentence = _unresolved_scope_cause(
+                project_dir, prawduct_dir, binding
             )
+            scope_reason = binding.reason
+            # Say WHY, and what edit fixes it. Advice: it rides `notes` and
+            # changes nothing about the dispatch.
+            if sentence:
+                notes_scope.append(
+                    "this review resolved no build-plan scope, so it records none and "
+                    "controls keyed on scope (the round budget among them) cannot see "
+                    f"it: {sentence}"
+                )
+
+    # The chunks this review names: validated against the graded plan BEFORE
+    # anything is captured, so a typo'd id costs no tree capture. `None` means
+    # "nothing declared" — the proposal, computed once the interval is known,
+    # stands in for it below.
+    if chunks is None and chunk is not None and str(chunk).strip():
+        chunks = [chunk]
+    declared_chunks, chunk_refusal = _declared_chunks(project_dir, graded_plan, chunks)
+    if chunk_refusal is not None:
+        return chunk_refusal
+    if graded_plan is None and chunks:
+        notes_scope.append(
+            f"no build plan resolves for this review, so the declared chunk(s) {', '.join(map(str, chunks))} "
+            "name nothing and the review records `chunks: []`"
+        )
+    chunk = declared_chunks[0] if declared_chunks else None
 
     capture = evidence.capture_tree(project_dir)
     if capture.get("status") != "ok":
@@ -2869,15 +3179,10 @@ def begin_review(
     # release. Advisory by construction — it rides `notes`, changes no exit code
     # and blocks no dispatch — because the review is still worth running; what
     # is not worth having is a review that silently grades nothing while
-    # reporting cleanly. `resolve_reviewed_plan` is the same resolution
-    # `record_lint` performs, so this names the file that would actually be
-    # graded rather than whatever the pointer happens to say.
-    notes.extend(
-        buildplan_refs.deliverable_check_gaps(
-            prawduct_dir,
-            buildplan_refs.resolve_reviewed_plan(project_dir, prawduct_dir, scope).path,
-        )
-    )
+    # reporting cleanly. `graded_plan` is the resolution `record_lint`
+    # performs, so this names the file that would actually be graded rather
+    # than whatever the pointer happens to say.
+    notes.extend(buildplan_refs.deliverable_check_gaps(prawduct_dir, graded_plan))
     base_reviewed = None
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
@@ -2901,6 +3206,9 @@ def begin_review(
     # dispositions block was not built from. LAZY, so a dispatch that reaches
     # neither reader pays no parse.
     _store_slot: "list[dict]" = []
+    # The review a `verify-resolutions` pass is anchored to — its recorded
+    # chunks are that mode's proposal (ST8), inherited along its chain.
+    verify_anchor: "dict | None" = None
 
     def read_store() -> dict:
         if not _store_slot:
@@ -2972,6 +3280,7 @@ def begin_review(
                 refusal["kind"] = "store-unusable"
             return refusal
         prior_body = prior.get("body") or {}
+        verify_anchor = prior
         base_tree = prior_body.get("head_tree")
         if not isinstance(base_tree, str) or not base_tree:
             return {
@@ -3366,6 +3675,33 @@ def begin_review(
                 dispatch_commit, notes,
             )
 
+    # Untracked files inside the tree this review will vouch for, named while
+    # leaving one out is still free. "Commit verbatim" is `git add -A`; a commit
+    # of the tracked files alone records a tree without them, and the interval
+    # from the reviewed tree to that commit deletes a judgeable path, which no
+    # edge covers — so excluding a stray file AFTER the review costs a round.
+    # Only where the anchor IS the working tree: a committed-HEAD anchor never
+    # contained them. Advice, so a listing that failed says so rather than
+    # reading as "none".
+    if head_tree == capture["tree"]:
+        stray = judgeable_untracked(capture)
+        if stray is None:
+            notes.append(
+                "the untracked files in the reviewed tree could not be listed — "
+                "if any are not meant to ship, exclude them before this review, "
+                "because a commit without them is a tree it did not cover"
+            )
+        elif stray:
+            notes.append(
+                f"the reviewed tree includes untracked file(s) {name_paths(stray)}, "
+                "so a verbatim commit of it must include them (`git add -A`). If "
+                "one should not ship, exclude it NOW — add it to "
+                "`.git/info/exclude` or delete it — then abandon this dispatch "
+                "(`prawduct-hook critic-end`) and re-run `critic-begin`: "
+                "excluding it after the review leaves the commit uncovered and "
+                "costs another round"
+            )
+
     if files_reviewed is None:
         files_reviewed = list(files_changed)
     # Records govern review SCOPE, not review READING — eligibility is its own
@@ -3384,15 +3720,39 @@ def begin_review(
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
 
+    # ST8: the code-derived proposal from THIS interval, then the declared set
+    # (the proposal itself when nothing was declared). Declared outside the
+    # proposal is recorded as declared, and said: `chunks_proposed` sits beside
+    # it on the fact, so the edit is visible on the record. Resolved BEFORE
+    # record-lint, so the deliverables it grades are the chunks the fact names.
+    chunks_proposed, proposal_notes = _proposed_chunks(
+        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor,
+        base_commit, head_tree,
+    )
+    notes.extend(proposal_notes)
+    if declared_chunks is None:
+        declared_chunks = list(chunks_proposed)
+        chunk = declared_chunks[0] if declared_chunks else None
+    else:
+        outside = [c for c in declared_chunks if c not in chunks_proposed]
+        if outside:
+            notes.append(
+                f"WARNING: declared chunk(s) {', '.join(outside)} are not in the proposal "
+                f"for this {mode_token} interval ({', '.join(chunks_proposed) or 'none'}); "
+                "recorded as declared, with the proposal beside them on the fact"
+            )
+
     # Machine-verified record checks, computed HERE so the reviewers are told
     # the answers rather than re-deriving them (record-class findings were 57%
     # of one day's review output on 2026-07-29, and none of them needed
     # judgment). Advisory: the result rides the manifest for the builder, and
     # nothing downstream gates on it. A lint that cannot run reports itself
-    # ``unchecked`` rather than empty — see ``record_lint``.
+    # ``unchecked`` rather than empty — see ``record_lint``. It grades every
+    # chunk the fact will name (`chunk_ids`), not only the first.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope
+        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope,
+        chunk_ids=list(declared_chunks),
     )
 
     # Answers already given about findings in these files, so a fresh review can
@@ -3443,9 +3803,15 @@ def begin_review(
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
         "scope_unresolved_cause": scope_unresolved_cause,
+        "scope_reason": scope_reason,
         # The tree a chunk/final interval was extended back to, or null — the
         # yield of the extension, countable from the store.
         "base_extended_from": base_extended_from,
+        # The chunks this review names (declared, plan order) and the set the
+        # code proposed for its interval; `chunk` is the first, for readers
+        # older than `chunks` (one release).
+        "chunks": list(declared_chunks),
+        "chunks_proposed": list(chunks_proposed),
         "chunk": chunk,
         "base_reviewed": base_reviewed,
         # Make the resolved target VISIBLE so a wrong-tree review is obvious
@@ -3739,7 +4105,9 @@ def validate_manifest(data) -> tuple[bool, str]:
     non-empty ``files_reviewed``, ``files_changed`` (a list, possibly empty —
     a same-tree verify-resolutions pass legitimately changes nothing).
     Nullable: ``base_commit``/``head_commit`` (a prior review of a dirty tree
-    has no commit), ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
+    has no commit), ``chunks``/``chunks_proposed`` (lists of ids; ``chunk``
+    must then be ``chunks[0]`` or null),
+    ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
     ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
     None on a detached HEAD — PDT-WT9K). Optional and typed: ``stage``
     (``inner``/``boundary`` — the severity rule keys on it), ``judgeable_files``,
@@ -3813,8 +4181,23 @@ def validate_manifest(data) -> tuple[bool, str]:
     # the fact and a reader that walks it must not meet a non-string.
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
+    # The chunks the review names and the code's proposal (ST8). Optional, as a
+    # manifest restored from before the fields still consolidates (its fact then
+    # carries `chunk` alone, which `plan_status.fact_chunks` reads); typed when
+    # present, because `chunks` reaches the fact `plan_status.chunk_states`
+    # certifies from, and `chunk` must be its first element there.
+    for key in ("chunks", "chunks_proposed"):
+        if data.get(key) is not None and not _str_list(data.get(key)):
+            return False, f"'{key}' must be a list of non-empty strings or null"
+    if isinstance(data.get("chunks"), list) and data.get("chunk") != (
+        data["chunks"][0] if data["chunks"] else None
+    ):
+        return False, (
+            f"'chunk' ({data.get('chunk')!r}) must be the first of 'chunks' "
+            f"({data['chunks']!r}), or null when 'chunks' is empty"
+        )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
-                "scope_unresolved_cause", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
+                "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
                 "chunk_type", "signals", "dispatch_tree"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
@@ -4647,6 +5030,24 @@ def _severity_counts(findings: list[dict]) -> tuple[int, int, int]:
     return blocking, warning, note
 
 
+def _fact_chunk_fields(manifest: dict) -> dict:
+    """``chunks``, ``chunks_proposed`` and ``chunk`` for a review fact body.
+
+    ``chunk`` is ``chunks[0]`` or ``None``. A manifest written before ``chunks``
+    existed gives ``{"chunk": <its chunk>}`` alone: inventing ``chunks`` from it
+    would claim a declaration nobody made, and
+    :func:`plan_status.fact_chunks` reads the bare ``chunk`` the same way.
+    """
+    chunks = manifest.get("chunks")
+    if not isinstance(chunks, list):
+        return {"chunk": manifest.get("chunk")}
+    return {
+        "chunks": list(chunks),
+        "chunks_proposed": list(manifest.get("chunks_proposed") or []),
+        "chunk": chunks[0] if chunks else None,
+    }
+
+
 def build_fact_body(
     manifest: dict, partials: list[dict], *, dispatched_at: "str | None" = None
 ) -> dict:
@@ -4707,14 +5108,25 @@ def build_fact_body(
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
         # How the scope was decided, carried so attribution is auditable rather
-        # than merely asserted — a fact naming a plan should say whether the
-        # dispatch named it or the branch did.
+        # than merely asserted: `explicit-args` when the dispatch named it, else
+        # the work-unit binding's route (`binding`, `legacy-pointer`,
+        # `legacy-default`, or `none` for an unbound or broken checkout). Facts
+        # written before the binding existed carry `branch-name` or
+        # `not-resolved`; readers keep accepting them, and nothing writes them.
         "scope_chosen_by": manifest.get("scope_chosen_by"),
-        # Why a scope did not resolve, when it did not — the diagnosis note's
-        # yield, queryable from the store like `record_lint` below.
+        # Why no scope was recorded, when none was: a short cause code (the
+        # set is `_unresolved_scope_cause`'s), queryable from the store like
+        # `record_lint` below, and the work-unit binding's own sentence beside
+        # it. Facts from before `scope_reason` carry the code alone.
         "scope_unresolved_cause": manifest.get("scope_unresolved_cause"),
+        "scope_reason": manifest.get("scope_reason"),
         "base_extended_from": manifest.get("base_extended_from"),
-        "chunk": manifest.get("chunk"),
+        # The chunks this review names (ST8) — one of the two things
+        # `plan_status.chunk_states` certifies from, beside the span — with the code-derived proposal beside them, so a
+        # coordinator's edit of the set is visible on the record. `chunk` is the
+        # first, for readers older than `chunks`. A manifest from before the
+        # fields carries `chunk` alone; its fact keeps that reading.
+        **_fact_chunk_fields(manifest),
         "base_reviewed": manifest.get("base_reviewed"),
         # The record-lint control's YIELD, carried from the dispatch manifest
         # into the fact so it is queryable rather than printed and forgotten
@@ -4819,22 +5231,123 @@ def _plan_owes_a_later_review(
     changes advice, and advice that cannot be derived keeps the older wording.
     """
     try:
-        from . import buildplan_refs, critic_mode  # noqa: PLC0415 — lazy, as this module's other lib imports are
+        from . import critic_mode, work_unit  # noqa: PLC0415 — lazy, as this module's other lib imports are
 
-        plan = buildplan_refs.resolve_branch_plan(project_dir, prawduct_dir)
-        if plan.path is None:
+        binding = work_unit.resolve(project_dir)
+        if binding.plan_path is None:
             return None
         chain = critic_mode.review_chain(facts or [], fact) if fact is not None else []
+        # Progress is read from the store AFTER this review's fact was appended,
+        # so the chunks it just certified read as done (`plan_status`).
         owed = critic_mode.review_owed_after(
             project_dir,
             prawduct_dir,
-            plan,
-            buildplan_refs.resolve_chunk_progress(project_dir, plan.path),
+            binding,
+            critic_mode.binding_progress(project_dir, binding),
             chain,
         )
         return owed[0] if owed else None
     except (OSError, ValueError):
         return None
+
+
+def _uncertified_open_chunks(
+    project_dir: Path, prawduct_dir: Path, store: dict, fact: dict
+) -> "tuple[str, list[str]] | None":
+    """``(mode, open chunk ids)`` when ``fact`` is a whole-plan review that
+    named no chunk while its plan still has open ones, else ``None``.
+
+    Read after the fact is appended, so it asks the same store every gate does.
+    The plan is the one the dispatch graded, resolved as ``begin_review``
+    resolves it (the review's scope, else the checkout's binding). ``None``
+    on any failure: this is advice, and advice that cannot be derived keeps the
+    line as it was."""
+    from . import buildplan_refs, plan_status  # noqa: PLC0415 — lazy, as this module's other lib imports are
+
+    body = fact.get("body") or {}
+    mode = mode_token_of(body.get("mode"))
+    if mode not in plan_status._WHOLE_PLAN_MODES or body.get("chunks"):
+        return None
+    try:
+        plan = buildplan_refs.resolve_reviewed_plan(
+            project_dir, prawduct_dir, body.get("scope")
+        ).path
+        if plan is None:
+            return None
+        open_ids = plan_status.current_chunks(plan, store, repo_dir=project_dir)
+    except (OSError, ValueError):
+        return None
+    return (mode, open_ids) if open_ids else None
+
+
+def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "list[str]") -> dict:
+    """Point ``.critic-findings.json`` at the newest review fact anchored on
+    this branch, rendering it as consolidation would.
+
+    For a clone whose reviews arrive by ingest: its store holds the facts, but
+    the derived view every cache reader starts from — the verify dispatch's
+    anchor (:func:`_prior_review_fact`), the verify reviewer's "prior findings
+    record", inference — names no review, another branch's (the single slot
+    survives a branch switch), or one a newer arrival has passed. Any of the
+    three stops verify-resolutions in that clone. The record is what
+    consolidation renders minus its advice sentences, which need the live
+    review; for a verify fact, the anchor's unresolved blockers are carried as
+    consolidation carries them.
+
+    Returns ``{"status", "review", "reason"}``. ``status`` is ``derived`` (the
+    cache now names ``review``), ``current`` (it already did — this clone's own
+    consolidation of the newest review is left exactly as written), ``none``
+    (no review anchors on this branch), ``skipped`` (a review is in flight,
+    and its consolidation owns the slot), or ``invalid`` (the rendered record
+    failed the schema its readers trust, and the cache was left as it was).
+
+    ``branch_commits`` is :func:`evidence_notes._branch_commits`'s ``ordered``
+    list, newest first: a review anchored off it belongs to another lineage, and
+    "newest" is the review anchored furthest along it. Neither ``ts`` nor store
+    order can say that alone — ``ts`` is to the second, and ingest appends in
+    the order it reads notes, not the order reviews ran — so they only break
+    ties between reviews on one commit. Only records of this reader's schema
+    are considered; a newer plugin's record is not this function's to render."""
+    if critic_marker.review_active(prawduct_dir)[0]:
+        return {"status": "skipped", "review": None, "reason": "a review is in flight"}
+    usable = [f for f in facts if isinstance(f, dict) and f.get("schema") == evidence.SCHEMA_VERSION]
+    depth = {commit: i for i, commit in enumerate(branch_commits)}
+    on_branch = [
+        (i, f) for i, f in enumerate(evidence.facts_of_kind({"facts": usable}, "review"))
+        if evidence.review_anchor(f.get("body")) in depth
+    ]
+    if not on_branch:
+        return {"status": "none", "review": None, "reason": "no review anchors on this branch"}
+    fact = max(
+        on_branch,
+        key=lambda item: (-depth[evidence.review_anchor(item[1].get("body"))],
+                          str(item[1].get("ts") or ""), item[0]),
+    )[1]
+    review = str(fact.get("id"))
+    findings_path = prawduct_dir / ".critic-findings.json"
+    try:
+        held = json.loads(findings_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        held = None
+    if isinstance(held, dict) and held.get("fact_id") == review:
+        return {"status": "current", "review": review, "reason": None}
+    body = fact.get("body") or {}
+    carried = (
+        carried_blocking(usable, body.get("base_tree"), fact.get("id"))
+        if body.get("mode") == _VERBOSE_VERIFY_RESOLUTIONS
+        else []
+    )
+    # Validated before it replaces anything: a record no reader trusts is worse
+    # than the one it would displace, since they would anchor on it.
+    prawduct_dir.mkdir(parents=True, exist_ok=True)
+    candidate = prawduct_dir / ".critic-findings.json.derived"
+    atomic_write_text(candidate, json.dumps(fact_to_cache_record(fact, carried=carried), indent=2))
+    if not gates.validate_critic_findings(candidate):
+        candidate.unlink(missing_ok=True)
+        return {"status": "invalid", "review": review,
+                "reason": "the rendered record failed the findings schema"}
+    os.replace(candidate, findings_path)
+    return {"status": "derived", "review": review, "reason": None}
 
 
 def fact_to_cache_record(
@@ -4844,6 +5357,7 @@ def fact_to_cache_record(
     span: "str | None" = None,
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
+    uncertified: "tuple[str, list[str]] | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -4926,7 +5440,7 @@ def fact_to_cache_record(
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
-            cost=cost, rides_next_review=rides_next_review,
+            cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -5218,6 +5732,30 @@ def tree_changed_since_dispatch(
         return "unverifiable", f"could not locate the project in its repo ({err})"
     paths = [c for c in changed if not _is_session_file(c, prefix)]
     return ("changed", paths) if paths else ("unchanged", [])
+
+
+def _attach_note(project_dir: Path, envelope: object, anchor: "str | None") -> None:
+    """Put a stored fact on the notes transport (``evidence_notes``) — a fact
+    just appended, or one a replayed dispatch found already stored, since only
+    the retry can repair an attach the first attempt failed. ``attach`` is a
+    no-op when the anchor's note already holds the fact.
+
+    Advice, never authority: the fact is already in this clone's store, which
+    is what every gate here reads, so a note that cannot be written costs only
+    its reach to other clones. That is said on stderr and consolidation goes
+    on; ``evidence status`` counts it and ``evidence sync`` re-attaches it. A
+    ``skipped`` or ``present`` attach is silent — nothing failed."""
+    if not isinstance(envelope, dict):
+        return
+    outcome = evidence_notes.attach(project_dir, envelope, anchor)
+    if outcome.get("status") == "error":
+        print(
+            f"NOTE: critic-consolidate: {envelope.get('kind')} fact "
+            f"{envelope.get('id')!r} is recorded, but its git note was not "
+            f"written ({outcome.get('reason')}) — the fact stays in this clone's "
+            "store and does not travel to other clones.",
+            file=sys.stderr,
+        )
 
 
 def _is_session_file(path: str, prefix: str) -> bool:
@@ -5537,12 +6075,31 @@ def consolidate(
                 file=sys.stderr,
             )
             return 1
+        review_anchor = evidence.review_anchor(body)
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
+    else:
+        stored = next(
+            (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == review_id),
+            None,
+        )
+        review_anchor = evidence.review_anchor(stored.get("body")) if stored else None
+        _attach_note(project_dir, stored, review_anchor)
 
-    # Resolution facts (D5) — deterministic ids so a retry appends nothing new.
+    # Resolution facts (D5) — deterministic ids so a retry appends nothing new,
+    # but still re-attaches: the retry is the only pass that can repair a note
+    # its first attempt failed to write.
     appended_resolutions = 0
     for r in resolutions:
         res_id = f"{review_id}:{r['review_id']}:{r['fid']}"
-        if evidence.has_fact(project_dir, "resolution", res_id):
+        held = next(
+            (
+                f for f in evidence.facts_of_kind(evidence.read_facts(project_dir), "resolution")
+                if f.get("id") == res_id
+            ),
+            None,
+        )
+        if held is not None:
+            _attach_note(project_dir, held, review_anchor)
             continue
         res_body = {
             "finding": {"review_id": r["review_id"], "fid": r["fid"]},
@@ -5559,6 +6116,9 @@ def consolidate(
                 file=sys.stderr,
             )
             return 1
+        # A resolution rides on the note of the review that verified it, so the
+        # fix's verdict travels with the round that judged it.
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
         appended_resolutions += 1
 
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
@@ -5587,8 +6147,9 @@ def consolidate(
 
     price_sentence = telemetry.format_round_price(telemetry.round_price(prawduct_dir))
 
-    # Two git reads per consolidation (`commit_cost`'s and `capture_tree`'s),
-    # beside the one ledger read, and both feed ONE rendered sentence for the
+    # At most two git reads per consolidation (`commit_cost`'s always, and
+    # `capture_tree`'s on a verify close, the only arm that reads it), beside
+    # the one ledger read, and both feed ONE rendered sentence for the
     # same reason the ledger read is single: the relayed NEXT-ACTION and the
     # cache record must not be able to answer the same question differently.
     # `commit_cost` asks the SAME predicate the coverage gate will charge on —
@@ -5607,11 +6168,17 @@ def consolidate(
     # the same thing — and name which pass — is not established, so the other
     # modes keep the ordinary arms they rendered before this existed. Advice
     # under-claims rather than naming a pass nobody has checked is the closer.
+    # Only the verify arm reads this capture, so only it pays for one.
+    close_capture = evidence.capture_tree(project_dir) if is_verify else None
     tree_now_covered = is_verify and tree_is_covered_by(
-        evidence.capture_tree(project_dir),
+        close_capture,
         (fact.get("body") or {}).get("head_tree"),
     )
-    cost_sentence = cost_lead(coverage.commit_cost(project_dir), tree_now_covered)
+    cost_sentence = cost_lead(
+        coverage.commit_cost(project_dir),
+        tree_now_covered,
+        judgeable_untracked(close_capture),
+    )
     rides_next_review = _plan_owes_a_later_review(
         project_dir, prawduct_dir, store.get("facts") or [], fact
     )
@@ -5641,8 +6208,9 @@ def consolidate(
         answer = gates.branch_coverage_verdict(project_dir)
         span = span_clause(answer, _span_commits(project_dir, answer))
 
+    uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
-        fact, price_sentence, carried, span, cost_sentence, rides_next_review
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
@@ -5736,6 +6304,7 @@ def consolidate(
                     ledger.append_learning_event(
                         project_dir, "learning.fired",
                         file=rel, unit_hash=unit, review_id=review_id,
+                        scope=manifest.get("scope"),
                     )
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a review's exit code
         print(
@@ -5808,6 +6377,7 @@ def consolidate(
             observations=len(fact_body.get("observations") or []),
             cost=cost_sentence,
             rides_next_review=rides_next_review,
+            uncertified=uncertified,
         )
     )
     return 0

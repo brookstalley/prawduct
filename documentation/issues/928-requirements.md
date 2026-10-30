@@ -258,7 +258,7 @@ Per D-10, the supported host contract includes normalized event payloads, root r
 | 4 | Stop hook, every turn | `hooks/hooks.json`; `cmd_stop`; `hooks/gates.json` | All session-end gates (reflection, Critic, PR, trivial, learnings, clear-verdict, clear-reason) | gate | **Supported primitive.** Codex exposes synchronous `Stop`; F1 observed a bounded repeated sequence. | Register one host Stop entry that calls the host-neutral stop evaluator through the adapter. |
 | 5 | Stop blocks by exit 2 with the reason on stderr, which the host feeds back to the model | `cmd_stop` | The blocking channel for every gate | gate | **Supported with evidence limit.** Official contract supports it; F1 directly observed continuations and captured hook intent/host streams, but inner exit/stderr attribution is derived. | Adapter owns Codex output/exit translation while core returns a host-neutral block decision and reason. |
 | 6 | No `stop_hook_active` re-entry guard; blocking again on every Stop relies on Claude's exit-2 re-prompt loop | `cmd_stop` | Gate persistence across retries | gate (depends on the host's re-fire semantics) | **Supported for the bounded matrix.** Three unchanged-gate continuations, independent gate opening, and fourth completion were observed. Codex also supplies `stop_hook_active`. | Core stays stateless; adapter forwards every Stop to core and does not suppress retries merely because `stop_hook_active` is true. |
-| 7 | Stop advisories at exit 0 as stdout JSON `{systemMessage}` (user-only); at exit 2 on stderr beside the blockers (#822) | `bin/prawduct-hook` (`_deliver_stop_advisories`) | Deferral notes, non-blocking advisories | fallback | **Partial/fallback.** `systemMessage` is supported; Claude's Stop has no non-continuing model channel either, so neither host needs one. | Core emits `Advisory{text, audience}`; Codex initially renders it as `systemMessage`, and any model-steering context requires an explicitly documented Codex shape. |
+| 7 | Stop advisories at exit 0 as stdout JSON `{systemMessage}` (user-only); at exit 2 on stderr beside the blockers (#822). A `_LogOnlyAdvisory` (the Critic gate's deferral notes) stays in the stderr log at exit 0 and reaches the transcript only beside a block | `bin/prawduct-hook` (`_deliver_stop_advisories`) | Non-blocking advisories; deferral notes only at exit 2 | fallback | **Partial/fallback.** `systemMessage` is supported; Claude's Stop has no non-continuing model channel either, so neither host needs one. | Core emits `Advisory{text, audience}`; Codex initially renders it as `systemMessage`, and any model-steering context requires an explicitly documented Codex shape. |
 | 8 | Stop payload `last_assistant_message` | `lib/gates.py` | The clear-verdict and clear-reason gates; the RUNNING + DO NOT CLEAR deferral | gate (clear-verdict, clear-reason); deferral degrades to block | **Not verified for the gates.** O1 documents `last_assistant_message` as string or null, but F1 exercised neither clear-verdict nor clear-reason parsing or preserved text behavior. | Normalize null and absent distinctly; keep the existing block path until fixtures and an authorized live test prove text, size, newline, and both clear-verdict/clear-reason parsing behaviors. |
 | 9 | Stop payload `background_tasks[]` | `lib/gates.py` | Defers blockers while a background task is in flight | fallback (absent means block as normal) | **Partial/fallback.** The field is absent from the documented Codex Stop payload, but upstream already defines absence as “block as normal.” | Optional host capability; absence follows the existing named backstop and blocks normally rather than deferring. |
 | 10 | Stdin payload parsing tolerates empty or garbage input as `{}` | `bin/prawduct-hook` payload reader | Stop and SubagentStop input | gate (fails closed) | **Supported existing core behavior.** Upstream locates the tolerance in `bin/prawduct-hook`'s payload reader; Codex supplies JSON in the normal path, but no host primitive is needed for the fallback. | Core keeps the host-neutral tolerant byte-to-JSON parse and maps empty/garbage input to `{}`; the adapter then reads only host-specific keys and normalizes them; core gates consume the normalized event and fail closed. |
@@ -308,14 +308,22 @@ Not host-specific but external: the Stop PR check shells out to `gh`; hooks.json
 
 ## Next step
 
-The inventory is merged (PR #944), its evidence is on #928, and it is ruled on (D-5 to D-12). Next
-is the R-8(a) probe. It passes on a recorded live refusal of a tool outside the reviewer's declared
-set. It does not need a witness that no other host configuration (cloud-managed hooks included) is
-in play. A separate `codex exec` reviewer session whose PreToolUse hook denies everything outside
-the declared set is an acceptable topology under D-5. Then design: the concrete seam, and the Codex
-feasibility spike (the issue's Phase 1) scoped to one skill, the session briefing and one Stop gate,
-with a live probe for each host-behaviour assumption. Target: the 3.8 release. 3.7 is closing
-without it.
+The inventory is merged (PR #944), its evidence is on #928, and it is ruled on (D-5 to D-12).
+R-8(a) is satisfied: the refusal receipt was posted on #928 on 2026-10-22
+([comment](https://github.com/brookstalley/prawduct/issues/928#issuecomment-6331682061)), which
+is the bar the owner set on 2026-10-21. R-8(b), R-8(c) and full R-8 parity stay open.
+
+The base the next step builds on is the host seam (#1037): every host payload read, `CLAUDE_*`
+root read and structured hook response write goes through `plugin/lib/host.py`, chosen by
+`PRAWDUCT_HOST`, behind a golden test of the SessionStart, Stop and SubagentStop output (R-2,
+R-3). Plain text the hooks print in place (the briefing, the Stop's notes ahead of its block) is
+not the seam's yet; #1038 moves it.
+
+Next:
+
+1. **The Codex Phase 1 spike (#1038).** Built on the seam, in `adapters/codex/`, labelled
+   experimental: one skill (`methodology`), the briefing, one Stop gate (`reflection`) and doctor
+   detection, with a live probe for each host-behaviour assumption. Target: the 3.8 release.
 
 **What the Codex source says about a deny-everything PreToolUse hook** (read from the source at
 tag `rust-v0.156.1`, commit `b412ff32`, on 2026-10-15; none of it was run). It shapes the R-8(a)

@@ -4,7 +4,7 @@ Three surfaces, one keystone:
 
 * ``prawduct-hook ledger-append`` — the STRUCTURAL WRITER. Agents never
   hand-author JSONL; the helper validates the just-written findings record,
-  computes the envelope itself (ts/project/git/scope-fallback), and appends
+  computes the envelope itself (ts/project/git), and appends
   one line. Envelope correctness is the schema contract every later event
   kind (``review.pr``, ``build.chunk``, …) and the cross-project aggregator
   (TEL-7A4X) will key on — so it is pinned field by field here.
@@ -26,6 +26,7 @@ mirroring ``tests/test_cumulative_gate.py``.
 from __future__ import annotations
 
 import json
+import sys
 import subprocess
 from pathlib import Path
 
@@ -100,7 +101,7 @@ def _run_hook(repo: Path, *args: str) -> subprocess.CompletedProcess:
     env = dict(_git_env(repo))
     env["CLAUDE_PROJECT_DIR"] = str(repo)
     return subprocess.run(
-        ["python3", str(HOOK), *args],
+        [sys.executable, str(HOOK), *args],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=30,
     )
 
@@ -183,10 +184,13 @@ class TestLedgerAppendEnvelope:
         assert events[1]["review"]["mode"] == FINAL_MODE
 
 
-class TestLedgerAppendScopeFallback:
-    """--scope explicit > plan frontmatter `scope:` > filename > null."""
+class TestLedgerAppendScope:
+    """An event records the scope its caller passed, or null — never one the
+    ledger derives. The fallback this replaced read the active build plan, and
+    that is how a review of one branch was written to the ledger under an
+    unrelated plan's scope while its manifest said `none` (#1049)."""
 
-    def test_explicit_scope_wins_over_plan(self, tmp_path):
+    def test_explicit_scope_is_recorded(self, tmp_path):
         repo = tmp_path / "repo"
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
@@ -197,7 +201,10 @@ class TestLedgerAppendScopeFallback:
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] == "explicit-scope"
 
-    def test_fallback_reads_plan_frontmatter_scope(self, tmp_path):
+    def test_no_scope_passed_is_null_even_with_a_pointed_plan(self, tmp_path):
+        """The pointer names a plan that declares a scope; the event still says
+        null, because nobody handed the ledger one. The explicit test above is
+        the control: the same fixture records what it is given."""
         repo = tmp_path / "repo"
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
@@ -205,17 +212,33 @@ class TestLedgerAppendScopeFallback:
         _write_findings(repo)
         r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
-        assert _ledger_events(repo)[0]["scope"] == "plan-scope"
+        assert _ledger_events(repo)[0]["scope"] is None
+        assert "scope=-" in r.stdout
 
-    def test_fallback_derives_scope_from_plan_filename(self, tmp_path):
+    def test_the_1049_shape_records_null(self, tmp_path):
+        """A branch no plan claims, in a repo where another plan claims its own
+        branch and the pointer names a plan that claims none: the event is null,
+        not the pointer plan's scope."""
         repo = tmp_path / "repo"
         _init_repo(repo)
         _commit_file(repo, "app.py", "print(1)\n", "init")
-        self._write_plan(repo, frontmatter_scope=None, name="build-plan-my-feature.md")
+        artifacts = repo / ".prawduct" / "artifacts"
+        artifacts.mkdir(parents=True)
+        (artifacts / "build-plan-other.md").write_text(
+            "---\nartifact: build-plan\nscope: other\n---\n\n## Status\n- [ ] Chunk 01: A\n"
+        )
+        (artifacts / "build-plan-mine.md").write_text(
+            "---\nartifact: build-plan\nscope: mine\nbranch: fix/mine\n---\n\n"
+            "## Status\n- [ ] Chunk 01: A\n"
+        )
+        (repo / ".prawduct" / "project-state.yaml").write_text(
+            "active_build_plan: artifacts/build-plan-other.md\n"
+        )
+        _git(repo, "checkout", "-q", "-b", "fix/unrelated")
         _write_findings(repo)
         r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
         assert r.returncode == 0, r.stderr
-        assert _ledger_events(repo)[0]["scope"] == "my-feature"
+        assert _ledger_events(repo)[0]["scope"] is None
 
     def test_no_plan_means_null_scope(self, tmp_path):
         repo = tmp_path / "repo"
@@ -226,70 +249,12 @@ class TestLedgerAppendScopeFallback:
         assert r.returncode == 0, r.stderr
         assert _ledger_events(repo)[0]["scope"] is None
 
-    def test_fallback_reads_scope_under_a_comment_header(self, tmp_path):
-        """A third of this repo's plans open with an HTML comment before the
-        frontmatter, and the hand-rolled scan this fallback used to run required
-        `---` on line 1 — so it silently fell through to the filename stem for
-        all of them. The filename here deliberately does NOT match the scope, so
-        the stem fallback cannot satisfy the assertion by accident."""
-        repo = tmp_path / "repo"
-        _init_repo(repo)
-        _commit_file(repo, "app.py", "print(1)\n", "init")
-        _write_findings(repo)
-        self._write_plan(
-            repo,
-            frontmatter_scope="plan-scope",
-            name="build-plan-other.md",
-            header=True,
-        )
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
-        assert r.returncode == 0, r.stderr
-        assert _ledger_events(repo)[0]["scope"] == "plan-scope"
-
-    def test_null_scope_falls_through_to_the_filename(self, tmp_path):
-        """`scope: null` is the documented explicit opt-out. The old scan
-        returned any truthy token, so it wrote the literal string "null" into
-        the ledger's scope field."""
-        repo = tmp_path / "repo"
-        _init_repo(repo)
-        _commit_file(repo, "app.py", "print(1)\n", "init")
-        _write_findings(repo)
-        self._write_plan(
-            repo, frontmatter_scope="null", name="build-plan-my-feature.md"
-        )
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
-        assert r.returncode == 0, r.stderr
-        assert _ledger_events(repo)[0]["scope"] == "my-feature"
-
-    def test_indented_scope_under_another_key_is_not_read(self, tmp_path):
-        """The old scan compared `line.strip()`, so a `scope:` nested under
-        another frontmatter key matched as if it were top-level."""
-        repo = tmp_path / "repo"
-        _init_repo(repo)
-        _commit_file(repo, "app.py", "print(1)\n", "init")
-        _write_findings(repo)
-        prawduct = repo / ".prawduct"
-        artifacts = prawduct / "artifacts"
-        artifacts.mkdir(parents=True, exist_ok=True)
-        (artifacts / "build-plan-my-feature.md").write_text(
-            "---\nartifact: build-plan\ngoverned_by:\n  scope: nested-not-mine\n---\n\n"
-            "# Plan\n\n## Status\n- [ ] Chunk 01: A\n",
-            encoding="utf-8",
-        )
-        (prawduct / "project-state.yaml").write_text(
-            "active_build_plan: artifacts/build-plan-my-feature.md\n"
-        )
-        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
-        assert r.returncode == 0, r.stderr
-        assert _ledger_events(repo)[0]["scope"] == "my-feature"
-
     @staticmethod
     def _write_plan(
         repo: Path,
         *,
         frontmatter_scope,
         name: str = "build-plan-x.md",
-        header: bool = False,
     ):
         prawduct = repo / ".prawduct"
         artifacts = prawduct / "artifacts"
@@ -297,8 +262,6 @@ class TestLedgerAppendScopeFallback:
         body = "# Plan\n\n## Status\n- [ ] Chunk 01: A\n"
         if frontmatter_scope:
             body = f"---\nartifact: build-plan\nscope: {frontmatter_scope}\n---\n\n{body}"
-        if header:
-            body = f"<!-- Build Plan — {name} -->\n\n{body}"
         (artifacts / name).write_text(body)
         (prawduct / "project-state.yaml").write_text(
             f"active_build_plan: artifacts/{name}\n"
@@ -758,7 +721,9 @@ class TestAppendLearningEvent:
         ) is True
         assert _ledger_events(repo)[0]["learning"]["session"] is None
 
-    def test_scope_uses_the_existing_build_plan_fallback(self, tmp_path):
+    def test_scope_is_the_callers_or_null(self, tmp_path):
+        """A learning event's scope is the one its caller measured — never the
+        active plan's, which is a different question (the module docstring)."""
         from lib import ledger
 
         repo = self._repo(tmp_path)
@@ -771,7 +736,10 @@ class TestAppendLearningEvent:
         assert ledger.append_learning_event(
             repo, "learning.written", file="a.md", unit_hash="h1",
         ) is True
-        assert _ledger_events(repo)[0]["scope"] == "plan-scope"
+        assert ledger.append_learning_event(
+            repo, "learning.written", file="a.md", unit_hash="h2", scope="given",
+        ) is True
+        assert [e["scope"] for e in _ledger_events(repo)] == [None, "given"]
 
     def test_a_second_call_with_the_same_key_appends_nothing(self, tmp_path):
         """The Stop hook runs every turn, so the same new rule is re-observed

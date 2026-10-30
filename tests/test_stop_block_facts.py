@@ -21,9 +21,12 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 _ROOT = Path(__file__).resolve().parent.parent / "plugin"
 
@@ -127,6 +130,201 @@ class TestABlockedStopIsRecorded:
         facts = _stop_facts(repo)
         assert len(facts) == 2
         assert facts[0]["body"]["stop"] != facts[1]["body"]["stop"]
+
+
+SELF_CITING_TURN = _block("COMPLETE", "SAFE TO CLEAR").replace(
+    "the reason.", "the open questions are in this message."
+)
+
+
+def _clear_fact(repo: Path, gate: str) -> dict:
+    (fact,) = [f["body"] for f in _stop_facts(repo) if f["body"]["gate"] == gate]
+    return fact
+
+
+class TestAClearGateRecordsWhyItFired:
+    """The clear gates record which check failed and what the hook could see,
+    so `stats` can tell a catch from a slip without any turn text."""
+
+    def test_clear_verdict_names_the_disposition_it_paired(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        assert _stop(repo, ASK_DNC_TURN) == 2
+        fact = _clear_fact(repo, "clear-verdict")
+        assert fact["reason"] == "handed-over-your-turn"
+        assert fact["observed"] == {
+            "work_live": False, "notes_present": False, "session_changed": False,
+        }
+
+    def test_complete_is_its_own_reason(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        assert _stop(repo, _block("COMPLETE", "DO NOT CLEAR")) == 2
+        assert _clear_fact(repo, "clear-verdict")["reason"] == "handed-over-complete"
+
+    def test_background_work_is_observed_as_live(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        # `COMPLETE`: a `YOUR TURN` beside observed live work is not refused.
+        stop_input = {
+            "last_assistant_message": _block("COMPLETE", "DO NOT CLEAR"),
+            "background_tasks": [{"id": "t1", "description": "suite"}],
+        }
+        assert _hook.cmd_stop(repo, stop_input) == 2
+        assert _clear_fact(repo, "clear-verdict")["observed"]["work_live"] is True
+
+    def test_a_live_critic_review_is_observed_as_live(self, tmp_path, capsys):
+        from lib import critic_marker
+
+        repo = _repo(tmp_path)
+        assert critic_marker.write_marker(repo / ".prawduct")
+        assert _stop(repo, _block("COMPLETE", "DO NOT CLEAR")) == 2
+        assert _clear_fact(repo, "clear-verdict")["observed"]["work_live"] is True
+
+    def test_written_handoff_notes_are_observed(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / ".handoff-notes.md").write_text("# notes\nwhere I stopped\n")
+        assert _stop(repo, SELF_CITING_TURN) == 2
+        assert _clear_fact(repo, "clear-reason")["observed"]["notes_present"] is True
+
+    def test_empty_handoff_notes_are_not_notes(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        (repo / ".prawduct" / ".handoff-notes.md").write_text("  \n")
+        assert _stop(repo, SELF_CITING_TURN) == 2
+        assert _clear_fact(repo, "clear-reason")["observed"]["notes_present"] is False
+
+    def test_a_session_that_changed_nothing_is_observed_as_unchanged(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        assert _stop(repo, SELF_CITING_TURN) == 2
+        assert _clear_fact(repo, "clear-reason")["observed"]["session_changed"] is False
+
+    def test_a_session_that_committed_work_is_observed_as_changed(self, tmp_path, capsys):
+        """Committed counts: the span is the session base tree, not porcelain."""
+        repo = _repo(tmp_path)
+        _commit_code(repo)
+        _stop(repo, SELF_CITING_TURN)
+        assert _clear_fact(repo, "clear-reason")["observed"]["session_changed"] is True
+
+    def test_clear_reason_names_the_citation_kind_and_never_the_phrase(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        assert _stop(repo, SELF_CITING_TURN) == 2
+        fact = _clear_fact(repo, "clear-reason")
+        assert fact["reason"] == "in-this-message"
+        assert "are in this message" not in json.dumps(fact)
+
+    def test_a_gate_with_no_reason_records_none(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        _commit_code(repo)
+        assert _stop(repo) == 2
+        (fact,) = _stop_facts(repo)
+        assert "reason" not in fact["body"] and "observed" not in fact["body"]
+
+
+class TestTheSinkKeepsOnlyMachineShapedDetail:
+    """`reason` and `observed` must be machine-shaped. A value that is not is
+    dropped and named in `refused_fields`, and the firing still lands: a lost
+    count is the worse error, and the dropped value never reaches the store."""
+
+    @pytest.mark.parametrize("reason", ["", "Has Spaces", "x" * 49, "trailing-", 3])
+    def test_a_reason_that_is_not_a_slug_is_dropped_and_the_firing_kept(self, tmp_path, reason):
+        repo = _repo(tmp_path)
+        result = evidence.append_guard_refusal(repo, "g", {}, reason=reason)
+        assert result["status"] == "appended"
+        assert result["refused_fields"] == ["reason"]
+        (fact,) = evidence.facts_of_kind(evidence.read_facts(repo), "guard-refusal")
+        assert "reason" not in fact["body"]
+        assert fact["body"]["refused_fields"] == ["reason"]
+
+    @pytest.mark.parametrize(
+        "observed",
+        [
+            {"note": "the questions are in this message"},
+            {"nested": {"a": True}},
+            {"Bad Key": True},
+            ["not", "a", "dict"],
+        ],
+    )
+    def test_an_observation_that_could_carry_prose_is_dropped(self, tmp_path, observed):
+        repo = _repo(tmp_path)
+        result = evidence.append_guard_refusal(repo, "g", {}, reason="spent", observed=observed)
+        assert result["status"] == "appended" and result["refused_fields"] == ["observed"]
+        (fact,) = evidence.facts_of_kind(evidence.read_facts(repo), "guard-refusal")
+        assert "observed" not in fact["body"] and fact["body"]["reason"] == "spent"
+        assert "this message" not in json.dumps(fact)
+
+    def test_well_formed_values_land_in_the_body(self, tmp_path):
+        repo = _repo(tmp_path)
+        result = evidence.append_guard_refusal(
+            repo, "g", {"k": 1}, reason="spent",
+            observed={"live": True, "count": 2, "mode": "chunk", "seen": None},
+        )
+        assert result["status"] == "appended" and "refused_fields" not in result
+        (fact,) = evidence.facts_of_kind(evidence.read_facts(repo), "guard-refusal")
+        assert "refused_fields" not in fact["body"]
+        assert fact["body"]["reason"] == "spent"
+        assert fact["body"]["observed"] == {"live": True, "count": 2, "mode": "chunk", "seen": None}
+        assert fact["body"]["k"] == 1
+
+    def test_a_dropped_detail_on_a_stop_block_says_so_and_keeps_the_count(
+        self, tmp_path, capsys, monkeypatch
+    ):
+        repo = _repo(tmp_path)
+        monkeypatch.setattr(_hook, "_clear_observations", lambda *a: {"Bad Key": True})
+        assert _stop(repo, ASK_DNC_TURN) == 2
+        err = capsys.readouterr().err
+        assert "recorded without its observed" in err
+        (fact,) = _stop_facts(repo)
+        assert fact["body"]["reason"] == "handed-over-your-turn"
+        assert "observed" not in fact["body"]
+
+    def test_a_well_formed_block_prints_no_dropped_detail_note(self, tmp_path, capsys):
+        repo = _repo(tmp_path)
+        assert _stop(repo, ASK_DNC_TURN) == 2
+        assert "recorded without its" not in capsys.readouterr().err
+
+
+class TestEveryDeclaredReasonIsRecordable:
+    """A declared reason the sink would drop is a firing counted as
+    unspecified forever, and no single-case test would notice."""
+
+    @pytest.mark.parametrize(
+        "reason_text, kind",
+        [
+            ("the open questions are in this message.", "in-this-message"),
+            ("this reply holds the plan.", "message-holds"),
+            ("the questions are above.", "above-below"),
+        ],
+    )
+    def test_each_citation_form_records_its_kind(self, tmp_path, capsys, reason_text, kind):
+        repo = _repo(tmp_path)
+        turn = _block("COMPLETE", "SAFE TO CLEAR").replace("the reason.", reason_text)
+        assert _stop(repo, turn) == 2
+        assert _clear_fact(repo, "clear-reason")["reason"] == kind
+
+    def test_the_parametrized_kinds_are_every_kind(self):
+        from lib import standing_block
+
+        assert set(standing_block.SELF_CITATION_KINDS) == {
+            "in-this-message", "message-holds", "above-below"
+        }
+
+    def test_every_declared_reason_is_a_slug(self):
+        from lib import standing_block
+
+        declared = (*standing_block.SELF_CITATION_KINDS, *standing_block.CLEAR_VERDICT_REASONS)
+        assert declared and all(evidence._is_slug(r) for r in declared)
+
+    def test_the_telemetry_doc_lists_every_declared_reason_in_its_gate_row(self):
+        from lib import standing_block
+
+        doc = (_ROOT / "docs" / "governance-telemetry.md").read_text()
+        rows = {
+            line.split("|")[1].strip(" `"): line
+            for line in doc.splitlines()
+            if line.startswith("| `clear-")
+        }
+        assert set(rows) == {"clear-verdict", "clear-reason"}
+        for reason in standing_block.CLEAR_VERDICT_REASONS:
+            assert f"`{reason}`" in rows["clear-verdict"]
+        for kind in standing_block.SELF_CITATION_KINDS:
+            assert f"`{kind}`" in rows["clear-reason"]
 
 
 class TestNothingIsRecordedWithoutABlock:

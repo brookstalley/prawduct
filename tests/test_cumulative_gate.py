@@ -322,6 +322,53 @@ class TestComposedCoveragePasses:
         rc, _out, err = _run_gate(repo, capsys)
         assert rc == 0, err
 
+    def test_a_verbatim_commit_of_a_tree_with_untracked_files_composes(
+        self, tmp_path, capsys
+    ):
+        """#1003: the reviewed tree is `git add -A`'s, untracked files included.
+        `git add -A && git commit` reproduces it exactly, so it composes."""
+        repo = _branch_repo(tmp_path)
+        (repo / "feature.py").write_text("y = 3\n")
+        (repo / "stray.bin").write_text("os metadata\n")
+        capture = evidence.capture_tree(repo)
+        assert capture["untracked"] == ["stray.bin"]
+        _fact(repo, _tree(repo, "main"), capture["tree"], ["feature.py", "stray.bin"])
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-q", "-m", "verbatim")
+        assert _tree(repo) == capture["tree"]
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "satisfied" in out
+
+    def test_a_tracked_only_commit_of_that_tree_is_uncovered(self, tmp_path, capsys):
+        """The control: leaving the untracked file out deletes a judgeable path
+        from the reviewed tree, which no edge covers — the round #1003 charged."""
+        repo = _branch_repo(tmp_path)
+        (repo / "feature.py").write_text("y = 3\n")
+        (repo / "stray.bin").write_text("os metadata\n")
+        capture = evidence.capture_tree(repo)
+        _fact(repo, _tree(repo, "main"), capture["tree"], ["feature.py", "stray.bin"])
+        _git(repo, "commit", "-q", "-am", "tracked only")
+        assert _tree(repo) != capture["tree"]
+        rc, _out, _err = _run_gate(repo, capsys)
+        assert rc != 0
+
+    def test_excluding_the_file_before_capture_lets_a_tracked_commit_compose(
+        self, tmp_path, capsys
+    ):
+        repo = _branch_repo(tmp_path)
+        (repo / "feature.py").write_text("y = 3\n")
+        (repo / "stray.bin").write_text("os metadata\n")
+        (repo / ".git" / "info" / "exclude").write_text("stray.bin\n")
+        capture = evidence.capture_tree(repo)
+        assert capture["untracked"] == []
+        _fact(repo, _tree(repo, "main"), capture["tree"], ["feature.py"])
+        _git(repo, "commit", "-q", "-am", "tracked only")
+        assert _tree(repo) == capture["tree"]
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "satisfied" in out
+
     def test_non_judgeable_tail_composes_as_free_edge(self, tmp_path, capsys):
         # The doc-only allowance, computed not stored: a plain-.md commit
         # after the reviewed tree needs no review.
