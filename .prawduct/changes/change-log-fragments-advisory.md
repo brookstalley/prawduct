@@ -18,10 +18,17 @@ procedure, and doctor's routing table now sends the advisory there. The apply st
 owner's go-ahead. Once the migration has written `.prawduct/changes/`, the advisory resolves itself.
 When the committed install reference pins a release that cannot read fragments, the owner text
 leads with moving the pin. The advisory is ordered before `change-log-union-merge`, because
-migrating makes the union line unnecessary.
+migrating makes the union line unnecessary. When git cannot be asked whether the log is committed,
+the probe prints a `NOTE:` instead of going quiet.
+
+The advisory-copy lint (`tests/test_advisory_actionability.py`) now also refuses a `prerequisite_of`
+that is not a literal tuple at its construction site. Its edge rules read the tuple from the
+source, so an edge passed through a variable was checked by nothing; this probe's first draft did
+exactly that.
 
 ## Consumer note
 If your product still records changes in `.prawduct/change-log.md`, the session briefing now says
 so and offers to move it onto per-change files under `.prawduct/changes/`, so branches stop
-conflicting on one shared file. You see a dry run first, nothing is written until you approve it,
+editing one shared file (which conflicts at merge, or with `merge=union` can bring archived entries
+back). You see a dry run first, nothing is written until you approve it,
 and the move is one commit you can revert.

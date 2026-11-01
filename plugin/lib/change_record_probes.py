@@ -17,9 +17,9 @@ nudge lives here and routes to doctor for the procedure.
 next sync resolves the advisory, and ``gitattributes_probes`` then takes over the
 union-attribute cleanup it gates on the same directory.
 
-**Committed logs only.** A log git does not track cannot conflict at merge time,
-which is the whole cost being advised against; when git cannot be asked the probe
-returns ``None`` (could not look) rather than claiming either answer.
+**Committed logs only.** A log git does not track is never merged, which is the
+whole cost being advised against; when git cannot be asked the probe prints a
+``NOTE:`` and returns ``None`` (could not look) rather than claiming either answer.
 
 Registered at the composition root (``lib/probe_families.register_all``), not at
 import time — the same pattern as the sibling probe modules.
@@ -31,6 +31,7 @@ from . import gitstate
 from .advisory_store import AdvisoryCandidate, Codebase, ProjectState, register_probe
 from .change_fragments import FRAGMENT_DIR_REL
 from .change_log import CHANGE_LOG_REL_PATH
+from .core import log
 
 FEATURE = "change-record"
 PROBE_VERSION = 1
@@ -49,6 +50,11 @@ def probe_change_log_fragments_available(state: ProjectState, codebase: Codebase
         return []
     tracked = gitstate.git_path_is_tracked(codebase.root, CHANGE_LOG_REL_PATH)
     if tracked is None:
+        log(
+            f"NOTE: {CHANGE_LOG_REL_PATH} exists, but git could not be asked whether it is "
+            "committed — this session did not check whether the change record should move "
+            "onto fragments."
+        )
         return None  # could not look — not "nothing to report" (#917)
     if tracked is False:
         return []
@@ -58,19 +64,14 @@ def probe_change_log_fragments_available(state: ProjectState, codebase: Codebase
     # Count-independent: hashed into the advisory id, so it must not move as
     # entries are added or the install pin changes.
     evidence = (f"{CHANGE_LOG_REL_PATH} is committed and {FRAGMENT_DIR_REL}/ does not exist",)
+    # Both costs, because the repo may carry either: without `merge=union` the
+    # shared lines conflict, and with it a merge can bring archived entries back
+    # (#857). Fragments end both, so the copy need not ask git which applies.
     trigger_summary = (
         f"This repo still records changes in the single {CHANGE_LOG_REL_PATH}, so every "
-        "branch edits the same file and merges conflict there; recording each change as "
-        f"its own file under {FRAGMENT_DIR_REL}/ ends that"
-    )
-    # Moving onto fragments retires the reason for the union attribute, so the
-    # migration is the work to weigh first.
-    prerequisite_of = (
-        (
-            "gitattributes:change-log-union-merge",
-            "moving onto change fragments, so no branch edits the shared log and the "
-            "union-merge line is never needed",
-        ),
+        "branch edits the same file: merges conflict there, or with a merge=union line "
+        "can bring archived entries back; recording each change as its own file under "
+        f"{FRAGMENT_DIR_REL}/ ends both"
     )
     pinned = install_pin_too_old(codebase.root)
     if pinned is not None:
@@ -87,7 +88,13 @@ def probe_change_log_fragments_available(state: ProjectState, codebase: Codebase
                     "you approve it."
                 ),
                 recommended_action="/prawduct:doctor",
-                prerequisite_of=prerequisite_of,
+                prerequisite_of=(
+                    (
+                        "gitattributes:change-log-union-merge",
+                        "moving onto change fragments, so no branch edits the shared log and "
+                        "the union-merge line is never needed",
+                    ),
+                ),
                 priority="info",
             )
         ]
@@ -105,7 +112,16 @@ def probe_change_log_fragments_available(state: ProjectState, codebase: Codebase
             # refusals relayed and its --default-type chosen; doctor's routing
             # table sends this advisory straight to that check.
             recommended_action="/prawduct:doctor",
-            prerequisite_of=prerequisite_of,
+            # Moving onto fragments retires the reason for the union attribute, so
+            # the migration is the work to weigh first. Literal at each site so the
+            # actionability lint can read the edge.
+            prerequisite_of=(
+                (
+                    "gitattributes:change-log-union-merge",
+                    "moving onto change fragments, so no branch edits the shared log and "
+                    "the union-merge line is never needed",
+                ),
+            ),
             priority="info",
         )
     ]

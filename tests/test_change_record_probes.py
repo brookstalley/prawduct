@@ -93,6 +93,9 @@ class TestProbe:
         assert "dry run" in cand.owner_action
         assert "pin" not in cand.owner_action
         assert cand.prerequisite_of[0][0] == "gitattributes:change-log-union-merge"
+        # Both costs, since the repo may or may not carry merge=union (R-1).
+        assert "merges conflict" in cand.trigger_summary
+        assert "archived entries back" in cand.trigger_summary
 
     def test_inert_once_the_fragment_directory_exists(self, tmp_path):
         # Control: the same repo without the directory fires (previous test).
@@ -107,12 +110,20 @@ class TestProbe:
         assert (repo / CHANGE_LOG_REL_PATH).is_file()
         assert _probe(repo) == []
 
-    def test_could_not_look_outside_a_repo(self, tmp_path):
-        # "git could not be asked" is not "untracked": an open advisory stays open.
+    def test_could_not_look_outside_a_repo(self, tmp_path, capsys):
+        # "git could not be asked" is not "untracked": an open advisory stays open,
+        # and the session is told what went unchecked rather than nothing.
         not_a_repo = tmp_path / "bare"
         (not_a_repo / ".prawduct").mkdir(parents=True)
         (not_a_repo / CHANGE_LOG_REL_PATH).write_text("# Change Log\n")
         assert _probe(not_a_repo) is None
+        err = capsys.readouterr().err
+        assert err.startswith("NOTE: ") and "should move onto fragments" in err
+
+    def test_a_definite_answer_prints_no_note(self, tmp_path, capsys):
+        # Control for the NOTE: an untracked log is an answer, not a failure to look.
+        assert _probe(_repo(tmp_path, change_log="untracked")) == []
+        assert "NOTE:" not in capsys.readouterr().err
 
     def test_a_too_old_pin_leads_the_owner_action(self, tmp_path):
         repo = _repo(tmp_path)
