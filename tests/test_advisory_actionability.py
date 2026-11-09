@@ -478,3 +478,25 @@ def test_no_construction_site_hides_its_copy_from_the_lint(sites):
         "Keep advisory copy as literal text at the construction site:\n  "
         + "\n  ".join(unreadable)
     )
+
+
+def test_no_construction_site_hides_its_prerequisite_edges_from_the_lint(sites):
+    """Every ``prerequisite_of`` is a literal tuple at its construction site.
+
+    The two edge rules read the edge keys from the source tuple and treat anything
+    else as declaring no edges, so an edge passed through a variable is checked by
+    nothing: renaming the probe it names leaves both rules green while the ordering
+    silently stops rendering. This was not hypothetical — the first draft of
+    ``change_record_probes`` passed its edge that way.
+    """
+    hidden = [
+        site.label
+        for site in sites
+        if "prerequisite_of" in site.kwargs
+        and not isinstance(site.kwargs["prerequisite_of"], (ast.Tuple, ast.List))
+    ]
+    assert not hidden, (
+        "prerequisite_of passed as something other than a literal tuple — the edge "
+        "rules cannot read it, so a dangling edge would pass. Write the tuple inline:\n  "
+        + "\n  ".join(hidden)
+    )
