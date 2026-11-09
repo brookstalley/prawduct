@@ -1,6 +1,6 @@
 ---
 schema: 1
-type: fix
+type: feature
 scope: change-log-fragments-advisory
 date: 2026-11-01
 title: The session briefing tells a product still on the single-file change log that it can move onto fragments
