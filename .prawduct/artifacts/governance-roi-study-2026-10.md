@@ -196,3 +196,13 @@ With the data directory `<data>` and bare clones of its repo list in `<clones>`:
    - "0 of 8 known escapes caught": a reading of each calibration item's findings against its
      known fix.
    - the agent-run count: from the workflow logs.
+8. The post-cutoff escape re-run (#987), on or after 2026-11-10:
+   - `./test_rerun.sh`: known-answer test for the scorer, including its refusal of a duplicated
+     `(repo, sha)` row.
+   - Run step 2 into a new file, `<data>/landings-rerun-<YYYYMMDD>.jsonl`, never into
+     `landings.jsonl`, with one `--branch` per repo-F integration branch.
+   - `python3 rerun.py <data>/landings-rerun-<YYYYMMDD>.jsonl <data>/repo_f.txt`: rework edges per
+     kLOC for repo F, for ungoverned repos excluding F, and for governed repos, over landings after
+     the study's cutoff. A landing whose 30-day window is still open is counted as `window-open`
+     and left out of the rate. The scorer prints rates and counts only, and refuses a file that
+     carries any landing twice.
