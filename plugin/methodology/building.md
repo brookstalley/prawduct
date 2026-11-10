@@ -38,7 +38,7 @@ Classification heuristic: file count is a proxy for risk. 1-2 files = trivial/sm
 
 ## Before You Build: The Alignment Pass
 
-Before non-trivial work, judge how clear and grounded the goals are (request, brief, backlog) against how much work and risk lie ahead, take one of four responses, and **say which in a line** — that acknowledgement is how the owner catches a misreading before it is built:
+Before non-trivial work, judge how clear and grounded the goals are (request, brief, backlog, `.prawduct/owner-rulings.md`) against how much work and risk lie ahead, take one of four responses, and **say which in a line** — that acknowledgement is how the owner catches a misreading before it is built:
 
 - **Proceed** — clear by nature, however large: a bug with a repro defines its own success. Restate the target and go.
 - **Proceed, citing it** — a backlog item or spec already says what this is for, what success is, and what is out of scope. Restate its goals, name what it leaves open and what you inferred there, and go.
@@ -53,7 +53,7 @@ Don't stop a build for the questions it raises — the goals exist so you can an
 
 ### When the Owner Rules
 
-When the owner decides, corrects you, or states a constraint or preference later work must honour (not a one-off tweak), write their words, dated, to `.prawduct/owner-rulings.md` (`templates/owner-rulings.md`) before replying, and cite the entry: later sessions and people read that file, not this chat or your auto-memory. An entry points to where the decision landed rather than restating it; across repos, the one owning the decision keeps it.
+When the owner decides, corrects you, or states a constraint or preference later work must honour (not a one-off tweak), write their words, dated, to `.prawduct/owner-rulings.md` (`templates/owner-rulings.md`) before replying, and cite the entry: later sessions and people read that file, not this chat or your auto-memory. An entry points to where the decision landed rather than restating it.
 
 ### A Requirement Surfaced Mid-Build
 

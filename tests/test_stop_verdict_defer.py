@@ -25,7 +25,7 @@ Three layers, each pinned where it can fail:
 * ``standing_block`` — what counts as the closing verdict and the disposition,
   and when the two contradict;
 * ``gates.turn_declares_in_flight`` / ``turn_contradicts_its_verdict`` /
-  ``turn_cites_itself_as_record`` — the payload degradation ladder;
+  ``turn_self_citation`` — the payload degradation ladder;
 * ``prawduct-hook stop`` end to end — which blockers defer and which do not.
 
 The payload shape is the one Claude Code 2.1.282 writes to a Stop hook's stdin,
@@ -480,7 +480,8 @@ class TestTurnDeclaresInFlight:
         ids=["self-citing", "your-turn-safe", "your-turn-dnc", "null", "empty", "str"],
     )
     def test_self_citation_ladder(self, stop_input, expected):
-        assert _on_event(gates.turn_cites_itself_as_record, stop_input) == expected
+        match = _on_event(gates.turn_self_citation, stop_input)
+        assert (match[0] if match else None) == expected
 
     def test_transcript_is_not_a_fallback(self, tmp_path):
         """With the field absent, a transcript that DOES close on DO NOT CLEAR is

@@ -1041,24 +1041,18 @@ def turn_contradicts_its_verdict(event) -> str | None:
     return standing_block.contradiction(message)
 
 
-def turn_cites_itself_as_record(event) -> str | None:
+def turn_self_citation(event) -> "tuple[str, str] | None":
     """The phrase by which a turn closing ``SAFE TO CLEAR`` gives itself as the
-    record (``standing_block.self_citation``), or ``None``.
+    record, with the citation's kind beside it
+    (``standing_block.self_citation_match``), or ``None``.
 
     ``SAFE TO CLEAR`` tells a reader who may return days later that a clear
     loses nothing. A reason that points at the turn ("the questions are in this
-    message") points at what the clear deletes. Same payload handling as
-    :func:`turn_contradicts_its_verdict`: a missing field or an unclear close
-    returns ``None``, because the caller records it as a firing.
+    message") points at what the clear deletes. The kind is what the
+    ``clear-reason`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_contradicts_its_verdict`: a missing
+    field or an unclear close returns ``None``.
     """
-    match = turn_self_citation(event)
-    return match[0] if match else None
-
-
-def turn_self_citation(event) -> "tuple[str, str] | None":
-    """:func:`turn_cites_itself_as_record` with the citation's kind beside the
-    phrase (``standing_block.self_citation_match``) — the kind is what the
-    ``clear-reason`` check records, since the phrase is the turn's own words."""
     message = _last_message(event)
     if message is None:
         return None

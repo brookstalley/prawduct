@@ -545,7 +545,10 @@ LAST_MEASURED_TOKENS = {
     # template owns them). +3 when the full suite showed one of the cuts above was not free: the
     # Critic-review step must name the plan's `Critic mode:` (a structure pin reads it), so the
     # override sentence is back there and `mode_chosen_by` (review-cycle.md owns it) paid most of it.
-    "methodology/building.md": 5378,
+    # -11 from the boundary review: the alignment pass now reads `.prawduct/owner-rulings.md`
+    # (nothing sent a later session to the record it is told to write), paid by the cross-repo
+    # clause, which the template owns.
+    "methodology/building.md": 5367,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1751,7 +1754,11 @@ LAST_MEASURED_TOKENS = {
     # the brief-costs-more anti-pattern, "who integrates — you", and the ad-hoc
     # section's restated dispatch mechanics (one dispatch section now serves both
     # triggers). The model-and-effort section and two anti-patterns are new.
-    "methodology/delegation.md": 2809,
+    # +43 the same day, from the boundary review: the guide told every delegate to stay on its
+    # scratch branch and also asked for the integrator's heavy run to land on the integration
+    # branch, which a scratch branch cannot do. It now says the integrator switches its worktree
+    # onto that branch, and why. A READING.
+    "methodology/delegation.md": 2852,
 }
 
 
@@ -3749,8 +3756,8 @@ class TestBuildingMethodology:
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
-        # RAISED 5308 -> 5379 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5379, f"building.md is ~{tokens} tokens, should be <5379"
+        # RAISED 5308 -> 5368 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5368, f"building.md is ~{tokens} tokens, should be <5368"
 
 
 # =============================================================================
