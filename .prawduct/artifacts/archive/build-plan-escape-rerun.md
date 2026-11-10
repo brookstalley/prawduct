@@ -21,7 +21,14 @@ depends_on:
   - documentation/issues/987-requirements.md
   - .prawduct/artifacts/governance-roi-study-2026-10.md
 last_validated: 2026-11-10
+lifecycle: completed
+archived: 2026-11-10
+released_in: v3.8.1
+unbuilt_at_archive: 1 of 1 chunks not done (Chunk 01) — the scope shipped, but this plan did not finish with it
+maintained: false
 ---
+
+> **Archived — no longer maintained.** This plan records what was built, not what will be. Do not edit it to reflect later changes; write those where they are true.
 
 ## Goals
 
