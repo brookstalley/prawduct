@@ -4,6 +4,8 @@
 #   reviewer  critic-reviewer, background, runs `prawduct-hook critic-begin`, same message as research.
 #   research  inline sidechain, model sonnet, no write tool; its Bash only MENTIONS the declared suite
 #             command inside an echo string and a grep pattern, so it must NOT count as running it.
+#             The echo string puts the command after a `;`, so the case fails if quoted text is
+#             ever split into segments: a mention that merely follows `echo` passes either way.
 #   build     isolation worktree, model opus, runs the declared suite (extra whitespace, trailing
 #             flag), has one SendMessage follow-up.
 # Exits non-zero on any mismatch.
