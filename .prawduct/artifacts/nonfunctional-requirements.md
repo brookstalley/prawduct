@@ -50,17 +50,13 @@ last_validated: null
   kept open needlessly, so a block on every such turn did not earn its round-trip. It now records
   each firing as a `stop-observed:clear-verdict` fact, scored by `stats` under *observed only*
   (`retire-clear-verdict`). The standing-block rule it enforced stays in the prose.
-  Conforms, not an exception: **the `clear-reason` Stop gate** (#977, 2026-10-09, since 3.7.1)
-  refuses a `SAFE TO CLEAR` whose stated reason is the turn itself ("the questions are in this
-  message"). It emits its yield: every Stop block records a `stop-gate:<gate>` guard-refusal fact
-  per gate id (`telemetry-stats`), so its firings are `prawduct-hook stats` → `stop_blocks.by_gate`
-  ["clear-reason"], apart from the pair check's. **Expected yield:** the 2026-10-09 wave-1 trial had 2
-  of 7 fresh agents give the message as the record despite the prose rule. In the transcripts on
-  this machine, `tools/measure-self-citing-clear.py` matched 18 of 1,533 `SAFE TO CLEAR` closes,
-  each a genuine instance on reading. Firings should fall toward zero once agents meet the refusal.
-  Firings that persist a quarter after 3.7.1 ships mean the prose alone does not hold and the gate
-  earns its keep. None for a quarter, and none found by that script, is evidence for retiring the
-  gate in favour of the prose. Clock: the janitor's Norm Health yield query (#563).
+  Resolved, the same way: **the `clear-reason` Stop check** (#977, since 3.7.1) refused a
+  `SAFE TO CLEAR` whose stated reason is the turn itself ("the questions are in this message").
+  **Ruling 2026-11-10 (owner, #1131): it no longer blocks, and its measurement stays.** It was
+  decided on the 60-day gate-cost data recorded on #1044, and a block cost each firing turn a
+  round-trip to rewrite its close. It now records each firing as a `stop-observed:clear-reason` fact, scored by
+  `stats` under *observed only* with the same catch/slip rule; the prose tell stays in
+  `session-hygiene.md`, and `tools/measure-self-citing-clear.py` still re-derives its tuning figures.
   Live exception: **doctor Health Checks #13 and #13a** (the learnings descent-obligation check, shipped 2026-08-02, and the learnings-pairing check, shipped 2026-08-27) are recorded **bounded exceptions** to the emission arm — it names its expected yield and cannot emit it, because doctor has no fact-emitting path at all and building one for a single check is the accumulation this norm exists to stop. Clock: `#563` — the trigger is *when doctor gains that path*, at which point #13 is its worked first case and #13a follows it. `[DECISION: the #13 bounded exception is widened to cover doctor Health Check #13a (learnings pairing), same clock and same reason | doctor still has no fact-emitting path, so #13a can no more emit its yield than #13 can, and building one for a second single check is precisely the accumulation this norm exists to stop; the alternative — amending the emission arm to admit a control that cannot satisfy it — is the laundering tell the norms guide names, since it would edit the rule to bless the code | user can veto/override]` Owner-vetoable, recorded 2026-08-27 on `fix/silent-clear-checks`. **The exception is bounded by naming its expected yield now, so the query has something to answer:** #13a expects to fire on duplicate active headings, which is zero on this repo's 270-entry corpus today — so a firing is evidence, and a year of never firing is evidence for retiring it. **That trigger is prose here and on the item rather than a `revisit:` field** (when written, the Issues backend had no write path for one; #564 shipped it 2026-09-02, so the constraint is historical — the trigger stays prose because it names a CONDITION, not a date, and `probe_revisit_due` fires only on dated values): the adapter's `update` deliberately strips a caller-pasted `prawduct:` block and re-appends the existing one (`lib/backlog/core.py` `_body_update_preserving_block`), and, when this was written, no op took a `revisit` flag. So the walker is the janitor's Norm Health sweep reading #563, exactly as it is for every event-bound trigger (`probe_revisit_due` fires only on *dated* values, on both backends since 2026-11-10). The write path was missing when this was written and is filed as `#564`, **shipped 2026-09-02** (`backlog/core.py` `_UPDATE_BLOCK`; `--revisit` at `backlog/cli.py:124`). Decision block: `artifacts/archive/build-plan-drift-burndown.md` § `governed_by` → nonfunctional-requirements.
   Recorded keep: **the `pr-scoped` review mode**. This is NOT a Live exception and is
   deliberately not labelled one — the two above are exceptions to the *emission* arm

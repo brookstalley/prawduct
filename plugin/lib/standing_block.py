@@ -1,37 +1,46 @@
-"""The standing block's vocabulary, and how to read its verdict off a turn.
+"""The close's vocabulary, and how to read its verdict off a turn.
 
-The standing block closes a work-cycle turn (``methodology/session-hygiene.md``
-owns its shape; ``methodology/session-digest.md`` injects it into every
-session): a ``---`` rule, then three paragraphs led by backticked labels —
-``STATE``, one DISPOSITION label, and one CLEAR verdict. This module is the one
-code home for those labels. The prose names them; a test pins the prose to the
-tuples below in both directions, so a label renamed in either place fails
-rather than drifting.
+A turn that ends a work cycle or leaves work outstanding closes on ONE line,
+last: a DISPOSITION label, a CLEAR verdict, then a short reason —
+``RUNNING · DO NOT CLEAR — the review is in flight, about 4 minutes``, with
+the labels backticked (``methodology/session-hygiene.md`` owns the shape;
+``methodology/session-digest.md`` injects it into every session). This module
+is the one code home for those labels. The prose names them; a test pins the
+prose to the tuples below in both directions, so a label renamed in either
+place fails rather than drifting.
 
-Code reads the block for one reason: the Stop hook fires at EVERY turn end, but
+Sessions on an older digest still close with the three-paragraph form — a
+``---`` rule, then paragraphs led by ``STATE``, the disposition and the
+verdict — so that form is read too: a turn whose last line is not a one-line
+close is read the old way.
+
+Code reads the close for one reason: the Stop hook fires at EVERY turn end, but
 its reflection and Critic gates are about SESSION end, and the agent's clear
 verdict is the agent's own statement of which one this is. A turn that says
-``RUNNING`` and closes on ``DO NOT CLEAR`` is telling the user it is still
-working, so those gates defer to the next turn that does not
+``RUNNING`` and ``DO NOT CLEAR`` is telling the user it is still working, so
+those gates defer to the next turn that does not
 (``lib/gates.turn_declares_in_flight``).
 
 Because that reading relaxes an authority gate, it is deliberately narrow — a
-verdict counts only where the block puts it:
+verdict counts only where the close puts it:
 
-* the CLOSING BLOCK is the text after the last ``---`` rule line; with no rule,
-  it is the final paragraph alone;
-* the verdict is the closing block's FINAL paragraph, and only if that
-  paragraph BEGINS with a clear label (markdown emphasis around the label is
-  allowed; nothing else may precede it);
-* a closing block naming BOTH clear labels anywhere is ambiguous and yields no
-  verdict.
+* the ONE-LINE close is the turn's last non-blank line, and only when it
+  BEGINS with a disposition label followed directly (across markdown
+  decoration and at most one separator such as ``·``, ``/``, ``|`` or a dash)
+  by a clear label;
+* otherwise, the three-paragraph close: the CLOSING BLOCK is the text after
+  the last ``---`` rule line (with no rule, the final paragraph alone), and
+  the verdict is its FINAL paragraph, only if that paragraph BEGINS with a
+  clear label;
+* a close naming BOTH clear labels — on the line, or anywhere in the block —
+  is ambiguous and yields no verdict.
 
-So a label quoted mid-prose, a verdict followed by further text, or a block
+So a label quoted mid-prose, a verdict followed by further text, or a close
 that says both, all read as "no verdict" — which the gate treats as a session
-end and blocks. Labels match case-sensitively: the block's labels are
+end and blocks. Labels match case-sensitively: the close's labels are
 upper-case tokens, and lower-case "do not clear" in a sentence is prose.
 
-The two lines are not independent. ``DO NOT CLEAR`` says something a clear
+The two labels are not independent. ``DO NOT CLEAR`` says something a clear
 would kill is in flight. ``COMPLETE`` says nothing is, so it owes
 ``SAFE TO CLEAR``. ``YOUR TURN`` hands the session to someone who may read it
 hours or days later, so it owes ``SAFE TO CLEAR`` too, unless that work really
@@ -43,14 +52,12 @@ whether the work behind a ``YOUR TURN`` is observable.
 ``SAFE TO CLEAR`` is a claim about disk and process state, so its stated reason
 must point at something a clear leaves behind. A reason that points at the turn
 itself ("the questions are in this message") names the one thing a clear
-deletes; :func:`self_citation` finds it so the Stop hook can refuse that too.
+deletes; :func:`self_citation` finds it so the Stop hook can record it.
 """
 
 from __future__ import annotations
 
 import re
-
-STATE = "STATE"
 
 RUNNING = "RUNNING"
 YOUR_TURN = "YOUR TURN"
@@ -82,8 +89,8 @@ CLEAR_VERDICT_REASONS: tuple[str, ...] = tuple(
     handed_over_reason(d) for d in HANDED_OVER_DISPOSITIONS
 )
 
-#: Every label the standing block uses, in the order the block states them.
-ALL_LABELS: tuple[str, ...] = (STATE, *DISPOSITION_LABELS, *CLEAR_LABELS)
+#: Every label the close uses, in the order the close states them.
+ALL_LABELS: tuple[str, ...] = (*DISPOSITION_LABELS, *CLEAR_LABELS)
 
 # A horizontal-rule line: three or more dashes and nothing else.
 _RULE_LINE = re.compile(r"^\s*-{3,}\s*$")
@@ -93,6 +100,11 @@ _RULE_LINE = re.compile(r"^\s*-{3,}\s*$")
 # does not LEAD with it.
 _LEADING_DECORATION = re.compile(r"^[\s>*_`]*")
 
+# Between the one-line close's two labels: decoration, and at most one
+# separator. A word there means the disposition was prose ("RUNNING the suite,
+# so DO NOT CLEAR"), not a close.
+_LINE_SEPARATOR = re.compile(r"^[\s*_`]*(?:[\u00b7\u2022|/+,;:\u2014\u2013-][\s*_`]*)?")
+
 
 def _paragraphs(text: str) -> list[str]:
     """Non-empty paragraphs, split on blank lines."""
@@ -100,8 +112,9 @@ def _paragraphs(text: str) -> list[str]:
 
 
 def closing_block(text: str) -> str:
-    """The standing block's region of a turn: after the last ``---`` rule line,
-    or the final paragraph when the turn has no rule. Empty for empty input."""
+    """The three-paragraph close's region of a turn: after the last ``---``
+    rule line, or the final paragraph when the turn has no rule. Empty for
+    empty input."""
     if not isinstance(text, str) or not text.strip():
         return ""
     lines = text.splitlines()
@@ -112,28 +125,73 @@ def closing_block(text: str) -> str:
     return paragraphs[-1] if paragraphs else ""
 
 
-def _leading_label(paragraph: str, labels: tuple[str, ...]) -> str | None:
-    """The label ``paragraph`` LEADS with, from ``labels`` — after markdown
-    decoration only, and not when the label is the prefix of a longer word."""
-    lead = paragraph[_LEADING_DECORATION.match(paragraph).end():]
+def _lead(paragraph: str, labels: tuple[str, ...]) -> "tuple[str, int] | None":
+    """``(label, end)`` for the label ``paragraph`` LEADS with, from ``labels``
+    — after markdown decoration only, and not when the label is the prefix of
+    a longer word. ``end`` is the index just past the label."""
+    start = _LEADING_DECORATION.match(paragraph).end()
+    lead = paragraph[start:]
     for label in labels:
         if not lead.startswith(label):
             continue
         after = lead[len(label):len(label) + 1]
         if after and (after.isalnum() or after == "_"):
             continue  # a longer word that merely starts with the label
-        return label
+        return label, start + len(label)
     return None
 
 
-def disposition(text: str) -> str | None:
-    """The disposition a turn's closing block states — ``RUNNING``,
-    ``YOUR TURN`` or ``COMPLETE`` — or ``None`` when it states no single one.
+def _leading_label(paragraph: str, labels: tuple[str, ...]) -> str | None:
+    """The label ``paragraph`` LEADS with, from ``labels`` (:func:`_lead`)."""
+    found = _lead(paragraph, labels)
+    return found[0] if found else None
 
-    A disposition counts only as the LEAD of a closing-block paragraph, so a
-    label mentioned inside another line's copy is prose. Two paragraphs leading
-    with different dispositions state none: the block owes exactly one.
+
+def _one_line_close(text: str) -> "tuple[str, str | None, str] | None":
+    """``(disposition, verdict, line)`` when the turn's last non-blank line is
+    a one-line close, else ``None``. ``verdict`` is ``None`` when the line
+    names both clear labels: it is still the close, and it states none."""
+    if not isinstance(text, str):
+        return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    line = lines[-1]
+    disposition_found = _lead(line, DISPOSITION_LABELS)
+    if disposition_found is None:
+        return None
+    label, end = disposition_found
+    rest = line[end:]
+    rest = rest[_LINE_SEPARATOR.match(rest).end():]
+    if _lead(rest, CLEAR_LABELS) is None:
+        return None
+    present = [c for c in CLEAR_LABELS if c in line]
+    return label, (present[0] if len(present) == 1 else None), line
+
+
+def verdict_line(text: str) -> str:
+    """The text that carries the turn's clear verdict and its reason: the
+    one-line close, or the three-paragraph close's final paragraph. Empty when
+    there is neither."""
+    one = _one_line_close(text)
+    if one is not None:
+        return one[2]
+    paragraphs = _paragraphs(closing_block(text))
+    return paragraphs[-1] if paragraphs else ""
+
+
+def disposition(text: str) -> str | None:
+    """The disposition a turn's close states — ``RUNNING``, ``YOUR TURN`` or
+    ``COMPLETE`` — or ``None`` when it states no single one.
+
+    The one-line close's lead label is its disposition. In the three-paragraph
+    form a disposition counts only as the LEAD of a closing-block paragraph, so
+    a label mentioned inside another line's copy is prose, and two paragraphs
+    leading with different dispositions state none.
     """
+    one = _one_line_close(text)
+    if one is not None:
+        return one[0]
     block = closing_block(text)
     if not block:
         return None
@@ -168,7 +226,7 @@ def contradiction(text: str) -> str | None:
 # changed in this turn") and is not a citation, so the "in" form needs a verb of
 # being in front of it. "Conversation" is deliberately absent: "nothing lives
 # only in this conversation" is a sound reason, not a self-citation. Each form
-# carries the kind the clear-reason gate records when it fires, so its firings
+# carries the kind the clear-reason check records when it fires, so its firings
 # can be counted by shape without recording the turn's words.
 _SELF_CITATIONS = (
     ("in-this-message", re.compile(
@@ -224,17 +282,18 @@ def self_citation_match(text: str) -> "tuple[str, str] | None":
     """``(phrase, kind)`` for the self-citation a ``SAFE TO CLEAR`` turn makes,
     or ``None``; ``kind`` is one of :data:`SELF_CITATION_KINDS`.
 
-    Reads only the verdict paragraph, and only when :func:`clear_verdict` reads
+    Reads only what follows the verdict on its line or paragraph
+    (:func:`verdict_line`), and only when :func:`clear_verdict` reads
     ``SAFE TO CLEAR`` there. A reason that also names a durable record (notes,
     a commit, a file, an issue) returns ``None``, and so does a citation inside
     a clause that denies ("no open question is in this message"): neither rests
-    on the turn alone. The match is narrow on purpose, because the caller blocks on it: a
-    miss leaves the prose rule as the only guard, as before, while a false hit
-    costs a rewritten line.
+    on the turn alone. The match is narrow on purpose: the caller records each
+    hit as a firing, and a false hit would count a sound reason as a catch or
+    a slip.
     """
     if clear_verdict(text) != SAFE_TO_CLEAR:
         return None
-    reason = _paragraphs(closing_block(text))[-1]
+    reason = verdict_line(text)
     at = reason.find(SAFE_TO_CLEAR)
     if at < 0:  # unreachable while clear_verdict matches the label exactly
         return None
@@ -250,12 +309,16 @@ def self_citation_match(text: str) -> "tuple[str, str] | None":
 
 def clear_verdict(text: str) -> str | None:
     """The clear verdict a turn closes on — ``SAFE_TO_CLEAR``, ``DO_NOT_CLEAR``,
-    or ``None`` when the turn states no single verdict where the block puts it.
+    or ``None`` when the turn states no single verdict where the close puts it.
 
-    ``None`` covers: no text, no closing block, a final paragraph that does not
-    lead with a clear label, and a closing block naming both labels. Callers
-    that relax a gate on a verdict must treat ``None`` as "no permission".
+    ``None`` covers: no text, no close, a last line that is not a one-line
+    close over a final paragraph that does not lead with a clear label, and a
+    close naming both labels. Callers that relax a gate on a verdict must treat
+    ``None`` as "no permission".
     """
+    one = _one_line_close(text)
+    if one is not None:
+        return one[1]
     block = closing_block(text)
     if not block:
         return None

@@ -50,12 +50,6 @@
       "summary": "learnings rules carry no body lines; the story behind a rule belongs in the session reflection"
     },
     {
-      "id": "clear-reason",
-      "name": "clear-reason",
-      "since": "3.7.1",
-      "summary": "a `SAFE TO CLEAR` reason must point at something a clear leaves behind (notes, a commit, a file, an issue), never at the turn itself (\"the questions are in this message\")"
-    },
-    {
       "id": "host",
       "name": "unknown-host",
       "since": "3.8.0",

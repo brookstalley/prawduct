@@ -2329,7 +2329,7 @@ def test_every_methodology_guide_is_accounted_for():
 
 
 def _clear_line_guidance() -> str:
-    """Just the standing block's CLEAR item from `session-hygiene.md`.
+    """Just the closing line's CLEAR item from `session-hygiene.md`.
 
     Pins about what the clear line must and must not say belong to that item,
     not to the whole guide -- a negative assertion run over a 200-line file
@@ -2343,13 +2343,13 @@ def _clear_line_guidance() -> str:
     negative one PASS vacuously, which is the worse half.
     """
     text = read_file("methodology/session-hygiene.md")
-    opener, closer = "3. **Clear** —", "\n**Three ways to fail this"
+    opener, closer = "2. **Clear** —", "\n**Four ways to fail this"
     start, end = text.find(opener), text.find(closer)
     for label, found in (("opener", start), ("closer", end)):
         assert found != -1, (
             f"`_clear_line_guidance` cannot find the {label} it slices on "
             f"({opener if label == 'opener' else closer!r}) — `session-hygiene.md`'s "
-            "standing-block section was restructured. Re-point the delimiters; "
+            "closing-line section was restructured. Re-point the delimiters; "
             "do not delete the pins that depend on this."
         )
     item = text[start:end]
@@ -2660,8 +2660,9 @@ class TestBuildingMethodology:
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
 
-    def test_standing_block_is_on_every_surface_that_claims_it(self):
-        """State / Next / Clear, the in-flight rule, and one shared trigger.
+    def test_closing_line_is_on_every_surface_that_claims_it(self):
+        """One line — disposition, clear verdict, reason — the asks above it,
+        the in-flight rule, and one shared trigger.
 
         What this guards is COVERAGE: the shape has to reach an agent through a
         surface it actually reads. `session-hygiene.md` is canonical and read on
@@ -2693,7 +2694,12 @@ class TestBuildingMethodology:
             "methodology/session-digest.md": read_file("methodology/session-digest.md"),
         }
         for name, text in surfaces.items():
-            assert "standing block" in text, f"{name} no longer names the standing block"
+            flat = " ".join(text.split())
+            # ONE line, last (owner ruling 2026-11-10, #1131: "Cut to one
+            # line."). The three-paragraph block it replaced cost every closing
+            # turn about 470 characters, most of it a `STATE` paragraph the
+            # turn's own text already carried.
+            assert "one line" in flat.lower(), f"{name} no longer says the close is one line"
             # The labels are backticked, not bolded: a code span is the only
             # coloured token near the bottom of a turn, so the eye finds it
             # without reading. Owner-requested 2026-07-31 — the block was
@@ -2711,7 +2717,6 @@ class TestBuildingMethodology:
             # `YOUR TURN`. Two labels both meaning "you must speak" force a
             # choice an agent makes inconsistently at the boundary.
             for label in (
-                "`STATE`",
                 "`RUNNING`",
                 "`YOUR TURN`",
                 "`COMPLETE`",
@@ -2727,33 +2732,29 @@ class TestBuildingMethodology:
             for retired, absorbed_by in (
                 ("`NEXT`", "`RUNNING`"),
                 ("`BLOCKED`", "`YOUR TURN`"),
+                ("`STATE`", "the turn's own text"),
             ):
                 assert retired not in text, (
                     f"{name} still carries the retired {retired} label; it was "
                     f"replaced by {absorbed_by}. Two live vocabularies for one "
                     "slot is worse than either alone."
                 )
-            # Deliberately NOT asserting `**State**` is absent. `session-hygiene.md`
-            # keeps a bolded "what each line owes" list that *explains* the
-            # three lines rather than being the emitted shape, and forbidding
-            # the string would delete useful structure to satisfy a proxy. The
-            # positive assertion above already fails on a revert: drop the
-            # backticked labels and it goes red.
-            # The SHAPE is the deliverable, not only the words. Three answers
-            # run together stop being separately findable, which is most of
-            # what the block is for — so every surface has to say so.
-            assert "separate paragraph" in text or "three paragraphs" in text, (
-                f"{name} no longer requires the three lines to be separate "
-                "paragraphs — without that they render as one run-on block"
+            # The ask rule (owner ruling 2026-11-10, #1131): a turn that needs
+            # the user ends with the asks restated just above the line, because
+            # the reader reads the bottom and a pointer upstream is a search,
+            # not a question. Pinned on both carriers by its discriminating
+            # content: where the asks go, and the pointer that is never one.
+            assert "just above" in flat, (
+                f"{name} no longer puts the asks just above the closing line"
             )
-            # The `---` rule: the only horizontal break in the turn, so it
-            # separates the block from the wall of text above before the reader
-            # has parsed a word. Owner-requested 2026-07-31, and pinned on every
-            # surface because the DIGESTS are what reach product sessions — a
-            # rule that lived only in the on-demand guides would be a one-off
-            # for this repo.
-            assert "`---`" in text, (
-                f"{name} dropped the `---` rule that precedes the block"
+            assert '"see above"' in flat, (
+                f"{name} no longer names \"see above\" as the ask that is not one"
+            )
+            # The blank line above it: without one, markdown runs the line into
+            # the list item or paragraph before it, and the close is buried in
+            # the asks it was meant to follow.
+            assert "blank line above it" in flat, (
+                f"{name} dropped the blank line that keeps the close its own line"
             )
             # NOT asserting the word "backtick". Every surface already shows the
             # labels backticked and the assertion above checks that literal, so
@@ -2905,7 +2906,8 @@ class TestBuildingMethodology:
         there, and a binding with no pointer leaves a reader who opened only
         this guide holding a verdict with no shape to put it in.
         """
-        assert "standing block" in self.content
+        assert "closing line" in self.content
+        assert "standing block" not in self.content, "building.md names the retired block"
         assert "steps 1-6" in self.content
         assert "steps 1-7" not in self.content, "a stale step count survived the renumbering"
         assert "in flight included" in self.content
@@ -2915,7 +2917,7 @@ class TestBuildingMethodology:
         # prevent.
         for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`"):
             assert label not in self.content, (
-                f"building.md restates the standing block's {label} label; "
+                f"building.md restates the closing line's {label} label; "
                 "session-hygiene.md and the injected digest own the shape"
             )
         # Where the reader is sent for the shape. Named, not implied -- a bare
@@ -3001,7 +3003,7 @@ class TestBuildingMethodology:
     def test_disposition_label_rules_carry_their_discriminating_content(self):
         """The label set differs from a rename by two rules; pin those, not the names.
 
-        `test_standing_block_is_on_every_surface_that_claims_it` proves the
+        `test_closing_line_is_on_every_surface_that_claims_it` proves the
         three labels are present and the retired two are gone. That check passes
         for a pure rename -- which would leave the set no better than what it
         replaced. What makes it behave differently is the precedence rule (a
@@ -3424,7 +3426,7 @@ class TestBuildingMethodology:
         # staged work) are +146 against 3 tokens of headroom. Three candidate
         # trims were tried and reverted: the standing block and the
         # warnings-gate-nothing rule are both pinned by tests in this class —
-        # and `test_standing_block_is_on_every_surface_that_claims_it` records
+        # and `test_closing_line_is_on_every_surface_that_claims_it` records
         # that an EARLIER budget trim was already funded by relocating that
         # rule's rationale, so the redundancy a fresh trim would harvest has
         # been spent once already. One trim DID land and is counted in the +146
@@ -5024,17 +5026,19 @@ class TestOtherMethodology:
         assert "one line of at most 250 characters" in content
         assert "only the owner raises it" in content
         assert "never trim" not in content
-        # The standing block lives elsewhere now; this guide only points.
+        # The closing line lives elsewhere now; this guide only points.
         assert "`methodology/session-hygiene.md`" in content
         for label in ("`STATE`", "`RUNNING`", "`SAFE TO CLEAR`"):
-            assert label not in content, f"reflection.md restates the standing block's {label}"
+            assert label not in content, f"reflection.md restates the closing line's {label}"
 
-    def test_session_hygiene_carries_the_standing_block_shape(self):
-        """D2 — the moved guide owns the shape whole: the fenced block, all
-        five labels, the procedure, and the forward-notes distinction."""
+    def test_session_hygiene_carries_the_closing_line_shape(self):
+        """D2 — the moved guide owns the shape whole: the fenced line, all
+        five labels, the procedure, and the forward-notes distinction. The
+        `STATE` paragraph was cut when the close became one line (#1131)."""
         content = read_file("methodology/session-hygiene.md")
-        for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`", "`SAFE TO CLEAR`", "`DO NOT CLEAR`"):
+        for label in ("`RUNNING`", "`YOUR TURN`", "`COMPLETE`", "`SAFE TO CLEAR`", "`DO NOT CLEAR`"):
             assert label in content, f"session-hygiene.md lacks the {label} label"
+        assert "`STATE`" not in content, "session-hygiene.md still teaches the retired `STATE` paragraph"
         assert "Choosing the label is a procedure" in content
         assert "Forward notes are not a reflection" in content
         assert "methodology/reflection.md" in content  # it says where it was sent from
