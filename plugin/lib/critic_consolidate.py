@@ -3962,10 +3962,11 @@ def _validate_observations(observations) -> tuple[bool, str]:
     a contradiction in the record — the directive that produces observations
     says anything BLOCKING stays a finding — and the fail-closed answer to a
     record that contradicts itself is to refuse the whole consolidation rather
-    than to pick a half to believe. A lesser ``severity`` is tolerated and NOT
-    carried: every observation is below-blocking by construction, so persisting
-    a rating would only invite the census to re-sort on it, which is the
-    gradient the demotion exists to flatten.
+    than to pick a half to believe. A lesser ``severity`` is tolerated here: at
+    the boundary a ``warning`` one is promoted into ``findings`` before the
+    merge (``promote_rated_observations``), and any other is NOT carried —
+    persisting a rating on an observation would only invite the census to
+    re-sort on it.
     """
     if observations is None:
         return True, ""
@@ -4008,9 +4009,11 @@ def validate_partial(data) -> tuple[bool, str]:
     waiver carries its justification).
 
     ``observations`` is what a reviewer rated below a finding — validated by
-    :func:`_validate_observations`, from any stage. It cannot launder a
-    severity: a ``blocking`` entry is refused there, and at the boundary a
-    WARNING is a finding by the protocol's own table.
+    :func:`_validate_observations`, from any stage. A ``blocking`` entry is
+    refused there; at the boundary an entry rated ``warning`` is promoted into
+    ``findings`` by :func:`consolidate`. An entry that carries no rating is
+    taken as an observation — a WARNING its reviewer left unrated is not
+    detectable here.
 
     ``dispatch_id`` is the id of the review that dispatched this reviewer, and
     it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
@@ -4751,6 +4754,8 @@ def merge_findings(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            if partial.get("role") == RECORD_LINT_SOURCE:
+                entry["source"] = RECORD_LINT_SOURCE
             existing = merged.get(key)
             if existing is None or (
                 _SEVERITY_RANK[f["severity"]] > _SEVERITY_RANK[existing["severity"]]
@@ -4766,8 +4771,80 @@ def merge_findings(partials: list[dict]) -> list[dict]:
 #: checks (`review-protocol.md` Goal 2).
 RECORD_LINT_GOAL = "Nothing Is Missing"
 
+#: The pseudo-role the record-lint partial carries, and the ``source`` its
+#: findings and observations are stamped with in the fact. No roster names this
+#: role, so no reviewer partial can carry it: only consolidation can mint an
+#: entry a later review treats as a prior record-lint result.
+RECORD_LINT_SOURCE = "record-lint"
 
-def record_lint_partial(manifest: dict) -> dict:
+
+def _lint_identity(entry: dict) -> "tuple[str, str]":
+    """A record-lint result's identity: its title (check and place) and its
+    recommendation (every detail, in record-lint's order). A materially changed
+    result changes the second half, so it is a new result."""
+    return (
+        evidence.finding_title(entry),
+        entry.get("recommendation") or "",
+    )
+
+
+def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
+    """``identity`` → a sentence naming the answer already given to an identical
+    record-lint result, split by what that answer may suppress::
+
+        {"warning": {identity: sentence}, "blocking": {identity: sentence}}
+
+    **A WARNING is answered by the newest disposition being an accept or a
+    file** — the answers ``prior_dispositions`` hands a reviewer so it declines
+    to re-raise. A ``fixed`` disposition answers nothing here: the lint still
+    reporting the identical result is the evidence it was not fixed.
+
+    **A BLOCKING result is answered only by a ``waived`` resolution fact**, the
+    one record ``coverage_algebra.resolution_index`` accepts as clearing a
+    blocker that was not fixed. A disposition never clears a blocker at the
+    gate, owner ruling or not, so letting one suppress the re-raise would be a
+    second, weaker way to clear one.
+
+    Scoped like ``prior_dispositions``: with a scope, only reviews recorded
+    under the same scope count.
+    """
+    from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    answered: dict = {"warning": {}, "blocking": {}}
+    if not isinstance(store, dict) or store.get("status") == "error":
+        return answered
+    review_scope = {
+        f.get("id"): (f.get("body") or {}).get("scope")
+        for f in evidence.facts_of_kind(store, "review")
+    }
+    latest = dispositions.disposition_index(store)
+    resolutions = dispositions.resolution_detail_index(store)
+    for key, finding in evidence.findings_index(store).items():
+        if finding.get("source") != RECORD_LINT_SOURCE:
+            continue
+        if scope is not None and review_scope.get(key[0]) != scope:
+            continue
+        identity = _lint_identity(finding)
+        ref = f"{key[0]}/{key[1]}"
+        if resolutions.get(key) == "waived":
+            answered["blocking"].setdefault(
+                identity, f"already waived by a resolution of {ref}"
+            )
+        fact = latest.get(key)
+        body = (fact or {}).get("body") or {}
+        action = body.get("action")
+        if action == dispositions.ACCEPT:
+            answered["warning"].setdefault(
+                identity, f"already accepted as {ref}: {body.get('reason') or ''}".rstrip(": ")
+            )
+        elif action == dispositions.FILE:
+            answered["warning"].setdefault(
+                identity, f"already filed as {ref} ({body.get('backlog_id')})"
+            )
+    return answered
+
+
+def record_lint_partial(manifest: dict, store: "dict | None" = None) -> dict:
     """The dispatch's ``record_lint`` results as a partial-shaped
     ``{findings, observations}``, rated for this review's stage.
 
@@ -4778,10 +4855,21 @@ def record_lint_partial(manifest: dict) -> dict:
     arrives from here now, at the severity ``record_lint.SEVERITY`` assigns,
     and nothing depends on a reviewer restating a result the machine computed.
 
+    **One entry per (check, place, severity), carrying every detail.** Several
+    results of one check at one place (missing deliverables on one line, the
+    problems of one fragment, two chunks whose check could not run) would share
+    a title, and the merge keys on the title: all but one detail was lost and
+    the builder met one item per round. Details stay in record-lint's order,
+    so the entry is the same on every run.
+
     Stage, as the protocol rates everything else: at the boundary every row
     stands; at the inner stage only ``record_lint.INNER_BLOCKING`` stays a
     finding and the rest are observations; and a ``verify-resolutions`` pass,
     whose observations must judge a named fix, carries only the findings.
+
+    **A result already answered is not re-raised** (``answered_lint_results``,
+    over ``store``): it is carried as an observation naming the answer, which a
+    ``verify-resolutions`` pass drops like any observation judging no fix.
     """
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
 
@@ -4790,27 +4878,80 @@ def record_lint_partial(manifest: dict) -> dict:
         stage = stage_of_manifest(manifest)
     except ValueError:
         stage = STAGE_BOUNDARY  # an unknown mode rates at full severity: fail closed
-    findings: list[dict] = []
-    observations: list[dict] = []
+    groups: dict = {}
     for item in record_lint.graded(manifest.get("record_lint")):
         severity = item["severity"]
         if stage == STAGE_INNER and not (
             severity == "blocking" and item["check"] in record_lint.INNER_BLOCKING
         ):
             severity = None
+        group = groups.setdefault(
+            (item["check"], item["where"], severity), {"details": [], "files": []}
+        )
+        detail = item["detail"] or "(no detail)"
+        if detail not in group["details"]:
+            group["details"].append(detail)
+        if item["path"] and item["path"] not in group["files"]:
+            group["files"].append(item["path"])
+    answered = answered_lint_results(store, manifest.get("scope"))
+    findings: list[dict] = []
+    observations: list[dict] = []
+    for (check, where, severity), group in groups.items():
+        details = group["details"]
         entry = {
-            "name": f"record-lint {item['check']}: {item['where']}",
+            "name": f"record-lint {check}: {where}",
             "goal": RECORD_LINT_GOAL,
-            "recommendation": item["detail"] or "(no detail)",
+            "recommendation": (
+                details[0] if len(details) == 1
+                else "; ".join(f"({n}) {d}" for n, d in enumerate(details, start=1))
+            ),
+            "source": RECORD_LINT_SOURCE,
         }
-        if item["path"]:
-            entry["files"] = [item["path"]]
-        if severity is None:
-            if mode_token != "verify-resolutions":
-                observations.append(entry)
-        else:
+        if group["files"]:
+            entry["files"] = list(group["files"])
+        prior = None
+        if severity is not None:
+            prior = answered["blocking" if severity == "blocking" else "warning"].get(
+                _lint_identity(entry)
+            )
+        if severity is not None and prior is None:
             findings.append({**entry, "severity": severity})
-    return {"findings": findings, "observations": observations}
+        elif mode_token != "verify-resolutions":
+            if prior is not None:
+                entry = {**entry, "recommendation": f"{entry['recommendation']} — {prior}"}
+            observations.append(entry)
+    return {"role": RECORD_LINT_SOURCE, "findings": findings, "observations": observations}
+
+
+def promote_rated_observations(partials: list[dict]) -> "tuple[list[dict], int]":
+    """``partials`` with every observation rated ``warning`` moved into its
+    partial's ``findings`` at that severity, and how many moved.
+
+    For a BOUNDARY dispatch only, where a WARNING is a finding. The validator
+    tolerates a lesser ``severity`` on an observation and the merge drops it, so
+    without this a rated WARNING parked in ``observations`` closed the review
+    0/0 with its rating gone. Promoting fails toward the stricter reading and
+    costs no round, where refusing the partial would cost one.
+    """
+    out: list[dict] = []
+    moved = 0
+    for partial in partials:
+        keep, lift = [], []
+        for o in partial.get("observations") or []:
+            sev = o.get("severity")
+            if isinstance(sev, str) and sev.strip().lower() == "warning":
+                lift.append({**o, "severity": "warning"})
+            else:
+                keep.append(o)
+        if lift:
+            moved += len(lift)
+            partial = {
+                **partial,
+                "findings": list(partial.get("findings") or []) + lift,
+                "observations": keep,
+            }
+        out.append(partial)
+    return out, moved
 
 
 def observation_about(observation: dict) -> "tuple[str, str] | None":
@@ -4884,6 +5025,8 @@ def merge_observations(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            if partial.get("role") == RECORD_LINT_SOURCE:
+                entry["source"] = RECORD_LINT_SOURCE
             about = observation_about(o)
             if about is not None:
                 entry["about"] = {"review_id": about[0], "fid": about[1]}
@@ -5109,7 +5252,11 @@ def _fact_chunk_fields(manifest: dict) -> dict:
 
 
 def build_fact_body(
-    manifest: dict, partials: list[dict], *, dispatched_at: "str | None" = None
+    manifest: dict,
+    partials: list[dict],
+    *,
+    dispatched_at: "str | None" = None,
+    store: "dict | None" = None,
 ) -> dict:
     """Assemble the review fact body (design D4) from the manifest interval
     and the merged partials. The derived cache is rendered FROM this body
@@ -5123,7 +5270,9 @@ def build_fact_body(
     """
     # The record-lint results join last, so reviewer findings keep their fids
     # and a result a reviewer also raised under the same name merges into one.
-    rated = partials + [record_lint_partial(manifest)]
+    # `store` is the evidence read before this fact is appended, so a record-lint
+    # result already answered on the record is not re-raised.
+    rated = partials + [record_lint_partial(manifest, store)]
     findings = merge_findings(rated)
     blocking, warning, note = _severity_counts(findings)
     # Parallel reviewers → wall-clock is the slowest, not the sum. None when no
@@ -5995,9 +6144,20 @@ def consolidate(
 
     # Observations arrive from every stage: what a reviewer would once have
     # rated NOTE has no other home now that `validate_partial` refuses `note`.
-    # The array cannot carry a gating item — `_validate_observations` refuses a
-    # `blocking` one — and at the boundary a WARNING stays a finding by the
-    # protocol's table, so the boundary's ratings are unchanged.
+    # What is enforced: `_validate_observations` refuses a `blocking` entry at
+    # every stage, and at the boundary an entry rated `warning` is promoted
+    # into `findings` (`promote_rated_observations`). An entry that carries no
+    # rating at all is taken as the reviewer's observation; nothing here can
+    # tell a WARNING the reviewer chose not to rate from a true observation.
+    if stage_of_manifest(manifest) == STAGE_BOUNDARY:
+        partials, promoted = promote_rated_observations(partials)
+        if promoted:
+            print(
+                f"critic-consolidate: promoted {promoted} observation(s) rated "
+                "`warning` into findings — at the boundary a WARNING is a "
+                "finding, so the rating is kept rather than dropped.",
+                file=sys.stderr,
+            )
 
     # Resolutions may only arrive from a verify-resolutions dispatch — they
     # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.
@@ -6087,7 +6247,7 @@ def consolidate(
         dispatched_at, _clock_reason = review_dispatch.peek(
             prawduct_dir, "review.critic", review_dispatch.head_sha(project_dir)
         )
-        body = build_fact_body(manifest, partials, dispatched_at=dispatched_at)
+        body = build_fact_body(manifest, partials, dispatched_at=dispatched_at, store=store)
         if dropped:
             # On the fact, not only stderr: without it a verify pass that noticed
             # nothing and one whose every observation was dropped read alike, and

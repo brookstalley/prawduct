@@ -113,7 +113,7 @@ Self-gating (SKILL step 1). Read `framework-checks.md` for the definitions: **Ge
 
 ### Records Pass and Governing-Artifact Reconciliation
 
-**`final`/`cumulative` only.** See `cross-checks.md`: check the plan against the Direction statements of its `governed_by:` artifacts, and rate `files_oracle` against the Records Pass's bars, naming the set you covered.
+**`final`/`cumulative` only.** See `cross-checks.md`: judge whether each recorded `governed_by:` disposition is true of the diff, and rate `files_oracle` against the Records Pass's bars, naming the set you covered.
 
 ## Severity Levels
 

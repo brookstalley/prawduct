@@ -35,7 +35,11 @@ the manifest's `record_lint` rode into the fact as data no gate reads. `critic-c
 records every result and `unchecked` entry in the review itself, at the severity
 `record_lint.SEVERITY` assigns for the review's stage (`record_lint_partial`), so a blocking
 record result blocks with no reviewer in the path. At the inner stage only `chunk-ref-missing`
-stays a finding; a `verify-resolutions` pass carries only the findings.
+stays a finding; a `verify-resolutions` pass carries only the findings. Results of one check at
+one place become one entry listing every detail. A result identical to one already accepted or
+filed (a WARNING), or already `waived` by a resolution (a BLOCKING one — the only answer the gate
+takes for a blocker), is carried as an observation naming that answer instead of being raised
+again. At the boundary an observation its reviewer rated `warning` is promoted into the findings.
 
 ### Every description agrees (Chunk 03)
 
@@ -53,4 +57,5 @@ disposition, so the closing line no longer asks you to answer observations. Reco
 (a missing declared deliverable, a learnings file over budget, a `governed_by:` gap) now appear
 in the review as findings or observations recorded by consolidation itself, at the severity the
 lint assigns; a review whose plan has no gradable chunk section records a blocking finding for
-the deliverable check that could not run. Reviews recorded before this change keep their notes.
+the deliverable check that could not run. A record-lint warning you accepted or filed is not
+raised again until the result changes. Reviews recorded before this change keep their notes.

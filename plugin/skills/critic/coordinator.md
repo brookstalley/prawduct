@@ -16,7 +16,7 @@ Persistence is **decoupled from the review**: reviewers write partials, `critic-
 
    - **`[dir]` is the manifest's `worktree`** — already absolute, and the tree `critic-begin` measured. A subagent does not inherit your cwd, so a relative path resolves into the primary checkout: a different tree at a different commit, which reviews clean.
    - **Never paste the file lists into the prompt**: you write the prompts one after another, so a list delays the last reviewer's start by its length.
-   - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
+   - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3 + the Governing-Artifact Reconciliation.
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
    - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Records Pass over the oracle files.
 

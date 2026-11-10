@@ -52,7 +52,9 @@ of the wrong tree reads exactly like a clean one.
 The role → goal mapping
 (definitions in `review-protocol.md`, read it from your skill/critic directory):
 
-- **correctness** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended).
+- **correctness** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended);
+  ALSO run the Governing-Artifact Reconciliation (`cross-checks.md`): whether each recorded
+  `governed_by:` disposition is true of the diff.
 - **design** — Goals 4 (Everything Is Coherent), 7 (The Design Is Sound); ALSO run the
   Framework-Specific Checks (`review-protocol.md`) when the diff touches framework
   instruction files or templates.

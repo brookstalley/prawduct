@@ -329,8 +329,8 @@ asked is exactly the moment the item it should find was just filed.
 
 The other queries — `open`, `by-area`, `stale`, `unstaged`, `created-since`, `resolve`, `affecting` —
 and the two rules every caller binds to (**exit 6 means the store could not be read, not that nothing
-matched**; every payload carries a visible age) are in `cache-reads.md`, which the Critic, PR reviewer
-and janitor read too.
+matched**; every payload carries a visible age) are in `cache-reads.md`, which the PR reviewer and the
+janitor read too.
 
 ## Operations that don't apply post-cutover
 

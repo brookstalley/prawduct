@@ -1203,9 +1203,11 @@ LAST_MEASURED_TOKENS = {
     # -4 on 2026-10-25 (chunk-status, owner ruling D1): the inferred-chunk caveat names the plan's first open chunk;
     # `--chunks`. A READING; the ceiling follows it down.
     # -1652 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
-    "skills/critic/cross-checks.md": 1734,
+    # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING; ceiling lowered.
+    "skills/critic/cross-checks.md": 1729,
     # -17 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
-    "skills/critic/coordinator.md": 577,
+    # +5 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING.
+    "skills/critic/coordinator.md": 582,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -6327,7 +6329,8 @@ class TestReviewCycle:
         # RATCHETED 3405 -> 3391 (retired-claim-survives, 2026-10-22) with the reading.
         # RATCHETED 3391 -> 3387 (chunk-status, 2026-10-25) with the reading.
         # LOWERED 3387 -> 1735 (critic-trim, 2026-11-10) with the reading.
-        assert tokens < 1735, f"cross-checks.md is ~{tokens} tokens, should be <1735"
+        # LOWERED 1735 -> 1730 (critic-trim review round) with the reading.
+        assert tokens < 1730, f"cross-checks.md is ~{tokens} tokens, should be <1730"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).
@@ -6335,7 +6338,8 @@ class TestReviewCycle:
         # without landing in SKILL.md, which the cheap `chunk`/`verify` route loads.
         tokens = estimate_tokens(read_file("skills/critic/coordinator.md"))
         # LOWERED 595 -> 578 (critic-trim, 2026-11-10) with the reading.
-        assert tokens < 578, f"coordinator.md is ~{tokens} tokens, should be <578"
+        # RAISED 578 -> 583 (critic-trim review round), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 583, f"coordinator.md is ~{tokens} tokens, should be <583"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

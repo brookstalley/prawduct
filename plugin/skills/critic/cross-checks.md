@@ -90,12 +90,11 @@ that produced no answer, not a zero.
 
 ### Governing-Artifact Reconciliation
 
-When the plan declares `governed_by:`, verify each listed artifact carries a recorded disposition
-**for each of its Direction norms** (`conforms` | `ruling needed` | `exception` | `amendment
-proposed` | `inapplicable because X`). A governing norm with no disposition line means
-applicability was **assumed, not recorded** (`/prawduct:methodology norms`, "Applicability is recorded, not
-assumed") → **WARNING** (Goal 2). This arm grades only the missing planning *paperwork*: an actual
-departure, amendment, or `## Direction` edit without a recorded decision is the Authority Rule's
-territory and stays **BLOCKING** via Goal 3 — never downgraded to this WARNING. A plan with no
-`governed_by:` field in a product that already carries `## Direction` sections is itself the gap →
-an observation recommending the `prawduct-hook jurisdiction` seed.
+**The missing paperwork is record-lint's, not yours.** A governing norm with no disposition line, a
+cited artifact that does not exist, or a frontmatter no parser can read is `governed-by-gap`, which
+consolidation records — never raise it. What the lint cannot see is whether a recorded disposition
+is **true**: a `conforms` (or `inapplicable because X`) over a diff that departs from the norm is a
+departure without a recorded decision — the Authority Rule's territory, **BLOCKING** via Goal 3.
+A plan with no `governed_by:` field in a product that already carries `## Direction` sections is an
+observation recommending the `prawduct-hook jurisdiction` seed. Under the coordinator pattern this
+pass is the `correctness` reviewer's, which holds Goal 3.

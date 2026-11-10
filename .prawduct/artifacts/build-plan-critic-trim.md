@@ -16,6 +16,7 @@ governed_by:
       - "two stores, two lifetimes → inapplicable because no store changes"
       - "backlog_service_repo selects the authoritative backlog store → inapplicable because the reviewer's backlog walk is removed, not repointed"
       - "backlog issues conform to the title rules → inapplicable because no write path changes"
+      - "a governance document reaches a terminal state and is never deleted → inapplicable because no plan or record lifecycle changes"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 → conforms; removes reviewer work and the disposition of notes"
@@ -65,8 +66,10 @@ exactly where it did.
 - No new gate.
 
 **Inferences, for the owner to veto at the boundary:**
-- *Inferred:* the mid-build decisions list is printed by `critic-consolidate` from the plan's
-  Goals section, where the builder relays the review's result, and is no longer a finding.
+- *Disproved while building:* the mid-build decisions list was to be printed by
+  `critic-consolidate` from the plan's Goals section. No reader of that section exists, so nothing
+  prints it and the mandated NOTE is gone with no replacement. Owed to the owner as an open
+  question: whether the list should reach them, and by what route.
 - *Inferred:* the norm-index rows that named the retired checks as their mechanism say what now
   holds them: backlog filing keeps Critic Goal 3 (norm departures); nothing else replaces the
   backlog walk.
@@ -85,6 +88,11 @@ exactly where it did.
 - Chunk 03 — the end-of-cycle Stop nudge stops naming a Learnings Cross-Check and its read list;
   `prawduct-hook learnings-files --for-diff` is kept although its reviewer consumer is gone (out of
   this plan's removal list). *Not settled by the goals* — left for the owner.
+- Chunk 03 — the constraint "The PR reviewer is untouched" holds for its checks, not for its
+  description of the Critic: `skills/pr/review-protocol.md`'s sentences saying the Critic owns the
+  backlog walk and the learnings scan were corrected, because they became false; none of the PR
+  reviewer's own checks, ratings or instructions changed. Settled by the plan's "every description
+  agrees" goal.
 
 **Level:** High on what to remove. Medium on the record-lint path: the builder confirms from the
 code where a relayed lint finding gets its blocking force today before moving it, and stops to

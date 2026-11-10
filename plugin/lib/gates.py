@@ -2191,26 +2191,17 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
 
 
 def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """THE change set the learnings read list is computed from: ``(files, reason)``.
+    """The session's change set, for the learnings read list: ``(files, reason)``.
 
-    One definition, because two were worse than either. The gate nudge asked
-    ``_get_session_changed_files`` (uncommitted work only) while the reviewer's
-    ``learnings-files --for-diff`` asked the base BRANCH — so a builder who
-    commits the chunk before Stop fires, which is the ordinary cadence, got a
-    nudge naming ``core.md`` alone while the verb named the area files the
-    harness had actually loaded. The one line whose purpose is to make a silent
-    disagreement noticeable was the disagreement.
-
-    The definition is the **session's** base tree → the working tree, union
-    untracked: everything this session touched whether or not it has been
-    committed yet. That is the span both readers mean — the gate is judging this
-    session, and the reviewer is reading the rules this session had loaded.
+    The **session's** base tree → the working tree, union untracked: everything
+    this session touched whether or not it has been committed yet. Its one
+    caller is :func:`learnings_review_change_set`, which falls back to it when no
+    review is dispatched.
 
     ``reason`` is empty on success and names the failure otherwise. It is a
     return value rather than an exception or a silent ``[]`` because "nothing
-    changed" and "could not tell" are opposite facts and every caller has to
-    say which one it got (`R4`: a degraded advisory path names its
-    consequence).
+    changed" and "could not tell" are opposite facts and the caller has to say
+    which one it got (`R4`: a degraded advisory path names its consequence).
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     base = _read_session_base_tree(prawduct_dir)
@@ -2228,16 +2219,12 @@ def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
 
 
 def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """The change set a REVIEWER's read list is computed from: ``(files, reason)``.
+    """The change set ``learnings-files --for-diff`` lists rules for: ``(files, reason)``.
 
-    **Why this is not :func:`learnings_change_set`, whose docstring argues for
-    one definition.** That argument is intact and still binding: the Stop nudge
-    and the reviewer must never give different answers to *the same* question.
-    They are not asking the same question. The gate judges **this session**; a
-    dispatched reviewer judges **the review interval**, and for a ``cumulative``
-    of already-committed work those two spans are not merely different, the
-    session one is EMPTY — the session began after the commits, so its base tree
-    IS ``HEAD^{tree}`` and a clean working tree diffs to nothing.
+    **Why the review interval and not the session span.** For a ``cumulative``
+    of already-committed work the session span is EMPTY — the session began
+    after the commits, so its base tree IS ``HEAD^{tree}`` and a clean working
+    tree diffs to nothing.
 
     Measured 2026-09-20 on this repo: the cumulative reviewing a five-commit
     branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no

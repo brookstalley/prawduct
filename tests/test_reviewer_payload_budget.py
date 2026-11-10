@@ -303,7 +303,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
     # -1762 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
-    "single-pass-full": 9776,
+    # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. Ceiling lowered.
+    "single-pass-full": 9771,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -394,7 +395,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
     # the race-hiding the recorder's retry would otherwise buy.
     # -1880 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
-    "dispatched-reviewer": 9128,
+    # +16 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned — the role line in the
+    # agent definition, and the WARNING arm's cut in cross-checks.md, net. Ceiling raised with it.
+    "dispatched-reviewer": 9144,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -450,8 +453,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5576,
-    "single-pass-full": 9777,
-    "dispatched-reviewer": 9129,
+    "single-pass-full": 9772,
+    "dispatched-reviewer": 9145,
     "coordinator-fork": 10354,
 }
 

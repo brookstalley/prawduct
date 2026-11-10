@@ -33,11 +33,11 @@ plugin/bin/prawduct-hook backlog cache-query …` — identical contract.
 |---|---|
 | `open` | every open item with id, title and body |
 | `by-area [--all]` | items grouped by `area`, with a count per group |
-| `affecting <path>...` | items whose `affected:` paths cover any of those files |
+| `affecting <path>...` | items whose `affected:` paths cover any of those files (no shipped reviewer reads it now) |
 | `search <text> [--area A]` | full-text over titles and bodies |
 | `stale [--older-than N]` | open items untouched for longer than N days (the query's default when omitted) |
 | `unstaged` | open items carrying no `stage` |
-| `created-since <ISO>` | items created at or after that instant |
+| `created-since <ISO>` | items created at or after that instant (no shipped reviewer reads it now) |
 | `resolve <id>` | what an id names — status, `dead`, and whether it resolves at all |
 
 `resolve` goes through the alias table, so a historical citation still resolves after the item gains
