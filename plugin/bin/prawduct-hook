@@ -2430,8 +2430,9 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
         f"base {base_ref[:12]} — confirm this is where the work lives."
     )
     # Record-lint results are already in the manifest; echo them so the
-    # dispatching agent sees the machine's answers without opening the file,
-    # and so a reviewer is never asked to re-derive one.
+    # dispatching agent sees the machine's answers without opening the file.
+    # Consolidation rates each into the review (`record_lint_partial`), so no
+    # reviewer re-derives or restates one.
     lint = manifest.get("record_lint") or {}
     lint_lines = _record_lint().format_findings(lint)
     # The clause lists are DERIVED, never restated. A hand-written one went out
@@ -2449,7 +2450,8 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
             f"PRAWDUCT: record-lint — {len(lint.get('findings') or [])} finding(s) "
             f"across {len(lint.get('records') or [])} changed record(s)"
             + (f"; {skipped} produced NO answer" if skipped else "")
-            + ". Advisory: fix or disposition them; they gate nothing."
+            + ". The review records each at its record-lint severity; a"
+            " reviewer does not restate them."
         )
         for line in lint_lines:
             print(f"  {line}")

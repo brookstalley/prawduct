@@ -52,7 +52,7 @@ Authoring heuristic (what inference picks per plan shape, when an explicit decla
 | **Protocol read** (SKILL step 2; `final`/`cumulative` also load `cross-checks.md` and `framework-checks.md`) | `goals-1-3.md` | `review-protocol.md` | `review-protocol.md` | `goals-1-3.md` |
 | **Stage** (derived by `critic-begin` from the mode's interval, recorded in the manifest as `stage`) | `inner` | `inner` | `boundary` | `inner` |
 | **Goals run** | 1, 2, 3 | All 7 goals | All 7 goals | 1, 2, 3 |
-| **Goals skipped** | 4-7; Learnings Cross-Check; Backlog Reconciliation; Records Pass; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
+| **Goals skipped** | 4-7; Records Pass; Framework-Specific Checks (7-10); README/top-level docs scan | None | None | Same as `chunk` |
 | **New findings rated** | The inner BLOCKING set only — every other rated item is an OBSERVATION (see "Severity is stage-keyed") | Same as `chunk`, Goals 4–7 included | BLOCKING and WARNING; anything lesser is an OBSERVATION | **BLOCKING only**, and only from the inner set — anything lesser is an OBSERVATION in the reviewer's report, never a `findings` entry (see "A re-review does not manufacture work") |
 | **Review interval** (derived by `critic-begin`, recorded in the manifest) | Last blocker-free reviewed tree (else the merge-base if nothing judgeable is uncommitted, else HEAD's) → captured working tree | Same as `chunk` | Merge-base tree → HEAD's tree (base branch from `prawduct-hook resolve-base`) — the committed PR bundle | Prior review fact's tree → captured working tree (see "Verify-resolutions anchoring and demotion") |
 | **Execution** (roster derived by `critic-begin`) | Always single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Coordinator when a risk surface is touched or 12+ judgeable files change; else single-pass | Always single-pass |
@@ -79,9 +79,8 @@ stage** is any review of an uncommitted or delta interval (`chunk`, `final`, `ve
 the **boundary stage** is the committed bundle (`cumulative`) and the PR review. At the inner stage a
 finding is one of the **inner BLOCKING set** — a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency — and every other verdict the tables rate is an
 observation: reported, recorded in the partial's `observations` array, owed no disposition,
-never a `findings` entry. At the boundary the tables stand as written. At neither stage is `note` a
-finding severity — consolidation refuses one — so what a reviewer finds below WARNING is an
-observation at both. `critic-begin` derives `stage` from the mode (one home: `critic_consolidate.stage_of`), writes it
+never a `findings` entry. At the boundary the tables stand as written; at neither stage is `note` a
+finding severity. `critic-begin` derives `stage` from the mode (one home: `critic_consolidate.stage_of`), writes it
 on the manifest with `judgeable_files`, `chunk_type` and the code-rendered `signals` line every
 reviewer is handed, and it rides the review fact, the findings cache and the
 `review.critic` ledger event — `review-stats` groups on it (`by_stage`), which is the yield query the
@@ -272,8 +271,7 @@ go back and sort them into ACCEPT and FIX.
 
 **Every finding takes a disposition; an observation takes none.** BLOCKING and WARNING both take
 one; only the bar for ACCEPT differs (a BLOCKING cannot be accepted at all without an explicit owner
-decision, since gates compose on it). An observation is not a finding: it gates nothing and nothing
-is owed on it.
+decision, since gates compose on it).
 
 Reviewers are told never to name the backlog as a finding's destination (`cross-checks.md`).
 
@@ -331,8 +329,8 @@ can never open a gate**. `--force` buys one anyway; needing that every time mean
 
 ## Reviewer Cross-Checks
 
-The Final-Mode Cross-Checks (Learnings Cross-Check, Backlog Reconciliation, Records Pass,
-Record-Lint and Governing-Artifact Reconciliation) are in `cross-checks.md`, the file every
+The Final-Mode Cross-Checks (Records Pass and Governing-Artifact Reconciliation), and the
+record-lint results consolidation records itself, are in `cross-checks.md`, the file every
 `final`/`cumulative` reviewer loads.
 
 ## Recording Reviews

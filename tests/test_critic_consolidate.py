@@ -2667,15 +2667,19 @@ class TestVerifyRatesBlockingOnlyDirective:
         treadmill: fixing one bought the next verify round. Paid by cutting
         "the builder still reads your observations", which the scoping made
         false.
+
+        811 -> 807: "record-lint entries included" went, because no reviewer
+        rates a record-lint result any more — consolidation records each. The
+        ceiling came down by the same amount.
         """
         tokens = int(len(cc.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE.split()) * 1.3)
 
-        assert tokens == 811, (
+        assert tokens == 807, (
             f"VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE is ~{tokens} tokens; this pin "
-            f"says 811. Update it to {tokens} and say in the docstring what paid "
+            f"says 807. Update it to {tokens} and say in the docstring what paid "
             f"for the change — the ceiling below is not a budget to spend."
         )
-        assert tokens < 865, (
+        assert tokens < 861, (
             f"the directive is ~{tokens} tokens. It is delivered on every verify "
             f"dispatch and competes with the review for attention. Trim, or move "
             f"a clause to the protocol file that owns it."
@@ -4865,12 +4869,16 @@ class TestStageReachesEveryReader:
         assert result.returncode == 0, f"stderr={result.stderr!r}"
 
         fact = _store_facts(repo, "review")[0]
-        (finding,) = fact["body"]["findings"]
+        # `--scope demo` names no plan, so record-lint's cannot-run entry rides
+        # in beside the reviewer's finding; the join is about the reviewer's.
+        (finding,) = [f for f in fact["body"]["findings"] if f["title"] == "Missing test"]
         events = [json.loads(ln) for ln in (repo / LEDGER_REL).read_text().splitlines()
                   if '"review.critic"' in ln]
         assert len(events) == 1
         assert events[0]["review"]["fact_id"] == fact["id"]
-        assert [f.get("fid") for f in events[0]["review"]["findings"]] == [finding["fid"]]
+        assert [f.get("fid") for f in events[0]["review"]["findings"]] == [
+            f["fid"] for f in fact["body"]["findings"]
+        ]
 
         env = {**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
         filed = subprocess.run(
@@ -6562,9 +6570,13 @@ class TestRecordLintInManifest:
         assert "record-lint" in result.stdout
         assert "src/never_built.py" in result.stdout
 
-    def test_lint_findings_do_not_gate(self, tmp_path):
-        """Advice, not authority: a lint finding never blocks dispatch and never
-        reaches the fact's severity counts."""
+    def test_a_lint_finding_never_blocks_dispatch_and_consolidation_rates_it(self, tmp_path):
+        """Renegotiated contract: this pin used to say a lint finding never
+        reaches the fact's counts, because a REVIEWER relayed it as a finding
+        and that relay was where its blocking force came from. Consolidation
+        now delivers it at the severity record-lint assigns, so the missing
+        deliverable blocks from the fact with no partial mentioning it.
+        Dispatch still never refuses on it."""
         plan = (
             "# Plan\n\n## Status\n\n- [ ] Chunk 01: do it\n\n"
             "### Chunk 01: do it\n\n"
@@ -6574,8 +6586,8 @@ class TestRecordLintInManifest:
         assert result.returncode == 0
         assert manifest["record_lint"]["findings"], "the finding exists…"
         body = cc.build_fact_body(manifest, [])
-        assert body["counts"] == {"blocking": 0, "warning": 0, "note": 0}
-        assert body["findings"] == []
+        assert body["counts"] == {"blocking": 1, "warning": 0, "note": 0}
+        assert "src/never_built.py" in body["findings"][0]["recommendation"]
 
     def test_the_fact_carries_the_yield(self, tmp_path):
         """The observable-yield obligation: a control born after 2026-07-29
@@ -6590,6 +6602,143 @@ class TestRecordLintInManifest:
         _repo, manifest, _res = self._dispatch(tmp_path)
         manifest.pop("record_lint")
         assert cc.build_fact_body(manifest, [])["record_lint"] is None
+
+
+def _lint(findings=(), unchecked=()) -> dict:
+    """A `record_lint` manifest block with the given results."""
+    return {
+        "records": [], "chunk_graded": "01", "chunks_graded": ["01"],
+        "plan_graded": "p.md", "findings": list(findings),
+        "unchecked": list(unchecked), "counts": {},
+    }
+
+
+def _lint_finding(check: str, path: str = ".prawduct/artifacts/p.md", line=None,
+                  detail: str = "the detail") -> dict:
+    return {"check": check, "path": path, "line": line, "detail": detail}
+
+
+class TestRecordLintReachesTheReview:
+    """Record-lint results reach the review from the code that computed them.
+
+    A reviewer used to relay each one as a finding, and that relay was the only
+    route by which a blocking record result reached `unresolved_blocking`: the
+    manifest's `record_lint` rides into the fact as data and no gate reads it.
+    Consolidation now converts each result itself, at the severity record-lint
+    assigns for the review's stage, so no partial has to mention it."""
+
+    def _consolidate(self, tmp_path, lint, *, mode=CUMULATIVE_MODE, stage="boundary",
+                     roster=None):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        roster = roster or ["correctness", "design", "sustainability"]
+        _write_manifest(repo, head, mode=mode, stage=stage, roster=roster,
+                        record_lint=lint)
+        for role in roster:
+            _write_partial(repo, role, head, findings=[])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        return repo, _store_facts(repo, "review")[-1], result
+
+    def test_a_blocking_record_result_blocks_with_no_partial_mentioning_it(self, tmp_path):
+        repo, fact, result = self._consolidate(tmp_path, _lint(findings=[
+            _lint_finding("chunk-ref-missing", path="chunk 01", line=12,
+                          detail="declared deliverable `src/x.py` does not exist"),
+        ]))
+        [finding] = fact["body"]["findings"]
+        assert finding["severity"] == "blocking"
+        assert finding["goal"] == "Nothing Is Missing"
+        assert "chunk-ref-missing" in finding["title"]
+        assert "`src/x.py`" in finding["recommendation"]
+        # The gate's own predicate, not a proxy: the fact blocks.
+        assert ca_mod.unresolved_blocking(fact, set()) == [finding]
+        assert "NEXT-ACTION: 1 BLOCKING finding(s)" in result.stdout
+
+    def test_a_clean_lint_and_clean_partials_consolidate_clean(self, tmp_path):
+        """No backlog walk and no learnings cross-check: a review whose
+        reviewers raise nothing and whose lint found nothing records nothing."""
+        _repo, fact, _result = self._consolidate(tmp_path, _lint())
+        assert fact["body"]["findings"] == []
+        assert fact["body"]["observations"] == []
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+
+    def test_an_old_manifest_without_record_lint_adds_nothing(self, tmp_path):
+        _repo, fact, _result = self._consolidate(tmp_path, None)
+        assert fact["body"]["findings"] == []
+
+    def test_the_boundary_rates_every_check_at_its_table_severity(self, tmp_path):
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(findings=[
+            _lint_finding("learnings-over-budget", path=".claude/rules/learnings/core.md"),
+            _lint_finding("governed-by-gap"),
+            _lint_finding("suite-total-claim", path="README.md", line=3),
+        ]))
+        severities = {f["title"].split(":")[0]: f["severity"] for f in fact["body"]["findings"]}
+        assert severities == {
+            "record-lint learnings-over-budget": "blocking",
+            "record-lint governed-by-gap": "warning",
+        }
+        [obs] = fact["body"]["observations"]
+        assert "suite-total-claim" in obs["title"]
+        assert obs["files"] == ["README.md"]
+
+    def test_the_inner_stage_keeps_only_the_inner_blocking_set(self, tmp_path):
+        """At `inner` only a missing declared deliverable (a dropped
+        requirement) stays a finding; the learnings budget rows that block at
+        the boundary, and every WARNING row, are observations."""
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(findings=[
+            _lint_finding("chunk-ref-missing", path="chunk 01"),
+            _lint_finding("learnings-over-budget", path=".claude/rules/learnings/core.md"),
+            _lint_finding("governed-by-gap"),
+        ]), mode=FINAL_MODE, stage="inner")
+        assert [f["severity"] for f in fact["body"]["findings"]] == ["blocking"]
+        assert "chunk-ref-missing" in fact["body"]["findings"][0]["title"]
+        assert len(fact["body"]["observations"]) == 2
+
+    def test_a_verify_pass_carries_only_the_blocking_results(self, tmp_path):
+        """A verify pass keeps only observations that judge a named fix; a lint
+        result judges none, so below the inner BLOCKING set it is dropped —
+        the boundary review re-reads it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-verify-lint", mode=VERIFY_MODE,
+                        stage="inner", roster=["reviewer"], record_lint=_lint(findings=[
+                            _lint_finding("chunk-ref-missing", path="chunk 01"),
+                            _lint_finding("governed-by-gap"),
+                        ]))
+        _write_partial(repo, "reviewer", head, findings=[])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[-1]
+        assert [f["severity"] for f in fact["body"]["findings"]] == ["blocking"]
+        assert fact["body"]["observations"] == []
+
+    @pytest.mark.parametrize("entry,expected", [
+        ("chunk-ref-missing unchecked — the plan is unreadable", "blocking"),
+        ("chunk-ref-missing no-subject — no plan; the change-log declares it", None),
+        ("chunk-ref-missing graded chunk 01 of p.md: chunk 01 was inferred", None),
+        ("learnings-over-budget unchecked — git could not resolve the base", "warning"),
+        ("learnings-over-budget, learnings-budget-unreasoned unchecked — unparseable", "warning"),
+        ("governed-by-gap unchecked on p.md — unreadable", None),
+        ("unknown-reopen-target unchecked on f.md — the change log is unreadable", None),
+    ])
+    def test_an_unchecked_entry_takes_its_shape_severity(self, tmp_path, entry, expected):
+        """`unchecked` is not a pass: an entry inherits one step below its
+        check's severity, except the three `chunk-ref-missing` shapes — a check
+        that could not run blocks, while a plan-less scope and an inferred
+        subject are assumptions, never failures."""
+        _repo, fact, _result = self._consolidate(tmp_path, _lint(unchecked=[entry]))
+        findings, observations = fact["body"]["findings"], fact["body"]["observations"]
+        if expected is None:
+            assert findings == [] and len(observations) == 1
+            assert entry in observations[0]["recommendation"]
+        else:
+            assert [f["severity"] for f in findings] == [expected]
+            assert entry in findings[0]["recommendation"]
+            assert observations == []
 
 
 #: Every value a new manifest may write as ``scope_chosen_by``: the dispatch's

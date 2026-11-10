@@ -1242,7 +1242,7 @@ VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE = (
     " **The test is membership in that set, never the severity a table"
     " prints** — a `→ BLOCKING` outside it (a learnings budget row, an"
     " undocumented decision that departs from no norm) is an observation here,"
-    " and so is everything a table rates lower, record-lint entries included."
+    " and so is everything a table rates lower."
     " Observations go in your report under an"
     " `### Observations` heading, in prose, and NOT into `findings` — and only"
     " one that judges a NAMED fix: incomplete, or right in one place and missed"
@@ -1343,8 +1343,7 @@ FINDING_SCOPE_DIRECTIVE = (
     " for, and expect members outside this delta. An instance closes by being"
     " fixed; an unbounded class closes only by a CONSTRUCTION — one owner every"
     " member passes through, or a check derived from the source of truth —"
-    " never by a longer list of names. A mandated cross-check carrying no"
-    " defect to bound answers `none`."
+    " never by a longer list of names."
 )
 
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
@@ -3745,11 +3744,11 @@ def begin_review(
                 "recorded as declared, with the proposal beside them on the fact"
             )
 
-    # Machine-verified record checks, computed HERE so the reviewers are told
-    # the answers rather than re-deriving them (record-class findings were 57%
-    # of one day's review output on 2026-07-29, and none of them needed
-    # judgment). Advisory: the result rides the manifest for the builder, and
-    # nothing downstream gates on it. A lint that cannot run reports itself
+    # Machine-verified record checks, computed HERE so no reviewer re-derives
+    # them (record-class findings were 57% of one day's review output on
+    # 2026-07-29, and none of them needed judgment). The result rides the
+    # manifest, and consolidation rates it into the review
+    # (`record_lint_partial`); it never refuses this dispatch. A lint that cannot run reports itself
     # ``unchecked`` rather than empty — see ``record_lint``. It grades every
     # chunk the fact will name (`chunk_ids`), not only the first.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
@@ -3762,8 +3761,8 @@ def begin_review(
     # decline to re-litigate them. Dispositions have been facts for a while;
     # nothing put them where a REVIEWER could see one, so a cumulative
     # dispatched after an `--accept` handed its reviewers a diff and no memory.
-    # Advisory like `record_lint` beside it: it rides the manifest, and nothing
-    # downstream gates on it.
+    # Advisory: it rides the manifest as reviewer input, and nothing downstream
+    # gates on it.
     from . import dispositions  # noqa: PLC0415 — lazy; keeps the import graph flat
 
     try:
@@ -4763,6 +4762,57 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     return findings
 
 
+#: The goal a record-lint result is filed under — the one that owns record
+#: checks (`review-protocol.md` Goal 2).
+RECORD_LINT_GOAL = "Nothing Is Missing"
+
+
+def record_lint_partial(manifest: dict) -> dict:
+    """The dispatch's ``record_lint`` results as a partial-shaped
+    ``{findings, observations}``, rated for this review's stage.
+
+    **This is where a blocking record result gets its force.** No gate reads
+    ``record_lint``: gates read the fact's ``findings``
+    (``coverage_algebra.unresolved_blocking``). A reviewer used to relay each
+    result into its partial, so the force arrived only through that relay; it
+    arrives from here now, at the severity ``record_lint.SEVERITY`` assigns,
+    and nothing depends on a reviewer restating a result the machine computed.
+
+    Stage, as the protocol rates everything else: at the boundary every row
+    stands; at the inner stage only ``record_lint.INNER_BLOCKING`` stays a
+    finding and the rest are observations; and a ``verify-resolutions`` pass,
+    whose observations must judge a named fix, carries only the findings.
+    """
+    from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
+
+    mode_token = mode_token_of(manifest.get("mode"))
+    try:
+        stage = stage_of_manifest(manifest)
+    except ValueError:
+        stage = STAGE_BOUNDARY  # an unknown mode rates at full severity: fail closed
+    findings: list[dict] = []
+    observations: list[dict] = []
+    for item in record_lint.graded(manifest.get("record_lint")):
+        severity = item["severity"]
+        if stage == STAGE_INNER and not (
+            severity == "blocking" and item["check"] in record_lint.INNER_BLOCKING
+        ):
+            severity = None
+        entry = {
+            "name": f"record-lint {item['check']}: {item['where']}",
+            "goal": RECORD_LINT_GOAL,
+            "recommendation": item["detail"] or "(no detail)",
+        }
+        if item["path"]:
+            entry["files"] = [item["path"]]
+        if severity is None:
+            if mode_token != "verify-resolutions":
+                observations.append(entry)
+        else:
+            findings.append({**entry, "severity": severity})
+    return {"findings": findings, "observations": observations}
+
+
 def observation_about(observation: dict) -> "tuple[str, str] | None":
     """The ``(review_id, fid)`` an observation says it judges the fix of, or
     ``None`` when it names none usable. ``fid`` may be a finding's ``R-n`` or an
@@ -5071,7 +5121,10 @@ def build_fact_body(
     measured", and a null would be a value naming the absence, which every
     reader would then have to special-case to keep it out of a real interval.
     """
-    findings = merge_findings(partials)
+    # The record-lint results join last, so reviewer findings keep their fids
+    # and a result a reviewer also raised under the same name merges into one.
+    rated = partials + [record_lint_partial(manifest)]
+    findings = merge_findings(rated)
     blocking, warning, note = _severity_counts(findings)
     # Parallel reviewers → wall-clock is the slowest, not the sum. None when no
     # reviewer reported a duration.
@@ -5113,7 +5166,7 @@ def build_fact_body(
         # ``coverage_algebra`` walks ``findings`` alone. What it buys is an id a
         # later verify pass can name, and a demotion rate that is a query over
         # the store rather than a number the reviewer asserts about its own output.
-        "observations": merge_observations(partials),
+        "observations": merge_observations(rated),
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
         # How the scope was decided, carried so attribution is auditable rather
@@ -5141,9 +5194,8 @@ def build_fact_body(
         # into the fact so it is queryable rather than printed and forgotten
         # (`nonfunctional-requirements.md` § Direction — a control born after
         # 2026-07-29 emits its yield at birth, or it can only ever be defended
-        # on principle instead of retired on evidence). This is data ABOUT the
-        # review, not a finding IN it: it never reaches `counts`, so it cannot
-        # move a verdict, and no gate reads it.
+        # on principle instead of retired on evidence). No gate reads this copy:
+        # its results reach `findings` above, through `record_lint_partial`.
         "record_lint": manifest.get("record_lint"),
     }
     # The dispatch clock, on the one record every worktree of the clone can

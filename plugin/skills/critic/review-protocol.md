@@ -8,7 +8,7 @@ The Critic reviews changes against principles and specifications as a **separate
 1. Read `.prawduct/project-state.yaml`.
 2. Assess change scope/nature (git diff or read changed files).
 3. Read relevant `.prawduct/artifacts/`.
-4. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md` and the product's learnings — `.claude/rules/learnings/core.md` plus the area files `prawduct-hook learnings-files --for-diff` lists — `final` mode only.
+4. Read `${CLAUDE_SKILL_DIR}/../../docs/principles.md`.
 5. Mode decides *which* goals (see **Modes**); the manifest's stage decides what is a finding (**Scope and Stage**).
 6. Follow the dispatch manifest's roster (see Review Execution).
 
@@ -23,7 +23,7 @@ The Critic reviews changes against principles and specifications as a **separate
 
 ## Scope and Stage
 
-**Subject and oracle — records govern SCOPE, not READING.** The manifest's `files_reviewed` is the **subject** set: everything but the records *about* the work. Eligibility is its own predicate, never "is it judgeable" — a deliverable, and prose that governs behaviour, are subjects however the gate prices them. `files_oracle` is what the code is judged *against* — read every one; a finding you DERIVE is never about one. *"The code violates this spec"* has the **code** as its subject and stays fully in scope at full severity. Three passes own oracle findings and are not narrowed — the record-lint relay, the Learnings Cross-Check, and the Records Pass, which rates the excluded set against its bars (`cross-checks.md` is the one home for this rule, BLOCKING included).
+**Subject and oracle — records govern SCOPE, not READING.** The manifest's `files_reviewed` is the **subject** set: everything but the records *about* the work. Eligibility is its own predicate, never "is it judgeable" — a deliverable, and prose that governs behaviour, are subjects however the gate prices them. `files_oracle` is what the code is judged *against* — read every one; a finding you DERIVE is never about one. *"The code violates this spec"* has the **code** as its subject and stays fully in scope at full severity. Two producers own oracle findings and are not narrowed — record-lint, which consolidation records itself, and the Records Pass, which rates the excluded set against its bars (`cross-checks.md` is the one home for this rule, BLOCKING included).
 
 **Stage — the manifest's `stage` decides what is a finding** (`review-cycle.md` "Severity is stage-keyed"). At `inner` a finding is one of the **inner BLOCKING set** — a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency — and every other verdict below, Goals 4–7 included, is the boundary rating: report it as an observation (a finding minus `severity`, in your report and in your partial's `observations` array), never in `findings`. At `boundary` (`cumulative`, and the PR review) the table stands as written. The `Signals:` line you were handed carries the stage; you never infer it.
 
@@ -60,8 +60,8 @@ downgrade.
 - Every requirement is implemented or explicitly descoped → **BLOCKING** if silently dropped.
 - **Acceptance criteria are observable behavior** ("user can submit form and see confirmation," not "function X exists") → **WARNING** if implementation-only.
 - **Goals present** (`methodology/planning.md`; older plans: Requirements Confidence) — response taken, inferences marked, a Level. Missing, or Medium/Low without what would raise it → **WARNING**.
-- **Record checks are machine-answered: read the manifest's `record_lint`, don't re-derive it** (chunk deliverables included). Severities and `unchecked`: `cross-checks.md` "Record-Lint".
-- **`prior_dispositions` carries findings already accepted or filed, with reasons, for these files. Do not re-raise one absent material change in its cited files** — acknowledge it in one line under a `priors:` note instead.
+- **Record checks are machine-answered and consolidation records them** (chunk deliverables included): never raise, restate or re-derive one (`cross-checks.md` "Record-Lint").
+- **`prior_dispositions` carries findings already accepted or filed, with reasons, for these files. Do not re-raise one absent material change in its cited files.**
 - **Behavioral choices**: workflow features configurable via `project-preferences.md` (safe default); hardcoded when two paths reasonable → **WARNING**.
 - For user-visible changes: product verified beyond tests → **WARNING** if no evidence.
 - Error paths have test coverage. Happy path + at least one error case per flow → **WARNING** if missing.
@@ -87,7 +87,7 @@ downgrade.
 ### 5. Decisions Were Deliberate
 - **A decision without a recorded why** → **WARNING**: a new external dependency, an architectural pattern, or a major technology choice with alternatives considered, each in the artifact that owns it.
 - If changes cross contract surfaces (see `.prawduct/artifacts/boundary-patterns.md`), was *downstream* consumer impact investigated? → **WARNING** if no evidence. The inverse — a consumer mismodelling what the producer emits — is Goal 1's cross-component contract check, not this one.
-- **Judged against the goals:** the `## Goals` of the build plan the manifest names, and the product brief's near-term and North Star where there is a brief, not only the chunks. Work that drops or alters a goal the owner stated → **BLOCKING** under Goal 2; a goal still marked inferred or hedged → **WARNING** naming it. List the plan's mid-build decisions, what settled each and any alignment-pass miss, in one **NOTE** (recommendation scope `none`) for the owner.
+- **Judged against the goals:** the `## Goals` of the build plan the manifest names, and the product brief's near-term and North Star where there is a brief, not only the chunks. Work that drops or alters a goal the owner stated → **BLOCKING** under Goal 2; a goal still marked inferred or hedged → **WARNING** naming it.
 - **Scope pressure-test:** does each capability trace up to a documented requirement, and is it reachable and consumed end-to-end? A capability with no parent, or one nothing calls → **WARNING**. Goal 3 asks whether the work exceeded its *plan*; this asks whether the plan traced to a *requirement*, and whether anything reaches the result. Open the title with `scope-trace:` so its yield stays countable.
 
 ### 6. The System Can Be Understood
@@ -111,17 +111,17 @@ Applies proportionally — a 2-line helper needs no design review. Prioritize wh
 
 Self-gating (SKILL step 1). Read `framework-checks.md` for the definitions: **Generality**, **Instruction Clarity**, **Cumulative Health**, **Pipeline Coverage**.
 
-### Learnings Cross-Check, Backlog Reconciliation and Records Pass
+### Records Pass and Governing-Artifact Reconciliation
 
-**`final`/`cumulative` only.** See `cross-checks.md`: scan findings against step 4's learnings (escalate when a change reintroduces a warned-against pattern) and against Direction statements of the plan's `governed_by:` artifacts; reconcile the backlog (cache-backed — `skills/backlog/cache-reads.md`; skip the walk only on exit 6, its "unavailable" NOTE), emitting **NOTE** findings for items resolved; and rate `files_oracle` against the Records Pass's bars, naming the set you covered.
+**`final`/`cumulative` only.** See `cross-checks.md`: check the plan against the Direction statements of its `governed_by:` artifacts, and rate `files_oracle` against the Records Pass's bars, naming the set you covered.
 
 ## Severity Levels
 
 - **BLOCKING**: Must fix before proceeding (broken tests, dropped requirements, security vulnerabilities, unlisted deps). At `inner` stage only the inner BLOCKING set (Stage, above) is a finding at all; every other rating here is an observation.
 - **WARNING**: True *and* worth the builder's time (missing coverage, scope drift, stale artifacts, design problems). Name the consequence — *who does what wrong because of this?* No answer → an observation. Confidence is not importance.
 - **Observation** — never a finding, at any stage; it goes in your partial's `observations` array, gates nothing and is owed no disposition: genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is an observation unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly — Goal 4's actively-misleading **BLOCKING** and its stale-artifact **WARNING** both stand. On an ORACLE target the Records Pass decides first whether there is a finding at all (`cross-checks.md` owns that order). That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next — `review-cycle.md`, "The review loop terminates." An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
-- **A finding's subject is never another finding.** One that restates a finding, names its consequence, or cross-checks it against learnings folds in or is dropped. Test it on your own partial — the others are invisible — so the question is "is a finding the subject of this one?", not "does this duplicate R-13?".
-- **Scope grades the remedy**: a site-naming finding answers `instance` or `class` in its `recommendation` (`none` for a mandated cross-check carrying no defect). Say why it broke in one sentence; one that does not name the site you found names a **class** and bounds it — say what to search, and expect members outside the diff. An instance closes by fixing it; an unbounded class closes only by a **construction** — one owner every member passes through, or a check derived from the source of truth — never by a longer list.
+- **A finding's subject is never another finding.** One that restates a finding or names its consequence folds in or is dropped. Test it on your own partial — the others are invisible — so the question is "is a finding the subject of this one?", not "does this duplicate R-13?".
+- **Scope grades the remedy**: a site-naming finding answers `instance` or `class` in its `recommendation`. Say why it broke in one sentence; one that does not name the site you found names a **class** and bounds it — say what to search, and expect members outside the diff. An instance closes by fixing it; an unbounded class closes only by a **construction** — one owner every member passes through, or a check derived from the source of truth — never by a longer list.
 - **Prose remedies**: stale prose gets one of three — delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 
 ## Review Execution
@@ -149,7 +149,7 @@ The manifest is authoritative; its derivation rule lives in `review-cycle.md`.
 
 #### [Finding]
 **Goal:** [Which goal this relates to]
-**Scope:** instance | class | none — [why it broke, in one sentence]
+**Scope:** instance | class — [why it broke, in one sentence]
 **Severity:** blocking | warning
 **Recommendation:** [What to do]
 

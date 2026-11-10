@@ -692,7 +692,8 @@ LAST_MEASURED_TOKENS = {
     # -1 on 2026-10-21 (#301 integration): a missing Trivial-because rationale is a WARNING, not BLOCKING; only a rationale the diff contradicts blocks. A READING.
     # +18 on 2026-10-26 (flaky-rerun, #1087): Goal 1 rates a `flaky:` test-status line carrying
     # `flaky_policy: warn`. DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
-    "skills/critic/review-protocol.md": 3944,
+    # -87 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
+    "skills/critic/review-protocol.md": 3857,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -809,7 +810,8 @@ LAST_MEASURED_TOKENS = {
     # record_lint emits now, in place of the first unticked Status box; `--chunks`.
     # +18 on 2026-10-26 (flaky-rerun, #1087): the same `flaky_policy` clause as review-protocol.md.
     # DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
-    "skills/critic/goals-1-3.md": 2706,
+    # -208 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
+    "skills/critic/goals-1-3.md": 2498,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1007,7 +1009,8 @@ LAST_MEASURED_TOKENS = {
     # model — review facts reach other clones on `refs/notes/prawduct`, and a clone lacking a
     # fact's tree reads a gap, so only committed reviews count everywhere. No review mode loads
     # this file, so no reviewer route pays it.
-    "skills/critic/review-cycle.md": 7766,
+    # -21 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
+    "skills/critic/review-cycle.md": 7745,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1178,7 +1181,8 @@ LAST_MEASURED_TOKENS = {
     # consolidated one. The reviewer needs only "you never write them", so the clause naming
     # writers went, shorter than the claim it replaced. -1 more the same day: `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan", since a covered branch now defers too.
-    "skills/critic/SKILL.md": 3100,
+    # -23 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
+    "skills/critic/SKILL.md": 3077,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1195,8 +1199,10 @@ LAST_MEASURED_TOKENS = {
     # the changed records (two arms are repo-wide), and two reasons lost words. Ceiling lowered with it.
     # -4 on 2026-10-25 (chunk-status, owner ruling D1): the inferred-chunk caveat names the plan's first open chunk;
     # `--chunks`. A READING; the ceiling follows it down.
-    "skills/critic/cross-checks.md": 3386,
-    "skills/critic/coordinator.md": 594,
+    # -1652 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
+    "skills/critic/cross-checks.md": 1734,
+    # -17 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
+    "skills/critic/coordinator.md": 577,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -5188,7 +5194,9 @@ class TestCriticSkill:
         """Severity levels, findings JSON, signals in output, goal key."""
         assert "BLOCKING" in self.content
         assert "WARNING" in self.content
-        assert "NOTE" in self.content
+        # NOTE is not a finding severity at any stage; its legend entry is now
+        # the Observation, which is owed no disposition.
+        assert "**Observation**" in self.content
         assert ".critic-findings.json" in self.content
         assert "### Signals" in self.content
         assert '"goal"' in self.content
@@ -5409,7 +5417,8 @@ class TestCriticSkill:
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
         # RAISED 3928 -> 3945 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 3945, f"review-protocol.md is ~{tokens} tokens, should be <3945"
+        # LOWERED 3945 -> 3858 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 3858, f"review-protocol.md is ~{tokens} tokens, should be <3858"
 
 
 # =============================================================================
@@ -5716,7 +5725,8 @@ class TestCriticGoals13:
         # LOWERED 2660 -> 2650 (empty-verify-rounds, 2026-10-13) with the reading.
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
         # RAISED 2689 -> 2707 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 2707, f"goals-1-3.md is ~{tokens} tokens, should be <2707"
+        # LOWERED 2707 -> 2499 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 2499, f"goals-1-3.md is ~{tokens} tokens, should be <2499"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -5794,8 +5804,10 @@ class TestCriticGoals13:
     def test_carries_what_the_pointers_used_to_fetch(self):
         """Self-containment is only real if the inlined content is here. These
         are the four pointer-chases the old payload forced."""
-        assert "chunk-ref-missing" in self.content and "governed-by-gap" in self.content
-        assert "unchecked" in self.content            # record-lint's not-a-pass rule
+        # Record-lint's ratings left this payload for code (`record_lint.SEVERITY`,
+        # applied by consolidation); what must be here is the rule that the
+        # reviewer neither raises nor re-derives one.
+        assert "record_lint" in self.content and "Never raise, restate" in self.content
         assert "designer-handoff" in self.content     # the chunk `Type:` selector
         assert "Normative authority" in self.content  # Goal 3's binding preamble
         assert '"resolutions"' in self.content        # the verify-resolutions schema arm
@@ -5841,32 +5853,6 @@ class TestCriticGoals13:
         assert "numeric counts" not in row, (
             "cross-checks.md's Per-Chunk Type selector still asks for counts — "
             "the two carriers now instruct opposite things"
-        )
-
-    def test_the_narrowing_covers_the_record_lint_entries_below_it(self):
-        """A specific-over-general conflict inside one file, and the clause that
-        resolves it is unpinned prose until this test exists.
-
-        The record-lint paragraph twenty lines below the narrowing assigns
-        **WARNING** and **NOTE** imperatively (`governed-by-gap` → WARNING, and
-        so on). In `verify-resolutions` those severities are not findings at
-        all, and this is the only protocol file that mode may open — so a
-        reviewer reading the specific instruction after the general one records
-        exactly the work the narrowing exists to stop. The clause has to be in
-        the narrowing, and it has to come FIRST, for the same reason the
-        narrowing itself sits in the preamble.
-        """
-        rule_at = self.content.find("only **BLOCKING** is a finding")
-        assert rule_at != -1, "the narrowing is gone — see the ordering pin"
-        clause_at = self.content.find("record-lint entries included")
-        assert clause_at != -1, (
-            "the narrowing no longer says it covers record-lint entries, and "
-            "the record-lint paragraph below still assigns WARNING and NOTE "
-            "imperatively inside the one mode that records neither"
-        )
-        assert rule_at < clause_at < self.content.index("`record_lint`"), (
-            "the coverage clause moved out of the narrowing or below the "
-            "record-lint paragraph it has to govern"
         )
 
     def test_the_clean_pass_shorthand_does_not_swallow_observations(self):
@@ -5995,7 +5981,8 @@ class TestCriticSkillRoutesByMode:
         # RAISED 3101 -> 3106 (chunk-state-table, 2026-10-27): `--chunks` no longer bounds what a
         # review certifies — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3106 -> 3101 (second-clone-evidence, 2026-10-28) with the reading.
-        assert tokens < 3101, f"SKILL.md is ~{tokens} tokens, should be <3101"
+        # LOWERED 3101 -> 3078 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 3078, f"SKILL.md is ~{tokens} tokens, should be <3078"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6324,7 +6311,8 @@ class TestReviewCycle:
         # RATCHETED 7712 -> 7702 (#1050 work-unit binding, 2026-10-25) with the reading.
         # RATCHETED 7702 -> 7699 (chunk-status, 2026-10-25) with the reading.
         # RAISED 7699 -> 7767 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 7767, f"review-cycle.md is ~{tokens} tokens, should be <7767"
+        # LOWERED 7767 -> 7746 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 7746, f"review-cycle.md is ~{tokens} tokens, should be <7746"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
@@ -6334,14 +6322,16 @@ class TestReviewCycle:
         tokens = estimate_tokens(read_file("skills/critic/cross-checks.md"))
         # RATCHETED 3405 -> 3391 (retired-claim-survives, 2026-10-22) with the reading.
         # RATCHETED 3391 -> 3387 (chunk-status, 2026-10-25) with the reading.
-        assert tokens < 3387, f"cross-checks.md is ~{tokens} tokens, should be <3387"
+        # LOWERED 3387 -> 1735 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 1735, f"cross-checks.md is ~{tokens} tokens, should be <1735"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).
         # It exists so that text leaves every dispatched reviewer's payload
         # without landing in SKILL.md, which the cheap `chunk`/`verify` route loads.
         tokens = estimate_tokens(read_file("skills/critic/coordinator.md"))
-        assert tokens < 595, f"coordinator.md is ~{tokens} tokens, should be <595"
+        # LOWERED 595 -> 578 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 578, f"coordinator.md is ~{tokens} tokens, should be <578"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
@@ -6367,14 +6357,6 @@ class TestReviewCycle:
             assert level in content
         assert "goal-based" in content.lower() or "Goal" in content
         assert ".critic-findings.json" in content
-
-    def test_backlog_hygiene_checks_present(self):
-        """The four backlog-hygiene checks (CRT-3K9P) must stay in Backlog
-        Reconciliation — guards against a silent trim deleting them (the same
-        regression-guard pattern as the PR-reviewer dropped-goal test)."""
-        content = read_file("skills/critic/cross-checks.md")
-        for check in ("C-B1", "C-B2", "C-B3", "C-B4"):
-            assert check in content, f"cross-checks.md missing backlog check {check}"
 
     def test_the_per_mode_table_records_the_severity_narrowing(self):
         """`review-cycle.md` owns per-mode behavior, so the table is where a
@@ -6413,7 +6395,9 @@ class TestReviewCycle:
         assert len(cells) == 5, row
         assert "inner BLOCKING set" in cells[1], "the chunk cell does not name the inner set"
         assert "chunk" in cells[2], "the final cell does not follow chunk's"
-        assert cells[3] == "Every severity", "the cumulative cell is not the boundary"
+        assert cells[3] == "BLOCKING and WARNING; anything lesser is an OBSERVATION", (
+            "the cumulative cell is not the boundary"
+        )
 
     def test_the_stopping_rule_carries_its_measured_figure(self):
         """The paragraph this replaces said review yield DECAYS by round 3. The
@@ -6975,14 +6959,13 @@ class TestSubjectAndOracleReachTheReviewer:
 
     def test_the_records_pass_is_a_final_mode_cross_check(self):
         """Not a fourth reviewer role — adding lenses is what the measurement
-        said drives finding count. It rides `sustainability`, which already
-        owns the other two cross-checks."""
+        said drives finding count. It rides `sustainability`."""
         cycle = read_file("skills/critic/cross-checks.md")
         header = cycle.split("## Final-Mode Cross-Checks", 1)[1]
         assert "### Records Pass" in header.split("\n## ", 1)[0], (
             "the Records Pass is not inside Final-Mode Cross-Checks"
         )
-        assert "three additional passes" in cycle
+        assert "two additional passes" in cycle
         agent = read_file("agents/critic-reviewer.md")
         sustainability = agent.split("- **sustainability**", 1)[1].split("\n\n", 1)[0]
         assert "Records Pass" in sustainability
@@ -7001,8 +6984,11 @@ class TestSubjectAndOracleReachTheReviewer:
         pass_section = " ".join(
             cycle.split("### Records Pass", 1)[1].split("\n### ", 1)[0].split()
         )
-        for owner in ("record-lint relay", "Learnings Cross-Check"):
-            assert owner in pass_section, f"the carve-out omits the {owner}"
+        # The owners are now record-lint, which consolidation records itself,
+        # and this pass; the reviewer no longer relays the first.
+        assert "**record-lint**, which consolidation records" in pass_section, (
+            "the carve-out omits record-lint"
+        )
         assert "chunk-ref-missing" in pass_section, (
             "the carve-out does not say the machine's BLOCKING answer survives"
         )

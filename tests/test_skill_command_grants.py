@@ -51,15 +51,15 @@ call is now a red test rather than a silent runtime prompt (#730).
 
 `skills/backlog/cache-reads.md` names two spellings of `backlog cache-query`:
 the bare one a governed product uses and `python3 plugin/bin/prawduct-hook …`
-for this repo. Every reader that runs under a restricted tool list — the Critic
-skill, the `critic-reviewer` agent, the janitor, and the `pr-reviewer` agent —
-is granted both, because a reader that silently falls back to a prompt gets
+for this repo. Every reader that runs under a restricted tool list — the janitor
+and the `pr-reviewer` agent; the Critic stopped reading the backlog when its
+reviewers stopped reconciling it — is granted both, because a reader that silently falls back to a prompt gets
 neither an answer nor an exit 6. So whenever a reader of that file is narrowed,
 the `cache-query` grant goes in the same edit: a narrowed reader without it
 meets a permission prompt instead of an answer, and the PR reviewer's R-2 has no
 other owner in the pipeline.
 `test_every_cache_reader_admits_both_cache_query_spellings` below enforces it
-for all four readers; the runtime file no longer argues it.
+for both readers; the runtime file no longer argues it.
 """
 
 from __future__ import annotations
@@ -750,8 +750,6 @@ def test_an_agent_self_hosted_hook_grant_never_stands_alone(agent_path: Path) ->
 #: tool list, with the frontmatter key its list lives under (see the module
 #: docstring, "Readers of the backlog cache hold both spellings").
 _CACHE_READERS = (
-    ("skills/critic/SKILL.md", "allowed-tools:"),
-    ("agents/critic-reviewer.md", "tools:"),
     ("skills/janitor/SKILL.md", "allowed-tools:"),
     ("agents/pr-reviewer.md", "tools:"),
 )

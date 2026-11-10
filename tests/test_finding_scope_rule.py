@@ -204,20 +204,6 @@ def test_the_mode_reaches_the_withholding(mode_token: str) -> None:
     )
 
 
-@pytest.mark.parametrize("mode_token", ALL_MODES)
-def test_the_mode_reaches_the_no_defect_answer(mode_token: str) -> None:
-    # The mandated cross-checks (priors, learnings, backlog reconciliation)
-    # must report even when clean, so they raise notes bounding no defect at
-    # all. Without a third answer their reviewers invent one — three findings
-    # in one observed review already had — and an invented vocabulary is how a
-    # rule with teeth acquires an escape hatch nobody ruled on.
-    carrier = _carrier_for(mode_token)
-    assert "`none`" in carrier, (
-        f"`{mode_token}`'s carrier offers no answer for a mandated cross-check "
-        "carrying no defect, so its reviewers will coin one."
-    )
-
-
 # ---------------------------------------------------------------------------
 # Delivery — the deliverable itself, exercised rather than grepped
 # ---------------------------------------------------------------------------
@@ -334,14 +320,17 @@ def test_the_directive_has_a_size_ceiling() -> None:
     148 -> 122 on 2026-09-28: the closing "spend this on the finding whose fix
     looks most obvious" sentence was removed as coaching; the ceiling came down
     by the same amount.
+
+    122 -> 109: the `none` answer for a mandated cross-check went with the
+    cross-checks themselves; the ceiling came down by the same amount.
     """
     tokens = _estimate(DIRECTIVE)
-    assert tokens == 122, (
-        f"FINDING_SCOPE_DIRECTIVE is ~{tokens} tokens; this pin says 122. "
+    assert tokens == 109, (
+        f"FINDING_SCOPE_DIRECTIVE is ~{tokens} tokens; this pin says 109. "
         f"Update it to {tokens} and say in the docstring what paid for the "
         "change — the ceiling below is not a budget to spend."
     )
-    assert tokens < 175, (
+    assert tokens < 162, (
         f"the directive is ~{tokens} tokens. It rides every chunk dispatch, "
         "which targets 1-2 minutes end to end. Trim, or move a clause to the "
         "file that owns it."

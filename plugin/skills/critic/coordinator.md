@@ -18,6 +18,6 @@ Persistence is **decoupled from the review**: reviewers write partials, `critic-
    - **Never paste the file lists into the prompt**: you write the prompts one after another, so a list delays the last reviewer's start by its length.
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3.
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
-   - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Learnings Cross-Check and Backlog Reconciliation (as NOTE findings in its partial) + the Records Pass over the oracle files.
+   - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Records Pass over the oracle files.
 
 3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once). You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
