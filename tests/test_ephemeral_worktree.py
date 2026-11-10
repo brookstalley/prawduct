@@ -493,6 +493,30 @@ class TestGuardRefusesWrites:
         assert "BLOCKED" in result.stderr
         assert "ephemeral agent worktree" in result.stderr
 
+    def test_a_delegate_is_told_the_coordinator_runs_the_critic(self, tmp_path):
+        """A build delegate dispatched with worktree isolation sits on the
+        harness scratch branch, so this guard is what stops it running the
+        Critic its brief may have asked for. The refusal must say WHO runs it
+        instead — a delegate told only "not here" goes looking for a tree where
+        it is allowed. Control: the same command from the coordinator's own
+        checkout reaches its own logic, unrefused and unnamed."""
+        primary = tmp_path / "primary"
+        _init_repo(primary)
+        wt = _agent_worktree(primary)
+
+        refused = _run(wt, "critic-begin", "--mode", "chunk")
+        blocked = next(
+            (ln for ln in refused.stderr.splitlines() if ln.startswith("BLOCKED")), ""
+        )
+        assert refused.returncode == 1
+        assert "build delegate" in blocked
+        assert "the coordinator" in blocked
+        assert "runs Critic reviews" in blocked
+
+        unrefused = _run(primary, "critic-begin", "--mode", "chunk")
+        assert "BLOCKED" not in unrefused.stderr
+        assert "build delegate" not in unrefused.stderr
+
     @pytest.mark.parametrize(
         "argv",
         [

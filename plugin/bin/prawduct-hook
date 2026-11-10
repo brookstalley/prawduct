@@ -11671,10 +11671,10 @@ def _check_ephemeral_worktree(command: str, argv: list[str], project_dir: Path) 
 
     print(
         f"BLOCKED: refusing `{command}` — this is an ephemeral {kind} worktree "
-        f"({project_dir}). {_ephemeral_refusal_reason(command)} Report this in "
-        "your final message and let the "
-        "dispatching session record it; Critic reviews and governance records "
-        "stay with the dispatcher (`test-evidence record` is admitted here: it "
+        f"({project_dir}). {_ephemeral_refusal_reason(command)} You are a "
+        "build delegate here: the coordinator — the session that dispatched "
+        "you — runs Critic reviews and governance records, so report what "
+        "needs recording in your final message (`test-evidence record` is admitted here: it "
         "writes one narrowed test-run fact to the shared store and nothing in "
         f"this tree). Override for one invocation: {_EPHEMERAL_OVERRIDE_ENV}=1",
         file=sys.stderr,
