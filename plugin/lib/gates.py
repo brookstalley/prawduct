@@ -2121,8 +2121,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     is finished — every chunk ``done`` or ``dropped`` by
     ``plan_status.is_finished``, never by a ticked box (#1051) — but the most
     recent Critic review was not a ``final`` or ``cumulative`` one, so the
-    end-of-cycle goals (Coherence, Design, Learnings Cross-Check, Backlog
-    Reconciliation, Framework-Specific Checks) have not run. The mode is
+    end-of-cycle goals (Coherence, Design, the Records Pass, Framework-Specific
+    Checks) have not run. The mode is
     telemetry read from the latest ``review`` FACT in the evidence store
     (kernel-v3 chunk 04: no gate — even an advisory one — reads the
     ``.critic-findings.json`` cache); it steers a workflow nudge, never
@@ -2185,9 +2185,7 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
             f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
-            "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
-            "Reconciliation) before pushing. "
-            + learnings_cross_check_note(project_dir)
+            "synthesis (Coherence, Design, the Records Pass) before pushing."
         )
     return True, ""
 
@@ -2210,8 +2208,8 @@ def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
 
     ``reason`` is empty on success and names the failure otherwise. It is a
     return value rather than an exception or a silent ``[]`` because "nothing
-    changed" and "could not tell" are opposite facts and both callers have to
-    say which one they got (`R4`: a degraded advisory path names its
+    changed" and "could not tell" are opposite facts and every caller has to
+    say which one it got (`R4`: a degraded advisory path names its
     consequence).
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
@@ -2245,8 +2243,6 @@ def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
     branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no
     area file applies", while the interval touched the areas owned by
     ``reviews.md``, ``hook-surface.md``, ``tests.md`` and ``authoring.md``. The
-    Learnings Cross-Check is a ``final``/``cumulative``-only pass with no other
-    owner, so it read one file on exactly the reviews it exists for. The
     reviewer caught it only by reading the four area files by hand.
 
     So the interval comes from the **dispatch manifest** — the one artifact that
@@ -2277,43 +2273,6 @@ def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
         # interval really touches, and looks exactly like an answer.
         return [], f"could not diff the review interval {base[:12]}..{head[:12]}"
     return changed, ""
-
-
-def learnings_cross_check_note(project_dir: Path) -> str:
-    """What the Learnings Cross-Check will read, over :func:`learnings_change_set`.
-
-    Named from the resolver, never from a path this module knows: the harness
-    loads ``core.md`` plus every area file whose ``paths:`` globs match a file
-    the session touched, and the cross-check is only honest if it reads that
-    same set. Saying the set out loud in the nudge is what makes a *silent*
-    disagreement — an area file in context that no reviewer opened — into
-    something a reader can notice.
-
-    The empty answer is stated rather than omitted, because "no rules file
-    matches this diff" and "the cross-check ran and found nothing" look
-    identical in a report that says neither — and so is the *undetermined*
-    answer, which is a third thing again.
-    """
-    changed, reason = learnings_change_set(project_dir)
-    try:
-        layout = learnings_files.resolve(project_dir)
-        files = learnings_files.files_for_paths(layout, changed)
-    except (OSError, ValueError) as exc:
-        reason = reason or f"{type(exc).__name__}: {exc}"
-        files = []
-    if reason:
-        return (
-            "The Learnings Cross-Check's read list could not be computed "
-            f"({reason}) — run `prawduct-hook learnings-files --for-diff` before "
-            "the scan rather than assuming core.md is the whole of it."
-        )
-    if not files:
-        return (
-            "The Learnings Cross-Check has nothing to read: no rules file under "
-            f"{learnings_files.RULES_DIR_REL}/ applies to this session's changes."
-        )
-    named = ", ".join(_repo_relative(project_dir, p) for p in files)
-    return f"The Learnings Cross-Check reads: {named}."
 
 
 def _repo_relative(project_dir: Path, path: Path) -> str:

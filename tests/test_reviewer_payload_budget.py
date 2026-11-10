@@ -45,9 +45,7 @@ and outside the "cannot join the dispatch without joining a sum" guarantee:
 * **Files one level up.** The same paragraph routes reviewers to
   `../../docs/principles.md` and `../../docs/norms.md`; neither is summed
   here.
-* **Files the protocol reaches by a different route entirely.**
-  `skills/backlog/cache-reads.md`, which the backlog reconciliation pass opens.
-* **Product-side reads.** A reviewer opens the governed product's own
+* **Product-side reads.** A reviewer may open the governed product's own
   `.claude/rules/learnings/` — `core.md` alone is ~22,514 tokens in THIS repo,
   comparable to the whole priced single-pass-full route below, so the largest
   single input to a real review is not in any figure here and varies per product.

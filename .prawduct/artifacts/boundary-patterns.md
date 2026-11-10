@@ -144,10 +144,9 @@ be added to each `error.details` too, and human mode must be exercised by a test
 **Producer:** `plugin/lib/backlog/cachequery.py` — the eight read-only queries
 behind `prawduct-hook backlog cache-query`, each returning a `status`/`reason`
 envelope plus its own payload keys.
-**Consumers:** three **agent-executed prose** surfaces, which is what makes this
-different from every other envelope here — the Critic's Backlog Reconciliation
-(`plugin/skills/critic/review-cycle.md`), the PR reviewer's R-1/R-2
-(`plugin/skills/pr/review-protocol.md`), and the janitor's Backlog Health
+**Consumers:** two **agent-executed prose** surfaces, which is what makes this
+different from every other envelope here — the PR reviewer's R-1/R-2
+(`plugin/skills/pr/review-protocol.md`) and the janitor's Backlog Health
 (`plugin/skills/janitor/SKILL.md`), all routed through the one contract at
 `plugin/skills/backlog/cache-reads.md`. `plugin/lib/backlog/cli.py` is a fourth,
 carrying both the `--json` passthrough and the human formatter.

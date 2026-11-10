@@ -31,8 +31,8 @@ Enforcement table. **Recorded classification fields count as adopted too:** reco
 structural characteristic is how an ambient norm is adopted, so silently flipping a
 *recorded* characteristic is BLOCKING even where no Direction section exists (a
 never-recorded characteristic has no norm to depart from). In a product with **no** adopted
-norms on any of these surfaces, the same detections surface as **NOTE** (name the would-be
-norm and its capture path — a Direction entry or preferences row);
+norms on any of these surfaces, the same detections surface as a Critic observation or a PR
+reviewer **NOTE** (name the would-be norm and its capture path — a Direction entry or preferences row);
 a repo is never blocked into a lifecycle it has not adopted. The PR reviewer's norm-amendment
 check emits **WARNING** at its layer regardless (the cumulative Critic is the blocking organ —
 `skills/pr/review-protocol.md` explains the layering).
@@ -329,7 +329,7 @@ audit sees them.
 | Moment | Organ | What it catches |
 |---|---|---|
 | Planning | `governed_by:` reconciliation, seeded by `prawduct-hook jurisdiction` | jurisdiction + the per-norm disposition lines (incl. *inapplicable because X*); departures surfaced as decisions before code |
-| Review (event-domain) | Critic Goals 3/4 + Learnings Cross-Check; PR reviewer | departure without a recorded decision (severity by layer: § Severity above); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
+| Review (event-domain) | Critic Goals 3/4; PR reviewer | departure without a recorded decision (severity by layer: § Severity above); the amend tell incl. doc-only; flip follow-ups present; norm-staleness signals (→ a Critic observation or PR NOTE recommending `/prawduct:doctor`). The Critic considers jurisdiction independently — `governed_by:` is an input, not a boundary. |
 | Session sync (time-domain, cheap) | advisory probes | the mechanical hooks, canonically: **dated `revisit:` expiries; backlog-id literals in Status/Why lines whose items are shipped/archived (dead why); in-transition tracking items unedited past the window (stall); structural presence** (strategy artifacts with no Direction *entry* anywhere — a bare heading is not one — or missing Enforcement columns → unratified; Norm Health sweep overdue while norms exist under *either* homing) |
 | Periodic (time-domain, deep) | janitor Norm Health theme | erosion distance + trend, decay in prose whys, event-bound triggers walked, registry hygiene — the re-affirm-or-retire fork |
 | Repair | `/prawduct:doctor` | ratification flow (below) + registry integrity: whys present, mechanisms exist, in-transition entries carry tracking ids, classification currency |

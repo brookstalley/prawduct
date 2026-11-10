@@ -72,6 +72,19 @@ exactly where it did.
   backlog walk.
 
 **Decisions made mid-build:** *(appended while building)*
+- Chunk 02 — the mid-build decisions list is not printed: no reader of a plan's `## Goals` section
+  exists in `plugin/lib`, and the brief ruled out writing one, so the mandated NOTE is removed and
+  nothing replaces it. *Not settled by the goals* — the first inference assumed a reader; an
+  alignment-pass miss for the owner to rule on.
+- Chunk 02 — record-lint's ratings moved from prose into one table in code (`record_lint.SEVERITY`,
+  `INNER_BLOCKING`, the three `chunk-ref-missing` `unchecked` shapes); consolidation applies the
+  stage the protocol already stated: inner keeps only `chunk-ref-missing`, a verify pass drops the
+  rest. Settled by "Record-lint results reach the builder from the code that computes them".
+- Chunk 02 — the `none` scope answer, which existed only for mandated cross-checks bounding no
+  defect, went with them. Settled by the same goal.
+- Chunk 03 — the end-of-cycle Stop nudge stops naming a Learnings Cross-Check and its read list;
+  `prawduct-hook learnings-files --for-diff` is kept although its reviewer consumer is gone (out of
+  this plan's removal list). *Not settled by the goals* — left for the owner.
 
 **Level:** High on what to remove. Medium on the record-lint path: the builder confirms from the
 code where a relayed lint finding gets its blocking force today before moving it, and stops to

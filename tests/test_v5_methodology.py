@@ -522,7 +522,10 @@ LAST_MEASURED_TOKENS = {
     # +10 on 2026-10-26 (flaky-rerun, #1087), DECLARED: the Verify bullet names `--rerun-failed`
     # beside the other record flags, so a builder whose boundary run lost one test to load reruns
     # that test rather than the declared suite (on this repo ~18 min per suite run).
-    "methodology/building.md": 5307,
+    # -2 on 2026-11-10 (critic-trim): the Critic paragraph stops claiming a learnings cross-check
+    # and a backlog walk, names the Records Pass, and says an observation is owed no disposition;
+    # paid by folding the roster-rule sentence into a pointer. A READING; ceiling lowered with it.
+    "methodology/building.md": 5305,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -3623,7 +3626,8 @@ class TestBuildingMethodology:
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5308, f"building.md is ~{tokens} tokens, should be <5308"
+        # LOWERED 5308 -> 5306 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 5306, f"building.md is ~{tokens} tokens, should be <5306"
 
 
 # =============================================================================

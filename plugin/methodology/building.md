@@ -187,7 +187,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 The Critic reasons from signals through seven prioritized goals, from Nothing Is Broken to The Design Is Sound (definitions: `skills/critic/review-protocol.md`).
 
-In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
+In `final`/`cumulative` mode the Critic also runs the Records Pass, and may use a coordinator roster (rule: `skills/critic/review-cycle.md`). Below WARNING nothing is a finding: it is an observation, owed no disposition.
 
 ### The evidence model
 

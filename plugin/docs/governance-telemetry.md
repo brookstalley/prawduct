@@ -141,7 +141,7 @@ The format is lock-in, so the queries came before the fields:
    as a floor, not a census:** a rule fires only when a reviewer QUOTES it, so
    a rule that shaped a finding without being quoted reads here as never fired.
    The instruction to quote lives with the reviewers (`agents/critic-reviewer.md`,
-   and `cross-checks.md` for the cross-check), but nothing enforces it — so this
+   and `cross-checks.md` for a single-pass review), but nothing enforces it — so this
    answer under-counts by however often reviewers paraphrase.
 4. **All of the above across a fleet** — key by the envelope's `project`.
 
@@ -266,7 +266,7 @@ neither; schema 6 added them — the human line leads with the first and labels 
 estimate), `findings`
 (`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
 `actionable_rate` (0–1; severity-labelled — the human line calls it `severity-actionable`),
-`dispositions` (below), `observations` (items an inner-stage pass demoted —
+`dispositions` (below), `observations` (items a reviewer rated below a finding —
 never counted in `findings`), `reviews_recording_observations`
 (reviews whose event carried the array; events written before it existed are
 excluded, so `observations: 0` over `0` recording reviews means *not measured*,
