@@ -719,6 +719,12 @@ OBSERVED_SESSION_CHANGED = "session_changed"
 #: follows it. Readers select Stop blocks from other control firings by it.
 STOP_GATE_PREFIX = "stop-gate:"
 
+#: Prefix of the ``guard`` a Stop-hook check that OBSERVES without blocking is
+#: recorded under; the check's id follows it. Kept apart from
+#: :data:`STOP_GATE_PREFIX` so a reader counting blocked Stops never counts a
+#: Stop that was let through.
+STOP_OBSERVED_PREFIX = "stop-observed:"
+
 #: The ``guard`` a base-advance transfer's GRANT is recorded under. It shares
 #: the guard-refusal sink with the refusals, but it is a pass that saves a
 #: review round, so readers that count friction must leave it out.
@@ -764,6 +770,32 @@ def append_stop_block(
             )
         )
     return results
+
+
+def append_stop_observation(
+    project_dir: Path,
+    gate: str,
+    *,
+    reason: "str | None" = None,
+    observed: "dict | None" = None,
+) -> dict:
+    """Record that a non-blocking Stop check found what it looks for.
+
+    The firing goes through the same control sink as a block
+    (:func:`append_guard_refusal`), under :data:`STOP_OBSERVED_PREFIX`, with the
+    same ``reason`` and ``observed`` a block of that check records. That way a
+    check retired from blocking keeps answering its yield question
+    (``stats``' catch/slip rules read it unchanged) without counting as
+    friction. The Stop it fired on was not blocked, so there is no ``stop`` id
+    or ``co_gates``. Callers treat a failure as soft.
+    """
+    return append_guard_refusal(
+        project_dir,
+        f"{STOP_OBSERVED_PREFIX}{gate}",
+        {"gate": gate},
+        reason=reason,
+        observed=observed,
+    )
 
 
 def append_session_start(project_dir: Path) -> dict:

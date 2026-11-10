@@ -50,12 +50,6 @@
       "summary": "learnings rules carry no body lines; the story behind a rule belongs in the session reflection"
     },
     {
-      "id": "clear-verdict",
-      "name": "clear-verdict",
-      "since": "3.7.0",
-      "summary": "`COMPLETE` must close `SAFE TO CLEAR`, and so must `YOUR TURN` unless the hook sees work a clear would kill (a background task, a live review)"
-    },
-    {
       "id": "clear-reason",
       "name": "clear-reason",
       "since": "3.7.1",
