@@ -77,6 +77,15 @@ def _block(gate, stop, session="s1", *, reason=None, observed=None):
     return _fact("guard-refusal", body, fid=f"g-{gate}-{stop}", session=session)
 
 
+def _observation(gate, fid, session="s1", *, reason=None, observed=None):
+    body = {"guard": f"{evidence.STOP_OBSERVED_PREFIX}{gate}", "gate": gate}
+    if reason is not None:
+        body["reason"] = reason
+    if observed is not None:
+        body["observed"] = observed
+    return _fact("guard-refusal", body, fid=f"o-{gate}-{fid}", session=session)
+
+
 def _v(facts, version="3.7", **kw):
     return stats.aggregate(facts, **kw)[version]
 
@@ -546,3 +555,39 @@ class TestCli:
     @pytest.mark.parametrize("args", [["--since"], ["--since", "last tuesday"], ["--bogus"]])
     def test_bad_arguments_exit_1(self, tmp_path, args):
         assert self._run(self._repo(tmp_path), *args).returncode == 1
+
+
+class TestStopObservations:
+    """A Stop check retired from blocking (clear-verdict, #1044) is still scored,
+    and never counted as a block, a guard refusal, or friction."""
+
+    def test_an_observation_is_counted_apart_from_blocks_and_refusals(self):
+        facts = [
+            _fact("session-start", {}, fid="s-1", session="s1"),
+            _observation("clear-verdict", "a", reason="handed-over-complete",
+                         observed={"work_live": False}),
+            _observation("clear-verdict", "b", reason="handed-over-your-turn",
+                         observed={"work_live": True}),
+            _block("reflection", "x1"),
+        ]
+        v = _v(facts)
+        assert v["stop_blocks"]["by_gate"] == {"reflection": 1}
+        assert v["stop_blocks"]["stops_blocked"] == 1
+        assert v["guard_refusals"]["total"] == 0
+        obs = v["stop_observations"]
+        assert obs["total"] == 2 and obs["by_gate"] == {"clear-verdict": 2}
+        assert obs["by_gate_reason"]["clear-verdict"] == {
+            "handed-over-complete": 1, "handed-over-your-turn": 1,
+        }
+        assert obs["verdicts"]["clear-verdict"] == {"catch": 1, "slip": 1, "unclassified": 0}
+
+    def test_the_human_report_shows_observations_only_when_there_are_some(self):
+        facts = [_fact("session-start", {}, fid="s-1", session="s1"), _observation("clear-verdict", "a",
+                 reason="handed-over-complete", observed={"work_live": False})]
+        report = {"project": "p", "window": {"since": None, "until": None},
+                  "by_version": stats.aggregate(facts)}
+        text = stats.render_human(report)
+        assert "observed only      clear-verdict 1 (catch 1, slip 0, unclassified 0)" in text
+        quiet = {"project": "p", "window": {"since": None, "until": None},
+                 "by_version": stats.aggregate([_fact("session-start", {}, fid="s-1", session="s1")])}
+        assert "observed only" not in stats.render_human(quiet)

@@ -43,33 +43,18 @@ last_validated: null
   under `artifacts/` until the release moves it to `artifacts/archive/`, and nothing rewrites a
   referring path when it moves (the sibling #13 cite two lines below already carries the
   post-archive form, and had to be edited by hand to get there).
-  Live exception: **the `clear-verdict` Stop gate** (shipped with `clear-verdict-coherence`,
-  2026-09-27; it refuses a turn closing `COMPLETE` with `DO NOT CLEAR`, and `YOUR TURN` with it
-  unless the hook observes work a clear would kill, narrowed by `clear-gate-telemetry`, 2026-10-29) is a
-  recorded **bounded exception** to the emission arm, on the `check-branch-pushed` grounds above:
-  the ledger's non-review kinds are the derived `learning.*` pair, and a `gate.*` kind for one
-  Stop gate is a persisted-format lock-in taken for a single control. The right home is one
-  firing event for every Stop gate, and this gate joins it as a first case.
-  **Why a gate and not prose alone:** the pair was reported across every consuming repo, and a
-  standing-block rule is one the agent must RECALL at the turn's last line. The digest has no
-  headroom left to restate it, and a refusal that costs one rewritten paragraph is the cheapest
-  mechanism that does not depend on recall.
-  **Expected yield, named now so the query has something to answer:** firings should fall
-  toward zero, because the corrected precedence rule and the narrowed deferral remove both reasons
-  the pair was written. Firings that persist a quarter after release are evidence the prose alone
-  does not hold, and the gate earns its keep. No firings for a quarter, with no reported
-  recurrence, is evidence for retiring it in favour of the prose.
-  Clock: the same trigger as `check-branch-pushed`: the janitor's Norm Health yield query (`#563`)
-  or a Stop-gate firing event, whichever lands first.
-  `[DECISION: clear-verdict is a bounded exception to the emission arm, not a new ledger kind | a one-gate event kind is the accumulation this norm exists to stop, and the gate's yield is named above so the query has a specification | user can veto/override]`
-  Recorded 2026-09-27 on `fix/clear-verdict-coherence`, after its final Critic review raised it.
+  Resolved exception: **the `clear-verdict` Stop check** was a bounded exception to the emission
+  arm from 2026-09-27 (`clear-verdict-coherence`) until Stop-block facts gave every gate a firing
+  record. **Ruling 2026-11-10 (owner, #1044): it no longer blocks, and its measurement stays.** On
+  3.8, in the three repos that recorded verdicts, it scored 7 catches and 9 slips, and the harm it guards against is a session
+  kept open needlessly, so a block on every such turn did not earn its round-trip. It now records
+  each firing as a `stop-observed:clear-verdict` fact, scored by `stats` under *observed only*
+  (`retire-clear-verdict`). The standing-block rule it enforced stays in the prose.
   Conforms, not an exception: **the `clear-reason` Stop gate** (#977, 2026-10-09, since 3.7.1)
   refuses a `SAFE TO CLEAR` whose stated reason is the turn itself ("the questions are in this
   message"). It emits its yield: every Stop block records a `stop-gate:<gate>` guard-refusal fact
   per gate id (`telemetry-stats`), so its firings are `prawduct-hook stats` → `stop_blocks.by_gate`
-  ["clear-reason"], apart from the pair check's. That same sink now counts `clear-verdict`, so the
-  exception above's premise, that the gate cannot emit, no longer holds; retiring it is the
-  exception's own clock, not this change's. **Expected yield:** the 2026-10-09 wave-1 trial had 2
+  ["clear-reason"], apart from the pair check's. **Expected yield:** the 2026-10-09 wave-1 trial had 2
   of 7 fresh agents give the message as the record despite the prose rule. In the transcripts on
   this machine, `tools/measure-self-citing-clear.py` matched 18 of 1,533 `SAFE TO CLEAR` closes,
   each a genuine instance on reading. Firings should fall toward zero once agents meet the refusal.

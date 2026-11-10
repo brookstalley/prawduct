@@ -11,10 +11,10 @@ fails closed.
 
 ``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the reader is handed
 the session and told not to end it, and may sit on both for days — so it defers
-nothing and the clear-verdict gate refuses it. So does ``YOUR TURN`` with
-``DO NOT CLEAR``, unless the hook observes work a clear would kill (a harness
-background task or a live Critic review): then the hold is as true as
-``RUNNING``'s and the pair stands. The
+nothing, and the clear-verdict check records it without refusing it. So does
+``YOUR TURN`` with ``DO NOT CLEAR``, unless the hook observes work a clear would
+kill (a harness background task or a live Critic review): then the hold is as
+true as ``RUNNING``'s and nothing is recorded. The
 clear-reason gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
 questions are in this message"), because a clear deletes exactly that (#977).
 
@@ -542,8 +542,12 @@ class TestStopStillBlocks:
 
 
 class TestClearVerdictGate:
-    """A turn that hands the session over while saying DO NOT CLEAR is refused,
-    whatever else the Stop would do — and neither deferral can swallow it."""
+    """A turn that hands the session over while saying DO NOT CLEAR is recorded
+    but not refused (#1044). These run the hook against a
+    mock git, which has no evidence store, so what each firing RECORDS is
+    pinned in-process in `test_stop_block_facts.py`; here, only that nothing
+    blocks. The clear-reason gate below still blocks, and neither deferral can
+    swallow it."""
 
     @staticmethod
     def _quiet_repo(tmp_path: Path) -> None:
@@ -557,18 +561,14 @@ class TestClearVerdictGate:
         [(ASK_DNC_TURN, "YOUR TURN"), (COMPLETE_DNC_TURN, "COMPLETE")],
         ids=["your-turn", "complete"],
     )
-    def test_blocks_on_a_clean_tree(self, tmp_path, message, label):
-        """No changes, so no other gate fires: the contradiction alone blocks."""
+    def test_does_not_block_on_a_clean_tree(self, tmp_path, message, label):
+        """No changes, so no other gate fires: the contradiction alone used to
+        block; now the Stop passes."""
         self._quiet_repo(tmp_path)
         result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(message))
-        assert result.returncode == 2, (result.stdout, result.stderr)
-        blocked = _blocked_section(result.stderr)
-        assert "gate: clear-verdict" in blocked
-        assert f"closes on `{label}` and `DO NOT CLEAR`" in blocked
-        assert ".prawduct/.handoff-notes.md" in blocked
-        # The belief behind most of this gate's fires in consumer repos: that a
-        # server or recorder the session started would die with a clear.
-        assert "a clear ends the conversation, not the process" in blocked
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "CLEAR VERDICT" not in result.stderr
+        assert "clear-verdict" not in result.stderr
 
     @pytest.mark.parametrize(
         "message",
@@ -590,25 +590,23 @@ class TestClearVerdictGate:
         )
         assert result.returncode == 2, (result.stdout, result.stderr)
         blocked = _blocked_section(result.stderr)
-        assert "gate: clear-verdict" in blocked
+        assert "gate: clear-verdict" not in blocked
         assert "gate: critic-review" in blocked
         assert "gate: reflection" in blocked
         assert "GATES DEFERRED" not in result.stderr
 
-    def test_background_work_defers_the_gates_but_not_the_contradiction(self, tmp_path):
-        """In-flight work defers every session-end blocker; `COMPLETE` is still
-        wrong for the person reading it, so the contradiction still blocks."""
+    def test_background_work_defers_the_gates_and_the_contradiction_blocks_nothing(self, tmp_path):
+        """In-flight work defers every session-end blocker, and the
+        contradiction no longer blocks in their place."""
         _plan_repo(tmp_path, reflected=True)
         stdin = _payload(
             COMPLETE_DNC_TURN,
             background_tasks=[{"id": "t-1", "type": "subagent", "agent_type": "Explore"}],
         )
         result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=stdin)
-        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert result.returncode == 0, (result.stdout, result.stderr)
         assert "GATES DEFERRED" in result.stderr
-        blocked = _blocked_section(result.stderr)
-        assert "gate: clear-verdict" in blocked
-        assert "gate: critic-review" not in blocked
+        assert "CLEAR VERDICT" not in result.stderr
 
     def test_your_turn_beside_observed_background_work_stands(self, tmp_path):
         """The hold is true while work a clear would kill runs, and the ask is
@@ -631,11 +629,6 @@ class TestClearVerdictGate:
         assert result.returncode == 0, (result.stdout, result.stderr)
         assert "CLEAR VERDICT" not in result.stderr
 
-    def test_your_turn_with_nothing_observed_names_what_it_looked_for(self, tmp_path):
-        self._quiet_repo(tmp_path)
-        result = run_plugin_hook("stop", tmp_path, git_status="", stdin=_payload(ASK_DNC_TURN))
-        assert result.returncode == 2, (result.stdout, result.stderr)
-        assert "this hook sees nothing a clear would kill" in _blocked_section(result.stderr)
 
     @pytest.mark.parametrize(("reason", "phrase"), SELF_CITING_REASONS[:3])
     def test_a_self_citing_safe_to_clear_blocks(self, tmp_path, reason, phrase):
@@ -662,7 +655,10 @@ class TestClearVerdictGate:
 
     def test_the_gates_have_registry_rows(self):
         registry = json.loads((PLUGIN / "hooks" / "gates.json").read_text())
-        assert {"clear-verdict", "clear-reason"} <= {g["id"] for g in registry["gates"]}
+        ids = {g["id"] for g in registry["gates"]}
+        assert "clear-reason" in ids
+        # The registry lists gates that BLOCK; clear-verdict observes (#1044).
+        assert "clear-verdict" not in ids
 
 
 # ---------------------------------------------------------------------------

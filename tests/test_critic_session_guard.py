@@ -1465,7 +1465,7 @@ class TestMarkerAndFindingsReaderInventory:
             "tests/test_critic_session_guard.py::TestClearGuardCLI"
             "::test_force_overrides_active_marker",
         # Asks only: what a clear gate saw, recorded, and whether the
-        # clear-verdict gate lets YOUR TURN + DO NOT CLEAR stand. It never
+        # clear-verdict check records YOUR TURN + DO NOT CLEAR. It never
         # decides whether the marker stays.
         ("plugin/bin/prawduct-hook", "_clear_observations", "review_active()"):
             "tests/test_stop_block_facts.py::TestAClearGateRecordsWhyItFired"
