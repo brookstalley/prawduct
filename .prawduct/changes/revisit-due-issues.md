@@ -27,3 +27,7 @@ date passing would otherwise turn the suite red on a calendar day.
 If your backlog is on GitHub Issues, a dated `revisit:` on an open item now raises an advisory
 in the session briefing once the date passes. Renew it with a fresh date, act on it, or close the
 item. Items that already carry a past date will raise one advisory at your next session start.
+Because the check now reads the backlog cache at every session start, a clone whose cache has
+never been synced now sees the `backlog-cache-unreadable` advisory even with no norm citations;
+`prawduct-hook backlog sync --repo <owner/repo>` clears it. Its wording changed, so an
+earlier dismissal of it does not carry over.

@@ -734,7 +734,7 @@ def _extract_ids(line: str) -> list[str]:
 #: pattern that trains dismissal and makes the next real signal invisible.
 _CACHE_UNAVAILABLE_TYPE = "backlog-cache-unreadable"
 _CACHE_UNAVAILABLE_EVIDENCE = (
-    "the backlog cache could not be read, so norm citations cannot be resolved to items",
+    "the backlog cache could not be read, so norm checks that read the backlog cannot run",
 )
 
 
@@ -788,7 +788,7 @@ def _cache_advisory(exc: "_CacheUnanswerable", scope: str) -> CouldNotLook:
             type=_CACHE_UNAVAILABLE_TYPE,
             evidence=_CACHE_UNAVAILABLE_EVIDENCE,
             trigger_summary=(
-                f"Norm decay checks could not run: {exc.reason}. They are reporting "
+                f"Norm checks that read the backlog (decay, stalls, revisit dates) could not run: {exc.reason}. They are reporting "
                 "nothing because they could not look, not because there is nothing "
                 "to find. If the store is missing or behind, sync it; if it reports "
                 "an alias collision, the repair is on the items, not on the store."

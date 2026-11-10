@@ -9,11 +9,20 @@ partition: serial, because it is one probe, its tests and the prose that describ
 governed_by:
   - artifact: architecture
     dispositions:
+      - "an independent reviewer never mutates the session it reviews → inapplicable because no reviewer path changes"
+      - "authority fails closed; advice fails soft → conforms; this is advice, and an unreadable store is reported (CouldNotLook), never read as nothing due"
       - "local-first → conforms; the probe reads the local backlog cache and makes no network call"
-      - "every fact has one home → conforms; `revisit:` stays in the issue's prawduct block, read and not copied"
+      - "the plugin writes nothing into a governed repo except its own state → conforms; the probe only reads"
+      - "written in Python, never specific to Python → inapplicable because the probe reads backlog metadata, not product code"
+      - "guides and reviews, never implements → inapplicable because no product code or config is written"
+      - "goals and verification bind, method is advice → conforms; the acceptance criteria are behavioural and red-verified"
+      - "every fact has one home → conforms; `revisit:` stays in the issue's prawduct block, read and not copied; stale restatements were corrected, not added beside"
   - artifact: nonfunctional-requirements
     dispositions:
+      - "review wall-clock is P0 → conforms; one short chunk, one cumulative review"
       - "proportionality ratchets both ways (a control names its expected yield) → conforms; the yield is dated `revisit:` clocks passing on open items, six of them in this repo on 2026-11-10, two due within ten days"
+      - "state-file growth is advisory, never a hard block → inapplicable because no state file grows"
+      - "review rigor is stage-keyed → conforms; the boundary review ran as cumulative"
 depends_on:
   - plugin/docs/norms.md
   - documentation/backlog-service-cache-spec.md
