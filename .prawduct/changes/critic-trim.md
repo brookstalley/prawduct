@@ -51,10 +51,6 @@ reviewer's copy is gone, and what the lint cannot judge (a recorded disposition 
 contradicts) belongs to the `correctness` role. No role gained a new duty; the remainder had no
 named owner before.
 
-`learning.fired` loses its single-pass source. The sentence telling a single-pass review to quote
-the rule it applied lived in the Learnings Cross-Check and went with it; dispatched reviewers
-still carry the instruction (`docs/governance-telemetry.md` says so).
-
 ### Every description agrees (Chunk 03)
 
 `building.md`, `docs/norms.md`, `docs/governance-telemetry.md`, `skills/backlog/cache-reads.md`,

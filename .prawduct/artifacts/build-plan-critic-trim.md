@@ -68,8 +68,8 @@ exactly where it did.
 **Inferences, for the owner to veto at the boundary:**
 - *Disproved while building:* the mid-build decisions list was to be printed by
   `critic-consolidate` from the plan's Goals section. No reader of that section exists, so nothing
-  prints it and the mandated NOTE is gone with no replacement. Owed to the owner as an open
-  question: whether the list should reach them, and by what route.
+  prints it and the mandated NOTE is gone with no replacement. The owner ruled on 2026-11-10 that
+  the list is dropped and no reader is built (`.prawduct/owner-rulings.md`).
 - *Inferred:* the norm-index rows that named the retired checks as their mechanism say what now
   holds them: backlog filing keeps Critic Goal 3 (norm departures); nothing else replaces the
   backlog walk.
@@ -114,7 +114,7 @@ exactly where it did.
   waiver is the rare path and its cost is one short pass.
 - Review round — the `governed_by:` reconciliation's judgment half (is a recorded disposition
   true of the diff) is assigned to the `correctness` role; its paperwork half is record-lint's.
-  Settled by "one producer per check". A warning-rated observation is promoted at the boundary;
+  Settled by this plan's "every fact has one home" disposition. A warning-rated observation is promoted at the boundary;
   settled by "stop producing output nobody acts on" not extending to hiding a rating.
 - The owner ruled on this plan's two open questions on 2026-11-10 (`.prawduct/owner-rulings.md`):
   the mid-build decisions list is dropped and no reader is built; the three unread operations
@@ -163,8 +163,7 @@ sample of what is being removed.
 - **Depends on:** Chunk 01
 - **Deliverables:** `plugin/skills/critic/cross-checks.md`, `review-protocol.md`,
   `coordinator.md`, `SKILL.md` and `plugin/agents/critic-reviewer.md` without the three passes;
-  record-lint findings in the consolidated result with no reviewer in the path; the plan-rendered
-  decisions list; tests.
+  record-lint findings in the consolidated result with no reviewer in the path; tests.
 - **Tests:** Red first: the lint reports a blocking record, no partial mentions it, and the
   consolidated review blocks on it. A review whose partials raise no backlog or learnings finding
   consolidates clean.
