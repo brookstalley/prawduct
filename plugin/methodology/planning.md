@@ -189,7 +189,7 @@ The mirror for the interface a product *produces* — any programmatic surface o
 
 ### Visual Change Verification
 
-Tests confirm logic; they don't confirm a human-facing surface *looks and reads* right. A chunk producing a user-visible change — UI screen, CLI output format, generated-artifact appearance, live external integration — declares `**Visual change:** yes` and, at chunk-close, appends an entry to `.prawduct/operator-verification.md` describing what to verify and where. When `operator_verification_required: true`, `/prawduct:pr create` blocks on pending entries — drain via `prawduct-hook verify-operator-verification <VRF-id>`, or override per-PR with `--accept-pending-verification "rationale"`. The Critic emits a NOTE if the field is declared but no queue entry references it. Reserve `yes` for what a test can't speak to: pixel layout, copy and tone, output legibility, the shape of a real third-party response.
+Tests confirm logic; they don't confirm a human-facing surface *looks and reads* right. A chunk producing a user-visible change — UI screen, CLI output format, generated-artifact appearance, live external integration — declares `**Visual change:** yes` and, at chunk-close, appends an entry to `.prawduct/operator-verification.md` describing what to verify and where. When `operator_verification_required: true`, `/prawduct:pr create` blocks on pending entries — drain via `prawduct-hook verify-operator-verification <VRF-id>`, or override per-PR with `--accept-pending-verification "rationale"`. The Critic records an observation if the field is declared but no queue entry references it. Reserve `yes` for what a test can't speak to: pixel layout, copy and tone, output legibility, the shape of a real third-party response.
 
 ## Common Traps
 

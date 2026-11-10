@@ -343,69 +343,6 @@ class TestTheGateNeverCrashesSessionEnd:
         assert BLOCKER not in err
 
 
-class TestTheCrossCheckNudgeNamesWhatWillBeRead:
-    """The advisory that says "run /prawduct:critic final" also says what the
-    Learnings Cross-Check will open.
-
-    The failure it guards is silent in the only direction that matters: an area
-    file the harness put in context and the reviewer never read. Naming the set
-    in the nudge — from the resolver, over the session's own changed paths — is
-    what turns that from invisible into something a reader can notice.
-    """
-
-    def test_it_names_core_and_the_areas_the_diff_pulls_in(self, tmp_path):
-        from lib import gates
-
-        repo = _repo(tmp_path)
-        d = repo / ".claude" / "rules" / "learnings"
-        d.mkdir(parents=True)
-        (d / "core.md").write_text("# core\n")
-        (d / "code.md").write_text('---\npaths: ["code.py"]\n---\n# code rules\n')
-        (d / "web.md").write_text('---\npaths: ["web/**"]\n---\n# web rules\n')
-        _touch_code(repo)
-
-        note = gates.learnings_cross_check_note(repo)
-        assert ".claude/rules/learnings/core.md" in note
-        assert ".claude/rules/learnings/code.md" in note
-        # The area whose globs the diff does NOT intersect is not claimed to be read.
-        assert "web.md" not in note
-
-    def test_an_empty_answer_is_stated_not_omitted(self, tmp_path):
-        # "no rules file matches this diff" and "the cross-check ran and found
-        # nothing" look identical in a report that says neither.
-        from lib import gates
-
-        repo = _repo(tmp_path)
-        _touch_code(repo)
-        note = gates.learnings_cross_check_note(repo)
-        assert "nothing to read" in note
-
-    def test_the_advisory_carries_it(self, tmp_path):
-        """The nudge itself, not just the helper — the reason lives in
-        `_critic_session_satisfies_gate`'s message and nowhere else."""
-        from lib import gates
-
-        repo = _repo(tmp_path)
-        prawduct = repo / ".prawduct"
-        (prawduct / "artifacts").mkdir(parents=True)
-        (prawduct / "artifacts" / "build-plan.md").write_text(
-            "# Plan\n\n## Status\n\n- [x] Chunk 01: a\n- [x] Chunk 02: b\n"
-        )
-        (prawduct / "project-state.yaml").write_text(
-            "product_identity:\n  name: P\nactive_build_plan: "
-            ".prawduct/artifacts/build-plan.md\n"
-        )
-        d = repo / ".claude" / "rules" / "learnings"
-        d.mkdir(parents=True)
-        (d / "core.md").write_text("# core\n")
-        _touch_code(repo)
-        _hook_evidence(repo)
-
-        satisfied, reason = gates._critic_session_satisfies_gate(repo)
-        assert not satisfied
-        assert "Learnings Cross-Check reads: .claude/rules/learnings/core.md." in reason
-
-
 def _hook_evidence(repo: Path) -> None:
     """One `chunk`-mode review fact — the state the mode nudge fires on."""
     from lib import evidence
@@ -813,8 +750,8 @@ class TestAReviewerScopesToTheReviewInterval:
             ".claude/rules/learnings/web.md",
         ], (
             "a dispatched reviewer got the session's (empty) span instead of "
-            "the interval it was dispatched over — the Learnings Cross-Check "
-            "reads core.md alone on every cumulative of committed work"
+            "the interval it was dispatched over — `learnings-files --for-diff` "
+            "names core.md alone on every cumulative of committed work"
         )
 
     def test_without_a_dispatch_it_is_still_the_session_span(self, tmp_path, capsys):
@@ -837,9 +774,10 @@ class TestAReviewerScopesToTheReviewInterval:
 
 
 class TestOneDefinitionOfTheDiff:
-    """The gate note and `learnings-files --for-diff` resolve the same change set
-    WHENEVER THEY ARE ANSWERING THE SAME QUESTION — which is whenever no review
-    is dispatched. Under a live manifest they deliberately diverge, because the
+    """`learnings_change_set` and `learnings-files --for-diff` resolve the same
+    change set WHENEVER THEY ARE ANSWERING THE SAME QUESTION — which is whenever
+    no review is dispatched. (The Stop nudge that once named the read list went
+    with the Learnings Cross-Check.) Under a live manifest they deliberately diverge, because the
     reviewer is then asking about the review interval and the gate about this
     session; that split is pinned by `TestAReviewerScopesToTheReviewInterval`
     above, and the fixtures here write no manifest.
@@ -882,7 +820,6 @@ class TestOneDefinitionOfTheDiff:
         assert reason == ""
         assert "code.py" in changed and "web/app.ts" in changed
 
-        note = gates.learnings_cross_check_note(repo)
         assert _hook.cmd_learnings_files(repo, ["--for-diff"]) == 0
         printed = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
 
@@ -893,26 +830,6 @@ class TestOneDefinitionOfTheDiff:
             ".claude/rules/learnings/code.md",
             ".claude/rules/learnings/web.md",
         ]
-        # ...and the gate note names exactly what the verb printed. THIS is the
-        # agreement: a reviewer following the line and a reviewer running the
-        # command open the same files.
-        assert note == "The Learnings Cross-Check reads: " + ", ".join(printed) + "."
-
-    def test_the_note_says_when_it_could_not_compute(self, tmp_path, monkeypatch):
-        # "nothing changed" and "could not tell" are opposite facts.
-        from lib import coverage, gates
-
-        repo = _repo(tmp_path)
-        self._corpus(repo)
-        monkeypatch.setattr(
-            coverage,
-            "_coverage_changed_files",
-            lambda d, b: (_ for _ in ()).throw(RuntimeError("diff-boom")),
-        )
-        note = gates.learnings_cross_check_note(repo)
-        assert "could not be computed" in note
-        assert "diff-boom" in note
-        assert "nothing to read" not in note
 
     def test_a_slow_git_reads_as_could_not_tell_not_a_traceback(self, tmp_path, monkeypatch):
         """coverage's git calls carry a 30s bound; TimeoutExpired is a

@@ -8,12 +8,13 @@ times. Each correction is a commit, each commit extends HEAD, and that is how a
 record defect buys a review round.
 
 None of those need judgment. This module answers them in code, at dispatch
-time, and :func:`lint_records` results ride the Critic's dispatch manifest so
-the review protocol can tell reviewers the answers are already known.
+time, and :func:`lint_records` results ride the Critic's dispatch manifest;
+``critic_consolidate.record_lint_partial`` delivers them into the review at the
+severities :data:`SEVERITY` assigns, so no reviewer re-derives or restates one.
 
-**Advice, not authority.** Findings here are advisory: they enter the manifest
-for the builder to fix or disposition, and they never gate. What they must never
-do is *silently pass* — a check that cannot read its inputs reports itself
+**Rated here, never at dispatch.** A result never refuses a dispatch; it gates
+only as a finding of the review that carried it. What a result must never do is
+*silently pass* — a check that cannot read its inputs reports itself
 ``unchecked`` with a reason (the same posture the per-language dispatch norm
 requires of the compliance canary), because an unrun check and a clean one are
 otherwise indistinguishable at the output.
@@ -85,6 +86,90 @@ CHECKS = (
     "change-fragment",
     "retired-claim-survives",
 )
+
+#: Each check's severity at the boundary stage, ``None`` meaning an observation.
+#: This table is the one home of those ratings: ``critic_consolidate`` delivers
+#: every result into the review at them, so no reviewer restates a result. A
+#: check missing here (a new one, before it is rated) is an observation.
+SEVERITY = {
+    "chunk-ref-missing": "blocking",
+    "governed-by-gap": "warning",
+    "suite-total-claim": None,
+    "learnings-over-budget": "blocking",
+    "learnings-budget-unreasoned": "blocking",
+    "learnings-core-raise-unapproved": "warning",
+    "learnings-rule-too-long": "blocking",
+    "learnings-rule-body": "blocking",
+    "learnings-area-dead": "warning",
+    "change-fragment": "warning",
+    "retired-claim-survives": "warning",
+}
+
+#: The checks whose blocking result stays a finding at the INNER stage too: a
+#: missing declared deliverable is a silently dropped requirement, which the
+#: inner BLOCKING set names. A learnings budget row blocks only at the boundary.
+INNER_BLOCKING = frozenset({"chunk-ref-missing"})
+
+#: The three ``chunk-ref-missing`` ``unchecked`` shapes that do not inherit one
+#: step below the check's severity. A deliverable check that could not run is
+#: indistinguishable from one that passed, so it blocks; a plan-less scope the
+#: change-log declares, and a subject half-inferred, are assumptions that no
+#: edit clears, so they are observations.
+_UNCHECKED_SHAPES = (
+    ("chunk-ref-missing unchecked", "blocking"),
+    ("chunk-ref-missing no-subject", None),
+    ("chunk-ref-missing graded chunk", None),
+)
+_UNCHECKED_CHECK_RE = re.compile(r"^([a-z][a-z-]*)")
+
+
+def _unchecked_severity(reason: str) -> "tuple[str, str | None]":
+    """``(check, boundary severity)`` for one ``unchecked`` entry: the shape
+    table first, else one step below the named check's severity (BLOCKING →
+    WARNING, anything else an observation)."""
+    m = _UNCHECKED_CHECK_RE.match(reason)
+    check = m.group(1) if m else "record-lint"
+    for prefix, severity in _UNCHECKED_SHAPES:
+        if reason.startswith(prefix):
+            return check, severity
+    return check, ("warning" if SEVERITY.get(check) == "blocking" else None)
+
+
+def graded(result: "dict | None") -> list[dict]:
+    """Every result and ``unchecked`` entry of a ``lint_records`` result, each
+    as ``{check, severity, where, detail, path}`` at its BOUNDARY severity
+    (``None`` = an observation). ``path`` is the repo file the result is about,
+    or ``None`` when its subject is not a file (a chunk). The stage narrowing is
+    the review's to apply (``critic_consolidate``), since the stage is a fact
+    about the review, not about the record."""
+    if not isinstance(result, dict):
+        return []
+    items: list[dict] = []
+    for finding in result.get("findings") or []:
+        if not isinstance(finding, dict) or not isinstance(finding.get("check"), str):
+            continue
+        check = finding["check"]
+        path = finding.get("path") if isinstance(finding.get("path"), str) else None
+        where = path or "?"
+        if finding.get("line"):
+            where = f"{where}:{finding['line']}"
+        items.append({
+            "check": check,
+            "severity": SEVERITY.get(check),
+            "where": where,
+            "detail": str(finding.get("detail") or ""),
+            "path": None if check == "chunk-ref-missing" else path,
+        })
+    for reason in result.get("unchecked") or []:
+        if not isinstance(reason, str) or not reason.strip():
+            continue
+        check, severity = _unchecked_severity(reason)
+        items.append({
+            "check": check, "severity": severity, "where": "unchecked",
+            "detail": reason, "path": None,
+        })
+    return items
+
 
 # Two checks were built, measured, and REMOVED before this shipped — recorded
 # here because the removal is the norm working, not an omission to be helpfully
@@ -160,7 +245,7 @@ _VALUE_START_RE = re.compile(
 #: open, which is precisely the break case: in ``a: "one`` / ``b: ", two"`` the
 #: unterminated scalar swallows the next line and closes on its quote, stranding
 #: ``, two"``. Admitting ``,`` there suppressed the exact defect this check was
-#: built for, silently, on a machine-answered channel reviewers relay verbatim.
+#: built for, silently, on a machine-answered channel the review delivers verbatim.
 _LEGAL_AFTER_CLOSING_QUOTE = frozenset("#:")
 
 #: A value that opens a BLOCK scalar (``|``/``>`` with any chomping or
@@ -1597,7 +1682,7 @@ def lint_records(
     """Run every check over the record subset of ``paths``.
 
     Returns ``{"records", "chunk_graded", "chunks_graded", "plan_graded",
-    "findings", "unchecked", "counts"}``. ``findings`` is advisory — it never gates.
+    "findings", "unchecked", "counts"}``. Severity is :func:`graded`'s, never this function's.
 
     ``chunk_ids`` is the set the review's fact names (``critic_consolidate``'s
     ``chunks``, ST8 #1051): every one of them is graded, so the deliverables
@@ -1652,9 +1737,9 @@ def lint_records(
     if all_graded and chunks_graded:
         chunk_graded = chunks_graded[0]
     if chunk_graded is None:
-        # Agrees with `chunk_graded` by construction: `cross-checks.md` already
-        # reads a null subject as "nothing was checked at all", and the counter
-        # said 0 in the same breath.
+        # Agrees with `chunk_graded` by construction: a null subject means
+        # "nothing was checked at all", and a counter of 0 beside it would say
+        # the opposite in the same breath.
         no_answer.add("chunk-ref-missing")
 
     added_by_path: dict = {}
@@ -1730,14 +1815,12 @@ def lint_records_safe(
     """:func:`lint_records`, but a crash degrades to a reported ``unchecked``
     instead of taking the caller down with it.
 
-    **This is the only form the review-dispatch path may call.** Record-lint is
-    *advice*, and `architecture.md` § Direction says advice fails soft — but
-    ``critic-begin`` had no handler between this module and ``main()``, so a
-    single unreadable byte in one changed ``.md`` would abort every review
-    dispatch in every consuming repo with a raw traceback. That inverts two
-    recorded dispositions at once (advice fails soft; errors are attributed,
-    never stack traces across the boundary), and it fails in the worst
-    direction: an advisory check taking out the authority path it advises.
+    **This is the only form the review-dispatch path may call.** A record check
+    must never cost the review it rides — but ``critic-begin`` had no handler
+    between this module and ``main()``, so a single unreadable byte in one
+    changed ``.md`` would abort every review dispatch in every consuming repo
+    with a raw traceback, a stack trace across the boundary where an attributed
+    error belongs, and a record check taking out the review that rates it.
 
     The failure is *reported*, never swallowed — the reason lands in
     ``unchecked``, which is the same "this did not run" channel every other
@@ -1760,11 +1843,10 @@ def lint_records_safe(
             "plan_graded": None,
             "findings": [],
             # The `chunk-ref-missing unchecked` prefix is load-bearing:
-            # `cross-checks.md` grades that string BLOCKING, inheriting the
-            # retired `cannot-verify:` bar. A crash takes the deliverable check
-            # down with everything else, so it must reach the reviewer at the
-            # deliverable check's severity — not as a generic NOTE, which is the
-            # BLD-5J8N habituation arriving by a new route.
+            # `_UNCHECKED_SHAPES` grades that string BLOCKING. A crash takes the
+            # deliverable check down with everything else, so it must reach the
+            # review at the deliverable check's severity — not as a generic
+            # observation, which is habituation arriving by a new route.
             "unchecked": [
                 f"chunk-ref-missing unchecked — record-lint did not run at all "
                 f"({type(exc).__name__}: {exc}). The review proceeds; NO record "

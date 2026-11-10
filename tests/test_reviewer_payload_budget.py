@@ -45,9 +45,7 @@ and outside the "cannot join the dispatch without joining a sum" guarantee:
 * **Files one level up.** The same paragraph routes reviewers to
   `../../docs/principles.md` and `../../docs/norms.md`; neither is summed
   here.
-* **Files the protocol reaches by a different route entirely.**
-  `skills/backlog/cache-reads.md`, which the backlog reconciliation pass opens.
-* **Product-side reads.** A reviewer opens the governed product's own
+* **Product-side reads.** A reviewer may open the governed product's own
   `.claude/rules/learnings/` — `core.md` alone is ~22,514 tokens in THIS repo,
   comparable to the whole priced single-pass-full route below, so the largest
   single input to a real review is not in any figure here and varies per product.
@@ -229,7 +227,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
-    "single-pass-inner": 5806,
+    # -231 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    "single-pass-inner": 5575,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -303,7 +302,11 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
-    "single-pass-full": 11538,
+    # -1762 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. Ceiling lowered.
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    "single-pass-full": 9768,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -393,7 +396,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # goals-1-3.md / review-protocol.md, compressed in place first. Priced against the SUM: ~18 tokens
     # per review against a retry-only green on a test this branch changed reaching a PR unflagged,
     # the race-hiding the recorder's retry would otherwise buy.
-    "dispatched-reviewer": 11008,
+    # -1880 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    # +16 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned — the role line in the
+    # agent definition, and the WARNING arm's cut in cross-checks.md, net. Ceiling raised with it.
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    "dispatched-reviewer": 9138,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -443,14 +451,17 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # only writer of both" stopped being true when ingest began deriving the findings cache in a
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
-    "coordinator-fork": 12132,
+    # -1779 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    "coordinator-fork": 10350,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5807,
-    "single-pass-full": 11539,
-    "dispatched-reviewer": 11009,
-    "coordinator-fork": 12133,
+    "single-pass-inner": 5576,
+    "single-pass-full": 9769,
+    "dispatched-reviewer": 9139,
+    "coordinator-fork": 10351,
 }
 
 
@@ -596,10 +607,13 @@ def test_the_cheap_protocol_route_stays_materially_cheaper():
     # must not move, the cheap route's own size, stays pinned by its exact
     # ratchet ceiling above. This relation still catches the cheap route
     # creeping toward the full one.
+    # Bound moved from 11/20 to 3/5 on 2026-11-10 (critic-trim), again because the
+    # DENOMINATOR moved: the cross-checks the full route alone loaded (~1.7k)
+    # left the reviewer's path, and the cheap route shrank too (5806 -> 5575).
     cheap = sum(_payload("single-pass-inner").values())
     full = sum(_payload("single-pass-full").values())
-    assert cheap * 20 < full * 11, (
-        f"the cheap protocol route ({cheap}) is no longer under 55% of the full "
+    assert cheap * 5 < full * 3, (
+        f"the cheap protocol route ({cheap}) is no longer under 60% of the full "
         f"one ({full}). The `goals-1-3.md` split exists to keep the common mode "
         f"cheap; if the cheap protocol has genuinely earned this much, say so and "
         f"move this bound — but do not let it drift."

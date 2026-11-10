@@ -44,11 +44,11 @@ this inventory is exhaustive rather than sampled.
 
 | # | Consumer | Query it needs |
 |---|---|---|
-| 1 | Critic backlog reconciliation walk | all **open** items with id, title, body |
-| 2 | C-B1 missing metadata | items **created since** a ref/timestamp |
-| 3 | C-B2 dedup evidence | **count and ids by `area`** |
-| 4 | C-B3 missing hygiene step | **open items by `area`**, joined to the changed-file set |
-| 5 | C-B4 dangling id | **does this id resolve** — including through aliases, including dead items |
+| 1 | ~~Critic backlog reconciliation walk~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | all **open** items with id, title, body |
+| 2 | ~~C-B1 missing metadata~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | items **created since** a ref/timestamp |
+| 3 | ~~C-B2 dedup evidence~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **count and ids by `area`** |
+| 4 | ~~C-B3 missing hygiene step~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **open items by `area`**, joined to the changed-file set |
+| 5 | ~~C-B4 dangling id~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **does this id resolve** — including through aliases, including dead items |
 | 6 | PR R-1 resolved items | same as #1 |
 | 7 | PR R-2 closes/status disagreement | **status by id**, alias-resolving |
 | 8 | Janitor: group by area | items grouped by `area` |

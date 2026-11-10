@@ -1510,99 +1510,50 @@ class TestVerifyRecordsCLI:
 
 
 class TestEveryCheckCarriesASeverity:
-    """`CHECKS` and the reviewer-facing severity surfaces cannot drift apart.
+    """`CHECKS` and the severity table cannot drift apart.
 
-    A check that fires with no documented severity leaves the Goal-2 reviewer —
-    told to "raise them at the severities given there" — to invent one or drop
-    the finding. A check has shipped in exactly that state, and all three
-    coordinator reviewers found it independently, which is the signal that
-    nothing pinned the relationship.
+    A check that fires with no severity used to leave the Goal-2 reviewer to
+    invent one or drop the finding. The ratings now live in one table in code,
+    `record_lint.SEVERITY`, which consolidation applies itself — so the pin is
+    on that table, and on the `unchecked` shapes as the emitters spell them.
     """
 
-    SURFACES = (
-        "plugin/skills/critic/cross-checks.md",
-        "plugin/skills/critic/goals-1-3.md",
-        ".prawduct/cross-cutting-concerns.md",
-    )
+    def test_every_check_has_exactly_one_rating(self):
+        assert set(record_lint.SEVERITY) == set(record_lint.CHECKS), (
+            "record_lint.SEVERITY and CHECKS disagree — a check with no rating "
+            "reaches the review as an observation whatever it means"
+        )
+        assert set(record_lint.SEVERITY.values()) <= {"blocking", "warning", None}
+        assert record_lint.INNER_BLOCKING <= {
+            c for c, sev in record_lint.SEVERITY.items() if sev == "blocking"
+        }
 
-    def test_every_check_name_appears_on_every_reviewer_surface(self):
-        import sys
-        root = Path(__file__).resolve().parent.parent
-        sys.path.insert(0, str(root / "plugin"))
-        from lib.record_lint import CHECKS
-
-        for rel in self.SURFACES:
-            text = (root / rel).read_text()
-            missing = [c for c in CHECKS if c not in text]
-            assert not missing, (
-                f"{rel} documents no severity for {missing} — a reviewer meets "
-                "the finding with no verdict. Add a row, or remove the check."
-            )
-
-    def test_both_unchecked_shapes_are_graded_on_every_reviewer_surface(self):
-        """The two `unchecked` shapes are told apart by PREFIX, on both surfaces.
-
-        `_check_chunk_refs` emits two textually distinct strings and only one
-        means the check could not run. Compressing them to "a
-        `chunk-ref-missing` entry is BLOCKING" — which `goals-1-3.md` did, and
-        which is the natural casualty of a token-diet pass on a file with ~50
-        tokens of headroom — turns the *assumption* shape into a BLOCKING with
-        no remedy available: a branch that builds no chunk has no `--chunk` to
-        supply. That fired on real reviews before it was caught, and a blocker
-        is the one severity that gates.
-
-        Keyed off the strings the emitters actually produce, so the pin tracks
-        the code rather than the prose that describes it.
-        """
-        import sys
-        root = Path(__file__).resolve().parent.parent
-        sys.path.insert(0, str(root / "plugin"))
-        from lib import record_lint
-
-        # Both shapes must still be what the code emits, or the anchors below
-        # are pinning prose against a contract that moved. The assumption shape
-        # has two causes — an inferred chunk and an inferred plan — assembled
-        # from two modules, and a surface naming only one leaves the other to be
-        # read as a clean grade.
+    def test_the_unchecked_shapes_are_graded_by_their_emitted_prefix(self):
+        """`_check_chunk_refs` emits textually distinct strings and only one
+        means the check could not run. Reading every `chunk-ref-missing` entry
+        as BLOCKING turns the *assumption* shape into a blocker no `--chunks`
+        value can clear. Keyed off the strings the emitters produce, so the pin
+        tracks the code."""
         emitter_src = Path(record_lint.__file__).read_text()
-        assert "chunk-ref-missing unchecked — " in emitter_src
-        assert "chunk-ref-missing graded chunk " in emitter_src
-        assert "inferred as the plan's first open chunk" in emitter_src
-        # The plan half's caveat (`… bound through the active_build_plan pointer`)
-        # is pinned by behaviour, not by its spelling in the source: R-2 replaced
-        # a presence pin here, which stayed green with the branch unreachable,
-        # with `TestChunkRefs`'s legacy-pointer, conventional-path and
-        # claimed-control fixtures.
+        for prefix in ("chunk-ref-missing unchecked — ", "chunk-ref-missing no-subject — ",
+                       "chunk-ref-missing graded chunk "):
+            assert prefix in emitter_src, prefix
+        grade = record_lint._unchecked_severity
+        assert grade("chunk-ref-missing unchecked — x") == ("chunk-ref-missing", "blocking")
+        assert grade("chunk-ref-missing no-subject — x") == ("chunk-ref-missing", None)
+        assert grade("chunk-ref-missing graded chunk 01 of p.md: x") == ("chunk-ref-missing", None)
+        # Everything else inherits one step below its check's rating.
+        assert grade("learnings-rule-body unchecked on f — x")[1] == "warning"
+        assert grade("change-fragment unchecked on f — x")[1] is None
 
-        for rel in ("plugin/skills/critic/cross-checks.md",
-                    "plugin/skills/critic/goals-1-3.md"):
-            text = (root / rel).read_text()
-            assert "chunk-ref-missing unchecked" in text, (
-                f"{rel} no longer names the cannot-run shape by its prefix — a "
-                "reviewer cannot tell which `unchecked` entry blocks."
-            )
-            assert "inferred as the plan's first open chunk" in text, (
-                f"{rel} dropped the assumption shape, so the compressed reading "
-                "('any chunk-ref-missing entry is BLOCKING') returns and with it "
-                "a false blocker that no --chunk value can clear."
-            )
-            assert "active_build_plan` pointer" in text, (
-                f"{rel} names only the chunk half of the assumption. The plan "
-                "half is the one that graded another plan's chunk and reported "
-                "zero over deliverables that were not there."
-            )
-            # The assumption shape must be graded NOTE somewhere after it is
-            # named — the specific severity, not merely a mention.
-            tail = text[text.index("inferred as the plan's first open chunk"):]
-            assert "NOTE" in tail[:600], (
-                f"{rel} names the assumption shape but does not grade it NOTE "
-                "nearby; an ungraded mention is how the BLOCKING reading wins."
-            )
-            # …and a null count must never be presentable as a zero.
-            assert "not a zero" in text, (
-                f"{rel} does not tell the reviewer that a `null` count differs "
-                "from a `0` — the reading a quoted tally invites."
-            )
+    def test_a_crash_reaches_the_review_at_the_deliverable_checks_severity(self):
+        """`lint_records_safe`'s crash return carries the cannot-run prefix, so a
+        lint that never ran blocks rather than reading as clean."""
+        result = {"findings": [], "unchecked": [
+            "chunk-ref-missing unchecked — record-lint did not run at all (X: y)."
+        ]}
+        [item] = record_lint.graded(result)
+        assert item["severity"] == "blocking"
 
 
 # ---------------------------------------------------------------------------

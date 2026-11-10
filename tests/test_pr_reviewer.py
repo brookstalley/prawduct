@@ -849,8 +849,8 @@ class TestPrReviewSkillContent:
         file can still arrive on a matching Read, #888), so a reason resting on
         it would be false in the same change. The two that survive: the goal
         consuming the read returned 1 finding in 122 reviews, and the protocol's
-        own Learnings Cross-Check assigns that scan to the final/cumulative
-        Critic, so this reviewer was forbidden to perform it.
+        own Learnings Cross-Check forbids this reviewer the scan (no reviewer
+        runs it since the Critic's was retired).
 
         **The negative is bounded to the two reads, and paired with a positive.**
         A bare "learnings" ban would forbid the Cross-Check paragraph naming the
@@ -867,9 +867,9 @@ class TestPrReviewSkillContent:
         assert "learnings-files" not in content, (
             "the protocol names the area-file enumerator again"
         )
-        # POSITIVE: the owner of the scan, and the fact that the omission is
-        # deliberate, both survive.
-        assert "Critic owns this scan" in content
+        # POSITIVE: the scan is no reviewer's (the Critic's was retired on its
+        # yield), and the fact that the omission is deliberate, both survive.
+        assert "No reviewer scans the diff against the learnings rules" in content
         assert "not given the learnings at dispatch" in content
         assert "1 finding in 122 reviews" in content, (
             "the deletion's measured reason has to travel with it, or the next "
@@ -1219,8 +1219,9 @@ class TestPrReviewerScoping:
         assert "Bash(python3 plugin/bin/prawduct-hook evidence sync*)" in frontmatter
 
     def test_learnings_and_backlog_not_rescanned(self):
-        """The cumulative Critic owns the Learnings Cross-Check and Backlog
-        Reconciliation walk; the PR reviewer must not repeat them. R-2 (data
+        """No reviewer runs the Learnings Cross-Check or the Backlog
+        Reconciliation walk any more (the Critic's were retired on their yield),
+        and the PR reviewer must not start them. R-2 (data
         inconsistency) runs on every markdown-backend review because the Critic
         doesn't do it.
 
@@ -1231,8 +1232,8 @@ class TestPrReviewerScoping:
         its scope dissolved keeps passing on a substring while meaning nothing.
         """
         content = self.protocol
-        assert "Critic owns this scan" in content
-        assert "owns this walk" in content
+        assert "No reviewer scans the diff against the learnings rules" in content
+        assert "No reviewer walks the open backlog for resolved items" in content
         assert "always run — the Critic does not do this check" in content
 
     def test_backlog_reconciliation_reads_the_cache_and_reports_when_it_cannot(self):

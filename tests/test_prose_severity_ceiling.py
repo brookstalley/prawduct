@@ -3,7 +3,7 @@
 Comment and doc wording was the largest single category of finding volume, and no
 protocol constrained the *remedy*, so "reword the narration" was a legal
 recommendation — which produced the next round's stale narration. The answer is
-one policy: prose is NOTE unless load-bearing, and stale prose gets deleted, made
+one policy: prose is not a finding unless load-bearing, and stale prose gets deleted, made
 relational, or pinned with a test. Nothing else. (The measurement that motivated
 this is in the change-log entry, where a figure is the record rather than a claim
 that goes stale here.)
@@ -39,11 +39,20 @@ SEVERITY_SURFACES = [
 ]
 SURFACE_IDS = ["goals_1_3", "critic_protocol", "pr_protocol"]
 
+#: The ceiling's wording per surface. The Critic has no NOTE finding severity —
+#: what it would rate NOTE is an observation, owed no disposition — while the PR
+#: reviewer keeps NOTE as its own lowest severity.
+CEILING = {
+    "goals_1_3": "**Prose is an observation unless load-bearing**",
+    "critic_protocol": "**Prose is an observation unless load-bearing**",
+    "pr_protocol": "**Prose is NOTE unless load-bearing**",
+}
 
-@pytest.mark.parametrize("path", SEVERITY_SURFACES, ids=SURFACE_IDS)
-def test_the_ceiling_is_stated(path: Path) -> None:
+
+@pytest.mark.parametrize("path,surface", list(zip(SEVERITY_SURFACES, SURFACE_IDS)), ids=SURFACE_IDS)
+def test_the_ceiling_is_stated(path: Path, surface: str) -> None:
     content = path.read_text()
-    assert "**Prose is NOTE unless load-bearing**" in content, (
+    assert CEILING[surface] in content, (
         f"{path.name} no longer states the prose severity ceiling. Its reviewers "
         "go back to rating comment and doc wording WARNING, which turns each one "
         "into a fix commit — the round-manufacturing loop this rule closed."

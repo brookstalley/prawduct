@@ -362,7 +362,7 @@ substrate. The reviewed design that made that choice is
   cutover — whose accepted spellings are enumerated in **Data Model §5**, the one home, rather than
   restated here, because a spelling added to some carriers and not others is exactly how the grammar
   forked before. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
-  `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), the Critic's C-B4 dangling-id check, PR review
+  `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), PR review
   `R-2`'s `closes: PFX-XXXX` reconciliation, `closes:`/`closed-by:` in backlog metadata and
   change-log tags, and the deferred build-plan backlog-id verification
   (`lib/buildplan_refs.py`). A citation surface that recognizes only PFX does not error on a
@@ -381,7 +381,8 @@ substrate. The reviewed design that made that choice is
   net.** When a work-cycle chunk concludes, the agent updates the items it affected based on **what
   actually shipped** (shipped / partly / unaffected / obsolete) — because the agent knows and the
   framework cannot infer it (the D4 rationale). This is the front-line contract; GV3's janitor
-  sweep, the Critic Backlog Reconciliation, and PR `R-2` are its **backstops**, not its replacement.
+  sweep and PR `R-2` are its **backstops**, not its replacement (the Critic's Backlog
+  Reconciliation was a third until it was retired on its yield, 2026-11-10, #1128).
   The change-log/release-prep pass performs the same reconciliation at release. *(Carried forward
   from the retired predecessor §5.2–5.3; the base doc kept only the backstops.)*
 - **GV11** **The methodology routes agents *to* the skill — the backlog is wired into the work
@@ -392,14 +393,12 @@ substrate. The reviewed design that made that choice is
   and the skill is bypassed — the root cause the structured backlog exists to fix. *(Carried forward
   from predecessor §0/§0.3 — the meta-driver of the whole rework; GV1 preserved the skill's UX but
   not the routing to it.)*
-- **GV12** **The Critic/PR nudge suite survives, advisory (NOTE-level) and never hard-gate.** The
-  checks that surface neglected backlog hygiene: **C-B1** (item missing required metadata), **C-B2**
-  (no dedup search before a new item), **C-B3** (a change touches an area with open items but ran no
-  hygiene step), **C-B4** (dangling item id — recognizing *both* the `PFX-XXXX` alias and
-  `owner/repo#number`, per GV9), plus PR **R-1** (branch work appears to resolve an open item) and
-  **R-2** (a `closes:` disagreement). Service-side advisory validation (DM1/AG3) covers C-B1/C-B2
-  for service-written items; the **diff-side** nudge still matters for out-of-band human edits
-  (CC5). **Invariant:** the framework **routes and flags, it never hard-gates**, and it **never
+- **GV12** **The PR nudges survive, advisory and never hard-gate.** PR **R-1** (branch work appears
+  to resolve an open item) and **R-2** (a `closes:` disagreement). The Critic's diff-side checks
+  **C-B1**–**C-B4** (missing metadata, no dedup evidence, missing hygiene step, dangling id) were
+  retired with its Backlog Reconciliation on 2026-11-10 (#1128) on their measured yield; nothing
+  replaces them, and service-side advisory validation (DM1/AG3) still covers missing metadata and
+  dedup for service-written items. **Invariant:** the framework **routes and flags, it never hard-gates**, and it **never
   pattern-matches `Closes PFX` text to auto-change an item's status** — status changes are always
   explicit (D4/D13). *(Base named only C-B4/R-2, incidentally, inside GV9.)*
 - **GV13** **Activity-based grooming nudge survives cutover.** A `backlog-overdue-grooming` advisory
