@@ -1,8 +1,7 @@
 # Owner Rulings
 
-<!-- The owner's own words, each time they decided something about this product. Copy this file
-     to `.prawduct/owner-rulings.md` the first time the owner rules, and commit it with the
-     work it governs (methodology/building.md "When the Owner Rules").
+<!-- The owner's own words, each time they decided something about this product, committed with
+     the work each ruling governs (methodology/building.md "When the Owner Rules").
 
      Why it exists: a ruling given in conversation is gone by the next session, and the harness's
      auto-memory is per account, so the next person, or the same person on another account,
