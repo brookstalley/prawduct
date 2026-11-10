@@ -58,9 +58,9 @@ Governance commands refuse a build delegate. No new gate, no new fact kind beyon
 - Natural language over schema: the rulings record is prose with no parser.
 
 **Inferences, for the owner to veto at the boundary:**
-- *Inferred:* `clear-reason` records instead of blocking. The owner's answer to that question was
-  "I think we already moved clear-verdict to non-blocking", which is true of its sibling only; I
-  read it as wanting both. The firing is still recorded, so reversing this is one line.
+- `clear-reason` records instead of blocking. Built as an inference from "I think we already
+  moved clear-verdict to non-blocking" (true of its sibling only); the owner then ruled on it the
+  same day: "Yes clear-reason to stop blocking".
 - *Inferred:* the one-line close keeps the existing labels (`RUNNING`, `YOUR TURN`, `COMPLETE`,
   `SAFE TO CLEAR`, `DO NOT CLEAR`), so the Stop hook's deferral rule and old transcripts keep
   their meaning.
@@ -70,7 +70,28 @@ Governance commands refuse a build delegate. No new gate, no new fact kind beyon
 takes the stronger model. That is about delegates, not the Critic or PR reviewers; the guide says
 so in a clause rather than reopening the reviewer-model norm.
 
-**Decisions made mid-build:** *(appended while building)*
+**Decisions made mid-build:**
+- Chunk 02 — the delegate guard already existed (`_check_ephemeral_worktree` refuses
+  `critic-begin` from a harness scratch worktree), so the code change is the refusal naming the
+  coordinator. A delegate sharing the coordinator's worktree, or on a named branch, is still not
+  refused: no reliable predicate separates it from the coordinator. Settled by the plan's own
+  instruction to stop rather than ship a guess; the guide carries that case.
+- Chunk 02 — "always name the model at dispatch; never inherit a stronger one by default" joined
+  the guide and the digest, on the owner's ruling of 2026-11-10: "we need to be very careful to
+  not accidentally spam fable subagents anywhere, given the cost". Capping the reviewers is its
+  own item (#1136).
+- Chunk 03 — the rulings record is `.prawduct/owner-rulings.md`, from
+  `plugin/templates/owner-rulings.md`. *Inferred* (the builder's proposal): the `.prawduct/` root
+  because it is a running record like the operator-verification queue, and "owner-" because
+  "ruling" already names a norm-boundary ruling in `docs/norms.md`.
+- Chunk 03 — `building.md`'s size ceiling is raised, declared: about two thirds of the new
+  guidance was paid in place, and the rest is kept rather than cutting the backwards-compatibility
+  trap, the owner's standing rule and the only copy a delegate reads.
+- Chunk 04 — the digest sentences were paid in place rather than spending its reserve: the
+  tangent bullet's three-way choice (the guide owns it), the handoff bullet's round-trip clause,
+  and two parentheticals. The builder's proposed alignment paragraph was not taken, because it
+  dropped the owner-ratified mid-build order and "fast-moving data is verified, not recalled".
+  An alignment-pass miss: the plan expected Chunk 01 to free more of the digest than it did.
 
 **Level:** High.
 

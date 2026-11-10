@@ -53,7 +53,7 @@ Don't stop a build for the questions it raises — the goals exist so you can an
 
 ### When the Owner Rules
 
-When the owner decides, corrects you, or states a constraint or preference about the product, write their words, dated, to `.prawduct/owner-rulings.md` (`templates/owner-rulings.md`) before replying, and cite the entry: later sessions and people read that file, not this chat or your auto-memory. An entry points to where the decision landed (plan Goals, a norm, an artifact) rather than restating it; across repos, the one owning the decision keeps it.
+When the owner decides, corrects you, or states a constraint or preference later work must honour (not a one-off tweak), write their words, dated, to `.prawduct/owner-rulings.md` (`templates/owner-rulings.md`) before replying, and cite the entry: later sessions and people read that file, not this chat or your auto-memory. An entry points to where the decision landed rather than restating it; across repos, the one owning the decision keeps it.
 
 ### A Requirement Surfaced Mid-Build
 

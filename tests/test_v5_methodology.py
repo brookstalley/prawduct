@@ -537,7 +537,13 @@ LAST_MEASURED_TOKENS = {
     # where the temptation arises). The rest is declared rather than cut from the backwards-
     # compatibility trap, the one remaining restatement, because it is the owner's standing rule and
     # the only copy a delegate reads.
-    "methodology/building.md": 5378,
+    # -2 the same day (audit-guidance, #1131 and #1133, merged): the Session Scope sentence names
+    # the closing line, and the Delegating section names the model at dispatch and drops "what
+    # stays in the main agent" for delegation.md's "Who does what". -1 more after trying the
+    # guidance on a fresh agent, which logged a logo tweak as a ruling: the section now says a
+    # ruling is what later work must honour, paid by the examples of where a decision lands (the
+    # template owns them).
+    "methodology/building.md": 5375,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1479,7 +1485,10 @@ LAST_MEASURED_TOKENS = {
     # +25 on 2026-11-10 (audit-guidance, #1135): the Verification strategy puts a looked-at
     # output's first look in the first chunk, pointing at discovery.md "See it first" rather than
     # restating it. A READING.
-    "methodology/planning.md": 5920,
+    # -171 the same day (audit-guidance, #1133): the closed list of reasons to ask for approval
+    # and its standing negatives are gone; the section discloses and routes to the `Delegation`
+    # preference. A READING.
+    "methodology/planning.md": 5749,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1604,7 +1613,10 @@ LAST_MEASURED_TOKENS = {
     # the wrong-label list each now say when the pair stands and what the hook
     # cannot see. In the 3.8.0-dev survey 7 of 10 refusals were this pair with
     # live work, a relabel and nothing more. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3244,
+    # +50 on 2026-11-10 (audit-guidance, #1131, owner ruling): the close is one line, and a turn
+    # that needs the user restates its asks just above it. The three-paragraph shape and `STATE`
+    # went; the asks rule and its example are the growth. A READING, no ceiling.
+    "methodology/session-hygiene.md": 3294,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -2146,8 +2158,16 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # kill. Paid in place: "only `RUNNING` may" became "`COMPLETE` never says", and
     # the precedence exception now says when the hold applies instead of sending it
     # to `RUNNING`. Digest 9423 -> 9416 characters.
-    "framework": 3079,
-    "product": 2197,
+    # framework 3079 -> 3074, product 2197 -> 2192 on 2026-11-10 (audit-guidance, owner
+    # rulings on #1131, #1133, #1135). In: the one-line close with its asks, delegation as
+    # the default with the model named and no heavy tests, an owner's ruling written to
+    # `.prawduct/owner-rulings.md`, looked-at output shown first, an originated rule marked.
+    # Paid in place: the three-paragraph block and `STATE`, the tangent bullet's three-way
+    # choice (delegation.md owns it), the handoff bullet's round-trip clause (the cold-cache
+    # reason stays), `--merge`'s parenthetical, and "completed plans are archived"
+    # (building.md owns it). Digest 9416 -> 9426 characters.
+    "framework": 3074,
+    "product": 2192,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2311,8 +2331,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reading's cut, one over each.
     # 3081 -> 3080, 2199 -> 2198 on 2026-10-29 (clear-gate-telemetry): ratcheted
     # with the reading, one over each.
-    "framework": 3080,
-    "product": 2198,
+    # 3080 -> 3075, 2198 -> 2193 on 2026-11-10 (audit-guidance): ratcheted with the
+    # reading, one over each.
+    "framework": 3075,
+    "product": 2193,
 }
 
 
@@ -3725,8 +3747,8 @@ class TestBuildingMethodology:
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
-        # RAISED 5308 -> 5379 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5379, f"building.md is ~{tokens} tokens, should be <5379"
+        # RAISED 5308 -> 5376 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5376, f"building.md is ~{tokens} tokens, should be <5376"
 
 
 # =============================================================================
