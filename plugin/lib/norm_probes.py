@@ -28,24 +28,24 @@ runs.
 Design note — per-probe lock-in (fires / clears / reader-action)
 ----------------------------------------------------------------
 
-- **revisit-due** — *Fires:* an open (non-closed) backlog item's metadata bar
-  carries ``revisit: YYYY-MM-DD`` with a date strictly before today. Non-date
+- **revisit-due** — *Fires:* an open (non-closed) backlog item carries
+  ``revisit: YYYY-MM-DD`` (the markdown metadata bar, or post-cutover the
+  issue's ``prawduct`` block) with a date strictly before today. Non-date
   ``revisit:`` values (event triggers) are IGNORED — those are the janitor Norm
   Health sweep's job. *Clears:* the item is closed (``status: shipped|dropped``
   or moved to Archive), or its ``revisit:`` is renewed to a future date /
   removed. *Reader-action:* the summary names each past-due item so the reader
   can renew the exception (fresh ``revisit:`` + reason) or schedule its removal.
-  **Markdown-backend only**, and unlike its two siblings that is not dormancy the
-  cache can end — see the function.
+  Post-cutover it reads the backlog cache — see the paragraph below and the function.
 
-**Two of the five read the LIVE backlog, and which backlog depends on the product.**
-``dead-why`` and ``stalled-transition`` both need to know whether a cited item is
-live and when it last moved. Pre-cutover they read ``.prawduct/backlog.md``;
+**Three of the five read the LIVE backlog, and which backlog depends on the product.**
+``dead-why`` and ``stalled-transition`` need to know whether a cited item is live
+and when it last moved; ``revisit-due`` needs each open item's clock. Pre-cutover they read ``.prawduct/backlog.md``;
 post-cutover they resolve through the backlog cache, which holds the live store
 and resolves aliases, so a norm citing a pre-migration ``PFX`` id still finds the
 issue that carries it. A store that cannot answer raises one shared advisory
 rather than silence — the distinction between *ran and found nothing* and *could
-not look* is the whole reason these two were made to announce themselves.
+not look* is the whole reason these three announce themselves.
 
 - **dead-why** — *Fires:* a ``## Direction`` entry's ``Why:`` line, or a
   ``Status:`` line **still reading ``in-transition``**, in a
@@ -727,7 +727,7 @@ def _extract_ids(line: str) -> list[str]:
 # =============================================================================
 
 #: The advisory raised when the backlog cache cannot answer. **One type and one
-#: evidence string, shared by both probes that read it**, because
+#: evidence string, shared by every probe that reads it**, because
 #: ``advisory_store.compute_id`` hashes ``(feature, type, version, evidence)`` —
 #: so two probes reporting the same outage mint the same id and the store keeps
 #: one nag. Two spellings would mean two advisories for one cause, which is the
@@ -761,7 +761,7 @@ class _CacheUnanswerable(Exception):
 
 
 def _cache_advisory(exc: "_CacheUnanswerable", scope: str) -> CouldNotLook:
-    """The one advisory both probes raise, with both repairs named.
+    """The one advisory every cache-reading probe raises, with both repairs named.
 
     Returned as :class:`~lib.advisory_store.CouldNotLook`, and every probe passes
     that mark through: the advisory says the check could not look, so the probe's
@@ -1091,14 +1091,15 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
     event triggers). One stable advisory; the past-due items are listed in the
     summary (id-independent evidence keeps the advisory id put).
 
-    **Live on the markdown backend, dark on the Issues one — and unlike its two
-    siblings the cache did not change that, because no query could.** ``revisit:``
-    records *this exception was granted until date X*, which is intent rather than
-    state; two exceptions granted the same day with different clocks are
-    indistinguishable to any age-based query, so there is nothing for a cache to
-    serve. What is missing post-cutover is a *write path* for the field, not a
-    read path (#550/#564) — which is why this probe keeps its cutover early return
-    rather than gaining a cache arm.
+    **Two backends, one question.** Pre-cutover the clock is read from the
+    markdown backlog's metadata bar; post-cutover from each open issue's
+    ``prawduct`` block, served by the backlog cache. ``revisit:`` records intent
+    (*granted until date X*), which no age-based query can reconstruct — so the
+    cache arm reads the *field*, not a date column. The arm was dark until the
+    field had a write path on the Issues backend (``backlog update --revisit``,
+    #564); with one, items carry dated clocks that nothing fired, which is the
+    silence ``docs/norms.md`` § Exceptions expire forbids. An unreadable store is
+    reported as one (:func:`_cache_advisory`), never as "nothing due".
 
     An earlier pass retired the function outright, on the reasoning that exception
     clocks had already migrated to prose on the norm. **That is true of this repo
@@ -1110,22 +1111,20 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
     of products to suit one repo's arrangement, and left four surfaces promising a
     mechanism that no longer existed.
     """
-    if post_cutover(state):
-        return []  # item liveness now lives on GitHub Issues; the file is frozen
     today = datetime.now(timezone.utc).date()
-    text = _read_text(_backlog_path(codebase))
-    if not text:
+    scope = _live_scope(state)
+    if scope is not None:
+        try:
+            labels = _cached_revisits_due(codebase, scope, today)
+        except _CacheUnanswerable as exc:
+            return _cache_advisory(exc, scope)
+    else:
+        if post_cutover(state):
+            return []  # cut over with no scope named: there is no store to ask
+        labels = _markdown_revisits_due(codebase, today)
+    if not labels:
         return []
-    due: list[BacklogItem] = []
-    for item in parse_backlog(text).items:
-        if _is_dead(item):
-            continue
-        revisit = _parse_date(item.revisit)
-        if revisit is not None and revisit < today:
-            due.append(item)
-    if not due:
-        return []
-    listed = ", ".join(sorted(_label(i) for i in due))
+    listed = ", ".join(sorted(labels))
     return [
         AdvisoryCandidate(
             type="revisit-due",
@@ -1147,6 +1146,42 @@ def probe_revisit_due(state: ProjectState, codebase: Codebase):
             priority="info",
         )
     ]
+
+
+def _markdown_revisits_due(codebase: Codebase, today: date) -> list[str]:
+    """Labels of open markdown-backlog items whose dated ``revisit:`` is past."""
+    text = _read_text(_backlog_path(codebase))
+    if not text:
+        return []
+    return [
+        _label(item)
+        for item in parse_backlog(text).items
+        if not _is_dead(item) and (when := _parse_date(item.revisit)) is not None and when < today
+    ]
+
+
+def _cached_revisits_due(codebase: Codebase, scope: str, today: date) -> list[str]:
+    """Ids of open Issues-backend items whose ``prawduct`` block carries a past
+    dated ``revisit:``.
+
+    Raises :class:`_CacheUnanswerable` when the store cannot answer, so the caller
+    reports an outage rather than an empty result. Open means every non-terminal
+    status (``cachequery.open_items``), the same set the markdown arm reaches by
+    skipping dead items.
+    """
+    from .backlog import cachequery  # noqa: PLC0415 — lazy: only the post-cutover arm
+    from .backlog.encode import parse_block  # noqa: PLC0415 — same
+
+    result = cachequery.open_items(codebase.root, scope=scope, now=datetime.now(timezone.utc))
+    if result.get("status") != "ok":
+        err = result.get("error") or {}
+        raise _CacheUnanswerable(err.get("code") or "unavailable", err.get("message") or "unknown reason")
+    due = []
+    for row in result["data"].get("items") or []:
+        when = _parse_date(parse_block(row.get("body")).get("revisit"))
+        if when is not None and when < today:
+            due.append(str(row.get("id")))
+    return due
 
 
 def _reaffirmed_ids(entry: list[str]) -> set[str]:
@@ -1501,8 +1536,8 @@ def probe_norm_health_sweep_overdue(state: ProjectState, codebase: Codebase):
 
 def register() -> None:
     """Register the norm-lifecycle probes. Idempotent (register_probe overwrites)."""
-    register_probe(FEATURE, "revisit-due", PROBE_VERSION, probe_revisit_due)
     cache = (_CACHE_UNAVAILABLE_TYPE,)
+    register_probe(FEATURE, "revisit-due", PROBE_VERSION, probe_revisit_due, emits=cache)
     register_probe(FEATURE, "dead-why", PROBE_VERSION, probe_dead_why, emits=cache)
     register_probe(FEATURE, "stalled-transition", PROBE_VERSION, probe_stalled_transition, emits=cache)
     register_probe(FEATURE, "norm-registry-unratified", PROBE_VERSION, probe_norm_registry_unratified)

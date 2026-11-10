@@ -56,7 +56,7 @@ this inventory is exhaustive rather than sampled.
 | 10 | Janitor: stale items | open items not updated in >90d — from provider `updated_at` (§2.1) |
 | 11 | Janitor: unstaged items | open items with no `stage` |
 | 12 | Janitor: neglected hygiene | items in the `promoted` state whose owning chunk shipped |
-| 13 | `revisit-due` probe | *retired — see §2.1, not restored* |
+| 13 | `revisit-due` probe | open items' block `revisit:` field (restored 2026-11-10 — see §2.1) |
 | 14 | `dead-why` probe | **id → is-dead**, alias-resolving |
 | 15 | `stalled-transition` probe | id → **live? + date floor**, from provider `updated_at` |
 
@@ -81,7 +81,13 @@ chose `working-branch` over a stored claim timestamp (§3).
   re-confirmation — and for a staleness *nag* the derived signal is the better of the two.
 - **Consumer 15 (stalled-transition) likewise** takes its date floor from `updated_at` rather
   than stored metadata dates.
-- **Consumer 13 (`revisit-due`) is retired, not restored.** A query cannot substitute for it —
+- **Ruling 2026-11-10 (owner): consumer 13 (`revisit-due`) is restored.** The retirement below
+  rested on the Issues backend having no write path for `revisit:`; #564 shipped one
+  (`backlog update --revisit`), after which open issues carried dated clocks nothing fired —
+  #987's committed re-run date among them. The probe reads the field from each open item's block
+  via `open_items`; it does not need, and does not use, a date query. The original reasoning is
+  kept below as the record of why it was dark.
+- *(Superseded 2026-11-10)* **Consumer 13 (`revisit-due`) is retired, not restored.** A query cannot substitute for it —
   `revisit:` encodes *"this exception was granted until date X"*, which is intent, not state, and
   two exceptions granted the same day with different clocks are indistinguishable to any
   age-based query. It is retired for a different reason: **exception clocks have already migrated
