@@ -31,7 +31,7 @@ Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
 checkout's binding),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
-``standing_block`` (the closing block the Stop deferral and the clear checks read), and ``core``
+``standing_block`` (the close the Stop deferral and the clear checks read), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -974,8 +974,8 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     session, from the Stop-hook ``last_assistant_message`` field.
 
     The Stop hook fires at every turn end, while the reflection and Critic
-    gates are about session end. A turn whose standing block says ``RUNNING``
-    and closes on ``DO NOT CLEAR`` is the agent's own statement that it is
+    gates are about session end. A turn whose close says ``RUNNING`` and
+    ``DO NOT CLEAR`` is the agent's own statement that it is
     still working — a review in flight, a delegate not yet reaped — so both
     gates DEFER to the next Stop. Both, by owner ruling: the label is a
     required, user-facing claim, so misusing it to dodge a gate is visible to
@@ -1000,12 +1000,12 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     (authority fails closed):
 
       - non-dict input, field absent, non-string or blank → ``(False, None)``;
-      - the message's closing block states no single verdict where the block
-        puts it (``standing_block.clear_verdict`` returns ``None``: a label
-        quoted mid-prose, both labels, trailing text after the verdict) →
+      - the message's close states no single verdict where the close puts it
+        (``standing_block.clear_verdict`` returns ``None``: a label quoted
+        mid-prose, both labels, trailing text after the close) →
         ``(False, None)``;
       - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
-      - the verdict is ``DO NOT CLEAR`` but the block states no single
+      - the verdict is ``DO NOT CLEAR`` but the close states no single
         disposition, or one other than ``RUNNING`` → ``(False, None)``;
       - ``RUNNING`` with ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
     """
@@ -1032,7 +1032,7 @@ def turn_contradicts_its_verdict(event) -> str | None:
     verdict is ``SAFE TO CLEAR``. This reads the message alone, so it returns
     ``YOUR TURN`` either way: the Stop hook lets that pair stand when it
     observes the work, and ``COMPLETE`` never. Only a clearly stated pair returns a label
-    (``standing_block.contradiction``); a missing field or an ambiguous block
+    (``standing_block.contradiction``); a missing field or an ambiguous close
     returns ``None``, because the caller records it as a firing.
     """
     message = _last_message(event)
@@ -1041,24 +1041,18 @@ def turn_contradicts_its_verdict(event) -> str | None:
     return standing_block.contradiction(message)
 
 
-def turn_cites_itself_as_record(event) -> str | None:
+def turn_self_citation(event) -> "tuple[str, str] | None":
     """The phrase by which a turn closing ``SAFE TO CLEAR`` gives itself as the
-    record (``standing_block.self_citation``), or ``None``.
+    record, with the citation's kind beside it
+    (``standing_block.self_citation_match``), or ``None``.
 
     ``SAFE TO CLEAR`` tells a reader who may return days later that a clear
     loses nothing. A reason that points at the turn ("the questions are in this
-    message") points at what the clear deletes. Same payload handling as
-    :func:`turn_contradicts_its_verdict`: a missing field or an unclear block
-    returns ``None``, because the caller blocks on it.
+    message") points at what the clear deletes. The kind is what the
+    ``clear-reason`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_contradicts_its_verdict`: a missing
+    field or an unclear close returns ``None``.
     """
-    match = turn_self_citation(event)
-    return match[0] if match else None
-
-
-def turn_self_citation(event) -> "tuple[str, str] | None":
-    """:func:`turn_cites_itself_as_record` with the citation's kind beside the
-    phrase (``standing_block.self_citation_match``) — the kind is what the gate
-    records, since the phrase is the turn's own words."""
     message = _last_message(event)
     if message is None:
         return None

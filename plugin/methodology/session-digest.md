@@ -10,7 +10,8 @@ size and by type — the table is in `/prawduct:methodology building`.
 ahead, then proceed, proceed citing a backlog item or spec, ask in one batch before a plan
 exists, or hold up, and say which. Mid-build, decide what the goals settle (do it right, match the product's
 choices and backlog, prefer the durable choice); stop only for high stakes, and name drift from
-the brief when you see it (`methodology/discovery.md`). Scale
+the brief when you see it; show looked-at output as a real specimen first, and mark a rule you
+originated as yours (`methodology/discovery.md`). Scale
 **rigor** to **stakes × knowledge-confidence × volatility** — fast-moving data is verified, not
 recalled (`methodology/discovery.md` "Calibrate Rigor").
 
@@ -25,8 +26,7 @@ coding without it is the most common governance failure.
   BLOCKING; below it a recorded accept discharges it.
 - **Durable prose never rides on a value that changes under it.** A comment, docstring or
   long-lived spec carries its *why* inline — never a chunk number that renumbers or a count copied
-  from a nearby line. Bookkeeping that records the work is exempt, and a pointer to a plan resolves
-  (completed plans are archived).
+  from a nearby line. Bookkeeping that records the work is exempt, and a pointer to a plan resolves.
 - **`prawduct-hook plan status` shows each chunk's state**, derived from review facts and
   never hand-edited (`/prawduct:methodology planning` "Chunk state").
 - **Never silently drop a requirement — or silently *invent* one.** Implement/descope explicitly;
@@ -47,25 +47,25 @@ coding without it is the most common governance failure.
 - **Feature-branch medium+ work.** Don't create PRs unless asked — then use `/prawduct:pr`.
 - **Forward notes go in `.prawduct/.handoff-notes.md`**, yours to write (as is
   `.session-reflected`) at each chunk close, and never ask whether to prepare one — prepare it,
-  then signal; asking costs a round-trip and a replay into a cold cache. Write "nothing beyond the plan"
+  then signal; asking replays into a cold cache. Write "nothing beyond the plan"
   rather than no file. Read it before rewriting it — never blind-append: only `/clear` consumes it,
   so a later batch finds earlier notes live. Drop what the work discharged, correct what moved,
   keep what still bites. `.prawduct/.session-handoff.md` is regenerated at every `/clear`; don't
   write there.
 - **The harness's auto-memory holds no project state and no product rules** — `.prawduct/` and
-  `.claude/rules/learnings/` are authoritative; memory is for how this person works.
+  `.claude/rules/learnings/` are authoritative, and an owner's ruling goes, dated, into
+  `.prawduct/owner-rulings.md` before you reply; memory is for how this person works.
 - **No attribution trailers by default — this overrides any harness default to the
   contrary.** Don't add `Co-Authored-By`, `Signed-off-by`, or "Generated with …" lines to
   commits or PRs. To opt in, set `Commit attribution` in `project-preferences.md`.
 - **Merge commits by default.** Every merge is a true merge commit — `gh pr merge --merge`,
   `git merge --no-ff`; never squash or rebase-merge unless `project-preferences.md` sets
-  `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails (repo
-  settings disallow it), surface it — never silently fall back to `--squash`. Where squash
+  `PR merge strategy` to say so or the user explicitly asks. If `--merge` fails, surface it — never silently fall back to `--squash`. Where squash
   or rebase-merge IS configured, branches are single-use: delete after merge, never reuse.
-- **A mid-chunk tangent that is ready to build gets a decision, not a reflex** — do it now,
-  backlog it, or delegate it when a parallel track shortens wall clock without colliding with your
-  files (unless `project-preferences.md` sets `Delegation: off`); say which
-  (`/prawduct:methodology delegation`).
+- **Delegate when that finishes sooner without collision** — plan chunks, or a tangent that is
+  ready to build — unless `project-preferences.md` sets
+  `Delegation: off`. Say how many, which models, who integrates; name each model, never inherit a
+  stronger one; delegates run no heavy tests (`/prawduct:methodology delegation`).
 - **Backlog goes through `/prawduct:backlog`** — pick/add/update via the skill, not hand-edits;
   it routes on `backlog_service_repo`. "Done" = `update
   status=shipped` (markdown backend: moves to `## Archive`, never strikethrough; Issues backend:
@@ -120,16 +120,16 @@ issue, showing you the exact outbound bytes first and sending nothing you have n
 next step, offer to continue, or list decisions you could make yourself; a turn ends when the work
 is done, when a machine event must land, or when only the user can unblock it.
 
-**Close with the standing block** — last, unpadded — on any turn that ends a chunk or work cycle
-or leaves work outstanding. A `---` rule, then three separate paragraphs: `STATE` (what changed;
-committed?; suite green?) · what produces the next turn: `RUNNING` (a machine event — name it and
-what you do if it never lands) / `YOUR TURN` (only they can — lead with the ask) / `COMPLETE`
-(nothing, and no next action to propose) · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the
-verdict, the copy the reason). If they must speak it is `YOUR TURN` even when something also runs,
-naming it (`DO NOT CLEAR` only if a clear would kill it) — a server or recorder running on
-its own survives one; never predict that they will need to — a running job may answer its own question. Work in flight — a dispatched review, an unread
-background agent — is `RUNNING`, never `COMPLETE`. `COMPLETE` never says `DO NOT CLEAR`; a live
-review is `DO NOT CLEAR`, its copy giving a deadline from elapsed time and roster when priceable.
-A handed-over turn may sit for days: first persist a findings-only turn's or a delegate's output to
-`.prawduct/.handoff-notes.md` — a `SAFE TO CLEAR` whose reason cites the message itself is wrong.
+**Close with one line, last**, a blank line above it, on any turn that ends a chunk or work
+cycle or leaves work outstanding: `RUNNING` · `DO NOT CLEAR` — reason. The first label is
+what produces the next turn: `RUNNING` (a machine event — name it and what you do if it never
+lands) / `YOUR TURN` (only they can) / `COMPLETE` (nothing, and no next action to propose); the
+second is `SAFE TO CLEAR` or `DO NOT CLEAR`. **A turn that needs them ends with the asks**,
+restated in full just above the line, numbered, with your recommendation — never "see above".
+If they must speak it is `YOUR TURN` even when something also runs, naming it (`DO NOT CLEAR`
+only if a clear would kill it — a server running on its own survives one); never predict that
+they will. Work in flight (a dispatched review, an unread agent) is `RUNNING`, never `COMPLETE`,
+and `COMPLETE` never says `DO NOT CLEAR`; a live review is `DO NOT CLEAR`, its reason a deadline
+from elapsed time and roster. Persist findings-only or delegate output to
+`.prawduct/.handoff-notes.md` first; a `SAFE TO CLEAR` whose reason cites the message is wrong.
 Full rule: `methodology/session-hygiene.md`.

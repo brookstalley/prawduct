@@ -38,22 +38,26 @@ Classification heuristic: file count is a proxy for risk. 1-2 files = trivial/sm
 
 ## Before You Build: The Alignment Pass
 
-Before non-trivial work, judge how clear and grounded the goals are (request, brief, backlog) against how much work and risk lie ahead, take one of four responses, and **say which in a line** — that acknowledgement is how the owner catches a misreading before it is built:
+Before non-trivial work, judge how clear and grounded the goals are (request, brief, backlog, `.prawduct/owner-rulings.md`) against how much work and risk lie ahead, take one of four responses, and **say which in a line** — that acknowledgement is how the owner catches a misreading before it is built:
 
 - **Proceed** — clear by nature, however large: a bug with a repro defines its own success. Restate the target and go.
 - **Proceed, citing it** — a backlog item or spec already says what this is for, what success is, and what is out of scope. Restate its goals, name what it leaves open and what you inferred there, and go.
 - **Ask, in one batch** — a high-level goal or key architecture choice is missing. Lead with your own reading, so the owner corrects rather than authors.
 - **Hold up** — a lot of work, and you can't yet form a reading of the goals worth correcting: offer to discuss, or to use best judgment. Best judgment is a legitimate answer; proceed with your inferences written down for the boundary review to show the owner.
 
-**Judge the goals under the work, not only the request** (`methodology/discovery.md` "Ground the goals under an investment"), and ask now: intent is the owner's to confirm, better now than mid-build. The written form scales with the response — a sentence to proceed, the plan's `## Goals` (`methodology/planning.md`) to ask or hold up; Plan Mode is a native vehicle (Principles 6 and 20). **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
+**Judge the goals under the work, not only the request** (`methodology/discovery.md` "Ground the goals under an investment"), and ask now: intent is the owner's to confirm, better now than mid-build. The written form scales with the response — a sentence to proceed, the plan's `## Goals` (`methodology/planning.md`) to ask or hold up; Plan Mode is a native vehicle (Principles 6 and 20). **Work you proposed names the owner goal it serves** — the owner's yes to your proposal grounds nothing, so judge that goal, not the approval. **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
 
 ### Deciding Mid-Build
 
-Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, work out of proportion to the benefit, or drift at fork tier (`methodology/discovery.md`). Prefer the durable choice to the merely reversible one. Record each in a line in the plan's Goals, as `methodology/planning.md` "Goals" says, marking one the goals did not settle as an alignment-pass miss.
+Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, work out of proportion to the benefit, or drift at fork tier (`methodology/discovery.md`). Prefer the durable choice to the merely reversible one. Record each in a line in the plan's Goals (`methodology/planning.md` "Goals").
+
+### When the Owner Rules
+
+When the owner decides, corrects you, or states a constraint or preference later work must honour (not a one-off tweak), write their words, dated, to `.prawduct/owner-rulings.md` (`templates/owner-rulings.md`) before replying, and cite the entry: later sessions and people read that file, not this chat or your auto-memory. An entry points to where the decision landed rather than restating it.
 
 ### A Requirement Surfaced Mid-Build
 
-Requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently in chat and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume* — one you write is an inference, flagged for the boundary.
+Requirements also arrive mid-build, most often designed fluently in chat and flowed into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume* — one you write is an inference, flagged for the boundary. **A third fix on one surface means a definition is missing** (the term, the rule, who owns the value): write it before the next fix. An acceptance loop that keeps returning new residuals converges the same way: ratify one checklist with the owner; anything outside it is a new requirement they take or defer, not a defect holding acceptance open.
 
 ### A Norm Surfaced Mid-Build
 
@@ -105,13 +109,13 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands. An *untrackable* wait (CI, a remote queue) blocks unless the turn, still working, closes on `DO NOT CLEAR`, which defers reflection and Critic only (`session-hygiene.md`).
 
-**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state via `prawduct-hook infer-critic-mode` and records `mode_chosen_by`. Pass an explicit mode (e.g. `/prawduct:critic cumulative`) only to override; report override cases so inference can improve. Its fact is what completes the chunks it covers (`methodology/planning.md` "Chunk state"). A short plan owes fewer runs than one per chunk — `review-cycle.md`'s "When Review Is Required" row states which and when.
+**Critic review.** Run `/prawduct:critic` (no args) — the SKILL infers mode from git + build-plan state (`prawduct-hook infer-critic-mode`). A chunk's `Critic mode:` in the plan, or an explicit mode (e.g. `/prawduct:critic cumulative`), overrides it; report override cases so inference can improve. Its fact is what completes the chunks it covers (`methodology/planning.md` "Chunk state"). A short plan owes fewer runs than one per chunk — `review-cycle.md`'s "When Review Is Required" row states which and when.
 
 **Resolve findings.** Consolidate before reading `.critic-findings.json` where the digest says to; single-pass reviews consolidate themselves. **Disposition every finding in one pass while a blocker remains:** make the fixes in the working tree, run one `/prawduct:critic verify-resolutions` over the uncommitted fixes, then land them in one commit (in that order — committing first re-anchors the pass; `review-cycle.md`). Fix-commit-verify per finding multiplies rounds. Once zero blocking remain the review is over — then fix, accept, or file; mid-plan, NEXT-ACTION says when a fix rides the next review. Accept (won't-fix, reasoned) is the default. Record it as a fact (`prawduct-hook disposition`), then `render-dispositions` into the entry — never hand-count. Re-run the gate, don't infer a round from stale output. Document disagreements with rationale.
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what you expected vs. what actually happened, and the root cause or "no defect" — the two lines the gate grades — then what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule under `.claude/rules/learnings/` only if this cycle produced one.
 
-**Operator verification.** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
+**Operator verification.** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes` — it re-checks a form the owner has seen, never a first look (`methodology/discovery.md` "See it first"). `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
 
 ## Session Scope Discipline
 
@@ -121,7 +125,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 1. **Critic** (if medium+ and not run yet) on the uncommitted chunk — resolve blocking findings. 2. **Commit** (tests passing). 3. **Persist** pending decisions/plans to artifact files. 4. **Backlog** — file/close affected items via `/prawduct:backlog`. 5. **Reflection** — confirm `.prawduct/.session-reflected` has an entry for this chunk; add a synthesis only if a cross-cutting pattern emerged. 6. **Handoff notes** — read `.prawduct/.handoff-notes.md` before rewriting it, then reconcile to what the *next* session needs: where you stopped, what you'd do next, what would bite them. Never blind-append; the Stop hook flags a missing one.
 
-**A chunk boundary ends the turn only when the plan is done, the next chunk needs the user, or the work cycle has reached what one review can cover** (§ above); otherwise carry on to the next chunk after steps 1-6. When the turn does end, close it with the standing block — last, after every other word. Say `SAFE TO CLEAR` only when steps 1-6 above are done and nothing is outstanding, in flight included — that binding is what this file owes the block. A decision awaiting the user is not outstanding once step 6 records it. Its shape, trigger and failure modes are `methodology/session-hygiene.md`, and the session digest injects them into every session.
+**A chunk boundary ends the turn only when the plan is done, the next chunk needs the user, or the work cycle has reached what one review can cover** (§ above); otherwise carry on to the next chunk after steps 1-6. When the turn does end, close it with the closing line — last, after every other word. Say `SAFE TO CLEAR` only when steps 1-6 above are done and nothing is outstanding, in flight included — that binding is what this file owes the line. A decision awaiting the user is not outstanding once step 6 records it. Its shape, trigger and failure modes are `methodology/session-hygiene.md`, and the session digest injects them into every session.
 
 The `/clear` hook regenerates `.prawduct/.session-handoff.md` — never hand-edit it — from your notes (first), `prawduct-hook plan status`, reflection, Critic findings and changed files. `prawduct-hook handoff preview` shows what the next session would get.
 
@@ -147,15 +151,15 @@ Research scales to impact: medium (pervasive pattern, non-core dep) → quick in
 
 ## Delegating Work to Subagents
 
-**When the user asks you to work in a subagent, do it** (Principle 23). Otherwise whether to delegate — a plan's chunks, or a tangent that arrives mid-cycle — is `/prawduct:methodology delegation`'s judgment, recorded as the plan's `partition:` and re-checked at each chunk close — read it before fanning out; this section is the mechanics.
+**When the user asks you to work in a subagent, do it** (Principle 23). Otherwise delegation is the default when it finishes the work sooner without collision — a plan's chunks or a mid-cycle tangent — recorded as the plan's `partition:` and re-checked at each chunk close. `/prawduct:methodology delegation` holds the default and what holds however you arrange it; read it before fanning out. This section is the mechanics.
 
-**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction "Read the build cycle via `/prawduct:methodology building`", and a verification ceiling — the project's `Delegate verification` row where it has one, else the narrowest run covering its own change; never the full suite. Add "then `.prawduct/.subagent-briefing.md`" only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it.
+**How:** give it the chunk spec and referenced artifacts, the project directory path, the instruction "Read the build cycle via `/prawduct:methodology building`", a verification ceiling (the `Delegate verification` row, else the narrowest run covering its own change; never the heavy run), and who integrates. Name its model, since an unnamed one inherits yours, and set its effort. Add "then `.prawduct/.subagent-briefing.md`" only for a *shared*-worktree agent — it is gitignored, so an isolated one never sees it.
 
-**Parallel chunks:** launch independent chunks as separate subagents. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts are invisible; commit first or inline it in the prompt, say the prompt outranks any file. **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for independent chunks — the only way into another tree (`/prawduct:methodology delegation`). The canary may fire O(agents × edits) — expected.
+**Parallel chunks:** launch independent chunks as separate subagents. **Worktree-isolated (`isolation: "worktree"`) subagents read HEAD** — uncommitted artifacts are invisible; commit first or inline it in the prompt, say the prompt outranks any file. **Shared-worktree subagents share your git *index*** — `git rm` stages into *yours*, and `git add <paths>` does not scope a later `git commit`; use `git commit -- <paths>`. Prefer isolation for independent chunks. The canary may fire O(agents × edits) — expected.
 
-**What stays in the main agent:** the combined suite and all end-to-end verification, merge conflicts, Critic, reflection, state updates. A scratch worktree is unbound; it builds, you govern. A named branch in a worktree binds through its plan like any checkout.
+**Who integrates:** you, or an integrator subagent holding the one integration branch, where delegate branches merge and the heavy run happens; Critic, reflection, state and the done decision stay with you. A scratch worktree is unbound; it builds, you govern.
 
-**A delegate's "Done" on a removal or a sweep arrives with its evidence.** These fail silently and in the direction of looking finished: a symbol left behind, an allowlist wider than the brief, an inventory short. Ask for the falsifying output in the brief (the grep for the removed symbol returning nothing, the recount against the source you named, the files it touched) and read it when the report lands; don't repeat the sweep.
+**A delegate's "Done" on a removal or a sweep arrives with its evidence.** These fail silently, in the direction of looking finished. Ask for the falsifying output in the brief (the grep for the removed symbol returning nothing, the recount against the source you named, the files it touched) and read it when the report lands; don't repeat the sweep.
 
 ## Working With Specs
 
@@ -179,7 +183,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively.
 
-**Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes land in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a floor: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`.
+**Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. `bin/test-reference-verify` is a floor: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed` (the contract: `docs/project-state-keys.md` `coverage_required`).
 
 **Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so the last run is never unrecordable and one made outside the recorder is ingested instead of repeated. Its pre/post-run hook records, beside the report, whether that invocation was narrowed — which is what stops a `-k`-scoped report being recorded as the suite's evidence. The schema and the per-ecosystem wiring: `docs/test-report-contract.md`.
 
@@ -187,15 +191,15 @@ Tests are the most important artifact you produce: contracts that define correct
 
 The Critic reasons from signals through seven prioritized goals, from Nothing Is Broken to The Design Is Sound (definitions: `skills/critic/review-protocol.md`).
 
-In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
+The roster rule is in `skills/critic/review-cycle.md`.
 
 ### The evidence model
 
-Every consolidated review appends a fact to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`), whose review facts `/prawduct:pr` carries to other clones. Facts record *trees*, so nothing expires by time or session and the gates answer by composing them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend opens a gap, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact (no gate reads it), written by the lifecycle commands, never you. Full model: `skills/critic/review-cycle.md`.
+Every consolidated review appends a fact to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`), whose review facts `/prawduct:pr` carries to other clones. Facts record *trees*, so nothing expires by time or session and the gates answer by composing them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend opens a gap, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact that no gate reads. Full model: `skills/critic/review-cycle.md`.
 
 ### Modes
 
-`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
+Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
 **The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Any tracked edit, the plan included, needs an attestation (`review-cycle.md`). If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
@@ -221,10 +225,8 @@ A broad catch is legitimate at system boundaries, event loops and top-level supe
 
 **Tuning a mechanism you haven't read**: read it first (Principle 24).
 
-**Boundary blindness**: Modifying a contract surface without checking consumers. The canary catches this at session end; checking proactively is cheaper.
+**Boundary blindness**: Modifying a contract surface without checking consumers (Boundary Investigation above).
 
 **Unnecessary backwards compatibility**: Adding migration paths or fallbacks when there's no existing deployment to migrate. Backwards compatibility is a requirement to be elicited, not an assumption.
-
-**Opinionated defaults without configuration**: If a workflow-affecting feature could reasonably work two ways, make it a `project-preferences.md` preference with a safe default.
 
 **Skipping `final` mode**: `chunk` mode covers Goals 1-3 only. The last chunk's review is `final` — or on a `cumulative-final` plan, the single `cumulative`. The stop hook WARNs otherwise. On a short plan that one boundary run is every chunk's review — `review-cycle.md`'s "When Review Is Required" row.

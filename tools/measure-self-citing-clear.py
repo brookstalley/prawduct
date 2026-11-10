@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """How often a `SAFE TO CLEAR` close gives the message itself as its record.
 
-The `clear-reason` Stop gate (#977) refuses a `SAFE TO CLEAR` whose stated
+The `clear-reason` Stop check (#977) records a `SAFE TO CLEAR` whose stated
 reason points at the turn ("the questions are in this message"), because a
 clear deletes exactly that. Its detector, `standing_block.self_citation`, is a
 narrow phrase match tuned on real closes. This re-derives the tuning figures
@@ -11,7 +11,7 @@ number copied into prose:
     tools/measure-self-citing-clear.py            # counts, then each hit
     tools/measure-self-citing-clear.py --quiet    # counts only
 
-It counts distinct assistant turns whose closing block reads `SAFE TO CLEAR`
+It counts distinct assistant turns whose close reads `SAFE TO CLEAR`
 (`standing_block.clear_verdict`), and the ones `self_citation` names. Read each
 hit before citing the count: a hit that is a sound reason is a false positive,
 and the detector should be narrowed rather than the count reported.
@@ -73,7 +73,7 @@ def main(argv=None) -> int:
         total += 1
         phrase = standing_block.self_citation(text)
         if phrase:
-            reason = standing_block._paragraphs(standing_block.closing_block(text))[-1]
+            reason = standing_block.verdict_line(text)
             hits.append((project, phrase, " ".join(reason.split())[:200]))
     print(f"SAFE TO CLEAR closes: {total}; self-citing: {len(hits)}")
     if not args.quiet:

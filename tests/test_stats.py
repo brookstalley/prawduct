@@ -581,6 +581,33 @@ class TestStopObservations:
         }
         assert obs["verdicts"]["clear-verdict"] == {"catch": 1, "slip": 1, "unclassified": 0}
 
+    def test_clear_reason_observations_are_scored_by_its_own_rule(self):
+        """clear-reason left the blocking set too (#1131): its observations are
+        scored like its blocks were — slip on notes, catch only where the
+        session changed something, unclassified otherwise."""
+        facts = [
+            _fact("session-start", {}, fid="s-1", session="s1"),
+            _observation("clear-reason", "a", reason="in-this-message",
+                         observed={"notes_present": True, "session_changed": True}),
+            _observation("clear-reason", "b", reason="above-below",
+                         observed={"notes_present": False, "session_changed": True}),
+            _observation("clear-reason", "c", reason="in-this-message",
+                         observed={"notes_present": False, "session_changed": False}),
+            _observation("clear-verdict", "d", reason="handed-over-complete",
+                         observed={"work_live": False}),
+        ]
+        v = _v(facts)
+        assert v["stop_blocks"]["stops_blocked"] == 0
+        obs = v["stop_observations"]
+        assert obs["by_gate"] == {"clear-reason": 3, "clear-verdict": 1}
+        assert obs["by_gate_reason"]["clear-reason"] == {"in-this-message": 2, "above-below": 1}
+        assert obs["verdicts"]["clear-reason"] == {"catch": 1, "slip": 1, "unclassified": 1}
+        report = {"project": "p", "window": {"since": None, "until": None},
+                  "by_version": stats.aggregate(facts)}
+        text = stats.render_human(report)
+        assert "observed only      clear-reason 3 (catch 1, slip 1, unclassified 1)" in text
+        assert "clear-verdict 1 (catch 1, slip 0, unclassified 0)" in text
+
     def test_the_human_report_shows_observations_only_when_there_are_some(self):
         facts = [_fact("session-start", {}, fid="s-1", session="s1"), _observation("clear-verdict", "a",
                  reason="handed-over-complete", observed={"work_live": False})]
