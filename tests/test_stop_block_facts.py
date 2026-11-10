@@ -158,8 +158,8 @@ def _observed_fact(repo: Path, gate: str) -> dict:
 class TestAClearGateRecordsWhyItFired:
     """The clear checks record which check fired and what the hook could see,
     so `stats` can tell a catch from a slip without any turn text.
-    clear-verdict observes without blocking (owner, 2026-11-10, #1044): its
-    firing is a `stop-observed:` fact, never a `stop-gate:` block."""
+    clear-verdict observes without blocking: its firing is a `stop-observed:`
+    fact, never a `stop-gate:` block."""
 
     def test_clear_verdict_names_the_disposition_it_paired(self, tmp_path, capsys):
         repo = _repo(tmp_path)

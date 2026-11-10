@@ -162,16 +162,15 @@ worktrees get deleted.
 - **A Stop-hook check that observes without blocking** appends one
   `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
   through `append_stop_observation`, carrying the same `reason` and `observed`
-  a block of that check would. `clear-verdict` is the one such check: it
-  blocked from 3.7.0 until the owner retired it from blocking on 2026-11-10
-  (#1044), keeping its measurement. `stats` scores these with the block verdict
+  a block of that check would. `clear-verdict` is the one such check (#1044).
+  `stats` scores these with the block verdict
   rules and reports them as *observed only*, never as Stops blocked or guard
   refusals.
 - **A session boundary** (startup or `/clear`) appends one `session-start` fact,
   the denominator for per-session rates.
 
 Their writers are `lib/evidence.py`'s `append_stop_block`,
-`append_stop_observation` and `append_session_start`. Neither is read by any gate. A failed append prints a `NOTE:` and changes
+`append_stop_observation` and `append_session_start`. None is read by any gate. A failed append prints a `NOTE:` and changes
 nothing else.
 
 **Why a control fired.** Any control firing, blocking or not, may carry two
@@ -408,9 +407,9 @@ The definitions (their one home):
       `session_changed`. Otherwise a reader was told to keep a
       session open for nothing, which is a catch. An unreaped delegate is not
       observable, so this rule leans towards catch, which is the direction
-      that keeps a gate. Since `retire-clear-verdict` its firings are
-      observations, not blocks, and are scored by this same rule under
-      *observed only*.
+      that keeps a gate. Its firings are now observations, not blocks
+      (counts across that change do not compare), scored by this same rule
+      under *observed only*.
 - **observed only**: firings of a Stop check that records without blocking
   (`stop-observed:` facts), by check, with the verdicts above. Never counted
   in stops blocked or guard refusals.
@@ -441,7 +440,7 @@ The definitions (their one home):
 
 Rates with no denominator print as `-` (`null` in `--json`), never as zero.
 `--json` carries `schema_version`, `project`, `generated_at`, `window`,
-`schema_ahead` (facts a newer plugin wrote, not counted) and `by_version`, keyed
+`schema_ahead` (facts a newer plugin wrote, not counted) and `by_version` (each version carries `stop_observations` beside `stop_blocks` from schema 3), keyed
 by `major.minor` (`unknown` when a fact names no version).
 
 `--by-build` splits each version by the plugin build that wrote the fact

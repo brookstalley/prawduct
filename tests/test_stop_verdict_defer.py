@@ -11,10 +11,10 @@ fails closed.
 
 ``COMPLETE`` with ``DO NOT CLEAR`` is a contradiction — the reader is handed
 the session and told not to end it, and may sit on both for days — so it defers
-nothing and the clear-verdict gate refuses it. So does ``YOUR TURN`` with
-``DO NOT CLEAR``, unless the hook observes work a clear would kill (a harness
-background task or a live Critic review): then the hold is as true as
-``RUNNING``'s and the pair stands. The
+nothing, and the clear-verdict check records it without refusing it. So does
+``YOUR TURN`` with ``DO NOT CLEAR``, unless the hook observes work a clear would
+kill (a harness background task or a live Critic review): then the hold is as
+true as ``RUNNING``'s and nothing is recorded. The
 clear-reason gate refuses a ``SAFE TO CLEAR`` whose stated reason is the turn itself ("the
 questions are in this message"), because a clear deletes exactly that (#977).
 
@@ -543,8 +543,7 @@ class TestStopStillBlocks:
 
 class TestClearVerdictGate:
     """A turn that hands the session over while saying DO NOT CLEAR is recorded
-    but not refused: the owner retired clear-verdict from blocking on
-    2026-11-10 (#1044) and kept its measurement. These run the hook against a
+    but not refused (#1044). These run the hook against a
     mock git, which has no evidence store, so what each firing RECORDS is
     pinned in-process in `test_stop_block_facts.py`; here, only that nothing
     blocks. The clear-reason gate below still blocks, and neither deferral can

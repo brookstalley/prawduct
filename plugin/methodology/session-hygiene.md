@@ -59,7 +59,7 @@ What each line owes:
 3. Is everything finished, with nothing outstanding on disk or in flight? → `COMPLETE`.
 4. Otherwise → `YOUR TURN`.
 
-**Five ways to get the label wrong**, each tempting for its own reason: `RUNNING` with nothing actually running — "I'll continue next turn" is `YOUR TURN`; `COMPLETE` with a dispatched review unfinished; `YOUR TURN` reached by skipping step 1, which spends their attention to buy nothing; `COMPLETE` over `DO NOT CLEAR`, or `YOUR TURN` over it with nothing a clear would kill, which the Stop hook refuses; and the ask buried mid-paragraph instead of leading the copy. See `methodology/building.md` "Session Scope Discipline".
+**Five ways to get the label wrong**, each tempting for its own reason: `RUNNING` with nothing actually running — "I'll continue next turn" is `YOUR TURN`; `COMPLETE` with a dispatched review unfinished; `YOUR TURN` reached by skipping step 1, which spends their attention to buy nothing; `COMPLETE` over `DO NOT CLEAR`, or `YOUR TURN` over it with nothing a clear would kill; and the ask buried mid-paragraph instead of leading the copy. See `methodology/building.md` "Session Scope Discipline".
 
 ## The forward notes
 

@@ -46,7 +46,7 @@ last_validated: null
   Resolved exception: **the `clear-verdict` Stop check** was a bounded exception to the emission
   arm from 2026-09-27 (`clear-verdict-coherence`) until Stop-block facts gave every gate a firing
   record. **Ruling 2026-11-10 (owner, #1044): it no longer blocks, and its measurement stays.** On
-  3.8 it was scored about as often wrong as right, and the harm it guards against is a session
+  3.8, in the three repos that recorded verdicts, it scored 7 catches and 9 slips, and the harm it guards against is a session
   kept open needlessly, so a block on every such turn did not earn its round-trip. It now records
   each firing as a `stop-observed:clear-verdict` fact, scored by `stats` under *observed only*
   (`retire-clear-verdict`). The standing-block rule it enforced stays in the prose.

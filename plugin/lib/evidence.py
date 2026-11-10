@@ -786,8 +786,9 @@ def append_stop_observation(
     same ``reason`` and ``observed`` a block of that check records. That way a
     check retired from blocking keeps answering its yield question
     (``stats``' catch/slip rules read it unchanged) without counting as
-    friction. The Stop it fired on was not blocked, so there is no ``stop`` id
-    or ``co_gates``. Callers treat a failure as soft.
+    friction. The check itself does not block, so there is no ``stop`` id or
+    ``co_gates``; another gate may still block the same Stop, and the two
+    facts are not linked. Callers treat a failure as soft.
     """
     return append_guard_refusal(
         project_dir,

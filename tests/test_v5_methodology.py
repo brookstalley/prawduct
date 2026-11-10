@@ -1577,7 +1577,7 @@ LAST_MEASURED_TOKENS = {
     # the wrong-label list each now say when the pair stands and what the hook
     # cannot see. In the 3.8.0-dev survey 7 of 10 refusals were this pair with
     # live work, a relabel and nothing more. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3251,
+    "methodology/session-hygiene.md": 3244,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this

@@ -319,7 +319,7 @@ def _deliver_stop_advisories(advisories: list[str]) -> None:
 #: above the block; a model that writes both again reads to the operator as
 #: the hook firing twice. A close is written again only when the one above
 #: would now be wrong, because the gates read the close from the LAST message:
-#: an item faults the close itself (the clear-verdict and clear-reason gates),
+#: an item faults the close itself (the clear-reason gate),
 #: or the turn must close `RUNNING` / `DO NOT CLEAR` — to keep a deferral of
 #: the session-end gates, or because the fix starts work a clear would kill,
 #: such as a dispatched review.
@@ -3069,12 +3069,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         ):
             handed_over = None
     if handed_over:
-        # Observed, not blocked. The check blocked from 3.7.0 until the owner
-        # retired it on 2026-11-10 (#1044): the harm it guards against is a
-        # session kept open needlessly, and a block costs every such turn a
-        # round-trip. Its firings are still recorded, with the reason and
-        # observations a block carried, so `stats` keeps scoring catch and
-        # slip and the decision can be revisited on data.
+        # Recorded, not blocked: the harm is a session kept open needlessly,
+        # which does not earn a round-trip on every such turn (#1044). The
+        # record carries the reason and observations a block would, so
+        # `stats` keeps scoring catch and slip.
         _record_stop_observation(
             project_dir,
             "clear-verdict",
