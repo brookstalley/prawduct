@@ -101,9 +101,9 @@ DIGEST_SECTION_PLACEMENT = {
         "inline -- this IS the retrieval path every relocation above depends on"
     ),
     "Closing the turn": (
-        "inline, and LAST -- the standing block fires at the end of every turn "
+        "inline, and LAST -- the closing line fires at the end of every turn "
         "that ends work, and the rule a session reads most recently should be the "
-        "one it applies last (pinned by TestTheStandingBlockIsTheDigestsLastWord)"
+        "one it applies last (pinned by TestTheClosingLineIsTheDigestsLastWord)"
     ),
 }
 
@@ -704,18 +704,19 @@ class TestAgentStance:
         assert "volatility" in digest.lower(), "digest must name the volatility driver"
 
 
-class TestTheStandingBlockIsTheDigestsLastWord:
-    """The standing-block rule is the digest's closing text.
+class TestTheClosingLineIsTheDigestsLastWord:
+    """The closing-line rule is the digest's closing text.
 
     `digest.py` injects this file verbatim, so the bottom of the file is the
     bottom of what the session reads from it. The move answers a reported
-    symptom — sessions that had stopped closing with the standing block — for
+    symptom — sessions that had stopped closing with the standing block (the
+    three-paragraph close the one line replaced) — for
     which placement was the surviving hypothesis once delivery and the size
     limit were excluded (the change-log entry for this scope carries the
     evidence). These tests pin the placement, not the hypothesis.
     """
 
-    RULE = "Close with the standing block"
+    RULE = "Close with one line, last"
 
     def _digest(self) -> str:
         return DIGEST_SRC.read_text(encoding="utf-8").strip()
@@ -723,8 +724,8 @@ class TestTheStandingBlockIsTheDigestsLastWord:
     def test_the_rule_is_still_carried(self):
         digest = self._digest()
         assert self.RULE in digest
-        for token in ("STATE", "RUNNING", "YOUR TURN", "COMPLETE", "SAFE TO CLEAR", "DO NOT CLEAR"):
-            assert token in digest, f"the standing block lost its {token} label"
+        for token in ("RUNNING", "YOUR TURN", "COMPLETE", "SAFE TO CLEAR", "DO NOT CLEAR"):
+            assert token in digest, f"the closing line lost its {token} label"
 
     def test_no_section_follows_it(self):
         """The property, not a position: a `## ` section appended after this
@@ -735,7 +736,7 @@ class TestTheStandingBlockIsTheDigestsLastWord:
         last_heading_at = digest.rindex("\n" + headings[-1])
         rule_at = digest.index(self.RULE)
         assert rule_at > last_heading_at, (
-            f"the standing block sits above the digest's final section "
+            f"the closing line sits above the digest's final section "
             f"({headings[-1]!r}), so that section is the last thing the reader "
             "sees. Append new sections ABOVE it, never below."
         )
@@ -747,7 +748,7 @@ class TestTheStandingBlockIsTheDigestsLastWord:
         digest = self._digest()
         tail = digest[digest.index(self.RULE):]
         assert tail.rstrip().endswith("Full rule: `methodology/session-hygiene.md`."), (
-            "text follows the standing block; the digest's last words are now: "
+            "text follows the closing-line rule; the digest's last words are now: "
             f"{tail.rstrip()[-120:]!r}"
         )
 

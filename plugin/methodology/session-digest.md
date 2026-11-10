@@ -120,16 +120,16 @@ issue, showing you the exact outbound bytes first and sending nothing you have n
 next step, offer to continue, or list decisions you could make yourself; a turn ends when the work
 is done, when a machine event must land, or when only the user can unblock it.
 
-**Close with the standing block** — last, unpadded — on any turn that ends a chunk or work cycle
-or leaves work outstanding. A `---` rule, then three separate paragraphs: `STATE` (what changed;
-committed?; suite green?) · what produces the next turn: `RUNNING` (a machine event — name it and
-what you do if it never lands) / `YOUR TURN` (only they can — lead with the ask) / `COMPLETE`
-(nothing, and no next action to propose) · `SAFE TO CLEAR` or `DO NOT CLEAR` (the label is the
-verdict, the copy the reason). If they must speak it is `YOUR TURN` even when something also runs,
-naming it (`DO NOT CLEAR` only if a clear would kill it) — a server or recorder running on
-its own survives one; never predict that they will need to — a running job may answer its own question. Work in flight — a dispatched review, an unread
-background agent — is `RUNNING`, never `COMPLETE`. `COMPLETE` never says `DO NOT CLEAR`; a live
-review is `DO NOT CLEAR`, its copy giving a deadline from elapsed time and roster when priceable.
-A handed-over turn may sit for days: first persist a findings-only turn's or a delegate's output to
-`.prawduct/.handoff-notes.md` — a `SAFE TO CLEAR` whose reason cites the message itself is wrong.
+**Close with one line, last**, a blank line above it, on any turn that ends a chunk or work
+cycle or leaves work outstanding: `RUNNING` · `DO NOT CLEAR` — reason. The first label is
+what produces the next turn: `RUNNING` (a machine event — name it and what you do if it never
+lands) / `YOUR TURN` (only they can) / `COMPLETE` (nothing, and no next action to propose); the
+second is `SAFE TO CLEAR` or `DO NOT CLEAR`. **A turn that needs them ends with the asks**,
+restated in full just above the line, numbered, with your recommendation — never "see above".
+If they must speak it is `YOUR TURN` even when something also runs, naming it (`DO NOT CLEAR`
+only if a clear would kill it — a server running on its own survives one); never predict that
+they will. Work in flight (a dispatched review, an unread agent) is `RUNNING`, never `COMPLETE`,
+and `COMPLETE` never says `DO NOT CLEAR`; a live review is `DO NOT CLEAR`, its reason a deadline
+from elapsed time and roster. Persist findings-only or delegate output to
+`.prawduct/.handoff-notes.md` first; a `SAFE TO CLEAR` whose reason cites the message is wrong.
 Full rule: `methodology/session-hygiene.md`.

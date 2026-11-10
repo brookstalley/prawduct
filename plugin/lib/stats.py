@@ -62,11 +62,11 @@ LOOP_THRESHOLD = 3
 
 #: A firing whose control recorded no reason, or one this reader cannot use.
 UNSPECIFIED = "unspecified"
-#: Per Stop gate, the observation that says the harm the gate guards against
-#: was already handled when it fired. True: a slip (the turn's words were wrong,
-#: the situation was not). False: a catch, unless the gate also names a
-#: precondition below that is not observed True. Absent or unreadable:
-#: unclassified. The verdict is derived here and never stored, so a revised
+#: Per Stop check, blocking or observing, the observation that says the harm
+#: it guards against was already handled when it fired. True: a slip (the
+#: turn's words were wrong, the situation was not). False: a catch, unless the
+#: check also names a precondition below that is not observed True. Absent or
+#: unreadable: unclassified. The verdict is derived here and never stored, so a revised
 #: rule re-reads every recorded firing. Rationale per rule:
 #: ``docs/governance-telemetry.md``.
 SLIP_WHEN_OBSERVED = {
