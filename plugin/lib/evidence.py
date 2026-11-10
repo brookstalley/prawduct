@@ -709,7 +709,7 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     return append_fact(project_dir, "test-run", fact_id, body)
 
 
-#: Observation keys a clear gate records, named once so its writer (the Stop
+#: Observation keys a clear check records, named once so its writer (the Stop
 #: hook) and its reader (``stats``' verdict rules) cannot drift apart.
 OBSERVED_WORK_LIVE = "work_live"
 OBSERVED_NOTES_PRESENT = "notes_present"

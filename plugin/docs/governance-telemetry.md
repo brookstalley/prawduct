@@ -162,7 +162,8 @@ worktrees get deleted.
 - **A Stop-hook check that observes without blocking** appends one
   `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
   through `append_stop_observation`, carrying the same `reason` and `observed`
-  a block of that check would. `clear-verdict` is the one such check (#1044).
+  a block of that check would. `clear-verdict` (#1044) and `clear-reason`
+  (#1131) are the two such checks; no Stop gate blocks on the close's wording.
   `stats` scores these with the block verdict
   rules and reports them as *observed only*, never as Stops blocked or guard
   refusals.
@@ -189,7 +190,7 @@ Each firing records what was observed, never a judgment of it. A reader derives 
 judgment (below), so a revised definition re-reads every recorded firing. A
 control that records neither is counted as `unspecified`.
 
-The Stop checks that record a reason (`clear-verdict` observes, `clear-reason` blocks):
+The Stop checks that record a reason (both observe without blocking):
 
 | Gate | `reason` | `observed` |
 |---|---|---|
@@ -398,7 +399,11 @@ The definitions (their one home):
       is an answer its reader has just read, and whether clearing it loses
       anything is a judgment no observation makes, so it is unclassified, as is
       a firing recorded before `session_changed` existed
-      (`stats.CATCH_REQUIRES_OBSERVED`).
+      (`stats.CATCH_REQUIRES_OBSERVED`). Its firings are observations, not
+      blocks, since #1131 (counts across that change do not compare: a block
+      forced a rewrite, so one bad close fired once, while an observation
+      fires once per Stop that carries it), scored by this same rule under
+      *observed only*.
     - `clear-verdict` is a slip when `work_live`: the hold was right, and only
       the disposition label was wrong. Since `clear-gate-telemetry` the gate no
       longer fires on `YOUR TURN` with `work_live`, so its slips are only

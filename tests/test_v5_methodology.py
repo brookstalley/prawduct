@@ -522,10 +522,38 @@ LAST_MEASURED_TOKENS = {
     # +10 on 2026-10-26 (flaky-rerun, #1087), DECLARED: the Verify bullet names `--rerun-failed`
     # beside the other record flags, so a builder whose boundary run lost one test to load reruns
     # that test rather than the declared suite (on this repo ~18 min per suite run).
-    # -2 on 2026-11-10 (critic-trim): the Critic paragraph stops claiming a learnings cross-check
-    # and a backlog walk, names the Records Pass, and says an observation is owed no disposition;
-    # paid by folding the roster-rule sentence into a pointer. A READING; ceiling lowered with it.
-    "methodology/building.md": 5305,
+    # +71 on 2026-11-10 (audit-guidance, #1135), DECLARED: three obligations in their one home -
+    # a ruling from the owner is written, dated, to `.prawduct/owner-rulings.md` before the reply
+    # (new "When the Owner Rules"); a third fix on one surface stops for the missing definition and
+    # an acceptance loop ratifies one checklist (A Requirement Surfaced Mid-Build); work the agent
+    # proposed names the owner goal it serves (the alignment pass) - plus operator verification
+    # saying it re-checks a form already seen. PAID IN PLACE for about two thirds: the "Opinionated
+    # defaults" trap (discovery.md "Surface Behavioral Choices" owns it), the Critic section's
+    # final-mode and coordinator-pattern asides and the roster rule's gloss (review-cycle.md and the
+    # Critic skill own them), the Modes "successive overrides" sentence (the Critic-review step
+    # says an explicit mode overrides; planning.md owns `Critic mode:`), the mid-build decision
+    # sentence's restatement of planning.md "Goals", the coverage contract's parenthetical
+    # (`docs/project-state-keys.md` `coverage_required` owns it, now cited), the Boundary-blindness
+    # trap's body (the section above it), and `.critic-findings.json`'s "never you" (Modes says it
+    # where the temptation arises). The rest is declared rather than cut from the backwards-
+    # compatibility trap, the one remaining restatement, because it is the owner's standing rule and
+    # the only copy a delegate reads.
+    # -2 the same day (audit-guidance, #1131 and #1133, merged): the Session Scope sentence names
+    # the closing line, and the Delegating section names the model at dispatch and drops "what
+    # stays in the main agent" for delegation.md's "Who does what". -1 more after trying the
+    # guidance on a fresh agent, which logged a logo tweak as a ruling: the section now says a
+    # ruling is what later work must honour, paid by the examples of where a decision lands (the
+    # template owns them). +3 when the full suite showed one of the cuts above was not free: the
+    # Critic-review step must name the plan's `Critic mode:` (a structure pin reads it), so the
+    # override sentence is back there and `mode_chosen_by` (review-cycle.md owns it) paid most of it.
+    # -11 from the boundary review: the alignment pass now reads `.prawduct/owner-rulings.md`
+    # (nothing sent a later session to the record it is told to write), paid by the cross-repo
+    # clause, which the template owns.
+    # +7 when critic-trim met it the same day, DECLARED: the Critic section stops claiming a
+    # learnings cross-check and a backlog walk, and "warnings gate nothing" now also says an
+    # observation is owed no disposition, the one sentence a builder needs where the temptation
+    # to answer one arises. Each branch had paid its own way; the sum is what is declared.
+    "methodology/building.md": 5374,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1290,7 +1318,15 @@ LAST_MEASURED_TOKENS = {
     # template section that now exists. +14 by owner ruling 2026-10-21 ("I do need the ability
     # to defer, just want cost flagged"): a high-stakes hedge is named with its cost, and
     # deferring is the owner's call. A READING.
-    "methodology/discovery.md": 5323,
+    # +159 on 2026-11-10 (audit-guidance, #1135): "See it first" (a looked-at deliverable starts as
+    # a real specimen in its reader's form, criteria from the reaction, a first look never queued)
+    # and "Mark what you originated" (an agent-originated rule labelled, whose need named, "don't
+    # have this" first). New obligations whose home is here; paid in part by cutting five Common
+    # Traps that restate the section above them (Over-/Under-discovery: Risk Calibration;
+    # Interrogation mode: Infer, confirm, proceed; Ignoring developer preferences and Domain
+    # blindness: Bring expertise / Detect domain-specific concerns) and the feature-level line's
+    # restatement of the four responses building.md owns. A READING.
+    "methodology/discovery.md": 5482,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1464,7 +1500,13 @@ LAST_MEASURED_TOKENS = {
     # +9 on 2026-10-27 (chunk-state-table, owner ruling on #1082): the span clause states the
     # ruling — an edge the coverage gate composes, a first-parent commit whose scoped subject
     # names the chunk, and no credit for a Deliverables path. A CORRECTION in place, as above.
-    "methodology/planning.md": 5895,
+    # +25 on 2026-11-10 (audit-guidance, #1135): the Verification strategy puts a looked-at
+    # output's first look in the first chunk, pointing at discovery.md "See it first" rather than
+    # restating it. A READING.
+    # -171 the same day (audit-guidance, #1133): the closed list of reasons to ask for approval
+    # and its standing negatives are gone; the section discloses and routes to the `Delegation`
+    # preference. A READING.
+    "methodology/planning.md": 5749,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1589,7 +1631,10 @@ LAST_MEASURED_TOKENS = {
     # the wrong-label list each now say when the pair stands and what the hook
     # cannot see. In the 3.8.0-dev survey 7 of 10 refusals were this pair with
     # live work, a relabel and nothing more. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3244,
+    # +50 on 2026-11-10 (audit-guidance, #1131, owner ruling): the close is one line, and a turn
+    # that needs the user restates its asks just above it. The three-paragraph shape and `STATE`
+    # went; the asks rule and its example are the growth. A READING, no ceiling.
+    "methodology/session-hygiene.md": 3294,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1716,7 +1761,17 @@ LAST_MEASURED_TOKENS = {
     # -27 on 2026-10-25 (chunk-status, owner ruling D1): "it builds, you govern" is stated once, where the coordinator's role is,
     # and the dispatch paragraph points at it; the governing-delegate tell no longer
     # names a Status box. A READING.
-    "methodology/delegation.md": 2892,
+    # -83 on 2026-11-10 (#1133): the owner-approved draft now leads the guide and
+    # the rest is reference beneath it. Paid by cutting what the draft states or
+    # contradicts: the "you choose the mechanism" preamble, the stay-serial list,
+    # the brief-costs-more anti-pattern, "who integrates — you", and the ad-hoc
+    # section's restated dispatch mechanics (one dispatch section now serves both
+    # triggers). The model-and-effort section and two anti-patterns are new.
+    # +43 the same day, from the boundary review: the guide told every delegate to stay on its
+    # scratch branch and also asked for the integrator's heavy run to land on the integration
+    # branch, which a scratch branch cannot do. It now says the integrator switches its worktree
+    # onto that branch, and why. A READING.
+    "methodology/delegation.md": 2852,
 }
 
 
@@ -2125,8 +2180,16 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # kill. Paid in place: "only `RUNNING` may" became "`COMPLETE` never says", and
     # the precedence exception now says when the hold applies instead of sending it
     # to `RUNNING`. Digest 9423 -> 9416 characters.
-    "framework": 3079,
-    "product": 2197,
+    # framework 3079 -> 3074, product 2197 -> 2192 on 2026-11-10 (audit-guidance, owner
+    # rulings on #1131, #1133, #1135). In: the one-line close with its asks, delegation as
+    # the default with the model named and no heavy tests, an owner's ruling written to
+    # `.prawduct/owner-rulings.md`, looked-at output shown first, an originated rule marked.
+    # Paid in place: the three-paragraph block and `STATE`, the tangent bullet's three-way
+    # choice (delegation.md owns it), the handoff bullet's round-trip clause (the cold-cache
+    # reason stays), `--merge`'s parenthetical, and "completed plans are archived"
+    # (building.md owns it). Digest 9416 -> 9426 characters.
+    "framework": 3074,
+    "product": 2192,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2290,8 +2353,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # reading's cut, one over each.
     # 3081 -> 3080, 2199 -> 2198 on 2026-10-29 (clear-gate-telemetry): ratcheted
     # with the reading, one over each.
-    "framework": 3080,
-    "product": 2198,
+    # 3080 -> 3075, 2198 -> 2193 on 2026-11-10 (audit-guidance): ratcheted with the
+    # reading, one over each.
+    "framework": 3075,
+    "product": 2193,
 }
 
 
@@ -2341,7 +2406,7 @@ def test_every_methodology_guide_is_accounted_for():
 
 
 def _clear_line_guidance() -> str:
-    """Just the standing block's CLEAR item from `session-hygiene.md`.
+    """Just the closing line's CLEAR item from `session-hygiene.md`.
 
     Pins about what the clear line must and must not say belong to that item,
     not to the whole guide -- a negative assertion run over a 200-line file
@@ -2355,13 +2420,13 @@ def _clear_line_guidance() -> str:
     negative one PASS vacuously, which is the worse half.
     """
     text = read_file("methodology/session-hygiene.md")
-    opener, closer = "3. **Clear** —", "\n**Three ways to fail this"
+    opener, closer = "2. **Clear** —", "\n**Four ways to fail this"
     start, end = text.find(opener), text.find(closer)
     for label, found in (("opener", start), ("closer", end)):
         assert found != -1, (
             f"`_clear_line_guidance` cannot find the {label} it slices on "
             f"({opener if label == 'opener' else closer!r}) — `session-hygiene.md`'s "
-            "standing-block section was restructured. Re-point the delimiters; "
+            "closing-line section was restructured. Re-point the delimiters; "
             "do not delete the pins that depend on this."
         )
     item = text[start:end]
@@ -2509,6 +2574,80 @@ def test_every_injectable_digest_is_budgeted():
 # =============================================================================
 # building.md
 # =============================================================================
+
+
+def _section(text: str, heading: str) -> str:
+    """The body under ``heading`` up to the next heading of any level."""
+    start = text.index(heading) + len(heading)
+    nxt = re.search(r"^#{1,6} ", text[start:], re.MULTILINE)
+    return text[start:start + nxt.start()] if nxt else text[start:]
+
+
+def _paragraph(text: str, lead: str) -> str:
+    """The paragraph that opens with the bold ``lead``."""
+    start = text.index(lead)
+    end = text.find("\n\n", start)
+    return text[start:end if end != -1 else len(text)]
+
+
+class TestRequirementsGuidanceHomes:
+    """The four requirements additions (#1135) each live in ONE guide, and the
+    guides that touch the same moment point at that home instead of restating
+    it. A restated copy drifts from the original the first time either is
+    edited, and a missing pointer leaves a reader of building.md or planning.md
+    meeting the operator-verification queue with no idea a first look comes
+    earlier. Each assertion is bound to the paragraph or section carrying the
+    rule, so a word surviving elsewhere in the file does not keep it green."""
+
+    def test_see_it_first_is_stated_once_in_discovery(self):
+        discovery = read_file("methodology/discovery.md")
+        assert discovery.count("**See it first.**") == 1
+        rule = _paragraph(discovery, "**See it first.**")
+        assert "specimen" in rule
+        assert "acceptance criteria" in rule
+        assert "operator-verification queue" in rule  # the first look is never queued
+        for other in ("methodology/building.md", "methodology/planning.md"):
+            assert "**See it first.**" not in read_file(other), (
+                f"{other} restates the rule discovery.md owns; point at it instead"
+            )
+
+    def test_operator_verification_and_plan_point_at_the_first_look(self):
+        building = read_file("methodology/building.md")
+        queue = _paragraph(building, "**Operator verification.**")
+        assert '"See it first"' in queue and "first look" in queue
+        strategy = _paragraph(read_file("methodology/planning.md"), "**Verification strategy.**")
+        assert '"See it first"' in strategy and "first chunk" in strategy
+
+    def test_a_ruling_names_a_record_that_ships_a_template(self):
+        """The section must name a destination AND a template that exists:
+        the agent copies the template the first time the owner rules, and a
+        pointer at a missing file leaves it to invent the record's shape."""
+        section = _section(read_file("methodology/building.md"), "### When the Owner Rules")
+        templates = re.findall(r"`templates/([\w.-]+\.md)`", section)
+        assert templates, "the ruling section names no template"
+        for name in templates:
+            assert (ROOT / "templates" / name).is_file(), f"templates/{name} does not ship"
+            assert f".prawduct/{name}" in section, "the record's committed home is unnamed"
+        assert "before replying" in section
+        assert "auto-memory" in section
+        template = (ROOT / "templates" / templates[0]).read_text(encoding="utf-8")
+        assert f".prawduct/{templates[0]}" in template
+        assert "When the Owner Rules" in template  # points back at the guidance
+
+    def test_originated_rule_offers_dont_have_this_first(self):
+        rule = _paragraph(read_file("methodology/discovery.md"), "**Mark what you originated.**")
+        assert "*don't have this* as the first option" in rule
+        assert "whose need it serves" in rule
+        assert "Recommend as usual" in rule  # the recommendation bar still stands
+
+    def test_agent_proposed_work_names_the_owner_goal(self):
+        section = _section(read_file("methodology/building.md"), "## Before You Build: The Alignment Pass")
+        assert "**Work you proposed names the owner goal it serves**" in section
+
+    def test_a_third_fix_stops_for_a_definition(self):
+        section = _section(read_file("methodology/building.md"), "### A Requirement Surfaced Mid-Build")
+        assert "**A third fix on one surface means a definition is missing**" in section
+        assert "ratify one checklist" in section
 
 
 class TestBuildingMethodology:
@@ -2672,8 +2811,9 @@ class TestBuildingMethodology:
         # The why travels with the always-injected surface, not the on-demand one.
         assert "cold cache" in digest
 
-    def test_standing_block_is_on_every_surface_that_claims_it(self):
-        """State / Next / Clear, the in-flight rule, and one shared trigger.
+    def test_closing_line_is_on_every_surface_that_claims_it(self):
+        """One line — disposition, clear verdict, reason — the asks above it,
+        the in-flight rule, and one shared trigger.
 
         What this guards is COVERAGE: the shape has to reach an agent through a
         surface it actually reads. `session-hygiene.md` is canonical and read on
@@ -2705,7 +2845,12 @@ class TestBuildingMethodology:
             "methodology/session-digest.md": read_file("methodology/session-digest.md"),
         }
         for name, text in surfaces.items():
-            assert "standing block" in text, f"{name} no longer names the standing block"
+            flat = " ".join(text.split())
+            # ONE line, last (owner ruling 2026-11-10, #1131: "Cut to one
+            # line."). The three-paragraph block it replaced cost every closing
+            # turn about 470 characters, most of it a `STATE` paragraph the
+            # turn's own text already carried.
+            assert "one line" in flat.lower(), f"{name} no longer says the close is one line"
             # The labels are backticked, not bolded: a code span is the only
             # coloured token near the bottom of a turn, so the eye finds it
             # without reading. Owner-requested 2026-07-31 — the block was
@@ -2723,7 +2868,6 @@ class TestBuildingMethodology:
             # `YOUR TURN`. Two labels both meaning "you must speak" force a
             # choice an agent makes inconsistently at the boundary.
             for label in (
-                "`STATE`",
                 "`RUNNING`",
                 "`YOUR TURN`",
                 "`COMPLETE`",
@@ -2739,33 +2883,29 @@ class TestBuildingMethodology:
             for retired, absorbed_by in (
                 ("`NEXT`", "`RUNNING`"),
                 ("`BLOCKED`", "`YOUR TURN`"),
+                ("`STATE`", "the turn's own text"),
             ):
                 assert retired not in text, (
                     f"{name} still carries the retired {retired} label; it was "
                     f"replaced by {absorbed_by}. Two live vocabularies for one "
                     "slot is worse than either alone."
                 )
-            # Deliberately NOT asserting `**State**` is absent. `session-hygiene.md`
-            # keeps a bolded "what each line owes" list that *explains* the
-            # three lines rather than being the emitted shape, and forbidding
-            # the string would delete useful structure to satisfy a proxy. The
-            # positive assertion above already fails on a revert: drop the
-            # backticked labels and it goes red.
-            # The SHAPE is the deliverable, not only the words. Three answers
-            # run together stop being separately findable, which is most of
-            # what the block is for — so every surface has to say so.
-            assert "separate paragraph" in text or "three paragraphs" in text, (
-                f"{name} no longer requires the three lines to be separate "
-                "paragraphs — without that they render as one run-on block"
+            # The ask rule (owner ruling 2026-11-10, #1131): a turn that needs
+            # the user ends with the asks restated just above the line, because
+            # the reader reads the bottom and a pointer upstream is a search,
+            # not a question. Pinned on both carriers by its discriminating
+            # content: where the asks go, and the pointer that is never one.
+            assert "just above" in flat, (
+                f"{name} no longer puts the asks just above the closing line"
             )
-            # The `---` rule: the only horizontal break in the turn, so it
-            # separates the block from the wall of text above before the reader
-            # has parsed a word. Owner-requested 2026-07-31, and pinned on every
-            # surface because the DIGESTS are what reach product sessions — a
-            # rule that lived only in the on-demand guides would be a one-off
-            # for this repo.
-            assert "`---`" in text, (
-                f"{name} dropped the `---` rule that precedes the block"
+            assert '"see above"' in flat, (
+                f"{name} no longer names \"see above\" as the ask that is not one"
+            )
+            # The blank line above it: without one, markdown runs the line into
+            # the list item or paragraph before it, and the close is buried in
+            # the asks it was meant to follow.
+            assert "blank line above it" in flat, (
+                f"{name} dropped the blank line that keeps the close its own line"
             )
             # NOT asserting the word "backtick". Every surface already shows the
             # labels backticked and the assertion above checks that literal, so
@@ -2917,7 +3057,8 @@ class TestBuildingMethodology:
         there, and a binding with no pointer leaves a reader who opened only
         this guide holding a verdict with no shape to put it in.
         """
-        assert "standing block" in self.content
+        assert "closing line" in self.content
+        assert "standing block" not in self.content, "building.md names the retired block"
         assert "steps 1-6" in self.content
         assert "steps 1-7" not in self.content, "a stale step count survived the renumbering"
         assert "in flight included" in self.content
@@ -2927,7 +3068,7 @@ class TestBuildingMethodology:
         # prevent.
         for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`"):
             assert label not in self.content, (
-                f"building.md restates the standing block's {label} label; "
+                f"building.md restates the closing line's {label} label; "
                 "session-hygiene.md and the injected digest own the shape"
             )
         # Where the reader is sent for the shape. Named, not implied -- a bare
@@ -3013,7 +3154,7 @@ class TestBuildingMethodology:
     def test_disposition_label_rules_carry_their_discriminating_content(self):
         """The label set differs from a rename by two rules; pin those, not the names.
 
-        `test_standing_block_is_on_every_surface_that_claims_it` proves the
+        `test_closing_line_is_on_every_surface_that_claims_it` proves the
         three labels are present and the retired two are gone. That check passes
         for a pure rename -- which would leave the set no better than what it
         replaced. What makes it behave differently is the precedence rule (a
@@ -3436,7 +3577,7 @@ class TestBuildingMethodology:
         # staged work) are +146 against 3 tokens of headroom. Three candidate
         # trims were tried and reverted: the standing block and the
         # warnings-gate-nothing rule are both pinned by tests in this class —
-        # and `test_standing_block_is_on_every_surface_that_claims_it` records
+        # and `test_closing_line_is_on_every_surface_that_claims_it` records
         # that an EARLIER budget trim was already funded by relocating that
         # rule's rationale, so the redundancy a fresh trim would harvest has
         # been spent once already. One trim DID land and is counted in the +146
@@ -3628,8 +3769,9 @@ class TestBuildingMethodology:
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
-        # LOWERED 5308 -> 5306 (critic-trim, 2026-11-10) with the reading.
-        assert tokens < 5306, f"building.md is ~{tokens} tokens, should be <5306"
+        # RAISED 5308 -> 5368 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 5368 -> 5375 (critic-trim merged with audit-guidance, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5375, f"building.md is ~{tokens} tokens, should be <5375"
 
 
 # =============================================================================
@@ -3674,35 +3816,87 @@ class TestDelegationGuide:
             "read afterwards rather than fired at the moment of the error"
         )
 
-    def test_the_guide_answers_whether_to_delegate_before_how(self):
-        """R18. The guide as first written went straight to how — owner review,
-        2026-08-21: it "leaps right into the weeds".
+    def test_the_guide_opens_with_the_default_and_the_five_things_that_hold(self):
+        """R18, renegotiated for #1133. The guide once went straight to how
+        (owner review, 2026-08-21: it "leaps right into the weeds"), and the fix
+        was a stated DEFAULT leading it. The owner-approved draft (#1133, ruling
+        2026-11-10) is now that lead: the default, the cases that defeat it, and
+        five things that hold however the coordinator arranges the work.
 
-        The missing piece is a stated DEFAULT, and it is the one thing R3's
-        questions-not-rules framing cannot supply: an agent with no default
-        answers "should I delegate?" by not delegating, which is the measured
-        0.34%. `building.md`'s permissive line was in place for that entire
-        measurement, so a second permissive line is not the fix.
-
-        Order is asserted, not just presence. A "when" section below the brief
-        contract is met after the decision it governs has been made.
+        Order is asserted, not just presence: the draft must be read before any
+        reference section, because everything beneath it is reference to it.
+        A default with no defeating cases is a mandate, and one with no route
+        to the project's own policy cannot hear `off`.
         """
-        assert "## When to delegate" in self.content, "R18's section is gone"
-        assert self.content.index("## When to delegate") < self.content.index(
-            "## What a delegate is for"
-        ), "the when-to-delegate default no longer leads the guide"
-        lower = self.content.lower()
-        assert "wall clock" in lower and "fight each other" in lower, (
-            "the default posture no longer names its two terms (wall clock, and "
-            "delegates not conflicting) — without both it reads as 'delegate more'"
+        lead = self.content.split("\n## ", 1)[0]
+        assert lead.index("**Default:") < lead.index("Five things hold"), (
+            "the default no longer leads the guide"
         )
-        assert "stay serial" in lower, (
-            "the guide states a default with no cases that defeat it, which is "
-            "how a default becomes a mandate"
+        assert "finish it sooner" in lead and "won't collide" in lead, (
+            "the default no longer names its two terms (wall clock, and pieces "
+            "not colliding) — without both it reads as 'delegate more'"
         )
-        assert "project-preferences.md" in self.content, (
-            "the guide no longer routes to the project's own policy, so `off` "
-            "and pre-approved have no way to reach the agent making the call"
+        assert "Stay serial" in lead, (
+            "the default has no cases that defeat it, which makes it a mandate"
+        )
+        for held in (
+            "**Tell the user.**",
+            "**Delegates run on Opus- or Sonnet-class models, and you choose.**",
+            "**Delegates do not run heavy tests.**",
+            "**One integration branch.**",
+            "**Nothing outlives the cycle unrecorded.**",
+        ):
+            assert held in lead, (
+                f"the lead lost {held!r} — the draft's five things are the "
+                "owner-approved text and each one is load-bearing"
+            )
+        assert "`project-preferences.md` → `Delegation`" in lead, (
+            "the disclosure no longer tells the user where to change the "
+            "policy, so `off` and approve-first have no way to be said"
+        )
+
+    def test_a_dispatch_names_the_model_and_sets_effort(self):
+        """#1133 plus the owner ruling of 2026-11-10 on cost: a dispatch that
+        names no model inherits the coordinator's, which on a tier stronger
+        than Opus-class is the costliest choice made by accident — N times
+        over in a fan-out. And the host sets a subagent's effort only when
+        instructions explicitly ask, so the guide must be that ask.
+        """
+        section = self.content.split("## Model and effort are yours to set", 1)
+        assert len(section) == 2, "the model-and-effort section is gone"
+        body = section[1].split("\n## ", 1)[0]
+        assert "**Always name the model at dispatch.**" in body
+        assert "inherits yours" in body, (
+            "the guide no longer says what an unnamed model does, which is the "
+            "reason to name it"
+        )
+        assert "never the default" in body, (
+            "a delegate on the coordinator's own stronger tier is no longer "
+            "marked as the deliberate exception"
+        )
+        assert "explicitly ask" in body and "effort" in body, (
+            "the guide no longer asks for reasoning effort explicitly, and the "
+            "host sets it only when instructions do"
+        )
+        bullet = next(
+            (b for b in self._anti_pattern_bullets() if "inherited model" in b.lower()),
+            None,
+        )
+        assert bullet is not None and "*Tell:*" in bullet, (
+            "the inherited-model anti-pattern lost its tell"
+        )
+
+    def test_reviewer_dispatch_is_left_to_its_own_skills(self):
+        """The draft says a review-shaped piece takes the stronger model. That
+        is about delegates; the Critic and PR reviewers are dispatched by their
+        own skills. The guide must route there without asserting what those
+        skills decide, because that norm is the owner's to amend separately.
+        """
+        body = self.content.split("## Model and effort are yours to set", 1)[1]
+        body = body.split("\n## ", 1)[0]
+        assert "governed by their own skills" in body
+        assert "inherit the session model" not in body, (
+            "the guide restates the reviewer-model rule it does not own"
         )
 
     def test_the_wall_clock_comparison_survives_plan_time(self):
@@ -3715,7 +3909,7 @@ class TestDelegationGuide:
         chunk's deliverables are declared. Pinned on the plan-time form of the
         question, because that is the half a rewrite would drop.
         """
-        section = self.content.split("## When to delegate", 1)[1].split("\n## ", 1)[0]
+        section = self.content.split("## When serial is right", 1)[1].split("\n## ", 1)[0]
         assert "prove each chunk on its own" in section, (
             "the wall-clock qualifier no longer states its plan-time form, so it "
             "cannot be applied where the partition is actually decided"
@@ -3726,13 +3920,22 @@ class TestDelegationGuide:
         )
 
     def test_the_guide_states_the_goal_and_who_owns_integration(self):
+        """Renegotiated for #1133. The guide used to say "Who integrates — you";
+        the owner's standing pattern is an integrator subagent holding the
+        integration branch, and the draft allows it. What did NOT move is
+        governance: review, project state and the done decision stay with the
+        coordinator, and the integrator is the one delegate that runs heavy
+        tests. Pinned on both halves so neither drifts back.
+        """
         lower = self.content.lower()
         assert "nothing beyond it" in lower, "the goal sentence (R1) is gone"
-        for owned in ("critic", "reflection", "merges"):
-            assert owned in lower, (
-                f"the coordinator's retained governance no longer names {owned!r} "
-                "— a delegate that governs is one of the anti-patterns"
-            )
+        assert "dedicated integrator subagent" in self.content
+        assert "Review, project state and the decision that the work is done stay with you" in self.content
+        assert "an integrator is the one delegate that runs heavy tests" in lower
+        assert "who integrates** — you." not in lower, (
+            "the brief contract went back to saying only the coordinator may "
+            "integrate, contradicting the draft"
+        )
 
     def test_the_brief_contract_is_qualitative_not_a_template(self):
         """R5: what must be SAID, not a template that says it.
@@ -3838,6 +4041,17 @@ class TestAdHocDelegation:
     def _section(self) -> str:
         assert self.HEADING in self.content, "the ad-hoc section is gone"
         return self.content.split(self.HEADING, 1)[1]
+
+    def _dispatch(self) -> str:
+        """`## Dispatch and reaping` — where the brief-in-the-worktree record,
+        isolation and reaping now live. They used to sit inside the ad-hoc
+        section; #1133 made delegation the default for plan-time work too, and
+        every delegate is dispatched, recorded and reaped the same way, so the
+        mechanics moved up to serve both triggers. The assertions below are the
+        ad-hoc requirements unchanged, read where the text now lives."""
+        heading = "## Dispatch and reaping"
+        assert heading in self.content, "the dispatch section is gone"
+        return self.content.split(heading, 1)[1].split("\n## ", 1)[0]
 
     def _anti_pattern_bullets(self) -> list[str]:
         section = self._section().split("### Anti-patterns, ad-hoc", 1)[1]
@@ -3949,7 +4163,7 @@ class TestAdHocDelegation:
         pinned too: the discovery artifact rules out a registry, schema or lease
         (§6), and the prior design collapsed for proposing exactly those.
         """
-        section = self._section()
+        section = self._dispatch()
         assert ".prawduct/.delegate-brief.md" in section, (
             "the brief has no named location, so nothing can find an abandoned "
             "delegate worktree without a registry — which is the design that "
@@ -3971,7 +4185,7 @@ class TestAdHocDelegation:
         isolation is the only shape that moves it, and the brief is writable
         because the launch result names the tree.
         """
-        section = self._section()
+        section = self._dispatch()
         assert 'isolation: "worktree"' in section, (
             "the ad-hoc dispatch no longer uses harness isolation, so a "
             "delegate is placed by a path its own Bash calls do not keep"
@@ -3992,7 +4206,7 @@ class TestAdHocDelegation:
         comparison that prevents it (expected runtime against remaining useful
         context) has to be in the guide, because nothing measures it for you.
         """
-        lower = self._section().lower()
+        lower = self._dispatch().lower()
         assert "reap" in lower, "the section states no reapability bound"
         assert "backlog" in lower, (
             "the reapability bound names no alternative, so 'cannot reap' has "
@@ -4379,6 +4593,8 @@ class TestPlanTimePartition:
             "isolated worktrees or the shared one",  # where they write
             "what each touches",               # the ownership boundary
             "what they will *not* do",         # what stays with the coordinator
+            "on which models",                 # #1133: the model is disclosed
+            "who integrates",                  # #1133: coordinator or integrator
         ):
             assert owed in section, (
                 f"the disclosure no longer says {owed!r} — a delegation the "
@@ -4389,57 +4605,42 @@ class TestPlanTimePartition:
             "boilerplate disclosure satisfies the letter and is never read"
         )
 
-    def test_the_ask_condition_is_a_closed_list(self):
-        """R10, and the half that decides whether this costs or saves.
-
-        An OPEN condition is worse than no condition: an agent resolving
-        vagueness asks defensively every time, which is the round-trip the
-        asymmetry exists to avoid. So the four reasons are enumerated, the
-        prose says the list is closed, the three standing negatives are stated,
-        and the section carries no hedge that would reopen it.
+    def test_disclosure_replaces_the_ask(self):
+        """R10, renegotiated for #1133 (owner ruling 2026-11-10). The closed
+        list of four reasons to ask, and its three standing negatives, are
+        retired: disclosure and the project's `Delegation` row replace them.
+        What survives from R10 is its point — no defensive asking — now stated
+        as the absence of any ask the preferences did not request. Pinned both
+        ways: the new rule present, and the enumerated ask list gone, since a
+        stale list beside the new rule would read as still binding.
         """
         section = self._section()
-        numbered = [
-            ln for ln in section.splitlines()
-            if re.match(r"^\d+\. ", ln.strip())
-        ]
-        assert len(numbered) == 4, (
-            f"the ask-condition list has {len(numbered)} enumerated reasons; "
-            "the discovery sweep named four, and a fifth added without a "
-            "ruling reopens what the closure is for"
+        lower = section.lower()
+        assert "disclosure replaces asking" in lower
+        assert "and proceed" in lower, (
+            "the section no longer says the plan proceeds after disclosing"
         )
-        assert "closed" in section.lower(), (
-            "the list no longer SAYS it is closed, so a reader treats it as "
-            "examples and the defensive asking returns"
+        assert "`Delegation: off`" in section, (
+            "`off` no longer reaches the plan-time decision"
         )
-        for negative in ("already approved", "pre-approved", "without further interruption"):
-            assert negative in section, (
-                f"standing negative {negative!r} is gone — each one names a "
-                "case where asking is pure cost"
+        numbered = [ln for ln in section.splitlines() if re.match(r"^\d+\. ", ln.strip())]
+        assert numbered == [], (
+            f"an enumerated ask list is back: {numbered}"
+        )
+        for retired in ("pre-approved", "standing negatives", "four reasons"):
+            assert retired not in lower, (
+                f"{retired!r} survives in the partition section after its rule "
+                "was retired"
             )
-        hedges = [
-            h for h in ("such as", "for example", "e.g.", "among others",
-                        "including but", "and so on", "etc.")
-            if h in section.lower()
-        ]
-        assert not hedges, (
-            f"the ask-condition section hedges: {hedges}. An enumerated list "
-            "with an open tail is an open condition wearing a list's clothes"
-        )
-        assert "disclose and proceed" in section.lower(), (
-            "the section no longer says what happens ABSENT a listed reason, "
-            "which is the case that governs almost every plan"
-        )
 
-    def test_a_yes_can_be_made_durable(self):
-        """R11. Without this the same question returns with every plan — the
-        unnecessary-asking failure wearing a seatbelt — and the one moment the
-        answer is fresh is the moment it is given.
+    def test_the_section_routes_to_the_preference_that_changes_it(self):
+        """R11, renegotiated for #1133: there is no approval to make durable
+        any more, but the user still needs to know where the policy lives —
+        the first disclosure of a session says so.
         """
         section = self._section()
-        assert "project-preferences.md" in section, (
-            "an approval can no longer be promoted to a preference row, so the "
-            "ask repeats every plan"
+        assert "`project-preferences.md` → `Delegation`" in section, (
+            "the disclosure no longer names where the user changes the policy"
         )
 
     def test_the_section_names_no_consumer_test_vocabulary(self):
@@ -4547,16 +4748,15 @@ class TestDelegationPolicyAndPromotion:
     prefs = read_file("templates/project-preferences.md")
     doctor = read_file("skills/doctor/SKILL.md")
 
-    ROWS = ("Delegation", "Delegate verification", "Delegation approval")
+    #: `Delegation approval` was retired by #1133 (owner ruling 2026-11-10):
+    #: disclosure replaced the ask, and approve-first is prose in `Delegation`.
+    ROWS = ("Delegation", "Delegate verification")
 
-    #: The rows Health Check #18 may branch on. NOT `ROWS`: `Delegation
-    #: approval` ships a default, so it is never unset, and including it makes
-    #: every freshly scaffolded repo a mixed state — one filled row beside
-    #: blank ones — which reads as "recorded" and silently turns the check off
-    #: for exactly the repos the template reaches. `Inner-loop verification`
-    #: joined (review-stages) because it ships UNSET like the other two: the
-    #: membership rule is "ships blank", never the count, and an unset third
-    #: row is the ordinary blank state rather than a mixed one.
+    #: The rows Health Check #18 may branch on. The membership rule is "ships
+    #: blank", never the count: a row that shipped filled would make every
+    #: freshly scaffolded repo a mixed state that reads as "recorded" and
+    #: silently turns the check off for exactly the repos the template reaches.
+    #: `Inner-loop verification` joined (review-stages) because it ships UNSET.
     TRIGGER_ROWS = ("Delegation", "Delegate verification", "Inner-loop verification")
 
     def _workflow(self) -> str:
@@ -4622,22 +4822,26 @@ class TestDelegationPolicyAndPromotion:
             "delegation now gets nudged about it, which is mandating it slowly"
         )
 
-    def test_a_durable_yes_has_a_row_and_the_flow_lands_it_there(self):
-        """R11/R14's other half. An approval that cannot be recorded is
-        re-asked with every plan, which is `planning.md`'s ask wearing a
-        seatbelt — so `pre-approved` needs a home AND a writer.
+    def test_the_approval_row_is_retired_everywhere(self):
+        """R11/R14, renegotiated for #1133. The approval row existed so a
+        durable yes stopped the partition ask returning with every plan; the
+        ask itself is gone, so the row is too — and a doctor that still
+        offered it would write a setting nothing reads. A repo that already
+        carries the row is told it is retired rather than left guessing.
         """
-        assert "pre-approved" in self._workflow(), (
-            "no row records a durable approval, so the partition ask returns "
-            "with every plan"
+        assert "Delegation approval" not in self._workflow(), (
+            "the template still ships the retired approval row"
         )
+        assert "pre-approved" not in self._workflow()
         flow = self._flow()
-        assert "pre-approved" in flow, (
-            "the promotion flow no longer lands a durable yes anywhere"
+        assert "Delegation approval" not in flow and "pre-approved" not in flow, (
+            "the promotion flow still offers the retired approval row"
         )
-        assert "planning.md" in flow, (
-            "the flow no longer says WHAT a durable yes stops — without the "
-            "consequence, `pre-approved` reads as a label rather than a lever"
+        assert "no separate approval row" in flow.lower(), (
+            "the flow no longer says where a wish to approve fan-outs goes"
+        )
+        assert "retired and read as nothing" in self._check(), (
+            "Health Check #18 no longer says what a leftover approval row means"
         )
 
     def test_the_proposal_is_derived_from_evidence_not_emitted_unconditionally(self):
@@ -4802,55 +5006,30 @@ class TestDelegationPolicyAndPromotion:
             "delegation rows get theirs from /prawduct:doctor, not from onboard"
         )
 
-    def test_the_trigger_set_excludes_the_row_that_ships_filled(self):
+    def test_the_trigger_set_is_the_rows_that_ship_unset(self):
         """The state the template actually ships is the one the check must not
-        misread, and nothing else in this class can see a regression here.
-
-        `Delegation approval` ships `ask-on-reason` **filled** while the other
-        two ship `(unset — …)`. A check that reads all three together meets a
-        mixed state on every newly scaffolded repo, and the reading that says
-        "rows are filled, report recorded" turns the check off for precisely
-        the population the template reaches. Every other assertion in this
-        class — `off` ends it, found-nothing proposes nothing, it grades
-        nothing — stays green through that regression, which is why this one
-        exists.
+        misread. Renegotiated for #1133: the row that shipped FILLED (`Delegation
+        approval`) is retired, so every delegation row now ships unset and the
+        trigger set is all of them. The inclusion rule is still stated in the
+        check — "ships blank", never the count — so a future filled-default row
+        is excluded by reason rather than by memory.
         """
         check = self._check()
         # Bounded to the TRIGGER SENTENCE — the text up to the branching rule —
         # not the whole check: the rationale and the evidence guidance below it
         # both mention the rows by name, so a whole-body substring stayed green
-        # with the third row deleted from the set it was meant to pin (mutation
-        # caught it).
+        # with the third row deleted from the set it was meant to pin.
         trigger = check.split("branch per row rather than on the set", 1)[0]
         for row in self.TRIGGER_ROWS:
             assert f"`{row}`" in trigger, (
                 f"the check's trigger set no longer names the `{row}` row, so a "
                 "policy the owner can state has no detector"
             )
-        assert "not in the trigger set" in check, (
-            "`Delegation approval` is back in the trigger set (or the exclusion "
-            "stopped being stated) — it ships a default, so it is never unset, "
-            "and reading it alongside the others recreates the mixed state "
-            "that reads as `recorded` and silently disables the check"
-        )
-        # The inclusion rule, stated where the exclusion is: a third row that
-        # ships unset does not create the mixed state. Without this sentence the
-        # next reader infers the rule from the COUNT and drops the third row to
-        # restore "those two".
-        assert "what excludes a row is shipping filled, not being a third" in check, (
+        assert "what would exclude a row is shipping filled, not being a third" in check, (
             "the check no longer says WHY a third unset row is safe to read, so "
-            "the exclusion reads as a rule about the count rather than about "
-            "which rows ship filled"
+            "the inclusion rule reads as a rule about the count"
         )
-        # The template is the other half of the claim: this test is only true
-        # while `Delegation approval` really does ship filled. Read the real
-        # file rather than trusting the sentence above it.
         workflow = self._workflow()
-        assert "- **Delegation approval**: ask-on-reason (default:" in workflow, (
-            "`Delegation approval` no longer ships filled — the exclusion above "
-            "was justified by that fact, so if it now ships unset the reasoning "
-            "has to be redone rather than the assertion relaxed"
-        )
         for row in self.TRIGGER_ROWS:
             assert f"- **{row}**: (unset" in workflow, (
                 f"`{row}` no longer ships unset, so it can no longer be the "
@@ -5037,17 +5216,19 @@ class TestOtherMethodology:
         assert "one line of at most 250 characters" in content
         assert "only the owner raises it" in content
         assert "never trim" not in content
-        # The standing block lives elsewhere now; this guide only points.
+        # The closing line lives elsewhere now; this guide only points.
         assert "`methodology/session-hygiene.md`" in content
         for label in ("`STATE`", "`RUNNING`", "`SAFE TO CLEAR`"):
-            assert label not in content, f"reflection.md restates the standing block's {label}"
+            assert label not in content, f"reflection.md restates the closing line's {label}"
 
-    def test_session_hygiene_carries_the_standing_block_shape(self):
-        """D2 — the moved guide owns the shape whole: the fenced block, all
-        five labels, the procedure, and the forward-notes distinction."""
+    def test_session_hygiene_carries_the_closing_line_shape(self):
+        """D2 — the moved guide owns the shape whole: the fenced line, all
+        five labels, the procedure, and the forward-notes distinction. The
+        `STATE` paragraph was cut when the close became one line (#1131)."""
         content = read_file("methodology/session-hygiene.md")
-        for label in ("`STATE`", "`RUNNING`", "`YOUR TURN`", "`COMPLETE`", "`SAFE TO CLEAR`", "`DO NOT CLEAR`"):
+        for label in ("`RUNNING`", "`YOUR TURN`", "`COMPLETE`", "`SAFE TO CLEAR`", "`DO NOT CLEAR`"):
             assert label in content, f"session-hygiene.md lacks the {label} label"
+        assert "`STATE`" not in content, "session-hygiene.md still teaches the retired `STATE` paragraph"
         assert "Choosing the label is a procedure" in content
         assert "Forward notes are not a reflection" in content
         assert "methodology/reflection.md" in content  # it says where it was sent from

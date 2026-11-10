@@ -1,84 +1,95 @@
-# Delegating Work: When To, What a Delegate Verifies, and What It Costs
+# Delegating Work to Subagents
 
-**Prawduct states the goal, one default, and the considerations. You choose the mechanism.** You can see this machine, this project's test regime and this moment's load; a framework distributed to every governed repo cannot. Nothing here names *your* runner, *your* markers, or a tier of prawduct's invention — where a decision needs one, naming it is yours. (Prawduct's own commands are in bounds: the record it owns is inside the line.)
+**Default: if splitting the work across subagents would finish it sooner and the pieces won't collide, split it.** Stay serial when pieces share files or need each other's output, when a piece is smaller than the brief it would need, or when this project's preferences say so.
 
-The dispatch mechanics — worktree isolation, the shared git index, what an isolated agent can and cannot see — are `/prawduct:methodology building` § Delegating Work to Subagents. This guide is the judgment that comes first.
+You are the coordinator, and how you arrange the work is your call. Five things hold however you arrange it:
 
-## When to delegate
+- **Tell the user.** Before the first dispatch of a work cycle, say what you are fanning out, to how many agents, on which models, and who integrates. The first time in a session, add that `project-preferences.md` → `Delegation` is where they change whether and how this happens.
+- **Delegates run on Opus- or Sonnet-class models, and you choose.** The stronger where a piece needs design judgment or is a review; the lighter where it is well specified. Set reasoning effort the same way. Never lighter than Sonnet-class.
+- **Delegates do not run heavy tests.** A delegate proves its own change with the narrowest run that could fail because of it. What is heavy here (the full suite, integration and end-to-end runs, anything slow, paid, or contending for the machine) runs once, on the merged result. `Delegate verification` in preferences says what counts; absent that, the declared suite does.
+- **One integration branch.** Delegate branches merge there and the heavy run happens there. Hold it yourself, or hand it to a dedicated integrator subagent when merging and long runs would otherwise eat your context or stall dispatch. An integrator is the one delegate that runs heavy tests. Review, project state and the decision that the work is done stay with you either way.
+- **Nothing outlives the cycle unrecorded.** An unmerged delegate branch is written where the next session will read it, and a merged one is reaped.
 
-**Default: delegate when the same work finishes in less wall clock and the delegates will not fight each other.** Independent chunks are the ordinary yes when delegating them shortens wall clock, which needs each to be large enough to repay a delegate's re-exploration; a chunk you could finish in a handful of tool calls does not. Delegate regardless of the wall clock when **the user asks** (Principle 23), when a well-scoped chunk wants a clean context, or when the main context has grown large enough that the work would be done badly in it.
+A brief says the work, the files this delegate owns, what proves it, what to return, and who integrates.
 
-**Parallel is not automatically faster, and the wall clock to compare is the bounded one.** Three delegates each running the run *you* would do at integration is more machine load and more wall clock than doing it once yourself. This decision is usually made while a build plan is being drawn, before any brief exists — but the bound is a property of the *chunk*, not of the brief, and a chunk's deliverables are already declared. So ask what would prove each chunk on its own. **A chunk you cannot answer that for is not scoped tightly enough to hand to anyone**, which is worth more than the estimate you were trying to make. Plan-time partition is a default, not a commitment: re-check it at dispatch against what the machine is actually doing.
+---
 
-Stay serial when any of these holds:
+Everything below is reference: what makes the five hold in practice, and the ways delegation has gone wrong.
 
-- **The chunks aren't independent** — one needs another's output, or two touch the same files. Conflict cost is paid at merge, by you, after both delegates have finished being confident.
-- **Briefing costs more than the work.** A brief that runs to tens of thousands of tokens is not worth assembling for a small chunk, and while that is what one costs, it is the honest reason a lot of parallelizable work is done inline.
-- **The project says otherwise.** `project-preferences.md` is where a project records its own delegation policy — including `off`, and including delegation already pre-approved. Read it before fanning out; where it and this guide differ, it wins.
+## Model and effort are yours to set
 
-Serial is a decision like any other. Record it either way, in the plan's `partition:` field — "serial, because these three chunks all edit the same module" is an answer; silence is not.
+**Always name the model at dispatch.** A dispatch that names none inherits yours, and on a session running a tier stronger than Opus-class that is the most expensive choice available, made by accident. A fan-out multiplies it: N delegates on the top tier is N times the mistake. Opus-class or Sonnet-class is the default for build, research and integration delegates alike; putting one on your own stronger tier is a deliberate exception you can justify in a sentence and name in the disclosure — never the default, and never the result of leaving the field out. Name the class rather than pinning one model alias, falling back down the chain to whatever the host offers that is still Sonnet-class or stronger.
 
-## What a delegate is for
+**Set reasoning effort the same way.** The host gives a subagent an effort of its own only when instructions explicitly ask for one, so this guide is that ask: choose an effort per piece, as you choose the model.
 
-**A delegate verifies what proves its own change, and nothing beyond it.** A scratch worktree is unbound; it builds, you govern — the combined run, end-to-end checks, the Critic, reflection, state updates, merges.
+"A piece that is a review" means review-shaped delegated work. Dispatch of the Critic and the PR reviewer is governed by their own skills, not by this guide.
 
-## Considerations
+## When serial is right
 
-Questions, not rules. The answers differ by project, by machine, and by the moment you ask.
+**Parallel is not automatically faster, and the wall clock to compare is the bounded one.** Three delegates each running the run the integration branch will do is more load and more wall clock than one run there. The partition is usually drawn with a build plan, before any brief exists, but the bound is a property of the *chunk*: ask what would prove each chunk on its own. **A chunk you cannot answer that for is not scoped tightly enough to hand to anyone**, which is worth more than the estimate you were trying to make. A plan-time partition is a default, not a commitment; re-check it at dispatch against what the machine is actually doing.
 
-- **What must this delegate prove, and what is the smallest thing that proves it?**
-- **Who checks the seams between delegates, and when?** Integration is nobody's job unless you make it yours.
-- **What is this machine already doing?** Verification, not editing, is the wall clock. N delegates each running the coordinator's run is N times the load on one box, and the clamps that protect a box from *one* run are per-process — they do not compose across runs.
-- **What in this project's regime is expensive** — in time, in money, in credentials, or in dependence on something nobody here controls — **and does this delegate need any of it?**
+Conflict between pieces is paid at merge, after every delegate has finished being confident, so "won't collide" means disjoint files *and* no seam both would write: a shared table, a router, a budget test. Give each seam one owner.
 
-On that last question: a failure in a test that depends on an uncontrolled third party (a video host returning 403) says nothing about the delegate's change. Prawduct names the consideration; you decide what it means for your suite.
+Serial is a decision like any other. Record it either way in the plan's `partition:` field. Where `project-preferences.md` and this guide differ, the preferences win, and `Delegation: off` means delegation is never proposed.
 
-## Anti-patterns
+## Who does what
 
-Each carries a **tell** — the thing you can catch yourself doing. A rule with no tell reads as true afterwards instead of firing at the moment of the error.
+**A delegate verifies what proves its own change, and nothing beyond it.** It builds; it does not govern. A harness scratch worktree is unbound, and the governance commands (`critic-begin`, dispositions, advisories, plan and state writes) refuse there, naming you as the one who runs them.
 
-- **The delegate that verifies the whole product.** *Tell:* the brief names a command the *coordinator* would run at integration.
-- **N baselines.** *Tell:* the brief says "make sure tests pass before you start." A delegate inherits your baseline; re-establishing one N times buys nothing and costs N runs.
-- **The unattributable green.** *Tell:* you accepted a pass count without knowing what was collected, from a box running several agents. A test worker that dies under contention is typically not re-queued and does not fail the run, so the same tree can report different totals, all exiting 0. A green you cannot attribute to a known set of tests is not evidence — record it as one: `test-evidence record --degraded "<what did not report>"`, which the gates read as stale rather than as a pass. Prawduct cannot detect this; the record carries what you saw.
-- **The Done taken on faith.** *Tell:* you accepted a delegate's completion report on a removal or a sweep that carried no evidence — no grep output for the removed symbol, no recount against the source you named. These fail in the direction of looking finished, so the report reads identically either way.
-- **Boundaryless fan-out.** *Tell:* you cannot say which files each delegate owns without reopening their briefs.
-- **The delegate that governs.** *Tell:* a delegate ran the Critic or updated project state.
-- **The brief that costs more than the work.** *Tell:* the context you assembled exceeds what the chunk changes.
-- **Serial by default.** *Tell:* a plan with independent chunks and no partition decision recorded either way. Serial is very often right; *unexamined* is what this names.
+**An integrator** holds the integration branch, merges delegate branches as they land, resolves conflicts, runs the heavy tests, and reports the merged head and the result. You review on that head, update project state, and decide the work is done; the Critic, reflection and the done decision never move to it. It is the one delegate that leaves its scratch branch: have it switch its isolated worktree onto the integration branch (`git switch <branch>`, which needs your own checkout off that branch). A heavy run from a scratch branch is recorded as a narrowed fact in the shared store, not as that branch's test evidence, so the gates on the integration branch would still read stale and the run would be paid for twice.
+
+**Considerations, not rules** — the answers differ by project, machine and moment:
+
+- **What is this machine already doing?** Verification, not editing, is the wall clock, and the clamps protecting a box from one run are per-process: they do not compose across N delegates.
+- **What in this project's regime is expensive** — in time, money, credentials, or dependence on something nobody here controls — **and does this piece need any of it?** A failure in a test that depends on an uncontrolled third party says nothing about the delegate's change.
 
 ## What a brief must say
 
-A list of what has to be said, in your own words — not a template, and not something to generate. A brief that could be copy-pasted from the last one has stopped carrying information.
+What has to be said, in your own words — not a template. A brief that could be copy-pasted from the last one has stopped carrying information.
 
 - **The work** — the chunk spec and the artifacts it references, or the task stated in full.
-- **The ownership boundary** — what this delegate owns, what it must not touch, and any budget its files sit under (a size ceiling, a byte cap) that it would otherwise meet only as a red test.
-- **A verification ceiling** — the narrowest run that covers its own change, never the run you will do at integration. A cost bound, not a rigor discount. **Read `project-preferences.md`'s `Delegate verification` row first, where the project has one** — a ceiling you invent beside a ceiling the owner already ratified is the retyping this whole feature exists to end.
+- **The ownership boundary** — what it owns, what it must not touch, and any budget its files sit under (a size ceiling, a byte cap) that it would otherwise meet only as a red test.
+- **A verification ceiling** — the narrowest run that covers its own change. **Read `project-preferences.md`'s `Delegate verification` row first**: a ceiling invented beside one the owner ratified is the retyping that row exists to end.
 - **What to return**, and in what form — for a removal or a sweep, the output of the command that shows it complete.
-- **Who integrates** — you. Say so, so the delegate doesn't try.
+- **Who integrates** — you or your integrator, by name, so the delegate neither merges nor governs.
 
-If you cannot state the ownership boundary without re-reading the other delegates' briefs, the partition isn't ready and the fan-out will cost more than it saves.
+If you cannot state the ownership boundary without re-reading the other briefs, the partition isn't ready.
+
+## Dispatch and reaping
+
+**Dispatch with `isolation: "worktree"`.** It is the only shape that moves a delegate: a worktree you create and point it at does not hold, because Bash `cd` does not persist between calls and a skill forks in the session's own directory, so its git commands land in your checkout. The tree is `.claude/worktrees/agent-<id>` on branch `worktree-agent-<id>`, and it reads HEAD, so commit what it must see or put it in the prompt and say the prompt outranks any file. That branch is cut from the repo's default branch, not yours: on gitflow the prompt's first instruction is `git reset --hard <your branch>`, or the delegate builds against a release. A build delegate does not switch branches: a named branch in a worktree binds through its plan like any checkout, which is what the integrator's switch is for. The rest of dispatch is `/prawduct:methodology building` § Delegating Work to Subagents.
+
+**Write the brief into the delegate's worktree**, at `.prawduct/.delegate-brief.md`, as soon as the launch returns its id. It is the dispatch record — what was delegated, what it owns, who integrates — and what makes an abandoned worktree visible. No registry, no schema, no lease. A brief written *by* the delegate is missing in exactly the case it exists for, one that dies early.
+
+**Do not dispatch what this session cannot reap.** Expected runtime against the useful context you have left is a real comparison, and "no" means backlog. Reap at a work-cycle boundary, never as a mid-flow interrupt.
+
+**Reaping ends with the worktree, not with the merge.** Take the branch and the report, merge it, then `prawduct-hook git-tidy --reap <worktree>` removes the worktree and its branch; a brief left in a reused checkout raises an advisory about work nobody delegated. What an unreaped delegate does to the clear verdict is `/prawduct:methodology session-hygiene`.
+
+## Anti-patterns
+
+Each carries a **tell** — the thing you can catch yourself doing.
+
+- **The silent fan-out.** *Tell:* the user learned how many agents ran, or on what, from their results.
+- **The inherited model.** *Tell:* a dispatch with no model named, from a session on a tier stronger than Opus-class.
+- **The delegate that verifies the whole product.** *Tell:* the brief names a command the integration branch will run.
+- **N baselines.** *Tell:* the brief says "make sure tests pass before you start." A delegate inherits your baseline.
+- **The unattributable green.** *Tell:* you accepted a pass count without knowing what was collected, from a box running several agents. A worker that dies under contention is typically not re-queued and does not fail the run, so one tree can report different totals, all exiting 0. Record it as what it is: `test-evidence record --degraded "<what did not report>"`, which the gates read as stale rather than as a pass.
+- **The Done taken on faith.** *Tell:* you accepted a completion report on a removal or a sweep that carried no evidence — no grep for the removed symbol, no recount against the source. These fail in the direction of looking finished.
+- **Boundaryless fan-out.** *Tell:* you cannot say which files each delegate owns without reopening their briefs.
+- **The delegate that governs.** *Tell:* a brief tells a delegate to run the Critic or update project state — including an integrator's.
+- **Serial by default.** *Tell:* a plan with independent chunks and no partition decision recorded either way. Serial is very often right; *unexamined* is what this names.
 
 ## Work no plan anticipated
 
-The partition above is drawn at plan time. The other trigger is an interrupt — a tangent the user raises mid-chunk, or work you are about to propose backlogging.
+The other trigger is an interrupt — a tangent the user raises mid-chunk, or work you are about to propose backlogging.
 
-**A delegated tangent is never *done*.** You own integration, so what comes back is a branch plus an integration debt: a combined run, live verification, the Critic, a merge. Isolation stops delegates fighting *during* the run and does nothing about the merge, so that branch also ages against the line you are actively moving. And the reason you delegated — this context is full, or nearly — guarantees the agent that incurred the debt is not the one who will pay it. So coordination has to be **a role recorded on disk, not an agent held in memory**: a debt that lives only in your context evaporates at the next `/clear`, leaving an unmerged branch and a worktree nobody remembers creating.
+**A delegated tangent is never *done*.** What comes back is a branch plus an integration debt: a merge, the heavy run, live verification, the Critic. Isolation stops delegates fighting *during* the run and does nothing about the merge, and the branch ages against the line you are moving. The reason you delegated — this context is full, or nearly — means the agent that incurred the debt may not be the one who pays it, so the debt is **a record on disk, not an agent held in memory**: the brief in the worktree.
 
-**The decision is three-way, made once, out loud: do it now, delegate it, or backlog it.** `project-preferences.md`'s `Delegation` row sets this project's policy, and `off` means delegation is never proposed. The question that sorts the three: *would you integrate this today if it came back green?* If not, backlog it; if it would take a handful of tool calls, do it now; delegate when running it beside your own work shortens wall clock and it touches nothing yours does.
+**The decision is three-way, made once, out loud: do it now, delegate it, or backlog it.** `project-preferences.md`'s `Delegation` row sets the policy, and `off` means delegation is never proposed. The sorting question: *would this be integrated today if it came back green?* If not, backlog it; if it takes a handful of tool calls, do it now; delegate it when it runs beside your work and touches nothing yours does. When you disclose it, say **how many ad-hoc branches already await integration** — a fifth is a different proposal from a first.
 
-**Disclose before dispatching** (Principle 9, Visible Costs): what the delegate will do, what it will *not* do, that its result carries an integration debt and who is expected to pay it, and **how many ad-hoc branches already await integration**. A fifth outstanding branch is a different proposal from a first one, and the user should hear which one this is — unmerged branches are inventory, and this trigger is the one best at accumulating it.
+**Requirements first — four paths, and no fifth.** You state them in the brief, or you reference an artifact that already states them, or the delegate drafts them as its first deliverable, or it stops and demands them. A delegate drafting requirements is doing discovery: drafted requirements come back marked **proposed**, and ratifying them is part of the debt, or the branch's existence stands in for approval.
 
-**Requirements first — four paths, and no fifth.** An ad-hoc delegate never builds against unclear requirements: you state them in the brief, or you reference an artifact that already states them, or the delegate drafts them as its first deliverable, or it stops and demands them. Path three has an edge worth naming — a delegate drafting requirements is doing discovery, and requirements drafted in a worktree and never ratified are `/prawduct:methodology building`'s *silently invent a requirement* failure in a new costume, with the branch's existence standing in for approval. Drafted requirements come back marked **proposed**, and ratifying them is part of the debt.
-
-**What it hands back is a branch and a report** naming what it verified, what it assumed, and what it left for integration. Everything above binds unchanged, the verification ceiling and the no-governance rule included.
-
-**Write the brief into the delegate's worktree**, at `.prawduct/.delegate-brief.md`, rather than only into the prompt. The artifact that had to exist anyway becomes the dispatch record — what was delegated, what it owns, who integrates — and an abandoned worktree stops being invisible. No registry, no schema, no lease; nothing new to keep in sync.
-
-**So dispatch in the background with `isolation: "worktree"`, then write the brief.** The launch result carries the agent's id, and its tree is `.claude/worktrees/agent-<id>` on branch `worktree-agent-<id>` — write the brief there as soon as the launch returns. The prompt carries everything the delegate needs, so the brief is the record, not its input. Isolation is the only shape that moves a delegate: a worktree you create and point it at does not hold, because Bash `cd` does not persist between calls and a skill forks in the session's own directory, so its git commands and skills land in your checkout. It also leaves the delegate on the harness's scratch branch, unbound (above); a named branch in a worktree binds through its plan like any checkout, so don't have it switch branches. That branch is cut from the repo's default branch, not yours: on gitflow the prompt's first instruction is `git reset --hard <your branch>`, or the delegate builds against a release. A brief written *by* the delegate is missing in precisely the case it exists for, one that dies early; this is the coordinator's write. Everything else about dispatch is `/prawduct:methodology building` § Delegating Work to Subagents.
-
-**Do not dispatch what this session cannot reap.** Expected runtime against the useful context you have left is a real comparison, and "no" means backlog. The unreapable delegate is the worst outcome on offer: compute spent, no result read, a worktree orphaned. Reap at a work-cycle boundary, never as a mid-flow interrupt — the mechanism that exists to protect focus must not become the thing that breaks it. What an unreaped delegate does to the clear verdict is `/prawduct:methodology session-hygiene`.
-
-**Reaping ends with the worktree, not with the merge.** Take the branch and the report, merge it, then `prawduct-hook git-tidy --reap <worktree>` removes the worktree and its branch. The brief is what a session start reads to notice an orphan, so one left in a reused checkout raises an advisory about work nobody delegated, and it does so under a fresh id each time the branch changes, which no dismissal settles.
+**What it hands back is a branch and a report** naming what it verified, what it assumed, and what it left for integration.
 
 ### Anti-patterns, ad-hoc
 
