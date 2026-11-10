@@ -94,6 +94,15 @@ exactly where it did.
   reviewer's own checks, ratings or instructions changed. Settled by the plan's "every description
   agrees" goal.
 
+- Review round — three command-line operations have no shipped consumer left: `learnings-files
+  --for-diff`, and `backlog cache-query` `affecting` and `created-since`. Each is documented as
+  unread and kept, because an older installed reviewer definition may still call it mid-upgrade.
+  *Not settled by the goals* — whether they go, and when, is the owner's; recorded on #1129.
+- Review round — an accepted or filed record-lint warning is not raised again until the result
+  changes, and a blocking one only after a waiver a verify pass recorded. Settled by the plan's
+  purpose (stop producing output nobody acts on) and by the gate's existing rule for clearing a
+  blocker, which this does not widen.
+
 **Level:** High on what to remove. Medium on the record-lint path: the builder confirms from the
 code where a relayed lint finding gets its blocking force today before moving it, and stops to
 report if a gate reads it only through a reviewer's finding.
