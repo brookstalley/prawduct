@@ -3121,7 +3121,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             f"finding(s) gated nothing. ONE `/prawduct:critic verify-resolutions` "
             f"closes it; fix nothing further first, or you will re-open it. For "
             f"anything still undecided, `prawduct-hook disposition "
-            f"{churn['fact_id']} <fid|oid> --accept \"<reason>\"` records a won't-fix, "
+            f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
             f"moves no tree, and needs no review. Before you make the NEXT commit, "
             f"`prawduct-hook cost-of-commit` says whether it re-opens this gate — "
             f"the answer that used to be learnable only after committing.",

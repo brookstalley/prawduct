@@ -34,9 +34,10 @@ def estimate_tokens(text: str) -> int:
 
 
 def assert_inert_count_cap(text: str, path: str) -> None:
-    """Both Critic protocol files cap a finding whose only subject is an inert
-    count at NOTE, and both must carry it in the same place: INSIDE the NOTE
-    entry of the severity legend.
+    """Both Critic protocol files make an item whose only subject is an inert
+    count an observation, and both must carry it in the same place: INSIDE the
+    Observation entry of the severity legend (the entry that was NOTE before
+    `note` stopped being a finding severity).
 
     **Placement is the substance and is asserted, not assumed.** A reviewer
     resolving "what severity is this?" reads the legend entry for the severity
@@ -59,13 +60,13 @@ def assert_inert_count_cap(text: str, path: str) -> None:
     note_bullet = next(
         (
             ln for ln in text.split("\n")
-            if ln.lstrip().startswith("- **NOTE**") and "ambiguous" in ln
+            if ln.lstrip().startswith("- **Observation**") and "ambiguous" in ln
         ),
         None,
     )
-    assert note_bullet, f"{path} has no NOTE entry in its severity legend"
+    assert note_bullet, f"{path} has no Observation entry in its severity legend"
     assert "inert count" in note_bullet, (
-        f"{path} states the inert-count cap outside the NOTE legend entry (or "
+        f"{path} states the inert-count cap outside the Observation legend entry (or "
         "not at all) — a reviewer picking a severity reads the entry, not the file"
     )
     for component, why in (
@@ -5101,7 +5102,7 @@ class TestCriticSkill:
     def load(self):
         self.content = read_file("skills/critic/review-protocol.md")
 
-    def test_an_inert_count_is_capped_at_note(self):
+    def test_an_inert_count_is_capped_at_an_observation(self):
         """The `final`/`cumulative` half of the sink-side cap.
 
         Both protocol files carry it because both are read by a reviewer that
@@ -5807,7 +5808,7 @@ class TestCriticGoals13:
         # is already pinned; this is the half that was not.
         assert '"observations"' in self.content       # the demotion record's schema arm
 
-    def test_an_inert_count_is_capped_at_note(self):
+    def test_an_inert_count_is_capped_at_an_observation(self):
         """The `chunk`/`verify-resolutions` half of the sink-side cap — same
         helper as `TestCriticSkill`, so the two copies cannot disagree."""
         assert_inert_count_cap(self.content, "goals-1-3.md")
@@ -6402,7 +6403,9 @@ class TestReviewCycle:
         # It used to be three-and-one the other way. A row that said "Every
         # severity" everywhere, or nowhere, would pass a presence check and
         # describe a framework nobody built.
-        assert row.count("Every severity") == 1, (
+        # Renegotiated again: `note` is not a finding severity at any stage, so
+        # the boundary cell names the two it rates instead of "Every severity".
+        assert row.count("BLOCKING and WARNING; anything lesser is an OBSERVATION") == 1, (
             "the table no longer distinguishes the boundary mode from the "
             "three inner-stage modes"
         )

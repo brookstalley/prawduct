@@ -11,11 +11,11 @@ evidence; a test deleted or weakened; changed behavior with no test at all; a si
 requirement; exploitable security in changed code; a cross-component contract break; a norm
 departure without a recorded decision; an unlisted dependency — and nothing else:
 only **BLOCKING** is a finding, and only from that set. Every other verdict the goals below state
-(`→ WARNING`, `→ NOTE`, a `→ BLOCKING` outside the set) is the boundary rating — report it,
+(`→ WARNING`, `→ observation`, a `→ BLOCKING` outside the set) is the boundary rating — report it,
 record-lint entries included, as an observation, never in `findings`; in `verify-resolutions` only one
 judging a named fix, with `about: {review_id, fid}` — others are dropped. **Deliver every observation
-pre-priced:** ACCEPT is the default disposition; fixing one re-opens the gate and costs a round;
-batch any survivor into an already-planned commit.
+pre-priced:** it needs no disposition; fixing one re-opens the gate and costs a round, so one the
+builder chooses to fix rides an already-planned commit.
 
 ## Before you review
 
@@ -41,7 +41,7 @@ classification, **and unmarked prose recording a decision** bind; descriptions t
 syncing it to code silently unmake a decision?). Departure, unruled edge-work, normative change (even
 doc-only), or norm birth without a recorded vetoable decision → Goal 3 **BLOCKING** where the
 product has adopted norms (any `## Direction` section, preferences norm row, or recorded
-classification); with none, **NOTE** naming the capture path. Tell: amending a norm to match your own code. Correctness shapes the recommendation, never the need. Stale registry → NOTE:
+classification); with none, an observation naming the capture path. Tell: amending a norm to match your own code. Correctness shapes the recommendation, never the need. Stale registry → an observation:
 `/prawduct:doctor`; never a downgrade.
 
 **The manifest's `prior_dispositions` lists findings already accepted or filed in these files, with
@@ -75,7 +75,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 - Changed/added behavior has test coverage → **BLOCKING** if untested.
 - Tests are well-structured (behavior not implementation, edge cases, meaningful assertions) → **WARNING** if quality poor.
 - **No-behavior-change refactor**: output assertions are exact-match, not substring/contains (substring misses drift — double-prefix, error wrappers) → **WARNING**.
-- For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → **NOTE**.
+- For math, data transforms, serialization, complex validation: if test-specs call for property-based tests and they're absent → observation.
 - **Security in changed code:** input validation at trust boundaries (user input, external APIs, file paths) → **BLOCKING** if exploitable; no injection vectors — SQL, command, XSS, path traversal → **BLOCKING**; no hardcoded secrets or credentials → **BLOCKING**; auth/authz on new endpoints or state-changing operations → **WARNING** if missing; dependencies with known critical vulnerabilities → **WARNING**.
 - **Symbol coverage:** run `prawduct-hook verify-coverage`. Exit 1 with `missing-coverage:` stderr lines → **BLOCKING per missing file**; quote each verbatim — wording is `coverage_level`-scaled and must not be softened. Other exit-1 (missing evidence, no `verifier`, invalid schema) → **BLOCKING** with the diagnostic as finding text.
 - **Cross-component message contract:** when changed code produces or consumes messages across a process or component boundary (IPC, wire protocol, event stream, pub/sub), read *both* ends — matching types is necessary, never sufficient, and a fixture that synthesizes the producer's signal proves nothing. A consumer awaiting a signal the producer never emits, or ignoring a terminal/error signal it does emit → **BLOCKING**. Open the title with `cross-component-contract:` so its yield stays countable.
@@ -93,7 +93,7 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 - If `infrastructure_dependencies` is declared: integration tests exercise real dependencies (not just mocks) → **WARNING** if all mocked.
 - **Foreign API**: chunks with `**Foreign API:** <name>` need a `verify-api` step in Done-when → **WARNING** if missing.
 - **Exposed API**: chunks with `**Exposed API:** <name>` need recorded versioning + deprecation (`design_decisions.api_versioning_approach`, or a dated deferral with a revisit trigger) and error-model (`api_error_model_approach`) decisions → **WARNING** each if missing. Contract presence: `<name>` must appear in the API contract artifact (Surface Inventory or a section naming it) → **WARNING** naming the surface and its artifact if not (`templates/api-contract.md` if none). Presence is not adherence: where the contract's `Retention:` policy defers removal to a major, a `stable`/`deprecated` member of its Surface Inventory the diff removes or un-declares → **BLOCKING** norm departure.
-- **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → **NOTE** if missing.
+- **Operator verification:** `operator_verification_required: true` + chunk `Visual change: yes` ⇒ matching entry in `.prawduct/operator-verification.md` → observation if missing.
 - **Built-but-unconsumed:** a producer nothing reads in the same change — an event, a field, a flag → **WARNING**.
 
 ## 3. Nothing Is Unintended
@@ -108,8 +108,8 @@ State every entry. `chunk_graded`/`plan_graded` name the subject.
 ## Severity
 
 - **BLOCKING** — must fix before proceeding.
-- **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → NOTE. Confidence is not importance.
-- **NOTE** — genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is NOTE unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
+- **WARNING** — true *and* worth the builder's time. Name the consequence: *who does what wrong because of this?* No answer → an observation. Confidence is not importance.
+- **Observation** — never a finding, at any stage, and owed no disposition: genuinely ambiguous; or prose whose being wrong changes nothing anyone does. **Prose is an observation unless load-bearing** — a test or a gate reads it, or you name the concrete wrong action a maintainer takes because of it. It never lowers a severity another rule assigns explicitly. That covers comment, docstring and doc wording inside a subject file, counts and phrasing alike; rating any of it WARNING turns it into a fix commit, which is how one round manufactures the next. An inert count is the recurring instance — state the true figure, that nothing reads it, and that no edit is wanted.
 - **A finding's subject is never another finding** — restating one, naming its consequence, or cross-checking it against learnings folds in or is dropped. Test on your own partial: is a finding its subject?
 - **Prose remedies** — stale prose gets one of three: delete the claim, make it relational, or pin it with a test. Never recommend rewording the narration or adding a comment that explains the history; both ship the sentence the next round finds stale. Review and finding ids, chunk numbers and review history never belong in a shipped comment — one narrating history is a **deletion** finding.
 

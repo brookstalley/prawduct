@@ -181,4 +181,4 @@ assumed") → **WARNING** (Goal 2). This arm grades only the missing planning *p
 departure, amendment, or `## Direction` edit without a recorded decision is the Authority Rule's
 territory and stays **BLOCKING** via Goal 3 — never downgraded to this WARNING. A plan with no
 `governed_by:` field in a product that already carries `## Direction` sections is itself the gap →
-**NOTE** recommending the `prawduct-hook jurisdiction` seed.
+an observation recommending the `prawduct-hook jurisdiction` seed.

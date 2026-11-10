@@ -297,7 +297,7 @@ class TestValidatePartial:
     def test_finding_files_all_blank_accepted(self):
         # ``files: [""]`` — the exact live trigger — must consolidate, not abort.
         p = _partial("correctness", "abc", findings=[
-            {"name": "Learnings cross-check", "goal": "g", "severity": "note",
+            {"name": "File-less finding", "goal": "g", "severity": "warning",
              "recommendation": "y", "files": [""]}
         ])
         ok, reason = cc.validate_partial(p)
@@ -644,6 +644,23 @@ class TestObservationsReachTheBuilder:
         record = cc.fact_to_cache_record(fact)
         assert record["summary"].startswith("0 blocking, 0 warning, 0 note")
         assert "Changes ready to proceed." in record["summary"]
+
+    def test_an_old_fact_with_note_findings_still_renders_and_counts(self):
+        """Facts are immutable: a review recorded before `note` stopped being a
+        finding severity keeps its notes, and the cache still renders them —
+        counted, listed, and named in the next action."""
+        record = cc.fact_to_cache_record({
+            "id": "rev-old",
+            "ts": "2026-09-16T00:00:00Z",
+            "body": {
+                "findings": [{"fid": "R-1", "goal": "g", "severity": "note",
+                              "title": "old note", "recommendation": "r"}],
+                "counts": {"blocking": 0, "warning": 0, "note": 1},
+            },
+        })
+        assert record["summary"].startswith("0 blocking, 0 warning, 1 note")
+        assert [f["severity"] for f in record["findings"]] == ["note"]
+        assert "1 note(s) gate nothing" in record["next_action"]
 
     def test_a_fact_with_no_observations_renders_an_empty_list(self):
         record = cc.fact_to_cache_record({
@@ -1097,7 +1114,7 @@ class TestNextActionLine:
         """
         priced = "One more round costs about 5 min here (median of 9 rounds)."
         line = cc.next_action_line("rev-9", 3, 2, 1, priced)
-        assert 'prawduct-hook disposition rev-9 <fid|oid> --accept "<reason>"' in line
+        assert 'prawduct-hook disposition rev-9 <fid> --accept "<reason>"' in line
         assert "moves no tree" in line
         assert priced in line
 
@@ -1148,17 +1165,19 @@ class TestNextActionLine:
             assert "if more judgeable work is coming on this branch" in line.lower(), counts
             assert "`.prawduct/.handoff-notes.md`" in line, counts
 
-    def test_the_clean_arm_names_the_observations_it_can_answer(self):
-        """`verify-resolutions` demotes everything below BLOCKING, so "0
-        findings, N observations" is that mode's MODAL close — the shape this
-        arm prints most often. Saying "nothing to disposition" there
-        contradicts the reviewer's own `### Observations` report in the same
-        message, and leaves the accept-on-the-record route unused on the path
-        that produces most of the items it was built for."""
+    def test_the_clean_arm_names_the_observations_and_asks_no_answer(self):
+        """Renegotiated contract (#1128): this arm used to ask the builder to
+        answer each observation on the record with `disposition <oid>
+        --accept`. An observation needs no disposition, so the arm names them
+        and where they are, and asks nothing. The control is the warnings arm,
+        which still names the disposition command for findings."""
         line = cc.next_action_line("rev-9", 0, 0, 0, observations=3)
-        assert "nothing to disposition" not in line
-        assert "Its 3 observation(s) gate nothing" in line
-        assert 'prawduct-hook disposition rev-9 <oid> --accept "<reason>"' in line
+        assert "Its 3 observation(s) gate nothing and need no answer" in line
+        assert "`observations` in `.critic-findings.json`" in line
+        assert "prawduct-hook disposition" not in line
+        assert "prawduct-hook disposition rev-9 <fid>" in cc.next_action_line(
+            "rev-9", 0, 1, 0, observations=3
+        )
 
     def test_the_observations_close_prices_fixing_like_the_warnings_close(self):
         """The observations-only close is the one clean close that still
@@ -1190,8 +1209,10 @@ class TestNextActionLine:
         # Findings and observations arrive together on a verify close; an arm
         # that itemizes one and not the other teaches that the other is not
         # answerable.
+        # Renegotiated (#1128): the clause names them and asks no answer.
         line = cc.next_action_line("rev-9", 0, 2, 1, observations=4)
-        assert "nor do its 4 observation(s) (answer them by `O-n` id)" in line
+        assert "nor do its 4 observation(s), which need no answer" in line
+        assert "O-n" not in line and "<fid|oid>" not in line
 
     def test_no_observations_reads_exactly_as_it_did(self):
         # Every non-verify mode passes 0, and demotion is a verify-mode rule —
@@ -1201,19 +1222,21 @@ class TestNextActionLine:
                 "rev-9", *counts, observations=0
             ), counts
 
-    def test_the_relayed_line_uses_the_widened_id_domain(self):
-        """The one carrier the `<fid>` → `<fid|oid>` sweep left standing.
-
-        `dispositions._RECORD_USAGE` and `review-cycle.md` were corrected
-        because a refused invocation is when a builder needs to know an
-        observation id is legal. This line is stronger than either: it is the
-        text the reviewer relays verbatim, and on the single-pass path it is the
-        ONLY text that reaches the builder at all."""
+    def test_the_relayed_line_asks_for_finding_dispositions_only(self):
+        """Renegotiated contract (#1128): the relayed line used to name the
+        widened `<fid|oid>` domain so a builder knew an observation could be
+        answered. An observation now needs no answer, so the line — the ONLY
+        text that reaches the builder on the single-pass path — names `<fid>`.
+        `prawduct-hook disposition` still accepts an `O-n` id; that capability
+        is the usage string's to state, not this line's to ask for."""
+        seen = 0
         for counts in ((0, 0, 0), (0, 4, 7), (2, 1, 1)):
-            line = cc.next_action_line("rev-9", *counts)
+            line = cc.next_action_line("rev-9", *counts, observations=2)
             if "disposition rev-9" in line:
-                assert "disposition rev-9 <fid|oid>" in line, counts
-                assert "disposition rev-9 <fid> " not in line, counts
+                seen += 1
+                assert "disposition rev-9 <fid> " in line, counts
+                assert "<fid|oid>" not in line and "<oid>" not in line, counts
+        assert seen == 2
 
     def test_the_clean_pass_is_not_offered_a_route_for_findings_it_lacks(self):
         # 0/0/0 has nothing to carry anywhere; a deferral route on a review with
@@ -1227,9 +1250,9 @@ class TestNextActionLine:
         assert "gate nothing" in line
         # The command arrives with this review's own id already substituted —
         # an operator who has to go find the id is one who will not run it.
-        # `<fid|oid>`, not `<fid>`: the id domain is findings PLUS observations,
-        # and this is the line a verify-mode builder actually reads.
-        assert "prawduct-hook disposition rev-abc <fid|oid> --accept" in line
+        # `<fid>`: an observation needs no answer (#1128). The note count is
+        # an OLD fact's — a note was a finding severity before — and still reads.
+        assert "prawduct-hook disposition rev-abc <fid> --accept" in line
         assert "4 warning(s) and 7 note(s)" in line
         # And the stale-gate-output trap is named where the decision is made.
         assert "Judge by the gate after the commit" in line
@@ -3563,7 +3586,7 @@ class TestConsolidateIntegration:
         # A finding has to exist for the close to carry a cost lead at all.
         _full_roster_partials(repo, head, findings_by_role={
             "correctness": [{"name": "Nit", "goal": "Nothing Is Broken",
-                             "severity": "note", "recommendation": "tweak",
+                             "severity": "warning", "recommendation": "tweak",
                              "files": ["src/app.py"]}],
         })
         result = _run_consolidate(repo)
@@ -4147,19 +4170,15 @@ class TestResolutionFacts:
         assert "verify-resolutions" in result.stderr
         assert len(_store_facts(repo, "resolution")) == 0
 
-    def test_observations_at_the_boundary_fail_closed(self, tmp_path):
-        """The mirror of the rule above, and it closes a laundering path rather
-        than a weakening one. Demotion is a STAGE rule (`nonfunctional-
-        requirements.md` § Direction, *Review rigor is stage-keyed*): at the
-        boundary every item the reviewer rates is a finding, and findings are
-        what `counts` counts. An array outside `findings` that the boundary
-        could write would let a cumulative reviewer file nine warnings where
-        nothing counts them and consolidate a 0/0/0 review.
-
-        Renegotiated 2026-09-17 (review-stages Chunk 02): this pin used to hold
-        `final` to the same refusal, because demotion was a verify-mode rule.
-        `final` is an inner-stage review now and carries observations like
-        `chunk` does (the test below); the boundary keeps the refusal."""
+    def test_observations_at_the_boundary_persist(self, tmp_path):
+        """Renegotiated contract (#1128): this pin used to REFUSE an
+        `observations` array from a boundary dispatch, because the boundary
+        rated every item it found as a finding — NOTE included — and an array
+        outside `findings` there read as severity laundering. NOTE is no longer
+        a finding severity at any stage, so what a boundary reviewer would have
+        rated NOTE has exactly one home: `observations`. BLOCKING and WARNING
+        still cannot go there — a WARNING is a finding at the boundary, and
+        `_validate_observations` refuses a `blocking` one outright."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -4173,9 +4192,61 @@ class TestResolutionFacts:
              "recommendation": "Tighten it"}
         ])
         result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        fact = _store_facts(repo, "review")[0]
+        assert [o["title"] for o in fact["body"]["observations"]] == [
+            "Prose could be tighter"
+        ]
+        assert fact["body"]["counts"] == {"blocking": 0, "warning": 0, "note": 0}
+
+    def test_a_blocking_observation_at_the_boundary_still_fails_closed(self, tmp_path):
+        """What stays refused once the boundary accepts observations: an item
+        its reviewer rated BLOCKING. Nothing gates on an observation, so one
+        recorded there would read as handled while blocking nothing."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-cumul-0003", mode=CUMULATIVE_MODE,
+                        stage="boundary")
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "correctness", head, observations=[
+            {"name": "Auth bypass", "goal": "Nothing Is Broken",
+             "severity": "blocking", "recommendation": "Fix it"}
+        ])
+        result = _run_consolidate(repo)
         assert result.returncode == 1
-        assert "boundary" in result.stderr
+        assert "finding, never an observation" in result.stderr
         assert len(_store_facts(repo, "review")) == 0
+
+    @pytest.mark.parametrize("mode,stage", [
+        (CUMULATIVE_MODE, "boundary"), (FINAL_MODE, "inner"),
+    ])
+    def test_a_note_finding_is_refused_naming_observations(self, tmp_path, mode, stage):
+        """NOTE is not a finding severity at any stage (#1128). A partial
+        carrying one is refused from every dispatch, and the refusal names the
+        array the item belongs in, so the reviewer's retry is one move. The
+        control: the same partial with the item moved to `observations`
+        consolidates."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        item = {"name": "Wording", "goal": "Everything Is Coherent",
+                "recommendation": "Tighten it"}
+
+        _set_marker(repo)
+        _write_manifest(repo, head, id="rev-note-0001", mode=mode, stage=stage)
+        _full_roster_partials(repo, head)
+        _write_partial(repo, "design", head, findings=[{**item, "severity": "note"}])
+        result = _run_consolidate(repo)
+        assert result.returncode == 1
+        assert "'note'" in result.stderr and "observations" in result.stderr
+        assert len(_store_facts(repo, "review")) == 0
+
+        _write_partial(repo, "design", head, findings=[], observations=[item])
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
 
     def test_observations_from_an_inner_stage_final_persist(self, tmp_path):
         """The half the old pin forbade: an inner-stage `final` demotes what it
@@ -4204,13 +4275,13 @@ class TestResolutionFacts:
             "Error path untested", "Substring assertion",
         ]
 
-    def test_a_manifest_without_a_stage_is_gated_by_its_mode(self, tmp_path):
-        """A manifest written before the field existed (a restored archive, a
-        leftover the backstop consolidates) carries no `stage`; the same
-        function that would have written it answers from the mode, so an old
-        `cumulative` still refuses the array and an old `final` still takes it.
-        Both arms, because a gate that read `None` as "not boundary" would
-        launder at exactly the boundary."""
+    def test_a_manifest_without_a_stage_consolidates_observations(self, tmp_path):
+        """Renegotiated contract: a manifest written before the `stage` field
+        existed (a restored archive, a leftover the backstop consolidates) used
+        to be gated by its mode — an old `cumulative` refused the array. The
+        array is accepted from every stage now that `note` is no longer a
+        finding severity, so both old manifests consolidate, and the fact
+        records the absent stage as absent rather than inventing one."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
@@ -4223,8 +4294,9 @@ class TestResolutionFacts:
         assert "stage" not in manifest
         _full_roster_partials(repo, head)
         _write_partial(repo, "design", head, observations=obs)
-        assert _run_consolidate(repo).returncode == 1
-        assert _store_facts(repo, "review") == []
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert len(_store_facts(repo, "review")[0]["body"]["observations"]) == 1
 
         cc.remove_partials(repo / ".prawduct")
         _set_marker(repo)
@@ -4233,7 +4305,7 @@ class TestResolutionFacts:
         _write_partial(repo, "design", head, observations=obs)
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
-        fact = _store_facts(repo, "review")[0]
+        fact = next(f for f in _store_facts(repo, "review") if f["id"] == "rev-old-final")
         assert fact["body"]["stage"] is None  # recorded as absent, never invented
         assert len(fact["body"]["observations"]) == 1
 
@@ -7106,7 +7178,7 @@ class TestDeterministicCycleEndToEnd:
             {
                 "name": "A clean review's census renders a truncated sentence",
                 "goal": "Nothing Is Broken",
-                "severity": "note",
+                "severity": "warning",
                 "recommendation": "guard the summary clause",
                 "files": ["src/app.py"],
             }
@@ -7120,7 +7192,7 @@ class TestDeterministicCycleEndToEnd:
                 {
                     "name": "A clean review renders a malformed census summary line",
                     "goal": "The Design Is Sound",
-                    "severity": "note",
+                    "severity": "warning",
                     "recommendation": "guard the summary clause",
                     "files": ["src/app.py"],
                 }
@@ -7133,7 +7205,7 @@ class TestDeterministicCycleEndToEnd:
         # Both findings are kept — advisory detection never drops one.
         fact = _store_facts(repo, "review")[0]
         assert len(fact["body"]["findings"]) == 2
-        assert fact["body"]["counts"]["note"] == 2
+        assert fact["body"]["counts"]["warning"] == 2
         # ...and the count is reported alongside an honest distinct count.
         assert "~1 distinct" in result.stdout
         assert "likely-duplicate group(s): R-1+R-2" in result.stdout

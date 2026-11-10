@@ -32,7 +32,8 @@ SHA), the **review id**, and the **two paths you write** — your started marker
 The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`;
 `critic-begin` rendered it from the manifest (`signals`) and the coordinator copied it — nobody
 composed it. **`Stage` decides what is a finding** (`review-protocol.md` "Stage"): at `inner`, what
-you rate outside the inner BLOCKING set goes in your partial's `observations` array.
+you rate outside the inner BLOCKING set goes in your partial's `observations` array, and at every
+stage so does whatever you rate below WARNING.
 
 Your two write paths and the review id are recorded in `.prawduct/.critic-partials/manifest.json`
 as `rendezvous.<your role>` and `id`; read them there if your prompt omits them, and never compose
@@ -119,8 +120,9 @@ make, not yours to infer. A first-time defect, or one a check already covers, is
    The manifest's `files_reviewed` is your subject set and `files_oracle` is what the code is judged
    against; `review-protocol.md` "Subject and oracle" says which passes may rate an oracle file.
    *"The code violates this spec"* has the code as its subject, at full severity.
-7. Assess your goals and report every finding with its severity: `blocking`, `warning`, or `note`
-   (definitions in `review-protocol.md`). A clean pass has zero findings. When a finding rests on a
+7. Assess your goals and report every finding with its severity, `blocking` or `warning`, and
+   everything lesser as an observation (definitions in `review-protocol.md`). A clean pass has
+   zero findings. When a finding rests on a
    rule from the learnings corpus, quote that rule's opening words in the finding — the citation is
    what makes the rule countable as one that fired, and an uncited one reads as a rule no review has
    used.
@@ -148,7 +150,7 @@ whole consolidation closed, so match it exactly):
     {
       "name": "<short finding title>",
       "goal": "<the goal name, e.g. \"Nothing Is Broken\">",
-      "severity": "blocking | warning | note",
+      "severity": "blocking | warning",
       "recommendation": "<what to do about it>",
       "files": ["<file the finding is about>"]
     }
@@ -166,8 +168,8 @@ whole consolidation closed, so match it exactly):
 ```
 
 `files` on a finding is optional (omit when not file-specific). `findings` is `[]` for a
-clean pass. `observations` is written only at `inner` stage — a finding minus its `severity` (carry
-no `severity` key); omit it, or leave it `[]`, at `boundary`, where consolidation refuses one. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
+clean pass. `observations` carries what you rate below a finding at your stage — a finding minus
+its `severity` (carry no `severity` key); a `note` severity in `findings` is refused. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
 given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched
 *and* was dispatched by the review it is consolidating; either mismatch fails closed. Note that
 `dispatch_id` is your OWN review; `resolutions[].review_id`, which you never write, means a

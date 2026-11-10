@@ -81,10 +81,17 @@ from .core import GITIGNORE_ENTRIES, atomic_write_text
 PARTIALS_DIRNAME = ".critic-partials"
 MANIFEST_NAME = "manifest.json"
 
-# Severity vocabulary + ranking (highest wins on dedup). The stop-hook and PR
-# gate key on "blocking"; restricting the partial vocabulary here means a typo'd
-# severity fails partial validation rather than silently downgrading a blocker.
+# Severity ranking (highest wins on dedup). The stop-hook and PR gate key on
+# "blocking". `note` stays ranked because facts recorded before it was retired
+# carry it and are read forever.
 _SEVERITY_RANK = {"blocking": 3, "warning": 2, "note": 1}
+
+# The severities a partial may rate a FINDING. Restricting the vocabulary means
+# a typo'd severity fails partial validation rather than silently downgrading a
+# blocker. `note` is not among them at any stage: what a reviewer would have
+# rated NOTE goes in `observations`, which needs no disposition — of the notes
+# answered over 60 days, 87% were accepted unfixed (#1128).
+_FINDING_SEVERITIES = ("blocking", "warning")
 
 # Caller-side short token → persisted verbose string (the two-form rule;
 # values match gates._CRITIC_MODE_VALUES — pinned by test).
@@ -1003,31 +1010,25 @@ def _next_action_core(
     if blocking:
         return (
             f"{blocking} BLOCKING finding(s) gate this work. Fix them, and decide"
-            " every warning and note in the same pass (fix, or accept with"
-            f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"`,'
+            " every other finding in the same pass (fix, or accept with"
+            f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"`,'
             " which needs no review and moves no tree): " + gates.FIX_ORDER + "."
             + gates.BLAST_RADIUS_CHECK
             + _RIDE_ALONG_ROUTE
             + price
         )
     if not (warning or note):
-        # An inner-stage pass (`verify-resolutions` first; every inner mode
-        # since rigor became stage-keyed) demotes what falls outside the inner
-        # BLOCKING set to an observation, so "0 findings, N observations" is
-        # its MODAL close, not an edge — and this arm is the text it prints. Saying
-        # "nothing to disposition" there contradicts the reviewer's own
-        # `### Observations` report in the same message, and leaves the
-        # accept-on-the-record route unused on the path that produces most of
-        # the items it was built for.
+        # "0 findings, N observations" is the modal close of an inner-stage
+        # pass, which rates only the inner BLOCKING set as findings. The
+        # observations are named so the reviewer's own `### Observations`
+        # report and this line agree, and nothing asks for an answer to them:
+        # an observation needs no disposition (#1128).
         if observations:
             return (
                 lead
                 + f"0 blocking, 0 findings — the review is over. Its"
-                f" {observations} observation(s) gate nothing; answer each on the"
-                " record instead of fixing it with"
-                f' `prawduct-hook disposition {ref} <oid> --accept "<reason>"`'
-                " (the ids are under `observations` in `.critic-findings.json`),"
-                " which needs no review and moves no tree."
+                f" {observations} observation(s) gate nothing and need no answer"
+                " (they are under `observations` in `.critic-findings.json`)."
                 + coverage_clause
                 # This is the one clean close that still carries actionable
                 # items, so it is the close where a builder is most likely to
@@ -1042,15 +1043,18 @@ def _next_action_core(
             + coverage_clause
         )
     obs = (
-        f", nor do its {observations} observation(s) (answer them by `O-n` id)"
+        f", nor do its {observations} observation(s), which need no answer"
         if observations
         else ""
     )
+    # A `note` count is nonzero only on a fact recorded before `note` stopped
+    # being a finding severity; such a fact still renders.
+    notes = f" and {note} note(s)" if note else ""
     return (
         lead
-        + f"0 blocking — the review is over. Its {warning} warning(s) and {note}"
-        f" note(s) gate nothing{obs}. Decide each: accept by default with"
-        f' `prawduct-hook disposition {ref} <fid|oid> --accept "<reason>"` (no'
+        + f"0 blocking — the review is over. Its {warning} warning(s){notes}"
+        f" gate nothing{obs}. Decide each finding: accept by default with"
+        f' `prawduct-hook disposition {ref} <fid> --accept "<reason>"` (no'
         " review, no tree move), or fix."
         + coverage_clause
         + fix_tail
@@ -1218,9 +1222,8 @@ def account_for_prior_blockers_directive(carried: list[dict]) -> str:
 #:
 #: **There are now TWO destinations and the text must keep naming both.** The
 #: partial's ``observations`` array is where the RECORD goes: it gives each one
-#: an id ``disposition`` can join on, so declining an observation stops costing
-#: the reasoning, and it makes the demotion rate a query over the store rather
-#: than a number the reviewer asserts about its own output. The report heading
+#: an id a later verify pass can name, and it makes the demotion rate a query
+#: over the store rather than a number the reviewer asserts about its own output. The report heading
 #: is where the BUILDER meets them, in the same reading where it decides what
 #: to do — and the cost-bound this whole rule rests on is that the builder
 #: reads them. The two lose different things when dropped, which is why the
@@ -3940,13 +3943,14 @@ def _str_list(val) -> bool:
 def _validate_observations(observations) -> tuple[bool, str]:
     """Validate a partial's optional ``observations`` array.
 
-    An observation is what an inner-stage pass demoted (``verify-resolutions``
-    first; every inner-stage mode once rigor became stage-keyed): the reviewer
-    would have rated it below BLOCKING, or outside the inner BLOCKING set, so it
-    is not a finding and no gate ever reads it. It is recorded anyway, for two reasons the prose destination
-    could not serve — the builder can ANSWER one (``prawduct-hook disposition``
-    joins on its id), and the demotion's own yield becomes a query over the
-    store instead of a count the reviewer asserts about itself.
+    An observation is what a reviewer rated below a finding: at the inner stage
+    anything outside the inner BLOCKING set, and at every stage what it would
+    once have rated NOTE. It is not a finding, no gate reads it, and it needs no
+    disposition. It is recorded anyway, for what the prose destination could not
+    serve — an id a later verify pass can name (``prawduct-hook disposition``
+    still joins on it, for a builder who chooses to answer one), and the
+    demotion's own yield becomes a query over the store instead of a count the
+    reviewer asserts about itself.
 
     **Shape mirrors a finding minus its severity**, deliberately: the reviewer
     writes both arrays in one sitting, and a second vocabulary for the same
@@ -3997,17 +4001,17 @@ def validate_partial(data) -> tuple[bool, str]:
     duration_seconds?, findings:[{name, goal, severity, recommendation, files?}],
     resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
-    load-bearing. ``severity`` must be one of the known vocabulary so a typo
-    can't silently persist as a non-blocking finding. ``resolutions`` is the
+    load-bearing. ``severity`` must be ``blocking`` or ``warning`` so a typo
+    can't silently persist as a non-blocking finding; ``note`` is refused with
+    a message naming ``observations``, its one home. ``resolutions`` is the
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
 
-    ``observations`` is what an inner-stage pass DEMOTED — validated by
-    :func:`_validate_observations`, and refused outright by :func:`consolidate`
-    on a boundary-stage dispatch. Demotion is a stage rule; an array outside
-    ``findings`` that the boundary could write would be a severity-laundering
-    path.
+    ``observations`` is what a reviewer rated below a finding — validated by
+    :func:`_validate_observations`, from any stage. It cannot launder a
+    severity: a ``blocking`` entry is refused there, and at the boundary a
+    WARNING is a finding by the protocol's own table.
 
     ``dispatch_id`` is the id of the review that dispatched this reviewer, and
     it is deliberately NOT named ``review_id``: ``resolutions[].review_id`` in
@@ -4048,10 +4052,16 @@ def validate_partial(data) -> tuple[bool, str]:
         for field in ("name", "goal", "severity", "recommendation"):
             if not _nonempty_str(f.get(field)):
                 return False, f"finding[{idx}] missing/empty '{field}'"
-        if f["severity"] not in _SEVERITY_RANK:
+        if f["severity"] == "note":
+            return False, (
+                f"finding[{idx}] is rated 'note' — a note is not a finding at any "
+                "stage; move it into 'observations' (the same entry minus "
+                "'severity'), which gates nothing and needs no disposition"
+            )
+        if f["severity"] not in _FINDING_SEVERITIES:
             return False, (
                 f"finding[{idx}] severity {f['severity']!r} not in "
-                f"{sorted(_SEVERITY_RANK)}"
+                f"{list(_FINDING_SEVERITIES)}"
             )
         # ``files`` is optional attribution, normalized away downstream: a
         # blank/non-string element is dropped in ``merge_findings`` and an
@@ -5101,9 +5111,8 @@ def build_fact_body(
         # below: data ABOUT the review, not a finding IN it. It never reaches
         # ``counts``, so it cannot move a verdict, and no gate reads it —
         # ``coverage_algebra`` walks ``findings`` alone. What it buys is an id a
-        # builder can ACCEPT against, so declining an observation stops costing
-        # the reasoning, and a demotion rate that is a query over the store
-        # rather than a number the reviewer asserts about its own output.
+        # later verify pass can name, and a demotion rate that is a query over
+        # the store rather than a number the reviewer asserts about its own output.
         "observations": merge_observations(partials),
         "duration_seconds": max(durations) if durations else None,
         "scope": manifest.get("scope"),
@@ -5390,10 +5399,9 @@ def fact_to_cache_record(
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
         findings.append(entry)
     # The builder's only surface for these. Observation ids are assigned HERE,
-    # at consolidation — the reviewer wrote prose and never saw an `O-n` — so a
-    # cache without them leaves the builder told it may ACCEPT an observation
-    # and unable to name one. Additive, and severity-free by construction:
-    # there is nothing to rate.
+    # at consolidation — the reviewer wrote prose and never saw an `O-n` — so
+    # this is where a builder or a later verify pass meets the id. Additive, and
+    # severity-free by construction: there is nothing to rate.
     observations = []
     for o in body.get("observations", []):
         entry = {
@@ -5933,33 +5941,11 @@ def consolidate(
             missing, len(partials), len(roster), review_id, prawduct_dir))
         return 0
 
-    # Observations may only arrive from an INNER-stage dispatch, and the reason
-    # is the mirror image of the resolutions rule below. Demotion is a stage
-    # rule (`nonfunctional-requirements.md` § Direction, *Review rigor is
-    # stage-keyed*): at the inner stage — `chunk`, `final`, `verify-resolutions`
-    # — a finding is one of the inner BLOCKING set and everything else the
-    # protocol rates is an observation; at the boundary — `cumulative` — the
-    # full table stands and every rated item is a finding, which is what
-    # `counts` counts. An array outside `findings` that the boundary could
-    # write is therefore a severity-laundering path — a `cumulative` reviewer
-    # could put nine warnings in it and consolidate a 0/0/0 review with nothing
-    # anywhere reporting the difference. Refusing is the only answer that
-    # cannot record a falsehood, and it costs a conforming reviewer nothing,
-    # because at the boundary it has no reason to write the array at all.
-    # `stage_of_manifest` reads the recorded stage and derives it only for a
-    # manifest written before the field existed.
-    if stage_of_manifest(manifest) == STAGE_BOUNDARY:
-        for partial in partials:
-            if partial.get("observations"):
-                print(
-                    f"critic-consolidate: partial {partial['role']!r} carries "
-                    f"observations but the dispatch is a {STAGE_BOUNDARY}-stage "
-                    f"review ({manifest['mode']!r}) — only an inner-stage review "
-                    "demotes findings to observations; at the boundary every "
-                    "item you would rate is a finding; fail-closed.",
-                    file=sys.stderr,
-                )
-                return 1
+    # Observations arrive from every stage: what a reviewer would once have
+    # rated NOTE has no other home now that `validate_partial` refuses `note`.
+    # The array cannot carry a gating item — `_validate_observations` refuses a
+    # `blocking` one — and at the boundary a WARNING stays a finding by the
+    # protocol's table, so the boundary's ratings are unchanged.
 
     # Resolutions may only arrive from a verify-resolutions dispatch — they
     # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.
