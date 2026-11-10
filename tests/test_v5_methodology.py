@@ -2702,8 +2702,10 @@ class TestBuildingMethodology:
         the runtime string, then "Fix them all in ONE commit" here — both
         caught by a reviewer, neither by a test. The defect is specifically a
         SELF-contradiction: the reflexive-fix instruction sits ~two paragraphs
-        above the rule saying warnings and notes gate nothing, so both halves
-        are asserted together and the pair is what fails.
+        above the rule saying warnings gate nothing, so both halves are
+        asserted together and the pair is what fails. (The rule named notes
+        too until a note stopped being a finding; an observation is owed no
+        disposition, and the same sentence now says so.)
         """
         # Render consistency with the runtime half: the guide carries
         # `gates.FIX_ORDER` verbatim, the string `_BATCH_FIX_DIRECTIVE` composes.
@@ -2711,7 +2713,8 @@ class TestBuildingMethodology:
         sys.path.insert(0, str(ROOT))
         from lib import gates
         assert gates.FIX_ORDER in self.content
-        assert "Warnings and notes gate nothing" in self.content
+        assert "Warnings gate nothing" in self.content
+        assert "an observation is owed no disposition" in self.content
         # The exact phrasings the runtime's own comment records rejecting.
         assert "Fix them all in ONE commit" not in self.content
         assert "Fix them ALL" not in self.content
