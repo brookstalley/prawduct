@@ -72,12 +72,12 @@ HANDED_OVER_DISPOSITIONS: tuple[str, ...] = (YOUR_TURN, COMPLETE)
 
 
 def handed_over_reason(disposition_label: str) -> str:
-    """The reason the clear-verdict gate records for a handed-over disposition
+    """The reason the clear-verdict check records for a handed-over disposition
     it found paired with ``DO NOT CLEAR`` (``handed-over-your-turn``, ...)."""
     return "handed-over-" + disposition_label.lower().replace(" ", "-")
 
 
-#: Every reason the clear-verdict gate can record.
+#: Every reason the clear-verdict check can record.
 CLEAR_VERDICT_REASONS: tuple[str, ...] = tuple(
     handed_over_reason(d) for d in HANDED_OVER_DISPOSITIONS
 )
@@ -151,8 +151,9 @@ def contradiction(text: str) -> str | None:
 
     Only a clearly stated pair counts: the verdict as :func:`clear_verdict`
     reads it, and a single disposition as :func:`disposition` reads it. Any
-    reading that is not certain returns ``None``, because the caller blocks on
-    what this returns and a block on an ambiguous turn would be a false one.
+    reading that is not certain returns ``None``, because the caller records
+    what this returns as a firing, and a firing on an ambiguous turn would be
+    a false one.
     """
     if clear_verdict(text) != DO_NOT_CLEAR:
         return None

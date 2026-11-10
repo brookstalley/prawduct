@@ -1,8 +1,7 @@
 # Release Plan — v3.8.0
 
-**Status:** DRAFT, opened 2026-10-25 to record a release requirement before the cut. Phase 0 has
-not run. The classification below is incomplete by design: the cut-and-publish runbook's Phase 1
-completes it, row by row, against `prawduct-hook check-releasability --release v3.8.0`.
+**Status:** COMPLETE as measured 2026-10-30: `main` promoted at `94f0e0c5`, tag and Release `v3.8.0` published in one call, `check-released v3.8.0` verified 3 of 3, develop reopened on `3.8.1-dev`. Re-derive rather than reading this as a measurement:
+`prawduct-hook check-released v3.8.0`, `git log --oneline origin/main -1`.
 
 **Version:** v3.8.0, a **minor**, provisionally. `plugin/VERSION` reads `3.8.0-dev` on `develop`
 (2026-10-25), and the release requirement below adds a project-state key (`consumer_digest:`) and

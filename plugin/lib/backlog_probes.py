@@ -127,15 +127,15 @@ def post_cutover(state: ProjectState) -> bool:
     frozen history and any nudge derived from it would be stale by construction.
     Shared across probe families (this module's **four** markdown probes —
     ``legacy-backlog-format``, ``backlog-service-migration-required``,
-    ``legacy-section-schema``, ``backlog-overdue-grooming`` — AND
-    ``norm_probes.probe_revisit_due``, which reads exception clocks from the same
-    file: one predicate, not per-module copies). ``external-backlog-detected``
+    ``legacy-section-schema``, ``backlog-overdue-grooming`` — and the norm
+    probes below: one predicate, not per-module copies). ``external-backlog-detected``
     keeps firing: stray TODO.md files are a problem regardless of where the real
     backlog lives.
 
-    **Two former callers now use it to CHOOSE a backend rather than to retire.**
+    **Three former callers now use it to CHOOSE a backend rather than to retire.**
     ``norm_probes``' ``dead-why`` and ``stalled-transition`` resolve their
-    citations against the markdown file before the cutover and against the backlog
+    citations, and ``revisit-due`` reads each open item's ``revisit:`` clock,
+    against the markdown file before the cutover and against the backlog
     cache after it, so for them this predicate selects a reader instead of
     silencing one. Anyone adding a guard here should decide which of the two
     shapes they are writing.
@@ -307,7 +307,7 @@ def probe_migration_required(state: ProjectState, codebase: Codebase):
     is how a real signal becomes noise a reader learns to skip.
 
     The second check is deliberately inline here rather than folded into
-    ``post_cutover()``, which five other readers share: widening it would also
+    ``post_cutover()``, which other readers share: widening it would also
     silence ``legacy-backlog-format``, ``legacy-section-schema``,
     ``backlog-overdue-grooming`` and ``revisit-due`` for a product that has
     merely said it will never migrate — the second-class outcome TM3 rules out.

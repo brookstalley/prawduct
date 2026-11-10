@@ -31,7 +31,7 @@ Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
 checkout's binding),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
-``standing_block`` (the closing block the Stop deferral and clear-verdict gate read), and ``core``
+``standing_block`` (the closing block the Stop deferral and the clear checks read), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -985,8 +985,8 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     ``DO NOT CLEAR`` under ``YOUR TURN`` or ``COMPLETE`` does NOT defer. A turn
     that hands the session over is one the reader may clear, hours or days
     later, so it faces the session-end gates like any other. The Stop hook
-    refuses ``COMPLETE`` with ``DO NOT CLEAR`` outright, and ``YOUR TURN`` with
-    it unless it observes work a clear would kill
+    records, without refusing, ``COMPLETE`` with ``DO NOT CLEAR``, and
+    ``YOUR TURN`` with it unless it observes work a clear would kill
     (:func:`turn_contradicts_its_verdict`). A pending question is never a
     reason not to clear — what it needs is written down.
 
@@ -1033,7 +1033,7 @@ def turn_contradicts_its_verdict(event) -> str | None:
     ``YOUR TURN`` either way: the Stop hook lets that pair stand when it
     observes the work, and ``COMPLETE`` never. Only a clearly stated pair returns a label
     (``standing_block.contradiction``); a missing field or an ambiguous block
-    returns ``None``, because the caller blocks on it.
+    returns ``None``, because the caller records it as a firing.
     """
     message = _last_message(event)
     if message is None:

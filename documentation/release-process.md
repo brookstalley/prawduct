@@ -253,12 +253,12 @@ same set in executable running order, and is the document to work from when actu
    legacy entry stays. Its order relative to `plan-backfill` does not matter: that sweep reads the live
    log and the archive together.
 
-5. **Write the consumer-facing narrative — two files, not one.** `plugin/CHANGELOG.md` gets a
-   `## vX.Y.Z` section every release; `README.md`'s `## Recent Changes` gets refreshed on a
-   **minor or major bump only**. The cut (step 3) writes the whole CHANGELOG section from the
+5. **Write the consumer-facing narrative, and check the README still holds.** `plugin/CHANGELOG.md` gets a
+   `## vX.Y.Z` section every release; `README.md` carries no release notes, and gets reread for
+   claims this line made false on a **minor or major bump only**. The cut (step 3) writes the whole CHANGELOG section from the
    fragments' notes; you write the headline in `.prawduct/release-headline.md` before it runs. The
    headline becomes the section's first line, which the version-delta banner shows every repo
-   crossing this version. Both files are written at **Phase 1** of
+   crossing this version. Both files are handled at **Phase 1** of
    `.prawduct/runbooks/cut-and-publish-a-plugin-release.md` — this checklist names them rather
    than restating them, because the README went eight releases stale precisely while no release
    document named it at all.

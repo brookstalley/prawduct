@@ -549,9 +549,11 @@ shared predicate is `backlog_probes.post_cutover`.
 `dead-why` and `stalled-transition` were on the retirement list above until the backlog read-through
 cache gave them a live store to resolve citations against; they read the markdown file before the
 cutover and the cache after it. Anyone adding a guard on `post_cutover` should decide which of the
-two shapes they are writing. **`revisit-due` stays retired on the far side and the cache does not
-change that** — `revisit:` records intent (*granted until date X*), which no age-based query can
-reconstruct, so what it waits on is a *write* path for the field, not a read path.
+two shapes they are writing. **Amended 2026-11-10: `revisit-due` is the third.** It stayed dark
+because `revisit:` records intent (*granted until date X*), which no age-based query can
+reconstruct, so what it waited on was a *write* path for the field. #564 shipped that path, so it
+now reads each open item's `revisit:` from the cached issue body on the far side, and reports an
+unreadable store with the same advisory as its two siblings.
 
 **Retirement is not silence (GV8), and the advisory that enforced that has now retired itself.**
 Cutover retires those probes' *premises*, not the checks they stood for, so from 2026-07-19 one
@@ -561,8 +563,7 @@ and was **removed with the last of them (W1, 2026-08-07)**: the readers it enume
 backlog cache and each reports an unreadable store *at the point of use*, which says the same thing
 closer to the reader who needs it. Removal rather than rewording was the intended end state.
 
-Two checks stay dark, and neither is something an advisory could restore. **`revisit-due`** waits on
-a *write* path for the field (above). The **janitor's neglected-hygiene sweep** waits on the
+One check stays dark, and it is not something an advisory could restore. The **janitor's neglected-hygiene sweep** waits on the
 `promoted` status value having no Issues equivalent, so the query has nothing to ask for; it states
 that in its own block rather than reporting clean.
 
