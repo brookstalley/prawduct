@@ -45,15 +45,19 @@ Before non-trivial work, judge how clear and grounded the goals are (request, br
 - **Ask, in one batch** — a high-level goal or key architecture choice is missing. Lead with your own reading, so the owner corrects rather than authors.
 - **Hold up** — a lot of work, and you can't yet form a reading of the goals worth correcting: offer to discuss, or to use best judgment. Best judgment is a legitimate answer; proceed with your inferences written down for the boundary review to show the owner.
 
-**Judge the goals under the work, not only the request** (`methodology/discovery.md` "Ground the goals under an investment"), and ask now: intent is the owner's to confirm, better now than mid-build. The written form scales with the response — a sentence to proceed, the plan's `## Goals` (`methodology/planning.md`) to ask or hold up; Plan Mode is a native vehicle (Principles 6 and 20). **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
+**Judge the goals under the work, not only the request** (`methodology/discovery.md` "Ground the goals under an investment"), and ask now: intent is the owner's to confirm, better now than mid-build. The written form scales with the response — a sentence to proceed, the plan's `## Goals` (`methodology/planning.md`) to ask or hold up; Plan Mode is a native vehicle (Principles 6 and 20). **Work you proposed names the owner goal it serves** — the owner's yes to your proposal grounds nothing, so judge that goal, not the approval. **Re-check the plan's inferences as code reveals new facts** — one never revisited is a decision taken on the owner's behalf that nobody confirmed.
 
 ### Deciding Mid-Build
 
-Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, work out of proportion to the benefit, or drift at fork tier (`methodology/discovery.md`). Prefer the durable choice to the merely reversible one. Record each in a line in the plan's Goals, as `methodology/planning.md` "Goals" says, marking one the goals did not settle as an alignment-pass miss.
+Don't stop a build for the questions it raises — the goals exist so you can answer them. Decide in order: **do it right**; **match the product's other choices** — product, architecture, technology, and the backlog, the best record of where it is going (search it); **stop and ask only when stakes are high** — irreversible, real money, large tech debt, work out of proportion to the benefit, or drift at fork tier (`methodology/discovery.md`). Prefer the durable choice to the merely reversible one. Record each in a line in the plan's Goals (`methodology/planning.md` "Goals").
+
+### When the Owner Rules
+
+When the owner decides, corrects you, or states a constraint or preference about the product, write their words, dated, to `.prawduct/owner-rulings.md` (`templates/owner-rulings.md`) before replying, and cite the entry: later sessions and people read that file, not this chat or your auto-memory. An entry points to where the decision landed (plan Goals, a norm, an artifact) rather than restating it; across repos, the one owning the decision keeps it.
 
 ### A Requirement Surfaced Mid-Build
 
-Requirements also arrive *during* a build, and the #1 way they enter undocumented is designing them fluently in chat and flowing them into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume* — one you write is an inference, flagged for the boundary.
+Requirements also arrive mid-build, most often designed fluently in chat and flowed into code with no artifact between. **Triggered, not always-on:** when a tripwire fires — a noun the artifacts don't contain, design you can't trace to a parent one rung up, a taxonomy invented in chat, the same thing revised 2-3×, or an "are we sure / is this solved" signal — *stop, name it, write or locate the parent requirement, then resume* — one you write is an inference, flagged for the boundary. **A third fix on one surface means a definition is missing** (the term, the rule, who owns the value): write it before the next fix. An acceptance loop that keeps returning new residuals converges the same way: ratify one checklist with the owner; anything outside it is a new requirement they take or defer, not a defect holding acceptance open.
 
 ### A Norm Surfaced Mid-Build
 
@@ -111,7 +115,7 @@ Scale to chunk significance. When you can't verify, say so (Principle 5).
 
 **Reflect — now, not at session end.** Append to `.prawduct/.session-reflected`: what you expected vs. what actually happened, and the root cause or "no defect" — the two lines the gate grades — then what the chunk delivered, what the Critic caught, what surprised you. A paragraph is enough. Add a rule under `.claude/rules/learnings/` only if this cycle produced one.
 
-**Operator verification.** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes`. `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
+**Operator verification.** Visual / live-integration chunks: enqueue in `.prawduct/operator-verification.md` and mark `Visual change: yes` — it re-checks a form the owner has seen, never a first look (`methodology/discovery.md` "See it first"). `/prawduct:pr create` blocks on pending entries when `operator_verification_required: true`.
 
 ## Session Scope Discipline
 
@@ -179,7 +183,7 @@ Tests are the most important artifact you produce: contracts that define correct
 
 **Test strategies match the domain.** When test-specifications call for property-based tests, use the project's configured PBT library. Don't add them speculatively.
 
-**Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. The framework asserts the *contract* (judged changes land in `.test-evidence.json`'s `changes_referenced`; the rest in `changes_unjudged`, ungated), not a specific verifier. `bin/test-reference-verify` is a floor: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed`.
+**Idiomatic tooling, honest coverage.** Use language-native incremental runners to skip re-runs when nothing changed. `bin/test-reference-verify` is a floor: symbol-grep catches untested new code but can't prove execution. For real coverage, plug in a language-native tool and emit `coverage_level: executed` (the contract: `docs/project-state-keys.md` `coverage_required`).
 
 **Every run leaves a machine-readable report, and says what it covered.** The report path belongs in the runner's default-arguments file (pytest `addopts`, a `.runsettings`, Jest `reporters`) rather than in the command someone types, so the last run is never unrecordable and one made outside the recorder is ingested instead of repeated. Its pre/post-run hook records, beside the report, whether that invocation was narrowed — which is what stops a `-k`-scoped report being recorded as the suite's evidence. The schema and the per-ecosystem wiring: `docs/test-report-contract.md`.
 
@@ -187,15 +191,15 @@ Tests are the most important artifact you produce: contracts that define correct
 
 The Critic reasons from signals through seven prioritized goals, from Nothing Is Broken to The Design Is Sound (definitions: `skills/critic/review-protocol.md`).
 
-In `final` mode the Critic also cross-checks learnings and reconciles the backlog. `final`/`cumulative` reviews may use a coordinator pattern. The roster rule, which depends on whether the repo declares `risk_surfaces:`, is in `skills/critic/review-cycle.md`.
+The roster rule is in `skills/critic/review-cycle.md`.
 
 ### The evidence model
 
-Every consolidated review appends a fact to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`), whose review facts `/prawduct:pr` carries to other clones. Facts record *trees*, so nothing expires by time or session and the gates answer by composing them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend opens a gap, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact (no gate reads it), written by the lifecycle commands, never you. Full model: `skills/critic/review-cycle.md`.
+Every consolidated review appends a fact to a store shared by all worktrees of the clone (`<git-common-dir>/prawduct/evidence.jsonl`), whose review facts `/prawduct:pr` carries to other clones. Facts record *trees*, so nothing expires by time or session and the gates answer by composing them — mode labels don't matter, a pre-commit review vouches for the verbatim commit, a rebase/amend opens a gap, and blocking findings block until cleared (`verify-resolutions`, or a spanning review). `.critic-findings.json` is a derived view of the newest fact that no gate reads. Full model: `skills/critic/review-cycle.md`.
 
 ### Modes
 
-`Critic mode:` in the plan and an explicit slash arg are successive overrides on the inference described above. Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
+Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
 
 **The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Any tracked edit, the plan included, needs an attestation (`review-cycle.md`). If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 
@@ -221,10 +225,8 @@ A broad catch is legitimate at system boundaries, event loops and top-level supe
 
 **Tuning a mechanism you haven't read**: read it first (Principle 24).
 
-**Boundary blindness**: Modifying a contract surface without checking consumers. The canary catches this at session end; checking proactively is cheaper.
+**Boundary blindness**: Modifying a contract surface without checking consumers (Boundary Investigation above).
 
 **Unnecessary backwards compatibility**: Adding migration paths or fallbacks when there's no existing deployment to migrate. Backwards compatibility is a requirement to be elicited, not an assumption.
-
-**Opinionated defaults without configuration**: If a workflow-affecting feature could reasonably work two ways, make it a `project-preferences.md` preference with a safe default.
 
 **Skipping `final` mode**: `chunk` mode covers Goals 1-3 only. The last chunk's review is `final` — or on a `cumulative-final` plan, the single `cumulative`. The stop hook WARNs otherwise. On a short plan that one boundary run is every chunk's review — `review-cycle.md`'s "When Review Is Required" row.

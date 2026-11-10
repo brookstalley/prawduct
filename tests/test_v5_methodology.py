@@ -521,7 +521,23 @@ LAST_MEASURED_TOKENS = {
     # +10 on 2026-10-26 (flaky-rerun, #1087), DECLARED: the Verify bullet names `--rerun-failed`
     # beside the other record flags, so a builder whose boundary run lost one test to load reruns
     # that test rather than the declared suite (on this repo ~18 min per suite run).
-    "methodology/building.md": 5307,
+    # +71 on 2026-11-10 (audit-guidance, #1135), DECLARED: three obligations in their one home -
+    # a ruling from the owner is written, dated, to `.prawduct/owner-rulings.md` before the reply
+    # (new "When the Owner Rules"); a third fix on one surface stops for the missing definition and
+    # an acceptance loop ratifies one checklist (A Requirement Surfaced Mid-Build); work the agent
+    # proposed names the owner goal it serves (the alignment pass) - plus operator verification
+    # saying it re-checks a form already seen. PAID IN PLACE for about two thirds: the "Opinionated
+    # defaults" trap (discovery.md "Surface Behavioral Choices" owns it), the Critic section's
+    # final-mode and coordinator-pattern asides and the roster rule's gloss (review-cycle.md and the
+    # Critic skill own them), the Modes "successive overrides" sentence (the Critic-review step
+    # says an explicit mode overrides; planning.md owns `Critic mode:`), the mid-build decision
+    # sentence's restatement of planning.md "Goals", the coverage contract's parenthetical
+    # (`docs/project-state-keys.md` `coverage_required` owns it, now cited), the Boundary-blindness
+    # trap's body (the section above it), and `.critic-findings.json`'s "never you" (Modes says it
+    # where the temptation arises). The rest is declared rather than cut from the backwards-
+    # compatibility trap, the one remaining restatement, because it is the owner's standing rule and
+    # the only copy a delegate reads.
+    "methodology/building.md": 5378,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1278,7 +1294,15 @@ LAST_MEASURED_TOKENS = {
     # template section that now exists. +14 by owner ruling 2026-10-21 ("I do need the ability
     # to defer, just want cost flagged"): a high-stakes hedge is named with its cost, and
     # deferring is the owner's call. A READING.
-    "methodology/discovery.md": 5323,
+    # +159 on 2026-11-10 (audit-guidance, #1135): "See it first" (a looked-at deliverable starts as
+    # a real specimen in its reader's form, criteria from the reaction, a first look never queued)
+    # and "Mark what you originated" (an agent-originated rule labelled, whose need named, "don't
+    # have this" first). New obligations whose home is here; paid in part by cutting five Common
+    # Traps that restate the section above them (Over-/Under-discovery: Risk Calibration;
+    # Interrogation mode: Infer, confirm, proceed; Ignoring developer preferences and Domain
+    # blindness: Bring expertise / Detect domain-specific concerns) and the feature-level line's
+    # restatement of the four responses building.md owns. A READING.
+    "methodology/discovery.md": 5482,
     # 4301 -> 4791 on 2026-08-21 (Chunk 02): `### Partition: Serial or
     # Delegated`, the plan-time half of the placement bet. The partition prompt
     # where chunk boundaries are drawn (R6), the `partition:` field the decision
@@ -1452,7 +1476,10 @@ LAST_MEASURED_TOKENS = {
     # +9 on 2026-10-27 (chunk-state-table, owner ruling on #1082): the span clause states the
     # ruling — an edge the coverage gate composes, a first-parent commit whose scoped subject
     # names the chunk, and no credit for a Deliverables path. A CORRECTION in place, as above.
-    "methodology/planning.md": 5895,
+    # +25 on 2026-11-10 (audit-guidance, #1135): the Verification strategy puts a looked-at
+    # output's first look in the first chunk, pointing at discovery.md "See it first" rather than
+    # restating it. A READING.
+    "methodology/planning.md": 5920,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -2503,6 +2530,80 @@ def test_every_injectable_digest_is_budgeted():
 # =============================================================================
 # building.md
 # =============================================================================
+
+
+def _section(text: str, heading: str) -> str:
+    """The body under ``heading`` up to the next heading of any level."""
+    start = text.index(heading) + len(heading)
+    nxt = re.search(r"^#{1,6} ", text[start:], re.MULTILINE)
+    return text[start:start + nxt.start()] if nxt else text[start:]
+
+
+def _paragraph(text: str, lead: str) -> str:
+    """The paragraph that opens with the bold ``lead``."""
+    start = text.index(lead)
+    end = text.find("\n\n", start)
+    return text[start:end if end != -1 else len(text)]
+
+
+class TestRequirementsGuidanceHomes:
+    """The four requirements additions (#1135) each live in ONE guide, and the
+    guides that touch the same moment point at that home instead of restating
+    it. A restated copy drifts from the original the first time either is
+    edited, and a missing pointer leaves a reader of building.md or planning.md
+    meeting the operator-verification queue with no idea a first look comes
+    earlier. Each assertion is bound to the paragraph or section carrying the
+    rule, so a word surviving elsewhere in the file does not keep it green."""
+
+    def test_see_it_first_is_stated_once_in_discovery(self):
+        discovery = read_file("methodology/discovery.md")
+        assert discovery.count("**See it first.**") == 1
+        rule = _paragraph(discovery, "**See it first.**")
+        assert "specimen" in rule
+        assert "acceptance criteria" in rule
+        assert "operator-verification queue" in rule  # the first look is never queued
+        for other in ("methodology/building.md", "methodology/planning.md"):
+            assert "**See it first.**" not in read_file(other), (
+                f"{other} restates the rule discovery.md owns; point at it instead"
+            )
+
+    def test_operator_verification_and_plan_point_at_the_first_look(self):
+        building = read_file("methodology/building.md")
+        queue = _paragraph(building, "**Operator verification.**")
+        assert '"See it first"' in queue and "first look" in queue
+        strategy = _paragraph(read_file("methodology/planning.md"), "**Verification strategy.**")
+        assert '"See it first"' in strategy and "first chunk" in strategy
+
+    def test_a_ruling_names_a_record_that_ships_a_template(self):
+        """The section must name a destination AND a template that exists:
+        the agent copies the template the first time the owner rules, and a
+        pointer at a missing file leaves it to invent the record's shape."""
+        section = _section(read_file("methodology/building.md"), "### When the Owner Rules")
+        templates = re.findall(r"`templates/([\w.-]+\.md)`", section)
+        assert templates, "the ruling section names no template"
+        for name in templates:
+            assert (ROOT / "templates" / name).is_file(), f"templates/{name} does not ship"
+            assert f".prawduct/{name}" in section, "the record's committed home is unnamed"
+        assert "before replying" in section
+        assert "auto-memory" in section
+        template = (ROOT / "templates" / templates[0]).read_text(encoding="utf-8")
+        assert f".prawduct/{templates[0]}" in template
+        assert "When the Owner Rules" in template  # points back at the guidance
+
+    def test_originated_rule_offers_dont_have_this_first(self):
+        rule = _paragraph(read_file("methodology/discovery.md"), "**Mark what you originated.**")
+        assert "*don't have this* as the first option" in rule
+        assert "whose need it serves" in rule
+        assert "Recommend as usual" in rule  # the recommendation bar still stands
+
+    def test_agent_proposed_work_names_the_owner_goal(self):
+        section = _section(read_file("methodology/building.md"), "## Before You Build: The Alignment Pass")
+        assert "**Work you proposed names the owner goal it serves**" in section
+
+    def test_a_third_fix_stops_for_a_definition(self):
+        section = _section(read_file("methodology/building.md"), "### A Requirement Surfaced Mid-Build")
+        assert "**A third fix on one surface means a definition is missing**" in section
+        assert "ratify one checklist" in section
 
 
 class TestBuildingMethodology:
@@ -3622,7 +3723,8 @@ class TestBuildingMethodology:
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5308, f"building.md is ~{tokens} tokens, should be <5308"
+        # RAISED 5308 -> 5379 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5379, f"building.md is ~{tokens} tokens, should be <5379"
 
 
 # =============================================================================
