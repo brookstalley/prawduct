@@ -542,8 +542,10 @@ LAST_MEASURED_TOKENS = {
     # stays in the main agent" for delegation.md's "Who does what". -1 more after trying the
     # guidance on a fresh agent, which logged a logo tweak as a ruling: the section now says a
     # ruling is what later work must honour, paid by the examples of where a decision lands (the
-    # template owns them).
-    "methodology/building.md": 5375,
+    # template owns them). +3 when the full suite showed one of the cuts above was not free: the
+    # Critic-review step must name the plan's `Critic mode:` (a structure pin reads it), so the
+    # override sentence is back there and `mode_chosen_by` (review-cycle.md owns it) paid most of it.
+    "methodology/building.md": 5378,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -3747,8 +3749,8 @@ class TestBuildingMethodology:
         # LOWERED 5316 -> 5294 (chunk-status, 2026-10-25): one over the reading — see LAST_MEASURED_TOKENS.
         # RAISED 5294 -> 5298 (evidence-transport, 2026-10-25) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
-        # RAISED 5308 -> 5376 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5376, f"building.md is ~{tokens} tokens, should be <5376"
+        # RAISED 5308 -> 5379 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5379, f"building.md is ~{tokens} tokens, should be <5379"
 
 
 # =============================================================================
