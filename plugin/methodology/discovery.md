@@ -47,7 +47,7 @@ One common entry point is **a backlog item at an early `stage:`** (`idea`/`resea
 **The brief is the product-level goals statement**, so it reads as current: an amendment rewrites
 the part it changes, and history stays in git and the change log.
 
-**Feature-level discovery** is the alignment pass (`methodology/building.md` "Before You Build"): judge how clear and grounded the goals are against the work ahead, then proceed, proceed citing a backlog item or spec, ask in one batch, or hold up — and say which.
+**Feature-level discovery** is the alignment pass (`methodology/building.md` "Before You Build").
 
 **A structural characteristic flipped.** The six characteristics (human interface, unattended,
 programmatic interface, multiple parties, sensitive data, multi-process/distributed) are the
@@ -122,6 +122,8 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 
 **Make your inferences explicit (intentional inference).** Answer what you can yourself, and mark each answer you *inferred* — rather than confirmed or verified — in plain words (*"Inferred: one household"*), so it is visible and correctable instead of buried; the mark comes off only when the owner confirms, so no later session cites your guess as their ruling. An example the owner shows — a reference image, a competitor, a default — is evidence of taste, not a spec: ask which of its qualities matter before any one becomes a rule. Research and code answer questions about the world; only the owner answers questions about their intent. Put every question whose answer would change the goals, the architecture, or a high-stakes choice to the owner **together, before a plan is written** — not one at a time, and not mid-build.
 
+**Mark what you originated.** A rule, constraint, validity check or mechanism the owner did not ask for is yours: say so when you propose it, name whose need it serves, and offer *don't have this* as the first option. A question must not assume the rule it asks about (*"which cap?"* presumes a cap). Recommend as usual; what changes is that the owner can see the rule came from you and drop it in a word. Owners mostly take the recommended option, so an originated rule offered as a recommendation is adopted without anyone choosing it, and guards against misuse nobody raised are the common case.
+
 **Ground the goals under an investment.** At any decision that commits investment — a plan, a design artifact, an architectural choice later work builds on, spending, an outward commitment (an invite, a publish, a public endpoint) — name the product goals it rests on: who it is for, what job it does, what success means, who else touches it, whose machines it runs on. Look at audience first — who may use, listen or contribute — the costliest ungrounded goal in every product checked. A goal is *grounded* when the owner stated it without a hedge and it still holds given what has happened since. An ungrounded goal costs what rests on it times how hard that is to undo once built. With a lot resting on it, stop and say so in a sentence, opening with what the product is for and how this work serves it: *"This is a big fork, worth defining now: auth, network exposure and where secrets live all turn on it."* The owner answers or chooses best judgment. With little resting on it, record the default taken and what would reopen it, and keep going. Batch them costliest first. **What a hedge is about decides whether it counts, never its wording:** a hedge about the product (customers, needs, goals, parties, whose machine) is a goal question; one about the solution (vendor, stack, library) gets a recorded default, unless it stands in for a goal ("a customer requires Azure").
 
 **A hedged answer stays open.** When the owner hedges about the product (*"might be used by others… scope that out for now"*), first judge what rests on it: when auth, exposure or secrets turn on it, say so now in a sentence, audience first, naming the cost of leaving it open. Deferring is the owner's call; flagging the cost is yours. Either way, record the hedge, not a resolution: an entry marked *Hedged:* in the brief's Open Questions, beside said and inferred, with a revisit trigger worded as the event that would settle it (*"when a second person needs access"*), so a later plan can be read against it, and the cheap hedges taken now (an owner field on every record from day one). Never `null`, never a `never` item: a hedge filed as a ruling is how an audience changes with nobody deciding it. A plan resting on a hedged goal is treated like one resting on an inference (the paragraph above judges which hedges count).
@@ -135,6 +137,8 @@ Self-check: *"Does this depend on the current state of the world, or a field tha
 **Bring expertise.** Your value is raising considerations the user hasn't thought of — architecture for non-technical users, UX for non-designers, edge cases, operations, and accessibility for everyone. This includes developer preferences: technical users have opinions on testing, code style, and tooling that shape how code is written.
 
 **Ask the fewest questions that most change the project.** Every question has a cost (patience, time) and a value (decision impact). Questions that determine structural characteristics are high-value; icon colors are not. Front-load the high-value questions.
+
+**See it first.** When a deliverable is judged by looking at it — a report, a page, a chart, a memo, any output a person reads — its reader's expectations surface only when they see one, so the first deliverable is a real specimen in the form they will consume (rendered, on the device they use, on real data where it exists), ahead of the pipeline that will produce it. Write its acceptance criteria from their reaction. Put it where the owner will see it and keep building what does not hang on their answer. A first look is never deferred to the operator-verification queue, which re-checks a form already seen: an unstated expectation about how output reads, first met in finished output, was about a third of the owner's corrections in one long measured program.
 
 **Detect domain-specific concerns dynamically.** Don't rely on hardcoded question lists — your domain knowledge is the source; structural characteristics tell you where to focus it. Some domains imply testing strategies — mathematical operations and data transforms suit property-based testing, event-driven systems suit state-machine testing, APIs suit contract testing. Surface these during discovery so they reach test-specifications. Each characteristic's *Implications* above is where the sweep starts, not where it ends — a marketplace, a data pipeline and a healthcare app each have critical questions no general list names, and finding those is the expertise the user came for (Principle 7).
 
@@ -198,16 +202,6 @@ A `project-state.yaml` with:
 Discovery scales with the work's size and risk, not with where you are in a timeline (see "Discovery Recurs").
 
 ## Common Traps
-
-**Over-discovery**: So many questions the user loses patience. Scale to risk.
-
-**Under-discovery**: Missing a structural characteristic — undetected "handles sensitive data" on a health app drops entire requirement categories.
-
-**Interrogation mode**: Rigid one-at-a-time questioning. Batch related questions, make inferences, have a conversation.
-
-**Ignoring developer preferences**: Asking what to build but not how. Capture testing, tooling, code style, and architecture preferences early in `project-preferences.md`.
-
-**Domain blindness**: Not leveraging your own domain knowledge. A marketplace needs trust systems, dispute resolution, payment escrow — surface it; don't wait for the user.
 
 **Overweighting prior art**: Research informs the conversation; it doesn't drive it.
 

@@ -83,7 +83,7 @@ Every build plan opens with **Goals** — the alignment pass's written form (`me
 
 **Chunks usually work best** as vertical slices (working, testable functionality across layers), in dependency order, each verifiable without later chunks and small enough for one Critic pass — the last is the firm limit. A thin first slice through the whole architecture proves the layers connect before you widen it.
 
-**Verification strategy.** Include how the builder confirms each chunk works beyond tests — exercising the product as its users would. Describe the approach, not a checklist; complex products (human interfaces, multi-party) may need dedicated tooling planned into the scaffold.
+**Verification strategy.** Include how the builder confirms each chunk works beyond tests — exercising the product as its users would. Output judged by looking at it puts its reader's first look in the first chunk (`methodology/discovery.md` "See it first"). Describe the approach, not a checklist; complex products (human interfaces, multi-party) may need dedicated tooling planned into the scaffold.
 
 **Governance checkpoints** are points where you review the whole trajectory, not just the current chunk — typically after the first chunk proves the architecture, and before completion; add more as risk warrants.
 
