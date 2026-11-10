@@ -150,7 +150,9 @@ elsewhere: wall clock per change, owner attention, tokens. None of these were me
 - **Measure the tax properly next.** Track wall clock per merged change and tokens per change
   (`prawduct-hook stats` C2, ccusage), not kLOC.
 - **Re-run `escape.py` after 2026-11-10.** It will then score the actual 30-day escapes of repo F's
-  October batch. This is the definitive check on that batch, and costs nothing.
+  October batch. This is the definitive check on that batch, and costs nothing. The first,
+  partial re-run is under "Escape re-run 2026-11-10"; the full October batch scores from about
+  2026-12-01.
 
 ## Limits
 
@@ -162,6 +164,40 @@ elsewhere: wall clock per change, owner attention, tokens. None of these were me
 - **Sonnet** was tested and rejected as a reviewer: 2 vs 9 verified defects on the same items, and
   0 found in 20 items.
 - **Cost of the study:** 140 agent runs.
+
+## Escape re-run 2026-11-10 (partial)
+
+Repo F's recent work is reworked more than governed work over the same window. That reverses
+the study period, but the result is partial and does not yet change the conclusion.
+
+- **Instrument:** `escape.py` at `4dc24e947d05`, unchanged from the study, run over fresh clones
+  of the same repo list. Repo F's October integration branches had merged, so the default-branch
+  run covered them. Scored with `rerun.py`.
+- **Window:** landings after the study's cutoff (2026-09-10T06:00Z). A landing is scored only
+  when its 30-day window has closed by 2026-11-10T13:46Z; later ones are counted as window-open.
+- **Metric:** the study's `edge_rates` rule, rework edges with a gap of at least 24h per kLOC of
+  source added.
+
+| Group | Landings | Window-open | Scoreable | kLOC | Edges | Per kLOC |
+|---|---|---|---|---|---|---|
+| repo F | 185 | 114 | 71 | 66.6 | 201 | **3.02** |
+| ungoverned, excluding F | 452 | 205 | 247 | 91.3 | 152 | **1.66** |
+| governed | 816 | 363 | 453 | 486.5 | 917 | **1.89** |
+
+Over the study period (landings up to the cutoff) the same rule gives repo F 0.83, against about
+4.1 for both the governed and the other ungoverned repos.
+
+Why the conclusion stands for now:
+- Most of repo F's October batch (114 of 185 landings) is still window-open. The scored part is
+  mid-September to mid-October work.
+- These are rework edges, not escapes. The study converts rework to escapes with a sampled
+  fix-or-evolution classification (section 2), which has not been run on this batch. A fast repo
+  may carry more evolution than fixes.
+- Governed work is spread across 11 repos (the largest is about a third of its kLOC), so one repo
+  does not dominate the comparison.
+
+Next: re-run from about 2026-12-01 for the full October batch, and run the fix-share
+classification on its edges before calling the direction.
 
 ## Re-deriving
 
