@@ -18,6 +18,14 @@ this change are read as before. The detection rule is unchanged. `clear-verdict`
 registry, since it no longer blocks. `clear-reason` still blocks, and the standing-block rule
 ("`COMPLETE` never says `DO NOT CLEAR`") stays in the methodology.
 
+Two formats change. `prawduct-hook stats --json` reports `schema_version` 3, adding
+`stop_observations` to each version. The new `stop-observed:` facts share the evidence store's
+`guard-refusal` kind, so a plugin from before this release reading the same store counts each as
+a guard refusal. To roll back, reinstall the earlier release; its counts then include these
+firings as refusals, and nothing else is affected.
+
 ## Consumer note
 A turn that ends `YOUR TURN` or `COMPLETE` with `DO NOT CLEAR` is no longer sent back by the Stop
 hook. Each one is still counted, and `prawduct-hook stats` lists them under "observed only".
+`stats --json` is now schema 3. An older plugin sharing the clone counts these firings as guard
+refusals.

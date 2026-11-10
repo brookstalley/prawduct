@@ -49,8 +49,10 @@ exemption, so counts compare with 3.8's blocks.
   and the new-gate banner.
 - The hook prints nothing on a firing. A message on a Stop that passes would teach the model to
   ignore hook output. *Inferred.*
-- Pre-retirement `stop-gate:clear-verdict` facts stay where they are and are read as before, so 3.7
-  and 3.8 blocks remain comparable with post-retirement observations.
+- Pre-retirement `stop-gate:clear-verdict` facts stay where they are and are read as before. They
+  are reported beside post-retirement observations, scored by the same rule, but the two counts do
+  not compare directly: a block forced a rewrite, so one bad close could fire once, while an
+  observation fires once per Stop that carries it.
 
 **Level:** High.
 
