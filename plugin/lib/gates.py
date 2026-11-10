@@ -31,7 +31,7 @@ Depends on its lib siblings ``gitstate`` / ``coverage`` / ``buildplan_refs``,
 checkout's binding),
 ``evidence`` / ``coverage_algebra`` (the v3 data plane), ``learnings_files``
 (the one resolver for the rules layout the cross-check nudge names),
-``standing_block`` (the closing block the Stop deferral and the clear checks read), and ``core``
+``standing_block`` (the close the Stop deferral and the clear checks read), and ``core``
 (``read_bool_yaml_key`` — canonical twin of the hook's parity-pinned inline
 mirror), plus the stdlib.
 """
@@ -974,8 +974,8 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     session, from the Stop-hook ``last_assistant_message`` field.
 
     The Stop hook fires at every turn end, while the reflection and Critic
-    gates are about session end. A turn whose standing block says ``RUNNING``
-    and closes on ``DO NOT CLEAR`` is the agent's own statement that it is
+    gates are about session end. A turn whose close says ``RUNNING`` and
+    ``DO NOT CLEAR`` is the agent's own statement that it is
     still working — a review in flight, a delegate not yet reaped — so both
     gates DEFER to the next Stop. Both, by owner ruling: the label is a
     required, user-facing claim, so misusing it to dodge a gate is visible to
@@ -1000,12 +1000,12 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
     (authority fails closed):
 
       - non-dict input, field absent, non-string or blank → ``(False, None)``;
-      - the message's closing block states no single verdict where the block
-        puts it (``standing_block.clear_verdict`` returns ``None``: a label
-        quoted mid-prose, both labels, trailing text after the verdict) →
+      - the message's close states no single verdict where the close puts it
+        (``standing_block.clear_verdict`` returns ``None``: a label quoted
+        mid-prose, both labels, trailing text after the close) →
         ``(False, None)``;
       - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
-      - the verdict is ``DO NOT CLEAR`` but the block states no single
+      - the verdict is ``DO NOT CLEAR`` but the close states no single
         disposition, or one other than ``RUNNING`` → ``(False, None)``;
       - ``RUNNING`` with ``DO NOT CLEAR`` → ``(True, "DO NOT CLEAR")``.
     """
@@ -1032,7 +1032,7 @@ def turn_contradicts_its_verdict(event) -> str | None:
     verdict is ``SAFE TO CLEAR``. This reads the message alone, so it returns
     ``YOUR TURN`` either way: the Stop hook lets that pair stand when it
     observes the work, and ``COMPLETE`` never. Only a clearly stated pair returns a label
-    (``standing_block.contradiction``); a missing field or an ambiguous block
+    (``standing_block.contradiction``); a missing field or an ambiguous close
     returns ``None``, because the caller records it as a firing.
     """
     message = _last_message(event)
@@ -1041,24 +1041,18 @@ def turn_contradicts_its_verdict(event) -> str | None:
     return standing_block.contradiction(message)
 
 
-def turn_cites_itself_as_record(event) -> str | None:
+def turn_self_citation(event) -> "tuple[str, str] | None":
     """The phrase by which a turn closing ``SAFE TO CLEAR`` gives itself as the
-    record (``standing_block.self_citation``), or ``None``.
+    record, with the citation's kind beside it
+    (``standing_block.self_citation_match``), or ``None``.
 
     ``SAFE TO CLEAR`` tells a reader who may return days later that a clear
     loses nothing. A reason that points at the turn ("the questions are in this
-    message") points at what the clear deletes. Same payload handling as
-    :func:`turn_contradicts_its_verdict`: a missing field or an unclear block
-    returns ``None``, because the caller blocks on it.
+    message") points at what the clear deletes. The kind is what the
+    ``clear-reason`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_contradicts_its_verdict`: a missing
+    field or an unclear close returns ``None``.
     """
-    match = turn_self_citation(event)
-    return match[0] if match else None
-
-
-def turn_self_citation(event) -> "tuple[str, str] | None":
-    """:func:`turn_cites_itself_as_record` with the citation's kind beside the
-    phrase (``standing_block.self_citation_match``) — the kind is what the gate
-    records, since the phrase is the turn's own words."""
     message = _last_message(event)
     if message is None:
         return None
@@ -2121,8 +2115,8 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     is finished — every chunk ``done`` or ``dropped`` by
     ``plan_status.is_finished``, never by a ticked box (#1051) — but the most
     recent Critic review was not a ``final`` or ``cumulative`` one, so the
-    end-of-cycle goals (Coherence, Design, Learnings Cross-Check, Backlog
-    Reconciliation, Framework-Specific Checks) have not run. The mode is
+    end-of-cycle goals (Coherence, Design, the Records Pass, Framework-Specific
+    Checks) have not run. The mode is
     telemetry read from the latest ``review`` FACT in the evidence store
     (kernel-v3 chunk 04: no gate — even an advisory one — reads the
     ``.critic-findings.json`` cache); it steers a workflow nudge, never
@@ -2185,34 +2179,23 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
         return False, (
             f"All {total} chunks done or dropped; last Critic review was "
             f"'{mode}'. Run /prawduct:critic final for end-of-cycle "
-            "synthesis (Coherence, Design, Learnings Cross-Check, Backlog "
-            "Reconciliation) before pushing. "
-            + learnings_cross_check_note(project_dir)
+            "synthesis (Coherence, Design, the Records Pass) before pushing."
         )
     return True, ""
 
 
 def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """THE change set the learnings read list is computed from: ``(files, reason)``.
+    """The session's change set, for the learnings read list: ``(files, reason)``.
 
-    One definition, because two were worse than either. The gate nudge asked
-    ``_get_session_changed_files`` (uncommitted work only) while the reviewer's
-    ``learnings-files --for-diff`` asked the base BRANCH — so a builder who
-    commits the chunk before Stop fires, which is the ordinary cadence, got a
-    nudge naming ``core.md`` alone while the verb named the area files the
-    harness had actually loaded. The one line whose purpose is to make a silent
-    disagreement noticeable was the disagreement.
-
-    The definition is the **session's** base tree → the working tree, union
-    untracked: everything this session touched whether or not it has been
-    committed yet. That is the span both readers mean — the gate is judging this
-    session, and the reviewer is reading the rules this session had loaded.
+    The **session's** base tree → the working tree, union untracked: everything
+    this session touched whether or not it has been committed yet. Its one
+    caller is :func:`learnings_review_change_set`, which falls back to it when no
+    review is dispatched.
 
     ``reason`` is empty on success and names the failure otherwise. It is a
     return value rather than an exception or a silent ``[]`` because "nothing
-    changed" and "could not tell" are opposite facts and both callers have to
-    say which one they got (`R4`: a degraded advisory path names its
-    consequence).
+    changed" and "could not tell" are opposite facts and the caller has to say
+    which one it got (`R4`: a degraded advisory path names its consequence).
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     base = _read_session_base_tree(prawduct_dir)
@@ -2230,23 +2213,17 @@ def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
 
 
 def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """The change set a REVIEWER's read list is computed from: ``(files, reason)``.
+    """The change set ``learnings-files --for-diff`` lists rules for: ``(files, reason)``.
 
-    **Why this is not :func:`learnings_change_set`, whose docstring argues for
-    one definition.** That argument is intact and still binding: the Stop nudge
-    and the reviewer must never give different answers to *the same* question.
-    They are not asking the same question. The gate judges **this session**; a
-    dispatched reviewer judges **the review interval**, and for a ``cumulative``
-    of already-committed work those two spans are not merely different, the
-    session one is EMPTY — the session began after the commits, so its base tree
-    IS ``HEAD^{tree}`` and a clean working tree diffs to nothing.
+    **Why the review interval and not the session span.** For a ``cumulative``
+    of already-committed work the session span is EMPTY — the session began
+    after the commits, so its base tree IS ``HEAD^{tree}`` and a clean working
+    tree diffs to nothing.
 
     Measured 2026-09-20 on this repo: the cumulative reviewing a five-commit
     branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no
     area file applies", while the interval touched the areas owned by
     ``reviews.md``, ``hook-surface.md``, ``tests.md`` and ``authoring.md``. The
-    Learnings Cross-Check is a ``final``/``cumulative``-only pass with no other
-    owner, so it read one file on exactly the reviews it exists for. The
     reviewer caught it only by reading the four area files by hand.
 
     So the interval comes from the **dispatch manifest** — the one artifact that
@@ -2277,43 +2254,6 @@ def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
         # interval really touches, and looks exactly like an answer.
         return [], f"could not diff the review interval {base[:12]}..{head[:12]}"
     return changed, ""
-
-
-def learnings_cross_check_note(project_dir: Path) -> str:
-    """What the Learnings Cross-Check will read, over :func:`learnings_change_set`.
-
-    Named from the resolver, never from a path this module knows: the harness
-    loads ``core.md`` plus every area file whose ``paths:`` globs match a file
-    the session touched, and the cross-check is only honest if it reads that
-    same set. Saying the set out loud in the nudge is what makes a *silent*
-    disagreement — an area file in context that no reviewer opened — into
-    something a reader can notice.
-
-    The empty answer is stated rather than omitted, because "no rules file
-    matches this diff" and "the cross-check ran and found nothing" look
-    identical in a report that says neither — and so is the *undetermined*
-    answer, which is a third thing again.
-    """
-    changed, reason = learnings_change_set(project_dir)
-    try:
-        layout = learnings_files.resolve(project_dir)
-        files = learnings_files.files_for_paths(layout, changed)
-    except (OSError, ValueError) as exc:
-        reason = reason or f"{type(exc).__name__}: {exc}"
-        files = []
-    if reason:
-        return (
-            "The Learnings Cross-Check's read list could not be computed "
-            f"({reason}) — run `prawduct-hook learnings-files --for-diff` before "
-            "the scan rather than assuming core.md is the whole of it."
-        )
-    if not files:
-        return (
-            "The Learnings Cross-Check has nothing to read: no rules file under "
-            f"{learnings_files.RULES_DIR_REL}/ applies to this session's changes."
-        )
-    named = ", ".join(_repo_relative(project_dir, p) for p in files)
-    return f"The Learnings Cross-Check reads: {named}."
 
 
 def _repo_relative(project_dir: Path, path: Path) -> str:
@@ -3121,7 +3061,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
             f"finding(s) gated nothing. ONE `/prawduct:critic verify-resolutions` "
             f"closes it; fix nothing further first, or you will re-open it. For "
             f"anything still undecided, `prawduct-hook disposition "
-            f"{churn['fact_id']} <fid|oid> --accept \"<reason>\"` records a won't-fix, "
+            f"{churn['fact_id']} <fid> --accept \"<reason>\"` records a won't-fix, "
             f"moves no tree, and needs no review. Before you make the NEXT commit, "
             f"`prawduct-hook cost-of-commit` says whether it re-opens this gate — "
             f"the answer that used to be learnable only after committing.",

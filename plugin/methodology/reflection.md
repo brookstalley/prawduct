@@ -73,7 +73,7 @@ Rationale: auto-filed NOTEs turn one-time observations into perpetual every-sess
 
 **Work cycle boundary**: Is the work complete and the next task independent? Then prepare the close — (1) reap any ad-hoc delegate this cycle dispatched: collect its branch and its report, and name the integration debt it hands you — here, and never as a mid-flow interrupt (`methodology/delegation.md` argues why), (2) persist pending requirements/decisions/plans — that integration debt included, (3) write the forward notes — the line "nothing beyond the plan" if that is the truth, but not *no file*, which tells the next session you left none, (4) state explicitly that governance is complete.
 
-**Then close the turn with the standing block** — its shape, its trigger, the clear verdict and what a live review or an unreaped delegate does to it are `methodology/session-hygiene.md`, the one home for how a turn ends; the session digest injects the shape into every session, so it reaches you whether or not you open that guide.
+**Then close the turn with the closing line** — its shape, its trigger, the clear verdict and what a live review or an unreaped delegate does to it are `methodology/session-hygiene.md`, the one home for how a turn ends; the session digest injects the shape into every session, so it reaches you whether or not you open that guide.
 
 ### Step 7: Methodology Check
 

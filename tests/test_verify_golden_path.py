@@ -47,7 +47,9 @@ class TestVerifyObservationsArePrePriced:
             "to arriving as unpriced suggestions, which is what turns one clean "
             "verify pass into the next one."
         )
-        assert "ACCEPT is the default disposition" in content
+        # Renegotiated: an observation is owed no disposition, so the price
+        # says so rather than naming ACCEPT as the default answer to give.
+        assert "it needs no disposition" in content
 
     def test_the_price_is_named_as_a_round(self) -> None:
         # "Consider whether it is worth it" is not a price. The cost has to be
@@ -60,7 +62,7 @@ class TestVerifyObservationsArePrePriced:
         # is wrong and will be ignored the first time an observation is worth
         # fixing. The out is to carry it, not to spend a round on it.
         content = flowed(GOALS_1_3)
-        assert "batch any survivor into an already-planned commit" in content
+        assert "rides an already-planned commit" in content
 
 
 class TestPrUpdateDefinesSubstantive:

@@ -1,8 +1,9 @@
 """Coherence tripwires for the post-cutover backlog contract.
 
-Three surfaces state the same contract in prose, a chunk apart, in files no
-single reviewer opens together: the Critic's Backlog Reconciliation, the PR
-reviewer's R-1/R-2, and the janitor's Backlog Health. Prose has no compiler, so
+Two surfaces state the same contract in prose, in files no single reviewer
+opens together: the PR reviewer's R-1/R-2 and the janitor's Backlog Health. (The
+Critic's Backlog Reconciliation was the third, until the Critic stopped walking
+the backlog.) Prose has no compiler, so
 the copies drift silently — and every defect this contract exists to prevent is
 itself a *consistency* defect between two surfaces rather than a bug inside one.
 These tests are the pin.
@@ -43,7 +44,6 @@ CACHE_READS = "skills/backlog/cache-reads.md"
 # leads its unavailable-notice with. The subjects still differ per surface (each
 # names its own block); what must not differ is the rule behind them.
 NOTE_SURFACES = {
-    "skills/critic/cross-checks.md": "Backlog reconciliation unavailable",
     "skills/pr/review-protocol.md": "Backlog reconciliation unavailable",
     "skills/janitor/SKILL.md": "Backlog Health unavailable",
 }
@@ -68,9 +68,9 @@ def _read(rel: str) -> str:
     return (REPO_ROOT / rel).read_text()
 
 
-class TestTheThreeReadersShareOneContract:
-    """The Critic's reconciliation walk, the PR reviewer's R-1/R-2, and the
-    janitor's Backlog Health all read the backlog cache, in files no single
+class TestTheReadersShareOneContract:
+    """The PR reviewer's R-1/R-2 and the janitor's Backlog Health both read the
+    backlog cache, in files no single
     reviewer opens together. Prose has no compiler, so copies drift silently — and
     every defect this contract exists to prevent is itself a *consistency* defect
     between two surfaces rather than a bug inside one.
@@ -173,48 +173,6 @@ class TestTheThreeReadersShareOneContract:
         ):
             assert required in flat, f"{CACHE_READS} lost {why} ({required!r})"
 
-    def test_the_reviewer_that_runs_the_walk_is_routed_to_the_gate(self):
-        """`skills/critic/review-protocol.md` carries a one-line summary of the
-        gate and points at `cross-checks.md` for the walk itself. That is sound
-        *only* because `agents/critic-reviewer.md` sends the one reviewer who
-        runs Backlog Reconciliation — the sustainability reviewer — to
-        `cross-checks.md` explicitly. Break that routing and the gate sits behind
-        a cross-reference nobody follows, so the routing is what gets pinned.
-
-        (A cumulative Critic finding argued for restating the full rule in
-        `review-protocol.md`. Declined on the evidence above, and because that
-        file's token budget is deliberately at near-zero headroom — paying ~175
-        tokens of reviewer context for a rule its reader is already routed to
-        would trade a real cost for a hypothetical one.)
-        """
-        agent = " ".join(_read("agents/critic-reviewer.md").split())
-        assert "Backlog Reconciliation" in agent
-        assert "cross-checks.md" in agent, (
-            "the sustainability reviewer is no longer routed to `cross-checks.md`, "
-            "where the backend gate for Backlog Reconciliation lives."
-        )
-        protocol = " ".join(_read("skills/critic/review-protocol.md").split())
-        # Pinned on the post-cutover BEHAVIOUR, not on a prefix of the sentence
-        # that states it. The assertion here used to be the substring "read
-        # `backlog_service_repo` first", which stayed true after the walk was
-        # restored while the clause around it went on saying "when set, skip the
-        # walk" — the stale gate survived a green suite in the very bundle that
-        # restored the walk, and was caught by a reviewer instead. A prefix match
-        # cannot tell which way a conditional points; these assert the direction.
-        assert "cache-reads.md" in protocol, (
-            "review-protocol.md no longer routes the reconciliation to the cache "
-            "contract, so a reviewer reading only this file does not know where "
-            "the items come from."
-        )
-        assert "skip the walk only on exit 6" in protocol, (
-            "review-protocol.md does not say that skipping is the unavailable case "
-            "ALONE. This is the assertion that fails if the dormancy-era gate — "
-            "skip whenever the backend is set — is ever restated here."
-        )
-        assert "when set, skip the walk" not in protocol, (
-            "review-protocol.md has reinstated the dormancy-era gate, which would "
-            "make every cut-over product skip the walk this cache restored."
-        )
 
 class TestDirectReadRuleIsOneRule:
     """`data-model.md` § Direction: gated, not banned. Both readers state the

@@ -83,7 +83,7 @@ Every build plan opens with **Goals** — the alignment pass's written form (`me
 
 **Chunks usually work best** as vertical slices (working, testable functionality across layers), in dependency order, each verifiable without later chunks and small enough for one Critic pass — the last is the firm limit. A thin first slice through the whole architecture proves the layers connect before you widen it.
 
-**Verification strategy.** Include how the builder confirms each chunk works beyond tests — exercising the product as its users would. Describe the approach, not a checklist; complex products (human interfaces, multi-party) may need dedicated tooling planned into the scaffold.
+**Verification strategy.** Include how the builder confirms each chunk works beyond tests — exercising the product as its users would. Output judged by looking at it puts its reader's first look in the first chunk (`methodology/discovery.md` "See it first"). Describe the approach, not a checklist; complex products (human interfaces, multi-party) may need dedicated tooling planned into the scaffold.
 
 **Governance checkpoints** are points where you review the whole trajectory, not just the current chunk — typically after the first chunk proves the architecture, and before completion; add more as risk warrants.
 
@@ -97,22 +97,9 @@ Chunk boundaries are where the delegation decision is drawn: the last moment bef
 
 **Record the decision either way**, in the plan's `partition:` frontmatter field, on one line. `serial — 02 and 03 both edit the store module` is an answer; `02-04 delegated, isolated worktrees` is an answer. Serial is very often right — *unexamined* is what the field catches, and a plan with independent chunks and no partition line is the guide's **serial by default** anti-pattern in its plan-time form.
 
-**Disclose it when the plan is presented.** A plan that will delegate says how many delegates, isolated worktrees or the shared one, what each touches, and what they will *not* do. Carry what varies between plans: a disclosure that could be copy-pasted from the last one is boilerplate, and boilerplate stops being read.
+**Disclose it when the plan is presented, and proceed.** A plan that will delegate says what is fanned out, to how many delegates, on which models, and who integrates — you, or a dedicated integrator subagent — plus isolated worktrees or the shared one, what each touches, and what they will *not* do. The first time in a session, add that `project-preferences.md` → `Delegation` is where the user changes whether and how this happens. Carry what varies between plans: a disclosure that could be copy-pasted from the last one is boilerplate, and boilerplate stops being read.
 
-**Ask for approval only on one of these four reasons.** The list is closed, because an agent resolving vagueness asks defensively every time — which is the round-trip this exists to avoid.
-
-1. This project has never delegated before, so the user has no precedent for what it looks like.
-2. The fan-out is materially wider than anything this project has done.
-3. Delegates will write in the shared worktree, so the user's own tree changes under them.
-4. Something irreversible or outward-facing sits inside a delegated chunk.
-
-Reasons 1 and 2 turn on history, so read it rather than asserting it — the `partition:` lines
-on this repo's plans, live and archived, and whether `project-preferences.md` carries a Delegation
-row. A precedent you did not look up is the defensive ask wearing a justification.
-
-Three standing negatives override all four — **do not ask** when the user has already approved this plan's delegation, when `project-preferences.md` records delegation as pre-approved, or when the user asked for the plan and its execution without further interruption. Absent a listed reason, disclose and proceed.
-
-**On a yes, offer to make it durable** — a `project-preferences.md` row — or the same question returns with every plan, which is the unnecessary asking wearing a seatbelt.
+Disclosure replaces asking. Wait for a yes only when `project-preferences.md` says to, or the user has asked to see the plan first; `Delegation: off` means the plan is serial and the question is never raised.
 
 ### Governing Artifacts
 
@@ -202,7 +189,7 @@ The mirror for the interface a product *produces* — any programmatic surface o
 
 ### Visual Change Verification
 
-Tests confirm logic; they don't confirm a human-facing surface *looks and reads* right. A chunk producing a user-visible change — UI screen, CLI output format, generated-artifact appearance, live external integration — declares `**Visual change:** yes` and, at chunk-close, appends an entry to `.prawduct/operator-verification.md` describing what to verify and where. When `operator_verification_required: true`, `/prawduct:pr create` blocks on pending entries — drain via `prawduct-hook verify-operator-verification <VRF-id>`, or override per-PR with `--accept-pending-verification "rationale"`. The Critic emits a NOTE if the field is declared but no queue entry references it. Reserve `yes` for what a test can't speak to: pixel layout, copy and tone, output legibility, the shape of a real third-party response.
+Tests confirm logic; they don't confirm a human-facing surface *looks and reads* right. A chunk producing a user-visible change — UI screen, CLI output format, generated-artifact appearance, live external integration — declares `**Visual change:** yes` and, at chunk-close, appends an entry to `.prawduct/operator-verification.md` describing what to verify and where. When `operator_verification_required: true`, `/prawduct:pr create` blocks on pending entries — drain via `prawduct-hook verify-operator-verification <VRF-id>`, or override per-PR with `--accept-pending-verification "rationale"`. The Critic records an observation if the field is declared but no queue entry references it. Reserve `yes` for what a test can't speak to: pixel layout, copy and tone, output legibility, the shape of a real third-party response.
 
 ## Common Traps
 

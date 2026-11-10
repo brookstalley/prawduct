@@ -126,7 +126,10 @@ def _write_active_build_plan(repo: Path) -> None:
     plan = repo / ".prawduct" / "artifacts" / "build-plan.md"
     plan.parent.mkdir(parents=True, exist_ok=True)
     plan.write_text(
-        "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: scenario work\n"
+        "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: scenario work\n\n"
+        # A chunk section record-lint can grade: a plan with none is a
+        # deliverable check that cannot run, which the review records as BLOCKING.
+        "### Chunk 01: scenario work\n\n- **Deliverables:** `feature.py`\n"
     )
 
 

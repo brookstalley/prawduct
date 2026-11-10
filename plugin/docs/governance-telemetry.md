@@ -141,7 +141,7 @@ The format is lock-in, so the queries came before the fields:
    as a floor, not a census:** a rule fires only when a reviewer QUOTES it, so
    a rule that shaped a finding without being quoted reads here as never fired.
    The instruction to quote lives with the reviewers (`agents/critic-reviewer.md`,
-   and `cross-checks.md` for the cross-check), but nothing enforces it — so this
+   and `cross-checks.md` for a single-pass review), but nothing enforces it — so this
    answer under-counts by however often reviewers paraphrase.
 4. **All of the above across a fleet** — key by the envelope's `project`.
 
@@ -162,7 +162,8 @@ worktrees get deleted.
 - **A Stop-hook check that observes without blocking** appends one
   `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
   through `append_stop_observation`, carrying the same `reason` and `observed`
-  a block of that check would. `clear-verdict` is the one such check (#1044).
+  a block of that check would. `clear-verdict` (#1044) and `clear-reason`
+  (#1131) are the two such checks; no Stop gate blocks on the close's wording.
   `stats` scores these with the block verdict
   rules and reports them as *observed only*, never as Stops blocked or guard
   refusals.
@@ -189,7 +190,7 @@ Each firing records what was observed, never a judgment of it. A reader derives 
 judgment (below), so a revised definition re-reads every recorded firing. A
 control that records neither is counted as `unspecified`.
 
-The Stop checks that record a reason (`clear-verdict` observes, `clear-reason` blocks):
+The Stop checks that record a reason (both observe without blocking):
 
 | Gate | `reason` | `observed` |
 |---|---|---|
@@ -266,7 +267,7 @@ neither; schema 6 added them — the human line leads with the first and labels 
 estimate), `findings`
 (`{blocking, warning, note, other}`), `remedies` (below), `findings_per_review`,
 `actionable_rate` (0–1; severity-labelled — the human line calls it `severity-actionable`),
-`dispositions` (below), `observations` (items an inner-stage pass demoted —
+`dispositions` (below), `observations` (items a reviewer rated below a finding —
 never counted in `findings`), `reviews_recording_observations`
 (reviews whose event carried the array; events written before it existed are
 excluded, so `observations: 0` over `0` recording reviews means *not measured*,
@@ -398,7 +399,11 @@ The definitions (their one home):
       is an answer its reader has just read, and whether clearing it loses
       anything is a judgment no observation makes, so it is unclassified, as is
       a firing recorded before `session_changed` existed
-      (`stats.CATCH_REQUIRES_OBSERVED`).
+      (`stats.CATCH_REQUIRES_OBSERVED`). Its firings are observations, not
+      blocks, since #1131 (counts across that change do not compare: a block
+      forced a rewrite, so one bad close fired once, while an observation
+      fires once per Stop that carries it), scored by this same rule under
+      *observed only*.
     - `clear-verdict` is a slip when `work_live`: the hold was right, and only
       the disposition label was wrong. Since `clear-gate-telemetry` the gate no
       longer fires on `YOUR TURN` with `work_live`, so its slips are only
