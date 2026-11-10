@@ -140,9 +140,9 @@ The format is lock-in, so the queries came before the fields:
    is a content hash rather than a heading string or a line number. **Read it
    as a floor, not a census:** a rule fires only when a reviewer QUOTES it, so
    a rule that shaped a finding without being quoted reads here as never fired.
-   The instruction to quote lives with the reviewers (`agents/critic-reviewer.md`,
-   and `cross-checks.md` for a single-pass review), but nothing enforces it — so this
-   answer under-counts by however often reviewers paraphrase.
+   The instruction to quote lives with the dispatched reviewers (`agents/critic-reviewer.md`)
+   and nothing enforces it; a single-pass review carries no such instruction. So this
+   answer under-counts by however often reviewers paraphrase, and by every single-pass review.
 4. **All of the above across a fleet** — key by the envelope's `project`.
 
 `prawduct-hook review-stats` reads them: its `learning` block (below) reports

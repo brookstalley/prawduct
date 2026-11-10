@@ -4260,30 +4260,36 @@ class TestResolutionFacts:
     @pytest.mark.parametrize("mode,stage", [
         (CUMULATIVE_MODE, "boundary"), (FINAL_MODE, "inner"),
     ])
-    def test_a_note_finding_is_refused_naming_observations(self, tmp_path, mode, stage):
-        """NOTE is not a finding severity at any stage (#1128). A partial
-        carrying one is refused from every dispatch, and the refusal names the
-        array the item belongs in, so the reviewer's retry is one move. The
-        control: the same partial with the item moved to `observations`
-        consolidates."""
+    def test_a_note_finding_is_recorded_as_an_observation(self, tmp_path, mode, stage):
+        """NOTE is not a finding severity at any stage (#1128), and a partial
+        carrying one is not refused: a reviewer on an older protocol still
+        writes one, and a refusal would cost a whole round to move an item that
+        gates nothing. The item is recorded as an observation, minus its
+        rating, and the run says so. The control: a WARNING in the same partial
+        stays a finding, so this is not a blanket demotion."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
         item = {"name": "Wording", "goal": "Everything Is Coherent",
                 "recommendation": "Tighten it"}
+        kept = {"name": "Stale artifact", "goal": "Everything Is Coherent",
+                "recommendation": "Update it", "severity": "warning"}
 
         _set_marker(repo)
         _write_manifest(repo, head, id="rev-note-0001", mode=mode, stage=stage)
         _full_roster_partials(repo, head)
-        _write_partial(repo, "design", head, findings=[{**item, "severity": "note"}])
-        result = _run_consolidate(repo)
-        assert result.returncode == 1
-        assert "'note'" in result.stderr and "observations" in result.stderr
-        assert len(_store_facts(repo, "review")) == 0
-
-        _write_partial(repo, "design", head, findings=[], observations=[item])
+        _write_partial(repo, "design", head, findings=[{**item, "severity": "note"}, kept])
         result = _run_consolidate(repo)
         assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert "rated `note` as observations" in result.stderr
+        [fact] = _store_facts(repo, "review")
+        severities = [f["severity"] for f in fact["body"]["findings"]]
+        assert "note" not in severities
+        if stage == "boundary":
+            assert severities == ["warning"]
+        observed = [o.get("title") or o.get("name") for o in fact["body"]["observations"]]
+        assert "Wording" in observed
+        assert all("severity" not in o for o in fact["body"]["observations"])
 
     def test_observations_from_an_inner_stage_final_persist(self, tmp_path):
         """The half the old pin forbade: an inner-stage `final` demotes what it
@@ -6855,6 +6861,64 @@ class TestAnAnsweredRecordLintResultIsNotReRaised:
         )["status"] == "recorded"
         second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.GAP]))
         assert second["body"]["findings"] == []
+
+    def test_an_accepted_warning_whose_line_moved_is_not_re_raised(self, tmp_path):
+        """Plans and fragments are edited all through a build, so the line a
+        result sits on moves while the result stays the same. The control is the
+        changed-detail case below: the file and details decide, the line does
+        not."""
+        repo, head = self._repo(tmp_path)
+        at_10 = {**self.GAP, "line": 10}
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[at_10]))
+        _dispositions_mod.record(
+            repo, "rev-lint-0001", first["body"]["findings"][0]["fid"],
+            _dispositions_mod.ACCEPT, reason="out of scope",
+        )
+        at_14 = {**self.GAP, "line": 14}
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[at_14]))
+        assert second["body"]["findings"] == []
+        other_file = {**self.GAP, "line": 10, "path": ".prawduct/artifacts/q.md"}
+        third = self._review(repo, head, "rev-lint-0003", _lint(findings=[other_file]))
+        assert [f["severity"] for f in third["body"]["findings"]] == ["warning"]
+
+    def test_a_fixed_disposition_does_not_answer_a_result_still_reported(self, tmp_path):
+        """`--fixed` says the builder fixed it; the lint reporting the identical
+        result again is the evidence it was not, so it is raised."""
+        repo, head = self._repo(tmp_path)
+        first = self._review(repo, head, "rev-lint-0001", _lint(findings=[self.GAP]))
+        assert _dispositions_mod.record(
+            repo, "rev-lint-0001", first["body"]["findings"][0]["fid"],
+            _dispositions_mod.FIXED, paths=[".prawduct/artifacts/p.md"],
+        )["status"] == "recorded"
+        second = self._review(repo, head, "rev-lint-0002", _lint(findings=[self.GAP]))
+        assert [f["severity"] for f in second["body"]["findings"]] == ["warning"]
+
+    def test_an_answer_under_another_scope_suppresses_nothing(self, tmp_path):
+        """The evidence store is shared by every branch of a clone. An accept
+        recorded for one unit of work must not silence the same result in
+        another; the control is the same accept under the same scope."""
+        repo, head = self._repo(tmp_path)
+
+        def review(review_id, scope):
+            _set_marker(repo)
+            _write_manifest(repo, head, id=review_id, mode=CUMULATIVE_MODE,
+                            stage="boundary", record_lint=_lint(findings=[self.GAP]),
+                            scope=scope)
+            for role in ("correctness", "design", "sustainability"):
+                _write_partial(repo, role, head, findings=[])
+            result = _run_consolidate(repo)
+            assert result.returncode == 0, f"stderr={result.stderr!r}"
+            return next(f for f in _store_facts(repo, "review") if f["id"] == review_id)
+
+        first = review("rev-lint-0001", "unit-a")
+        _dispositions_mod.record(
+            repo, "rev-lint-0001", first["body"]["findings"][0]["fid"],
+            _dispositions_mod.ACCEPT, reason="out of scope for unit-a",
+        )
+        other = review("rev-lint-0002", "unit-b")
+        assert [f["severity"] for f in other["body"]["findings"]] == ["warning"]
+        same = review("rev-lint-0003", "unit-a")
+        assert same["body"]["findings"] == []
 
     def test_a_changed_detail_is_a_new_result(self, tmp_path):
         repo, head = self._repo(tmp_path)

@@ -165,7 +165,7 @@ whole consolidation closed, so match it exactly):
 
 `files` on a finding is optional (omit when not file-specific). `findings` is `[]` for a
 clean pass. `observations` carries what you rate below a finding at your stage — a finding minus
-its `severity` (carry no `severity` key); a `note` severity in `findings` is refused. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
+its `severity` (carry no `severity` key); a `note` finding becomes one. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
 given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched
 *and* was dispatched by the review it is consolidating; either mismatch fails closed. Note that
 `dispatch_id` is your OWN review; `resolutions[].review_id`, which you never write, means a

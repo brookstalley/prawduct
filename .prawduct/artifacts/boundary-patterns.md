@@ -147,8 +147,8 @@ envelope plus its own payload keys.
 **Consumers:** two **agent-executed prose** surfaces, which is what makes this
 different from every other envelope here — the PR reviewer's R-1/R-2
 (`plugin/skills/pr/review-protocol.md`) and the janitor's Backlog Health
-(`plugin/skills/janitor/SKILL.md`), all routed through the one contract at
-`plugin/skills/backlog/cache-reads.md`. `plugin/lib/backlog/cli.py` is a fourth,
+(`plugin/skills/janitor/SKILL.md`), both routed through the one contract at
+`plugin/skills/backlog/cache-reads.md`. `plugin/lib/backlog/cli.py` is a third,
 carrying both the `--json` passthrough and the human formatter.
 **Contract:** payload key names, **and the exit-code split** — `6`
 (`unavailable`) means the store could not be read and is *not* an empty result.

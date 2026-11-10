@@ -4002,8 +4002,8 @@ def validate_partial(data) -> tuple[bool, str]:
     resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
     load-bearing. ``severity`` must be ``blocking`` or ``warning`` so a typo
-    can't silently persist as a non-blocking finding; ``note`` is refused with
-    a message naming ``observations``, its one home. ``resolutions`` is the
+    can't silently persist as a non-blocking finding; ``note`` is tolerated and
+    recorded as an observation (``demote_note_findings``). ``resolutions`` is the
     verify-resolutions judgment payload (D5): ``disposition`` is ``fixed`` or
     ``waived``, and ``waived`` REQUIRES a non-empty ``rationale`` (R7 — a
     waiver carries its justification).
@@ -4054,13 +4054,11 @@ def validate_partial(data) -> tuple[bool, str]:
         for field in ("name", "goal", "severity", "recommendation"):
             if not _nonempty_str(f.get(field)):
                 return False, f"finding[{idx}] missing/empty '{field}'"
-        if f["severity"] == "note":
-            return False, (
-                f"finding[{idx}] is rated 'note' — a note is not a finding at any "
-                "stage; move it into 'observations' (the same entry minus "
-                "'severity'), which gates nothing and needs no disposition"
-            )
-        if f["severity"] not in _FINDING_SEVERITIES:
+        # `note` is not a finding severity, and it is not refused either: a
+        # reviewer on an older protocol still writes one, and refusing the
+        # partial would cost a whole review round to move an item that gates
+        # nothing. `demote_note_findings` records it as an observation.
+        if f["severity"] not in _FINDING_SEVERITIES and f["severity"] != "note":
             return False, (
                 f"finding[{idx}] severity {f['severity']!r} not in "
                 f"{list(_FINDING_SEVERITIES)}"
@@ -4778,12 +4776,22 @@ RECORD_LINT_GOAL = "Nothing Is Missing"
 RECORD_LINT_SOURCE = "record-lint"
 
 
+_TRAILING_LINE_RE = re.compile(r":\d+$")
+
+
 def _lint_identity(entry: dict) -> "tuple[str, str]":
-    """A record-lint result's identity: its title (check and place) and its
+    """A record-lint result's identity: its check and FILE, and its
     recommendation (every detail, in record-lint's order). A materially changed
-    result changes the second half, so it is a new result."""
+    result changes the second half, so it is a new result.
+
+    The line the title shows is not part of it. Plans and change fragments are
+    edited throughout a build, so an answered result whose line merely moved
+    would otherwise come back as new every time something above it changed.
+    Two results of one check with identical details at different lines of one
+    file therefore share an answer, which is the reading an owner who accepted
+    one of them meant."""
     return (
-        evidence.finding_title(entry),
+        _TRAILING_LINE_RE.sub("", evidence.finding_title(entry)),
         entry.get("recommendation") or "",
     )
 
@@ -4921,6 +4929,34 @@ def record_lint_partial(manifest: dict, store: "dict | None" = None) -> dict:
                 entry = {**entry, "recommendation": f"{entry['recommendation']} — {prior}"}
             observations.append(entry)
     return {"role": RECORD_LINT_SOURCE, "findings": findings, "observations": observations}
+
+
+def demote_note_findings(partials: list[dict]) -> "tuple[list[dict], int]":
+    """``partials`` with every finding rated ``note`` moved into its partial's
+    ``observations`` (the same entry minus ``severity``), and how many moved.
+
+    At every stage. A note is not a finding, so it is recorded where it gates
+    nothing and is owed no disposition; a `verify-resolutions` pass then keeps
+    it only if it judges a named fix, like any other observation there.
+    """
+    out: list[dict] = []
+    moved = 0
+    for partial in partials:
+        keep, drop = [], []
+        for f in partial.get("findings") or []:
+            if isinstance(f, dict) and f.get("severity") == "note":
+                drop.append({k: v for k, v in f.items() if k != "severity"})
+            else:
+                keep.append(f)
+        if drop:
+            moved += len(drop)
+            partial = {
+                **partial,
+                "findings": keep,
+                "observations": list(partial.get("observations") or []) + drop,
+            }
+        out.append(partial)
+    return out, moved
 
 
 def promote_rated_observations(partials: list[dict]) -> "tuple[list[dict], int]":
@@ -6142,8 +6178,16 @@ def consolidate(
             missing, len(partials), len(roster), review_id, prawduct_dir))
         return 0
 
-    # Observations arrive from every stage: what a reviewer would once have
-    # rated NOTE has no other home now that `validate_partial` refuses `note`.
+    # Observations arrive from every stage, and a finding a reviewer still
+    # rates `note` joins them here rather than being refused.
+    partials, demoted = demote_note_findings(partials)
+    if demoted:
+        print(
+            f"critic-consolidate: recorded {demoted} finding(s) rated `note` as "
+            "observations — a note is not a finding, gates nothing and is owed "
+            "no disposition.",
+            file=sys.stderr,
+        )
     # What is enforced: `_validate_observations` refuses a `blocking` entry at
     # every stage, and at the boundary an entry rated `warning` is promoted
     # into `findings` (`promote_rated_observations`). An entry that carries no

@@ -304,7 +304,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
     # -1762 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
     # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. Ceiling lowered.
-    "single-pass-full": 9771,
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    "single-pass-full": 9768,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -397,7 +399,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1880 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
     # +16 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned — the role line in the
     # agent definition, and the WARNING arm's cut in cross-checks.md, net. Ceiling raised with it.
-    "dispatched-reviewer": 9144,
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    "dispatched-reviewer": 9138,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -448,14 +452,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
     # -1779 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
-    "coordinator-fork": 10353,
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    "coordinator-fork": 10350,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5576,
-    "single-pass-full": 9772,
-    "dispatched-reviewer": 9145,
-    "coordinator-fork": 10354,
+    "single-pass-full": 9769,
+    "dispatched-reviewer": 9139,
+    "coordinator-fork": 10351,
 }
 
 

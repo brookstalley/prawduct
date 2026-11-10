@@ -12,9 +12,10 @@ The owner ruled on 2026-11-10 to delete the model-relayed checks and notes-as-fi
 
 ### Notes become observations at every stage (Chunk 01)
 
-`critic-consolidate` refuses a finding rated `note` from any dispatch, with a message naming
-`observations`, and accepts an `observations` array from a boundary (`cumulative`) dispatch as it
-already did from an inner one. BLOCKING and WARNING ratings are unchanged, and a `blocking`
+`critic-consolidate` records a finding rated `note` as an observation, from any dispatch, and
+says so on stderr; it does not refuse the partial, because a reviewer on an older protocol still
+writes one and a refusal would cost a whole round. It accepts an `observations` array from a
+boundary (`cumulative`) dispatch as it already did from an inner one. BLOCKING and WARNING ratings are unchanged, and a `blocking`
 observation is still refused. Every protocol table that rated something NOTE now rates it an
 observation. The NEXT-ACTION line, `review-cycle.md` and the protocol files stop asking the builder
 to answer observations; `prawduct-hook disposition` still accepts an `O-n` id. Facts already
@@ -39,7 +40,20 @@ stays a finding; a `verify-resolutions` pass carries only the findings. Results 
 one place become one entry listing every detail. A result identical to one already accepted or
 filed (a WARNING), or already `waived` by a resolution (a BLOCKING one — the only answer the gate
 takes for a blocker), is carried as an observation naming that answer instead of being raised
-again. At the boundary an observation its reviewer rated `warning` is promoted into the findings.
+again. A result is matched by its check, file and details, not its line, so an answered result
+whose line moved is not re-asked. At the boundary an observation its reviewer rated `warning` is
+promoted into the findings.
+
+Two things this does not do. A `verify-resolutions` pass that waives a record-lint blocker raises
+the identical blocker again itself, because it reads the store as it stood before its own
+resolutions; a second pass clears it. And the `governed_by:` check now has one producer: the
+reviewer's copy is gone, and what the lint cannot judge (a recorded disposition the diff
+contradicts) belongs to the `correctness` role. No role gained a new duty; the remainder had no
+named owner before.
+
+`learning.fired` loses its single-pass source. The sentence telling a single-pass review to quote
+the rule it applied lived in the Learnings Cross-Check and went with it; dispatched reviewers
+still carry the instruction (`docs/governance-telemetry.md` says so).
 
 ### Every description agrees (Chunk 03)
 

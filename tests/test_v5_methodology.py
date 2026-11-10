@@ -724,7 +724,9 @@ LAST_MEASURED_TOKENS = {
     # +18 on 2026-10-26 (flaky-rerun, #1087): Goal 1 rates a `flaky:` test-status line carrying
     # `flaky_policy: warn`. DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
     # -87 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
-    "skills/critic/review-protocol.md": 3857,
+    # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
+    # observation rather than refused, and the sentence saying so is shorter.
+    "skills/critic/review-protocol.md": 3854,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -5607,8 +5609,8 @@ class TestCriticSkill:
         # RAISED 3795 -> 3899 (requirements-alignment w2, 2026-10-09): the goals check, declared
         # with the reading.
         # RAISED 3928 -> 3945 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
-        # LOWERED 3945 -> 3858 (critic-trim, 2026-11-10) with the reading.
-        assert tokens < 3858, f"review-protocol.md is ~{tokens} tokens, should be <3858"
+        # LOWERED 3945 -> 3855 (critic-trim, 2026-11-10) with the reading.
+        assert tokens < 3855, f"review-protocol.md is ~{tokens} tokens, should be <3855"
 
 
 # =============================================================================

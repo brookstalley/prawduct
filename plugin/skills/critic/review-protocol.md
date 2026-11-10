@@ -182,7 +182,7 @@ If no findings: "No issues found. Changes are ready to proceed."
 }
 ```
 
-`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `observations` carries everything you rate below a finding at your stage (a finding minus `severity`, no `severity` key); a `note` severity in `findings` is refused. Match this schema exactly — consolidation validates every entry and fails closed. No `resolutions` key in these modes: it is `verify-resolutions`-only, and emitting one here fails consolidation.
+`files` (per finding): attribution; omit when not file-specific. `findings` is `[]` for a clean pass. `observations` carries everything you rate below a finding at your stage (a finding minus `severity`, no `severity` key); a `note` finding becomes one. Match this schema exactly — consolidation validates every entry and fails closed. No `resolutions` key in these modes: it is `verify-resolutions`-only, and emitting one here fails consolidation.
 
 ## Review Cycle
 

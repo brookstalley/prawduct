@@ -103,6 +103,23 @@ exactly where it did.
   purpose (stop producing output nobody acts on) and by the gate's existing rule for clearing a
   blocker, which this does not widen.
 
+- Boundary review after the base sync — a finding rated `note` is recorded as an observation
+  rather than refused. *Inferred*, and a departure from this plan's Chunk 01 wording: a reviewer on
+  an older protocol (any session that started before an upgrade) still writes one, and a refusal
+  costs a full round to move an item that gates nothing. The owner may veto.
+- Same review — an answered record-lint result is matched without its line number. Settled by the
+  plan's purpose: a result re-asked because an edit above it moved a line is output nobody acts on.
+- Same review — accepted, not fixed: a verify pass that waives a record-lint blocker raises it
+  again itself and needs a second pass. A record-lint blocker's remedy is a free record edit, so a
+  waiver is the rare path and its cost is one short pass.
+- Review round — the `governed_by:` reconciliation's judgment half (is a recorded disposition
+  true of the diff) is assigned to the `correctness` role; its paperwork half is record-lint's.
+  Settled by "one producer per check". A warning-rated observation is promoted at the boundary;
+  settled by "stop producing output nobody acts on" not extending to hiding a rating.
+- The owner ruled on this plan's two open questions on 2026-11-10 (`.prawduct/owner-rulings.md`):
+  the mid-build decisions list is dropped and no reader is built; the three unread operations
+  are removed with #1129.
+
 **Level:** High on what to remove. Medium on the record-lint path: the builder confirms from the
 code where a relayed lint finding gets its blocking force today before moving it, and stops to
 report if a gate reads it only through a reviewer's finding.
@@ -140,8 +157,9 @@ sample of what is being removed.
 
 - **Description:** Remove Backlog Reconciliation, the Learnings Cross-Check and the `priors:` note
   from the protocol, the roster and the reviewer's tool list where a tool existed only for them.
-  Deliver record-lint results from consolidation. Print the mid-build decisions list from the
-  plan instead of raising it.
+  Deliver record-lint results from consolidation. The mid-build decisions list is no longer
+  raised; printing it from the plan was dropped (see the mid-build decisions, and the owner's
+  ruling of 2026-11-10 in `.prawduct/owner-rulings.md`).
 - **Depends on:** Chunk 01
 - **Deliverables:** `plugin/skills/critic/cross-checks.md`, `review-protocol.md`,
   `coordinator.md`, `SKILL.md` and `plugin/agents/critic-reviewer.md` without the three passes;
