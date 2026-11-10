@@ -50,7 +50,7 @@ shared `backlog-cache-unreadable` advisory as `CouldNotLook`.
   overriding the spec.
 - `TestSilentAgainstThisRepo` leaves `revisit-due` out of its silence claim. After the move to
   Issues the probe's input is the live tracker's dates, not committed state, and keeping it in
-  would turn the suite red on a calendar day. *Inferred; flagged for the boundary review.*
+  would turn the suite red on a calendar day. *Inferred; the owner confirmed both decisions on 2026-11-10.*
 
 **Level:** High.
 
