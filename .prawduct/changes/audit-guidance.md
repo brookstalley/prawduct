@@ -4,6 +4,7 @@ type: feature
 scope: audit-guidance
 date: 2026-11-10
 title: The close is one line, delegation is the default, and requirements guidance covers four measured misses
+closes: [brookstalley/prawduct#1131, brookstalley/prawduct#1133, brookstalley/prawduct#1135, brookstalley/prawduct#1044]
 ---
 Three changes to what every governed session is told, each ruled on by the owner on 2026-11-10
 after an audit of the governed products (#1131, #1133, #1135).
