@@ -1,7 +1,9 @@
 # Release Plan — v3.8.1
 
-**Status:** in preparation, 2026-11-10. Owner go-ahead for the release: 2026-11-10 ("Yes to
-3.8.1 when ready"). The promotion to `main` waits for the owner's final go.
+**Status:** COMPLETE as measured 2026-11-10: `main` promoted at `31364fb9`, tag and Release
+`v3.8.1` published in one call, `check-released v3.8.1` verified 3 of 3, develop reopened on
+`3.8.2-dev`. Owner go-ahead: 2026-11-10 ("Yes to 3.8.1 when ready"). Re-derive rather than
+reading this as a measurement: `prawduct-hook check-released v3.8.1`.
 
 **Version:** v3.8.1, a **patch**. The scopes are a fix (`revisit-due-issues`), a non-blocking
 advisory (`change-log-fragments-advisory`), a Stop check that stops blocking
