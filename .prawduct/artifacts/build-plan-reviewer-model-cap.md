@@ -144,6 +144,15 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
 - The payload budget gains two routes, `coordinator-fork-inner` and `dispatched-reviewer-inner`,
   and the fast-path routing tests accept `reviewer_model` as a qualifier for `coordinator.md`.
   Settled by the review wall-clock norm (every route a reviewer takes is priced).
+- `review-stats` reports the count as a top-level `above_reviewer_ceiling: {reviews,
+  model_unrecorded}` over Critic and PR reviews alike (both are capped), bumping its schema to 10.
+  Settled by the inference that the acceptance line means `review-stats`, and by its contract that
+  a key change bumps the schema.
+- The forked-skill pin lives in the norm's own pin, `tests/preferences/test_reviewer_model_dispatch_prose.py`,
+  with the Critic's exemption and its reason beside it. Not settled by the goals.
+- The inventory's query found one start outside the skills, `methodology/building.md`'s research
+  subagent; it is a delegate, covered by `methodology/delegation.md`, so nothing was fixed. Settled
+  by the constraint that delegates are out of scope.
 
 **Level:** Medium. The design rests on host behaviour read from the documentation on 2026-11-11
 and not all yet observed: an Agent call's `model` overrides a plugin agent's `model: inherit`

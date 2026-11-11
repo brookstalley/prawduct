@@ -351,6 +351,59 @@ class TestConsolidatedBy:
                 "session-end-backstop 0, unrecorded 0") in out
 
 
+class TestAboveReviewerCeiling:
+    """How many reviews ran on a model above the reviewer ceiling — the cost
+    the owner capped. Judged by `model_tier.reviewer_model_for`, the function
+    the dispatch uses, so the count and the cap cannot disagree about a model.
+    A review with no recorded model is not counted as above: the report says
+    how many there were instead."""
+
+    LEDGER = [
+        ("fable", "review.critic", "critic"),
+        ("claude-fable-1[1m]", "review.pr", "pr"),
+        ("claude-mystery-9", "review.critic", "critic"),
+        ("opus", "review.critic", "critic"),
+        ("claude-opus-4-8[1m]", "review.critic", "critic"),
+        ("claude-sonnet-4-6", "review.pr", "pr"),
+        ("haiku", "review.critic", "critic"),
+        (None, "review.critic", "critic"),
+        (None, "review.pr", "pr"),
+    ]
+
+    def _repo(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(model=model, kind=kind, role=role) for model, kind, role in self.LEDGER
+        ])
+        return repo
+
+    def test_the_json_counts_reviews_above_and_names_the_unrecorded(self, tmp_path):
+        report = json.loads(_run(self._repo(tmp_path), "--json").stdout)
+        assert report["events_total"] == len(self.LEDGER), "control: every event was read"
+        assert report["above_reviewer_ceiling"] == {"reviews": 3, "model_unrecorded": 2}
+
+    def test_the_human_report_carries_the_same_count(self, tmp_path):
+        out = _run(self._repo(tmp_path)).stdout
+        assert (
+            "reviews above the reviewer ceiling: 3 (2 with no recorded model, not counted)"
+        ) in out
+
+    def test_a_ledger_at_or_below_the_ceiling_counts_zero(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(model="opus"), _event(model="claude-sonnet-4-6")])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert report["above_reviewer_ceiling"] == {"reviews": 0, "model_unrecorded": 0}
+
+    def test_the_window_scopes_the_count(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [
+            _event(model="fable", ts="2026-06-01T00:00:00Z"),
+            _event(model="fable", ts="2026-06-20T00:00:00Z"),
+        ])
+        report = json.loads(_run(repo, "--json", "--since", "2026-06-10T00:00:00Z").stdout)
+        assert report["above_reviewer_ceiling"]["reviews"] == 1
+
+
 class TestStageRollup:
     """The yield-by-stage query the stage-keyed rigor norm was drawn to answer
     (`nonfunctional-requirements.md` § Direction). `critic-begin` stamps
@@ -488,7 +541,8 @@ class TestJsonSchemaStability:
         assert list(report) == [
             "schema_version", "project", "generated_at", "window", "dispositions", "events_total",
             "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage",
-            "consolidated_by", "top_files", "files_attributed_total", "learning",
+            "consolidated_by", "above_reviewer_ceiling", "top_files",
+            "files_attributed_total", "learning",
         ]
         # 1 -> 2 when the `learning` block arrived. A key change, so the
         # version moves with it — that is the whole contract this class exists
@@ -513,7 +567,10 @@ class TestJsonSchemaStability:
         # 8 -> 9 (#941): a top-level `dispositions` header and a `dispositions`
         # block on every stat block — what the builder did with each
         # blocking/warning finding, beside what the reviewer labelled. Added.
-        assert report["schema_version"] == 9
+        # 9 -> 10 (reviewer-model-cap): an `above_reviewer_ceiling` count of
+        # reviews recorded on a model above the reviewer ceiling joined the top
+        # level. Added.
+        assert report["schema_version"] == 10
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -777,14 +834,14 @@ class TestDurationProvenanceSplit:
         """The control for the rendering change: `--json` is a published
         contract, so the older keys still carry the estimate over every review
         that had one. No key is repurposed, so the rendering change moved no
-        schema version; 9 is #941's later key addition, not this change."""
+        schema version; 9 and 10 are later key additions, not this change."""
         repo = tmp_path / "repo"
         _write_ledger(repo, [
             _event(duration=600, dispatched_at="2026-06-10T11:56:00Z"),
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 9
+        assert report["schema_version"] == 10
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 
@@ -1378,4 +1435,4 @@ class TestJsonContractMatchesTheDoc:
             assert f"`{key}`" in section, key
 
 
-REPORT_SCHEMA = 9
+REPORT_SCHEMA = 10

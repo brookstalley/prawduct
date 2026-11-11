@@ -64,7 +64,9 @@ from .timewindow import in_window, is_usable_bound
 #: joined: what the builder did with each blocking/warning finding, read from
 #: the evidence store, beside `actionable_rate`, which says only what the
 #: reviewer labelled.
-REPORT_SCHEMA_VERSION = 9
+#: Bumped to 10 when `above_reviewer_ceiling` joined: how many reviews ran on a
+#: model above the reviewer ceiling, the cost the owner capped.
+REPORT_SCHEMA_VERSION = 10
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -673,6 +675,23 @@ def _consolidated_by(rows: list[dict]) -> dict:
     return counts
 
 
+def _above_reviewer_ceiling(rows: list[dict]) -> dict:
+    """How many reviews were recorded on a model above the reviewer ceiling.
+
+    Judged by :func:`model_tier.reviewer_model_for`, the function the dispatch
+    uses to cap a reviewer, so this count and the cap cannot disagree about what
+    a model id names: a review it would have capped ran above the ceiling. That
+    function caps a missing model too, which is right for a dispatcher that did
+    not say what it runs on and wrong for a record that does not say what ran,
+    so a review with no recorded model is counted apart, never as above.
+    """
+    recorded = [row for row in rows if row["model"] is not None]
+    return {
+        "reviews": sum(1 for row in recorded if model_tier.reviewer_model_for(row["model"]) is not None),
+        "model_unrecorded": len(rows) - len(recorded),
+    }
+
+
 def aggregate_review_stats(
     events: list[dict],
     skipped: dict,
@@ -742,6 +761,10 @@ def aggregate_review_stats(
         # at zero — a missing key would hide exactly that — and `unrecorded`
         # holds events written before the field existed.
         "consolidated_by": _consolidated_by(rows),
+        # Reviews that ran on a model above the reviewer ceiling — after the
+        # cap, a count that should only fall; one that grows is a dispatch
+        # passing no model on a session above the ceiling.
+        "above_reviewer_ceiling": _above_reviewer_ceiling(rows),
         "top_files": top_files,
         "files_attributed_total": files_attributed_total,
         # The learning loop's own numbers. `written`/`fired` count EVENTS and
@@ -897,6 +920,11 @@ def _render_human(report: dict, ledger_rel: str) -> str:
         lines.append(f"  {entry['stage'] or '(unrecorded)'}: {_fmt_stats(entry)}")
     lines += ["", "critic reviews consolidated by: " + ", ".join(
         f"{trigger} {count}" for trigger, count in report["consolidated_by"].items()
+    )]
+    above = report["above_reviewer_ceiling"]
+    lines += ["", (
+        f"reviews above the reviewer ceiling: {above['reviews']} "
+        f"({above['model_unrecorded']} with no recorded model, not counted)"
     )]
     lines += ["", f"top files by actionable findings (cap {TOP_FILES_LIMIT}):"]
     if report["top_files"]:

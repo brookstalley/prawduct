@@ -146,3 +146,44 @@ def test_the_reviewer_model_has_no_tier_input() -> None:
         "session's model alone; a tier or size input is model switching"
     )
     assert "`tier` is telemetry only and selects no model" in _COORDINATOR.read_text(encoding="utf-8")
+
+
+#: The one forked skill that names no model, and why: `/prawduct:critic` runs on
+#: the session's model because a fixed model would raise a lower-tier session's
+#: reviews and fail where that model is not offered, and front matter cannot
+#: express a ceiling. Above the ceiling it reviews nothing and hands the review to
+#: reviewers dispatched on the capped model, so no review runs on the session's
+#: tier there.
+_FORKED_SKILLS_ON_THE_SESSION_MODEL = {"critic"}
+
+
+def _forked_skills() -> dict[str, list[str]]:
+    """Every skill whose front matter declares `context: fork`, with its
+    `model:` lines — read from the files, not from a list."""
+    found = {}
+    for skill in sorted((REPO_ROOT / "skills").glob("*/SKILL.md")):
+        frontmatter = skill.read_text(encoding="utf-8").split("---", 2)[1]
+        lines = [ln.strip() for ln in frontmatter.splitlines()]
+        if "context: fork" in lines:
+            found[skill.parent.name] = [ln for ln in lines if ln.startswith("model:")]
+    return found
+
+
+def test_every_forked_skill_runs_at_or_below_the_ceiling() -> None:
+    """A forked skill starts on its front matter's model, or on the session's
+    when it names none — the most expensive choice available, made by accident
+    on a session above the ceiling. So each one names a model the ceiling
+    leaves alone, or is listed above with its reason."""
+    from lib import model_tier
+
+    forked = _forked_skills()
+    assert {"critic", "backlog", "advisory"} <= set(forked), f"control: the sweep found {sorted(forked)}"
+    for name, model_lines in forked.items():
+        if name in _FORKED_SKILLS_ON_THE_SESSION_MODEL:
+            assert not model_lines, f"skills/{name} is listed as running on the session model but names one"
+            continue
+        assert len(model_lines) == 1, f"skills/{name} is forked and names no model ({model_lines!r})"
+        model = model_lines[0].split(":", 1)[1].strip()
+        assert model != "inherit" and model_tier.reviewer_model_for(model) is None, (
+            f"skills/{name} runs on {model!r}, which is not at or below the ceiling"
+        )
