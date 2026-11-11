@@ -27,6 +27,25 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "Hand off to Opus (Recommended)"
+Chosen from three options put to the owner on how chunk and verify reviews, which run inside the
+forked `/prawduct:critic` on the session's model, are capped on a session above Opus-class. The
+option as put: the fork only routes, and dispatches one Opus-class reviewer instead of reviewing
+inline; sessions at or below Opus-class are unchanged. The two not chosen were pinning the skill to
+Opus on every session, and leaving the fork uncapped for now. Landed in
+`build-plan-reviewer-model-cap.md` (#1136).
+
+**2026-11-11.** "Sonnet for both (Recommended)"
+Chosen from three options on what the forked `/prawduct:backlog` and `/prawduct:advisory` run on,
+given that a skill can name only a fixed model. Both name Sonnet-class on every session. Put to
+the owner with its cost: on an Opus-class session they drop a tier, backlog triage included.
+Landed in `build-plan-reviewer-model-cap.md` (#1136).
+
+**2026-11-11.** "yes let's do 1138 first, so we don't have a few runs in a different cnfig"
+In reply to whether #1136 should land before `../prawduct-live` is advanced. Read as #1136 (PR
+#1138 had already merged): the installed plugin stays where it is until the reviewer cap is on
+`develop`, so no consumer runs reviews in an in-between configuration.
+
 **2026-11-10.** "yes please open and  merge PR's.  and also  yes to your recommendations"
 In reply to six numbered decisions put to the owner at the end of the first build wave. It
 settles: the one-line close keeps its existing labels; this file keeps the name
