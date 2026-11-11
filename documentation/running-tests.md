@@ -59,3 +59,30 @@ one call:
 
 A plain `pytest tests/` run already includes the marked tests, so these two reports are the whole
 suite.
+
+## In CI
+
+`.github/workflows/tests.yml` runs the pytest suite through `tools/ci-suite.py`, whose docstring
+is the reference for what follows. A job that holds the pool's key downloads the pool's own CLI
+build from its console, runs `testament run --no-fallback`, and then runs on the job the tests
+`.testament.toml` selects out. A job without the key, which is every pull request from a fork,
+runs `python -m pytest` on the job. The run's summary on GitHub says which happened.
+
+Three repository settings feed it (*Settings → Secrets and variables → Actions*):
+
+- `TESTAMENT_KEY`, a secret: a client key made for this CI in the pool's console (People, **+ New
+  client key**). Revoke it there when CI should stop using the pool.
+- `TESTAMENT_COORDINATOR`, a variable: the pool's wire address, the one `testament run` submits to.
+- `TESTAMENT_CONSOLE`, a variable: the address the console is opened at, `https://…`. The CLI
+  build is downloaded from it.
+
+Reading a red or yellow run:
+
+- **A warning, "the pool could not be used"**: the pool or its console did not answer, or lost the
+  run twice, or took longer than the runner waits. The suite ran on the job and the job's result
+  is the suite's. Nothing to fix in the repository.
+- **An error, "this job cannot use the pool"**: the pool refused the key, a variable is missing, or
+  the build could not be installed. The suite still ran on the job, so the log shows whether the
+  tree is sound, and the job fails either way until the setting is fixed. A replaced key is the
+  usual cause: make a new one and set the secret again.
+- **Failing tests** are named in the summary whichever machine ran them.

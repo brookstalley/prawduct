@@ -27,6 +27,14 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "let's get ci using testament", with a client key for the pool supplied as
+"(github secret)" and the coordinator's address as "(variable I think, not secret)". The previous
+session's handoff quotes the owner on the same question: "We should be. I can get a key if
+needed". Landed in `.prawduct/artifacts/build-plan-ci-testament.md` (Goals), which marks as
+inferred everything these words do not settle: that an unreachable pool falls back to the job
+rather than failing it, that a refused key fails the job, and that a third setting (the console's
+address) is needed beside the two supplied.
+
 **2026-11-11.** "yes please do PR and merge and advance, anc close 669"
 In reply to three numbered decisions at the hand-over of #1129. It settles two: the branch
 `feature/pr-reviewer-fold` is opened as a PR to `develop`, merged, #1129 closed, and

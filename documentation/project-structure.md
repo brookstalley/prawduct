@@ -51,7 +51,7 @@ prawduct/
 │
 │   # ── repo root — development only; none of it installs ──
 ├── pyproject.toml                        # pytest configuration + project version (the third mirrored version file)
-├── tools/                                # one-off measurement scripts, not shipped and not the retired v1 sync engine
+├── tools/                                # measurement scripts and CI's suite runner (ci-suite.py); not shipped, and not the retired v1 sync engine
 ├── documentation/                        # framework design docs (this file lives here, NOT in plugin/docs/)
 ├── tests/
 │   ├── test_plugin_runtime.py            # Plugin hook runtime (briefing, gates, canary, handoff)

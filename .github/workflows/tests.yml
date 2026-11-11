@@ -20,7 +20,27 @@
 # third-party action would be pinned to a SHA instead — the supply-chain exposure
 # there is somebody else's account, not GitHub's own org.
 #
-# **Almost no pytest flags here.** Distribution mode, timeouts and `testpaths`
+# **The suite runs on testament's pool when the job can use it, and on this job
+# when it cannot.** `tools/ci-suite.py` decides, and its docstring holds the table.
+# A job with the pool's key sends the tree to the pool: the same image and selection
+# a developer's `testament run` uses, so a CI verdict and a developer's are the same
+# kind of fact. The tests `.testament.toml` selects out (they read git history or a
+# clone's cache, which a pool runner has neither of) then run on this job. A job
+# without the key runs the whole suite here, and that is every pull request from a
+# fork: GitHub gives those no secrets, which is also what keeps a stranger's code off
+# the pool's machines. A pool that cannot be reached costs a warning and a run here;
+# a pool that refuses the key fails the job, because nothing else would say that CI
+# had stopped using it.
+#
+# **The key reaches one step.** `TESTAMENT_KEY` runs code on the pool's machines, so
+# it is named in the test step's `env` and nowhere wider: not the job's, not the
+# workflow's, and so not the dependency install, which executes a build backend. This
+# workflow never triggers on `pull_request_target`, which would hand that step a
+# fork's code together with the key. The two addresses are repository variables
+# rather than text in this file: they name the pool operator's hosts.
+# `tests/preferences/test_ci_workflow_conventions.py` pins all of it.
+#
+# **No pytest flags here.** Distribution mode, timeouts and `testpaths`
 # all live in `pyproject.toml`, and are deliberately not named here — repeating a
 # value makes this a second home for it, and the next person to tune one would
 # tune one of the two. (That is not hypothetical: this comment used to spell out
@@ -30,7 +50,8 @@
 # a reference to it.
 #
 # That includes the worker count, which is pinned at 5 for a developer's machine
-# and therefore OVERSUBSCRIBES a 4-core runner. Accepted rather than overridden
+# and therefore OVERSUBSCRIBES a 4-core runner whenever pytest runs on this job (a
+# pool run takes its parallelism from the pool). Accepted rather than overridden
 # here, and named so it is a known state rather than an oversight: an override
 # would be a pytest flag in this file, which is what the paragraph above forbids,
 # and no CI timing has been measured to justify amending that. If runs start
@@ -46,9 +67,9 @@ on:
   # Weighed and kept: pairing these double-runs the matrix for any branch with an
   # open PR, and the concurrency group below cannot collapse the pair because the
   # two events carry different refs (`refs/heads/<branch>` vs `refs/pull/N/merge`).
-  # They test different trees — the branch tip, and the merge result — and on a
-  # public repo the minutes are free, so the duplication buys a real second answer
-  # at a cost of wall-clock only.
+  # They test different trees — the branch tip, and the merge result — so the
+  # duplication buys a real second answer. What it spends is pool slots for a
+  # second run of about a minute; on a public repo the Actions minutes are free.
   push:
   pull_request:
 
@@ -63,7 +84,9 @@ permissions:
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Room for the worst path through `tools/ci-suite.py`: a pool run that is lost
+    # late and tried once more, then the whole suite on this job.
+    timeout-minutes: 30
     strategy:
       # Every leg reports: fail-fast would throw away whichever finished second
       # once there is more than one.
@@ -75,6 +98,11 @@ jobs:
         # drift. Without the floor leg `requires-python` is a claim nothing
         # checks. A leg for a newer release goes beside it once the suite
         # should prove that release too.
+        #
+        # A pool run executes in the pool's image, not on this interpreter, and the
+        # same test holds that image (`docker/testament.Dockerfile`) to the floor.
+        # This interpreter runs the runner, the tests the pool leaves to the job,
+        # and the suite whenever it runs here.
         python-version: ["3.14"]
     steps:
       - uses: actions/checkout@v7
@@ -118,7 +146,17 @@ jobs:
         run: python -m pip install ".[dev]"
 
       - name: Run the suite
-        run: python -m pytest
+        # An unset secret or variable renders as the empty string, which the runner
+        # reads as unset. `github.head_ref` is a fork's to choose, so it travels as
+        # an environment value and is never spliced into a command.
+        env:
+          TESTAMENT_KEY: ${{ secrets.TESTAMENT_KEY }}
+          TESTAMENT_COORDINATOR: ${{ vars.TESTAMENT_COORDINATOR }}
+          TESTAMENT_CONSOLE: ${{ vars.TESTAMENT_CONSOLE }}
+          # A pull request's checkout is its merge commit, not a branch; this is
+          # the branch the pool's history files the run under.
+          TESTAMENT_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: python tools/ci-suite.py
 
   collector:
     # The stats collector (`collector/`) is a Cloudflare Worker with no
