@@ -37,13 +37,9 @@ otherwise attach a multi-hour interval to an unrelated review. The marker record
 the ``HEAD`` it was written at; consumption requires that same ``HEAD``, because
 a dispatch made against a different tree is not this review's dispatch. That is
 the same question the evidence store asks — facts record trees — and unlike an
-age threshold it invents no number. For a ``review.pr`` the tree it is checked
-against is the one the reviewer READ (its evidence's ``commit_reviewed``), not
-``HEAD`` at append time. The caller fixes the review's findings before appending,
-so ``HEAD`` has usually moved by then. The tree moving is not the same thing as
-this being a different review. The residual it does not cover is a
+age threshold it invents no number. The residual it does not cover is a
 re-dispatch at the *same* tree with no fresh mark, which inflates the interval;
-``/prawduct:pr`` marks on every dispatch, and :func:`measured_interval_seconds`
+``critic-begin`` marks on every dispatch, and :func:`measured_interval_seconds`
 carries a plausibility bound for what gets through anyway. That bound lives HERE,
 with the marker semantics, rather than in whichever consumer happened to be
 written first: the interval predicate has one home and every reader calls it, so
@@ -51,18 +47,17 @@ a second consumer cannot inherit the mechanism without the bound that makes it
 safe.
 
 **One slot PER CONSUMING EVENT KIND, and that is the whole concurrency design.**
-The Critic and the PR reviewer run at the same time by deliberate arrangement
-(``nonfunctional-requirements.md``: the two boundary reviews run in parallel,
-never sequentially), so a ``review.critic`` append that cleared a *shared*
-marker would delete a live PR review's measurement — silently, and only on the
-timing where the two actually overlap, which is the timing the design wants.
-Giving each kind its own file makes that failure **unreachable rather than
-avoided**: there is no shared cell to clear, so no ordering of the two appends
-can lose either measurement. That is the norm's own instruction — races are
-avoided by construction wherever a design choice can avoid them
-(``architecture.md`` § Direction) — applied in preference to the narrower fix of
-widening one consumer set, which keeps the shared cell and asks every future
-caller to be careful around it.
+Two review kinds in flight at once must never share a marker: an append that
+cleared a *shared* marker would delete the other kind's live measurement —
+silently, and only on the timing where the two actually overlap. Giving each
+kind its own file makes that failure **unreachable rather than avoided**: there
+is no shared cell to clear, so no ordering of two appends can lose either
+measurement. That is the norm's own instruction — races are avoided by
+construction wherever a design choice can avoid them (``architecture.md``
+§ Direction) — applied in preference to a shared cell every future caller must
+be careful around. One kind consumes a mark today, ``review.critic``; the PR
+reviewer that held the second slot was retired, and its recorded
+``review.pr`` events are still read (:func:`event_interval_seconds`).
 
 A kind absent from :data:`MARKER_BASENAMES` consumes nothing and marks nothing;
 adding one is adding a file, never a second consumer of someone else's.
@@ -83,12 +78,7 @@ from pathlib import Path
 #: concurrency. The mapping IS the design: two kinds cannot contend because they
 #: never address the same path, so this is the place a future kind is added, and
 #: adding one here gives it a slot rather than a share of someone else's.
-#:
-#: ``review.pr``'s basename is unchanged from when it was the only one. A rename
-#: would strand any marker a running PR review had already written, turning a
-#: plugin upgrade mid-review into a lost measurement for no benefit.
 MARKER_BASENAMES = {
-    "review.pr": ".pr-review-dispatch.json",
     "review.critic": ".critic-review-dispatch.json",
 }
 
@@ -175,23 +165,17 @@ def measured_interval_seconds(dispatched_at, wrote_at) -> "float | None":
     return seconds
 
 
-#: The tree argument :func:`consume` receives when the review's own record names
-#: a commit this repo cannot resolve. It is refused by name. Comparing it as text
-#: would only ever produce a "different tree" reason, which would call a real
-#: review an abandoned one.
-UNRESOLVED_TREE = "<unresolved>"
-
-
 def event_interval_seconds(event: dict) -> "float | None":
     """Seconds a ledger event's dispatch mark attests, or ``None``.
 
     The event-level door to :func:`measured_interval_seconds`, and the one
-    place that decides where an interval ENDS. A ``review.pr`` event carries
+    place that decides where an interval ENDS. A recorded ``review.pr`` event
+    (written until the PR reviewer was retired; nothing writes one now) carries
     ``review_written_at``, the time the reviewer's evidence file was written.
-    That is the end, because the append comes later: the caller fixes findings
-    between the two, and that time is not review time. Every other event ends at
-    its own ``ts``, which is also the fallback for rows written before the key
-    existed. All three readers call this, so none of them picks the end on its
+    That is its end, because the append came later: the caller fixed findings
+    between the two, and that time was not review time. Every other event ends
+    at its own ``ts``, which is also the fallback for rows written before the
+    key existed. Every reader calls this, so none of them picks the end on its
     own.
     """
     end = event.get("review_written_at")
@@ -223,42 +207,6 @@ def fact_interval_seconds(fact: dict) -> "float | None":
     if not isinstance(body, dict):
         return None
     return measured_interval_seconds(body.get("dispatched_at"), fact.get("ts"))
-
-
-def resolve_commit(project_dir: Path, rev) -> str | None:
-    """``rev`` as a full commit sha, or ``None`` when it names no commit here.
-
-    The PR reviewer records the tree it read as ``commit_reviewed``. The
-    protocol asks for a full sha, but an abbreviated one names the same commit,
-    so it is resolved rather than compared as text. A strict text match would
-    report a real review as an abandoned one.
-    """
-    if not isinstance(rev, str) or not rev.strip():
-        return None
-    try:
-        proc = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", f"{rev.strip()}^{{commit}}"],
-            cwd=str(project_dir), capture_output=True, text=True, timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout.strip() or None
-
-
-def file_written_at(path: Path) -> str | None:
-    """``path``'s mtime as a UTC stamp in the marker's own format, or ``None``.
-
-    Second resolution, truncated, like :func:`begin`'s stamp. Both are
-    truncated the same way, so a file written after a mark can never read as
-    earlier than it.
-    """
-    try:
-        mtime = path.stat().st_mtime
-    except OSError:
-        return None
-    return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def marker_path(prawduct_dir: Path, event_kind: str) -> Path:
@@ -313,8 +261,7 @@ def peek(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str | N
 def consume(prawduct_dir: Path, event_kind: str, head: str | None) -> tuple[str | None, str]:
     """Take the dispatch stamp for an append. Returns ``(stamp, reason)``.
 
-    ``head`` is the tree this review was OF: the envelope's ``HEAD`` for a
-    Critic append, and the resolved ``commit_reviewed`` for a PR append.
+    ``head`` is the tree this review was OF: the envelope's ``HEAD``.
 
     ``stamp`` is ``None`` whenever the append must be recorded as not measured,
     and ``reason`` always says which case it was — an unnamed degradation on an
@@ -360,12 +307,6 @@ def _judge(
         return None, "dispatch mark carries no timestamp — recorded as not measured", True
 
     marked_head = record.get("head")
-    if head == UNRESOLVED_TREE:
-        return None, (
-            "dispatch mark cannot be checked against a tree (the review's "
-            "commit_reviewed names no commit in this repo), so it is recorded "
-            "as not measured"
-        ), True
     if marked_head is None or head is None:
         # Both sides null compares EQUAL, which would attach the mark with no
         # staleness protection at all — on the one input where we cannot show it

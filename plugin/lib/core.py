@@ -94,9 +94,7 @@ GITIGNORE_ENTRIES = [
     # section it already has, without being told to add anything.
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
-    ".prawduct/.pr-reviews/",
     ".prawduct/.critic-review-dispatch.json",
-    ".prawduct/.pr-review-dispatch.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",

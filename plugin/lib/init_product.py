@@ -18,7 +18,6 @@ Creates:
                                                        live ``change-log.md`` — see below)
   - ``.prawduct/artifacts/project-preferences.md``    (template)
   - ``.prawduct/artifacts/boundary-patterns.md``      (template)
-  - ``.prawduct/.pr-reviews/``                        (dir)
   - ``AGENTS.md``                                     (thin static governance anchor — §4)
   - ``CLAUDE.md``                                     (imports AGENTS.md; created as exactly ``@AGENTS.md``)
   - ``.claude/settings.json``                         (committed install reference)
@@ -62,7 +61,7 @@ _STATE_TEMPLATES: list[tuple[str, str]] = [
     (".prawduct/artifacts/boundary-patterns.md", "boundary-patterns.md"),
 ]
 
-_SCAFFOLD_DIRS = (".prawduct", ".prawduct/artifacts", ".prawduct/.pr-reviews")
+_SCAFFOLD_DIRS = (".prawduct", ".prawduct/artifacts")
 
 
 def _subs(name: str) -> dict[str, str]:

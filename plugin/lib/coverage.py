@@ -1092,9 +1092,8 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     answers this, replacing this helper's own ``.md`` + protected-path copy
     (one of the divergent doc-only sites behind CRT-5D8Q) — **and no changed
     file is live state a non-hermetic test reads** (``TEST_COUPLED_STATE``,
-    COV-4H7N). The fast path skips the Critic, the PR review AND the suite in
-    one move, so it has to clear both questions: PR #125 changed only
-    ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
+    COV-4H7N). The fast path skips the Critic AND the suite in one move, so
+    it has to clear both questions: PR #125 changed only ``.prawduct/*.md`` plus ``project-state.yaml``, rode this path, and broke
     ``test_norm_probes`` on develop with nothing to catch it. The two reasons
     are reported separately because the remedies differ — one needs a review,
     the other needs a suite run. A
@@ -1102,10 +1101,9 @@ def _pr_diff_is_doc_only(project_dir: Path) -> tuple[bool, str]:
     owns — PR-5K8D) is judgeable, so it still
     never rides the fast path. The status message names the specific reason
     for False (``no-base``, ``git-failed``, ``empty-diff``,
-    ``not-doc-only: <files>``) so both the CLI gate and the stop-hook Gate 3
-    can surface actionable detail without re-implementing the diff
-    inspection. Base resolution mirrors ``_coverage_resolve_base`` so the
-    helper sees the same diff surface as the cumulative-Critic flow.
+    ``not-doc-only: <files>``) so the CLI gate can surface actionable detail
+    without re-implementing the diff inspection. Base resolution mirrors
+    ``_coverage_resolve_base`` so the helper sees the same diff surface as the cumulative-Critic flow.
     """
     from . import coverage_algebra  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
@@ -1519,8 +1517,8 @@ def check_change_log_entry(project_dir: Path) -> int:
 
     # The entry is written HERE, at Step 1c, after the last Critic review, so
     # this probe is the one point that sees a retired key on the new tag line
-    # before the PR reviewer does — and refusing it here costs one edit, not a
-    # review round.
+    # before the PR opens — and refusing it here costs one edit, not a review
+    # round.
     from . import change_log  # noqa: PLC0415 — lazy keeps this module's import DAG light
 
     retired = sorted({
@@ -1552,15 +1550,12 @@ def check_pr_doc_only(project_dir: Path) -> int:
     ``suite_coupled_files``). **The repo's declared ``suite_coupled_prefixes``
     are deliberately NOT passed here.** They answer a freshness question — re-run
     the suite — and forwarding them would make a documentation-only PR buy a full
-    cumulative Critic and PR review, a review cost nothing prices. The freshness
+    cumulative Critic, a review cost nothing prices. The freshness
     gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
 
-    The `/prawduct:pr` skill uses this to skip the cumulative-Critic and
-    PR-reviewer gates, mirroring the session-end stop-hook carveout
+    The `/prawduct:pr` skill uses this to skip its cumulative-Critic coverage
+    gate, mirroring the session-end stop-hook carveout
     (`gates.session_changes_all_non_judgeable`) at the PR boundary.
-    The stop hook's PR-review evidence gate (Gate 3) consults the same
-    helper so a doc-only PR doesn't get blocked at session end for missing
-    evidence — symmetric behavior across both gates.
 
     Exit 1 otherwise (any judgeable file — including governance-protected
     ``.md``: skill/methodology/template prose is behavioral logic, never
@@ -1571,7 +1566,7 @@ def check_pr_doc_only(project_dir: Path) -> int:
     is_doc_only, status = _pr_diff_is_doc_only(project_dir)
     if is_doc_only:
         print(
-            f"{status} — cumulative-Critic and PR-reviewer gates may be skipped."
+            f"{status} — the cumulative-Critic gate may be skipped."
         )
         return 0
     suffix = (

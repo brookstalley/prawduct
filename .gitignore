@@ -4,6 +4,8 @@
 .prawduct/.critic-findings.json
 .prawduct/.governance-ledger.jsonl
 .prawduct/.handoff-notes.md
+# Retired with the PR reviewer, which no longer writes here. Kept so the evidence
+# files an earlier version left in a checkout stay out of `git add -A` until deleted.
 .prawduct/.pr-reviews/
 .prawduct/.session-base-tree
 .prawduct/.session-git-baseline
@@ -85,4 +87,3 @@ scratchpad/
 
 # Prawduct session files
 .prawduct/.critic-review-dispatch.json
-.prawduct/.pr-review-dispatch.json

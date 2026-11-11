@@ -241,8 +241,8 @@ def affects_test_outcome(path: str, extra_prefixes: "tuple[str, ...]" = ()) -> b
 
     **Callers pass prefixes only where the question is FRESHNESS.** The
     doc-only PR fast path asks a review question and must not inherit them:
-    widening it there would make a documentation-only PR buy a full Critic and
-    PR review, which nothing priced. Passing them is therefore a deliberate act
+    widening it there would make a documentation-only PR buy a full Critic
+    review, which nothing priced. Passing them is therefore a deliberate act
     at each site, not a default the predicate applies on its own.
     """
     return (

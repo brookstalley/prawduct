@@ -65,47 +65,42 @@ class TestVerifyObservationsArePrePriced:
         assert "rides an already-planned commit" in content
 
 
-class TestPrUpdateDefinesSubstantive:
-    """`If substantive changes` was the whole test, so "substantive" was decided
-    by eye — and a delta of records plus a base sync reads as changes. Both
-    non-substantive shapes get a command that answers instead."""
+class TestPrUpdateDecidesNothingByEye:
+    """`If substantive changes` was once the whole test, so "substantive" was
+    decided by eye — and a delta of records plus a base sync reads as changes.
+    The answer was a command per shape (`cost-of-commit` over the delta since
+    the PR reviewer's `commit_reviewed`). With the reviewer retired (#1129) the
+    question is the coverage gate's own: it composes over trees at HEAD, passes
+    a delta that needs no review and names what one that does needs. So the
+    Update flow runs it, and the hygiene check, on every update — and the
+    property survives: nothing there is judged by eye."""
 
-    def test_substantive_is_defined_by_judgeability(self) -> None:
-        # "authored on this branch" is load-bearing, not decoration: a base-sync
-        # merge's diff DOES contain judgeable paths, so without it the definition
-        # contradicts the second bullet it introduces.
-        content = flowed(PR_SKILL)
-        assert "at least one **judgeable path authored on this branch**" in content, (
-            "the PR Update flow no longer defines substantive, so the reviewer "
-            "re-runs on whatever the agent's judgement calls a change."
+    def _step_2(self) -> str:
+        update = flowed(PR_SKILL).split("## Update Flow", 1)[1].split(" ## ", 1)[0]
+        return update.split(" 2. ", 1)[1].split(" 3. ", 1)[0]
+
+    def test_every_update_reruns_both_gates(self) -> None:
+        step = self._step_2()
+        assert "prawduct-hook check-cumulative-critic" in step
+        assert "prawduct-hook check-pr-hygiene" in step
+        assert "on every update" in step, (
+            "the Update flow runs its gates on a condition again — a condition is "
+            "a call someone makes by eye"
         )
 
-    def test_neither_case_is_decided_by_eye(self) -> None:
-        content = flowed(PR_SKILL)
-        assert "neither is judged by eye" in content
-        # One command per shape, or the definition is unactionable.
-        assert "cost-of-commit" in content
-        assert "check-cumulative-critic" in content
+    def test_the_gate_not_the_reader_decides_what_needed_review(self) -> None:
+        step = self._step_2()
+        assert "nothing here is judged by eye" in step
+        # The free shapes are named, so a reader does not skip the run on a
+        # guess about which delta is free.
+        for shape in ("`.prawduct/` records", "non-governance `.md`", "base sync"):
+            assert shape in step, shape
 
-    def test_the_cheap_reading_of_cost_of_commit_is_ruled_out(self) -> None:
-        """The fail-open this step invites. `cost-of-commit` with no arguments —
-        or with a directory — prices the WORKING tree, and by this step the
-        working tree is clean because the delta is already committed. It then
-        returns an empty `judgeable` list having read none of the delta, and an
-        agent testing only for that emptiness skips the independent reviewer
-        entirely. So the paths must be passed explicitly, and an empty priced
-        set must read as substantive rather than as free."""
+    def test_the_retired_delta_pricing_is_gone(self) -> None:
+        """The cheap reading of `cost-of-commit` (a bare call prices the clean
+        working tree and reads as free) was the fail-open the old step guarded.
+        The step no longer prices anything, so the instrument must not be named
+        as if it still did."""
         content = flowed(PR_SKILL)
-        assert "git diff --name-only" in content, "no way to obtain the delta's paths"
-        assert "**explicit file arguments**" in content
-        assert "`paths` non-empty **and** `judgeable` empty" in content
-        assert "unknown is never free" in content
-
-    def test_the_content_equivalence_limit_is_stated(self) -> None:
-        """The honest half. A comment-only edit to a `.py` or a workflow file
-        classifies as judgeable and still re-runs the reviewer — paths classify,
-        contents do not. Stating it here stops the rule from being read as
-        broader than it is and then applied by eye after all, which is the
-        failure it was written to remove."""
-        content = flowed(PR_SKILL)
-        assert "a comment-only edit to a `.py` or a CI workflow **is** judgeable" in content
+        assert "cost-of-commit" not in content
+        assert "commit_reviewed" not in content

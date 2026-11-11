@@ -7123,8 +7123,9 @@ class TestSubjectAndOracleReachTheReviewer:
     #: happened to be noticed is what left the other two rewritable in silence.
     TEST_STATUS_CLAIM_SURFACES = [
         "skills/critic/SKILL.md",
-        "skills/pr/review-protocol.md",
         "skills/pr/SKILL.md",
+        # `skills/pr/review-protocol.md` was the third, until it left with the
+        # PR reviewer (#1129).
     ]
 
     @pytest.mark.parametrize("rel_path", TEST_STATUS_CLAIM_SURFACES)

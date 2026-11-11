@@ -1,4 +1,4 @@
-"""The prose severity ceiling and its three remedies, pinned on all three surfaces.
+"""The prose severity ceiling and its three remedies, pinned on both surfaces.
 
 Comment and doc wording was the largest single category of finding volume, and no
 protocol constrained the *remedy*, so "reword the narration" was a legal
@@ -8,10 +8,11 @@ relational, or pinned with a test. Nothing else. (The measurement that motivated
 this is in the change-log entry, where a figure is the record rather than a claim
 that goes stale here.)
 
-It is stated three times because the three surfaces have disjoint audiences —
-`goals-1-3.md` is chunk mode's payload, `review-protocol.md` is what a
-final/cumulative reviewer loads, and the PR reviewer reads neither. A pointer
-across files would not be read by the reviewer who needs it.
+It is stated twice because the two surfaces have disjoint audiences —
+`goals-1-3.md` is chunk mode's payload and `review-protocol.md` is what a
+final/cumulative reviewer loads. A pointer across files would not be read by the
+reviewer who needs it. (The PR review protocol was a third surface until it left
+with the PR reviewer, #1129.)
 
 That is also why these are pins rather than prose. All three files carry token
 ceilings and stand under permanent pressure to be trimmed; this policy is the
@@ -35,17 +36,14 @@ PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 SEVERITY_SURFACES = [
     PLUGIN / "skills/critic/goals-1-3.md",
     PLUGIN / "skills/critic/review-protocol.md",
-    PLUGIN / "skills/pr/review-protocol.md",
 ]
-SURFACE_IDS = ["goals_1_3", "critic_protocol", "pr_protocol"]
+SURFACE_IDS = ["goals_1_3", "critic_protocol"]
 
 #: The ceiling's wording per surface. The Critic has no NOTE finding severity —
-#: what it would rate NOTE is an observation, owed no disposition — while the PR
-#: reviewer keeps NOTE as its own lowest severity.
+#: what it would rate NOTE is an observation, owed no disposition.
 CEILING = {
     "goals_1_3": "**Prose is an observation unless load-bearing**",
     "critic_protocol": "**Prose is an observation unless load-bearing**",
-    "pr_protocol": "**Prose is NOTE unless load-bearing**",
 }
 
 

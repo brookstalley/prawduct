@@ -52,14 +52,14 @@ call is now a red test rather than a silent runtime prompt (#730).
 `skills/backlog/cache-reads.md` names two spellings of `backlog cache-query`:
 the bare one a governed product uses and `python3 plugin/bin/prawduct-hook …`
 for this repo. Every reader that runs under a restricted tool list — the janitor
-and the `pr-reviewer` agent; the Critic stopped reading the backlog when its
-reviewers stopped reconciling it — is granted both, because a reader that silently falls back to a prompt gets
-neither an answer nor an exit 6. So whenever a reader of that file is narrowed,
-the `cache-query` grant goes in the same edit: a narrowed reader without it
-meets a permission prompt instead of an answer, and the PR reviewer's R-2 has no
-other owner in the pipeline.
+today; the Critic stopped reading the backlog when its reviewers stopped
+reconciling it, and the PR reviewer that read it was retired — is granted both,
+because a reader that silently falls back to a prompt gets neither an answer nor
+an exit 6. So whenever a reader of that file is narrowed, the `cache-query` grant
+goes in the same edit: a narrowed reader without it meets a permission prompt
+instead of an answer.
 `test_every_cache_reader_admits_both_cache_query_spellings` below enforces it
-for both readers; the runtime file no longer argues it.
+for every such reader; the runtime file no longer argues it.
 """
 
 from __future__ import annotations
@@ -316,15 +316,6 @@ _NOT_GRANTED: dict[tuple[str, str], str] = {
     # retention ends. The PR flow archives one plan by name; a fleet sweep is
     # not its to run.
     ("pr", "plan-backfill"): "cross-reference to the release checklist",
-    # The command appears ONLY inside the text Step 3 hands the `pr-reviewer`
-    # agent — it is that agent's first read, and the agent's own frontmatter
-    # grants it (`Bash(prawduct-hook pr-review-payload)`, named exactly because
-    # the sibling `pr-review-dispatch` writes and a Bash grant is a prefix
-    # match). Granting it HERE would widen the caller's no-prompt list with a
-    # command the caller has no reason to run, which is the silent growth the
-    # 2026-09-17 grant entry says must never happen.
-    ("pr", "pr-review-payload"): "instruction addressed to the pr-reviewer agent, "
-    "which carries its own grant; the caller never runs it",
 }
 
 
@@ -454,6 +445,43 @@ def test_every_instructed_command_is_granted(skill_path: Path) -> None:
         f"or — if the text is a cross-reference to another flow, or the command is "
         f"one this skill must NOT run — add it to _NOT_GRANTED with the reason."
     )
+
+
+def _pr_skill_grants_and_calls() -> tuple[list[str], set[tuple[str, ...]]]:
+    text = (SKILLS_DIR / "pr" / "SKILL.md").read_text(encoding="utf-8")
+    grant = _frontmatter_grant(text)
+    assert grant is not None
+    body = text[text.index(grant) + len(grant):]
+    calls = {
+        _hook_call_key(body, m.end())
+        for m in re.finditer(r"prawduct-hook(?=\s)", body)
+    }
+    hook_grants = [
+        t.strip() for t in grant.split(",")
+        if re.search(r"prawduct-hook\s", t)
+    ]
+    return hook_grants, {c for c in calls if c}
+
+
+def test_the_pr_skill_grants_only_what_its_body_runs() -> None:
+    """The other direction from the sweep above, for the PR skill: every
+    `prawduct-hook` grant names a command its body instructs. A grant nothing
+    runs is reach nobody reviews — the reviewer's retirement left three
+    (`pr-review-dispatch`, `ledger-append`, `cost-of-commit`) and the skill had
+    long carried a fourth (`verify-records`) that no step ran."""
+    grants, calls = _pr_skill_grants_and_calls()
+    assert len(grants) >= 15 and calls, (grants, calls)
+    unused = []
+    for grant in grants:
+        key = _key(grant)
+        words, _star = _split_star(key)
+        if not any(call[: len(words)] == words for call in calls):
+            unused.append(grant)
+    assert not unused, f"skills/pr/SKILL.md grants commands its body never runs: {unused}"
+    # Positive control on the two the flow added: each is granted AND run.
+    for cmd in ("check-pr-hygiene", "check-pr-body"):
+        assert any(_key(g)[0] == cmd for g in grants), cmd
+        assert any(c[0] == cmd for c in calls), cmd
 
 
 def test_no_stale_exemptions() -> None:
@@ -751,7 +779,6 @@ def test_an_agent_self_hosted_hook_grant_never_stands_alone(agent_path: Path) ->
 #: docstring, "Readers of the backlog cache hold both spellings").
 _CACHE_READERS = (
     ("skills/janitor/SKILL.md", "allowed-tools:"),
-    ("agents/pr-reviewer.md", "tools:"),
 )
 
 
@@ -811,9 +838,6 @@ _BUNDLED_GOVERNED_BY: dict[str, tuple[str, str]] = {
     "backlog/cache-reads.md": ("skills/backlog/SKILL.md", "allowed-tools:"),
     "backlog/migration-scrub.md": ("skills/backlog/SKILL.md", "allowed-tools:"),
     "janitor/themes.md": ("skills/janitor/SKILL.md", "allowed-tools:"),
-    # Read by the dispatched `pr-reviewer` agent, never by the pr skill, so the
-    # agent's `tools:` is the grant that governs it.
-    "pr/review-protocol.md": ("agents/pr-reviewer.md", "tools:"),
 }
 
 #: The Critic's bundled files are swept by `test_critic_skill_metadata.py`, which
@@ -843,16 +867,6 @@ _BUNDLED_NOT_GRANTED: dict[tuple[str, str], str] = {
     ("backlog/migration-scrub.md", "backlog refresh-counts"): "final hand-off step of "
     "the one-time migration; granting a recurring-use prefix for a one-time runbook "
     "would widen every backlog session",
-    # Cross-references: both name what ANOTHER party runs. The pr skill runs the
-    # coverage gate before dispatch (the reviewer is told not to re-derive it),
-    # and the builder runs the cost probe when deciding a finding's disposition.
-    ("pr/review-protocol.md", "check-cumulative-critic"): "the pr skill runs the gate; "
-    "the reviewer is told its scoping does not rest on it",
-    ("pr/review-protocol.md", "cost-of-commit"): "advice about what the builder may "
-    "run when dispositioning a finding; the reviewer reports, never dispositions",
-    # Cross-reference: a NOTE the reviewer emits for the operator to act on.
-    ("pr/review-protocol.md", "backlog sync"): "remedy text the reviewer prints for "
-    "the operator; the reviewer holds a read-only cache grant and never syncs",
 }
 
 
@@ -865,8 +879,11 @@ def _bundled_files() -> list[str]:
 
 
 def test_every_bundled_file_names_its_grant() -> None:
+    # Floor 4, from 5: the PR review protocol left with the PR reviewer (#1129),
+    # and nothing replaced it — the PR skill bundles no file now. The four that
+    # remain are the backlog skill's three and the janitor's one.
     files = _bundled_files()
-    assert len(files) >= 5, f"only {len(files)} bundled files found: {files}"
+    assert len(files) >= 4, f"only {len(files)} bundled files found: {files}"
     unmapped = [f for f in files if f not in _BUNDLED_GOVERNED_BY]
     gone = [f for f in _BUNDLED_GOVERNED_BY if f not in files]
     assert not unmapped and not gone, (
@@ -1080,7 +1097,7 @@ def test_a_short_prefix_reaches_a_write_and_a_named_op_does_not() -> None:
 
 def test_the_grant_sweep_has_subjects() -> None:
     names = {rel for rel, _ in _grant_holders()}
-    assert "skills/critic/SKILL.md" in names and "agents/pr-reviewer.md" in names, names
+    assert "skills/critic/SKILL.md" in names and "agents/critic-reviewer.md" in names, names
 
 
 def test_no_prefix_grant_reaches_a_data_plane_write() -> None:

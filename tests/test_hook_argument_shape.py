@@ -202,9 +202,6 @@ _REFUSAL_AUDITED = {
     "handoff": "names the token; exits 2 (valid preview exits 0)",
     "disposition": "names the token; exits 2 (valid record exits 1 here)",
     "archive-plan": "names the token; exits 2 (valid --dry-run exits 0)",
-    "pr-review-dispatch": "names the token; exits 1 (valid --begin exits 0)",
-    "pr-review-payload": "names the token; exits 1 — same code as a base-less "
-                         "valid run, message differs",
     "plan": "names the token; exits 2 (valid resolve exits 0) — every op parses "
             "through `_parse_plan_args`, which refuses any unknown dash token",
 }
@@ -238,10 +235,6 @@ _VALID_INVOCATIONS = {
     "handoff": ["handoff", "preview"],
     "disposition": ["disposition", "rev-1", "F-1", "--accept", "why"],
     "archive-plan": ["archive-plan", ".prawduct/artifacts/build-plan.md", "--dry-run"],
-    # Both are offline: one writes a marker into the fixture's own `.prawduct/`,
-    # the other reads git and `.prawduct/` state and opens no socket.
-    "pr-review-dispatch": ["pr-review-dispatch", "--begin"],
-    "pr-review-payload": ["pr-review-payload", "--json"],
     # The read-only op; `new`/`bind` share its parser (`_parse_plan_args`).
     "plan": ["plan", "resolve"],
 }
@@ -557,7 +550,6 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "verify-chunk-refs", "verify-records", "verify-coverage", "ledger-append",
         "handoff", "review-stats", "stats", "contribute", "aggregate-stats", "classify-diff-risk",
         "cost-of-commit",
-        "pr-review-dispatch", "pr-review-payload",
         "check-operator-verification", "accept-operator-verification",
         "verify-operator-verification", "check-change-log-entry",
         "check-branch-pushed",

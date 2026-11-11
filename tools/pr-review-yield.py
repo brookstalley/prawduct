@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""What the PR reviewer costs and what it catches, from a repo's governance ledger.
+"""What the PR reviewer cost and what it caught, from a repo's governance ledger.
+
+A reader of history. The PR reviewer was retired (#1129): `/prawduct:pr` no
+longer dispatches one and nothing writes a `review.pr` event now, so this reads
+the events a ledger already holds. It is kept as the derivation of the numbers
+that retirement cites — re-run it rather than quoting them.
 
 The consumer-overhead tool (`tools/measure-consumer-overhead.py`) answers what a
 governed repo spends in total. This answers the narrower question that tool's open
-question #2 asks and cannot: *is the PR reviewer worth what it costs* — by splitting
-its findings by goal and severity, so a payload change can be graded against yield
-rather than against wall clock alone.
-
-Run it before and after any change to `skills/pr/review-protocol.md`. A payload
-change that holds findings-per-review flat while cutting duration is the win; one
-that drops findings is a quality trade and has to be argued as one.
+question #2 asked and could not: *was the PR reviewer worth what it cost* — by
+splitting its findings by goal and severity, so its yield is graded rather than
+its wall clock alone.
 
     tools/pr-review-yield.py                 # this repo
     tools/pr-review-yield.py ../discodon     # a consumer
@@ -17,7 +18,7 @@ that drops findings is a quality trade and has to be argued as one.
 
 HAZARD, and it governs every duration this prints: `duration_seconds` is
 **self-reported by the reviewing model**, not a measured clock. Against the dispatch
-clock it runs high, worst on short reviews, and a PR review is short: about 3x on
+clock it runs high, worst on short reviews, and a PR review was short: about 3x on
 this repo's clocked rows (see `documentation/consumer-build-metrics.md` hazard 2).
 A target stated against it is a
 target stated against an estimate. Where
