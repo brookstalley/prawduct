@@ -3,6 +3,10 @@
 `status: draft · stage: requirements · area: governance · added: 2026-08-25 · source: scheduled
 backlog session · issue: https://github.com/brookstalley/prawduct/issues/715`
 
+*Note, 2026-11-11 (#1129):* `init_product`'s scaffold tuple no longer includes `.prawduct/.pr-
+reviews`; that directory went with the PR reviewer. The tuple quoted below is the tree as it stood
+when this was written.
+
 ## Problem
 
 `.prawduct/artifacts/` is hardcoded across the plugin. A product's durable specifications —

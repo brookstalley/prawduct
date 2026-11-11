@@ -13,6 +13,12 @@ Related: #830 (severity → channel — unrelated surface, no shared code); #712
 branch-landing and finished-branch probes — cited only as the nearest examples of this repo's
 "reuse the existing primitive, don't fork a classifier" convention, which this design follows too).
 
+*Note, 2026-11-11 (#1129):* this design extends `lib/pr_payload.py` (`_commit_bodies`,
+`cited_backlog_citations`) and the `pr-review-payload` command, all removed with the PR reviewer.
+The surviving reader of closure claims is `check-pr-hygiene` (`lib/pr_gate.py`), over the change
+record's `closes:` list. The design needs redrawing on that; the removed code is in the history
+before commit `8f8c9d21`.
+
 ## Correction to the requirements doc's framing
 
 **"Derive the entry at merge" cannot be literal — this repo has an explicit, load-bearing rule

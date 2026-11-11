@@ -11,6 +11,12 @@ candidate directions, explicitly leaving the choice among them — and the adapt
 choice implies — as the open question `stage: design` exists to resolve. That is what this document
 does.
 
+*Note, 2026-11-11 (#1129):* this design is built on the cache query `affecting` and
+`cachequery.items_affecting`, which were removed on the owner's ruling of 2026-11-10 with their last
+caller, and the `item_affected` path index is no longer written (#1143). The design needs its own
+changed-file query before it can be built; the removed implementation is in the history before
+commit `8cdedfaa`.
+
 ## Grounding facts
 
 Re-verified against the current tree (2026-09-10):

@@ -11,6 +11,10 @@ closed siblings from the same scan and are load-bearing evidence for this item s
 Grounding facts) — none of them has a `documentation/issues/` doc (confirmed by direct listing), so
 their GitHub issue bodies and comments are the only record of what they actually decided.
 
+*Note, 2026-11-11 (#1129):* the PR reviewer's severity contract cited below
+(`plugin/skills/pr/review-protocol.md`) was removed with the PR reviewer. The Critic's protocol is
+the one severity contract; `review.pr` ledger events remain as history and nothing writes a new one.
+
 ## Problem
 
 Notes are the largest severity class (53% of 4,321 findings in the original 2026-09-18 measurement)

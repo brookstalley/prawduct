@@ -12,6 +12,10 @@ Socket 4 of the four-socket change-evidence contract; siblings #249 (socket 1), 
 #619 (socket 3) have their own requirements/design passes. The shared contract itself
 (`.prawduct/artifacts/change-evidence-design.md`) is not restated here.
 
+*Note, 2026-11-11 (#1129):* the Merge Hygiene bullet this design adds to `plugin/skills/pr/review-
+protocol.md` (CE4-7) has no home: the PR reviewer and that file were removed. The check needs a new
+place before this is built: the Critic's protocol, or a named result of `check-pr-hygiene`.
+
 ## Summary of what ships
 
 1. **CE4-1, CE4-2, CE4-3** — two new `project-state.yaml` keys: `api_diff_producer` (opaque
