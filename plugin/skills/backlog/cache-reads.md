@@ -1,8 +1,9 @@
-# Reading the backlog cache — the contract shared by the review-time readers
+# Reading the backlog cache — the contract shared by its readers
 
-Two surfaces query the local backlog cache: the PR reviewer's R-1/R-2
-(`skills/pr/review-protocol.md`) and the janitor's Backlog Health (`skills/janitor/SKILL.md`). Each decides *what to ask and what to do
-with the answer*. **How to ask, and how to read a failure, is here**, in one home.
+The skills that query the local backlog cache — the janitor's Backlog Health
+(`skills/janitor/SKILL.md`), this skill's own find and dedup scans, and the bug-report triage
+(`skills/report-bug/SKILL.md`) — each decide *what to ask and what to do with the answer*.
+**How to ask, and how to read a failure, is here**, in one home.
 
 `/prawduct:backlog`'s own operations are a different surface with a different runbook
 (`adapter-mode.md`); this file covers only the read-only cache queries.
@@ -33,11 +34,9 @@ plugin/bin/prawduct-hook backlog cache-query …` — identical contract.
 |---|---|
 | `open` | every open item with id, title and body |
 | `by-area [--all]` | items grouped by `area`, with a count per group |
-| `affecting <path>...` | items whose `affected:` paths cover any of those files (no shipped reviewer reads it now) |
 | `search <text> [--area A]` | full-text over titles and bodies |
 | `stale [--older-than N]` | open items untouched for longer than N days (the query's default when omitted) |
 | `unstaged` | open items carrying no `stage` |
-| `created-since <ISO>` | items created at or after that instant (no shipped reviewer reads it now) |
 | `resolve <id>` | what an id names — status, `dead`, and whether it resolves at all |
 
 `resolve` goes through the alias table, so a historical citation still resolves after the item gains

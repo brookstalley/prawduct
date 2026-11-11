@@ -111,8 +111,9 @@ ITEM_COLUMNS: tuple[str, ...] = (
     "fetched_at",
 )
 
-# `affected` and `working_branch` are read by the change-overlap intersection
-# (`item_affected` below) and by ready-work's working-branch exclusion.
+# `working_branch` is read by ready-work's working-branch exclusion. `affected`
+# is stored and derived into `item_affected` below, and no cache query reads
+# either (the table's comment says what that makes them).
 #
 # **`tags` was here and is gone**, and the removal is the no-dead-fields rule
 # being applied rather than argued around. It shipped with its justification
@@ -164,6 +165,12 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     #
     # Derived from the column in the same transaction, never written
     # independently, so the two can no more disagree than the text index can.
+    #
+    # **No query reads this table or the column it derives from**: the
+    # changed-file intersection it is shaped for has no consumer, and
+    # `cachequery` serves none. By the no-dead-fields rule `tags` went under
+    # (above), both go at the next schema bump, which is a rebuild rather than
+    # a migration.
     """
     CREATE TABLE item_affected (
         item_id TEXT NOT NULL,

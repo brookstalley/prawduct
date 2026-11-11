@@ -764,20 +764,6 @@ def path_ancestors(path: str) -> list[str]:
     return ["/".join(parts[: i + 1]) for i in range(len(parts))][::-1]
 
 
-def affected_matches(entries: list[str], changed_paths) -> list[str]:
-    """The `affected` entries touched by ``changed_paths`` (consumers 1 and 4).
-
-    The set intersection that replaces a reviewer reading item text and
-    inferring. Empty means this item claims no overlap with the change — which
-    is a different answer from *this item records no paths*, and the caller that
-    cares must check ``entries`` itself rather than reading emptiness as either.
-    """
-    keys: set[str] = set()
-    for path in changed_paths:
-        keys.update(path_ancestors(path))
-    return [entry for entry in normalize_affected(entries) if entry in keys]
-
-
 #: The longest a `tag:`-prefixed label may be. GitHub caps a label name at 50
 #: characters, and a tag that cannot become a label is a tag that cannot be
 #: written — better refused at the seam than discovered as a 422.

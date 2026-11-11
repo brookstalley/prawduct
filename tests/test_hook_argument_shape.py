@@ -698,19 +698,36 @@ def test_an_argv_taking_command_still_refuses_its_own_unknown_flags(tmp_path: Pa
 
 
 def test_learnings_files_takes_argv_and_refuses_what_it_cannot_read(tmp_path: Path):
-    """The new read-only verb, on both halves of this file's contract.
+    """The read-only verb, on both halves of this file's contract.
 
     It is dispatched WITH `sys.argv[2:]` — so it is the wrapper's job, not the
     pre-dispatch guard's, to refuse an unrecognised token — and its wrapper does
-    that job. The specific hazard is the one that reached a live `.gitignore`
-    rewrite: `--for-diff` is detected with `"--flag" in argv`, so a typo'd
-    `--fordiff` read as *absent* would silently print the WHOLE rules corpus to
-    a reviewer who asked for the diff's subset, which is a wider read that looks
-    exactly like a correct one.
+    that job. The hazard is the one that reached a live `.gitignore` rewrite:
+    `--json` is detected with `"--flag" in argv`, so a typo'd `--jsn` read as
+    *absent* would hand a caller parsing JSON a plain list at exit 0.
     """
     branches = _dispatch_branches()
     assert "sys.argv[2:]" in branches["learnings-files"]
 
-    proc = _run(tmp_path, ["learnings-files", "--fordiff"])
+    proc = _run(tmp_path, ["learnings-files", "--jsn"])
     assert proc.returncode == 2
-    assert "--fordiff" in proc.stderr
+    assert "--jsn" in proc.stderr
+
+
+def test_learnings_files_refuses_for_diff_as_an_unknown_flag(tmp_path: Path):
+    """`--for-diff` was removed on the owner's ruling of 2026-11-10: no reviewer
+    reads the narrowed list. It is refused the way any unknown flag is, and the
+    refusal names the one flag that remains, so a caller holding the old
+    spelling learns what the command takes rather than getting the whole list
+    as though it had been narrowed."""
+    proc = _run(tmp_path, ["learnings-files", "--for-diff"])
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "unknown argument '--for-diff'" in proc.stderr
+    assert "(recognized flags: --json)" in proc.stderr
+    assert proc.stdout == ""
+
+    # The control: the bare command and `--json` still answer.
+    assert _run(tmp_path, ["learnings-files"]).returncode == 0
+    ok = _run(tmp_path, ["learnings-files", "--json"])
+    assert ok.returncode == 0, ok.stderr
+    assert '"files"' in ok.stdout

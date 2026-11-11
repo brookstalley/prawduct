@@ -300,55 +300,6 @@ class TestResolveContents:
 
 
 # ---------------------------------------------------------------------------
-# files_for_paths
-# ---------------------------------------------------------------------------
-
-
-class TestFilesForPaths:
-    @pytest.fixture
-    def repo(self, tmp_path):
-        _rules(tmp_path, "core.md", lf.CORE_HEADER)
-        _rules(tmp_path, "web.md", _area('  - "web/**"'))
-        _rules(tmp_path, "api.md", _area('  - "api/**/*.py"'))
-        return tmp_path
-
-    def test_empty_changed_yields_core_only(self, repo):
-        assert [p.name for p in lf.files_for_paths(lf.resolve(repo), [])] == ["core.md"]
-
-    def test_one_matching_area(self, repo):
-        got = lf.files_for_paths(lf.resolve(repo), ["web/src/App.tsx"])
-        assert [p.name for p in got] == ["core.md", "web.md"]
-
-    def test_ordering_is_core_then_areas_by_name(self, repo):
-        got = lf.files_for_paths(lf.resolve(repo), ["web/a.ts", "api/x/y.py"])
-        assert [p.name for p in got] == ["core.md", "api.md", "web.md"]
-
-    def test_a_near_miss_does_not_pull_the_area_in(self, repo):
-        got = lf.files_for_paths(lf.resolve(repo), ["api/x/y.ts"])
-        assert [p.name for p in got] == ["core.md"]
-
-    def test_an_unscoped_area_is_always_loaded(self, tmp_path):
-        # A non-core rules file with no `paths:` is loaded by the harness on
-        # every session. Excluding it here would hand the reviewer a shorter
-        # list than the session actually had.
-        _rules(tmp_path, "core.md", lf.CORE_HEADER)
-        _rules(tmp_path, "always.md", "# always\n")
-        layout = lf.resolve(tmp_path)
-        assert [p.name for p in lf.files_for_paths(layout, [])] == [
-            "core.md",
-            "always.md",
-        ]
-        assert [p.name for p in lf.files_for_paths(layout, ["web/a.ts"])] == [
-            "core.md",
-            "always.md",
-        ]
-
-    def test_legacy_layout_yields_nothing(self, tmp_path):
-        _legacy(tmp_path)
-        assert lf.files_for_paths(lf.resolve(tmp_path), ["src/a.py"]) == []
-
-
-# ---------------------------------------------------------------------------
 # scaffold_core
 # ---------------------------------------------------------------------------
 

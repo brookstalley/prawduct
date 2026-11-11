@@ -49,8 +49,8 @@ this inventory is exhaustive rather than sampled.
 | 3 | ~~C-B2 dedup evidence~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **count and ids by `area`** |
 | 4 | ~~C-B3 missing hygiene step~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **open items by `area`**, joined to the changed-file set |
 | 5 | ~~C-B4 dangling id~~ — retired 2026-11-10 with the Critic's backlog walk (#1128) — no shipped reader | **does this id resolve** — including through aliases, including dead items |
-| 6 | PR R-1 resolved items | same as #1 |
-| 7 | PR R-2 closes/status disagreement | **status by id**, alias-resolving |
+| 6 | ~~PR R-1 resolved items~~ — retired 2026-11-10 with the PR reviewer (#1129) — no shipped reader | same as #1 |
+| 7 | `check-pr-hygiene`: closes/status disagreement | **status by id**, alias-resolving |
 | 8 | Janitor: group by area | items grouped by `area` |
 | 9 | Janitor: dedup candidates | **text search within an area** (the FTS requirement) |
 | 10 | Janitor: stale items | open items not updated in >90d — from provider `updated_at` (§2.1) |
@@ -61,8 +61,8 @@ this inventory is exhaustive rather than sampled.
 | 15 | `stalled-transition` probe | id → **live? + date floor**, from provider `updated_at` |
 
 **The union is small.** Open-item listing with text; grouping and counting by `area`; id
-resolution through aliases including dead items; creation-time filtering; text search scoped to
-an area; and two date predicates. That is the whole schema surface. The cache does not need to
+resolution through aliases including dead items; text search scoped to an area; and two date
+predicates. That is the whole schema surface. The cache does not need to
 be elaborate, and it should not become so.
 
 ### 2.1 What the consumer pass found — restoring the cache is not sufficient
@@ -116,14 +116,6 @@ strength of consumers 10, 13 and 15. Applying *observable beats stored* removes 
 fields are writable and the two are no longer a dedup question — both shipped. The **new
 `affected` field (§3) has the same write path available to it**; nothing that exists today
 waits on this.
-
-### 2.2 One consumer gets better, not merely restored
-
-Consumer 4 (C-B3) and consumer 1 today require a reviewer to read item text and infer whether
-the diff touches it. With the `affected` field (§3) indexed, that becomes a set intersection
-against the changed files. That is the one place this work produces a capability the markdown
-backend never had, and it is the strongest argument for `affected` over leaving `refs` as free
-text.
 
 ## 3. Domain model — vocabulary
 
@@ -390,7 +382,7 @@ writes the same body a sync would have written moments later.
 
 `[DECISION: mirror on write, rather than revalidate on every cache read | making `cache-query`
 revalidate the way `pick` does would also catch foreign writes, but it costs a request per read in
-a Critic walk that issues several, and it would put a network dependency inside the one module
+a janitor sweep that issues several, and it would put a network dependency inside the one module
 whose stated property is that it never touches the network. Our own writes are the dominant source
 and the only one fixable for free | user can veto/override]`
 

@@ -596,11 +596,9 @@ def spawn_sync(
     Until this existed, the only writer reachable from outside a test was a human
     typing ``prawduct-hook backlog sync``: nothing scheduled it and no hook spawned
     it, so every consumer's freshness had an owner in principle and none in
-    practice — age visible, nothing making it small. That gap is sharpest for the
-    consumers this trigger was added for, which are **restricted-tool agents** (the
-    Critic's reconciliation walk, the PR reviewer's checks): ``cachequery``'s
-    "run ``prawduct-hook backlog sync``" reaches a reader who cannot run anything
-    that writes.
+    practice — age visible, nothing making it small. That gap is sharpest for an
+    agent granted ``cache-query`` and not ``sync``: ``cachequery``'s "run
+    ``prawduct-hook backlog sync``" reaches a reader who cannot run it.
 
     Deliberately the same shape as ``snapshot.spawn_refresh`` — fire-and-forget,
     own session, ``PRAWDUCT_UNATTENDED=1``, returns immediately — rather than a new

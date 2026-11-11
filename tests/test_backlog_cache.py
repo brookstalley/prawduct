@@ -1114,15 +1114,8 @@ class TestMirrorOnWrite:
         assert by_alias["status"] == "ok"
         assert by_alias["data"]["resolved"] is True
 
-        affecting = cachequery.items_affecting(
-            repo_dir,
-            scope=SCOPE,
-            now=NOW,
-            changed_paths=["plugin/lib/backlog/sync.py"],
-            open_only=True,
-        )
-        assert affecting["status"] == "ok"
-        assert canonical in [item["id"] for item in affecting["data"]["items"]]
+        # The path index, read the way `_affecting` reads it.
+        assert canonical in _affecting(repo_dir, ["plugin/lib/backlog/sync.py"])
 
         # Gated on the STORE's capability, never on the search result: keying the
         # assertion off the answer would let a search that returns nothing read as

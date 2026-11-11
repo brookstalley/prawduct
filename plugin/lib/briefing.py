@@ -1553,10 +1553,10 @@ def _spawn_cache_warm(project_dir: Path, scope: str, *, popen=None) -> bool:
     The cache's only automatic sync trigger — writes mirror themselves into the
     store, so this is what brings in edits made elsewhere. It rides the same
     session-start moment as the counts
-    warm and for the same reason — the readers that consume it (the Critic's
-    reconciliation walk, the PR reviewer's checks, the janitor's Backlog Health)
-    run later in the session, so warming at the start is what makes their visible
-    age small instead of merely honest.
+    warm and for the same reason — the readers that consume it (the backlog
+    skill, the janitor's Backlog Health, the bug-report triage,
+    ``check-pr-hygiene``'s closure check) run later in the session, so warming
+    at the start is what makes their visible age small instead of merely honest.
 
     **Its outcome is deliberately discarded, where the snapshot warm's is not.**
     The snapshot warm decides what the briefing line may claim, because a
