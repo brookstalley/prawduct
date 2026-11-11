@@ -8277,6 +8277,9 @@ def _status_block_span(lines: list[str]) -> "tuple[int, int] | tuple[str, str] |
       deleting to EOF deletes whatever trails it;
     - a code fence or an unclosed HTML comment inside the span — a ``## ``
       line inside either is not the heading the bounds stopped at;
+    - a heading inside the span — the reader runs past ``###`` so a plan that
+      keeps its chunk definitions under ``## Status`` still reads, which makes
+      the span every one of those definitions, open chunks included;
     - an HTML comment trailing the block's last item — it reads exactly like
       the next section's banner, and deleting it loses that section's prose.
 
@@ -8325,6 +8328,15 @@ def _status_block_span(lines: list[str]) -> "tuple[int, int] | tuple[str, str] |
             if "-->" in stripped[stripped.find("<!--") + 4 if opened else 0:]:
                 in_comment = False
             continue
+        hashes = len(stripped) - len(stripped.lstrip("#"))
+        if 1 <= hashes <= 6 and (len(stripped) == hashes or stripped[hashes].isspace()):
+            return (
+                "status-block-undelimited",
+                f"a heading at line {index + 1} sits inside the `## Status` section, so "
+                "the section holds more than the block and removing it would take what "
+                "is under that heading; add a `## ` heading before it, or remove the "
+                "block by hand",
+            )
         if stripped:
             last_content = index
             trailing_comment = None
