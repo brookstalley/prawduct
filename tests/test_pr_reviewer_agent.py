@@ -106,8 +106,10 @@ class TestAgentDefinitionExists:
         assert _field(_frontmatter(AGENT_DEF), "description")
 
     def test_model_is_inherit(self):
-        # `/prawduct:pr` Step 3 promises the reviewer runs on the session model.
-        # A pinned model here would make that sentence false without touching it.
+        # `/prawduct:pr` Step 3 passes no Agent `model` when the session is at or
+        # below the reviewer ceiling, and promises the reviewer then runs on the
+        # session model. A pinned model here would make that false without
+        # touching it.
         assert _field(_frontmatter(AGENT_DEF), "model") == "inherit"
 
 

@@ -159,7 +159,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   repeatable, de-duplicated, normalised to the plan's spelling; `--chunk` stays as a one-element
   alias for one release; omitted, the declared set is the code-derived proposal; an id the plan
   does not declare is refused before the tree capture as `unknown-chunk` (exit 1); an empty id is a
-  usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note),
+  usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note;
+  `--session-model <id>` is the model the dispatcher runs as, from which code answers the
+  manifest's `reviewer_model` and prints it as a `reviewer model:` line — absent, the reviewer
+  ceiling is assumed and a note says so; `--tier` never moves it),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
@@ -178,9 +181,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   shipped verb, safe because `critic-consolidate` is the only `review.critic` appender and no
   skill or doc tells a human to append one);
   each kind owns its own marker, so an append can never reach another kind's — `data-model.md`
-  § Direction), `pr-review-dispatch --begin` (write the PR reviewer's dispatch mark, mutating — a
-  per-clone stopwatch, never an answer; the Critic's equivalent is written by `critic-begin` itself
-  and has no separate verb), `pr-review-payload [--json] [<project dir>]`
+  § Direction), `pr-review-dispatch --begin [--session-model <id>]` (write the PR reviewer's dispatch mark,
+  mutating — a per-clone stopwatch, never an answer; the Critic's equivalent is written by
+  `critic-begin` itself and has no separate verb; it also prints the `reviewer model:` line
+  `critic-begin` prints, answered the same way, before attempting the mark), `pr-review-payload [--json] [<project dir>]`
   (assemble the PR reviewer's context in one pass; read-only, emits no verdict, fails soft per
   section with each degradation named), `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `contribute [--json]` (preview the anonymous stats reports this clone would contribute, as their exact bytes and one digest; read-only, opens no socket) and `contribute --send [--approve sha256:<digest>]` (send them to the pinned collector, mutating the per-clone sent record; exit 2 when the product has not opted in, the digest does not match, or no collector is pinned, and 1 when a send fails), `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused

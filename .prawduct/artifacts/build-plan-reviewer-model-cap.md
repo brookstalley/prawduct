@@ -110,6 +110,21 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
   being pasted into the dispatch prompt by the fork.
 
 **Decisions made mid-build:** *(appended while building)*
+- The family fold and the ceiling share one leaf module, `plugin/lib/model_tier.py`; `review-stats`'s
+  `_canonical_model` is that module's function, not a copy. Settled by "every fact has one home".
+- Both commands print the answer as one line, `reviewer model: <alias>` or `reviewer model: none`,
+  followed by what to do with it; `critic-begin` also writes it to the manifest. The PR mark's
+  existing reader parses its `dispatch marked:` line, so the answer is a line of its own. Settled by
+  the architecture goal that dispatch prose passes what code answered.
+- `pr-review-dispatch` prints the answer before attempting the mark, so a clock that cannot be
+  written keeps the cap. Settled by the product goal: nothing runs on the session's tier by accident.
+- The PR skill's grant for the mark widens to the house form `--begin*`, which covers
+  `--session-model` and nothing past `--begin`. Settled by `tests/test_skill_command_grants.py`'s
+  house grant form.
+- The amendment to the table-row norm sits in its Why cell with the owner's words and no
+  `[DECISION: …]` block: the index parser splits cells on `|`, and the owner made the call directly
+  (`docs/norms.md` "One standard"). `nonfunctional-requirements.md` carries the `Amended:` line and
+  a `Retires:` line for the two sentences the cap made false. Settled by `docs/norms.md` § Amendment.
 
 **Level:** Medium. The design rests on host behaviour read from the documentation on 2026-11-11
 and not all yet observed: an Agent call's `model` overrides a plugin agent's `model: inherit`
@@ -138,7 +153,7 @@ advanced, and is queued for that session rather than claimed here.
   skill pass that answer as the Agent call's `model` and pass none when there is none. Record the
   amendment in the norm's entry in `project-preferences.md` and in
   `nonfunctional-requirements.md` § Direction, and correct every sentence the cap makes false:
-  the "Model floor and coherence pass" preference and its enforcement row ("no machinery selects
+  the "Model floor and coherence pass" preference and its enforcement row ("no machinery selects <!-- prawduct:allow prawduct/retired-claim-survives -- the plan names the retired claims it corrects -->
   models at dispatch time", "the runtime cannot observe which model it is"), the paused-tiering
   comments in `plugin/lib/telemetry.py` and `plugin/lib/risk.py` where they describe reviewers,
   and the reviewer-dispatch prose. Rewrite `tests/preferences/test_reviewer_model_dispatch_prose.py`

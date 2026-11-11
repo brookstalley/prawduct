@@ -228,7 +228,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # clone that never consolidated one; the clause naming writers went, and `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan" (-1). Ceiling lowered with it.
     # -231 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
-    "single-pass-inner": 5575,
+    # +11 on 2026-11-11 (reviewer-model-cap), DECLARED: the Critic skill's `critic-begin` invocation
+    # carries `--session-model` (+11 on every fork route) and the coordinator's dispatch passes the
+    # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
+    # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
+    # more than any payload this table prices.
+    "single-pass-inner": 5586,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -306,7 +311,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. Ceiling lowered.
     # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
     # observation rather than refused, and the sentence saying so is shorter.
-    "single-pass-full": 9768,
+    # +11 on 2026-11-11 (reviewer-model-cap), DECLARED: the Critic skill's `critic-begin` invocation
+    # carries `--session-model` (+11 on every fork route) and the coordinator's dispatch passes the
+    # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
+    # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
+    # more than any payload this table prices.
+    "single-pass-full": 9779,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -454,14 +464,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -1779 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the reviewer's path; consolidation records record-lint results itself. Ceiling lowered with it.
     # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
     # observation rather than refused, and the sentence saying so is shorter.
-    "coordinator-fork": 10350,
+    # +41 on 2026-11-11 (reviewer-model-cap), DECLARED: the Critic skill's `critic-begin` invocation
+    # carries `--session-model` (+11 on every fork route) and the coordinator's dispatch passes the
+    # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
+    # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
+    # more than any payload this table prices.
+    "coordinator-fork": 10391,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5576,
-    "single-pass-full": 9769,
+    "single-pass-inner": 5587,
+    "single-pass-full": 9780,
     "dispatched-reviewer": 9139,
-    "coordinator-fork": 10351,
+    "coordinator-fork": 10392,
 }
 
 

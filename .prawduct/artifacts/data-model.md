@@ -413,8 +413,9 @@ release-pending entries into fragments.
   keys clear themselves.
 - **Dispatch manifest + partials** — `.prawduct/.critic-partials/manifest.json` (code-written at
   `critic-begin`: the tree interval, the roster a review will attest, `rendezvous`, the resolved
-  per-role write paths, and the review `stage` with the code-rendered `signals` line every reviewer
-  is handed) and one partial per reviewer at those paths (model-written, schema-validated
+  per-role write paths, the review `stage` with the code-rendered `signals` line every reviewer
+  is handed, and `reviewer_model`, the model a reviewer is dispatched on or null for the session's
+  own — dispatch guidance no verdict reads) and one partial per reviewer at those paths (model-written, schema-validated
   before consolidation, each declaring the `dispatch_id` that binds it to its review). Partial paths
   are keyed by review id, so two reviews in one worktree never share a name; the shape lives in
   `critic_consolidate.partial_path` and nothing else spells it. The whole directory is removed on

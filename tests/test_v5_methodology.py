@@ -1215,7 +1215,12 @@ LAST_MEASURED_TOKENS = {
     # writers went, shorter than the claim it replaced. -1 more the same day: `deferred`'s
     # "mid-plan nothing is unreviewed" lost "mid-plan", since a covered branch now defers too.
     # -23 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
-    "skills/critic/SKILL.md": 3077,
+    # +11 on 2026-11-11 (reviewer-model-cap), DECLARED: step 4's `critic-begin` invocation carries
+    # `--session-model`, the dispatcher's own model id, from which code answers the reviewer's
+    # model. Not paid by trimming: the flag is the cap's only input, and the clause around it is one
+    # sentence. The data-plane paragraph's `--mode <m>` left (-3), since step 4 is where the flags
+    # are given.
+    "skills/critic/SKILL.md": 3088,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1237,7 +1242,11 @@ LAST_MEASURED_TOKENS = {
     "skills/critic/cross-checks.md": 1729,
     # -17 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # +5 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING.
-    "skills/critic/coordinator.md": 582,
+    # +30 on 2026-11-11 (reviewer-model-cap), DECLARED: step 2's 'no model override' sentence
+    # becomes the rule that replaced it — pass the manifest's `reviewer_model` as each call's
+    # `model`, or none when it is null. Not paid by trimming: it replaces the sentence it falsified,
+    # compressed first, and this file is read only by a coordinator fork.
+    "skills/critic/coordinator.md": 612,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -6174,7 +6183,9 @@ class TestCriticSkillRoutesByMode:
         # review certifies — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3106 -> 3101 (second-clone-evidence, 2026-10-28) with the reading.
         # LOWERED 3101 -> 3078 (critic-trim, 2026-11-10) with the reading.
-        assert tokens < 3078, f"SKILL.md is ~{tokens} tokens, should be <3078"
+        # RAISED 3078 -> 3089 (reviewer-model-cap, 2026-11-11): step 4 passes `--session-model` —
+        # see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3089, f"SKILL.md is ~{tokens} tokens, should be <3089"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6525,7 +6536,9 @@ class TestReviewCycle:
         tokens = estimate_tokens(read_file("skills/critic/coordinator.md"))
         # LOWERED 595 -> 578 (critic-trim, 2026-11-10) with the reading.
         # RAISED 578 -> 583 (critic-trim review round), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 583, f"coordinator.md is ~{tokens} tokens, should be <583"
+        # RAISED 583 -> 613 (reviewer-model-cap, 2026-11-11): step 2 passes the manifest's
+        # `reviewer_model` — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 613, f"coordinator.md is ~{tokens} tokens, should be <613"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

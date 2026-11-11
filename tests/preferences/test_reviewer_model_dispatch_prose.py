@@ -1,82 +1,148 @@
-"""Reviewer-dispatch model prose: reviewers run on the SESSION model — no
-intelligent model switching.
+"""Reviewer-dispatch model prose: reviewers run on the session model up to the
+reviewer ceiling, and no prose chooses a model.
 
-Emergency patch (2026-07-14): the old reviewer-model-tiering scheme mapped a
-diff's risk `tier` to a model chain (`escalate` → `model: fable` → `opus`;
-`standard` → `opus` → `sonnet`) and pinned the Critic coordinator to
-`model: opus`. In practice `classify-diff-risk` returned `escalate` for almost
-any declared risk surface, so reviews escalated to Fable constantly. The
-mechanism was removed: reviewers now inherit the current session model (opus
-stays opus, fable stays fable) and no surface passes a `model:` override for the
-reviewer.
+The norm ("Reviewers run on the session model — no intelligent model
+switching", `project-preferences.md` Enforcement) was amended by the owner on
+2026-11-10 — "Yes cap at opus" — so a session above Opus-class dispatches its
+reviewers on Opus-class, and every other session dispatches them on its own
+model, as before. What stays forbidden is what the norm was written against: a
+model chosen by the diff's risk `tier` (the removed scheme escalated nearly every
+review to the most expensive tier), and a model pinned in prose or front matter.
 
-These are structural regression pins against re-introducing intelligent
-model switching. The `classify-diff-risk` command and the Critic `--tier`
-telemetry are intentionally retained (tier is recorded but selects no model);
-the model-recording plumbing and `review-stats` aggregation are unaffected.
+So the answer comes from code: `critic-begin --session-model` and
+`pr-review-dispatch --begin --session-model` answer it with
+`model_tier.reviewer_model_for`, and the dispatch surfaces pass that answer as
+the Agent call's `model`, or pass none. These pins hold the prose side:
+
+- no dispatch surface spells a model alias, so none can pick a model itself;
+- each names the session model and the ceiling, and takes the model from the
+  code's answer;
+- the reviewer agents keep `model: inherit` and the Critic skill's front matter
+  names no model, since a fixed model there would raise a lower-tier session's
+  reviews and fail where that model is not offered;
+- the answer has no tier input: `reviewer_model_for` takes the session model
+  alone, and the coordinator still says the tier selects no model.
 """
 
 from __future__ import annotations
 
+import inspect
+import re
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "plugin"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 _CRITIC_SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
-# The Critic's dispatch surface is coordinator.md since opus-55 W3b (C-20) moved the
-# Coordinator Pattern out of review-protocol.md.
-_CRITIC_PROTOCOL = REPO_ROOT / "skills" / "critic" / "coordinator.md"
+_COORDINATOR = REPO_ROOT / "skills" / "critic" / "coordinator.md"
 _PR_SKILL = REPO_ROOT / "skills" / "pr" / "SKILL.md"
+_CRITIC_REVIEWER = REPO_ROOT / "agents" / "critic-reviewer.md"
+_PR_REVIEWER = REPO_ROOT / "agents" / "pr-reviewer.md"
+
+#: Every surface that starts a reviewer, or is the reviewer started.
+_DISPATCH_SURFACES = [_CRITIC_SKILL, _COORDINATOR, _PR_SKILL, _CRITIC_REVIEWER, _PR_REVIEWER]
+
+#: The surfaces that write an Agent call for a reviewer, each with the token by
+#: which it takes the model from the code's answer.
+_DISPATCHERS = {
+    _COORDINATOR: "`reviewer_model`",
+    _PR_SKILL: "`reviewer model: <value>`",
+}
+
+_ALIAS = re.compile(r"\b(opus|sonnet|haiku|fable)\b", re.IGNORECASE)
 
 
-@pytest.mark.parametrize(
-    "path",
-    [_CRITIC_PROTOCOL, _PR_SKILL],
-    ids=["critic_coordinator", "pr_skill"],
-)
-def test_reviewer_dispatch_uses_the_session_model(path: Path) -> None:
-    # The reviewer-dispatch surface must direct the reviewer onto the session
-    # model — the whole point of the emergency patch. Losing this phrasing is
-    # the drift signal that some tier→model rule crept back in.
-    content = path.read_text()
-    assert "session model" in content, (
-        f"{path.relative_to(REPO_ROOT)} no longer directs the reviewer onto the "
-        "**session model** — reviewer-model switching may have been "
-        "re-introduced (emergency patch 2026-07-14)."
+def _ids(paths):
+    return [str(p.relative_to(REPO_ROOT)) for p in paths]
+
+
+@pytest.mark.parametrize("path", _DISPATCH_SURFACES, ids=_ids(_DISPATCH_SURFACES))
+def test_no_dispatch_surface_names_a_model(path: Path) -> None:
+    hits = [
+        f"{lineno}: {line.strip()[:120]}"
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if _ALIAS.search(line)
+    ]
+    assert not hits, (
+        f"{path.relative_to(REPO_ROOT)} names a model alias — a dispatch surface "
+        "passes the model code answered and never picks one:\n" + "\n".join(hits)
     )
 
 
-@pytest.mark.parametrize(
-    "path",
-    [_CRITIC_PROTOCOL, _PR_SKILL],
-    ids=["critic_coordinator", "pr_skill"],
-)
-def test_no_reviewer_model_tiering(path: Path) -> None:
-    # Any pinned reviewer model — `fable` (the escalation pin that caused the
-    # over-escalation) OR a `standard`-tier chain (`opus`→`sonnet`) — means
-    # tier→model switching is back. Reviewers must run on the session model with
-    # no `model:` override. (`model: inherit` on the critic-reviewer AGENT is the
-    # inherit-the-session posture, not a pin, and lives in a different file.)
-    content = path.read_text()
-    for pin in ("model: fable", "model: opus", "model: sonnet"):
-        assert pin not in content, (
-            f"{path.relative_to(REPO_ROOT)} pins `{pin}` — reviewer-model tiering "
-            "is back. Reviewers must run on the session model with no `model:` "
-            "override (emergency patch 2026-07-14)."
+def test_the_alias_check_can_fire() -> None:
+    """Control: the pattern catches the pins the old scheme wrote, and does not
+    fire on the words a dispatch surface legitimately uses."""
+    for pin in ("model: fable", "model: opus", "`model: sonnet`", "Opus-class", "haiku"):
+        assert _ALIAS.search(pin), pin
+    for fine in ("model: inherit", "the session model", "the reviewer ceiling", "reviewer_model"):
+        assert not _ALIAS.search(fine), fine
+
+
+@pytest.mark.parametrize("path", list(_DISPATCHERS), ids=_ids(_DISPATCHERS))
+def test_each_dispatcher_takes_the_model_from_code(path: Path) -> None:
+    content = path.read_text(encoding="utf-8")
+    assert "session model" in content, (
+        f"{path.relative_to(REPO_ROOT)} no longer names the session model, which "
+        "is what an uncapped reviewer runs on"
+    )
+    assert "ceiling" in content, (
+        f"{path.relative_to(REPO_ROOT)} no longer names the reviewer ceiling"
+    )
+    assert _DISPATCHERS[path] in content, (
+        f"{path.relative_to(REPO_ROOT)} no longer takes the reviewer's model from "
+        f"the code's answer ({_DISPATCHERS[path]})"
+    )
+    assert "pass no `model`" in content, (
+        f"{path.relative_to(REPO_ROOT)} no longer says what to do when the answer "
+        "names no model"
+    )
+
+
+@pytest.mark.parametrize("path", [_CRITIC_SKILL, _PR_SKILL], ids=_ids([_CRITIC_SKILL, _PR_SKILL]))
+def test_each_dispatch_command_is_told_the_session_model(path: Path) -> None:
+    """The answer is only as good as its input: the command each skill runs to
+    dispatch carries the model the dispatcher runs as."""
+    body = path.read_text(encoding="utf-8").split("---", 2)[2]  # the grant line is not an instruction
+    command = "critic-begin --mode" if path == _CRITIC_SKILL else "pr-review-dispatch --begin"
+    invocations = re.findall(r"`[^`\n]*" + re.escape(command) + r"[^`\n]*`", body)
+    assert invocations, f"{path.relative_to(REPO_ROOT)} no longer instructs `{command}`"
+    for invocation in invocations:
+        assert "--session-model" in invocation, (
+            f"{path.relative_to(REPO_ROOT)} runs {invocation} without "
+            "--session-model, so the cap is assumed rather than answered"
         )
 
 
-def test_critic_skill_does_not_pin_a_reviewer_model() -> None:
-    # The forked Critic must inherit the session model, so its frontmatter must
-    # NOT carry a `model:` override (it previously pinned `model: opus`).
-    frontmatter = _CRITIC_SKILL.read_text().split("---", 2)[1]
-    model_lines = [
-        line for line in frontmatter.splitlines() if line.strip().startswith("model:")
-    ]
-    assert not model_lines, (
-        "skills/critic/SKILL.md frontmatter pins a reviewer model "
-        f"({model_lines!r}) — the forked Critic must inherit the session model, "
-        "so drop the `model:` override (emergency patch 2026-07-14)."
+@pytest.mark.parametrize("path", [_CRITIC_REVIEWER, _PR_REVIEWER], ids=_ids([_CRITIC_REVIEWER, _PR_REVIEWER]))
+def test_the_reviewer_agents_inherit(path: Path) -> None:
+    frontmatter = path.read_text(encoding="utf-8").split("---", 2)[1]
+    model_lines = [ln.strip() for ln in frontmatter.splitlines() if ln.strip().startswith("model:")]
+    assert model_lines == ["model: inherit"], (
+        f"{path.relative_to(REPO_ROOT)} declares {model_lines!r}; a reviewer agent "
+        "inherits, and the dispatcher's Agent `model` is what caps it"
     )
+
+
+def test_critic_skill_front_matter_names_no_model() -> None:
+    frontmatter = _CRITIC_SKILL.read_text(encoding="utf-8").split("---", 2)[1]
+    model_lines = [ln for ln in frontmatter.splitlines() if ln.strip().startswith("model:")]
+    assert not model_lines, (
+        f"skills/critic/SKILL.md front matter names a model ({model_lines!r}) — a "
+        "fixed model would raise a lower-tier session's reviews and fail where it "
+        "is not offered; the fork routes, and hands a capped review off instead"
+    )
+
+
+def test_the_reviewer_model_has_no_tier_input() -> None:
+    from lib import model_tier
+
+    params = list(inspect.signature(model_tier.reviewer_model_for).parameters)
+    assert params == ["session_model"], (
+        f"reviewer_model_for takes {params!r} — the reviewer's model follows the "
+        "session's model alone; a tier or size input is model switching"
+    )
+    assert "`tier` is telemetry only and selects no model" in _COORDINATOR.read_text(encoding="utf-8")

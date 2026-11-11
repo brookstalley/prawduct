@@ -43,7 +43,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 
-from . import gitstate
+from . import gitstate, model_tier
 from .ledger import CONSOLIDATION_TRIGGERS, ledger_path
 from .timewindow import in_window, is_usable_bound
 
@@ -105,34 +105,14 @@ def _short_mode(mode) -> str:
 
 # Model-id families. The dispatcher records whatever model string it passed, so
 # the SAME model arrives under several ids — ``opus``, ``claude-opus-4-8``, and
-# ``claude-opus-4-8[1m]`` are one model; ``fable``/``sonnet``/``haiku`` are
-# distinct. review-stats groups by model to answer "is the deeper reviewer tier
-# paying off?" (the reviewer-model A/B), so it MUST fold those aliases to one
-# family or the dimension is pure noise. Substring match (not an exact map) so a
-# new opus/sonnet *version* folds with no code change — the drift-resilience the
-# reviewer-model fallback chains chose over pinned ids.
-# PAUSED 2026-07-14: reviewer-model tiering was removed (emergency patch —
-# reviewers now run on the session model), so the framework currently feeds this
-# dimension only one family. The fold is retained unchanged for the planned
-# restore of tiering (change-log "reviewer-session-model").
-_MODEL_FAMILIES = ("opus", "sonnet", "haiku", "fable")
-
-
-def _canonical_model(model) -> str | None:
-    """Fold a recorded model-id to its Claude family for grouping.
-
-    Returns the family label when one is recognized, the trimmed original when
-    it isn't (forward-compat: an unfamiliar model stays visible, never silently
-    bucketed under a known family), and ``None`` when no model was recorded.
-    """
-    if not isinstance(model, str) or not model.strip():
-        return None
-    lowered = model.lower()
-    for family in _MODEL_FAMILIES:
-        if family in lowered:
-            return family
-    return model.strip()
-
+# ``claude-opus-4-8[1m]`` are one model. review-stats groups by model to answer
+# which reviewer models ran and what they found, so it MUST fold those ids to
+# one family or the dimension is pure noise. The fold is the one the reviewer
+# ceiling applies (``model_tier``), so the grouping and the cap cannot disagree
+# about what an id names. Reviewers run on the session's model up to
+# Opus-class, so the families this dimension sees are the sessions' models,
+# capped there.
+_canonical_model = model_tier.canonical_model
 
 def _read_events(
     path: Path, since: "str | None" = None, until: "str | None" = None,

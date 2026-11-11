@@ -75,7 +75,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger
+from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -2960,8 +2960,15 @@ def begin_review(
     tier: str | None = None,
     force: bool = False,
     chunks: "list[str] | None" = None,
+    session_model: str | None = None,
 ) -> dict:
     """Derive and write the dispatch manifest for one review. All code.
+
+    **Which model the reviewer runs on.** ``session_model`` is the model the
+    dispatcher says it runs as; the manifest's ``reviewer_model`` is
+    :func:`model_tier.reviewer_model_for` of it — ``None`` (no override; the
+    reviewer inherits the session's model) or the ceiling alias. Without one the
+    cap applies and a note says so. ``tier`` never moves it.
 
     **Which chunks the review names (ST8, #1051).** ``chunks`` is the declared
     set; ``chunk`` is its one-element alias for one release (``chunks is None``
@@ -3801,7 +3808,14 @@ def begin_review(
         # it can only do so because the set is named here rather than silently
         # subtracted.
         "files_oracle": files_oracle,
+        # Telemetry only: the reviewer's model follows the session's model and
+        # nothing else, so the risk tier never feeds `reviewer_model` below.
         "tier": tier,
+        # The model every reviewer this review dispatches runs on, or null for
+        # no override (the reviewer inherits the session's model). Dispatch
+        # guidance derived by code from the dispatcher's own model; no gate or
+        # verdict reads it.
+        "reviewer_model": model_tier.reviewer_model_for(session_model),
         "scope": scope,
         "scope_chosen_by": scope_chosen_by,
         "scope_unresolved_cause": scope_unresolved_cause,
@@ -3850,6 +3864,8 @@ def begin_review(
     # Rendered from the three fields above, so the coordinator copies a line
     # rather than composing one.
     manifest["signals"] = signals_line(manifest)
+    if not _nonempty_str(session_model):
+        notes.append(model_tier.session_model_missing_note("critic-begin"))
     ok, reason = validate_manifest(manifest)
     if not ok:
         # A manifest this function derived failing its own validator is a bug
@@ -4118,7 +4134,8 @@ def validate_manifest(data) -> tuple[bool, str]:
     has no commit), ``chunks``/``chunks_proposed`` (lists of ids; ``chunk``
     must then be ``chunks[0]`` or null),
     ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
-    ``base_reviewed``, ``worktree``/``branch`` (visibility fields; ``branch`` is
+    ``base_reviewed``, ``reviewer_model`` (the model a reviewer is dispatched
+    on; null for no override), ``worktree``/``branch`` (visibility fields; ``branch`` is
     None on a detached HEAD — PDT-WT9K). Optional and typed: ``stage``
     (``inner``/``boundary`` — the severity rule keys on it), ``judgeable_files``,
     ``chunk_type`` and ``signals`` (the code-rendered reviewer line), absent
@@ -4208,7 +4225,7 @@ def validate_manifest(data) -> tuple[bool, str]:
         )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
-                "chunk_type", "signals", "dispatch_tree"):
+                "chunk_type", "signals", "dispatch_tree", "reviewer_model"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
