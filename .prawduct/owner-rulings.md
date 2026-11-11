@@ -159,3 +159,10 @@ parts — an Access Paths section in the data-model template, one Goal 7 line in
 protocol rated WARNING at most, and a corrected Performance row in the concerns registry — are
 recorded in `.prawduct/changes/read-cost-review.md`. The two upstream reports were staged the
 same day, on #1137 and #1141.
+
+**2026-11-11.** "Yes to all of your recommendations"
+On four recommendations made after an ad hoc test of the read-cost check: run more blind reviewer
+replicates before merging, to see whether the new check draws attention from other defects; leave
+a per-item query rated by the rule as written rather than warned on regardless of the store; open
+the pull request for `feature/read-cost-review` once the replicates are in; and fix #1137 on its
+own branch. The replicate result is recorded in `.prawduct/changes/read-cost-review.md`.
