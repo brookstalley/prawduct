@@ -69,8 +69,8 @@ No start was found that names no model and is not covered by `methodology/delega
 ## Consumer note
 On a session running a model stronger than Opus-class, Critic and PR reviews now run on
 Opus-class instead of on the session's model, and `/prawduct:backlog` and `/prawduct:advisory`
-run on Sonnet-class on every session. A capped `chunk` or `verify-resolutions` review is handed
-by the Critic to one background reviewer, so `/prawduct:critic` returns before the review lands:
-run `prawduct-hook critic-consolidate` before reading the findings, as after a three-reviewer
-review. Sessions on Opus-class or below review exactly as before. `prawduct-hook review-stats`
+run on Sonnet-class on every session. On a capped session every single-pass review, whatever its
+mode, is handed by the Critic to one background reviewer, so `/prawduct:critic` returns before the
+review lands: run `prawduct-hook critic-consolidate` before reading the findings, as after a
+three-reviewer review. Sessions on Opus-class or below review exactly as before. `prawduct-hook review-stats`
 gains a count of reviews that ran above the ceiling.
