@@ -735,7 +735,11 @@ LAST_MEASURED_TOKENS = {
     # only the fork to consolidate. Compressed in place first.
     # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): the boundary stage is `cumulative` alone; the PR
     # review left it. A READING; ceiling lowered with it.
-    "skills/critic/review-protocol.md": 3863,
+    # +186 on 2026-11-11 (read-cost-review), DECLARED: Goal 7 rates a read whose cost follows the
+    # size of what it reads from (owner ruling 2026-11-11). A new check, so there was no
+    # restatement to cut; the bullet was compressed first (219 as first drafted). Priced with the route
+    # sums in test_reviewer_payload_budget.py.
+    "skills/critic/review-protocol.md": 4049,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -1545,7 +1549,9 @@ LAST_MEASURED_TOKENS = {
     # -171 the same day (audit-guidance, #1133): the closed list of reasons to ask for approval
     # and its standing negatives are gone; the section discloses and routes to the `Delegation`
     # preference. A READING.
-    "methodology/planning.md": 5749,
+    # +3 on 2026-11-11 (read-cost-review): the Data Model line names the template's Access Paths
+    # section. A READING.
+    "methodology/planning.md": 5752,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -5659,7 +5665,8 @@ class TestCriticSkill:
         # RAISED 3855 -> 3869 (reviewer-model-cap, 2026-11-11): only the fork consolidates — see
         # LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3869 -> 3864 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 3864, f"review-protocol.md is ~{tokens} tokens, should be <3864"
+        # RAISED 3864 -> 4050 (read-cost-review, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 4050, f"review-protocol.md is ~{tokens} tokens, should be <4050"
 
 
 # =============================================================================

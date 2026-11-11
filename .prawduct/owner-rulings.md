@@ -151,3 +151,11 @@ show the numbers are used. Landed on #1134.
 **2026-11-10.** "Yes adopt"
 On the four requirements changes (see it first, a ruling is written before the reply, mark what
 the agent originated, a third fix stops for a definition). Landed in #1135.
+
+**2026-11-11.** "yes build the three part fix and triage the reports"
+On whether a Critic review should catch a read that costs more than it returns (a lookup that
+scans for want of an index, a fetch of whole records where a few values are used). The three
+parts — an Access Paths section in the data-model template, one Goal 7 line in the Critic
+protocol rated WARNING at most, and a corrected Performance row in the concerns registry — are
+recorded in `.prawduct/changes/read-cost-review.md`. The two upstream reports were staged the
+same day, on #1137 and #1141.
