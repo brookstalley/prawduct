@@ -1400,7 +1400,7 @@ class TestDocOnlyProtectedPaths:
 
     Fork-skill prose is behavioral logic in this framework, so a PR touching
     `skills/*.md` (or methodology/, templates/, root CLAUDE.md) must not take
-    the doc-only fast path past the cumulative-Critic and PR-reviewer gates.
+    the doc-only fast path past the cumulative-Critic gate.
     Bound list: `buildplan_refs._GOVERNANCE_PROTECTED_PATHS`.
     """
 

@@ -1025,8 +1025,9 @@ Evolution rules we want to hold, so new versions stay rare:
   `ledger-append` refuses `review.pr` with the same reason. A refusal rather than the inert exit-0
   tier, because an inert `pr-review-payload` would hand a stale reviewer an empty payload to review
   and read as a clean result. Whether each goes outright or stays callable-and-inert was put to the
-  owner on 2026-11-11; the build proceeds on outright removal, and switching posture is one edit to
-  that table. As with #303, the clause's "defer removal to a major" makes this a release-time
+  owner on 2026-11-11 with that cost (a stale session cannot open a PR until it restarts), and the
+  owner ruled outright: "yes to both of your recommendations" (`.prawduct/owner-rulings.md`). The
+  same ruling covers the posture of the flag and the two queries in the note below. As with #303, the clause's "defer removal to a major" makes this a release-time
   obligation: the release carrying it should be a major, or the release notes must say why not.
 
   **REMOVED 2026-10-21 (#303, owner ruling 2026-09-28: "do").** `stamp-merged` and `regen-views` were deleted outright — the deprecate-then-remove path's *remove* step, taken by owner ruling rather than at a major boundary. Neither was ever registered by a shipped `hooks.json`, so the harness-skew retention rule below does not reach them; a copied script that still calls one now gets the usage error. The clause's "defer removal to a major" makes this a release-time obligation: the release carrying it should be a major, or the release notes must say why not. The parser's special cases for the retired `chunks=` key (comma-split, cross-line union) went in the same change.

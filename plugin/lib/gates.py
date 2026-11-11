@@ -887,10 +887,10 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
 def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
     """Load .gates-waived JSON. Returns {} if missing or invalid.
 
-    Format: {"critic": "reason", "pr": "reason", "reflection": "reason"}.
+    Format: {"critic": "reason", "reflection": "reason"}.
     Each present key signals "this gate does not apply to the current work."
     The agent writes this file when work is genuinely N/A for that gate
-    (e.g., docs-only refactor, no PR planned for this branch). The file
+    (e.g., a docs-only refactor). The file
     is auto-deleted at session start so waivers never carry across sessions.
     """
     waiver_path = prawduct_dir / ".gates-waived"
@@ -954,7 +954,7 @@ def background_tasks_in_flight(event) -> tuple[bool, list[str]]:
 
 #: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
 #: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
-#: (learnings, PR review) is not about whether the session is
+#: (the learnings gates) is not about whether the session is
 #: ending, so it keeps blocking on such a turn.
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
 
@@ -2503,7 +2503,7 @@ def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
             f"{branch} ({upstream} {upstream_sha}, {branch} {local}). The merge would take "
             "commits that no gate here has validated. Pull, re-run the gates over the "
             "tree that results, and push that — never force-push, which rewrites the "
-            "tree the PR review's `commit_reviewed` check pinned and voids the evidence.",
+            "commits the review coverage was recorded against and reopens the gap.",
             file=sys.stderr,
         )
         return 1
@@ -2514,8 +2514,8 @@ def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
             f"({state['ahead']} local, {state['behind']} remote; {branch} {local}, "
             f"{upstream} {upstream_sha}). Integrate the remote side, re-run the gates "
             "over the merged tree, and push that — never force-push, which rewrites "
-            "the tree the PR review's `commit_reviewed` check pinned and voids the "
-            "evidence.",
+            "the commits the review coverage was recorded against and reopens the "
+            "gap.",
             file=sys.stderr,
         )
         return 1

@@ -338,7 +338,11 @@ class TestPrReviewSkillContent:
         order = [
             step5.index("`prawduct-hook check-pr-body`"),
             step5.index(f"into `{path}`"),
-            step5.index(f"prawduct-hook check-pr-body {path}"),
+            # Named by placeholder in this one span: a hook command's path
+            # arguments must resolve in the tracked tree
+            # (`test_path_reference_resolution`), and this file exists for one
+            # step. Every other span names the literal.
+            step5.index("prawduct-hook check-pr-body <body file>"),
             step5.index(f"gh pr create --title \"<title>\" --body-file {path}"),
             step5.index(f"git clean -fx -- {path}"),
         ]
@@ -359,7 +363,8 @@ class TestPrReviewSkillContent:
         update = _skill().split("## Update Flow", 1)[1].split("\n## ", 1)[0]
         assert "prawduct-hook check-cumulative-critic" in update
         assert "prawduct-hook check-pr-hygiene" in update
-        assert "prawduct-hook check-pr-body .prawduct/.pr-body.md" in update
+        assert "into `.prawduct/.pr-body.md`" in update
+        assert "prawduct-hook check-pr-body <body file>" in update
         assert "gh pr edit <n> --body-file .prawduct/.pr-body.md" in update
 
     def test_step_4_catches_a_branch_that_moved_under_the_review(self):
@@ -684,23 +689,20 @@ class TestPushAndMergeChecks:
         assert "only** when that scalar is unset" in content
 
     def test_critic_cross_checks_named_as_owner(self):
-        """B (CRT-5T8N): review-cycle.md names final/cumulative as the OWNER of
-        the final-mode cross-checks, so the single-owner division is explicit
-        from the Critic side too (the PR reviewer consumes the result rather
-        than re-running it).
+        """cross-checks.md names final/cumulative as the OWNER of the final-mode
+        cross-checks: the PR gate composes that review's coverage and runs no
+        second copy of them.
 
-        Asserted on the PROPERTY — ownership stated, and the PR reviewer told not
-        to re-run — rather than on a phrase carrying the count. The count moved
-        the moment a third cross-check landed (the Records Pass), and a pin that
-        breaks on arithmetic tests the sentence rather than the division it
-        exists to protect.
+        Asserted on the PROPERTY, ownership stated, rather than on a phrase
+        carrying the count. The count moved the moment a third cross-check
+        landed (the Records Pass), and a pin that breaks on arithmetic tests the
+        sentence rather than the division it exists to protect.
         """
         content = (FRAMEWORK_DIR / "skills" / "critic" / "cross-checks.md").read_text()
         header = content.split("## Final-Mode Cross-Checks", 1)[1].split("\n### ", 1)[0]
         assert "`final`/`cumulative` owns" in header, (
             "cross-checks.md no longer names the cross-checks' owner"
         )
-        assert "the PR reviewer does not re-run them" in header
 
 
 # =============================================================================
@@ -710,10 +712,12 @@ class TestPushAndMergeChecks:
 
 class TestDiscoverability:
     def test_building_methodology_mentions_pr(self):
-        """Building methodology should mention /pr."""
+        """Building methodology sends the builder to the PR skill, and says what
+        gates a PR there."""
         content = (FRAMEWORK_DIR / "methodology" / "building.md").read_text()
-        assert "/pr" in content
-        assert "PR reviewer" in content or "PR review" in content
+        section = content.split("## Creating Pull Requests", 1)[1].split("\n## ", 1)[0]
+        assert "/prawduct:pr" in section
+        assert "check-cumulative-critic" in section or "composed coverage" in section
 
     def test_framework_claude_mentions_pr(self):
         """The framework's contract should mention /pr. It lives in AGENTS.md;

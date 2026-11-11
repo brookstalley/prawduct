@@ -163,6 +163,40 @@ flow reads its section on pull requests before drafting. Nothing checks adherenc
 code. Code owners and required reviewers are the host's to apply.
 
 **Decisions made mid-build:** *(appended while building)*
+- The closure check reads the branch's record through `change_fragments.branch_change_record`, the
+  reader built for merge-base…HEAD, and a branch that records its change only in the single-file
+  log is `unchecked` for closure rather than clean. Settled by "every fact has one home" and by
+  the rule that a check which could not look never reads as a pass.
+- The cloud-token placeholder the denylist scrubs is not reported as a credential, and a private
+  key is recognised by its header line; a key body added without its header is not caught. Settled
+  by the exception's scope: a floor for the irreversible, not a scanner.
+- A credential waiver counts on the line or the line above, as `docs/waivers.md` already defines
+  for every waiver.
+- The description file is the literal `.prawduct/.pr-body.md`, written after the coverage gate
+  passes and removed after `gh pr create`. No managed ignore entry fits it, and a new entry would
+  raise the ignore-drift advisory in every governed repo. Settled by the constraint "no new nag".
+- A doc-only PR skips the review gates and still runs `check-pr-hygiene`: a credential can sit in
+  prose. Not settled by the goals; chosen as the direction that fails closed.
+- The Update flow re-runs the coverage gate and the hygiene check on every update instead of
+  judging which deltas are judgeable; both take seconds and the coverage gate already decides that.
+  Settled by the architecture goal that nothing the flow needs is judged by eye.
+- A retired command exits 1 with one line on stderr, from one table, checked before argument
+  parsing. A `pr` key in `.gates-waived` is reported as retired with no effect.
+- This repo's own `.gitignore` keeps its `.prawduct/.pr-reviews/` line: clones hold leftover
+  evidence files, and the managed list (what `update-gitignore` adds) is what shrank.
+- `learnings_change_set`, `files_for_paths` and `encode.affected_matches` went with the operations
+  that were their only callers.
+- The cache's path index stops being written, and its table stays in the schema: a version bump
+  makes every cache read answer `unavailable` until a sync that discards the cursor and re-fetches
+  the whole backlog. Filed as #1143 to ride the next schema change. Stakes were not high enough to
+  stop for; the goals do not settle whether the item-level `affected` field should still exist,
+  and that question is on #1143 for the owner.
+- No `Retires:` line accompanies the amendments: each retired phrase survives either in a norm
+  statement that is deliberately unedited or in dated artifacts outside `archive/`, so the check
+  the line feeds would warn on text nobody may edit.
+- The credential exception is recorded as a ruling in the architecture norm's `Rulings:` field,
+  not as a temporary exception with a clock: the owner confirmed it without a term, and
+  `docs/norms.md` puts the clock on temporary exceptions only.
 
 **Level:** Medium. The removal is well understood and its sites are enumerable by query. What would
 raise it: one real `/prawduct:pr create` run through the rewritten flow

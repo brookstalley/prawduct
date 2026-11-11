@@ -19,8 +19,7 @@ consumer migration, C9 tier 1).
 
 ``schema`` rides on every record so readers can reject-or-skip explicitly
 (C7); ``kind`` namespaces the store (:data:`KNOWN_KINDS` is the set written
-today; ``promotion`` is reserved for a later constituent plan, and
-``pr-review`` was too until the PR reviewer was retired);
+today; ``promotion`` is reserved for a later constituent plan);
 ``id`` is fixed at dispatch time so consolidation is idempotent
 (CRT-4B7X) and readers dedupe. ``actor`` answers the debugging question
 ("who wrote this, when, from where, under which plugin") — Q7. Its ``branch``

@@ -749,7 +749,7 @@ class TestFullRebuild:
 
     def test_in_progress_and_submitted_items_count_as_open(self, fake, repo_dir):
         """A live item is any non-terminal status. Filtering on the literal
-        ``open`` would drop exactly the items a PR reviewer is looking for, and
+        ``open`` would drop exactly the items a closure check is looking for, and
         would do it while still reporting success."""
         working = _file(fake, title="cache: the in-progress item under test", area="backlog")
         assert core.set_status(fake, id_raw=working, target="in-progress")["status"] == "ok"

@@ -11176,8 +11176,8 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # had a live consequence: `briefing._spawn_cache_warm` fires `backlog sync`
     # detached with stderr on DEVNULL, so the refusal was silent and the cache
     # simply never warmed in an agent worktree — while every `unavailable`
-    # message names `sync` as the repair, in the one tree where a dispatched
-    # reviewer meets it.
+    # message names `sync` as the repair, in the one tree where a delegate
+    # meets it.
     # `refresh-counts` is here on the same test (#624): its one write is
     # `snapshot.snapshot_path`, which also keys off `--git-common-dir`, so it
     # lands in the clone and cannot strand. It is "a read + a local snapshot
