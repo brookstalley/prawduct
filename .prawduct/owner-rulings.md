@@ -187,3 +187,7 @@ On the read-cost check after a blind test showed it catching every planted read-
 while a defect the old protocol usually caught went unraised: the check ships, and the trade is
 accepted. Pull requests are opened for both branches, `feature/read-cost-review` and the #1137
 fix. Recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "yes merge then we'll clear and do requirements"
+On pull requests #1146 (the #1137 fix) and #1148 (the read-cost check): both merge to `develop`.
+The requirements for the seeded-defect check (#1147) are the next session's work.
