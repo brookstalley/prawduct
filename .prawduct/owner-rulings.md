@@ -27,6 +27,15 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "my one concern with 1129 is making sure it honors repo standards like PR templates -- or, if the boundary agent doesn't do that, SOMETHING does it"
+Said while #1129 (the PR reviewer folded into the boundary Critic) was being planned. It sets a
+constraint on that work: when `/prawduct:pr` opens a PR with no reviewer agent, the repo's own
+standards for a PR, its PR template named first, are still honoured by some step of the flow.
+Checked the same day: nothing in the plugin read a PR template before this, neither the reviewer's
+protocol nor the step that drafts the description, so this is a requirement the fold adds, not one
+it has to preserve. It brings the PR description into #1129, which the issue had scoped out.
+Landed in `build-plan-pr-reviewer-fold.md` (Goals, and the chunk that adds the PR gate's checks).
+
 **2026-11-11.** "1. Yes PR and merge to develop, update prawduct-live. I meant 1136 first, which I think you got. yes I think that session rule is good. Agree with your take on review-stats vs stats. ok as built for #4"
 In reply to four numbered asks at the end of the #1136 build. It settles: #1136 is opened as a PR,
 merged to `develop`, and `../prawduct-live` is advanced to the result; "1138 first" meant #1136
