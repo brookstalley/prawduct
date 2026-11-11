@@ -42,9 +42,12 @@ the owner with its cost: on an Opus-class session they drop a tier, backlog tria
 Landed in `build-plan-reviewer-model-cap.md` (#1136).
 
 **2026-11-11.** "yes let's do 1138 first, so we don't have a few runs in a different cnfig"
-In reply to whether #1136 should land before `../prawduct-live` is advanced. Read as #1136 (PR
-#1138 had already merged): the installed plugin stays where it is until the reviewer cap is on
-`develop`, so no consumer runs reviews in an in-between configuration.
+In reply to whether #1136 should land before `../prawduct-live` is advanced, where the session
+had recommended advancing it first. The words name 1138, a PR that had already merged. Unconfirmed
+which was meant. The session read it as "#1136 first" and built #1136 on that reading without
+advancing the installed plugin. The installed checkout was then advanced to `fe0fee97` (`develop`
+without #1136) at 08:35 on 2026-11-11 by someone other than that session, which fits the other
+reading: yes, advance it first. Put back to the owner on 2026-11-11.
 
 **2026-11-10.** "yes please open and  merge PR's.  and also  yes to your recommendations"
 In reply to six numbered decisions put to the owner at the end of the first build wave. It
