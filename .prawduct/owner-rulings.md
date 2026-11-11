@@ -181,3 +181,9 @@ comparison of two refs, with the answer key kept out of anything a reviewer or a
 reads; a backlog item at requirements stage first, and requirements before any build. The same
 reply approved one more batch of six runs on the existing fixture and a pull request for the
 #1137 fix. The shape is carried by the backlog item filed the same day.
+
+**2026-11-11.** "Yes to both opens, the database efficiency catches are more important than the missed finding"
+On the read-cost check after a blind test showed it catching every planted read-cost mistake
+while a defect the old protocol usually caught went unraised: the check ships, and the trade is
+accepted. Pull requests are opened for both branches, `feature/read-cost-review` and the #1137
+fix. Recorded in `.prawduct/changes/read-cost-review.md`.
