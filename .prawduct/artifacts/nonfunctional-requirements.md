@@ -104,8 +104,8 @@ last_validated: null
   is unanswerable and therefore protects nothing about the reviewer that runs today. The arm's next
   run against the live `pr` mode is a separate exercise with its own evidence, and the
   `pr-review-payload` measurements above are the first numbers it would have to work from.
-  **Resolved 2026-11-10 (owner ruling, `.prawduct/owner-rulings.md`): "yes fold PR reviewer
-  in".** The removal arm ran against the `pr` mode itself and returned remove: `/prawduct:pr`
+  **Resolved 2026-11-10 (owner ruling, `.prawduct/owner-rulings.md`):
+  "yes fold PR reviewer in".** The removal arm ran against the `pr` mode itself and returned remove: `/prawduct:pr`
   dispatches no reviewer, so this keep, its three conditions and the clock below concern no live
   control. The yield it was judged on is re-derived by `python3 tools/pr-review-yield.py`.
   Clock: the janitor's Norm Health sweep re-reads the three conditions above each run.
