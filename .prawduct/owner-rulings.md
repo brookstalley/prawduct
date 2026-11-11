@@ -172,3 +172,12 @@ On the read-cost check after the blind test found the new protocol missing a blo
 old one caught: shorten the Critic line and re-test on the same fixture first; if that does not
 recover the catch, try a preamble telling the reviewer a file can hold more than one defect. The
 outcome of each is recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "I like the pseudo defect check, but I wonder if we should actually set it up in a separate repo that pulls from either the develop branch or a dedicated test branch, with that repo having a realistic app, but with the seeded defects."
+**2026-11-11.** "Yes agreed on all counts, including expense tracking domain"
+On how review-protocol changes get tested for what they do to reviewer behaviour: a seeded-defect
+check in a separate private repo holding a realistic expense-tracking app, run as a paired
+comparison of two refs, with the answer key kept out of anything a reviewer or a protocol author
+reads; a backlog item at requirements stage first, and requirements before any build. The same
+reply approved one more batch of six runs on the existing fixture and a pull request for the
+#1137 fix. The shape is carried by the backlog item filed the same day.
