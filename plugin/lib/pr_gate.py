@@ -45,8 +45,19 @@ EXIT_UNANSWERED = 3
 #: of ``prawduct-hook evidence list --kind guard-refusal``.
 BODY_GUARD = "pr-body-template"
 
+HYGIENE_GUARD = "pr-hygiene"
+
+#: The waiver a line carries to say its credential shape is deliberate
+#: (`docs/waivers.md`): on the line itself or the line above it.
+CREDENTIAL_WAIVER = "prawduct/credential-shape"
+
 #: What each result means, in the words the output leads with.
 RESULT_MEANINGS = {
+    "credential-shape": (
+        "lines this branch adds that match the credential denylist, by file, line and "
+        f"shape (the text is never printed); a deliberate one carries `prawduct:allow "
+        f"{CREDENTIAL_WAIVER} -- <reason>`"
+    ),
     "closes-unresolved": "ids in this branch's change-record `closes:` list the backlog does not resolve",
     "closes-still-open": "ids this branch's change record closes that the branch's own backlog still has open",
     "close-owed-at-merge": "ids the PR description must carry a closing line for, so the merge closes them",
@@ -98,6 +109,48 @@ def _git(project_dir: Path, *args: str) -> tuple[int, str]:
 
 def _attributed(name: str, severity: str, what: str, exc: BaseException) -> Result:
     return Result(name, severity, unchecked=f"{what} raised {type(exc).__name__}: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# check-pr-hygiene — credential shapes on the lines this branch adds
+# ---------------------------------------------------------------------------
+
+
+def _credential_shape(project_dir: Path, merge_base: str) -> list[Result]:
+    """Refuse an added line matching the plugin's one credential denylist
+    (``backlog.transport.credential_shape``), unless it carries the waiver.
+
+    Only lines the branch ADDS in merge-base…HEAD: a credential already on the
+    base is not this PR's to answer for. The finding names file, line and the
+    shape's class — never the matched text, which would put the secret in the
+    PR flow's own output. The waiver follows `docs/waivers.md`'s placement: the
+    line itself or the one above it, read from HEAD when that one predates the
+    branch.
+    """
+    from . import record_lint, waivers  # noqa: PLC0415
+    from .backlog import transport  # noqa: PLC0415
+
+    added = record_lint._added_lines(project_dir, merge_base, "HEAD", [])
+    if added is None:
+        return [Result(
+            "credential-shape", REFUSE,
+            unchecked=f"the diff {merge_base[:8]}..HEAD could not be read",
+        )]
+    findings: list[str] = []
+    for path, lines in sorted(added.items()):
+        head_lines: list[str] | None = None
+        for number, text in lines:
+            shape = transport.credential_shape(text)
+            if shape is None or waivers.line_waives(text, CREDENTIAL_WAIVER):
+                continue
+            if number > 1:
+                if head_lines is None:
+                    code, content = _git(project_dir, "show", f"HEAD:{path}")
+                    head_lines = content.splitlines() if code == 0 else []
+                if len(head_lines) >= number - 1 and waivers.line_waives(head_lines[number - 2], CREDENTIAL_WAIVER):
+                    continue
+            findings.append(f"{path}:{number}: {shape}")
+    return [Result("credential-shape", REFUSE, findings)] if findings else []
 
 
 # ---------------------------------------------------------------------------
@@ -328,12 +381,14 @@ def _review_tree_changed(project_dir: Path) -> list[Result]:
 
 
 def _checks(base: str, merge_base: str):
-    """``(group name, the check)`` in output order. The group is what the
-    one-line clean answer says was checked."""
+    """``(group name, severity if it raises, the check)`` in output order. The
+    group is what the one-line clean answer says was checked; the severity is
+    the check's own, so a refusing check that raised fails closed."""
     return (
-        ("closes", lambda d: _closure(d, base, merge_base)),
-        ("chunks-open", _chunks_open),
-        ("review-tree-changed", _review_tree_changed),
+        ("credential-shape", REFUSE, lambda d: _credential_shape(d, merge_base)),
+        ("closes", WARNING, lambda d: _closure(d, base, merge_base)),
+        ("chunks-open", INFO, _chunks_open),
+        ("review-tree-changed", INFO, _review_tree_changed),
     )
 
 
@@ -350,12 +405,12 @@ def hygiene(project_dir: Path) -> HygieneReport:
         return HygieneReport(base=base, error=f"no merge-base between {base} and HEAD")
     _, head = _git(project_dir, "rev-parse", "HEAD")
     report = HygieneReport(base=base, merge_base=merge_base, head=head.strip())
-    for group, check in _checks(base, merge_base):
+    for group, severity, check in _checks(base, merge_base):
         report.checked.append(group)
         try:
             report.results.extend(check(project_dir))
         except Exception as exc:  # prawduct:allow prawduct/broad-except -- one check's failure must not hide the others; reported as unchecked
-            report.results.append(_attributed(group, WARNING, f"the {group} check", exc))
+            report.results.append(_attributed(group, severity, f"the {group} check", exc))
     return report
 
 
@@ -396,6 +451,19 @@ def hygiene_cmd(project_dir: Path, argv: list[str]) -> int:
     as_json = "--json" in argv
     report = hygiene(project_dir)
     exit_code = hygiene_exit(report)
+    if exit_code == EXIT_REFUSED:
+        refusing = [r for r in report.results if r.severity == REFUSE and r.items]
+        findings = [item for r in refusing for item in r.items]
+        _record_refusal(
+            project_dir, HYGIENE_GUARD, refusing[0].name,
+            {
+                "head": report.head,
+                "merge_base": report.merge_base,
+                "results": {r.name: list(r.items) for r in refusing},
+            },
+            {"findings": len(findings)},
+            "\0".join([report.head or "", *findings]),
+        )
     if as_json:
         print(json.dumps({
             "base": report.base,

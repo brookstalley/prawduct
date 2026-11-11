@@ -277,7 +277,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
   **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
   the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
-  `closes-unresolved` (warning: an id in the branch's change-record `closes:` list, read through
+  `credential-shape` (refuses: a line the branch ADDS matches the plugin's one credential denylist,
+  `backlog.transport.credential_shape`, and carries no `prawduct/credential-shape` waiver
+  (`docs/waivers.md`) on it or the line above; the output names file, line and the shape's class, never the
+  text; a multi-line private key is found by its `BEGIN … PRIVATE KEY` header line, and the cloud
+  token placeholder the denylist scrubs is not a credential), `closes-unresolved` (warning: an id in the branch's change-record `closes:` list, read through
   `change_fragments.branch_change_record`, that the backlog does not resolve), `closes-still-open`
   (warning, markdown backend only: an id the branch's own backlog at HEAD still has open),
   `close-owed-at-merge` (information, Issues backend: the ids the PR description must carry a
@@ -304,9 +308,10 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   root, the body as given. `--json` keys: `templates[]`, `contributing[]`, `searched`, `template`,
   `body`, `required[]`, `missing[]{kind, line}`, `verdict` (`follows` | `missing` | `ambiguous` |
   `no-template` | `unreadable` | `listed`), `exit`. A refusal from either command is a
-  `guard-refusal` fact (`check-pr-body`'s under guard `pr-body-template`, reasons
+  `guard-refusal` fact (`check-pr-hygiene`'s under guard `pr-hygiene`, reason the refusing result's
+  name, naming file, line and class only; `check-pr-body`'s under guard `pr-body-template`, reasons
   `missing-template-lines` | `ambiguous-template`), deduplicated per subject so a re-check of an
-  unchanged body records one event.
+  unchanged branch or body records one event.
 - **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
   resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
   core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind

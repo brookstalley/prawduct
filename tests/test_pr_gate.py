@@ -581,3 +581,121 @@ def test_both_commands_are_read_only_to_both_guards(command):
     assert command in hook._EPHEMERAL_SAFE_COMMANDS
     assert not hook._is_data_plane_write(command, [])
     assert command in hook._USAGE
+
+
+# --- check-pr-hygiene: credential shapes on added lines ----------------------
+#
+# Every credential below is assembled at run time, so this file's own source
+# carries no line the check would flag.
+
+_TOKEN = "gh" + "p_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+_KEY_HEADER = "-----BEGIN " + "RSA PRIVATE KEY-----"
+_WAIVER = "prawduct:allow " + "prawduct/credential-shape -- a documented fixture token, revoked"
+
+
+class TestCredentialShapeClassifier:
+    """The per-line classifier on the one credential denylist."""
+
+    def test_each_credential_class_is_named_never_echoed(self):
+        from lib.backlog import transport
+
+        cases = {
+            f"token = '{_TOKEN}'": "github token",
+            "pat = github_pat_" + "x" * 30: "github fine-grained token",
+            "auth: eyJ" + "hbGciOi.eyJzdWIiOi.SflKxwRJSMeKKF2QT4": "jwt",
+            _KEY_HEADER: "private key",
+            "url = https://" + "user:hunter2@example.com/x": "url-embedded password",
+        }
+        for line, expected in cases.items():
+            assert transport.credential_shape(line) == expected, line
+
+    def test_ordinary_lines_and_the_placeholder_are_not_credentials(self):
+        """The control, and the one shape the denylist carries that is not a
+        credential: the cloud proxy's placeholder literal, named in docs."""
+        from lib.backlog import transport
+
+        for line in ("print('hello')", "https://example.com/a:b", "the " + "proxy-injected" + " token"):
+            assert transport.credential_shape(line) is None, line
+
+    def test_scrubbing_is_unchanged_by_the_classifier(self):
+        """The scrub still reads every pattern, the placeholder and the whole
+        multi-line key included."""
+        from lib.backlog import transport
+
+        key = _KEY_HEADER + "\nMIIabc\n-----END " + "RSA PRIVATE KEY-----"
+        assert transport.scrub_secrets(f"a {_TOKEN} b") == "a [REDACTED] b"
+        assert transport.scrub_secrets(key) == "[REDACTED]"
+        assert transport.scrub_secrets("x proxy-" + "injected y") == "x [REDACTED] y"
+
+
+class TestCredentialShape:
+    def test_an_added_credential_line_refuses_and_never_prints_it(self, tmp_path):
+        """Input that trips it: the branch adds `token = '<github token>'`."""
+        repo = _repo(tmp_path, branch_files={"config.py": f"x = 1\ntoken = '{_TOKEN}'\n"})
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 1, (r.stdout, r.stderr)
+        assert "credential-shape" in r.stdout
+        assert "config.py:2" in r.stdout and "github token" in r.stdout
+        assert _TOKEN not in r.stdout + r.stderr
+        facts = _refusals(repo, pr_gate.HYGIENE_GUARD)
+        assert len(facts) == 1, facts
+        assert facts[0]["body"]["reason"] == "credential-shape"
+        assert _TOKEN not in json.dumps(facts)
+        # A re-check of the unchanged branch is the same event, not a second one.
+        _run(repo, "check-pr-hygiene")
+        assert len(_refusals(repo, pr_gate.HYGIENE_GUARD)) == 1
+
+    def test_the_same_line_with_a_waiver_passes(self, tmp_path):
+        repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'  # {_WAIVER}\n"})
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert _refusals(repo, pr_gate.HYGIENE_GUARD) == []
+
+    def test_a_waiver_on_the_line_above_passes(self, tmp_path):
+        repo = _repo(tmp_path, branch_files={"config.py": f"# {_WAIVER}\ntoken = '{_TOKEN}'\n"})
+        assert _run(repo, "check-pr-hygiene").returncode == 0
+
+    def test_a_reasonless_waiver_does_not_waive(self, tmp_path):
+        bare = "prawduct:allow " + "prawduct/credential-shape"
+        repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'  # {bare}\n"})
+        assert _run(repo, "check-pr-hygiene").returncode == 1
+
+    def test_another_rules_waiver_does_not_waive(self, tmp_path):
+        other = "prawduct:allow " + "prawduct/broad-except -- not this rule"
+        repo = _repo(tmp_path, branch_files={"config.py": f"token = '{_TOKEN}'  # {other}\n"})
+        assert _run(repo, "check-pr-hygiene").returncode == 1
+
+    def test_a_credential_on_a_line_the_branch_did_not_add_is_not_reported(self, tmp_path):
+        """The base already carries the token; the branch edits another line of
+        the same file. Only added lines are this PR's."""
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        _git(repo, "init", "-q", "-b", "develop")
+        (repo / ".prawduct" / "project-state.yaml").write_text("project_name: f\nbase_branch: develop\n")
+        (repo / "config.py").write_text(f"token = '{_TOKEN}'\nx = 1\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", "base")
+        _git(repo, "checkout", "-q", "-b", "feat/x")
+        (repo / "config.py").write_text(f"token = '{_TOKEN}'\nx = 2\n")
+        _git(repo, "commit", "-qam", "change x")
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 0, (r.stdout, r.stderr)
+        assert "nothing to report" in r.stdout and "config.py" not in r.stdout
+
+    def test_a_private_key_header_line_refuses(self, tmp_path):
+        """The denylist's key pattern spans lines; one added header line is a key."""
+        repo = _repo(tmp_path, branch_files={"id_rsa": f"{_KEY_HEADER}\nMIIabc\n"})
+        r = _run(repo, "check-pr-hygiene")
+        assert r.returncode == 1
+        assert "id_rsa:1" in r.stdout and "private key" in r.stdout
+
+    def test_an_unreadable_diff_is_3_never_clean(self, tmp_path, monkeypatch):
+        """Authority fails closed: the refusing check could not look."""
+        from lib import record_lint
+
+        repo = _repo(tmp_path)
+        monkeypatch.setattr(record_lint, "_added_lines", lambda *_a, **_k: None)
+        report = pr_gate.hygiene(repo)
+        cred = [r for r in report.results if r.name == "credential-shape"]
+        assert cred and cred[0].unchecked and not cred[0].items
+        assert pr_gate.hygiene_exit(report) == 3
