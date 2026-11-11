@@ -2272,10 +2272,9 @@ class TestLearningsAreaDead:
     """An area file reachable by nothing is a rule nobody will ever be shown.
 
     The rules directory only grows, and an area file is reached by its globs or
-    not at all. Rename the directory those globs name and the file stops being
-    loaded by the harness and stops being returned by `files_for_paths`, so the
-    Critic stops reading it too — while the file sits there, valid and full of
-    rules, looking exactly like a live one.
+    not at all. Rename the directory those globs name and the harness stops
+    loading the file — while it sits there, valid and full of rules, looking
+    exactly like a live one.
     """
 
     def _area(self, repo: Path, name: str, globs: list[str]) -> None:
@@ -2300,6 +2299,13 @@ class TestLearningsAreaDead:
         # The globs are named, or the reader cannot tell which one to rename.
         assert "`engine/**`" in findings[0]["detail"]
         assert "fold the rules into core.md" in findings[0]["detail"]
+        # The reason the check exists, and nothing that is not true: no
+        # cross-check reads area files, so the finding names only the harness.
+        assert (
+            "the harness loads this file only when a file its globs match is read, "
+            "so its rules reach no session"
+        ) in findings[0]["detail"]
+        assert "cross-check" not in findings[0]["detail"]
 
     def test_globs_matching_a_tracked_file_are_quiet(self, tmp_path):
         repo = _make_repo(tmp_path)

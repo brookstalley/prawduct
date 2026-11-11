@@ -1436,3 +1436,31 @@ class TestJsonContractMatchesTheDoc:
 
 
 REPORT_SCHEMA = 10
+
+
+class TestRecordedPrReviewsStayReadable:
+    """The PR reviewer was retired (#1129) and nothing writes a `review.pr`
+    event now, but the events already on a ledger are history the yield
+    question was answered from. `review-stats` must keep reading them.
+
+    Read over REAL rows (`tests/fixtures/real-pr-reviews.jsonl`, captured from
+    this repo's ledger), not a fixture written to agree with the reader. The
+    sibling `prawduct-hook stats` reads the evidence store, where no PR-review
+    fact was ever written, so it has no `review.pr` rows to keep."""
+
+    FIXTURE = Path(__file__).resolve().parent / "fixtures" / "real-pr-reviews.jsonl"
+
+    def test_review_stats_counts_every_recorded_pr_review(self, tmp_path):
+        rows = [json.loads(ln) for ln in self.FIXTURE.read_text().splitlines() if ln.strip()]
+        pr_rows = [r for r in rows if r.get("event") == "review.pr"]
+        assert len(pr_rows) >= 5, "control: the real rows are present"
+
+        repo = tmp_path / "repo"
+        (repo / ".prawduct").mkdir(parents=True)
+        (repo / LEDGER_REL).write_bytes(self.FIXTURE.read_bytes())
+        result = _run(repo, "--json")
+        assert result.returncode == 0, result.stderr
+        report = json.loads(result.stdout)
+        pr_groups = [g for g in report["by_role_model_mode"] if g["role"] == "pr"]
+        assert pr_groups, f"review-stats dropped the recorded PR reviews: {report['by_role_model_mode']}"
+        assert sum(g["reviews"] for g in pr_groups) == len(pr_rows)

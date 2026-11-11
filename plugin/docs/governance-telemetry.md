@@ -45,11 +45,9 @@ kind-named key (`review` for `review.*`):
   without one) because the three leave identical state, so a dead trigger covered by another looks
   like a working one. Lines written before the field existed lack it. `review-stats` counts it as
   `consolidated_by`, where a dead path reads as a zero beside the paths covering for it.
-- `review.critic` (the Critic, after writing its findings file) and
-  `review.pr` (the `/prawduct:pr` skill after the PR review, via
-  `--findings <evidence-path>` — required for `review.pr`, rejected for
-  `review.critic`, whose only trusted source is the canonical
-  `.critic-findings.json`).
+- `review.critic` (the Critic, after writing its findings file, whose only trusted source is the
+  canonical `.critic-findings.json`). A ledger may also hold `review.pr` events, which `stats` and
+  `review-stats` read and `ledger-append` refuses to write.
 - `learning.written`, `learning.fired` and `learning.compacted` — the learning loop, below.
 - **Consumers skip unknown event kinds and unknown fields** — that contract is
   what lets producers grow without migrating the ledger.
@@ -280,7 +278,7 @@ fix plan: `{findings, with_remedy, blank_remedy, no_remedy_field, rate, median_w
 label says what a finding is worth and the remedy beside it is what makes it read as work, so the two
 can disagree — a NOTE carrying a finished fix plan is indistinguishable from a WARNING at the moment
 the builder decides what to do. Three outcomes are counted, not two: **absent** (no `recommendation`
-key at all) is a different claim from **blank**, because the PR reviewer's findings carry
+key at all) is a different claim from **blank**, because a `review.pr` event's findings carry
 `{goal, severity, file, line, summary}` and have no remedy field in their schema. `rate` is over
 findings whose schema HAS the field, and is `null` when none does — reporting 0% there would be a
 claim about a population's behaviour that its schema cannot support. Schema 7 added the key.
@@ -327,13 +325,12 @@ instruments grade a before/after split identically.
 `boundary` (`cumulative`), stamped by `critic-begin` and carried through the fact and the findings
 cache onto `review.critic` events. It is **read, never derived from the mode**: an event written
 before the field existed groups under `null` (rendered "(unrecorded)"), and so does a `review.pr`
-event, which carries no stage yet. Schema 5 added the key. This is the yield-by-stage query the
+event, which carries none. Schema 5 added the key. This is the yield-by-stage query the
 stage-keyed rigor norm (`nonfunctional-requirements.md` § Direction) was drawn to answer.
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
-`verify-resolutions`), derived from the persisted verbose strings. PR-review
-events carry `pr` (release-readiness scope — code soundness is certified by
-the composition gate before the reviewer is dispatched).
+`verify-resolutions`), derived from the persisted verbose strings. `review.pr`
+events carry `pr`.
 
 Model keys are **folded to a family label** (`opus` / `sonnet` / `haiku` /
 `fable`): one model is recorded under several id strings (`opus`,

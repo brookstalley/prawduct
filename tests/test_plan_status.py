@@ -1163,10 +1163,12 @@ class TestOneRenderer:
             "lifecycle: released v1.4.0 — the change record ships scope `u` in v1.4.0"
         )
 
-    def test_plan_status_the_handoff_and_the_pr_payload_print_identical_rows(self, repo):
+    def test_plan_status_and_the_handoff_print_identical_rows(self, repo):
+        """(A third reader, the PR review payload's build-plan section, printed
+        the same rows until it left with the PR reviewer.)"""
         import json
 
-        from lib import briefing, pr_payload, work_unit
+        from lib import briefing, work_unit
 
         self._fixture(repo)
         binding = work_unit.resolve(repo)
@@ -1183,7 +1185,7 @@ class TestOneRenderer:
         )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         # The table follows the summary and the lifecycle line (#1052); the
-        # lifecycle is the CLI's alone — the handoff and payload show chunks.
+        # lifecycle is the CLI's alone — the handoff shows chunks.
         lines = proc.stdout.splitlines()
         assert lines[1].startswith("lifecycle: "), lines
         cli = [ln[2:] for ln in lines[2:]]
@@ -1193,13 +1195,6 @@ class TestOneRenderer:
         block = text.split("**Progress** (`prawduct-hook plan status`):\n```\n", 1)[1]
         handoff = block.split("```", 1)[0].splitlines()
 
-        # The PR payload's build-plan section, under its two-space indent.
-        body = pr_payload._section_build_plan(repo, binding).body
-        after = body.split("## Chunk status (plan status; derived from facts):", 1)[1]
-        payload = [ln[2:] for ln in after.splitlines()[1:]]
-
         assert len(cli) == 6 and cli[2].split()[-1] == "built", cli  # every row shape reached
-        assert cli == handoff == payload, json.dumps(
-            {"cli": cli, "handoff": handoff, "payload": payload}, indent=1
-        )
+        assert cli == handoff, json.dumps({"cli": cli, "handoff": handoff}, indent=1)
 

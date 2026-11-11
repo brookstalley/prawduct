@@ -7,6 +7,11 @@ Related: siblings #249 (socket 1 — diff coverage), #618 (socket 2 — blast ra
 — API diff); GOV-2R8K, the single home of the shared four-socket contract
 (`.prawduct/artifacts/change-evidence-design.md`), which this document must not restate.
 
+*Note, 2026-11-11 (#1129):* the PR reviewer and its protocol (`plugin/skills/pr/review-
+protocol.md`), which this document cites as the reviewer-side surface, were removed. The PR boundary
+has one review, the cumulative Critic (`plugin/skills/critic/review-protocol.md`); read the
+citations below as the tree stood when this was written.
+
 ## Problem
 
 No instrument in the framework answers "would a test have *failed* if this behaviour changed?"

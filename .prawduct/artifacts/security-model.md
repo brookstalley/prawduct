@@ -70,13 +70,11 @@ decision, and prawduct's job is to be worthy of it. The posture we hold:
 - **Zero external dependencies, no network.** The governance runtime is standard-library Python with
   no third-party packages and makes no network calls — the entire coordination substrate is process
   spawn + local files + git. This shrinks the supply-chain surface to prawduct's own code plus git.
-  **Seven sites reach the network, and one of them IS on a hook path** — stated precisely because
-  the first version of this paragraph said "neither on a hook path" and was wrong:
+  **Six sites reach the network:**
   `lib/backlog/transport.py` (TWO callers — the opt-in backlog backend, and the owner-approved
   `file-upstream` op, which reaches the pinned upstream repo with `backlog_service_repo` unset);
   `check-released`'s `gh` call
-  (`lib/release_verification.py`, 2026-08-04), operator/CI-invoked; a `gh pr list` inside
-  `cmd_stop` (`plugin/bin/prawduct-hook`), which runs on the **Stop hook**; `lib/contribution.py`'s
+  (`lib/release_verification.py`, 2026-08-04), operator/CI-invoked; `lib/contribution.py`'s
   `_post`, the opt-in stats upload to the pinned collector (2026-10-03); and `lib/aggregate.py`'s
   bundle fetch, an operator-invoked GET of the collector's public bundles that sends nothing from
   the product (2026-10-04); and `lib/git_hygiene.py`, behind `prawduct-hook git-tidy`

@@ -40,16 +40,43 @@ _REDACTED = "[REDACTED]"
 # Denylist of credential shapes that must never reach any output sink (F2/N4).
 # The *primary* control is building errors from known fields (never echoing raw
 # output); this is the defense-in-depth backstop for anything that slips through.
-_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"gh[oprsu]_[A-Za-z0-9]{16,}"),            # gh token classes
-    re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),          # fine-grained PAT
-    re.compile(
-        r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"
-    ),                                                     # JWT (App installation)
-    re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----.*?-----END[A-Z ]*PRIVATE KEY-----", re.DOTALL),
-    re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"),        # url-embedded user:pass
-    re.compile(r"proxy-injected"),                         # the cloud token literal (N5)
+#
+# Each shape is ``(class, pattern, line form, is a credential)``. The class is
+# what :func:`credential_shape` reports instead of the text. The line form is the
+# pattern that recognises the shape within ONE line, for a shape whose pattern
+# spans lines (a PEM private key): its header line marks the key. ``None`` means
+# the pattern itself is already a one-line pattern.
+_SECRET_SHAPES: tuple[tuple[str, re.Pattern[str], "re.Pattern[str] | None", bool], ...] = (
+    ("github token", re.compile(r"gh[oprsu]_[A-Za-z0-9]{16,}"), None, True),
+    ("github fine-grained token", re.compile(r"github_pat_[A-Za-z0-9_]{20,}"), None, True),
+    ("jwt", re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"), None, True),
+    (
+        "private key",
+        re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----.*?-----END[A-Z ]*PRIVATE KEY-----", re.DOTALL),
+        re.compile(r"-----BEGIN[A-Z ]*PRIVATE KEY-----"),
+        True,
+    ),
+    ("url-embedded password", re.compile(r"(?<=://)[^/\s:@]+:[^/\s@]+(?=@)"), None, True),
+    # The cloud token literal (N5) is a PLACEHOLDER the proxy substitutes, not a
+    # credential: scrubbed from output because it marks where one would be, and
+    # named in docs and tests as ordinary prose. A credential check skips it.
+    ("cloud token placeholder", re.compile(r"proxy-injected"), None, False),
 )
+_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = tuple(shape[1] for shape in _SECRET_SHAPES)
+
+
+def credential_shape(line: str) -> str | None:
+    """The class of the first credential shape ``line`` matches, else ``None``.
+
+    Reports the class (``"github token"``), never the matched text, so a caller
+    can name a finding without echoing the secret it found. One line at a time:
+    a multi-line private key is recognised by its ``BEGIN … PRIVATE KEY`` header.
+    The cloud token placeholder is not a credential and is never reported.
+    """
+    for name, pattern, line_form, is_credential in _SECRET_SHAPES:
+        if is_credential and (line_form or pattern).search(line):
+            return name
+    return None
 
 
 def scrub_secrets(text: str | None) -> str:

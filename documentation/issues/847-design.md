@@ -8,6 +8,10 @@ grep), #167 (round count, the sibling attack on the same review-cost volume), #7
 investigation (`.prawduct/artifacts/review-cost-investigation-2026-09-19.md`, source of the 23% / 18%
 figures — re-derive before quoting; the command is in its §6).
 
+*Note, 2026-11-11 (#1129):* one of the two files this design edits, `plugin/skills/pr/review-
+protocol.md`, was removed with the PR reviewer. The Critic's protocol is the one place the rule
+lives.
+
 ## Problem (restated)
 
 A reviewer files a finding rated `class` and lists its members in prose. The builder fixes the

@@ -129,48 +129,24 @@ def _domain_rows(repo_dir):
 
 
 def _rebuild_snapshot(repo_dir):
-    """Everything a rebuild has to reproduce: the domain rows **and both derived
-    index tables**.
+    """Everything a rebuild has to reproduce: the domain rows **and the derived
+    alias index**.
 
-    Neither index is a second home for the fact — each is re-derived from a stored
-    column in the same transaction, exactly as the text index is — but they *are*
-    stored state, and a rebuild that reproduced the columns while leaving an index
-    behind would be a difference this invariant exists to catch. `item_alias` is
-    included for precisely the reason `item_affected` is, and leaving it out would
-    have let the invariant weaken silently the moment a second index appeared."""
+    The index is not a second home for the fact — it is re-derived from the
+    stored body in the same transaction, exactly as the text index is — but it
+    *is* stored state, and a rebuild that reproduced the columns while leaving the
+    index behind would be a difference this invariant exists to catch."""
     path = cache.cache_path(repo_dir)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
-    affected = conn.execute(
-        "SELECT item_id, path FROM item_affected ORDER BY item_id, path"
-    ).fetchall()
     aliases = conn.execute(
         "SELECT item_id, alias, ref FROM item_alias ORDER BY item_id, alias"
     ).fetchall()
     conn.close()
     return {
         "items": _domain_rows(repo_dir),
-        "affected": [dict(row) for row in affected],
         "aliases": [dict(row) for row in aliases],
     }
-
-
-def _affecting(repo_dir, changed_paths):
-    """The items whose `affected` list covers any of `changed_paths`.
-
-    The consumer-1/4 intersection, run the way the schema is shaped for it: each
-    changed file is expanded into its ancestor directories and matched by
-    **equality**, so `item_affected_path` serves it."""
-    keys = sorted({key for path in changed_paths for key in encode.path_ancestors(path)})
-    conn = sqlite3.connect(str(cache.cache_path(repo_dir)))
-    placeholders = ", ".join("?" for _ in keys)
-    rows = conn.execute(
-        f"SELECT DISTINCT item_id FROM item_affected WHERE path IN ({placeholders}) "
-        "ORDER BY item_id",
-        keys,
-    ).fetchall()
-    conn.close()
-    return [row[0] for row in rows]
 
 
 class TestCachePath:
@@ -773,7 +749,7 @@ class TestFullRebuild:
 
     def test_in_progress_and_submitted_items_count_as_open(self, fake, repo_dir):
         """A live item is any non-terminal status. Filtering on the literal
-        ``open`` would drop exactly the items a PR reviewer is looking for, and
+        ``open`` would drop exactly the items a closure check is looking for, and
         would do it while still reporting success."""
         working = _file(fake, title="cache: the in-progress item under test", area="backlog")
         assert core.set_status(fake, id_raw=working, target="in-progress")["status"] == "ok"
@@ -930,8 +906,8 @@ class TestMirrorOnWrite:
 
         This is the argument for decoding one issue through the same path a full
         fetch uses instead of patching the column the caller knows changed: a
-        status write also moves `updated_at`, and a body write moves the alias and
-        path indexes. Anything hand-patched drifts on the columns nobody thought
+        status write also moves `updated_at`, and a body write moves the alias
+        index. Anything hand-patched drifts on the columns nobody thought
         about."""
         ids, _closed = _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
@@ -1081,8 +1057,8 @@ class TestMirrorOnWrite:
         assert "backlog sync" not in result["error"]["message"]
 
     def test_a_mirrored_create_carries_its_derived_indexes(self, fake, repo_dir):
-        """The row and its three indexes travel together, so a just-filed item is
-        findable every way an existing one is — by id, by changed file, by text."""
+        """The row and its indexes travel together, so a just-filed item is
+        findable every way an existing one is — by id, by alias, by text."""
         _corpus(fake)
         assert _rebuild(fake, repo_dir)["status"] == "ok"
 
@@ -1113,16 +1089,6 @@ class TestMirrorOnWrite:
         )
         assert by_alias["status"] == "ok"
         assert by_alias["data"]["resolved"] is True
-
-        affecting = cachequery.items_affecting(
-            repo_dir,
-            scope=SCOPE,
-            now=NOW,
-            changed_paths=["plugin/lib/backlog/sync.py"],
-            open_only=True,
-        )
-        assert affecting["status"] == "ok"
-        assert canonical in [item["id"] for item in affecting["data"]["items"]]
 
         # Gated on the STORE's capability, never on the search result: keying the
         # assertion off the answer would let a search that returns nothing read as
@@ -1162,8 +1128,8 @@ class TestMirrorOnWrite:
         [
             sqlite3.OperationalError("disk I/O error"),
             # The three non-database arms, which are the whole content of the
-            # widened catch: `_write_rows` re-derives the alias and path indexes
-            # through `parse_block` / `parse_list`, whose failures are value
+            # widened catch: `_write_rows` re-derives the alias index through
+            # `parse_block`, whose failures are value
             # errors. Testing only the sqlite arm would exercise the half that
             # already worked and leave the half that was added unproven — while
             # the build plan tells the next chunk it may omit its own guard on
@@ -1299,55 +1265,26 @@ class TestNewDomainFields:
 
         assert _domain_rows(repo_dir) == before
 
-    def test_an_item_intersects_a_changed_file_set(self, fake, repo_dir):
-        item_id = self._tagged_item(fake)
-        _file(fake, title="cache: an unrelated item nobody changed", area="critic")
-        _rebuild(fake, repo_dir)
-
-        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == [item_id]
-        assert _affecting(repo_dir, ["docs/x.md"]) == [item_id]
-        assert _affecting(repo_dir, ["plugin/bin/prawduct-hook"]) == []
-
-    def test_a_sibling_directory_is_not_an_overlap(self, fake, repo_dir):
-        """`plugin/lib` must not swallow `plugin/libexec` — a string-prefix match
-        would, and it would read as a confident hit rather than as a miss."""
-        self._tagged_item(fake)
-        _rebuild(fake, repo_dir)
-
-        assert _affecting(repo_dir, ["plugin/lib-other/x.py"]) == []
-
-    def test_removing_a_path_removes_its_index_row(self, fake, repo_dir):
-        """An upsert that only ever inserted would leave the old set matching
-        forever — a stale *positive*, which reads as an answer rather than as a
-        gap."""
+    def test_the_path_index_is_never_written(self, fake, repo_dir):
+        """`item_affected` stays in the schema only because dropping it is a
+        schema-version bump, and a bump costs every consumer a full re-fetch and a
+        window of unavailable reads. Nothing queries it, so nothing may write it:
+        a table produced and never consumed is a defect. Driven through a rebuild
+        and an incremental sync of an item carrying `affected` paths; every write,
+        the mirror included, goes through the one row writer they exercise."""
         item_id = self._tagged_item(fake)
         _rebuild(fake, repo_dir)
-        assert _affecting(repo_dir, ["docs/x.md"]) == [item_id]
-
         assert core.update_item(
             fake, id_raw=item_id, fields={"affected": "plugin/lib/backlog"}
         )["status"] == "ok"
         _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
 
-        assert _affecting(repo_dir, ["docs/x.md"]) == []
-        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == [item_id]
-
-    def test_the_index_and_the_column_cannot_disagree(self, fake, repo_dir):
-        """Both come from one input — the column — so there is no second field to
-        drift out of step with."""
-        item_id = self._tagged_item(fake)
-        _rebuild(fake, repo_dir)
-
         conn = cache.open_store(repo_dir, create=False)
         column = conn.execute("SELECT affected FROM item WHERE id = ?", (item_id,)).fetchone()[0]
-        indexed = [
-            row[0]
-            for row in conn.execute(
-                "SELECT path FROM item_affected WHERE item_id = ? ORDER BY path", (item_id,)
-            ).fetchall()
-        ]
+        rows = conn.execute("SELECT COUNT(*) FROM item_affected").fetchone()[0]
         conn.close()
-        assert sorted(encode.parse_list(column)) == indexed
+        assert column == "[plugin/lib/backlog]", "the field itself is still stored"
+        assert rows == 0
 
 
 class TestFullTextIndex:
@@ -1661,20 +1598,14 @@ class TestLeavingScope:
         assert item_id not in {row["id"] for row in _domain_rows(repo_dir) if "id" in row}
 
     def test_eviction_sweeps_the_derived_indexes_too(self, fake, repo_dir):
-        """An item gone from `item` but still answering a text search or a
-        changed-file intersection is the same stale positive wearing a hit's
-        shape."""
+        """An item gone from `item` but still answering a text search is the same
+        stale positive wearing a hit's shape."""
         item_id = _file(fake, title="cache: an indexed item that leaves scope", area="backlog")
-        assert core.update_item(
-            fake, id_raw=item_id, fields={"affected": "plugin/lib/backlog"}
-        )["status"] == "ok"
         _rebuild(fake, repo_dir)
-        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == [item_id]
 
         self._strip_from_scope(fake, item_id)
         _sync(fake, repo_dir, now=NOW + timedelta(hours=1))
 
-        assert _affecting(repo_dir, ["plugin/lib/backlog/sync.py"]) == []
         conn = cache.open_store(repo_dir, create=False)
         indexed = conn.execute(
             "SELECT COUNT(*) FROM item_fts WHERE item_id = ?", (item_id,)

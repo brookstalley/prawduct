@@ -27,6 +27,51 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "yes please do PR and merge and advance, anc close 669"
+In reply to three numbered decisions at the hand-over of #1129. It settles two: the branch
+`feature/pr-reviewer-fold` is opened as a PR to `develop`, merged, #1129 closed, and
+`../prawduct-live` advanced to the result; and #669 is closed as overtaken, the backlog walk it
+set out to repair and the `affecting` query that served it both being gone. It says nothing on the
+third, the list of PR-review judgment checks that were dropped rather than moved to the Critic;
+that list stays marked as inferred in `build-plan-pr-reviewer-fold.md`. Landed in that plan, on
+#669 and on #1143 (the item-level `affected` field has no reader left).
+
+**2026-11-11.** "yes to recs"
+In reply to one decision put to the owner after #1129's boundary review, with two options and a
+recommendation. The review found that removing `learnings-files --for-diff` (ruled 2026-11-10,
+entry below) conflicts with the owner's ruling D-7 on #928, which names that flag as how a host
+with no on-read rule loading gets its area learnings; the removal had been put to the owner as
+having "no shipped reader" without #928 in view. The recommended option, now ruled: the flag stays
+removed, and #928 and its requirements document record that D-7's named mechanism is gone and that
+the adapter's design stage supplies the explicit read. The option not taken was restoring the flag
+in #1129's branch. The same message recommended starting framework sessions with `claude
+--plugin-dir <this checkout>/plugin`; that is advice about how sessions are started and lands
+nowhere in the repo. Landed beneath D-7 in `documentation/issues/928-requirements.md`, on #928, and
+in `build-plan-pr-reviewer-fold.md`.
+
+**2026-11-11.** "yes to both of your recommendations"
+In reply to two numbered questions put to the owner while #1129 was building, each with a
+recommendation. It settles both as recommended. First: a small credential-shape check on a PR's
+added lines stays at the PR gate, reusing the denylist the plugin already keeps for its own
+output, as a bounded exception to `architecture.md` § Direction ("prawduct never re-implements
+what a product's own tooling already does"); no debug-code check is built, that being a linter's
+rule. Second: the retired commands (`pr-review-dispatch`, `pr-review-payload`, `ledger-append
+--event review.pr`, `learnings-files --for-diff`, and the cache queries `affecting` and
+`created-since`) are removed outright in this release rather than kept callable and inert until a
+major, with the dispatcher naming each retired command and what replaced it; put to the owner with
+its cost, that a session whose plugin loaded before the update cannot open a PR until it restarts.
+Landed in `build-plan-pr-reviewer-fold.md` (Goals and `governed_by:`), in the Rulings of the
+architecture norm, and in `api-contract.md` § Deprecation & Compatibility.
+
+**2026-11-11.** "my one concern with 1129 is making sure it honors repo standards like PR templates -- or, if the boundary agent doesn't do that, SOMETHING does it"
+Said while #1129 (the PR reviewer folded into the boundary Critic) was being planned. It sets a
+constraint on that work: when `/prawduct:pr` opens a PR with no reviewer agent, the repo's own
+standards for a PR, its PR template named first, are still honoured by some step of the flow.
+Checked the same day: nothing in the plugin read a PR template before this, neither the reviewer's
+protocol nor the step that drafts the description, so this is a requirement the fold adds, not one
+it has to preserve. It brings the PR description into #1129, which the issue had scoped out.
+Landed in `build-plan-pr-reviewer-fold.md` (Goals, and the chunk that adds the PR gate's checks).
+
 **2026-11-11.** "1. Yes PR and merge to develop, update prawduct-live. I meant 1136 first, which I think you got. yes I think that session rule is good. Agree with your take on review-stats vs stats. ok as built for #4"
 In reply to four numbered asks at the end of the #1136 build. It settles: #1136 is opened as a PR,
 merged to `develop`, and `../prawduct-live` is advanced to the result; "1138 first" meant #1136

@@ -152,8 +152,12 @@ def test_apply_creates_expected_file(scaffolded: Path, rel: str):
     assert (scaffolded / rel).is_file(), f"scaffold missing {rel}"
 
 
-def test_apply_creates_pr_reviews_dir(scaffolded: Path):
-    assert (scaffolded / ".prawduct" / ".pr-reviews").is_dir()
+def test_apply_creates_no_pr_reviews_dir(scaffolded: Path):
+    """The PR reviewer that wrote evidence there was retired (#1129), so the
+    scaffold no longer makes a directory nothing writes. Control: the scaffold
+    ran and made the directories it does own."""
+    assert (scaffolded / ".prawduct" / "artifacts").is_dir()
+    assert not (scaffolded / ".prawduct" / ".pr-reviews").exists()
 
 
 def test_a_new_product_records_changes_as_fragments_with_no_live_log(scaffolded: Path):

@@ -743,7 +743,13 @@ class TestPluginRuntimeNamespacing:
         # ...and the namespaced forms ARE present (the sweep replaced, not deleted).
         assert "`/prawduct:critic`" in src, "stop-hook Critic gate must name /prawduct:critic"
         assert "/prawduct:critic cumulative" in src, "pr-create gate must name /prawduct:critic cumulative"
-        assert "Run /prawduct:pr to invoke" in src, "stop-hook PR gate must name /prawduct:pr"
+        # The Stop hook's PR gate named `/prawduct:pr` until it was retired with
+        # the PR reviewer (#1129); the refusal for the retired commands is the
+        # runtime message that names the skill now.
+        assert "Run /prawduct:pr to invoke" not in src, "the retired Stop-hook PR gate is back"
+        assert "/prawduct:pr no longer dispatches one" in src, (
+            "the retired-command refusal must name /prawduct:pr"
+        )
 
 
 class TestPluginDocsNamespacing:
@@ -767,7 +773,6 @@ class TestPluginDocsNamespacing:
         "methodology/planning.md",
         "methodology/reflection.md",
         *sorted(f"skills/critic/{p.name}" for p in (ROOT / "skills" / "critic").glob("*.md")),
-        "skills/pr/review-protocol.md",
     )
     # A genuine command-invocation token: a `/` that starts a command (NOT preceded
     # by a word/path char — so paths like `skills/critic/…`, `.prawduct/backlog.md`,
@@ -1395,7 +1400,7 @@ class TestDocOnlyProtectedPaths:
 
     Fork-skill prose is behavioral logic in this framework, so a PR touching
     `skills/*.md` (or methodology/, templates/, root CLAUDE.md) must not take
-    the doc-only fast path past the cumulative-Critic and PR-reviewer gates.
+    the doc-only fast path past the cumulative-Critic gate.
     Bound list: `buildplan_refs._GOVERNANCE_PROTECTED_PATHS`.
     """
 

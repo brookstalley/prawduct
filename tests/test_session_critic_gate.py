@@ -614,49 +614,35 @@ class TestFailClosed:
 
 
 # ---------------------------------------------------------------------------
-# The doc-only carveout helper (moved here from gitstate — one predicate)
+# The Stop hook's doc-only carveout has one answer: the session work span
 # ---------------------------------------------------------------------------
 
 
-class TestSessionChangesAllNonJudgeable:
-    def _repo_with_baseline(self, tmp_path: Path) -> Path:
+class TestDocOnlyCarveoutIsTheWorkSpan:
+    def test_gates_carries_no_second_doc_only_predicate(self):
+        """The Stop hook's carveout is ``not session_work_span(...)["judgeable"]``;
+        a second session-scoped doc-only predicate in ``gates`` would be a
+        rival answer with no caller to keep it honest."""
+        assert not hasattr(gates, "session_changes_all_non_judgeable")
+        source = Path(ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        assert 'critic_doc_only = not reflection_span["judgeable"]' in source
+
+    def test_a_protected_md_is_judgeable_in_the_span(self, tmp_path):
+        """Skill prose is behavioral logic: editing one is not a doc-only
+        session. Control: a plain `.md` beside it is not judgeable."""
         repo = tmp_path / "repo"
         repo.mkdir()
         _git(repo, "init", "-q", "-b", "main")
-        _commit(repo, "code.py", "x = 1\n", "c1")
+        _commit(repo, "skills/demo/SKILL.md", "prose\n", "c1")
+        _commit(repo, "notes.md", "n\n", "c2")
         (repo / ".prawduct").mkdir()
         (repo / ".prawduct" / ".session-git-baseline").write_text("")
-        return repo
-
-    def test_plain_md_changes_qualify(self, tmp_path):
-        repo = self._repo_with_baseline(tmp_path)
-        (repo / "notes.md").write_text("n\n")
-        assert gates.session_changes_all_non_judgeable(repo) is True
-
-    def test_code_change_disqualifies(self, tmp_path):
-        repo = self._repo_with_baseline(tmp_path)
-        (repo / "notes.md").write_text("n\n")
-        (repo / "code.py").write_text("x = 2\n")
-        assert gates.session_changes_all_non_judgeable(repo) is False
-
-    def test_protected_md_disqualifies(self, tmp_path):
-        # The unification's behavior change, pinned deliberately: fork-skill
-        # prose is behavioral logic, so it no longer rides the doc-only skip.
-        repo = self._repo_with_baseline(tmp_path)
-        (repo / "skills" / "demo").mkdir(parents=True)
-        (repo / "skills" / "demo" / "SKILL.md").write_text("prose\n")
-        assert gates.session_changes_all_non_judgeable(repo) is False
-
-    def test_metadata_only_changes_do_not_qualify_as_doc_only(self, tmp_path):
-        # No non-metadata change → False (the gate's has_changes guard owns
-        # that case); metadata alone must not flip the doc-only carveout on.
-        repo = self._repo_with_baseline(tmp_path)
-        (repo / ".prawduct" / "backlog.md").write_text("b\n")
-        assert gates.session_changes_all_non_judgeable(repo) is False
-
-    def test_no_changes_is_false(self, tmp_path):
-        repo = self._repo_with_baseline(tmp_path)
-        assert gates.session_changes_all_non_judgeable(repo) is False
+        (repo / "notes.md").write_text("n2\n")
+        span = gates.session_work_span(repo)
+        assert span["changed"] == ["notes.md"] and span["judgeable"] is False
+        (repo / "skills" / "demo" / "SKILL.md").write_text("prose 2\n")
+        span = gates.session_work_span(repo)
+        assert "skills/demo/SKILL.md" in span["changed"] and span["judgeable"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -630,10 +630,12 @@ class TestTheOutputIsReadableByTheResolver:
         root = repo(tmp_path, "mixed")
         lm.apply(root, lm.plan(root, full_map(root)))
         layout = lf.resolve(root)
-        names = [p.name for p in lf.files_for_paths(layout, ["discodon/eval/report.py"])]
-        assert names == [lf.CORE_NAME, "eval-model-bake-offs.md"]
-        elsewhere = [p.name for p in lf.files_for_paths(layout, ["web/src/App.tsx"])]
-        assert elsewhere == [lf.CORE_NAME]
+        names = [a.path.name for a in layout.areas
+                 if lf.matches(a.globs, ["discodon/eval/report.py"])]
+        assert names == ["eval-model-bake-offs.md"]
+        elsewhere = [a.path.name for a in layout.areas
+                     if lf.matches(a.globs, ["web/src/App.tsx"])]
+        assert elsewhere == []
 
 
 class TestSlugCollisions:

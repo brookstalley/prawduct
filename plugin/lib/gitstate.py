@@ -969,11 +969,10 @@ def git_has_session_changes(project_dir: Path, status_output: str | None = None)
     return ""
 
 
-# _session_changes_are_doc_only moved to lib/gates.py as
-# session_changes_all_non_judgeable (kernel-v3 chunk 04): the "doc-only"
-# question is now answered by THE judgeability predicate
-# (coverage_algebra.is_judgeable_path), and coverage_algebra sits above this
-# module in the import DAG.
+# Whether a session's changes are "doc-only" is not answered here: the Stop
+# hook reads `gates.session_work_span(...)["judgeable"]`, which applies the one
+# judgeability predicate (`coverage_algebra.is_judgeable_path`), and
+# coverage_algebra sits above this module in the import DAG.
 
 
 def _is_framework_tooling(f: Path, project_dir: Path) -> bool:

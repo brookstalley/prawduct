@@ -42,7 +42,6 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -888,10 +887,10 @@ def _validate_evidence_schema(evidence: dict) -> tuple[bool, str]:
 def _read_gates_waived(prawduct_dir: Path) -> dict[str, str]:
     """Load .gates-waived JSON. Returns {} if missing or invalid.
 
-    Format: {"critic": "reason", "pr": "reason", "reflection": "reason"}.
+    Format: {"critic": "reason", "reflection": "reason"}.
     Each present key signals "this gate does not apply to the current work."
     The agent writes this file when work is genuinely N/A for that gate
-    (e.g., docs-only refactor, no PR planned for this branch). The file
+    (e.g., a docs-only refactor). The file
     is auto-deleted at session start so waivers never carry across sessions.
     """
     waiver_path = prawduct_dir / ".gates-waived"
@@ -955,7 +954,7 @@ def background_tasks_in_flight(event) -> tuple[bool, list[str]]:
 
 #: The gates a ``RUNNING`` + ``DO NOT CLEAR`` turn defers — the SESSION-END gates,
 #: keyed by their ``hooks/gates.json`` ids. Everything else a Stop can raise
-#: (learnings, PR review) is not about whether the session is
+#: (the learnings gates) is not about whether the session is
 #: ending, so it keeps blocking on such a turn.
 VERDICT_DEFERRED_GATES = frozenset({"reflection", "critic"})
 
@@ -1209,28 +1208,6 @@ def _store_precheck(read: dict) -> "tuple[str, str] | None":
             "(/reload-plugins or restart Claude Code), then re-run the gate."
         )
     return None
-
-
-def session_changes_all_non_judgeable(
-    project_dir: Path, status_output: "str | None" = None
-) -> bool:
-    """True when the session changed files but NONE of them needs review
-    coverage — the "doc-only" carveout, now answered by THE judgeability
-    predicate (``coverage_algebra.is_judgeable_path``, CRT-5D8Q fix) instead
-    of a bare ``.endswith(".md")`` copy. A governance-protected ``.md``
-    (the set ``buildplan_refs.protected_path_violation`` owns) is
-    judgeable, so editing one no longer skips the reflection/Critic gates.
-
-    Replaces ``gitstate._session_changes_are_doc_only`` (one of the three
-    divergent doc-only sites the kernel-v3 inventory flagged); lives here
-    because ``gitstate`` sits below ``coverage_algebra`` in the import DAG.
-    ``status_output`` (STH-6Q9D): optional pre-captured porcelain snapshot.
-    """
-    changed = gitstate._get_session_changed_files(project_dir, status_output)
-    non_metadata = [f for f in changed if not gitstate._is_metadata_path(f)]
-    if not non_metadata:
-        return False
-    return not coverage_algebra.judgeable_files(non_metadata)
 
 
 def _session_untracked_paths(
@@ -2184,78 +2161,6 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """The session's change set, for the learnings read list: ``(files, reason)``.
-
-    The **session's** base tree → the working tree, union untracked: everything
-    this session touched whether or not it has been committed yet. Its one
-    caller is :func:`learnings_review_change_set`, which falls back to it when no
-    review is dispatched.
-
-    ``reason`` is empty on success and names the failure otherwise. It is a
-    return value rather than an exception or a silent ``[]`` because "nothing
-    changed" and "could not tell" are opposite facts and the caller has to say
-    which one it got (`R4`: a degraded advisory path names its consequence).
-    """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    base = _read_session_base_tree(prawduct_dir)
-    if not base:
-        # No session marker (a resume in a fresh checkout, a repo that never ran
-        # SessionStart): HEAD's tree is the honest fallback and is what the
-        # session gate itself degrades to.
-        base = "HEAD"
-    try:
-        return coverage._coverage_changed_files(project_dir, base), ""
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
-        # SubprocessError covers TimeoutExpired: coverage's git calls carry a
-        # 30s bound, and a slow diff must read as "could not tell", not a traceback.
-        return [], f"{type(exc).__name__}: {exc}"
-
-
-def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """The change set ``learnings-files --for-diff`` lists rules for: ``(files, reason)``.
-
-    **Why the review interval and not the session span.** For a ``cumulative``
-    of already-committed work the session span is EMPTY — the session began
-    after the commits, so its base tree IS ``HEAD^{tree}`` and a clean working
-    tree diffs to nothing.
-
-    Measured 2026-09-20 on this repo: the cumulative reviewing a five-commit
-    branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no
-    area file applies", while the interval touched the areas owned by
-    ``reviews.md``, ``hook-surface.md``, ``tests.md`` and ``authoring.md``. The
-    reviewer caught it only by reading the four area files by hand.
-
-    So the interval comes from the **dispatch manifest** — the one artifact that
-    already records what this review spans, written by code at ``critic-begin``.
-    Nothing new is declared or maintained: no flag, no field, no second copy of
-    the span. When no manifest is on disk there is no review to scope to, and
-    this falls back to the session span, which is the right answer for every
-    caller that is not a dispatched reviewer.
-    """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    manifest_path = prawduct_dir / ".critic-partials" / "manifest.json"
-    try:
-        manifest = json.loads(manifest_path.read_text())
-    except (OSError, ValueError):
-        # No live dispatch (or an unreadable one): not a reviewer context, so
-        # the session span is the honest answer rather than a failure.
-        return learnings_change_set(project_dir)
-
-    base = (manifest or {}).get("base_tree")
-    head = (manifest or {}).get("head_tree")
-    if not base or not head:
-        return learnings_change_set(project_dir)
-
-    changed = evidence.tree_diff(project_dir, base, head)
-    if changed is None:
-        # `tree_diff` returns None rather than guessing. Fail LOUD for the same
-        # reason the CLI does: a silent narrowing hides area files the review
-        # interval really touches, and looks exactly like an answer.
-        return [], f"could not diff the review interval {base[:12]}..{head[:12]}"
-    return changed, ""
-
-
 def _repo_relative(project_dir: Path, path: Path) -> str:
     try:
         return path.relative_to(project_dir).as_posix()
@@ -2266,8 +2171,7 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
 def test_status(project_dir: Path) -> int:
     """Print whether saved test evidence is fresh enough to trust.
 
-    Used by builders, the Critic, and the PR reviewer to decide whether to
-    re-run the test suite.
+    Used by builders and the Critic to decide whether to re-run the test suite.
 
     stdout: the verdict line first — :data:`CURRENT_TREE_LABEL`,
     :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason —
@@ -2577,7 +2481,7 @@ def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
             f"{branch} ({upstream} {upstream_sha}, {branch} {local}). The merge would take "
             "commits that no gate here has validated. Pull, re-run the gates over the "
             "tree that results, and push that — never force-push, which rewrites the "
-            "tree the PR review's `commit_reviewed` check pinned and voids the evidence.",
+            "commits the review coverage was recorded against and reopens the gap.",
             file=sys.stderr,
         )
         return 1
@@ -2588,8 +2492,8 @@ def check_branch_pushed(project_dir: Path, branch: str | None = None) -> int:
             f"({state['ahead']} local, {state['behind']} remote; {branch} {local}, "
             f"{upstream} {upstream_sha}). Integrate the remote side, re-run the gates "
             "over the merged tree, and push that — never force-push, which rewrites "
-            "the tree the PR review's `commit_reviewed` check pinned and voids the "
-            "evidence.",
+            "the commits the review coverage was recorded against and reopens the "
+            "gap.",
             file=sys.stderr,
         )
         return 1

@@ -9,15 +9,17 @@ model, as before. What stays forbidden is what the norm was written against: a
 model chosen by the diff's risk `tier` (the removed scheme escalated nearly every
 review to the most expensive tier), and a model pinned in prose or front matter.
 
-So the answer comes from code: `critic-begin --session-model` and
-`pr-review-dispatch --begin --session-model` answer it with
+So the answer comes from code: `critic-begin --session-model` answers it with
 `model_tier.reviewer_model_for`, and the dispatch surfaces pass that answer as
-the Agent call's `model`, or pass none. These pins hold the prose side:
+the Agent call's `model`, or pass none. (The PR reviewer's dispatch was the other
+half of these pins until that reviewer was retired, #1129; `/prawduct:pr`
+dispatches no agent now, which `tests/test_pr_skill.py` pins.) These pins hold
+the prose side:
 
 - no dispatch surface spells a model alias, so none can pick a model itself;
 - each names the session model and the ceiling, and takes the model from the
   code's answer;
-- the reviewer agents keep `model: inherit` and the Critic skill's front matter
+- the reviewer agent keeps `model: inherit` and the Critic skill's front matter
   names no model, since a fixed model there would raise a lower-tier session's
   reviews and fail where that model is not offered;
 - the answer has no tier input: `reviewer_model_for` takes the session model
@@ -39,18 +41,15 @@ if str(REPO_ROOT) not in sys.path:
 
 _CRITIC_SKILL = REPO_ROOT / "skills" / "critic" / "SKILL.md"
 _COORDINATOR = REPO_ROOT / "skills" / "critic" / "coordinator.md"
-_PR_SKILL = REPO_ROOT / "skills" / "pr" / "SKILL.md"
 _CRITIC_REVIEWER = REPO_ROOT / "agents" / "critic-reviewer.md"
-_PR_REVIEWER = REPO_ROOT / "agents" / "pr-reviewer.md"
 
 #: Every surface that starts a reviewer, or is the reviewer started.
-_DISPATCH_SURFACES = [_CRITIC_SKILL, _COORDINATOR, _PR_SKILL, _CRITIC_REVIEWER, _PR_REVIEWER]
+_DISPATCH_SURFACES = [_CRITIC_SKILL, _COORDINATOR, _CRITIC_REVIEWER]
 
 #: The surfaces that write an Agent call for a reviewer, each with the token by
 #: which it takes the model from the code's answer.
 _DISPATCHERS = {
     _COORDINATOR: "`reviewer_model`",
-    _PR_SKILL: "`reviewer model: <value>`",
 }
 
 _ALIAS = re.compile(r"\b(opus|sonnet|haiku|fable)\b", re.IGNORECASE)
@@ -102,12 +101,12 @@ def test_each_dispatcher_takes_the_model_from_code(path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("path", [_CRITIC_SKILL, _PR_SKILL], ids=_ids([_CRITIC_SKILL, _PR_SKILL]))
+@pytest.mark.parametrize("path", [_CRITIC_SKILL], ids=_ids([_CRITIC_SKILL]))
 def test_each_dispatch_command_is_told_the_session_model(path: Path) -> None:
     """The answer is only as good as its input: the command each skill runs to
     dispatch carries the model the dispatcher runs as."""
     body = path.read_text(encoding="utf-8").split("---", 2)[2]  # the grant line is not an instruction
-    command = "critic-begin --mode" if path == _CRITIC_SKILL else "pr-review-dispatch --begin"
+    command = "critic-begin --mode"
     invocations = re.findall(r"`[^`\n]*" + re.escape(command) + r"[^`\n]*`", body)
     assert invocations, f"{path.relative_to(REPO_ROOT)} no longer instructs `{command}`"
     for invocation in invocations:
@@ -117,7 +116,7 @@ def test_each_dispatch_command_is_told_the_session_model(path: Path) -> None:
         )
 
 
-@pytest.mark.parametrize("path", [_CRITIC_REVIEWER, _PR_REVIEWER], ids=_ids([_CRITIC_REVIEWER, _PR_REVIEWER]))
+@pytest.mark.parametrize("path", [_CRITIC_REVIEWER], ids=_ids([_CRITIC_REVIEWER]))
 def test_the_reviewer_agents_inherit(path: Path) -> None:
     frontmatter = path.read_text(encoding="utf-8").split("---", 2)[1]
     model_lines = [ln.strip() for ln in frontmatter.splitlines() if ln.strip().startswith("model:")]

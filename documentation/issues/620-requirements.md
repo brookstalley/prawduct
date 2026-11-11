@@ -7,6 +7,11 @@ Related: siblings #249 (socket 1 — diff coverage), #618 (socket 2 — blast ra
 diff-scoped mutation); GOV-2R8K, the single home of the shared four-socket contract
 (`.prawduct/artifacts/change-evidence-design.md`), which this document must not restate.
 
+*Note, 2026-11-11 (#1129):* one of the two seams this document names, the PR review protocol's Merge
+Hygiene section, no longer exists: the PR reviewer was removed, and `/prawduct:pr` gates on Critic
+coverage plus `check-pr-hygiene` and `check-pr-body`. The design stage has to place that half
+elsewhere (the Critic's protocol, or a result of `check-pr-hygiene`).
+
 ## Problem
 
 Nothing in the framework today detects a breaking change to a governed product's published

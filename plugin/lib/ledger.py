@@ -13,27 +13,32 @@ cross-project aggregation (TEL-7A4X). Fields exist to serve those questions.
 actor: {role, model}, git: {head, base}}`` — plus three OPTIONAL envelope keys.
 ``dispatched_at`` is written whenever a ``review.*`` append finds the dispatch
 marker belonging to its OWN kind (``data-model.md`` carries its semantics;
-each consuming kind owns a separate marker file, so both review kinds can be
-in flight at once without either clearing the other's measurement).
-``review_written_at`` rides beside a kept ``dispatched_at`` on a ``review.pr``
-— when the reviewer's evidence was written, where that interval ends.
+each consuming kind owns a separate marker file, so two kinds in flight at
+once never clear each other's measurement).
+``review_written_at`` rode beside a kept ``dispatched_at`` on a recorded
+``review.pr`` — when the reviewer's evidence was written, where that interval
+ends; readers still honour it (``review_dispatch.event_interval_seconds``).
 ``trigger`` is written on every ``review.critic`` event — which of
 :data:`CONSOLIDATION_TRIGGERS` consolidated the review — and on no other kind.
 They are enumerated here because
 this sentence is what a maintainer reads to decide whether a key is envelope or
 payload, and an aggregator written from an enumeration that omits one will not
 find it. The event then nests its kind-specific
-payload beneath a family-named key (``review`` for both ``review.critic``
-and ``review.pr``; ``learning`` for both ``learning.*``). Aggregators key on
+payload beneath a family-named key (``review`` for ``review.critic`` and the
+recorded ``review.pr``; ``learning`` for ``learning.*``). Aggregators key on
 the envelope without understanding every payload; consumers skip unknown
-event kinds and unknown fields. Emitted: ``review.critic`` and ``review.pr``
-(a review happened), plus ``learning.written`` and ``learning.fired`` — a
+event kinds and unknown fields. Emitted: ``review.critic`` (a review
+happened), plus ``learning.written`` and ``learning.fired`` — a
 rule authored this session, and a rule a Critic finding cited — which are
 what let an audit of the learning loop read a number instead of sampling
 transcripts. (``build.chunk`` / ``plan.authored`` / ``discovery.session``
 are accommodated by the envelope and deliberately NOT built — see the build
 plan's Out of scope.) Two additive kinds change no existing line's meaning,
-so ``schema_version`` stays 1.
+so ``schema_version`` stays 1. ``review.pr`` was emitted by the PR reviewer's
+flow until that reviewer was retired; the kind is now refused at the CLI
+(:data:`_RETIRED_KINDS`), and the events already recorded stay readable by
+``review-stats`` (``lib.telemetry``) and ``tools/pr-review-yield.py``. (``stats``
+reads the evidence store, never this ledger.)
 
 **Structural writer.** The agent never hand-authors JSONL: ``prawduct-hook
 ledger-append`` reads the just-written findings file, validates it,
@@ -45,12 +50,8 @@ entry point, and it is idempotent because the Stop hook re-observes the same
 new rule on every turn of a session.
 
 Validation lives at the append boundary because ``_append_event`` is the only writer — the CLI for review kinds, :func:`append_learning_event` for learning kinds — ``review.critic`` payloads through
-``lib.gates.validate_critic_findings`` (the derived-cache schema),
-``review.pr`` payloads through the same bar the stop-hook PR gate applies
-(``findings`` list + non-empty ``summary``). ``review.critic`` always reads
-the canonical ``.critic-findings.json``; ``review.pr`` requires the caller
-to pass ``--findings <path>`` (the branch-derived evidence path the
-``/prawduct:pr`` skill already computed). ``duration_seconds`` and
+``lib.gates.validate_critic_findings`` (the derived-cache schema), read from
+the canonical ``.critic-findings.json``. ``duration_seconds`` and
 ``actor.model`` come from the findings record / ``--model`` — both
 nullable, never invented.
 
@@ -85,7 +86,6 @@ LEDGER_SCHEMA_VERSION = 1
 # (learnings: "Escape hatches in classification create silent failures").
 _EVENT_ROLES = {
     "review.critic": "critic",
-    "review.pr": "pr",
     # The learning loop's two measurements. `written` is the builder's act (a
     # rule authored this session); `fired` is the critic's (a finding that
     # cited one). Both are MACHINE-emitted — see `_MACHINE_ONLY_PREFIX`.
@@ -112,6 +112,19 @@ _MACHINE_ONLY_PREFIX = "learning."
 #: indistinguishable, which is the whole problem.
 CONSOLIDATION_TRIGGERS = ("subagent-stop", "explicit", "session-end-backstop")
 
+#: Kinds this plugin once wrote and no longer does, and why — refused at the CLI
+#: with that reason rather than as an unknown kind, because the caller is a stale
+#: session's skill text and the reason is what tells it to restart. Events of
+#: these kinds already on a ledger stay valid and are still read.
+_RETIRED_KINDS = {
+    "review.pr": (
+        "the PR reviewer was retired; /prawduct:pr no longer dispatches one, so "
+        "there is no PR review to record. Restart the session so the current "
+        "skill loads. Recorded review.pr events stay readable by review-stats "
+        "and tools/pr-review-yield.py."
+    ),
+}
+
 
 def _cli_appendable() -> list[str]:
     """The kinds `ledger-append` accepts, for its own error message — derived
@@ -122,17 +135,6 @@ def _cli_appendable() -> list[str]:
 
 def ledger_path(prawduct_dir: Path) -> Path:
     return prawduct_dir / LEDGER_BASENAME
-
-
-def _validate_pr_evidence(record) -> bool:
-    """The stop-hook PR gate's bar, applied at the append boundary:
-    a dict with a ``findings`` list and a non-empty string ``summary``."""
-    return (
-        isinstance(record, dict)
-        and isinstance(record.get("findings"), list)
-        and isinstance(record.get("summary"), str)
-        and bool(record["summary"].strip())
-    )
 
 
 def _append_event(
@@ -146,8 +148,6 @@ def _append_event(
     scope: str | None = None,
     chunk: str | None = None,
     actor_model: str | None = None,
-    review_tree: str | None = None,
-    review_written_at: str | None = None,
     trigger: str | None = None,
 ) -> Path:
     """Build the envelope and append ONE line. The only writer.
@@ -168,31 +168,10 @@ def _append_event(
     the marker is checked against is the identical value the envelope records — two
     ``rev-parse`` calls could in principle straddle a commit and disagree, and the
     disagreement would read as an abandoned run.
-
-    ``review_tree`` and ``review_written_at`` come from a PR append. The first is
-    the tree the reviewer read, which the mark is checked against instead of
-    ``HEAD``. The second is when its evidence was written, which is where the
-    interval ends. An evidence file older than the mark belongs to an earlier
-    review, so the mark is refused rather than attached to it.
     """
     base, _reason = _resolve_base(project_dir)
     head = review_dispatch.head_sha(project_dir)
-    dispatched_at, dispatch_reason = review_dispatch.consume(
-        prawduct_dir, event_kind, review_tree if review_tree is not None else head
-    )
-    if dispatched_at is not None and review_written_at is not None:
-        if review_written_at < dispatched_at:
-            dispatch_reason = (
-                f"review evidence was written at {review_written_at}, before the "
-                f"dispatch mark at {dispatched_at}, so it is an earlier review's "
-                "file; recorded as not measured"
-            )
-            dispatched_at = None
-        else:
-            dispatch_reason = (
-                f"measured from a dispatch mark at {dispatched_at} to the review "
-                f"evidence written at {review_written_at}"
-            )
+    dispatched_at, dispatch_reason = review_dispatch.consume(prawduct_dir, event_kind, head)
     event = {
         "schema_version": LEDGER_SCHEMA_VERSION,
         "event": event_kind,
@@ -215,8 +194,6 @@ def _append_event(
     # consumer would then have to special-case to avoid averaging into a real one.
     if dispatched_at is not None:
         event["dispatched_at"] = dispatched_at
-        if review_written_at is not None:
-            event["review_written_at"] = review_written_at
     path = ledger_path(prawduct_dir)
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     line = json.dumps(event) + "\n"
@@ -229,18 +206,15 @@ def _append_event(
 def ledger_append(project_dir: Path, argv: list[str]) -> int:
     """Body of ``prawduct-hook ledger-append`` — see module docstring.
 
-    Usage: ``ledger-append --event review.critic|review.pr
-    [--findings <path>] [--trigger <t>] [--scope <scope>] [--chunk <id>]
-    [--model <id>]``.
-    ``--findings`` is required for ``review.pr`` (the branch-derived evidence
-    path the caller computed) and rejected for ``review.critic`` (the
-    canonical ``.critic-findings.json`` is the only trusted source).
-    ``--trigger`` is the mirror: required for ``review.critic`` (one of
-    :data:`CONSOLIDATION_TRIGGERS`) and rejected for ``review.pr``, which has a
-    single writer and so nothing to attribute. Exit 0
-    on append; exit 1 with a stderr reason on bad args, unknown event kind,
-    or a missing/invalid findings file (an invalid record must not enter the
-    history the PR gate trusts).
+    Usage: ``ledger-append --event review.critic --trigger <t> [--scope <scope>]
+    [--chunk <id>] [--model <id>]``. ``--trigger`` is required (one of
+    :data:`CONSOLIDATION_TRIGGERS`). ``--findings`` is refused: the canonical
+    ``.critic-findings.json`` is the only trusted source, and the flag existed
+    for the retired ``review.pr`` kind, which is itself refused with its reason
+    (:data:`_RETIRED_KINDS`). Exit 0 on append; exit 1 with a stderr reason on
+    bad args, an unknown or retired event kind, or a missing/invalid findings
+    file (an invalid record must not enter the review history; no gate reads
+    the ledger, but ``review-stats`` and the round price do).
     """
     event_kind: str | None = None
     scope: str | None = None
@@ -290,6 +264,9 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
             file=sys.stderr,
         )
         return 1
+    if event_kind in _RETIRED_KINDS:
+        print(f"ledger-append: {event_kind!r} is retired — {_RETIRED_KINDS[event_kind]}", file=sys.stderr)
+        return 1
     if event_kind not in _EVENT_ROLES:
         allowed = ", ".join(_cli_appendable())
         print(
@@ -319,27 +296,15 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         return 1
 
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    if event_kind == "review.pr":
-        if findings_arg is None:
-            print(
-                "ledger-append: --findings <path> is required for review.pr "
-                "(the .prawduct/.pr-reviews/<branch>.json path the caller "
-                "computed).",
-                file=sys.stderr,
-            )
-            return 1
-        findings_path = Path(findings_arg)
-        if not findings_path.is_absolute():
-            findings_path = project_dir / findings_path
-    else:
-        if findings_arg is not None:
-            print(
-                "ledger-append: --findings is only valid for review.pr — "
-                "review.critic reads the canonical .critic-findings.json.",
-                file=sys.stderr,
-            )
-            return 1
-        findings_path = prawduct_dir / ".critic-findings.json"
+    if findings_arg is not None:
+        print(
+            "ledger-append: --findings is refused — review.critic reads the "
+            "canonical .critic-findings.json, and the kind that took a path "
+            "(review.pr) is retired.",
+            file=sys.stderr,
+        )
+        return 1
+    findings_path = prawduct_dir / ".critic-findings.json"
     if not findings_path.is_file():
         print(
             f"ledger-append: no findings record at {findings_path} — write "
@@ -348,31 +313,16 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         )
         return 1
 
-    if event_kind == "review.pr":
-        try:
-            record = json.loads(findings_path.read_text())
-        except (json.JSONDecodeError, OSError) as exc:
-            print(f"ledger-append: {findings_path} unreadable ({exc})", file=sys.stderr)
-            return 1
-        if not _validate_pr_evidence(record):
-            print(
-                f"ledger-append: {findings_path} failed PR-evidence "
-                "validation (findings list + non-empty summary) — an invalid "
-                "record must not enter the ledger.",
-                file=sys.stderr,
-            )
-            return 1
-    else:
-        from . import gates  # noqa: PLC0415 — lazy; avoids a gates<->ledger import cycle
+    from . import gates  # noqa: PLC0415 — lazy; avoids a gates<->ledger import cycle
 
-        if not gates.validate_critic_findings(findings_path):
-            print(
-                f"ledger-append: {findings_path} failed schema validation — an "
-                "invalid record must not enter the ledger the PR gate trusts.",
-                file=sys.stderr,
-            )
-            return 1
-        record = json.loads(findings_path.read_text())
+    if not gates.validate_critic_findings(findings_path):
+        print(
+            f"ledger-append: {findings_path} failed schema validation — an "
+            "invalid record must not enter the review history review-stats reads.",
+            file=sys.stderr,
+        )
+        return 1
+    record = json.loads(findings_path.read_text())
 
     duration = record.get("duration_seconds")
     if not isinstance(duration, (int, float)) or isinstance(duration, bool):
@@ -381,19 +331,6 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     actor_model = model or (
         record_model if isinstance(record_model, str) and record_model.strip() else None
     )
-    review_tree = None
-    review_written_at = None
-    if event_kind == "review.pr":
-        # The PR mark is checked against the tree the reviewer read, not HEAD.
-        # The caller fixes findings before appending, so HEAD has usually moved.
-        # A missing `commit_reviewed` falls back to HEAD, as before. One that
-        # names no commit here cannot be checked, so the mark is refused.
-        reviewed = record.get("commit_reviewed")
-        if isinstance(reviewed, str) and reviewed.strip():
-            review_tree = review_dispatch.resolve_commit(project_dir, reviewed)
-            if review_tree is None:
-                review_tree = review_dispatch.UNRESOLVED_TREE
-        review_written_at = review_dispatch.file_written_at(findings_path)
 
     path, dispatch_reason = _append_event(
         project_dir,
@@ -405,8 +342,6 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
         scope=scope,
         chunk=chunk,
         actor_model=actor_model,
-        review_tree=review_tree,
-        review_written_at=review_written_at,
         trigger=trigger,
     )
     print(
@@ -683,7 +618,7 @@ def review_event_exists(prawduct_dir: Path, fact_id: str) -> bool:
 def iter_events_newest_first(prawduct_dir: Path):
     """Yield ``(line_number, event_dict)`` newest-first, skipping unparseable
     lines and non-dict events with one stderr note each — a corrupt line must
-    never crash a consumer (the PR-gate fallback reads through this)."""
+    never crash a consumer."""
     path = ledger_path(prawduct_dir)
     if not path.is_file():
         return

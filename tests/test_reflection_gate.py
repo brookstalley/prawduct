@@ -709,11 +709,15 @@ class TestTheWaiverFooter:
         _mark_base(repo)
         _commit_code(repo)
         waived = repo / ".prawduct" / ".gates-waived"
-        waived.write_text(json.dumps({"pr": "merge is not happening today"}))
+        # A live key whose gate is not blocking here, so the recipe must carry
+        # it rather than re-print it. (This used `pr` until the PR-review gate
+        # was retired; a retired key is dropped from the recipe instead —
+        # `tests/test_pr_skill.py` pins that.)
+        waived.write_text(json.dumps({"learnings": "not migrating today"}))
         rc, err = _stop(repo, capsys)
         assert rc == 2
         recipe = _echoed_waiver(err[err.index("  Escape hatch"):])
-        assert recipe["pr"] == "merge is not happening today"
+        assert recipe["learnings"] == "not migrating today"
         assert "reflection" in recipe
 
     def test_every_gate_reads_its_waiver_key_from_the_map(self):

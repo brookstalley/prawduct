@@ -29,7 +29,7 @@ prawduct/
 │   │   ├── critic/                    # bundled Critic protocol (context:fork — SKILL.md, review-protocol.md,
 │   │   │                              #   cross-checks.md, coordinator.md, goals-1-3.md, framework-checks.md;
 │   │   │                              #   review-cycle.md is the builder's lifecycle, which no reviewer loads)
-│   │   └── pr/                        # bundled PR-reviewer protocol
+│   │   └── pr/                        # the PR lifecycle skill (create, update, merge, status)
 │   ├── agents/critic-reviewer.md      # the coordinator's subagent definition (its own restricted tools)
 │   ├── methodology/                   # Narrative guides (read via ${CLAUDE_PLUGIN_ROOT})
 │   │   ├── discovery.md               # How to explore a problem space
@@ -66,7 +66,6 @@ prawduct/
 │   ├── test_operator_verification.py     # operator-verification queue + gate
 │   ├── test_advisory_store.py, test_advisory_cmd.py  # post-sync advisories
 │   ├── test_reference_verifier.py        # coverage floor verifier
-│   ├── test_pr_reviewer.py               # PR review gate + protocol
 │   ├── test_v5_methodology.py            # Methodology + Critic skill content
 │   ├── test_v5_templates.py              # Surviving template + plugin-skill content
 │   ├── preferences/                      # Architecture/style preference tests
@@ -124,7 +123,6 @@ my-product/
 │   │   ├── project-preferences.md     # developer preferences (language, testing, style)
 │   │   └── archive/                   # plans past their end of life (`prawduct-hook archive-plan`) — committed
 │   │                                  #   history, pruned at directory level by every scan on a hot path
-│   ├── .pr-reviews/                   # PR review evidence (gitignored)
 │   ├── .test-evidence.json            # test evidence for the Critic (gitignored)
 │   ├── .critic-findings.json          # derived view of the latest Critic review fact (gitignored; gates compose over the evidence store under .git/, not this file — review facts reach other clones as notes on refs/notes/prawduct)
 │   └── .governance-ledger.jsonl       # append-only governance-event history (gitignored; written only by `lib.ledger` — `ledger-append` for review events, the Stop hook and `critic-consolidate` for `learning.*`)
@@ -133,4 +131,4 @@ my-product/
 └── src/                               # product source code (+ the product's own skills, MCP servers, configs)
 ```
 
-Governance — `/prawduct:*` skills, the SessionStart + Stop hooks, methodology, and the Critic/PR protocols — comes from the **plugin**, not the repo. (A v1 file-sync repo carries committed framework files until it runs `/prawduct:migrate`.)
+Governance — `/prawduct:*` skills, the SessionStart + Stop hooks, methodology, and the Critic protocol — comes from the **plugin**, not the repo. (A v1 file-sync repo carries committed framework files until it runs `/prawduct:migrate`.)

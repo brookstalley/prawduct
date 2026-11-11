@@ -1,21 +1,20 @@
 """The one resolver for a repo's learnings rules — where they are, which state
-the repo is in, and which files apply to a given set of changed paths.
+the repo is in, and which paths each area file's globs match.
 
 Learnings are ordinary committed ``.claude/rules/`` files, so the **harness**
 loads them: ``core.md`` carries no ``paths:`` frontmatter and is in context from
 launch; every ``<area>.md`` declares ``paths:`` globs and arrives when Claude
 reads a file those globs match. Prawduct therefore builds no retrieval at all.
 What it still needs is an *agreement* with the harness about which files exist
-and which of them a given diff pulls in — the budget gate must size the same set
-the session pays for, and the Critic's cross-check must read the same area files
-the harness would have loaded. This module is that agreement, and it is the only
-place in the plugin that knows the layout.
+and which paths each area file's globs reach — the budget gate must size the same
+set the session pays for, and record-lint's dead-area check must call an area
+dead only when the harness would never load it. This module is that agreement,
+and it is the only place in the plugin that knows the layout.
 
 **The matcher must agree with the harness's, not merely be reasonable.** A glob
-this module reads more narrowly than the harness does is an area file the
-reviewer never opens while the session had it in context the whole time — the
-cross-check going quietly dark, which is the one failure this layout could
-introduce. So :func:`glob_to_regex` implements the documented semantics
+this module reads more narrowly than the harness does is an area file reported
+dead while sessions load it, and one read more widely is a dead area that goes
+unreported. So :func:`glob_to_regex` implements the documented semantics
 literally (``**/`` spans zero or more directories, ``*`` stops at a separator,
 patterns are root-relative and anchored), and the frontmatter reader below is
 deliberately *stricter* than the build-plan one in ``plan_index``: it accepts a
@@ -110,8 +109,7 @@ def _expand_braces(pattern: str) -> list[str]:
     """``a/{x,y}/b`` → ``["a/x/b", "a/y/b"]``; nested and repeated groups too.
 
     Expanded at parse time rather than in the matcher so that everything
-    downstream — :class:`AreaFile`, the finding text, ``--for-diff`` output —
-    deals in plain globs. A reader debugging why a file did or did not load sees
+    downstream — :class:`AreaFile`, the finding text — deals in plain globs. A reader debugging why a file did or did not load sees
     the pattern that actually matched, not the shorthand it came from.
 
     An unbalanced brace is left alone and matched literally: a malformed pattern
@@ -344,8 +342,8 @@ def glob_to_regex(pattern: str) -> re.Pattern[str]:
 
     Patterns are root-relative and matched whole, so ``src/components/*.tsx``
     matches nothing under ``web/src/components/``. Compiled results are cached:
-    a resolve over a large diff re-uses each area's handful of globs once per
-    changed path.
+    matching a large path set re-uses each area's handful of globs once per
+    path.
     """
     out: list[str] = []
     i = 0
@@ -401,17 +399,12 @@ class AreaFile:
     """One scoped rules file and the globs its frontmatter declares.
 
     An area with **no** globs is not a broken area — it is a rules file the
-    harness loads unconditionally, exactly like ``core.md``. It is reported with
-    an empty ``globs`` and :func:`files_for_paths` returns it for every diff, so
-    the reviewer reads what the session was actually given.
+    harness loads unconditionally, exactly like ``core.md``, and is reported
+    with an empty ``globs``.
     """
 
     path: Path
     globs: list[str] = field(default_factory=list)
-
-    @property
-    def always_loaded(self) -> bool:
-        return not self.globs
 
 
 @dataclass(frozen=True)
@@ -424,8 +417,7 @@ class Layout:
     holds only area files, which is unusual but not an error.
 
     ``files`` is every rules file, core first then areas in path order: the set
-    the budget gate sizes. :func:`files_for_paths` narrows it to what a
-    particular diff pulls in.
+    the budget gate sizes.
     """
 
     state: str
@@ -439,8 +431,8 @@ def _read(path: Path) -> str:
     """A rules file's text, or ``""`` when it cannot be read.
 
     Unreadable reads as unscoped, so the file still appears in ``files`` and is
-    still budgeted. Dropping it would be worse in both directions: silently
-    unbudgeted, and silently unread by the cross-check.
+    still budgeted. Dropping it would leave it in the session's context and
+    out of the budget, silently.
     """
     try:
         return path.read_text(encoding="utf-8")
@@ -489,24 +481,6 @@ def resolve(project_dir: str | Path) -> Layout:
     ]
     files = ([core] if core is not None else []) + [a.path for a in areas]
     return Layout(state=state, core=core, areas=areas, files=files)
-
-
-def files_for_paths(layout: Layout, changed: Iterable[str | Path]) -> list[Path]:
-    """The rules files a diff over ``changed`` puts in context, in read order.
-
-    Core first, then each area whose globs intersect ``changed`` — plus any area
-    that declares no globs, which the harness loads unconditionally. An empty
-    ``changed`` therefore yields the always-loaded set, which is the honest
-    answer for a session with no diff rather than an empty list.
-    """
-    paths = [_normalize(p) for p in changed]
-    out: list[Path] = []
-    if layout.core is not None:
-        out.append(layout.core)
-    for area in layout.areas:
-        if area.always_loaded or matches(area.globs, paths):
-            out.append(area.path)
-    return out
 
 
 def scaffold_core(project_dir: str | Path) -> Path:

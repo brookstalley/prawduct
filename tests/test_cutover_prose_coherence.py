@@ -1,9 +1,10 @@
 """Coherence tripwires for the post-cutover backlog contract.
 
-Two surfaces state the same contract in prose, in files no single reviewer
-opens together: the PR reviewer's R-1/R-2 and the janitor's Backlog Health. (The
-Critic's Backlog Reconciliation was the third, until the Critic stopped walking
-the backlog.) Prose has no compiler, so
+Surfaces that state the same contract in prose live in files no single reviewer
+opens together: today the janitor's Backlog Health. (The Critic's Backlog
+Reconciliation was another, until the Critic stopped walking the backlog, and the
+PR reviewer's R-1/R-2 a third, until that reviewer was retired.) Prose has no
+compiler, so
 the copies drift silently — and every defect this contract exists to prevent is
 itself a *consistency* defect between two surfaces rather than a bug inside one.
 These tests are the pin.
@@ -44,7 +45,6 @@ CACHE_READS = "skills/backlog/cache-reads.md"
 # leads its unavailable-notice with. The subjects still differ per surface (each
 # names its own block); what must not differ is the rule behind them.
 NOTE_SURFACES = {
-    "skills/pr/review-protocol.md": "Backlog reconciliation unavailable",
     "skills/janitor/SKILL.md": "Backlog Health unavailable",
 }
 
@@ -69,8 +69,8 @@ def _read(rel: str) -> str:
 
 
 class TestTheReadersShareOneContract:
-    """The PR reviewer's R-1/R-2 and the janitor's Backlog Health both read the
-    backlog cache, in files no single
+    """Every surface that reads the backlog cache at review time (the janitor's
+    Backlog Health, since the PR reviewer's R-1/R-2 left with it), in files no single
     reviewer opens together. Prose has no compiler, so copies drift silently — and
     every defect this contract exists to prevent is itself a *consistency* defect
     between two surfaces rather than a bug inside one.

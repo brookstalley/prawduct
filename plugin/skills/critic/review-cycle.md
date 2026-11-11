@@ -76,7 +76,7 @@ Read short, write verbose — the persisted JSON stays self-documenting in brief
 
 The norm is `nonfunctional-requirements.md` § Direction, *Review rigor is stage-keyed*. The **inner
 stage** is any review of an uncommitted or delta interval (`chunk`, `final`, `verify-resolutions`);
-the **boundary stage** is the committed bundle (`cumulative`) and the PR review. At the inner stage a
+the **boundary stage** is the committed bundle (`cumulative`). At the inner stage a
 finding is one of the **inner BLOCKING set** — a test failure in the evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped requirement; exploitable security in changed code; a cross-component contract break; a norm departure without a recorded decision; an unlisted dependency — and every other verdict the tables rate is an
 observation: reported, recorded in the partial's `observations` array, owed no disposition,
 never a `findings` entry. At the boundary the tables stand as written; at neither stage is `note` a
@@ -103,7 +103,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 `cumulative` is the only mode whose head is committed state, not the working tree: `critic-begin` resolves the base branch via `prawduct-hook resolve-base` (it honors a configured `base_branch:`, falling back to `origin/main`/`main` — the **single source of truth** the PR gate uses too, so reviewer and gate never diff different ranges) and derives the interval merge-base tree → HEAD's tree — deliberately spanning every commit on the branch, so cross-chunk integration cracks surface even when every per-chunk review was clean.
 
-`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative`; `blocking` → fix, then `/prawduct:critic verify-resolutions` — no full re-review. A blocker marked `Superseded:` is the exception — a verify pass anchors only to the most recent review, so it clears only through a spanning `cumulative`. Everything below BLOCKING is advisory at the PR gate — it does not block, matching the PR reviewer's severity contract.
+`/prawduct:pr create` calls `prawduct-hook check-cumulative-critic` and refuses to open the PR if the gate fails. Its stderr names the remedy: `uncovered` → run `/prawduct:critic cumulative`; `blocking` → fix, then `/prawduct:critic verify-resolutions` — no full re-review. A blocker marked `Superseded:` is the exception — a verify pass anchors only to the most recent review, so it clears only through a spanning `cumulative`. Everything below BLOCKING is advisory at the PR gate — it does not block.
 
 `uncovered` caused only by the **base advancing** transfers instead of buying a round, at BOTH gates: `coverage.diagnose_base_advance_transfer` grants it when the branch's own diff is byte-identical across both spans and a suite run has met the tree that gate vouches for. A denial on that condition alone says so: the remedy is a run, not a review.
 
@@ -343,7 +343,7 @@ Every review cycle must produce a record — governance without an audit trail i
 
 ### The Governance-Event Ledger
 
-The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: every consolidation path appends one `review.critic` event naming itself as `trigger` (the PR skill appends `review.pr`). `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
+The ledger (`.prawduct/.governance-ledger.jsonl`, gitignored) is the append-only telemetry history: every consolidation path appends one `review.critic` event naming itself as `trigger`. `lib.ledger` is the **single writer** (`ledger-append` for reviews, in-process for `learning.*`) — it validates the record and computes the envelope; agents never hand-author JSONL. No gate reads it; `review-stats` aggregates it.
 
 Its `scope` comes from the dispatch manifest, where `critic-begin` recorded it — **taken in code** from the checkout's work-unit binding (`prawduct-hook plan resolve` prints it), or `null` when the checkout is bound to no plan, or passed explicitly as an override. Do not derive scope yourself and pass it — `SKILL.md` step 4 owns why.
 

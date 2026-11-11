@@ -199,9 +199,7 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[d
                 # the block, so they rebuild from the provider like everything
                 # else here. `affected` is stored in the block's own `[a, b]`
                 # spelling (`None` when empty, so a reader never has to tell `[]`
-                # from "no value") — which is what lets `cache._write_affected`
-                # re-derive the path index from the column instead of from a
-                # parallel field that could drift.
+                # from "no value").
                 #
                 # `tags` is the third and is deliberately NOT stored: no consumer
                 # query reads it from the cache and `list --tag` is served live
@@ -303,7 +301,7 @@ def absorb_issue(
     makes a mirrored row equal to the row a rebuild would write. The alternative
     shape — patching the one column the caller knows changed — is wrong twice: it
     silently skips every other column the provider moved (a status write also
-    moves ``updated_at``, and a body write moves the alias and path indexes), and
+    moves ``updated_at``, and a body write moves the alias index), and
     it makes the store an author rather than a mirror, which is the property
     rebuild-equivalence exists to deny.
 
@@ -596,11 +594,9 @@ def spawn_sync(
     Until this existed, the only writer reachable from outside a test was a human
     typing ``prawduct-hook backlog sync``: nothing scheduled it and no hook spawned
     it, so every consumer's freshness had an owner in principle and none in
-    practice — age visible, nothing making it small. That gap is sharpest for the
-    consumers this trigger was added for, which are **restricted-tool agents** (the
-    Critic's reconciliation walk, the PR reviewer's checks): ``cachequery``'s
-    "run ``prawduct-hook backlog sync``" reaches a reader who cannot run anything
-    that writes.
+    practice — age visible, nothing making it small. That gap is sharpest for an
+    agent granted ``cache-query`` and not ``sync``: ``cachequery``'s "run
+    ``prawduct-hook backlog sync``" reaches a reader who cannot run it.
 
     Deliberately the same shape as ``snapshot.spawn_refresh`` — fire-and-forget,
     own session, ``PRAWDUCT_UNATTENDED=1``, returns immediately — rather than a new
