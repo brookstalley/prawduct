@@ -174,19 +174,17 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   before it pushes; older facts are not counted;
   every `evidence` op exits 0 ok, 1 a reported failure, 2 usage — an unknown op or a bad flag —
   and `status`, which takes no flags, keeps its 2 = schema-ahead sentinel below), `ledger-append`
-  (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND, `review.critic`
-  as well as `review.pr`, and writes the optional `dispatched_at` envelope key when one is present;
-  `--trigger subagent-stop|explicit|session-end-backstop` is required for `review.critic` and
-  refused for `review.pr`, and lands as the `trigger` envelope key (a required flag on a
-  shipped verb, safe because `critic-consolidate` is the only `review.critic` appender and no
-  skill or doc tells a human to append one);
-  each kind owns its own marker, so an append can never reach another kind's — `data-model.md`
-  § Direction), `pr-review-dispatch --begin [--session-model <id>]` (write the PR reviewer's dispatch mark,
-  mutating — a per-clone stopwatch, never an answer; the Critic's equivalent is written by
-  `critic-begin` itself and has no separate verb; it also prints the `reviewer model:` line
-  `critic-begin` prints, answered the same way, before attempting the mark), `pr-review-payload [--json] [<project dir>]`
-  (assemble the PR reviewer's context in one pass; read-only, emits no verdict, fails soft per
-  section with each degradation named), `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `contribute [--json]` (preview the anonymous stats reports this clone would contribute, as their exact bytes and one digest; read-only, opens no socket) and `contribute --send [--approve sha256:<digest>]` (send them to the pinned collector, mutating the per-clone sent record; exit 2 when the product has not opted in, the digest does not match, or no collector is pinned, and 1 when a send fails), `disposition` (append a finding's ACCEPT/FILE/FIXED
+  (single-writer, mutating — consumes the dispatch mark belonging to the APPENDING KIND and writes
+  the optional `dispatched_at` envelope key when one is present; `review.critic` is the one kind it
+  appends: `--trigger subagent-stop|explicit|session-end-backstop` is required and lands as the
+  `trigger` envelope key (a required flag on a shipped verb, safe because `critic-consolidate` is
+  the only `review.critic` appender and no skill or doc tells a human to append one), and
+  `--findings` is refused; `--event review.pr` exits 1 naming the PR reviewer's retirement, and
+  `review.pr` events already on a ledger stay readable by `review-stats` — § Deprecation &
+  Compatibility; each kind owns its own marker, so an append can never reach another kind's —
+  `data-model.md` § Direction). `pr-review-dispatch` and `pr-review-payload` were removed with the
+  PR reviewer; the dispatcher answers each with a one-line refusal naming that, exit 1 (§ Deprecation
+  & Compatibility). `review-stats`, `stats` (cost and yield per plugin version from the evidence store; read-only), `contribute [--json]` (preview the anonymous stats reports this clone would contribute, as their exact bytes and one digest; read-only, opens no socket) and `contribute --send [--approve sha256:<digest>]` (send them to the pinned collector, mutating the per-clone sent record; exit 2 when the product has not opted in, the digest does not match, or no collector is pinned, and 1 when a send fails), `disposition` (append a finding's ACCEPT/FILE/FIXED
   disposition fact, mutating — `--fixed <paths>` records a fix that bought no round and is refused
   on any judgeable path or any BLOCKING finding; the id argument takes a finding's `fid` **or** an
   observation's `oid`, the flags meaning exactly what they mean for a finding),
@@ -971,6 +969,21 @@ Evolution rules we want to hold, so new versions stay rare:
   binding rather than merely describing, because the 2026-08-11 departure below did **not** reach
   it: that departure is scoped to a caller which is a stale hook registration, and this one's
   caller is a person.
+
+  **REMOVED 2026-11-11 (#1129, owner ruling 2026-11-10: "yes fold PR reviewer in").**
+  `pr-review-dispatch` and `pr-review-payload` were deleted with the PR reviewer they served, and
+  `ledger-append --event review.pr` stopped appending — the deprecate-then-remove path's *remove*
+  step, taken by owner ruling rather than at a major boundary, as #303's was. Neither command was
+  registered by a shipped `hooks.json`; their caller was the `/prawduct:pr` skill text, so a session
+  whose skill loaded before the plugin advanced still calls them. Each is answered by name rather
+  than by the usage error: the dispatcher prints one line on stderr saying the PR reviewer was
+  retired and the session should restart, and exits 1 (one table, `_RETIRED_COMMANDS`), and
+  `ledger-append` refuses `review.pr` with the same reason. A refusal rather than the inert exit-0
+  tier, because an inert `pr-review-payload` would hand a stale reviewer an empty payload to review
+  and read as a clean result. Whether each goes outright or stays callable-and-inert was put to the
+  owner on 2026-11-11; the build proceeds on outright removal, and switching posture is one edit to
+  that table. As with #303, the clause's "defer removal to a major" makes this a release-time
+  obligation: the release carrying it should be a major, or the release notes must say why not.
 
   **REMOVED 2026-10-21 (#303, owner ruling 2026-09-28: "do").** `stamp-merged` and `regen-views` were deleted outright — the deprecate-then-remove path's *remove* step, taken by owner ruling rather than at a major boundary. Neither was ever registered by a shipped `hooks.json`, so the harness-skew retention rule below does not reach them; a copied script that still calls one now gets the usage error. The clause's "defer removal to a major" makes this a release-time obligation: the release carrying it should be a major, or the release notes must say why not. The parser's special cases for the retired `chunks=` key (comma-split, cross-line union) went in the same change.
 
