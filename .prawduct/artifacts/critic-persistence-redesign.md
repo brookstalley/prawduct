@@ -87,7 +87,7 @@ on-disk state that a hook runs — never something a model has to "come back and
    dispatch), already reach `critic-end` reliably. The break is specific to subagent-dispatching
    modes; scope the change there. *(Since 2026-11-11 a session above the reviewer ceiling hands
    these modes too to one dispatched `reviewer`, which the SubagentStop path consolidates like any
-   roster — see `build-plan-reviewer-model-cap.md`.)*
+   roster — see the build plan with scope `reviewer-model-cap`.)*
 
 **Why this meets the goals:** independence is preserved/strengthened (reviewers author their own
 partials; a hook merges — no model in the write path); persistence is a deterministic hook fired by a

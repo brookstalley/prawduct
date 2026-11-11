@@ -17,8 +17,9 @@ what an id names:
 
 **The ceiling is decided by exclusion.** Only an id that names a family at or
 below Opus-class is left alone. A stronger tier, an id nobody recognises, and no
-id at all are all capped, so a new stronger tier is capped with no code change,
-and a dispatcher that does not say what it runs on cannot leave its reviewer
+id at all are all capped, so a new stronger tier is capped with no code change
+unless its id contains one of those family names (the match is by substring), and
+a dispatcher that does not say what it runs on cannot leave its reviewer
 uncapped. What that costs: a session on an unrecognised model, or one whose
 dispatcher omits its model, gets Opus-class reviewers.
 

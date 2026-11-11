@@ -92,7 +92,7 @@ Land all of this **before** Step 2's cumulative review (the same sequencing rule
 
 ### Step 2: Cumulative-Critic gate — MANDATORY, and its REVIEW runs concurrently with Step 3
 
-**The gate check itself is seconds and comes first; it says whether a cumulative review is owed. When it sends you to `/prawduct:critic cumulative`, dispatch the PR reviewer in the SAME message**, doing Step 3's preparation here in its order: compute the evidence path, create `.prawduct/.pr-reviews/`, run `prawduct-hook pr-review-dispatch --begin --session-model <your model id>`, then spawn the agent with Step 3's verbatim prompt on the model it answered. An improvised prompt runs a contract nobody tested, and a skipped mark loses the measured duration. Having dispatched here, do NOT dispatch again at Step 3. Step 2b may STOP between the two steps with the reviewer already in flight.
+**The gate check itself is seconds and comes first; it says whether a cumulative review is owed. When it sends you to `/prawduct:critic cumulative`, dispatch the PR reviewer in the SAME message**, doing Step 3's preparation here in its order: compute the evidence path, create `.prawduct/.pr-reviews/`, run `prawduct-hook pr-review-dispatch --begin --session-model <your model id>`, then spawn the agent with Step 3's verbatim prompt on the model it answered — or, when it printed no `reviewer model:` line, do not dispatch (Step 3 says why). An improvised prompt runs a contract nobody tested, and a skipped mark loses the measured duration. Having dispatched here, do NOT dispatch again at Step 3. Step 2b may STOP between the two steps with the reviewer already in flight.
 
 There is no data dependency in either direction. The PR reviewer is scoped off code soundness because the Critic owns that layer, whether or not it has reported, and both read the same tree. Running them together makes the boundary cost the longer of the two rather than their sum (`nonfunctional-requirements.md` § Performance). The one cost: a cumulative that returns `blocking` moves the tree when you fix it, and Step 4's delta check then sends you back to Step 3. Keep that check even when the ancestor test passes, because it is the only thing that sees this case. When the gate is already satisfied there is nothing to run beside, and Step 3 dispatches as usual.
 
@@ -153,7 +153,7 @@ checks the mark against the tree the reviewer read (`commit_reviewed`), not the 
 You choose when to mark; you never supply its time, and Step 4's `ledger-append` picks the mark up
 on its own.
 
-If the mark fails it says so and you carry on, on the `reviewer model:` it still printed: an unmarked review records no `dispatched_at` at
+If it prints no `reviewer model:` line, its code did not load: do not dispatch — report its stderr, which names the repair. If only the mark fails it says so and you carry on, on the `reviewer model:` it still printed: an unmarked review records no `dispatched_at` at
 all and its duration is reported as self-reported, which is what every review before this one
 already is. A failure to mark is never a reason to delay the review.
 

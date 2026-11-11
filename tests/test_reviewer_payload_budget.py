@@ -452,7 +452,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
     # every capped review running on a tier above Opus-class, which costs more per review than this
     # whole table prices.
-    "dispatched-reviewer": 9325,
+    # A few tokens lower after the boundary review: the reviewer contract tells a handed-off
+    # reviewer that what its protocol file asks of "the fork" is not addressed to it, paid for by
+    # dropping why the hand-off happens from the role's entry and the agent's description.
+    "dispatched-reviewer": 9321,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -525,16 +528,16 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # route splits in two: the fork that routes and the reviewer that reviews.
     # Baselines, recorded where each stood when it first got an owner.
     "coordinator-fork-inner": 6307,
-    "dispatched-reviewer-inner": 5118,
+    "dispatched-reviewer-inner": 5114,
 }
 
 PAYLOAD_CEILINGS = {
     "single-pass-inner": 5645,
     "single-pass-full": 9852,
-    "dispatched-reviewer": 9326,
+    "dispatched-reviewer": 9322,
     "coordinator-fork": 10515,
     "coordinator-fork-inner": 6308,
-    "dispatched-reviewer-inner": 5119,
+    "dispatched-reviewer-inner": 5115,
 }
 
 

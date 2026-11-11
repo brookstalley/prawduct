@@ -1,6 +1,6 @@
 ---
 name: critic-reviewer
-description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator — one of a three-reviewer roster, or the whole single-pass review when the session runs above the reviewer ceiling; reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
+description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator — one of a three-reviewer roster, or a whole single-pass review; reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
 tools: Read, Glob, Grep, Bash(git diff *), Bash(git -C * diff *), Bash(git log *), Bash(git -C * log *), Bash(git status *), Bash(git -C * status *), Bash(git show *), Bash(git -C * show *), Bash(git ls-files *), Bash(git -C * ls-files *), Bash(git rev-parse *), Bash(git -C * rev-parse *), Bash(git merge-base *), Bash(git -C * merge-base *), Bash(prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Write
 model: inherit
 ---
@@ -66,10 +66,10 @@ The role → goal mapping
 - **sustainability** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood);
   ALSO run the **Records Pass** (`cross-checks.md` "Final-Mode Cross-Checks") and emit its
   results in your partial at whichever of its bars applies.
-- **reviewer** — the whole single-pass review, handed to you because the session runs above the
-  reviewer ceiling. On `chunk` or `verify-resolutions`: Goals 1-3 from `goals-1-3.md`, and no other
-  protocol file. On `final` or `cumulative`: all seven goals from `review-protocol.md`, with
-  `cross-checks.md` and `framework-checks.md` beside it.
+- **reviewer** — the whole single-pass review. On `chunk` or `verify-resolutions`: Goals 1-3 from
+  `goals-1-3.md`, and no other protocol file. On `final` or `cumulative`: all seven goals from
+  `review-protocol.md`, with `cross-checks.md` and `framework-checks.md` beside it. What either
+  file tells "the fork" to do after its partial is not addressed to you.
 
 **Every role: when a written rule has no enforcer, the finding is the rule — once.** This
 binds all roles, because the classes it targets —

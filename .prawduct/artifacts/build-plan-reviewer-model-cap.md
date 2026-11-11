@@ -90,7 +90,11 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
   six novel real findings to Opus-class's one. Worth revisiting if boundary reviews start missing
   defects that later surface; the lever is an explicit stronger-tier boundary review, not removing
   the cap.
-- On a capped session the fork still starts on the session's model, for the routing steps only.
+- On a capped session the fork still starts on the session's model. It routes, and it also reads
+  its review protocol before `critic-begin` tells it to hand off: one file for a chunk or verify
+  review, three for a boundary review. Reading the protocol after dispatch instead would move every
+  session's dispatch-time directives away from the claim they govern; worth revisiting if the
+  routing cost on a top-tier session shows up in the delegation telemetry.
 - Backlog and advisory drop a tier on an Opus-class session.
 
 **Inferences, for the owner to veto at the boundary:**
@@ -153,6 +157,15 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
 - The inventory's query found one start outside the skills, `methodology/building.md`'s research
   subagent; it is a delegate, covered by `methodology/delegation.md`, so nothing was fixed. Settled
   by the constraint that delegates are out of scope.
+- Review round — when the PR dispatch mark cannot load the code that answers the reviewer's
+  model, it now tells the dispatcher not to dispatch, and the PR skill says the same for a missing
+  `reviewer model:` line. Settled by the product goal: nothing runs on the session's tier by
+  accident, and an unanswered model is not an uncapped one.
+- Review round — the learnings rule that told prose to pick a reviewer's model as a fallback chain
+  is rewritten to what now holds: one code home answering from the session's model, or an
+  owner-ruled front-matter line. Settled by the owner's two rulings.
+- Review round — the four inferences above are put to the owner in the hand-over that follows this
+  review; the review's finding that they had not yet been put is accepted on that basis.
 
 **Level:** Medium. The design rests on host behaviour read from the documentation on 2026-11-11
 and not all yet observed: an Agent call's `model` overrides a plugin agent's `model: inherit`

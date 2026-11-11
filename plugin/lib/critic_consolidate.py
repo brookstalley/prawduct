@@ -6689,13 +6689,13 @@ def consolidate(
         # Last: the directive above continues the summary sentence inline.
         + _tree_changed_line(fact_body)
     )
-    # The single-pass reviewer runs this command itself, so everything above
-    # lands in the REVIEWER's context and dies there — the builder never sees a
-    # word of it. This one line is the part that has to travel: both protocol
-    # files tell the reviewer to relay `NEXT-ACTION:` verbatim as their closing line.
-    # Code owns the wording so it cannot be paraphrased into something weaker,
-    # and so it stays identical to the `next_action` the builder reads in
-    # `.critic-findings.json` on the coordinator path.
+    # When a reviewing fork runs this command itself, everything above lands in
+    # the REVIEWER's context and dies there — the builder never sees a word of
+    # it. This one line is the part that has to travel: both protocol files tell
+    # that fork to relay `NEXT-ACTION:` verbatim as its closing line. Code owns
+    # the wording so it cannot be paraphrased into something weaker, and so it
+    # stays identical to the `next_action` the builder reads in
+    # `.critic-findings.json` whenever the reviewers were dispatched instead.
     print(
         "NEXT-ACTION: "
         + next_action_line(

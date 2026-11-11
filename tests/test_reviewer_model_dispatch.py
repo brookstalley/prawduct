@@ -221,3 +221,59 @@ class TestThePrDispatchMarkPrintsTheAnswer:
         assert r.returncode == 1
         assert "usage:" in r.stderr
         assert not (repo / ".prawduct" / ".pr-review-dispatch.json").exists()
+
+
+class TestAnUnanswerableDispatchDoesNotRunUncapped:
+    """When the command cannot load the code that answers the reviewer's model,
+    it has answered nothing. The dispatcher must not read that as "run on the
+    session's model": on a session above the ceiling that is the one route by
+    which a reviewer would run on the session's tier."""
+
+    def _hook_module(self):
+        import importlib.machinery
+        import importlib.util
+
+        loader = importlib.machinery.SourceFileLoader("prawduct_hook_cap", str(HOOK))
+        spec = importlib.util.spec_from_loader("prawduct_hook_cap", loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+
+    def _run_without_the_answering_code(self, tmp_path, monkeypatch, capsys):
+        import lib
+
+        hook = self._hook_module()
+        repo = _repo_with_dirty_change(tmp_path)
+        monkeypatch.delattr(lib, "model_tier", raising=False)
+        monkeypatch.setitem(sys.modules, "lib.model_tier", None)
+        rc = hook.cmd_pr_review_dispatch(repo, ["--begin", "--session-model", "claude-fable-1"])
+        return rc, capsys.readouterr()
+
+    def test_it_tells_the_dispatcher_not_to_start_the_reviewer(self, tmp_path, monkeypatch, capsys):
+        rc, out = self._run_without_the_answering_code(tmp_path, monkeypatch, capsys)
+        assert rc == 1, "control: the import really failed"
+        assert "reviewer model:" not in out.out, "control: no answer was printed"
+        assert "do not dispatch" in out.err, (
+            "with no reviewer model answered, the message must stop the dispatch "
+            "rather than leave the reviewer on the session's model"
+        )
+        assert "session's model" not in out.err and "anyway" not in out.err, (
+            "the message still sends the reviewer out uncapped"
+        )
+
+    def test_the_skill_stops_when_no_answer_was_printed(self):
+        skill = (ROOT / "skills" / "pr" / "SKILL.md").read_text()
+        at = skill.index("pr-review-dispatch --begin --session-model")
+        passage = skill[at:skill.index("Tell the reviewer agent", at)]
+        assert "no `reviewer model:` line" in passage and "do not dispatch" in passage, (
+            "the PR skill does not say what to do when the mark prints no "
+            "reviewer-model line, so a dispatcher carries on without the cap"
+        )
+
+    def test_an_empty_session_model_says_the_cap_was_assumed(self, tmp_path):
+        repo = _repo_with_dirty_change(tmp_path)
+        _git(repo, "add", "src")
+        _git(repo, "commit", "-m", "work", "--quiet")
+        r = _run_hook(repo, "pr-review-dispatch", "--begin", "--session-model", "")
+        assert _printed_answer(r.stdout) == model_tier.CEILING_ALIAS
+        assert "--session-model" in r.stderr and "assumed" in r.stderr
