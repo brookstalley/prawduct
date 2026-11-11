@@ -258,7 +258,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
     # every capped review running on a tier above Opus-class, which costs more per review than this
     # whole table prices.
-    "single-pass-inner": 5644,
+    # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review as a
+    # boundary-stage review. Ceiling lowered with it.
+    "single-pass-inner": 5639,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -349,7 +351,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
     # every capped review running on a tier above Opus-class, which costs more per review than this
     # whole table prices.
-    "single-pass-full": 9851,
+    # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): `review-protocol.md` stops naming the PR review
+    # as a boundary-stage review, and `cross-checks.md` stops saying the PR reviewer does not re-run
+    # the final-mode passes. Ceiling lowered with it.
+    "single-pass-full": 9825,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -455,7 +460,9 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # A few tokens lower after the boundary review: the reviewer contract tells a handed-off
     # reviewer that what its protocol file asks of "the fork" is not addressed to it, paid for by
     # dropping why the hand-off happens from the role's entry and the agent's description.
-    "dispatched-reviewer": 9321,
+    # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
+    # Ceiling lowered with it.
+    "dispatched-reviewer": 9295,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -521,23 +528,27 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
     # every capped review running on a tier above Opus-class, which costs more per review than this
     # whole table prices.
-    "coordinator-fork": 10514,
+    # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
+    # Ceiling lowered with it.
+    "coordinator-fork": 10488,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
     # route splits in two: the fork that routes and the reviewer that reviews.
     # Baselines, recorded where each stood when it first got an owner.
-    "coordinator-fork-inner": 6307,
-    "dispatched-reviewer-inner": 5114,
+    # -5 each on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review
+    # as a boundary-stage review. Ceilings lowered with them.
+    "coordinator-fork-inner": 6302,
+    "dispatched-reviewer-inner": 5109,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5645,
-    "single-pass-full": 9852,
-    "dispatched-reviewer": 9322,
-    "coordinator-fork": 10515,
-    "coordinator-fork-inner": 6308,
-    "dispatched-reviewer-inner": 5115,
+    "single-pass-inner": 5640,
+    "single-pass-full": 9826,
+    "dispatched-reviewer": 9296,
+    "coordinator-fork": 10489,
+    "coordinator-fork-inner": 6303,
+    "dispatched-reviewer-inner": 5110,
 }
 
 

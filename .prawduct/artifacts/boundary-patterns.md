@@ -31,8 +31,8 @@ ingest paths — `--from-junit`, `--from-counts`, `--no-rerun`).
 shared prologue (`_load_test_evidence`), plus `validate_evidence`;
 `bin/test-reference-verify` (the F4a coverage half, which writes
 `changes_referenced` / `changes_unjudged` / `coverage_level` into the same
-record); and the Critic and PR protocols, which read the `test-status` exit code
-rather than the file.
+record); and the Critic protocol and the `/prawduct:pr` flow, which read the `test-status` exit
+code rather than the file.
 **Contract:** additive fields, and **presence is meaning**. `degraded` (added
 2026-08-21) is the worked case: the key's *absence* means an ordinary run, so a
 writer emitting `false` rather than omitting it changes what every reader sees.
@@ -40,8 +40,8 @@ A new field therefore has to name its absent-case semantics, not just its type.
 `failed_tests` (added 2026-09-23, #792) holds the failing ids as `classname::name`, in report order
 and capped; its absence means no per-test ids were available (a pass, `--from-counts`, a
 summary-only suite), never that nothing failed — `failed` stays the count of record. Two readers:
-`_load_test_evidence`'s refusal reason, which `test-status`, the PR-gate transfer and the PR review
-payload all print, and `--no-rerun`, which carries the names forward with the counts.
+`_load_test_evidence`'s refusal reason, which `test-status` and the PR-gate transfer print, and
+`--no-rerun`, which carries the names forward with the counts.
 It is deliberately not in the evidence schema: a key that is only printed must not be able to
 make a record invalid, so a malformed value is ignored by its reader rather than refused.
 **Deliberate non-consumer:** `verify_coverage` does *not* refuse a degraded
@@ -78,8 +78,8 @@ comparisons, so check that test before adding one. `chunk-imported` (#1051) and 
 `prawduct-hook learnings-migrate` (the one-way relayout of a legacy corpus); `init-product`'s
 `scaffold_core` (the header of a new product's `core.md`).
 **Consumers:** the harness (loads `core.md` every session and an `<area>.md` when a file its `paths:`
-match is read); `lib/learnings_files.resolve` and `prawduct-hook learnings-files --for-diff` (the
-Critic skill, the reviewer agent and the PR reviewer protocol read the answer); `record_lint`'s
+match is read); `lib/learnings_files.resolve` (read by `record_lint`, the briefing, compaction and
+`critic-consolidate`) and `prawduct-hook learnings-files` (what is on disk, for a person); `record_lint`'s
 budget gate; the Stop hook's `learning.written` emitter and `critic-consolidate`'s `learning.fired`.
 **Contract:** `paths:` frontmatter is a list of root-relative globs matched the way the harness
 matches them; a rule unit is a `##`/`###` heading or a top-level bullet (`learnings_files.rule_units`),
@@ -141,15 +141,15 @@ be added to each `error.details` too, and human mode must be exercised by a test
 
 ### Cache-Query Payloads (agent-read)
 
-**Producer:** `plugin/lib/backlog/cachequery.py` — the eight read-only queries
+**Producer:** `plugin/lib/backlog/cachequery.py` — the read-only queries
 behind `prawduct-hook backlog cache-query`, each returning a `status`/`reason`
 envelope plus its own payload keys.
-**Consumers:** two **agent-executed prose** surfaces, which is what makes this
-different from every other envelope here — the PR reviewer's R-1/R-2
-(`plugin/skills/pr/review-protocol.md`) and the janitor's Backlog Health
-(`plugin/skills/janitor/SKILL.md`), both routed through the one contract at
-`plugin/skills/backlog/cache-reads.md`. `plugin/lib/backlog/cli.py` is a third,
-carrying both the `--json` passthrough and the human formatter.
+**Consumers:** **agent-executed prose**, which is what makes this different from
+every other envelope here — the janitor's Backlog Health
+(`plugin/skills/janitor/SKILL.md`, routed through the one contract at
+`plugin/skills/backlog/cache-reads.md`), the backlog skill and the bug-report
+skill's triage. `plugin/lib/backlog/cli.py` carries both the `--json`
+passthrough and the human formatter.
 **Contract:** payload key names, **and the exit-code split** — `6`
 (`unavailable`) means the store could not be read and is *not* an empty result.
 A consumer that reports a clean bill of health on exit 6 rebuilds the silent-reader

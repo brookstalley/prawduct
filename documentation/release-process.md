@@ -474,9 +474,9 @@ benign**, not a gate to satisfy:
   `plugin/.claude-plugin/plugin.json` + `plugin/VERSION` + `pyproject.toml`). The CRT-7M2D coverage
   gate only excuses a doc-only (`.md`) delta since the recorded review, so these version edits read
   as "code changed since review" → exit 1.
-- **Why it's benign:** the operative pre-release reviews already happened — each feature had a clean
-  cumulative Critic at its feature→`develop` merge, and the release-readiness PR reviewer ran on each
-  feature PR. The release adds no new behavior, only version bookkeeping.
+- **Why it's benign:** the operative pre-release review already happened — each feature had a clean
+  cumulative Critic at its feature→`develop` merge. The release adds no new behavior, only version
+  bookkeeping.
 - **What to do:** nothing for this gate. Do **not** re-run `/prawduct:critic cumulative` over version
   bumps (zero added signal — the CRT-7M2D treadmill), and do **not** write `.gates-waived` — a waiver
   means "this gate cannot be satisfied this session," which is false here (the gate is perfectly

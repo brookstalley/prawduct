@@ -29,7 +29,7 @@ the defect and its consequence, say what a fix would take when that isn't obviou
 
 ## Final-Mode Cross-Checks
 
-After the goal-based review in `final` mode, run two additional passes that `chunk` mode skips — the Records Pass and the Governing-Artifact Reconciliation. **`final`/`cumulative` owns both** — the PR reviewer does not re-run them (see `skills/pr/review-protocol.md`), so each runs once per PR. Record-lint is not a pass of yours (below).
+After the goal-based review in `final` mode, run two additional passes that `chunk` mode skips — the Records Pass and the Governing-Artifact Reconciliation. **`final`/`cumulative` owns both.** Record-lint is not a pass of yours (below).
 
 ### A Written Rule With No Enforcer
 

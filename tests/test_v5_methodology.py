@@ -553,7 +553,11 @@ LAST_MEASURED_TOKENS = {
     # learnings cross-check and a backlog walk, and "warnings gate nothing" now also says an
     # observation is owed no disposition, the one sentence a builder needs where the temptation
     # to answer one arises. Each branch had paid its own way; the sum is what is declared.
-    "methodology/building.md": 5374,
+    # -7 on 2026-11-11 (pr-reviewer-fold Chunk 03): `/prawduct:pr` dispatches no reviewer, so the
+    # PR section loses the `pr-reviewer` dispatch, its protocol pointer and the concurrency sentence,
+    # and names the two gate commands instead; `.gates-waived` loses its `pr` key. A READING;
+    # ceiling lowered with it.
+    "methodology/building.md": 5367,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -729,7 +733,9 @@ LAST_MEASURED_TOKENS = {
     # +14 on 2026-11-11 (reviewer-model-cap), DECLARED: the single-pass roster may be dispatched
     # (with `reviewer_model` set), so Review Execution says so and the partial instruction tells
     # only the fork to consolidate. Compressed in place first.
-    "skills/critic/review-protocol.md": 3868,
+    # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): the boundary stage is `cumulative` alone; the PR
+    # review left it. A READING; ceiling lowered with it.
+    "skills/critic/review-protocol.md": 3863,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -847,7 +853,9 @@ LAST_MEASURED_TOKENS = {
     # +18 on 2026-10-26 (flaky-rerun, #1087): the same `flaky_policy` clause as review-protocol.md.
     # DECLARED with the route sums in test_reviewer_payload_budget.py. A READING.
     # -208 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
-    "skills/critic/goals-1-3.md": 2498,
+    # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): the boundary stage is `cumulative` alone; the PR
+    # review left it. A READING; ceiling lowered with it.
+    "skills/critic/goals-1-3.md": 2493,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1048,7 +1056,10 @@ LAST_MEASURED_TOKENS = {
     # -21 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # +30 on 2026-11-11 (reviewer-model-cap), DECLARED: the manifest key list gains `reviewer_model`
     # and what a set one does to the roster. No reviewer loads this file.
-    "skills/critic/review-cycle.md": 7775,
+    # -20 on 2026-11-11 (pr-reviewer-fold Chunk 03): the PR review leaves the boundary stage, the
+    # ledger paragraph stops saying the PR skill appends `review.pr`, and the PR gate's advisory
+    # sentence stops citing the PR reviewer's severity contract. A READING; ceiling lowered with it.
+    "skills/critic/review-cycle.md": 7755,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1250,7 +1261,9 @@ LAST_MEASURED_TOKENS = {
     # `--chunks`. A READING; the ceiling follows it down.
     # -1652 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # -5 on 2026-11-10 (critic-trim review round): the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING; ceiling lowered.
-    "skills/critic/cross-checks.md": 1729,
+    # -21 on 2026-11-11 (pr-reviewer-fold Chunk 03): the clause saying the PR reviewer does not
+    # re-run the final-mode passes went with the reviewer. A READING; ceiling lowered with it.
+    "skills/critic/cross-checks.md": 1708,
     # -17 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # +5 on 2026-11-10 (critic-trim review round), DECLARED: the Governing-Artifact Reconciliation loses its WARNING arm to record-lint (its one producer) and is assigned to the `correctness` role, which no role owned. A READING.
     # +30 on 2026-11-11 (reviewer-model-cap), DECLARED: step 2's 'no model override' sentence
@@ -1660,7 +1673,9 @@ LAST_MEASURED_TOKENS = {
     # +50 on 2026-11-10 (audit-guidance, #1131, owner ruling): the close is one line, and a turn
     # that needs the user restates its asks just above it. The three-paragraph shape and `STATE`
     # went; the asks rule and its example are the growth. A READING, no ceiling.
-    "methodology/session-hygiene.md": 3294,
+    # -7 on 2026-11-11 (pr-reviewer-fold Chunk 03): "a `/prawduct:pr` reviewer still running" left
+    # the outstanding-work list; there is no such reviewer. A READING.
+    "methodology/session-hygiene.md": 3287,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -1797,7 +1812,9 @@ LAST_MEASURED_TOKENS = {
     # scratch branch and also asked for the integrator's heavy run to land on the integration
     # branch, which a scratch branch cannot do. It now says the integrator switches its worktree
     # onto that branch, and why. A READING.
-    "methodology/delegation.md": 2852,
+    # -4 on 2026-11-11 (pr-reviewer-fold Chunk 03): the reviewer-dispatch sentence names the
+    # Critic's skill alone. A READING.
+    "methodology/delegation.md": 2848,
 }
 
 
@@ -2214,7 +2231,10 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # choice (delegation.md owns it), the handoff bullet's round-trip clause (the cold-cache
     # reason stays), `--merge`'s parenthetical, and "completed plans are archived"
     # (building.md owns it). Digest 9416 -> 9426 characters.
-    "framework": 3074,
+    # framework 3074 -> 3071 on 2026-11-11 (pr-reviewer-fold Chunk 03): AGENTS.md's PR section
+    # stops describing a dispatched release-readiness reviewer and its protocol, and the layout
+    # paragraph names the Critic protocol alone.
+    "framework": 3071,
     "product": 2192,
 }
 
@@ -2381,7 +2401,8 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # with the reading, one over each.
     # 3080 -> 3075, 2198 -> 2193 on 2026-11-10 (audit-guidance): ratcheted with the
     # reading, one over each.
-    "framework": 3075,
+    # 3075 -> 3072 on 2026-11-11 (pr-reviewer-fold Chunk 03): ratcheted with the reading.
+    "framework": 3072,
     "product": 2193,
 }
 
@@ -3800,7 +3821,8 @@ class TestBuildingMethodology:
         # RAISED 5298 -> 5308 (flaky-rerun, 2026-10-26) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5308 -> 5368 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5368 -> 5375 (critic-trim merged with audit-guidance, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 5375, f"building.md is ~{tokens} tokens, should be <5375"
+        # LOWERED 5375 -> 5368 (pr-reviewer-fold, 2026-11-11) with the reading.
+        assert tokens < 5368, f"building.md is ~{tokens} tokens, should be <5368"
 
 
 # =============================================================================
@@ -3917,13 +3939,13 @@ class TestDelegationGuide:
 
     def test_reviewer_dispatch_is_left_to_its_own_skills(self):
         """The draft says a review-shaped piece takes the stronger model. That
-        is about delegates; the Critic and PR reviewers are dispatched by their
-        own skills. The guide must route there without asserting what those
-        skills decide, because that norm is the owner's to amend separately.
+        is about delegates; the Critic's reviewers are dispatched by its own
+        skill. The guide must route there without asserting what that skill
+        decides, because that norm is the owner's to amend separately.
         """
         body = self.content.split("## Model and effort are yours to set", 1)[1]
         body = body.split("\n## ", 1)[0]
-        assert "governed by their own skills" in body
+        assert "governed by its own skill" in body
         assert "inherit the session model" not in body, (
             "the guide restates the reviewer-model rule it does not own"
         )
@@ -5636,7 +5658,8 @@ class TestCriticSkill:
         # LOWERED 3945 -> 3855 (critic-trim, 2026-11-10) with the reading.
         # RAISED 3855 -> 3869 (reviewer-model-cap, 2026-11-11): only the fork consolidates — see
         # LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3869, f"review-protocol.md is ~{tokens} tokens, should be <3869"
+        # LOWERED 3869 -> 3864 (pr-reviewer-fold, 2026-11-11) with the reading.
+        assert tokens < 3864, f"review-protocol.md is ~{tokens} tokens, should be <3864"
 
 
 # =============================================================================
@@ -5944,7 +5967,8 @@ class TestCriticGoals13:
         # RAISED 2650 -> 2671 the same day, DECLARED — see LAST_MEASURED_TOKENS (net +11 on the branch).
         # RAISED 2689 -> 2707 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
         # LOWERED 2707 -> 2499 (critic-trim, 2026-11-10) with the reading.
-        assert tokens < 2499, f"goals-1-3.md is ~{tokens} tokens, should be <2499"
+        # LOWERED 2499 -> 2494 (pr-reviewer-fold, 2026-11-11) with the reading.
+        assert tokens < 2494, f"goals-1-3.md is ~{tokens} tokens, should be <2494"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -6539,7 +6563,8 @@ class TestReviewCycle:
         # LOWERED 7767 -> 7746 (critic-trim, 2026-11-10) with the reading.
         # RAISED 7746 -> 7776 (reviewer-model-cap, 2026-11-11): the `reviewer_model` manifest key —
         # see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 7776, f"review-cycle.md is ~{tokens} tokens, should be <7776"
+        # LOWERED 7776 -> 7756 (pr-reviewer-fold, 2026-11-11) with the reading.
+        assert tokens < 7756, f"review-cycle.md is ~{tokens} tokens, should be <7756"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
@@ -6551,7 +6576,8 @@ class TestReviewCycle:
         # RATCHETED 3391 -> 3387 (chunk-status, 2026-10-25) with the reading.
         # LOWERED 3387 -> 1735 (critic-trim, 2026-11-10) with the reading.
         # LOWERED 1735 -> 1730 (critic-trim review round) with the reading.
-        assert tokens < 1730, f"cross-checks.md is ~{tokens} tokens, should be <1730"
+        # LOWERED 1730 -> 1709 (pr-reviewer-fold, 2026-11-11) with the reading.
+        assert tokens < 1709, f"cross-checks.md is ~{tokens} tokens, should be <1709"
 
     def test_coordinator_token_budget(self):
         # coordinator.md is read only by the fork on a coordinator roster (C-20).
