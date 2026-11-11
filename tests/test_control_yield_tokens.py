@@ -328,11 +328,11 @@ class TestReadCostToken:
 
     def test_it_never_blocks(self) -> None:
         # A static reading cannot measure a cost, so it cannot stop the tree on
-        # one: the bullet asks for the measurement instead.
+        # one.
         bullet = self._bullet()
         assert "**WARNING**" in bullet and "**BLOCKING**" not in bullet, (
             "the read-cost check changed severity — it rates WARNING at most, "
-            "because the reviewer runs nothing and names a shape, never a cost."
+            "because the reviewer runs nothing and so cannot measure a cost."
         )
 
     def test_it_stays_out_of_the_chunk_mode_payload(self) -> None:

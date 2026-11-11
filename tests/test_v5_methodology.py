@@ -735,11 +735,12 @@ LAST_MEASURED_TOKENS = {
     # only the fork to consolidate. Compressed in place first.
     # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): the boundary stage is `cumulative` alone; the PR
     # review left it. A READING; ceiling lowered with it.
-    # +186 on 2026-11-11 (read-cost-review), DECLARED: Goal 7 rates a read whose cost follows the
+    # +87 on 2026-11-11 (read-cost-review), DECLARED: Goal 7 rates a read whose cost follows the
     # size of what it reads from (owner ruling 2026-11-11). A new check, so there was no
-    # restatement to cut; the bullet was compressed first (219 as first drafted). Priced with the route
-    # sums in test_reviewer_payload_budget.py.
-    "skills/critic/review-protocol.md": 4049,
+    # restatement to cut. The bullet is one sentence: a blind test found it raises the same
+    # planted mistakes as a draft more than twice its size. Priced with the route sums in
+    # test_reviewer_payload_budget.py.
+    "skills/critic/review-protocol.md": 3950,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -5665,8 +5666,8 @@ class TestCriticSkill:
         # RAISED 3855 -> 3869 (reviewer-model-cap, 2026-11-11): only the fork consolidates — see
         # LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3869 -> 3864 (pr-reviewer-fold, 2026-11-11) with the reading.
-        # RAISED 3864 -> 4050 (read-cost-review, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 4050, f"review-protocol.md is ~{tokens} tokens, should be <4050"
+        # RAISED 3864 -> 3951 (read-cost-review, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 3951, f"review-protocol.md is ~{tokens} tokens, should be <3951"
 
 
 # =============================================================================

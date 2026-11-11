@@ -20,15 +20,13 @@ wordings searched, which is a sample of phrasing and not a census.
 
 ### The Critic has one home for it
 
-`skills/critic/review-protocol.md` Goal 7 gains **Read cost**: a read costs what its caller uses,
-not the size of what it reads from. It is stated as that property rather than as a list of
-database rules, so it covers a file read whole for one line or a remote list filtered after the
-fetch as readily as a missing index. It rates WARNING at most: where the stated volume makes the
-cost one somebody meets, or where no volume is stated and the read runs per request, item or tick
-over a collection that plainly grows with use. Anything else is an observation. The reviewer runs nothing, so it names
-the shape and the measurement that would settle it, never a figure. It is a Goal 7 check: `final`
-and `cumulative` reviews run it, `chunk` reviews do not, and at the inner stage it is an
-observation.
+`skills/critic/review-protocol.md` Goal 7 gains **Read cost**: a read whose cost follows the size
+of what it reads from, not what its caller uses. It is stated as that property rather than as a
+list of database rules, so it covers a file read whole for one line or a remote list filtered
+after the fetch as readily as a missing index. It rates WARNING at most: where the stated volume,
+or a per-request read over a collection that plainly grows, makes the cost one somebody meets.
+Anything else is an observation. It is a Goal 7 check: `final` and `cumulative` reviews run it,
+`chunk` reviews do not, and at the inner stage it is an observation.
 
 ### The data model says how the data is read
 
@@ -81,11 +79,8 @@ so; that is a reading of their reports, not an established cause. One fixture an
 cannot say how general this is, but it is the only measurement there is, and it says the check
 bought its catches at the price of one a reviewer otherwise made.
 
-So the branch is held unmerged, by the rule set before the replicates ran (the owner's ruling of
-the same day asked for them before merging). What it waits on is a version of the check that
-keeps the old protocol's catch rate on that defect, tested the same way, or a decision to drop
-the check. The fixture, the eleven result files and the steps to rebuild a run are kept on the
-owner's machine in `.prawduct/.read-cost-test-2026-11-11/`, outside git.
+The fixture, every result file and the steps to rebuild a run are kept on the owner's machine in
+`.prawduct/.read-cost-test-2026-11-11/`, outside git.
 
 ### Two wordings tried, neither recovers the catch
 
@@ -95,23 +90,44 @@ plus a preamble telling the reviewer that a file can hold more than one defect, 
 verdict under one check settles only that check, raised it in none of six. Both variants still
 raised every planted mistake.
 
-What the twenty-three runs do and do not show. The loss is narrow: the fixture's other real
+What those twenty-three runs do and do not show. The loss is narrow: the fixture's other real
 issues that the old protocol raised every time were raised every time under every variant, and
 its smaller ones moved in no consistent direction. One defect, in the one file the read-cost
 check judges clean, all but disappeared (one run in eighteen against four in five). The cause is
 not established, and a single defect in a single fixture cannot say how far this reaches. It
 does say that neither brevity nor an instruction to keep looking fixes it, and that nothing this
 repo runs before shipping review prose would have shown it: the tests pin that the words are
-present, and a review of the prose reads the prose. Neither committed variant is on this branch;
-the branch still carries the original bullet and stays held.
+present, and a review of the prose reads the prose.
+
+### It ships, as one sentence
+
+The owner ruled on 2026-11-11 that the check ships: "the database efficiency catches are more
+important than the missed finding". What ships is the one-sentence bullet, because it raised the
+same planted mistakes in all six of its runs as the first draft did in its six, at under half the
+size; the first draft's worked shapes, its instruction to open the schema and its "never a
+figure" sentence bought no catch the test could see. The preamble is not shipped.
+
+A last batch moved the unplanted defect out of the file the check judges clean and into the
+README. Three runs on the long bullet raised it twice, and three on the old protocol raised it
+twice, once only as an observation. That is thin, and it points the same way as the rest: the
+loss sits where a new check hands a file a clean verdict, not across the review.
+
+The measurement this needed did not exist before it was improvised. #1147 carries the owner's
+ruling to build it properly: a seeded-defect check in its own private repository, run whenever
+the Critic's protocol prose changes.
 
 ## Consumer note
 `final` and `cumulative` Critic reviews now look at what a changed read costs: a lookup that walks
 a growing collection for want of a key, index or bound, whole records or heavy fields fetched
-where a few values are used, and one read per item where one would serve. Such a verdict's title
-opens `read-cost:`. It is a warning at most — where your data model or non-functional
-requirements state a volume that makes the cost real, or where they state none and the read runs on
-every request, item or tick over a collection that plainly grows — and it never blocks. If your data model
-says nothing about volume for a store that grows, expect an observation pointing you to the
-data-model template's new Access Paths section — expected volume, how each frequent read finds its
-records, and which fields are heavy. Adding that section is optional and nothing checks for it.
+where a few values are used, one read per item where one would serve. Such a verdict's title opens
+`read-cost:`. It is a warning at most, where your data model or non-functional requirements state
+a volume that makes the cost real, or the read runs on every request over a collection that
+plainly grows, and it never blocks. If your data model states no volume for a store that grows,
+expect an observation pointing you to the data-model template's new Access Paths section:
+expected volume, how each frequent read finds its records, and which fields are heavy. Adding that
+section is optional and nothing checks for it.
+
+One known cost. In a blind test, reviewers carrying this check raised every planted read-cost
+mistake and stopped raising a different real defect, a broken run command in a script the check
+judged clean, which reviewers without the check usually caught. A file this check passes has not
+been cleared of anything else.
