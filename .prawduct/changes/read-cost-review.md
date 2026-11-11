@@ -61,6 +61,32 @@ observation whose title opens `read-cost:`. The check never blocks by design, so
 would justify keeping it then is that its warnings were fixed or measured rather than accepted,
 which the disposition facts on those findings answer.
 
+### A blind test after the build: the check works, and it may cost a blocking catch
+
+On 2026-11-11, after the commit above, eleven fresh Opus reviewers each ran the single-pass
+protocol at boundary stage over a synthetic product branch, without being told what it held: six
+on this branch's protocol and five on develop's. The branch carried seven planted read-cost
+mistakes and three look-alikes that should not be warned on.
+
+The check does what it was built to do. Every planted mistake was raised in all six new-protocol
+runs, each under Goal 7 with the `read-cost:` token, and no look-alike drew a warning. The old
+protocol's first two runs (the only ones scored on this) raised the blatant five in both, missed
+the unindexed lookup and the unbounded search once each, and filed what they raised under three
+goals.
+
+The fixture also held a real defect nobody planted: a script's documented run command that
+cannot work. The old protocol rated it blocking in four of five runs. The new protocol raised it
+in none of six. Each new-protocol reviewer read that script, judged its read cost sound, and said
+so; that is a reading of their reports, not an established cause. One fixture and eleven runs
+cannot say how general this is, but it is the only measurement there is, and it says the check
+bought its catches at the price of one a reviewer otherwise made.
+
+So the branch is held unmerged, by the rule set before the replicates ran (the owner's ruling of
+the same day asked for them before merging). What it waits on is a version of the check that
+keeps the old protocol's catch rate on that defect, tested the same way, or a decision to drop
+the check. The fixture, the eleven result files and the steps to rebuild a run are kept on the
+owner's machine in `.prawduct/.read-cost-test-2026-11-11/`, outside git.
+
 ## Consumer note
 `final` and `cumulative` Critic reviews now look at what a changed read costs: a lookup that walks
 a growing collection for want of a key, index or bound, whole records or heavy fields fetched
