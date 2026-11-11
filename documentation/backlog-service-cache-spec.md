@@ -338,7 +338,7 @@ the write surface does not:
 |---|---|---|
 | `file` | yes | creates the row |
 | `status` | yes | `status`; also carries `merge`, which closes its source through `set_status` |
-| `update` | yes | every writable column plus the derived `affected` and alias indexes |
+| `update` | yes | every writable column plus the derived alias index |
 | `link`/`unlink` | `related` only | native `blocks`/`parent` edges are not cached at all; `related` is a body write |
 | `import` | via sync | a bulk create with no single issue in hand — an incremental sync after the run, when a store exists |
 | `reconcile-labels` | no | the alias index derives from the block body, not from the `id:PFX` labels this restores |

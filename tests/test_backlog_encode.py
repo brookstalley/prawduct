@@ -484,13 +484,6 @@ class TestAffected:
         assert entries == ["plugin/lib/backlog", "docs/x.md"]
 
 
-class TestPathAncestors:
-    """The keys the cache's derived path index is matched by."""
-
-    def test_ancestors_are_the_keys_a_changed_file_answers_to(self):
-        assert encode.path_ancestors("a/b/c.py") == ["a/b/c.py", "a/b", "a"]
-
-
 class TestTags:
     def test_tags_decode_from_labels_sorted_and_deduplicated(self):
         issue = {

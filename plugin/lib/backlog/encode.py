@@ -742,28 +742,6 @@ def validate_affected(entries: list[str]) -> tuple[list[str], str | None]:
     return normalized, None
 
 
-def path_ancestors(path: str) -> list[str]:
-    """Every `affected` entry a changed file answers to: itself, then each
-    ancestor directory.
-
-    This is what makes the intersection an **equality** match, which is what an
-    index can serve. The natural phrasing — does any entry prefix this path —
-    runs ``? LIKE path || '%'``, whose variable side is the wrong one for an
-    index on ``path``; expanding the changed file into its ancestors inverts it
-    into ``path IN (…)``. Changed sets are diffs and paths are shallow, so the
-    expansion is small.
-
-    Entries are exact paths or directory prefixes — **not globs.** A glob would
-    reintroduce the unindexable direction and buys nothing a directory prefix
-    does not already give.
-    """
-    value = normalize_affected([path])
-    if not value:
-        return []
-    parts = value[0].split("/")
-    return ["/".join(parts[: i + 1]) for i in range(len(parts))][::-1]
-
-
 #: The longest a `tag:`-prefixed label may be. GitHub caps a label name at 50
 #: characters, and a tag that cannot become a label is a tag that cannot be
 #: written — better refused at the seam than discovered as a 422.

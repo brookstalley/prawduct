@@ -112,8 +112,7 @@ ITEM_COLUMNS: tuple[str, ...] = (
 )
 
 # `working_branch` is read by ready-work's working-branch exclusion. `affected`
-# is stored and derived into `item_affected` below, and no cache query reads
-# either (the table's comment says what that makes them).
+# is the item's own block field, stored verbatim like the rest of the row.
 #
 # **`tags` was here and is gone**, and the removal is the no-dead-fields rule
 # being applied rather than argued around. It shipped with its justification
@@ -151,26 +150,11 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     """,
     "CREATE INDEX item_status_area ON item(status, area)",
     "CREATE INDEX item_updated_at ON item(updated_at)",
-    # The `affected` index — a table, not an index on `item.affected`, and both
-    # exist for the same reason `item_fts` exists beside `item.title`/`item.body`.
-    #
-    # `item.affected` is the verbatim domain value: what the item says, what
-    # rebuild-equivalence compares, what a reader sees. It cannot serve the query,
-    # though, because the intersection runs entry-contains-changed-file
-    # (`plugin/lib` matches `plugin/lib/sync.py`) and phrasing that as
-    # `WHERE ? LIKE affected || '%'` puts the variable on the side no index can
-    # help. Exploding the list into one row per path lets the caller expand each
-    # changed file into its ancestor directories (`encode.path_ancestors`) and
-    # match by equality, which this index does serve.
-    #
-    # Derived from the column in the same transaction, never written
-    # independently, so the two can no more disagree than the text index can.
-    #
-    # **No query reads this table or the column it derives from**: the
-    # changed-file intersection it is shaped for has no consumer, and
-    # `cachequery` serves none. By the no-dead-fields rule `tags` went under
-    # (above), both go at the next schema bump, which is a rebuild rather than
-    # a migration.
+    # **Unwritten and unread.** It stays in the schema only because removing a
+    # table means bumping `SCHEMA_VERSION`, which discards every existing store:
+    # cache reads report `unavailable` until the next sync, and that sync is a
+    # full re-fetch instead of the conditional request a normal one makes. It
+    # goes with the next bump that has to be paid anyway.
     """
     CREATE TABLE item_affected (
         item_id TEXT NOT NULL,
@@ -183,7 +167,7 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     # alias table", made a table so the resolution is a lookup rather than a scan
     # that parses every body.
     #
-    # Same derived-index shape as `item_affected` and `item_fts`: re-derived from
+    # Same derived-index shape as `item_fts`: re-derived from
     # the stored `item.body` in the same transaction, never written on its own, so
     # it is not a second home for the fact. The input is the body rather than a
     # column of its own because `id_aliases` is a block field and the block is
@@ -204,9 +188,8 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     # `owner/repo#number` is not GitHub-unique), while a historical citation in a
     # change-log or a commit message is written untagged. Matching the untagged
     # one against the tagged column would take `LIKE '%:' || ?`, whose leading
-    # wildcard no index can serve — the same unindexable direction
-    # `item_affected` exists to invert, and inverted the same way: derive the
-    # equality-matchable key at write time. Two providers' aliases sharing one
+    # wildcard no index can serve, so the equality-matchable key is derived at
+    # write time instead. Two providers' aliases sharing one
     # untagged ref both come back, which is the honest answer — that citation
     # genuinely is ambiguous, and the tag is what lets a caller say which it
     # meant.
@@ -615,16 +598,14 @@ def _write_rows(conn: sqlite3.Connection, rows: list[dict], *, fetched_at: str, 
                 "INSERT INTO item_fts (item_id, title, body) VALUES (?, ?, ?)",
                 (row.get("id"), row.get("title"), row.get("body")),
             )
-        _write_affected(conn, row)
         _write_aliases(conn, row)
 
 
 def _write_aliases(conn: sqlite3.Connection, row: dict) -> None:
     """Re-derive one item's ``item_alias`` rows from its stored body block.
 
-    **Parsed from the body, not from a decoded field handed in beside it**, for
-    the same single-input reason :func:`_write_affected` parses from its column:
-    the body is what a rebuild reproduces verbatim, so an index derived from it
+    **Parsed from the body, not from a decoded field handed in beside it**, so
+    the index has exactly one input: the body is what a rebuild reproduces verbatim, so an index derived from it
     can no more disagree with the item than the text index can. The delete is
     unconditional, because an alias removed from a body must stop resolving — a
     surviving row would answer a resolution with a confident wrong item, which is
@@ -654,40 +635,13 @@ def _write_aliases(conn: sqlite3.Connection, row: dict) -> None:
         )
 
 
-def _write_affected(conn: sqlite3.Connection, row: dict) -> None:
-    """Re-derive one item's ``item_affected`` rows from its ``affected`` column.
-
-    **Parsed from the column, not from a second field on the row**, so the index
-    and the value it indexes have exactly one input and cannot drift apart. The
-    delete is unconditional: an item whose paths were removed must lose its
-    index rows, and an upsert that only ever inserted would leave the old set
-    matching forever — the failure mode is a stale *positive*, which is worse
-    than a miss because it reads as a confident answer.
-    """
-    # `parse_list` is a pure block-list *format* helper, not provider knowledge,
-    # so reading the column through it does not breach this module's
-    # provider-neutrality — and `cachequery.py` already reaches into `encode` for
-    # the same class of helper. Parsing it inline instead would put a second
-    # spelling of the `[a, b]` format here, which is the drift the single-input
-    # rule above exists to prevent.
-    from .encode import parse_list  # noqa: PLC0415 — lazy, matches cachequery's import shape
-
-    item_id = row.get("id")
-    conn.execute("DELETE FROM item_affected WHERE item_id = ?", (item_id,))
-    for path in parse_list(row.get("affected")):
-        conn.execute(
-            "INSERT OR IGNORE INTO item_affected (item_id, path) VALUES (?, ?)",
-            (item_id, path),
-        )
-
-
 def _delete_items(conn: sqlite3.Connection, item_ids: list[str], *, fts: bool) -> int:
     """Remove items and every derived row that hangs off them; return how many
     rows were **actually** removed.
 
     Every index the store keeps has to be swept here, or the item disappears from
-    the table a reader lists while still answering a text search or a
-    changed-file intersection — a stale positive wearing the shape of a hit.
+    the table a reader lists while still answering a text search or an alias
+    resolution — a stale positive wearing the shape of a hit.
 
     The count is `rowcount`, not `len(item_ids)`, and the difference is not
     cosmetic: most out-of-scope ids in a sync window are ordinary repo issues
@@ -697,7 +651,6 @@ def _delete_items(conn: sqlite3.Connection, item_ids: list[str], *, fts: bool) -
     removed = 0
     for item_id in item_ids:
         removed += conn.execute("DELETE FROM item WHERE id = ?", (item_id,)).rowcount
-        conn.execute("DELETE FROM item_affected WHERE item_id = ?", (item_id,))
         conn.execute("DELETE FROM item_alias WHERE item_id = ?", (item_id,))
         if fts:
             conn.execute("DELETE FROM item_fts WHERE item_id = ?", (item_id,))
@@ -810,8 +763,8 @@ def absorb_rows(
             _write_rows(conn, rows, fetched_at=fetched_at, fts=fts)
             evicted = _delete_items(conn, evict or [], fts=fts)
     # Wider than the `sqlite3.Error` its siblings catch, and deliberately so.
-    # `_write_rows` also re-derives the alias and path indexes, whose `parse_block`
-    # / `parse_list` work raises value errors rather than database ones. A sync can
+    # `_write_rows` also re-derives the alias index, whose `parse_block` work
+    # raises value errors rather than database ones. A sync can
     # afford to let one escape — it is attributed to a sync command the caller
     # chose to run. A mirror cannot: it runs after a provider write has ALREADY
     # landed, so anything escaping here turns a successful write into a failed
@@ -884,7 +837,6 @@ def replace_items(
     try:
         with conn:
             conn.execute("DELETE FROM item")
-            conn.execute("DELETE FROM item_affected")
             conn.execute("DELETE FROM item_alias")
             if fts:
                 conn.execute("DELETE FROM item_fts")

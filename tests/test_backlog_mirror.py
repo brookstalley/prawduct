@@ -143,9 +143,8 @@ class TestWritesReachTheCache:
         assert _cached(repo_dir, f"{SCOPE}#1")["status"] == "shipped"
         assert f"{SCOPE}#1" not in _open_ids(repo_dir)
 
-    def test_update_reflects_fields_and_the_derived_path_index(self, fake, repo_dir):
-        """`affected` is the one field with a derived path index behind it, so it
-        is the one whose index row would silently keep the old paths."""
+    def test_update_reflects_its_fields(self, fake, repo_dir):
+        """The mirror carries every field the update set, `affected` included."""
         core.file_item(fake, owner=OWNER, repo=REPO_NAME,
                        title="backlog: the item under test here", body="b")
         _warm(repo_dir, fake)
@@ -161,12 +160,6 @@ class TestWritesReachTheCache:
         row = _cached(repo_dir, f"{SCOPE}#1")
         assert row["stage"] == "ready"
         assert row["affected"] == "[plugin/lib/backlog]"
-        conn = sqlite3.connect(str(cache.cache_path(repo_dir)))
-        indexed = conn.execute(
-            "SELECT path FROM item_affected WHERE item_id = ?", (f"{SCOPE}#1",)
-        ).fetchall()
-        conn.close()
-        assert indexed == [("plugin/lib/backlog",)]
 
     def test_link_related_is_mirrored_and_the_native_edges_are_not(self, fake, repo_dir):
         """`related` lives in the body block, which the store holds and indexes.

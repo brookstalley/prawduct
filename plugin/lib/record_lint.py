@@ -1608,13 +1608,11 @@ def _check_learnings_areas(
     Returns ``(findings, unchecked, no_answer)``.
 
     The rules directory only grows, and an area file is reached by its globs or
-    not at all: rename the directory those globs name, or retire the area, and
-    the file stops being loaded by the harness and stops being returned by
-    ``files_for_paths`` — so the Critic never reads it either. Nothing else
-    notices, because the file is still there, still valid, still full of rules.
-    The corpus then *displays* a rule no session will ever see, which is the
-    cross-check going dark from the opposite direction to the one
-    ``learnings_files`` was written to prevent.
+    not at all: the harness loads it only when a file its ``paths:`` match is
+    read, so rename the directory those globs name, or retire the area, and the
+    file stops being loaded. Nothing else notices, because the file is still
+    there, still valid, still full of rules. The corpus then *displays* a rule
+    no session will ever see.
 
     Matched against **tracked** paths (``git ls-files``), not the working tree:
     build output and ignored scratch directories would keep a dead area alive,
@@ -1655,9 +1653,9 @@ def _check_learnings_areas(
                 None,
                 "no tracked file matches "
                 + ", ".join(f"`{glob}`" for glob in area.globs)
-                + " — the harness never loads this file and the cross-check "
-                "never reads it, so its rules reach nobody. Rename the globs to "
-                "what the code is called now, or fold the rules into core.md",
+                + " — the harness loads this file only when a file its globs "
+                "match is read, so its rules reach no session. Rename the globs "
+                "to what the code is called now, or fold the rules into core.md",
             )
         )
     return findings, [], set()

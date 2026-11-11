@@ -199,9 +199,7 @@ def _rows_from_issues(issues: list[dict], owner: str, repo: str) -> tuple[list[d
                 # the block, so they rebuild from the provider like everything
                 # else here. `affected` is stored in the block's own `[a, b]`
                 # spelling (`None` when empty, so a reader never has to tell `[]`
-                # from "no value") — which is what lets `cache._write_affected`
-                # re-derive the path index from the column instead of from a
-                # parallel field that could drift.
+                # from "no value").
                 #
                 # `tags` is the third and is deliberately NOT stored: no consumer
                 # query reads it from the cache and `list --tag` is served live
@@ -303,7 +301,7 @@ def absorb_issue(
     makes a mirrored row equal to the row a rebuild would write. The alternative
     shape — patching the one column the caller knows changed — is wrong twice: it
     silently skips every other column the provider moved (a status write also
-    moves ``updated_at``, and a body write moves the alias and path indexes), and
+    moves ``updated_at``, and a body write moves the alias index), and
     it makes the store an author rather than a mirror, which is the property
     rebuild-equivalence exists to deny.
 
