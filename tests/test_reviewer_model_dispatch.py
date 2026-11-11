@@ -262,13 +262,26 @@ class TestAnUnanswerableDispatchDoesNotRunUncapped:
         )
 
     def test_the_skill_stops_when_no_answer_was_printed(self):
+        """Both places the PR skill runs the mark carry the stop, each read on
+        its own: the early dispatch beside a cumulative review, and the
+        ordinary one. A dispatcher on the early route never reaches the other."""
         skill = (ROOT / "skills" / "pr" / "SKILL.md").read_text()
-        at = skill.index("pr-review-dispatch --begin --session-model")
-        passage = skill[at:skill.index("Tell the reviewer agent", at)]
-        assert "no `reviewer model:` line" in passage and "do not dispatch" in passage, (
-            "the PR skill does not say what to do when the mark prints no "
-            "reviewer-model line, so a dispatcher carries on without the cap"
+        mark = "pr-review-dispatch --begin --session-model"
+        early = skill.index(mark)
+        ordinary = skill.index(mark, early + 1)
+        assert skill.find(mark, ordinary + 1) == -1, (
+            "the PR skill runs the mark somewhere this test does not read"
         )
+        passages = {
+            "the early dispatch": skill[early:skill.index("\n\n", early)],
+            "the ordinary dispatch": skill[ordinary:skill.index("Tell the reviewer agent", ordinary)],
+        }
+        for name, passage in passages.items():
+            assert "no `reviewer model:` line" in passage and "do not dispatch" in passage, (
+                f"{name} in the PR skill does not say what to do when the mark "
+                "prints no reviewer-model line, so a dispatcher carries on "
+                "without the cap"
+            )
 
     def test_an_empty_session_model_says_the_cap_was_assumed(self, tmp_path):
         repo = _repo_with_dirty_change(tmp_path)
