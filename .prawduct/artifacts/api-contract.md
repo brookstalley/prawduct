@@ -275,6 +275,38 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
+  **`check-pr-hygiene [--json]`** (read-only; owner `lib/pr_gate.py`) answers over merge-base…HEAD of
+  the checked-out branch, the base from the resolver `resolve-base` uses. Named results:
+  `closes-unresolved` (warning: an id in the branch's change-record `closes:` list, read through
+  `change_fragments.branch_change_record`, that the backlog does not resolve), `closes-still-open`
+  (warning, markdown backend only: an id the branch's own backlog at HEAD still has open),
+  `close-owed-at-merge` (information, Issues backend: the ids the PR description must carry a
+  closing line for; looked up in the local cache, never the network), `chunks-open` (information:
+  the bound plan's open chunks per `plan_status`; an unbound branch prints nothing for it) and
+  `review-tree-changed` (information: reviews on the composed coverage path consolidated over a
+  changed tree, for the PR description). A result whose subject could not be read says `unchecked`
+  with its reason and never reads as clean; a branch recording its change only in the single-file log
+  is `unchecked` for the closure results. A clean branch prints one line. Exit 0 nothing refuses, 1
+  something refuses, 3 no answer at all (no base, no merge-base), 2 usage. `--json` keys: `base`,
+  `merge_base`, `head`, `checked[]`, `results[]{name, severity, items[], unchecked}` (only results
+  with something to say), `error`, `exit`.
+  **`check-pr-body [<body file>] [--template <path>] [--json]`** (read-only; owner `lib/pr_gate.py`)
+  finds the repo's PR template where GitHub does — `pull_request_template` in any case, with or
+  without one extension, in the root, `docs/` or `.github/`, or each file of a
+  `PULL_REQUEST_TEMPLATE/` directory there (`template_locations` is the one home of the list). With
+  no body it prints what the description must follow: the template's required lines, or every
+  candidate when there are several, and a `CONTRIBUTING` file at those locations; exit 0. With a
+  body it checks every ATX heading and `- [ ]`/`- [x]` item of the template is in the body —
+  text compared with whitespace, case, heading level and checkbox state aside; HTML comments and
+  fenced code are not structure on either side. Exit 0 follows, or no template (naming where it
+  looked); 1 a line missing (each named) or several candidates and no `--template`; 3 the body or
+  the `--template` file cannot be read; 2 usage. `--template` is read relative to the repository
+  root, the body as given. `--json` keys: `templates[]`, `contributing[]`, `searched`, `template`,
+  `body`, `required[]`, `missing[]{kind, line}`, `verdict` (`follows` | `missing` | `ambiguous` |
+  `no-template` | `unreadable` | `listed`), `exit`. A refusal from either command is a
+  `guard-refusal` fact (`check-pr-body`'s under guard `pr-body-template`, reasons
+  `missing-template-lines` | `ambiguous-template`), deduplicated per subject so a re-check of an
+  unchanged body records one event.
 - **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
   resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
   core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
@@ -791,6 +823,12 @@ would have said, because the argument is only convincing in the concrete.
   `no-upstream`, `upstream-ref-missing`), where a push or an integrate-then-push is the remedy in
   every case. Both codes BLOCK — the third outcome buys the caller an applicable remedy, not a
   different verdict.
+- `check-pr-hygiene` (2026-11-11), *no base or no merge-base* — folded into 0 it reports a clean
+  branch off an interval it never had; folded into 1 it claims a refusing result it never computed.
+  A single result it could not read is `unchecked` in the output, not a third exit, unless that
+  result is a refusing one: authority fails closed, so an unreadable refusing check is 3.
+- `check-pr-body` (2026-11-11), *the body or the named template cannot be read* — folded into 0 it
+  passes a description nobody compared; folded into 1 it names lines missing from a file it never read.
 
 `check-released` (2026-08-04) exits **3** for
 *unverified*: nothing failed, but a check could not run — no `gh`, no `origin/main` in a
@@ -999,7 +1037,8 @@ Evolution rules we want to hold, so new versions stay rare:
   `allowed-tools`): `evidence status|list`, `review-stats --json`, `stats --json`, `render-dispositions`,
   `learnings-files` (bound by the Critic skill, the PR reviewer protocol and the reviewer agent),
   `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
-  `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
+  `check-*` — the PR flow's `check-pr-hygiene` and `check-pr-body` among them —, `resolve-base`,
+  `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
   exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary
   `python3 -c`. **`disposition` and `render-dispositions` are in this tier for a different reason
   than the rest:** no skill allowlists them, because their caller is the **main session** — the

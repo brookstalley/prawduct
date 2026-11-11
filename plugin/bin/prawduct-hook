@@ -6705,6 +6705,40 @@ def cmd_check_change_log_entry(project_dir: Path) -> int:
     return _coverage().check_change_log_entry(project_dir)
 
 
+def _pr_gate():
+    """Lazy-import the PR gate's code-answered checks (lib/pr_gate)."""
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import pr_gate  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
+
+    return pr_gate
+
+
+def cmd_check_pr_hygiene(project_dir: Path, argv: list[str]) -> int:
+    """`/prawduct:pr`'s branch hygiene over merge-base…HEAD. Thin wrapper —
+    the body, its named results and its 0/1/3 split live in
+    ``lib.pr_gate.hygiene_cmd``."""
+    try:
+        gate = _pr_gate()
+    except ImportError as exc:
+        print(f"error: check-pr-hygiene could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 3
+    return gate.hygiene_cmd(project_dir, argv)
+
+
+def cmd_check_pr_body(project_dir: Path, argv: list[str]) -> int:
+    """Whether a drafted PR description follows the repo's PR template. Thin
+    wrapper — the template locations and the comparison live in
+    ``lib.pr_gate.body_cmd``."""
+    try:
+        gate = _pr_gate()
+    except ImportError as exc:
+        print(f"error: check-pr-body could not import the plugin lib/ ({exc})", file=sys.stderr)
+        return 3
+    return gate.body_cmd(project_dir, argv)
+
+
 def cmd_check_releasability(project_dir: Path, args: list[str] | None = None) -> int:
     """Phase 0 releasability gate for the release runbook (REL-8P6M part f).
 
@@ -10833,6 +10867,7 @@ _USAGE = (
     "check-operator-verification|accept-operator-verification <rationale>|"
     "verify-operator-verification <vrf-id>|"
     "check-pr-doc-only|check-change-log-entry|check-branch-pushed [<branch>]|"
+    "check-pr-hygiene [--json]|check-pr-body [<body file>] [--template <path>] [--json]|"
     "check-releasability [--release vX.Y.Z]|"
     "check-plugin-active [--path P] [--context onboard|doctor|migrate] [--json]|"
     "check-learnings-pairing [deprecated, inert]|"
@@ -11264,6 +11299,12 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "check-operator-verification",
     "check-plugin-active",
     "check-pr-doc-only",
+    # Read-only gates over the branch and a drafted PR description. The one
+    # thing either writes is a refusal's `guard-refusal` fact, in the clone's
+    # shared evidence store, which outlives this tree — the same write
+    # `check-cumulative-critic` makes for a base-advance grant.
+    "check-pr-hygiene",
+    "check-pr-body",
     "check-releasability",
     "check-released",
     "classify-diff-risk",
@@ -11981,6 +12022,10 @@ def _dispatch() -> int:
         return cmd_check_released(project_dir, sys.argv[2:])
     elif command == "check-pr-doc-only":
         return cmd_check_pr_doc_only(project_dir)
+    elif command == "check-pr-hygiene":
+        return cmd_check_pr_hygiene(project_dir, sys.argv[2:])
+    elif command == "check-pr-body":
+        return cmd_check_pr_body(project_dir, sys.argv[2:])
     # Retired at v3.3.2, kept dispatchable: a pre-3.3.2 hooks.json still
     # registers both, and plugin version pins update per project rather than
     # all at once.
