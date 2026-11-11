@@ -993,7 +993,8 @@ class TestNextActionLine:
     ``methodology/building.md`` states the rule but is reached only by entering
     a build plan; ``review-cycle.md`` is read by nobody building; and
     ``_BATCH_FIX_DIRECTIVE`` prints wherever ``critic-consolidate`` runs, which
-    on the always-single-pass modes is the reviewing FORK. Measured on the
+    on the always-single-pass modes is a reviewer's context — the reviewing
+    FORK, or the SubagentStop hook for a review it handed off. Measured on the
     consumer branch that ran ten rounds: zero reads of either prose file, zero
     occurrences of the directive in the builder's context against seven inside
     reviewer forks — and the builder did read the findings. So the field must
@@ -1716,9 +1717,10 @@ class TestIncompleteNoopLiveness:
         assert "NOT evidence" not in msg
 
     def test_single_pass_young_says_fork_consolidates_itself(self):
-        # Roster ["reviewer"]: the reviewer IS the dispatching fork — no
-        # SubagentStop trigger will ever land it, so the message must not
-        # tell the coordinator-roster story.
+        # Roster ["reviewer"] reviewed inline: the reviewer IS the dispatching
+        # fork — no SubagentStop trigger will ever land it, so the message must
+        # not tell the background story. (A handed-off single-pass review takes
+        # that story: `tests/test_reviewer_handoff.py`.)
         msg = cc._incomplete_noop_message(["reviewer"], 0, 1, self._fresh_id(2))
         assert "0/1 partials present" in msg
         assert "consolidates when it finishes" in msg
@@ -2381,23 +2383,20 @@ class TestResolutionIsAClaimDirective:
     def test_delivery_is_upstream_of_the_claim(self):
         """WHERE this prints is the chunk's substance, so it is pinned here.
 
-        `verify-resolutions` is always single-pass, so the reviewing fork
-        writes its `resolutions` into the partial and only THEN runs
-        consolidate. Emitting there — beside `_BATCH_FIX_DIRECTIVE`, the
-        obvious slot — would reach an agent that has already made the claim and
-        is one step from exiting, and would never reach the builder at all
-        (the Critic skill is `context: fork`, and `goals-1-3.md`'s report-back
-        enumerates findings and a summary, not consolidate's stdout).
+        The reviewer writes its `resolutions` into the partial and only THEN
+        is consolidation run — by the reviewing fork, or by the SubagentStop
+        hook for a reviewer the fork handed the review to. Emitting there —
+        beside `_BATCH_FIX_DIRECTIVE`, the obvious slot — would reach an agent
+        that has already made the claim, or nobody, and would never reach the
+        builder at all (the Critic skill is `context: fork`, and
+        `goals-1-3.md`'s report-back enumerates findings and a summary, not
+        consolidate's stdout).
 
-        Asserted against the modules rather than the docstring: `critic-begin`
-        must reference it, `consolidate` must not.
+        Asserted against the modules rather than the docstring: the dispatch
+        renderer must carry it and `critic-begin` must print what it renders;
+        `consolidate` must not.
         """
-        begin_src = HOOK.read_text(encoding="utf-8")
-        assert "RESOLUTION_IS_A_CLAIM_DIRECTIVE" in begin_src, (
-            "the dispatch command no longer emits the directive — it is "
-            "delivered at critic-begin precisely because that is the last "
-            "moment before the reviewer writes its resolutions"
-        )
+        _assert_rendered_at_dispatch("RESOLUTION_IS_A_CLAIM_DIRECTIVE")
         consolidate_src = (
             ROOT / "lib" / "critic_consolidate.py"
         ).read_text(encoding="utf-8")
@@ -2409,6 +2408,22 @@ class TestResolutionIsAClaimDirective:
             "cannot change the claim it is about. Delete it, or move the "
             "delivery deliberately and rewrite this test's rationale."
         )
+
+
+def _assert_rendered_at_dispatch(name: str) -> None:
+    """The directive is rendered by `dispatch_directives`, which `begin_review`
+    calls, and `critic-begin` prints every directive it was handed — dispatch
+    is the only moment before the reviewer writes what the directive governs."""
+    src = (ROOT / "lib" / "critic_consolidate.py").read_text(encoding="utf-8")
+    renderer = src.split("def dispatch_directives(", 1)[1].split("\ndef ", 1)[0]
+    assert name in renderer, f"the dispatch renderer no longer carries {name}"
+    begin = src.split("def begin_review(", 1)[1].split("\ndef ", 1)[0]
+    assert "dispatch_directives(" in begin, "begin_review no longer renders the directives"
+    hook_src = HOOK.read_text(encoding="utf-8")
+    begin_cmd = hook_src.split("def cmd_critic_begin(", 1)[1].split("\ndef ", 1)[0]
+    assert 'result.get("directives")' in begin_cmd, (
+        "critic-begin no longer prints the directives it was handed"
+    )
 
 
 class TestVerifyRatesBlockingOnlyDirective:
@@ -2758,15 +2773,11 @@ class TestVerifyRatesBlockingOnlyDirective:
 
     def test_delivery_is_upstream_of_the_rating(self):
         """WHERE this prints is its substance: the reviewer must meet it before
-        it assigns a severity, not after. `verify-resolutions` is single-pass,
-        so the fork runs consolidate itself AFTER writing its findings —
-        emitting there would reach an agent that has already rated everything.
+        it assigns a severity, not after. Consolidation runs AFTER the reviewer
+        writes its findings — emitting there would reach an agent that has
+        already rated everything, or nobody.
         """
-        begin_src = HOOK.read_text(encoding="utf-8")
-        assert "VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE" in begin_src, (
-            "the dispatch command no longer emits the narrowing — dispatch is "
-            "the only moment before the reviewer rates the delta"
-        )
+        _assert_rendered_at_dispatch("VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE")
         consolidate_src = (
             ROOT / "lib" / "critic_consolidate.py"
         ).read_text(encoding="utf-8")
@@ -3721,8 +3732,8 @@ class TestConsolidateIntegration:
 
     def test_consolidated_with_findings_carries_the_fix_strategy(self, tmp_path):
         """A review that lands findings states the fix strategy in the same
-        breath. This is the single-pass path's delivery: the reviewing fork
-        runs consolidate itself, so this stdout IS what the builder reads."""
+        breath. This is the inline single-pass path's delivery: the reviewing
+        fork runs consolidate itself, so this stdout IS what the builder reads."""
         repo = tmp_path / "r"
         _init_repo(repo)
         head = _commit_file(repo, "src/app.py", "x = 1\n", "init")

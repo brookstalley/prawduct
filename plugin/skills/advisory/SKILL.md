@@ -4,6 +4,7 @@ argument-hint: "list [--state=active|dismissed|resolved|all] [--feature=<name>] 
 user-invocable: true
 disable-model-invocation: false
 context: fork
+model: sonnet
 allowed-tools: Read, Bash(prawduct-hook advisory*)
 ---
 

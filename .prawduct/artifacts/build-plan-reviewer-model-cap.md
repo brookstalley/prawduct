@@ -110,6 +110,49 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
   being pasted into the dispatch prompt by the fork.
 
 **Decisions made mid-build:** *(appended while building)*
+- The family fold and the ceiling share one leaf module, `plugin/lib/model_tier.py`; `review-stats`'s
+  `_canonical_model` is that module's function, not a copy. Settled by "every fact has one home".
+- Both commands print the answer as one line, `reviewer model: <alias>` or `reviewer model: none`,
+  followed by what to do with it; `critic-begin` also writes it to the manifest. The PR mark's
+  existing reader parses its `dispatch marked:` line, so the answer is a line of its own. Settled by
+  the architecture goal that dispatch prose passes what code answered.
+- `pr-review-dispatch` prints the answer before attempting the mark, so a clock that cannot be
+  written keeps the cap. Settled by the product goal: nothing runs on the session's tier by accident.
+- The PR skill's grant for the mark widens to the house form `--begin*`, which covers
+  `--session-model` and nothing past `--begin`. Settled by `tests/test_skill_command_grants.py`'s
+  house grant form.
+- The amendment to the table-row norm sits in its Why cell with the owner's words and no
+  `[DECISION: …]` block: the index parser splits cells on `|`, and the owner made the call directly
+  (`docs/norms.md` "One standard"). `nonfunctional-requirements.md` carries the `Amended:` line and
+  a `Retires:` line for the two sentences the cap made false. Settled by `docs/norms.md` § Amendment.
+- Every hand-off dispatches through `coordinator.md` (one dispatch file, now covering the
+  single-pass `reviewer` role) rather than a second prompt template in `SKILL.md`, which every
+  review's fork loads. Settled by the review wall-clock norm's payload lever.
+- A capped fork skips steps 5-6 (test evidence and diff): it reviews nothing, so they are the
+  reviewer's. It still reads `goals-1-3.md` at step 2, because the reviewer model is known only
+  after `critic-begin`; reordering the routing to save that read is out of this plan's scope.
+  Settled by the accepted tradeoff that the fork runs on the session's model for routing only.
+- `dispatch_directives` is a list of strings, written as `[]` for a capped `final`/`cumulative`
+  (a mode owed none) and absent without a reviewer model. Not settled by the goals.
+- `critic-consolidate`'s wait message gives a handed-off single-pass review the background story
+  (SubagentStop consolidates; started-marker liveness), not "the fork consolidates itself". Settled
+  by the architecture goal that `SubagentStop` consolidates a capped review.
+- `goals-1-3.md` says single-pass is "one reviewer, no coordinator" instead of "no subagents", which
+  a capped fork reading it would find false; its pin in `tests/test_critic_reviewer_agent.py` was
+  renegotiated to match, and the file's edit was paid in place. Settled by the constraint that
+  at-or-below sessions behave as today (the inline reader's meaning is unchanged).
+- The payload budget gains two routes, `coordinator-fork-inner` and `dispatched-reviewer-inner`,
+  and the fast-path routing tests accept `reviewer_model` as a qualifier for `coordinator.md`.
+  Settled by the review wall-clock norm (every route a reviewer takes is priced).
+- `review-stats` reports the count as a top-level `above_reviewer_ceiling: {reviews,
+  model_unrecorded}` over Critic and PR reviews alike (both are capped), bumping its schema to 10.
+  Settled by the inference that the acceptance line means `review-stats`, and by its contract that
+  a key change bumps the schema.
+- The forked-skill pin lives in the norm's own pin, `tests/preferences/test_reviewer_model_dispatch_prose.py`,
+  with the Critic's exemption and its reason beside it. Not settled by the goals.
+- The inventory's query found one start outside the skills, `methodology/building.md`'s research
+  subagent; it is a delegate, covered by `methodology/delegation.md`, so nothing was fixed. Settled
+  by the constraint that delegates are out of scope.
 
 **Level:** Medium. The design rests on host behaviour read from the documentation on 2026-11-11
 and not all yet observed: an Agent call's `model` overrides a plugin agent's `model: inherit`
@@ -138,7 +181,7 @@ advanced, and is queued for that session rather than claimed here.
   skill pass that answer as the Agent call's `model` and pass none when there is none. Record the
   amendment in the norm's entry in `project-preferences.md` and in
   `nonfunctional-requirements.md` § Direction, and correct every sentence the cap makes false:
-  the "Model floor and coherence pass" preference and its enforcement row ("no machinery selects
+  the "Model floor and coherence pass" preference and its enforcement row ("no machinery selects <!-- prawduct:allow prawduct/retired-claim-survives -- the plan names the retired claims it corrects -->
   models at dispatch time", "the runtime cannot observe which model it is"), the paused-tiering
   comments in `plugin/lib/telemetry.py` and `plugin/lib/risk.py` where they describe reviewers,
   and the reviewer-dispatch prose. Rewrite `tests/preferences/test_reviewer_model_dispatch_prose.py`
