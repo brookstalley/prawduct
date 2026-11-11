@@ -156,6 +156,9 @@ _REFUSAL_VERIFIED = {
     "worktrees": "lib.stranded_work.worktrees_cmd names the token; exits 2 (bare exits 0)",
     "stale-plugin-caches": "lib.plugin_caches names the token; exits 2 (bare exits 0)",
     "git-tidy": "lib.git_hygiene.git_tidy_cmd names the token; exits 2 (bare exits 0)",
+    "check-pr-hygiene": "lib.pr_gate.hygiene_cmd names the token; exits 2 (bare exits 0 "
+                        "on a branch, 3 with no base)",
+    "check-pr-body": "lib.pr_gate.body_cmd names the token; exits 2 (bare exits 0)",
 }
 
 # Refusing is the wrong behaviour for these, for the same reasons the
@@ -501,6 +504,10 @@ def test_documented_invocations_are_not_refused(capsys):
         ("archive-plan", ["p.md", "--state", "completed", "--release", "v1.2.3"]),
         ("check-released", ["v1.2.3", "--json"]),
         ("check-pr-doc-only", []),
+        ("check-pr-hygiene", []),
+        ("check-pr-hygiene", ["--json"]),
+        ("check-pr-body", []),
+        ("check-pr-body", ["/tmp/body.md", "--template", ".github/pull_request_template.md", "--json"]),
         ("build-index", []),
         ("user-prompt-submit", []),
         ("infer-critic-mode", ["cumulative"]),
@@ -562,6 +569,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
         "verify-operator-verification", "check-change-log-entry",
         "check-branch-pushed",
         "check-releasability", "archive-plan", "check-released", "check-pr-doc-only",
+        "check-pr-hygiene", "check-pr-body",
         "check-plugin-active",
         "check-learnings-pairing", "learnings-migrate", "learnings-compact",
         "build-index", "user-prompt-submit",
