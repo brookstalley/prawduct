@@ -87,6 +87,24 @@ keeps the old protocol's catch rate on that defect, tested the same way, or a de
 the check. The fixture, the eleven result files and the steps to rebuild a run are kept on the
 owner's machine in `.prawduct/.read-cost-test-2026-11-11/`, outside git.
 
+### Two wordings tried, neither recovers the catch
+
+By the owner's ruling of 2026-11-11, two variants were tested the same way, six reviewers each.
+The bullet cut to a single sentence raised the unplanted defect in one run of six. That sentence
+plus a preamble telling the reviewer that a file can hold more than one defect, and that a
+verdict under one check settles only that check, raised it in none of six. Both variants still
+raised every planted mistake.
+
+What the twenty-three runs do and do not show. The loss is narrow: the fixture's other real
+issues that the old protocol raised every time were raised every time under every variant, and
+its smaller ones moved in no consistent direction. One defect, in the one file the read-cost
+check judges clean, all but disappeared (one run in eighteen against four in five). The cause is
+not established, and a single defect in a single fixture cannot say how far this reaches. It
+does say that neither brevity nor an instruction to keep looking fixes it, and that nothing this
+repo runs before shipping review prose would have shown it: the tests pin that the words are
+present, and a review of the prose reads the prose. Neither committed variant is on this branch;
+the branch still carries the original bullet and stays held.
+
 ## Consumer note
 `final` and `cumulative` Critic reviews now look at what a changed read costs: a lookup that walks
 a growing collection for want of a key, index or bound, whole records or heavy fields fetched
