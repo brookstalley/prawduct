@@ -365,3 +365,57 @@ class TestTheInertTierIsEphemeralWorktreeSafe:
                 f"_EPHEMERAL_APPLY_GATED_COMMANDS, which says it writes under "
                 f"`--apply` — it has no `--apply` left to honour"
             )
+
+
+# ---------------------------------------------------------------------------
+# Retired SKILL commands: a refusal, not the inert tier
+# ---------------------------------------------------------------------------
+#
+# The tier above is for a caller that is a stale hook registration. These two
+# were called by a stale session's SKILL TEXT (the PR reviewer's dispatch mark
+# and its payload, retired with the reviewer, #1129). Inert-and-exit-0 is the
+# wrong posture for that caller: an empty payload hands a stale reviewer nothing
+# to review and reads as a clean result, and an answer-less dispatch mark reads
+# as "do not dispatch" for the wrong reason. So the dispatcher refuses each by
+# name, non-zero, and names what replaced it.
+
+_RETIRED_SKILL_COMMANDS = ("pr-review-dispatch", "pr-review-payload")
+
+
+def _retired_table() -> dict:
+    import importlib.machinery  # noqa: PLC0415
+    import importlib.util  # noqa: PLC0415
+
+    loader = importlib.machinery.SourceFileLoader("prawduct_hook_retired_table", str(_HOOK))
+    spec = importlib.util.spec_from_loader("prawduct_hook_retired_table", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module._RETIRED_COMMANDS
+
+
+def test_the_retired_command_table_holds_both_names() -> None:
+    """Positive control for the class below, and the one place a posture switch
+    (refusal to inert) would be made."""
+    assert set(_RETIRED_SKILL_COMMANDS) <= set(_retired_table())
+
+
+@pytest.mark.parametrize("command", _RETIRED_SKILL_COMMANDS)
+class TestRetiredSkillCommandsAreRefused:
+    def test_exits_non_zero_naming_the_replacement(self, command: str, tmp_path: Path) -> None:
+        proc = _run(command, project_dir=tmp_path)
+        assert proc.returncode != 0, proc.stderr
+        assert proc.stdout == "", "a refusal prints nothing a caller could read as a payload"
+        assert f"{command}: the PR reviewer was retired" in proc.stderr
+        assert "/prawduct:pr no longer dispatches one" in proc.stderr
+        assert "restart the session" in proc.stderr
+        assert "Usage: prawduct-hook" not in proc.stderr, "a refusal, not an unknown command"
+
+    def test_runs_nothing_whatever_its_arguments(self, command: str, tmp_path: Path) -> None:
+        """The old valid invocations, refused before dispatch: no dispatch mark
+        is written and no lib is consulted."""
+        (tmp_path / ".prawduct").mkdir()
+        args = ["--begin", "--session-model", "claude-opus-5-5"] if command == "pr-review-dispatch" else ["--json", str(tmp_path)]
+        proc = _run(command, *args, project_dir=tmp_path)
+        assert proc.returncode != 0
+        assert not (tmp_path / ".prawduct" / ".pr-review-dispatch.json").exists()
+        assert "reviewer model:" not in proc.stdout

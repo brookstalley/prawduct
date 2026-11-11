@@ -14,12 +14,6 @@
       "summary": "composed review coverage (evidence-store facts) must span this session's changes with zero unresolved blocking findings"
     },
     {
-      "id": "pr",
-      "name": "pr-review",
-      "since": "1.0.0",
-      "summary": "PR review evidence is required before a PR merges"
-    },
-    {
       "id": "learnings-unmigrated",
       "name": "learnings-unmigrated",
       "since": "3.6.0",

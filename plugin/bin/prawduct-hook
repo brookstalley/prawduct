@@ -674,7 +674,13 @@ _WAIVER_KEY_BY_GATE = {
     "reflection": "reflection",
     "learnings-unmigrated": "learnings",
     "critic": "critic",
-    "pr": "pr",
+}
+
+#: `.gates-waived` keys whose gate no longer exists, and why. A file written for
+#: the old gate is tolerated: the key waives nothing, and the note names it as
+#: retired rather than as the typo an unknown key usually is.
+_RETIRED_WAIVER_KEYS = {
+    "pr": "the PR-review Stop gate was retired with the PR reviewer",
 }
 
 
@@ -687,7 +693,8 @@ def _waiver_footer(
     gate and only the key differs. Its `echo … >` replaces `.gates-waived`, so
     the object it prints carries every waiver already in the file as well as
     the keys of the gates blocking now; anything less would erase a waiver a
-    reader declared at an earlier Stop. The reader keeps only the keys whose
+    reader declared at an earlier Stop (a retired key is dropped rather than
+    carried, since it waives nothing). The reader keeps only the keys whose
     gate genuinely cannot be satisfied. Empty when nothing that blocked can be
     waived.
     """
@@ -699,6 +706,7 @@ def _waiver_footer(
     carried = {
         k: v for k, v in (existing or {}).items()
         if isinstance(k, str) and isinstance(v, str) and k not in keys
+        and k not in _RETIRED_WAIVER_KEYS
     }
     body = json.dumps(
         {**carried, **{k: "reason — be specific" for k in keys}}, ensure_ascii=False
@@ -958,7 +966,7 @@ def _yaml_top_level_key_present(state_path: Path, key: str) -> bool:
 # Parallel to GITIGNORE_ENTRIES in lib/core.py — the hook keeps an inline copy so
 # its top level stays import-light on the session-start hot path. The two lists
 # cover the same session files; lib/core.py's variant additionally carries
-# `__pycache__/` and a trailing slash on `.pr-reviews/` for its `.gitignore`
+# `__pycache__/` and trailing slashes on its directories for its `.gitignore`
 # writer, while this list uses bare paths for `git ls-files` untracking. Keep the
 # shared session-file set in sync when adding entries.
 #
@@ -987,9 +995,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.test-evidence.json",
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
-    ".prawduct/.pr-reviews",
     ".prawduct/.critic-review-dispatch.json",
-    ".prawduct/.pr-review-dispatch.json",
     ".prawduct/.session-base-tree",
     ".prawduct/.session-git-baseline",
     ".prawduct/.session-handoff.md",
@@ -1025,7 +1031,6 @@ _SESSION_RESET_DELETES = (
     ".session-base-tree",
     ".gates-waived",
     ".critic-review-dispatch.json",
-    ".pr-review-dispatch.json",
     # The last run's report and its scope record. Deleted rather than carried,
     # because ingesting them in the NEXT session would stamp that session's tree
     # onto a run made against the previous one — the record says what the
@@ -1083,8 +1088,8 @@ def _untrack_session_files(project_dir: Path) -> list[str]:
         return untracked
 
     # Map listed files back to the declared session pathspecs. Most are exact
-    # paths; `.prawduct/.pr-reviews` is a directory, so `ls-files` expands it to
-    # member files — collapse those to the declared pathspec so the report and
+    # paths; a directory (`.prawduct/.critic-partials`) is expanded by `ls-files`
+    # to member files — collapse those to the declared pathspec so the report and
     # the `rm` target stay the canonical session-path set (matching the old loop).
     listed = [p for p in ls.stdout.split("\0") if p]
     matched = [
@@ -3069,11 +3074,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     _gs = _gitstate()
     status_output = _gs.git_status_output(project_dir)
     has_changes = _gs.git_has_session_changes(project_dir, status_output)
-    # "Doc-only" = no session-changed file is judgeable (THE predicate,
-    # coverage_algebra.is_judgeable_path via gates — kernel-v3 chunk 04). A
-    # governance-protected .md (the set buildplan_refs.protected_path_violation owns)
-    # is judgeable, so it no longer skips the reflection/Critic gates.
-    doc_only = _gates().session_changes_all_non_judgeable(project_dir, status_output) if has_changes else False
 
     # Load agent-declared gate waivers (cleared at a session boundary — startup
     # or /clear; a resume, compact or fork keeps them).
@@ -3083,7 +3083,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     waivers = _gates()._read_gates_waived(prawduct_dir)
     waiver_notes: list[str] = []
     KNOWN_WAIVER_KEYS = set(_WAIVER_KEY_BY_GATE.values())
-    unknown_waiver_keys = sorted(k for k in waivers if k not in KNOWN_WAIVER_KEYS)
+    retired_waiver_keys = sorted(k for k in waivers if k in _RETIRED_WAIVER_KEYS)
+    if retired_waiver_keys:
+        print(
+            "\nNOTE: .gates-waived has retired keys (no effect): "
+            + "; ".join(f"{k} — {_RETIRED_WAIVER_KEYS[k]}" for k in retired_waiver_keys)
+            + ".",
+            file=sys.stderr,
+        )
+    unknown_waiver_keys = sorted(
+        k for k in waivers if k not in KNOWN_WAIVER_KEYS and k not in _RETIRED_WAIVER_KEYS
+    )
     if unknown_waiver_keys:
         # Stderr-only warning so the agent learns about typos. Doesn't affect gate
         # behavior — unknown keys simply have no effect.
@@ -3186,8 +3196,8 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # - Grades SHAPE, not length. The floor it replaces passed any fifty
     #   characters, so a sentence saying nothing scored what a reflection that
     #   found a root cause scored.
-    # - Its doc-only carveout is derived from the SPAN, never from the porcelain
-    #   `doc_only` above: widening the trigger to committed work while asking a
+    # - Its doc-only carveout is derived from the SPAN, never from the session
+    #   porcelain: widening the trigger to committed work while asking a
     #   porcelain-scoped question about docs makes a docs-only committed session
     #   fire. The two must move together or not at all.
     reflection_span = _gates().session_work_span(project_dir, status_output)
@@ -4000,92 +4010,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         if not mode_satisfied:
             print("", file=sys.stderr)
             print(f"NOTE: {mode_reason}", file=sys.stderr)
-
-    # Gate 3: PR review evidence (when a PR exists for the current branch).
-    # Skipped for doc-only changes AND for sessions with no changes at all:
-    # a session that changed nothing incurred no new review obligation, and
-    # the `gh pr list` probe below is a network call (300-800ms typical,
-    # 15s timeout worst case) that used to fire on EVERY turn-end of a pure
-    # Q&A session on a feature branch (review-fixes Chunk 1). Merge-time
-    # enforcement lives in `/prawduct:pr` regardless. The waiver is only
-    # noted when the gate would have actually blocked (real PR exists with
-    # no valid evidence).
-    pr_reviews_dir = prawduct_dir / ".pr-reviews"
-    pr_would_block = False
-    pr_block_branch = ""
-    # STH-3W7F: skip the `gh pr list` network probe entirely while background
-    # work is in flight — the Stop is being deferred regardless, so paying for
-    # the network call (and any PR block it would raise) buys nothing.
-    if has_changes and not doc_only and not defer_active:
-        try:
-            branch_result = subprocess.run(
-                ["git", "branch", "--show-current"],
-                capture_output=True, text=True, cwd=str(project_dir), timeout=10,
-            )
-            current_branch = branch_result.stdout.strip() if branch_result.returncode == 0 else ""
-            if current_branch and current_branch not in ("main", "master", "develop"):
-                # Check if there's a PR for this branch
-                pr_check = subprocess.run(
-                    ["gh", "pr", "list", "--head", current_branch, "--json", "number", "--limit", "1"],
-                    capture_output=True, text=True, cwd=str(project_dir), timeout=15,
-                )
-                has_pr = False
-                if pr_check.returncode == 0 and pr_check.stdout.strip():
-                    try:
-                        prs = json.loads(pr_check.stdout)
-                        has_pr = len(prs) > 0
-                    except json.JSONDecodeError:
-                        pass
-
-                if has_pr:
-                    # Symmetry with `/prawduct:pr create` Step 1b: when the PR diff
-                    # holds no JUDGEABLE file, the cumulative-Critic and PR-reviewer
-                    # gates were legitimately skipped at create-time and no
-                    # evidence file was written. Gate 3 would otherwise block
-                    # session end with a misleading "no review evidence" error for
-                    # a PR that doesn't need one. Judgeable is
-                    # `coverage_algebra.is_judgeable_path`, not "is it .md" — a
-                    # `skills/`-only PR is judgeable prose and is NOT doc-only. If a
-                    # later session adds a judgeable
-                    # commit, the check returns False and the gate fires as
-                    # intended — matching the create-flow contract. (The parallel
-                    # `Type: trivial` fast-path was retired — fileset-eligibility
-                    # was standing in for a per-chunk `Type: trivial` declaration,
-                    # so feature clusters that only touched existing files skipped
-                    # both review gates. A trivial code PR now gets the full
-                    # review like any other code change.)
-                    pr_is_doc_only, _ = _coverage()._pr_diff_is_doc_only(project_dir)
-                    if pr_is_doc_only:
-                        pass  # Doc-only fast-path — no evidence required
-                    else:
-                        # Check for review evidence with content validation
-                        branch_file = current_branch.replace("/", "--") + ".json"
-                        evidence_path = pr_reviews_dir / branch_file
-                        pr_review_valid = False
-                        if evidence_path.is_file():
-                            try:
-                                data = json.loads(evidence_path.read_text())
-                                if isinstance(data.get("findings"), list) and data.get("summary"):
-                                    pr_review_valid = True
-                            except (json.JSONDecodeError, OSError):
-                                pass
-                        if not pr_review_valid:
-                            pr_would_block = True
-                            pr_block_branch = current_branch
-        except Exception:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-            pass
-
-    if pr_would_block:
-        if _WAIVER_KEY_BY_GATE["pr"] in waivers:
-            waiver_notes.append(f"pr: waived ({waivers[_WAIVER_KEY_BY_GATE['pr']]})")
-        else:
-            blockers.append(_attributed("pr",
-                f"PR REVIEW: PR exists for branch '{pr_block_branch}' but no valid review evidence found.\n"
-                "  Run /prawduct:pr to invoke the PR reviewer before merging.\n"
-                "  The reviewer writes evidence to .prawduct/.pr-reviews/<branch>.json\n"
-                "  It is the release-readiness gate: waive it only when the merge will not\n"
-                "  happen this session.\n"
-            ))
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
     # Waivers clear at the next session BOUNDARY (a fresh start or /clear), so they
@@ -7328,124 +7252,6 @@ def cmd_aggregate_stats(argv: list[str]) -> int:
         )
         return 1
     return aggregate.aggregate_stats_cmd(argv)
-
-
-def cmd_pr_review_dispatch(project_dir: Path, argv: list[str]) -> int:
-    """Mark a PR review as dispatched, NOW, from a clock this code reads.
-
-    Usage: ``pr-review-dispatch --begin [--session-model <id>]``. The caller
-    chooses when to mark; it never chooses the value, so no model sits in the
-    write path. ``ledger-append --event review.pr`` consumes the mark and writes
-    ``dispatched_at`` into the envelope, turning the review's duration from the
-    reviewing model's estimate into a measured interval.
-
-    It also answers which model the PR reviewer is dispatched on, from the
-    model the caller says it runs as (``model_tier.reviewer_model_for``), as a
-    ``reviewer model:`` line on stdout — printed before the mark is attempted,
-    so a clock that cannot be written never takes the cap with it. Absent the
-    flag, the cap applies and a note on stderr says it was assumed.
-
-    This is the writing run, so it reports what it WROTE — checking the state
-    afterwards would not verify what the operator was told (hook-surface
-    learnings). Exit 0 on a mark, 1 on bad args or an unwritable marker; a
-    failure to mark is never fatal to the review it precedes, so the caller is
-    told to carry on and expect a self-reported duration.
-    """
-    usage = "(usage: pr-review-dispatch --begin [--session-model <id>])"
-    session_model = None
-    rest = list(argv)
-    if "--session-model" in rest:
-        at = rest.index("--session-model")
-        if at + 1 >= len(rest) or rest[at + 1].startswith("--"):
-            print(
-                f"pr-review-dispatch: --session-model requires a value {usage} "
-                "— nothing was marked.",
-                file=sys.stderr,
-            )
-            return 1
-        session_model = rest[at + 1]
-        del rest[at:at + 2]
-    if rest != ["--begin"]:
-        unknown = [a for a in rest if a != "--begin"]
-        detail = (
-            f"unknown argument(s) {', '.join(repr(a) for a in unknown)}"
-            if unknown else "no --begin" if argv else "no arguments"
-        )
-        print(
-            f"pr-review-dispatch: {detail} {usage} — nothing was marked.",
-            file=sys.stderr,
-        )
-        return 1
-
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import gitstate, model_tier, review_dispatch  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
-    except ImportError:
-        print(
-            "pr-review-dispatch unavailable (could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT}) — no reviewer model was answered, so do not "
-            "dispatch the reviewer: unanswered is not uncapped, and the payload it "
-            "reads first comes from the same code. Reload the plugin "
-            "(/reload-plugins, or restart the session) and run this again.",
-            file=sys.stderr,
-        )
-        return 1
-
-    print(model_tier.reviewer_model_line(model_tier.reviewer_model_for(session_model)))
-    if not (session_model or "").strip():
-        print(f"NOTE: {model_tier.session_model_missing_note('pr-review-dispatch')}", file=sys.stderr)
-
-    head = review_dispatch.head_sha(project_dir)
-    try:
-        record = review_dispatch.begin(
-            gitstate.get_prawduct_dir(project_dir), "review.pr", head
-        )
-    except OSError as exc:
-        print(
-            f"pr-review-dispatch: could not write the dispatch mark ({exc}) — "
-            "dispatch the review anyway; its duration will be self-reported "
-            "rather than measured.",
-            file=sys.stderr,
-        )
-        return 1
-
-    print(
-        f"dispatch marked: {record['dispatched_at']} "
-        f"(tree {record['head'][:8] if record['head'] else 'unknown'})"
-    )
-    return 0
-
-
-def cmd_pr_review_payload(project_dir: Path, argv: list[str]) -> int:
-    """One deterministic call assembling everything the PR reviewer reads.
-
-    Usage: ``pr-review-payload [--json] [<project dir>]``. The positional names
-    the tree to answer about: a review subagent holds no ``cd`` grant and this
-    command resolves ``CLAUDE_PROJECT_DIR`` (the LAUNCH dir) before its own cwd,
-    so without it the payload can describe the primary checkout while the
-    reviewer's ``git -C`` diff reads a worktree. Thin wrapper — body lives in
-    ``lib.pr_payload.emit``. Read-only, and it emits no verdict, so it is ADVICE
-    and fails soft per section with every degradation named in the output
-    (``architecture.md``: a command's failure posture follows what it produces).
-    The one hard failure is an unresolvable base — no base means no review
-    interval, so there is nothing to review.
-    """
-    lib_root = _plugin_root()
-    if lib_root not in sys.path:
-        sys.path.insert(0, lib_root)
-    try:
-        from lib import pr_payload  # noqa: PLC0415 — lazy keeps top-level cheap + lib-free
-    except ImportError:
-        print(
-            "pr-review-payload unavailable (could not import the plugin lib/ from "
-            "${CLAUDE_PLUGIN_ROOT})",
-            file=sys.stderr,
-        )
-        return 1
-
-    return pr_payload.emit(project_dir, argv)
 
 
 def cmd_check_plugin_active(project_dir: Path, argv: list[str]) -> int:
@@ -10827,7 +10633,6 @@ _USAGE = (
     "verify-records [--base <t>] [--head <t>] [--chunk <id>] [--scope <s>] [--json]|verify-coverage|"
     "ledger-append --event <kind> [--findings <path>] [--trigger <t>] [--scope <s>] [--chunk <id>] [--model <id>]|"
     "handoff preview|"
-    "pr-review-dispatch --begin [--session-model <id>]|pr-review-payload [--json] [<project dir>]|"
     "review-stats [--json] [--since <stamp>] [--until <stamp>]|stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]|contribute [--json]|contribute --send [--approve sha256:<digest>]|"
     "aggregate-stats [<product-dir>...] [--from-file <list>] [--bundles <file-or-dir>]... [--collector] [--json]|"
     "classify-diff-risk [<base>]|"
@@ -11286,12 +11091,6 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "jurisdiction",
     # Reads the rules tree; writes nothing.
     "learnings-files",
-    # Read-only: assembles a report from git, `.prawduct/` state and the backlog
-    # cache. Its SIBLING `pr-review-dispatch` writes a marker and is deliberately
-    # absent — the two share the `pr-review-` prefix, and a Bash grant is a PREFIX
-    # match, so any allowlist entry must name this op exactly (`pr-review-payload`)
-    # and never `pr-review*`, which would hand a reviewer the writer as well.
-    "pr-review-payload",
     "print-install-reference",
     "render-dispositions",
     "resolve-base",
@@ -11827,6 +11626,25 @@ _SINGLE_POSITIONAL_COMMANDS = frozenset({
 })
 
 
+# Retired subcommands a stale session's skill text still calls, each answered
+# with what replaced it. A REFUSAL, deliberately not the inert exit-0 tier: an
+# inert `pr-review-payload` would hand a stale session's reviewer an empty
+# payload to review, and an inert `pr-review-dispatch` would print no
+# `reviewer model:` line, which the old skill text reads as "do not dispatch"
+# for the wrong reason. Non-zero stops that flow and names the remedy. One
+# table, so switching a member to the inert tier is one edit here.
+_RETIRED_COMMANDS = {
+    "pr-review-dispatch": (
+        "the PR reviewer was retired; /prawduct:pr no longer dispatches one — "
+        "restart the session so the current skill loads"
+    ),
+    "pr-review-payload": (
+        "the PR reviewer was retired; /prawduct:pr no longer dispatches one — "
+        "restart the session so the current skill loads"
+    ),
+}
+
+
 def _check_argument_shape(command: str, argv: list[str]) -> int:
     """0 to proceed; 2 when the invocation passed something the command cannot
     read. 2 is the hook's usage-error convention (see `_reject_unknown_args`).
@@ -11882,6 +11700,11 @@ def _dispatch() -> int:
         return 1
 
     command = sys.argv[1]
+
+    # First of all: a retired name runs nothing, whatever its arguments or tree.
+    if command in _RETIRED_COMMANDS:
+        print(f"{command}: {_RETIRED_COMMANDS[command]}", file=sys.stderr)
+        return 1
 
     # Before dispatch, and before anything else: a command that never receives
     # `argv` cannot refuse an argument, so the dispatcher refuses on its behalf.
@@ -11942,10 +11765,6 @@ def _dispatch() -> int:
         return cmd_ledger_append(project_dir, sys.argv[2:])
     elif command == "handoff":
         return cmd_handoff(project_dir, sys.argv[2:])
-    elif command == "pr-review-dispatch":
-        return cmd_pr_review_dispatch(project_dir, sys.argv[2:])
-    elif command == "pr-review-payload":
-        return cmd_pr_review_payload(project_dir, sys.argv[2:])
     elif command == "review-stats":
         return cmd_review_stats(project_dir, sys.argv[2:])
     elif command == "stats":

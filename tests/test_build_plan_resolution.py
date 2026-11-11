@@ -776,7 +776,7 @@ class TestSessionGitignoreMirror:
     ``_untrack_session_files``) must stay in sync with ``core.GITIGNORE_ENTRIES``
     (the ``.gitignore`` writer's source). The two cover the same session-file set;
     the documented differences are that core additionally carries ``__pycache__/``
-    and a trailing slash on ``.pr-reviews/`` (it writes ``.gitignore`` lines),
+    and trailing slashes on its directories (it writes ``.gitignore`` lines),
     while the hook uses bare paths (it feeds ``git ls-files`` untracking).
 
     Restores the parity test deleted with ``tests/test_coverage_gaps.py`` in M4 —

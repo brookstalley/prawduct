@@ -109,8 +109,6 @@ _BOUNDARY_SURVIVORS = {
     ".prawduct/.test-evidence.json":
         "the test record the freshness gates compare against `.session-start` — the "
         "comparison is what makes it stale, so deleting it would defeat the gate",
-    ".prawduct/.pr-reviews":
-        "PR review records, read at the merge boundary rather than the session one",
     ".prawduct/.session-handoff.md":
         "REWRITTEN by the boundary, not removed — it is the bridge the next session "
         "reads, so an unlink here would delete the thing being handed over",

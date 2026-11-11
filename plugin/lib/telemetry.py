@@ -872,7 +872,8 @@ def _fmt_remedies(remedies: dict) -> str:
     """Per severity: how often a finding ships a fix plan, and how long it runs.
 
     `n/a` is not 0% — it is the answer for a population whose findings carry no
-    `recommendation` field at all (the PR reviewer's schema), where a rate would
+    `recommendation` field at all (recorded `review.pr` events, the retired PR
+    reviewer's schema), where a rate would
     be a claim about behaviour the schema cannot support.
     """
     parts = []
