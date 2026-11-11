@@ -151,3 +151,43 @@ show the numbers are used. Landed on #1134.
 **2026-11-10.** "Yes adopt"
 On the four requirements changes (see it first, a ruling is written before the reply, mark what
 the agent originated, a third fix stops for a definition). Landed in #1135.
+
+**2026-11-11.** "yes build the three part fix and triage the reports"
+On whether a Critic review should catch a read that costs more than it returns (a lookup that
+scans for want of an index, a fetch of whole records where a few values are used). The three
+parts — an Access Paths section in the data-model template, one Goal 7 line in the Critic
+protocol rated WARNING at most, and a corrected Performance row in the concerns registry — are
+recorded in `.prawduct/changes/read-cost-review.md`. The two upstream reports were staged the
+same day, on #1137 and #1141.
+
+**2026-11-11.** "Yes to all of your recommendations"
+On four recommendations made after an ad hoc test of the read-cost check: run more blind reviewer
+replicates before merging, to see whether the new check draws attention from other defects; leave
+a per-item query rated by the rule as written rather than warned on regardless of the store; open
+the pull request for `feature/read-cost-review` once the replicates are in; and fix #1137 on its
+own branch. The replicate result is recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "Yeah try the shorten approach. If that fails, perhaps a preamble somewhere that code may have multiple defects, don't assume the first round is the only one."
+On the read-cost check after the blind test found the new protocol missing a blocking defect the
+old one caught: shorten the Critic line and re-test on the same fixture first; if that does not
+recover the catch, try a preamble telling the reviewer a file can hold more than one defect. The
+outcome of each is recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "I like the pseudo defect check, but I wonder if we should actually set it up in a separate repo that pulls from either the develop branch or a dedicated test branch, with that repo having a realistic app, but with the seeded defects."
+**2026-11-11.** "Yes agreed on all counts, including expense tracking domain"
+On how review-protocol changes get tested for what they do to reviewer behaviour: a seeded-defect
+check in a separate private repo holding a realistic expense-tracking app, run as a paired
+comparison of two refs, with the answer key kept out of anything a reviewer or a protocol author
+reads; a backlog item at requirements stage first, and requirements before any build. The same
+reply approved one more batch of six runs on the existing fixture and a pull request for the
+#1137 fix. The shape is carried by the backlog item filed the same day.
+
+**2026-11-11.** "Yes to both opens, the database efficiency catches are more important than the missed finding"
+On the read-cost check after a blind test showed it catching every planted read-cost mistake
+while a defect the old protocol usually caught went unraised: the check ships, and the trade is
+accepted. Pull requests are opened for both branches, `feature/read-cost-review` and the #1137
+fix. Recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "yes merge then we'll clear and do requirements"
+On pull requests #1146 (the #1137 fix) and #1148 (the read-cost check): both merge to `develop`.
+The requirements for the seeded-defect check (#1147) are the next session's work.

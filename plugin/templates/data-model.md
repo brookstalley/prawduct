@@ -74,3 +74,32 @@ last_validated: null
 <!-- Validation rules, business rules, and invariants that span entities.
      Examples: "A score must be non-negative," "A game session must have
      at least 2 players," "Player names must be unique within a game." -->
+
+## Access Paths
+
+<!-- How the data is read, once there is a lot of it. Include this section only when some
+     entity's count grows with users, time or activity; a small fixed set needs none.
+
+     For each entity that grows:
+     - Expected volume: an order of magnitude and what it grows with ("~10k transactions
+       per account per year", "one record per sensor reading, kept 90 days"). These refine
+       the growth the Non-Functional Requirements state under Scalability; keep the two agreed.
+     - Read paths: each read that runs often, or while someone waits, and what finds its
+       records — the key, index, partition or sort order the store offers. A read with no
+       such path walks everything: say so where that is the intent, and what keeps it cheap.
+     - Heavy fields: fields large beside the rest of the record (documents, blobs, embedded
+       collections), so a read that does not use them can leave them behind.
+
+     Proportionate to risk: a line per entity is enough for a family app. A review judges
+     each read against this section; without it, "does this read cost too much?" has no
+     answer here.
+
+     Example:
+     ### Transaction — ~10k per account per year, kept indefinitely
+     | Read                        | Runs            | Found by                         |
+     |-----------------------------|-----------------|----------------------------------|
+     | Recent activity, one account| every page load | index on (account_id, posted_at) |
+     | Search by description       | on user search  | scan, bounded to a date window   |
+
+     Heavy: `raw_payload` (the provider's document, ~4 KB) — list reads name their fields.
+-->
