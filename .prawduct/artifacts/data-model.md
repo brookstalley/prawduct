@@ -24,9 +24,8 @@ out where reality still lags.
 1. **One source of truth: the evidence store.** Every gate verdict (Critic coverage, resolution
    status) is derived from facts in `evidence.jsonl`. Nothing else is trusted for a verdict.
    *Realized* for the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run`
-   facts while `.test-evidence.json` stays each run's primary record; PR-review evidence is
-   **intended** to migrate onto the same store (reserved fact kinds `pr-review`, `promotion`) and
-   today still lives in its own file.
+   facts while `.test-evidence.json` stays each run's primary record. The PR gate's verdict is
+   composed Critic coverage over the same store; a `promotion` fact kind is reserved (intended).
 
 2. **Facts are immutable and append-only.** A fact is never edited or deleted in place. State
    changes are expressed as *new* facts (a resolution fact supersedes a finding; it does not mutate
@@ -58,6 +57,7 @@ out where reality still lags.
 - **Governance verdicts on the Critic data plane are computed from the append-only fact ledger, never from mutable model-written state — no model sits in a fact's write path.** Facts are written by deterministic code; a reviewer's judgment enters only as validated content inside a partial that code checks against a code-written manifest before it becomes a fact.
   Why: the governed party must never be able to certify itself — deriving every verdict from code-written facts is what keeps model judgment out of the authority path and lets any worktree reconstruct the same verdict from the same log.
   Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness fallback is the one reader that decides anything by them (`evidence list` only displays them), and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "yes fold PR reviewer in". `/prawduct:pr` dispatches no reviewer and nothing writes PR-review evidence, so the Status line's "PR-review evidence still lives in its own file" and the reserved `pr-review` kind describe nothing; `promotion` is the one reserved kind. The PR gate's verdict is composed Critic coverage over this store, so the PR boundary is inside this norm's scope rather than beside it. The Status line keeps its words.
 - **Facts are immutable and append-only; a state change is expressed as a new fact, never an edit or delete in place.**
   Why: append-only history is what lets any checkout replay the same verdict from the same log — an in-place edit or delete would make the ledger unreproducible and a verdict unauditable.
   Status: steady-state.
@@ -124,7 +124,7 @@ clone that wrote it.
 | Field | Type | Purpose |
 |-------|------|---------|
 | `schema` | int | Envelope schema version (guards forward-compat; a record from a newer plugin is surfaced, never silently dropped) |
-| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start`, `chunk-imported`, `chunk-retracted` today; `pr-review`, `promotion` reserved (intended) |
+| `kind` | string | Fact namespace — `review`, `resolution`, `disposition`, `guard-refusal`, `test-run`, `session-start`, `chunk-imported`, `chunk-retracted` today; `promotion` reserved (intended) |
 | `id` | string | Idempotency key, fixed at dispatch — re-running consolidation never double-appends |
 | `ts` | string | ISO-8601 UTC |
 | `actor` | object | `{session, worktree, plugin}` plus optional `branch` and `build` — provenance: which session, which worktree, which plugin version and build wrote it. `branch` is omitted (never null) on a detached/unreadable HEAD; it exists because the worktree path alone cannot say whether a tree was disposable (#648), and a reader cannot probe a tree that is usually already deleted. `build` is the plugin checkout's commit sha (12 hex), with `+dirty` when the plugin tree has uncommitted or untracked changes; omitted (never null) when the plugin is not a git checkout (a marketplace install, which its released `plugin` already identifies) or git fails. It exists because every dev build of one version shares `plugin` (#1086) |
@@ -328,6 +328,7 @@ clock — and a performance target stated against an estimate is a target stated
 - The markers themselves (`.prawduct/.critic-review-dispatch.json`,
   `.prawduct/.pr-review-dispatch.json`) are **Tier 3 per-clone state** — stopwatches, not answers —
   and are gitignored.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "yes fold PR reviewer in". `/prawduct:pr` dispatches no reviewer, so nothing writes a `review.pr` event, a PR-review dispatch mark (`pr-review-dispatch --begin`, `.prawduct/.pr-review-dispatch.json`) or a PR-review evidence file. The clauses above that describe them — the `review.pr` arm of `dispatched_at`, the 2026-09-21 `commit_reviewed`/`review_written_at` decision, the PR reviewer's slot in the one-marker-per-kind rule and its marker file — stand as the record of the `review.pr` events a ledger already holds, which `review-stats`, `stats` and `tools/pr-review-yield.py` still read. The one-marker-per-kind rule keeps its why with a single consuming kind: a kind added later gets its own slot rather than a share. The clauses keep their words.
 
 **`trigger` (envelope key, `review.critic` only).** Which code path consolidated the review:
 `subagent-stop`, `explicit` (`critic-consolidate`) or `session-end-backstop` (the Stop hook's

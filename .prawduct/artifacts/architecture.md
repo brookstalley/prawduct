@@ -452,11 +452,9 @@ opts into the backlog service:
    which targets the plugin's pinned upstream repo and so is reachable **with the scalar unset**.
    Reading this channel as gated on the scalar is what let the previous phrasing stand; the counts cache under
    `<git-common-dir>/prawduct/` is a disposable, network-independent read-through of channel 2, never
-   an authority. This opt-in is the only network surface a *governance verdict* depends on — but
-   it is **not** the only network call the runtime makes: `cmd_stop` runs `gh pr list` on the Stop
-   hook regardless of `backlog_service_repo`. The earlier phrasing here ("absent this opt-in,
-   prawduct makes no network call") was simply false, and survived because nothing tested it.
-   `security-model.md` enumerates all three sites; this section deliberately keeps no second copy.
+   an authority. This opt-in is the only network surface a *governance verdict* depends on, and it
+   is **not** the only network call the runtime makes: `security-model.md` enumerates the sites;
+   this section deliberately keeps no second copy.
 
    **One non-governance egress, added 2026-08-04.** `prawduct-hook check-released` shells to
    `gh` to ask whether a Release exists. It is an operator/CI command: it never runs on a

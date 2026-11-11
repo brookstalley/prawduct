@@ -362,8 +362,7 @@ substrate. The reviewed design that made that choice is
   cutover — whose accepted spellings are enumerated in **Data Model §5**, the one home, rather than
   restated here, because a spelling added to some carriers and not others is exactly how the grammar
   forked before. Today several recognize only the first — e.g. `lib/norm_probes.py`'s
-  `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), PR review
-  `R-2`'s `closes: PFX-XXXX` reconciliation, `closes:`/`closed-by:` in backlog metadata and
+  `_BACKLOG_ID_RE` (`\b[A-Z]{2,4}-[A-Z0-9]{4}\b`), `closes:`/`closed-by:` in backlog metadata and
   change-log tags, and the deferred build-plan backlog-id verification
   (`lib/buildplan_refs.py`). A citation surface that recognizes only PFX does not error on a
   post-cutover reference — it **fails to see it**, which is the same silent degradation GV7 and GV8

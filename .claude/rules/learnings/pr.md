@@ -1,8 +1,7 @@
 ---
 paths:
   - "plugin/skills/pr/**"
-  - "plugin/lib/pr_payload.py"
-  - "plugin/agents/pr-reviewer.md"
+  - "plugin/lib/pr_gate.py"
 ---
 # Learnings — pr
 

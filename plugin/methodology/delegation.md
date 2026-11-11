@@ -22,7 +22,7 @@ Everything below is reference: what makes the five hold in practice, and the way
 
 **Set reasoning effort the same way.** The host gives a subagent an effort of its own only when instructions explicitly ask for one, so this guide is that ask: choose an effort per piece, as you choose the model.
 
-"A piece that is a review" means review-shaped delegated work. Dispatch of the Critic and the PR reviewer is governed by their own skills, not by this guide.
+"A piece that is a review" means review-shaped delegated work. Dispatch of the Critic's reviewers is governed by its own skill, not by this guide.
 
 ## When serial is right
 

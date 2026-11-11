@@ -5,8 +5,7 @@
 **Never run tests, builds, or executables**: review test quality and coverage by reading
 code. Both modes are **single-pass**: one reviewer, no coordinator.
 
-**Both modes are the inner stage** (the manifest's `stage` is `inner`; the boundary is `cumulative`
-and the PR review). Here a finding is one of the **inner BLOCKING set** — a test failure in the
+**Both modes are the inner stage** (the manifest's `stage` is `inner`; the boundary is `cumulative`). Here a finding is one of the **inner BLOCKING set** — a test failure in the
 evidence; a test deleted or weakened; changed behavior with no test at all; a silently dropped
 requirement; exploitable security in changed code; a cross-component contract break; a norm
 departure without a recorded decision; an unlisted dependency — and nothing else:

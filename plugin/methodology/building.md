@@ -105,7 +105,7 @@ Test at the right level — **unit** (functions, logic), **integration** (compon
 
 Scale to chunk significance. When you can't verify, say so (Principle 5).
 
-**Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "pr": "...", "reflection": "..."}`. String reasons required. Auto-cleared at `/clear` or startup. Doc-only edits are skipped automatically.
+**Gate waivers.** When a gate is genuinely N/A, write `.prawduct/.gates-waived` as `{"critic": "reason", "reflection": "..."}`. String reasons required. Auto-cleared at `/clear` or startup. Doc-only edits are skipped automatically.
 
 **In-flight background work auto-defers — don't waive.** When the gate would block only because harness-tracked background work (`Workflow`/`Task`) is still producing the diff, the Stop hook defers and re-arms when it lands. An *untrackable* wait (CI, a remote queue) blocks unless the turn, still working, closes on `DO NOT CLEAR`, which defers reflection and Critic only (`session-hygiene.md`).
 
@@ -209,9 +209,9 @@ Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each cove
 
 **Default: wait for the user to ask** — unless `project-preferences.md` sets `PR creation: automatic`.
 
-`/prawduct:pr` handles the full lifecycle and dispatches the `pr-reviewer` agent for independent release-readiness review. Criteria: the plugin's `skills/pr/review-protocol.md`. After merge, `/prawduct:pr` cleans up the build plan.
+`/prawduct:pr` handles the full lifecycle and dispatches no reviewer: the cumulative Critic is the PR boundary's one review. After merge, `/prawduct:pr` cleans up the build plan.
 
-**Cumulative-Critic gate.** `/prawduct:pr create` blocks unless composed coverage spans merge-base → HEAD with zero unresolved blocking findings; the skill owns the mechanics — including dispatching that review *concurrently* with the PR review, neither consuming the other's verdict.
+**Cumulative-Critic gate.** `/prawduct:pr create` blocks unless composed coverage spans merge-base → HEAD with zero unresolved blocking findings, then checks the branch and the PR description by code (`check-pr-hygiene`, `check-pr-body`); the skill owns the mechanics.
 
 ## Exception Handling
 
