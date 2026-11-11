@@ -27,6 +27,39 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "1. Yes PR and merge to develop, update prawduct-live. I meant 1136 first, which I think you got. yes I think that session rule is good. Agree with your take on review-stats vs stats. ok as built for #4"
+In reply to four numbered asks at the end of the #1136 build. It settles: #1136 is opened as a PR,
+merged to `develop`, and `../prawduct-live` is advanced to the result; "1138 first" meant #1136
+first (the entry below records the doubt, now closed); a session model not recognisably Haiku,
+Sonnet or Opus, and a dispatcher that does not say what it runs on, get Opus-class reviewers; the
+count of reviews above the ceiling lives in `review-stats` and `stats` is unchanged; a single-pass
+boundary review is capped by the same hand-off, and dispatch-time instructions reach a handed-off
+reviewer through the manifest. Landed in `build-plan-reviewer-model-cap.md`, whose four inferences
+it confirms.
+
+**2026-11-11.** "Hand off to Opus (Recommended)"
+Chosen from three options put to the owner on how chunk and verify reviews, which run inside the
+forked `/prawduct:critic` on the session's model, are capped on a session above Opus-class. The
+option as put: the fork only routes, and dispatches one Opus-class reviewer instead of reviewing
+inline; sessions at or below Opus-class are unchanged. The two not chosen were pinning the skill to
+Opus on every session, and leaving the fork uncapped for now. Landed in
+`build-plan-reviewer-model-cap.md` (#1136).
+
+**2026-11-11.** "Sonnet for both (Recommended)"
+Chosen from three options on what the forked `/prawduct:backlog` and `/prawduct:advisory` run on,
+given that a skill can name only a fixed model. Both name Sonnet-class on every session. Put to
+the owner with its cost: on an Opus-class session they drop a tier, backlog triage included.
+Landed in `build-plan-reviewer-model-cap.md` (#1136).
+
+**2026-11-11.** "yes let's do 1138 first, so we don't have a few runs in a different cnfig"
+In reply to whether #1136 should land before `../prawduct-live` is advanced, where the session
+had recommended advancing it first. The words name 1138, a PR that had already merged. Unconfirmed
+which was meant. The session read it as "#1136 first" and built #1136 on that reading without
+advancing the installed plugin. The installed checkout was then advanced to `fe0fee97` (`develop`
+without #1136) at 08:35 on 2026-11-11 by someone other than that session, which fits the other
+reading: yes, advance it first. Put back to the owner on 2026-11-11, who confirmed the first
+reading (the entry above); who advanced the checkout that morning is not known.
+
 **2026-11-10.** "yes please open and  merge PR's.  and also  yes to your recommendations"
 In reply to six numbered decisions put to the owner at the end of the first build wave. It
 settles: the one-line close keeps its existing labels; this file keeps the name

@@ -3,7 +3,7 @@
 **Self-contained by design**: do not open `review-protocol.md` or `review-cycle.md`. Target wall-clock: 1-2 minutes.
 
 **Never run tests, builds, or executables**: review test quality and coverage by reading
-code. Both modes are **always single-pass** — no subagents, no coordinator.
+code. Both modes are **single-pass**: one reviewer, no coordinator.
 
 **Both modes are the inner stage** (the manifest's `stage` is `inner`; the boundary is `cumulative`
 and the PR review). Here a finding is one of the **inner BLOCKING set** — a test failure in the
@@ -103,9 +103,9 @@ re-derive or recount one. `chunk_graded`/`plan_graded` name the subject; `null` 
 
 ## Record your judgment
 
-Write ONE partial to your `rendezvous.reviewer.partial` path, then run `prawduct-hook
-critic-consolidate` yourself. You write nothing else. **Its `NEXT-ACTION:` line is the
-builder's, not yours: relay it verbatim as your report's last line.** Everything else it printed
+Write ONE partial to your `rendezvous.reviewer.partial` path, then, as the fork, run
+`prawduct-hook critic-consolidate`. You write nothing else.
+**Its `NEXT-ACTION:` line is the builder's, not yours: relay it verbatim as your report's last line.** Everything else it printed
 dies in your context, and the builder is what terminates the review loop.
 
 ```json

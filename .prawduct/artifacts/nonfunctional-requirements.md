@@ -16,9 +16,11 @@ last_validated: null
 <!-- Ratified norms (2026-07-17). See docs/norms.md. -->
 
 - **Review wall-clock is a P0 constraint: cost = unit-cost × run-count, and *both* factors are levers — run-count via gate and chunk structure, unit-cost via the reviewer's *payload* (what a given mode must load to answer its goals). The two independent reviews at the PR boundary run in parallel, never sequentially.**
-  Why: review latency is what determines whether governance feels like a partner or a tax. The original entry treated per-review cost as fixed, but that conflated two different things: the reviewer's **model tier** is fixed (reviewers inherit the session model — reviewer-model tiering was removed deliberately and the manifest's `tier` stays telemetry only; that pin is untouched by this amendment) with the reviewer's **payload**, which was never a considered variable and is large — a `verify-resolutions` reviewer loads the full review protocol plus the review-cycle to answer three goals. Payload is per-mode and reducible without touching model selection, so "unit-cost is fixed" was an accident of the earlier framing, not a finding.
+  Why: review latency is what determines whether governance feels like a partner or a tax. The original entry treated per-review cost as fixed, but that conflated two different things: the reviewer's **model tier**, which no review chooses (reviewers run on the session model, capped at Opus-class by the 2026-11-10 amendment below; reviewer-model tiering by risk was removed deliberately and the manifest's `tier` stays telemetry only), with the reviewer's **payload**, which was never a considered variable and is large — a `verify-resolutions` reviewer loads the full review protocol plus the review-cycle to answer three goals. Payload is per-mode and reducible without touching model selection, so "unit-cost is fixed" was an accident of the earlier framing, not a finding.
   Status: steady-state.
   Amended: 2026-07-29, owner decision. `[DECISION: unit-cost joins run-count as a declared lever, scoped to reviewer payload | the norm's why is bearable review latency; holding unit-cost fixed left the largest reducible term unexamined for the sake of a model-tiering pin that this amendment preserves separately | user can veto/override]` Scope narrows nothing and re-opens nothing: model tiering stays removed.
+  Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "Yes cap at opus. In fact we need to be very careful to not accidentally spam fable subagents anywhere, given the cost. Sometimes it makes sense, but most fable orchestrators should use opus and sonnet for most delegation". A reviewer's model is still no lever this norm pulls: it follows the session's model, and a session above Opus-class dispatches its reviewers on Opus-class instead, answered by code from the dispatcher's own model (`lib/model_tier.py`), never by risk tier or size. The why is engaged, not suspended: a capped single-pass round adds one subagent start, on a tier the 2026-06 comparison (`reviewer-model-ab-2026-06-10.md`) measured at about a quarter of the stronger tier's wall clock.
+  Retires: "no machinery selects models at dispatch time", "the runtime cannot observe which model it is" — code now answers a reviewer's model at dispatch, from the model the dispatcher reports it runs as.
 - **Proportionality ratchets both ways. A control that has fired repeatedly and never produced a blocking finding is removed by default; keeping it requires a reason. Adding a control names the yield it expects **and emits that yield observably**, so there is something to measure it against later — a control whose findings are printed and forgotten satisfies the letter and defeats the point, since it can never be retired on evidence, only defended on principle.**
   Why: every review finding tends to add a control and nothing ever removes one, so the system drifts monotonically toward more ceremony regardless of whether any individual addition was justified — and each addition *is* individually justified, which is why argument alone never reverses it. Making removal the default converts the question from a debate into a query, which is newly possible: the `disposition` fact kind (shipped 2026-07-29) plus the governance ledger can answer "how often did this control fire, and what did it catch." Proportionality (Principle 11) already said this; what was missing was a default that acts on it and data to act from.
   Status: in-transition — the yield query does not exist yet, and until it does this norm's removal-by-default arm runs on judgment rather than evidence. **One home, named once: the janitor's Norm Health sweep**, which is already the organ for trend-over-time and already reads the ledger. LNG-5W8R carries the enabling half (surviving canary findings must emit a ledger fact; today they are printed and lost). Chunk 02 is *not* the home — its deliverables are `record_lint.py` and subtraction edits, and it contains no yield query; an earlier revision of this line said otherwise and was wrong. Interim rule: a control may be retired on a reasoned argument recorded as a decision, but the argument must state what evidence *would* have settled it, so the query has a specification to be built against.
@@ -126,7 +128,8 @@ governance feels like a partner or a tax.
 The governing model is **cost = unit-cost × run-count**, and both factors are design variables.
 **Run-count** is set by gate and chunk structure. **Unit-cost** is set by the reviewer's *payload* —
 what a given mode must load to answer its goals — and is reducible per-mode. What stays fixed is the
-reviewer's **model tier**: reviewers inherit the session model, reviewer-model tiering was removed
+reviewer's **model tier**: reviewers run on the session model up to Opus-class and on Opus-class above
+it (the Direction amendment of 2026-11-10), reviewer-model tiering by risk was removed
 deliberately, and the manifest's `tier` is telemetry only. Payload and tier are independent; the
 Direction amendment of 2026-07-29 separates them.
 
@@ -265,10 +268,11 @@ probe or malformed state file never takes down a session.
 
 ## Cost Constraints
 
-- **The only meaningful operating cost is reviewer tokens.** Independent reviewers inherit the
-  session model (reviewer-model tiering was removed — the manifest's `tier` is telemetry only and
-  selects no model). The levers are therefore **run-count**, controlled by gate and chunk design,
-  **and per-mode reviewer payload** — never the reviewer model, which stays fixed. This tracks the
+- **The only meaningful operating cost is reviewer tokens.** Independent reviewers run on the
+  session model, capped at Opus-class (reviewer-model tiering by risk was removed — the manifest's
+  `tier` is telemetry only and selects no model). The levers are therefore **run-count**, controlled
+  by gate and chunk design, **and per-mode reviewer payload** — never a per-review choice of model;
+  the cap is a ceiling the owner set, not a lever a review pulls. This tracks the
   § Direction amendment of 2026-07-29; an earlier revision of this bullet still read "the lever is
   therefore run-count … not the reviewer model," which correctly excluded model tiering but wrongly
   implied payload was not a lever either.

@@ -1,11 +1,12 @@
 # Reviewer Model A/B/C — sonnet vs opus vs fable (2026-06-10)
 
-> **PAUSED 2026-07-14.** Reviewer-model tiering was removed (emergency patch —
-> reviewers now run on the session model; see change-log `reviewer-session-model`)
-> because `escalate` fired for nearly any declared risk surface, escalating to
-> Fable constantly. This A/B remains the evidence base for the planned **restore**
-> of tiering — retained, not superseded. Its "reviewers default to opus" / "the
-> evidence base to revisit" claims describe the paused mechanism, not current
+> **Risk tiering removed 2026-07-14; reviewers capped at Opus-class 2026-11-10.** Reviewer-model
+> tiering by risk was removed (change-log `reviewer-session-model`) because `escalate` fired for
+> nearly any declared risk surface, escalating to Fable constantly. Since the owner's ruling of
+> 2026-11-10, reviewers run on the session model up to Opus-class and on Opus-class above it
+> (`project-preferences.md`, the reviewer model dispatch row). This A/B is the evidence for what
+> that cap gives up: the Fable run's extra real findings on one bundle. Its "reviewers default to
+> opus" / "the evidence base to revisit" claims describe the removed mechanism, not current
 > behavior.
 
 Chunk 01 deliverable of `build-plan-reviewer-model-tiering.md`. Three general-purpose agents

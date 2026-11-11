@@ -650,11 +650,13 @@ class TestPrReviewSkillContent:
         A Bash grant is a PREFIX match, and `pr-review-dispatch` has a read-only
         sibling `pr-review-payload`. More to the point, the WRITER is the one
         being granted here: a prefix grant on this family is how a reviewer
-        agent would inherit a write it was never meant to have.
+        agent would inherit a write it was never meant to have. The grant runs
+        to `--begin*` — the house form, covering the bare mark and the
+        `--session-model` the dispatch passes — and no wider.
         """
         content = (FRAMEWORK_DIR / "skills" / "pr" / "SKILL.md").read_text()
         frontmatter = content.split("---")[1]
-        assert "Bash(prawduct-hook pr-review-dispatch --begin)" in frontmatter
+        assert "Bash(prawduct-hook pr-review-dispatch --begin*)" in frontmatter
         assert "pr-review*" not in frontmatter
         assert "Bash(prawduct-hook pr-review-dispatch *)" not in frontmatter
 

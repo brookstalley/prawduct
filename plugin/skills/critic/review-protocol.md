@@ -128,9 +128,8 @@ Self-gating (SKILL step 1). Read `framework-checks.md` for the definitions: **Ge
 
 The roster in the code-written dispatch manifest (`.prawduct/.critic-partials/manifest.json`, written by `critic-begin`) picks the path:
 
-- **Roster `["reviewer"]` — single-pass**: the fork reviews inline and runs `critic-consolidate` itself; no subagents.
-- **Roster `correctness`/`design`/`sustainability`**: the coordinator dispatches you. Your contract is
-  your agent definition.
+- **Roster `["reviewer"]` — single-pass**: the fork reviews inline and runs `critic-consolidate` itself; with `reviewer_model` set, it dispatches you instead.
+- **Roster `correctness`/`design`/`sustainability`**: the coordinator dispatches you. A dispatched reviewer's contract is its agent definition.
 
 The manifest is authoritative; its derivation rule lives in `review-cycle.md`.
 
@@ -162,7 +161,7 @@ The manifest is authoritative; its derivation rule lives in `review-cycle.md`.
 
 If no findings: "No issues found. Changes are ready to proceed."
 
-**Record your judgment (single-pass only — coordinator reviewers get this schema from their agent definition):** write ONE partial to your `rendezvous.reviewer.partial` path, then run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else). **Its `NEXT-ACTION:` line is the builder's: relay it verbatim as your report's last line** — everything else it prints dies in your context, and the builder terminates the review loop:
+**Record your judgment (single-pass only — a roster reviewer gets this schema from its agent definition):** write ONE partial to your `rendezvous.reviewer.partial` path, then, as the fork, run `prawduct-hook critic-consolidate` (it appends the review fact, regenerates `.critic-findings.json`, anchors the ledger event, and clears the marker — you write nothing else). **Its `NEXT-ACTION:` line is the builder's: relay it verbatim as your report's last line** — everything else it prints dies in your context, and the builder terminates the review loop:
 
 ```json
 {

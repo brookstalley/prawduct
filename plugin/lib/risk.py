@@ -8,12 +8,12 @@ governance-gate bundle — that bundle class should buy depth. ``prawduct-hook
 classify-diff-risk [<base>]`` answers one question for the dispatching skill:
 does the review scope intersect a declared risk surface?
 
-**PAUSED (2026-07-14):** the reviewer-model consumer of this verdict was removed
-(emergency patch — reviewers now run on the session model, no tier→model chain).
-``classify-diff-risk`` still runs and the Critic still records the verdict as
-``--tier`` telemetry, but it currently selects **no** model. The A/B rationale
-above and the resolution/failure semantics below are retained verbatim for the
-planned restore of tiering (change-log ``reviewer-session-model``).
+**The verdict selects no model.** A reviewer's model follows the session's model
+alone, capped at Opus-class (``model_tier.reviewer_model_for``); nothing maps a
+risk tier to a model, because the mapping that once did escalated nearly every
+review to the most expensive tier. ``classify-diff-risk`` still runs and the
+Critic records the verdict as ``--tier`` telemetry, so the A/B rationale above
+stays answerable from the evidence store.
 
 **Resolution order** (the build plan's open-assumption, user-vetoable):
 
@@ -77,8 +77,8 @@ from .core import YAML_ABSENT, YAML_DECLARED, YAML_UNPARSEABLE, read_block_seque
 # because the restructure's own diff still listed the root paths it was
 # deleting, and every review after it went ``standard``. Nothing caught it: the
 # verdict's only consumer
-# had been removed on 2026-07-14 (``reviewer-session-model``), so the tier has
-# been telemetry-only since and no gate could go wrong out loud. The test that
+# had been removed on 2026-07-14 (``reviewer-session-model``), so the tier was
+# telemetry-only and no gate could go wrong out loud. The test that
 # should have caught it pinned this tuple's literal value, which stayed true
 # while the repo's layout moved out from under it — so the regression test that
 # replaced it asserts against THIS repo's real paths instead.
@@ -374,7 +374,7 @@ def classify_diff_risk(project_dir: Path, argv: list[str]) -> int:
             print(
                 "escalate: risk surfaces are declared but the diff could not "
                 "be evaluated (git failure) — declared risk with an "
-                "unverifiable diff must not get the standard-tier reviewer.",
+                "unverifiable diff must not classify standard.",
                 file=sys.stderr,
             )
             print("escalate")

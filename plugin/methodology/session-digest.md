@@ -36,9 +36,9 @@ coding without it is the most common governance failure.
   lead the code — departing from one is a decision to record (amend / ruling / bounded
   exception), never doc-drift to sync; amending a norm to match your own code is the tell.
 - **Invoke the Critic (`/prawduct:critic`) after medium+ work.** Never write Critic findings
-  yourself — the independence is the whole value. After a coordinator review (`final`/
-  `cumulative` given a three-reviewer roster), run `prawduct-hook
-  critic-consolidate` before reading the findings (safe to re-run; never read a stale file).
+  yourself — independence is its value. After a review run by subagents (three reviewers, or
+  above the reviewer ceiling), run `prawduct-hook critic-consolidate` before reading findings
+  (safe to re-run; never read a stale file).
 - **Rigor is stage-keyed:** inner-loop reviews block only on ships-broken; the boundary review
   runs everything and is never skipped. Unsure defaults to the cheaper inner review.
 - **Catch specific exceptions.** Waive a genuinely necessary broad catch with

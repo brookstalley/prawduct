@@ -303,9 +303,13 @@ class TestSinglePassUnchanged:
     """
 
     def test_goals_1_3_declares_single_pass(self):
+        # "one reviewer", not "no subagents": on a session above the reviewer
+        # ceiling the fork hands the review to one dispatched reviewer, so the
+        # single-pass roster can involve a subagent; what it never involves is
+        # a coordinator or a second reviewer.
         text = (REVIEW_PROTOCOL.parent / "goals-1-3.md").read_text()
         assert "single-pass" in text.lower()
-        assert "no subagents" in text.lower() and "no coordinator" in text.lower()
+        assert "one reviewer" in text.lower() and "no coordinator" in text.lower()
 
     def test_protocol_still_describes_the_single_pass_roster(self):
         text = REVIEW_PROTOCOL.read_text()

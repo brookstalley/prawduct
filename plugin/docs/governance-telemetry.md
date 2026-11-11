@@ -243,6 +243,8 @@ by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
 consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
                  — review.critic events per `trigger`, every path listed even
                  at zero; `unrecorded` is events without a known value
+above_reviewer_ceiling  {reviews, model_unrecorded} — reviews recorded on a
+                 model above the reviewer ceiling (below)
 top_files        [{path, actionable_findings, findings}]
 files_attributed_total  count behind the top_files cap
 learning         {written, fired, units_written, units_fired, units_uncited}
@@ -340,7 +342,18 @@ key collapses the aliases — otherwise the reviewer-model dimension fragments
 into noise. An unfamiliar id passes through verbatim (never bucketed
 under a known family). This folds **values, not keys**, so `schema_version`
 holds; the raw id stays in each ledger line untouched, so the fold is a
-read-time view, not a rewrite.
+read-time view, not a rewrite. The fold is `lib/model_tier.py`'s, the one the
+reviewer ceiling applies.
+
+A reviewer runs on the session's model up to Opus-class and on Opus-class above
+it, so the model dimension shows the sessions' models, capped there.
+`above_reviewer_ceiling.reviews` counts the reviews in the window recorded on a
+model the dispatch would have capped — a stronger family, or an id nobody
+recognises — judged by the dispatch's own function (`reviewer_model_for`), so the
+count and the cap cannot disagree about a model. A review with no recorded model
+is not counted as above; `model_unrecorded` says how many there were. After the
+cap the count should only fall, and one that grows is a dispatch passing no model
+on a session above the ceiling. Schema 10 added the key.
 
 ## `prawduct-hook stats [--json] [--by-build] [--since <stamp>] [--until <stamp>]`
 
