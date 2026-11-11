@@ -139,6 +139,9 @@ This is the capability that satisfies owner absolute 2. It is generic: MCP is pa
 - **R-3.1 MCP-shaped diffs draw the corpus into review.** The Critic's learnings read-set
   (`learnings-files --for-diff`) includes the relevant pack files when the diff touches an MCP
   surface, using the same files the skill reads.
+  *Note, 2026-11-11:* the read-set this requirement builds on is gone. No reviewer reads the
+  learnings rules since #1128, and `learnings-files --for-diff` was removed with #1129 on the
+  owner's ruling, so Stage 3 needs its own read designed rather than an extension of one.
 - **R-3.2 "MCP surface" is defined by a checkable predicate.** Candidates: server-SDK imports,
   tool-registration calls, `tools/list` handlers, config files naming MCP servers. The predicate
   is language-neutral (R-1.8) and its false-positive and false-negative behaviour is tested on

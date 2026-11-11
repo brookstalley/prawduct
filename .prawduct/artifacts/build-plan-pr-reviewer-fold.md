@@ -81,8 +81,9 @@ forget them.
   query.
 - The Stop hook's PR-evidence gate goes with the evidence it read. Composed coverage is already the
   Stop hook's Critic gate.
-- Recorded `review.pr` ledger events stay readable by `stats` and `review-stats`; nothing writes a
-  new one.
+- Recorded `review.pr` ledger events stay readable by `review-stats` and
+  `tools/pr-review-yield.py`; nothing writes a new one. (#1129's acceptance names `stats` too;
+  `stats` reads the evidence store and never read those events.)
 
 **Constraints:**
 - No prose, template or test names the PR reviewer as a live mechanism when the plan is done.
@@ -90,7 +91,9 @@ forget them.
 - Norm statements are not edited to fit this work. An amendment is recorded beneath its clause with
   the owner's words and date, in the form `docs/norms.md` § Amendment gives.
 - No new nag. A check that finds nothing prints one line; a repo with no PR template is told so
-  once per PR, in the gate's own output, and nothing else.
+  once per PR, in the gate's own output, and nothing else. One cost was taken knowingly at the
+  boundary review: the description file is a managed ignore entry, so a governed repo's
+  ignore-drift advisory names it once, until `update-gitignore` runs.
 - `plugin/methodology/session-digest.md` has a hard character wall; anything changed there is paid
   for in place.
 - GitHub's rules for PR templates were read from GitHub's documentation on 2026-11-11 (the two
@@ -194,6 +197,17 @@ code. Code owners and required reviewers are the host's to apply.
 - No `Retires:` line accompanies the amendments: each retired phrase survives either in a norm
   statement that is deliberately unedited or in dated artifacts outside `archive/`, so the check
   the line feeds would warn on text nobody may edit.
+- Removing `learnings-files --for-diff` conflicted with the owner's ruling D-7 on #928, which
+  names the flag as the Codex adapter's explicit read of area learnings; the boundary review found
+  it, and the removal had been ruled without #928 in view. Put to the owner on 2026-11-11, who
+  ruled it stays removed ("yes to recs", `.prawduct/owner-rulings.md`). The requirement is recorded
+  beneath D-7, and beside the two other drafts that cited the flag (#826's requirements and the MCP
+  knowledge-corpus design note).
+- After the boundary review: the description file is a registered session file (ignored, and swept
+  at the session boundary), reversing the earlier decision above, because the registry's point is
+  that per-clone scratch never reaches a commit and "one step long" holds only on the happy path;
+  closure warnings are recorded as facts beside refusals, so their yield is a query; the live run
+  of the rewritten flow is queued as #1144.
 - The credential exception is recorded as a ruling in the architecture norm's `Rulings:` field,
   not as a temporary exception with a clock: the owner confirmed it without a term, and
   `docs/norms.md` puts the clock on temporary exceptions only.

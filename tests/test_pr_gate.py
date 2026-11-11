@@ -174,6 +174,39 @@ class TestClosuresMarkdownBackend:
         assert "closes-unresolved" in r.stdout
         assert "BKL-GH0S" in r.stdout
 
+    def test_a_warning_lands_one_fact_and_a_rerun_lands_none(self, tmp_path):
+        """Input that trips it: `closes: [BKL-GH0S]`. A warning's yield is a
+        query like a refusal's: one `guard-refusal` fact under `pr-hygiene`
+        with the result's name as the reason, the same event on a re-run of
+        the unchanged branch."""
+        repo = _repo(tmp_path, backlog=BACKLOG, closes=["BKL-GH0S"])
+        assert _run(repo, "check-pr-hygiene").returncode == 0
+        facts = _refusals(repo, pr_gate.HYGIENE_GUARD)
+        assert len(facts) == 1, facts
+        assert facts[0]["body"]["reason"] == "closes-unresolved"
+        assert facts[0]["body"]["results"] == {"closes-unresolved": ["BKL-GH0S"]}
+        assert _run(repo, "check-pr-hygiene").returncode == 0
+        assert len(_refusals(repo, pr_gate.HYGIENE_GUARD)) == 1
+
+    def test_a_clean_branch_and_an_unchecked_warning_land_no_fact(self, tmp_path):
+        """Controls: nothing found records nothing, and a closure check that
+        could not look (no backlog file) found nothing either."""
+        clean = _repo(tmp_path / "clean", backlog=BACKLOG, closes=["BKL-D0NE"])
+        assert _run(clean, "check-pr-hygiene").returncode == 0
+        assert _refusals(clean, pr_gate.HYGIENE_GUARD) == []
+        blind = _repo(tmp_path / "blind", closes=["BKL-0PEN"])
+        r = _run(blind, "check-pr-hygiene")
+        assert "unchecked" in r.stdout
+        assert _refusals(blind, pr_gate.HYGIENE_GUARD) == []
+
+    def test_information_results_land_no_fact(self, tmp_path, monkeypatch):
+        """`chunks-open` and the rest are not a control firing."""
+        repo = _repo(tmp_path, backlog=BACKLOG, closes=[])
+        monkeypatch.setattr(pr_gate, "_chunks_open", lambda _d: [
+            pr_gate.Result("chunks-open", pr_gate.INFO, ["Chunk 02: x"])])
+        assert pr_gate.hygiene_cmd(repo, []) == 0
+        assert _refusals(repo, pr_gate.HYGIENE_GUARD) == []
+
     def test_an_id_still_open_warns(self, tmp_path):
         """Input that trips it: `closes: [BKL-0PEN]`, an item under `## Open`
         on the branch's own backlog — the archive rides the branch, so a close

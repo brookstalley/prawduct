@@ -289,7 +289,8 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   changed tree, for the PR description). A result whose subject could not be read says `unchecked`
   with its reason and never reads as clean; a branch recording its change only in the single-file log
   is `unchecked` for the closure results. A clean branch prints one line. Exit 0 nothing refuses, 1
-  something refuses, 3 no answer at all (no base, no merge-base), 2 usage. `--json` keys: `base`,
+  something refuses, 3 no answer at all (no base, no merge-base) or the refusing `credential-shape`
+  result `unchecked` (§ Error Model), 2 usage. `--json` keys: `base`,
   `merge_base`, `head`, `checked[]`, `results[]{name, severity, items[], unchecked}` (only results
   with something to say), `error`, `exit`.
   **`check-pr-body [<body file>] [--template <path>] [--json]`** (read-only; owner `lib/pr_gate.py`)
@@ -308,8 +309,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `no-template` | `unreadable` | `listed`), `exit`. A refusal from either command is a
   `guard-refusal` fact (`check-pr-hygiene`'s under guard `pr-hygiene`, reason the refusing result's
   name, naming file, line and class only; `check-pr-body`'s under guard `pr-body-template`, reasons
-  `missing-template-lines` | `ambiguous-template`), deduplicated per subject so a re-check of an
-  unchanged branch or body records one event.
+  `missing-template-lines` | `ambiguous-template`), and so is each `check-pr-hygiene` warning that
+  found something (guard `pr-hygiene`, reason `closes-unresolved` | `closes-still-open`, one fact per
+  result naming its ids); an `unchecked` result and an information result record nothing. Each is
+  deduplicated per subject (HEAD plus what was found) so a re-check of an unchanged branch or body
+  records one event.
 - **Learnings layout (learnings v2)** — `learnings-files [--json]` (read-only: the one resolver's
   answer — every rules file under `.claude/rules/learnings/`, the set the budget gate sizes; the
   session briefing and the Stop hook's learnings floor name it to the person reading them as how to
@@ -1039,7 +1043,10 @@ Evolution rules we want to hold, so new versions stay rare:
   by a shipped `hooks.json`. A caller holding the flag gets the command's unknown-argument refusal
   (exit 2, naming `--json` as the flag that remains); one holding either query gets the
   unknown-query refusal (exit 2, naming the queries that remain). The bare `learnings-files`,
-  `--json`, and the six queries that remain are unchanged. As with #303, the clause's "defer removal to a
+  `--json`, and the six queries that remain are unchanged. One planned consumer named the flag: #928's
+  ruling D-7 (the Codex adapter's explicit read of area learnings). Put to the owner with that in
+  view on 2026-11-11, who ruled it stays removed ("yes to recs"); the requirement is recorded
+  beneath D-7 as the adapter's design to supply. As with #303, the clause's "defer removal to a
   major" makes this a release-time obligation: the release carrying it should be a major, or the
   release notes must say why not.
 

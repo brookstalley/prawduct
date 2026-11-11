@@ -398,6 +398,10 @@ class TestReviewPrIsRetired:
         assert "'review.pr' is retired" in r.stderr
         assert "the PR reviewer was retired" in r.stderr
         assert "unknown event kind" not in r.stderr
+        # The readers it names are the real ones: `stats` reads the evidence
+        # store, never the ledger.
+        assert "readable by review-stats and tools/pr-review-yield.py" in r.stderr
+        assert "by stats" not in r.stderr
         assert not (repo / LEDGER_REL).exists()
 
     def test_a_bare_review_pr_is_refused_the_same_way(self, tmp_path):
@@ -417,13 +421,28 @@ class TestReviewPrIsRetired:
 
     def test_review_critic_rejects_findings_path(self, tmp_path):
         # The canonical-source property: an arbitrary file must never enter
-        # the history the gates trust as a review.critic payload.
+        # the review history as a review.critic payload.
         repo = self._repo(tmp_path)
         _write_findings(repo)
         r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit",
                       "--findings", ".prawduct/.critic-findings.json")
         assert r.returncode == 1
         assert "--findings is refused" in r.stderr
+        assert not (repo / LEDGER_REL).exists()
+
+    def test_an_invalid_findings_record_is_refused_without_claiming_a_gate_reads_it(self, tmp_path):
+        """No gate reads the ledger (`review-cycle.md`); the refusal names
+        the reader it protects. Input that trips it: a findings record whose
+        `findings` is not a list."""
+        repo = self._repo(tmp_path)
+        path = repo / ".prawduct" / ".critic-findings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"findings": "not a list"}))
+        r = _run_hook(repo, "ledger-append", "--event", "review.critic", "--trigger", "explicit")
+        assert r.returncode == 1
+        assert "failed schema validation" in r.stderr
+        assert "review-stats" in r.stderr
+        assert "gates trust" not in r.stderr
         assert not (repo / LEDGER_REL).exists()
 
     def test_review_pr_owns_no_dispatch_slot(self):

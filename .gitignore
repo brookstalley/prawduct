@@ -4,6 +4,9 @@
 .prawduct/.critic-findings.json
 .prawduct/.governance-ledger.jsonl
 .prawduct/.handoff-notes.md
+# The PR description `/prawduct:pr` drafts and `check-pr-body` checks; removed
+# after `gh pr create`, and swept at the next session boundary if a flow stops first.
+.prawduct/.pr-body.md
 # Retired with the PR reviewer, which no longer writes here. Kept so the evidence
 # files an earlier version left in a checkout stay out of `git add -A` until deleted.
 .prawduct/.pr-reviews/

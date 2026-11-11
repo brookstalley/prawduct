@@ -1210,28 +1210,6 @@ def _store_precheck(read: dict) -> "tuple[str, str] | None":
     return None
 
 
-def session_changes_all_non_judgeable(
-    project_dir: Path, status_output: "str | None" = None
-) -> bool:
-    """True when the session changed files but NONE of them needs review
-    coverage — the "doc-only" carveout, now answered by THE judgeability
-    predicate (``coverage_algebra.is_judgeable_path``, CRT-5D8Q fix) instead
-    of a bare ``.endswith(".md")`` copy. A governance-protected ``.md``
-    (the set ``buildplan_refs.protected_path_violation`` owns) is
-    judgeable, so editing one no longer skips the reflection/Critic gates.
-
-    Replaces ``gitstate._session_changes_are_doc_only`` (one of the three
-    divergent doc-only sites the kernel-v3 inventory flagged); lives here
-    because ``gitstate`` sits below ``coverage_algebra`` in the import DAG.
-    ``status_output`` (STH-6Q9D): optional pre-captured porcelain snapshot.
-    """
-    changed = gitstate._get_session_changed_files(project_dir, status_output)
-    non_metadata = [f for f in changed if not gitstate._is_metadata_path(f)]
-    if not non_metadata:
-        return False
-    return not coverage_algebra.judgeable_files(non_metadata)
-
-
 def _session_untracked_paths(
     project_dir: Path, status_output: "str | None" = None
 ) -> list[str]:

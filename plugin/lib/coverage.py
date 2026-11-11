@@ -1554,8 +1554,10 @@ def check_pr_doc_only(project_dir: Path) -> int:
     gate (``gates._test_evidence_tree_valid``) is the caller that passes them.
 
     The `/prawduct:pr` skill uses this to skip its cumulative-Critic coverage
-    gate, mirroring the session-end stop-hook carveout
-    (`gates.session_changes_all_non_judgeable`) at the PR boundary.
+    gate. It is the PR boundary's counterpart of the Stop hook's carveout,
+    which skips its review gate when ``gates.session_work_span(...)["judgeable"]``
+    is false; that one asks only the judgeability question, over the session's
+    span, and does not ask about suite-coupled state.
 
     Exit 1 otherwise (any judgeable file — including governance-protected
     ``.md``: skill/methodology/template prose is behavioral logic, never

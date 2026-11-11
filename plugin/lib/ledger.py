@@ -37,7 +37,8 @@ plan's Out of scope.) Two additive kinds change no existing line's meaning,
 so ``schema_version`` stays 1. ``review.pr`` was emitted by the PR reviewer's
 flow until that reviewer was retired; the kind is now refused at the CLI
 (:data:`_RETIRED_KINDS`), and the events already recorded stay readable by
-``stats``, ``review-stats`` and the telemetry readers.
+``review-stats`` (``lib.telemetry``) and ``tools/pr-review-yield.py``. (``stats``
+reads the evidence store, never this ledger.)
 
 **Structural writer.** The agent never hand-authors JSONL: ``prawduct-hook
 ledger-append`` reads the just-written findings file, validates it,
@@ -119,8 +120,8 @@ _RETIRED_KINDS = {
     "review.pr": (
         "the PR reviewer was retired; /prawduct:pr no longer dispatches one, so "
         "there is no PR review to record. Restart the session so the current "
-        "skill loads. Recorded review.pr events stay readable by stats and "
-        "review-stats."
+        "skill loads. Recorded review.pr events stay readable by review-stats "
+        "and tools/pr-review-yield.py."
     ),
 }
 
@@ -212,7 +213,8 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     for the retired ``review.pr`` kind, which is itself refused with its reason
     (:data:`_RETIRED_KINDS`). Exit 0 on append; exit 1 with a stderr reason on
     bad args, an unknown or retired event kind, or a missing/invalid findings
-    file (an invalid record must not enter the history the gates trust).
+    file (an invalid record must not enter the review history; no gate reads
+    the ledger, but ``review-stats`` and the round price do).
     """
     event_kind: str | None = None
     scope: str | None = None
@@ -316,7 +318,7 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
     if not gates.validate_critic_findings(findings_path):
         print(
             f"ledger-append: {findings_path} failed schema validation — an "
-            "invalid record must not enter the ledger the gates trust.",
+            "invalid record must not enter the review history review-stats reads.",
             file=sys.stderr,
         )
         return 1

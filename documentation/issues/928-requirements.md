@@ -196,6 +196,14 @@ refer to § Host-surface inventory.
   (Codex documents no include syntax, and Claude would load it twice through rules), and inlining
   the rules into `AGENTS.md` (learnings would become protected prose, reopening the Critic gate on
   every new rule, and the learnings writer would edit a section of a user-owned file).
+  **Mechanism removed, 2026-11-11 (owner ruling, `.prawduct/owner-rulings.md`; #1129).**
+  `learnings-files --for-diff` no longer exists: its last caller left with the PR reviewer, and the
+  owner ruled, with this decision in view, that it stays removed. What D-7 requires still stands,
+  for this decision and for rows 26 and 27: a host with no on-read rule loading needs an explicit
+  read of the area learnings a change touches. Supplying that read is the adapter's design stage's
+  job (the removed implementation is in the history before commit `8cdedfaa`). The part of row 27
+  that has the Critic read the result is also gone: no reviewer reads the learnings rules on either
+  host since #1128.
 - **D-8 `CLAUDE.md` is the one line `@AGENTS.md` (row 29).** Deleting `CLAUDE.md` outright would
   fail open: a consumer's `CLAUDE.local.md`, or a `CLAUDE.md` in a parent directory, stops Claude
   reading `AGENTS.md` with no warning. The import costs nothing; Claude documents that it never

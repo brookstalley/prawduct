@@ -260,12 +260,9 @@ class TestTheFloorStaysQuiet:
         assert BLOCKER not in err
 
     def test_a_metadata_only_session_passes(self, tmp_path, capsys):
-        # Only `.prawduct/` moved. `session_changes_all_non_judgeable` reads
-        # False for that (an empty non-metadata set is deliberately not
-        # "doc-only", so the reflection and Critic gates still fire on a
-        # governance-only session) — which is why this gate asks for judgeable
-        # code directly rather than borrowing that predicate. Nothing was
-        # judged here, so nothing is owed.
+        # Only `.prawduct/` moved. The session work span drops metadata paths,
+        # so its `judgeable` is False, and this gate asks for judgeable code
+        # literally. Nothing was judged here, so nothing is owed.
         repo = _repo(tmp_path)
         _legacy(repo)
         rc, err = _stop(repo, capsys)

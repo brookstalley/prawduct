@@ -12,10 +12,12 @@ read-only commands answer the few things about a PR that code can answer:
   in the body. With no body it prints what the description must follow.
 
 **Exit codes** (`api-contract.md` § Error Model): 0 when nothing refuses, 1 when
-something does, 3 when the command could not answer at all, 2 on a usage error.
-A refusal is recorded as a ``guard-refusal`` fact (``evidence.append_guard_refusal``)
-so the yield of each control is a query, not a memory; a polled re-check of the
-same unchanged subject records the same event, not a second one.
+something does, 3 when the command could not answer at all or a refusing result
+could not read its subject, 2 on a usage error. A refusal, and each hygiene
+warning that found something, is recorded as a ``guard-refusal`` fact
+(``evidence.append_guard_refusal``) so the yield of each control is a query, not
+a memory; a polled re-check of the same unchanged subject records the same
+event, not a second one.
 
 **Failure posture.** The refusing results are authority and fail closed; the
 warnings and information are advice and fail soft — but never silent: a check
@@ -464,6 +466,22 @@ def hygiene_cmd(project_dir: Path, argv: list[str]) -> int:
             {"findings": len(findings)},
             "\0".join([report.head or "", *findings]),
         )
+    # Each warning that found something is recorded too, one fact per result
+    # under the result's name, so its yield is a query like a refusal's. A
+    # warning with no items (clean, or only `unchecked`) found nothing, and
+    # information is not a control's firing, so neither records.
+    for r in report.results:
+        if r.severity == WARNING and r.items:
+            _record_refusal(
+                project_dir, HYGIENE_GUARD, r.name,
+                {
+                    "head": report.head,
+                    "merge_base": report.merge_base,
+                    "results": {r.name: list(r.items)},
+                },
+                {"findings": len(r.items)},
+                "\0".join([r.name, report.head or "", *r.items]),
+            )
     if as_json:
         print(json.dumps({
             "base": report.base,
@@ -642,7 +660,8 @@ def _rel(path: Path, root: Path) -> str:
 
 
 def _record_refusal(project_dir: Path, guard: str, reason: str, body: dict, observed: dict, dedupe: str) -> None:
-    """Record a refusal; soft on failure, never silent (the sink's contract)."""
+    """Record a refusal, or a hygiene warning that found something, under
+    ``reason``; soft on failure, never silent (the sink's contract)."""
     from . import evidence  # noqa: PLC0415
 
     try:
@@ -654,7 +673,7 @@ def _record_refusal(project_dir: Path, guard: str, reason: str, body: dict, obse
         recorded = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"}
     if recorded.get("status") not in ("appended", "duplicate"):
         print(
-            f"NOTE: this refusal was not recorded ({recorded.get('reason', 'unknown')}) — "
+            f"NOTE: this `{reason}` result was not recorded ({recorded.get('reason', 'unknown')}) — "
             f"`prawduct-hook evidence list --kind guard-refusal` undercounts `{guard}`.",
             file=sys.stderr,
         )

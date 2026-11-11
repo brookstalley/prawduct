@@ -322,6 +322,79 @@ class TestPrReviewSkillContent:
                       "unchecked"):
             assert token in step3, f"Step 3 no longer routes {token!r}"
 
+    def test_exit_3_names_both_of_its_shapes_and_never_proceeds(self, capsys):
+        """`hygiene_exit` returns 3 in two shapes: no answer at all, and a
+        refusing result (the credential check) that could not read the diff,
+        which prints a normal-looking run with one `unchecked` line. The
+        second shape must not read as "carry it into the description": the
+        credential check never ran. Both shapes are taken from the code."""
+        from lib import pr_gate
+
+        unread = pr_gate.HygieneReport(
+            base="develop", merge_base="a" * 40, head="b" * 40,
+            checked=["credential-shape"],
+            results=[pr_gate.Result("credential-shape", pr_gate.REFUSE,
+                                    unchecked="the diff could not be read")],
+        )
+        assert pr_gate.hygiene_exit(unread) == 3
+        cred_line = pr_gate.render_hygiene(unread).splitlines()[-1]
+        cred_prefix = cred_line.split("—", 1)[0] + "—"
+        assert cred_prefix == "credential-shape: unchecked —"
+
+        none = pr_gate.HygieneReport(error="could not resolve a base branch: x")
+        assert pr_gate.hygiene_exit(none) == 3
+        import unittest.mock as _mock
+        with _mock.patch.object(pr_gate, "hygiene", lambda _d: none):
+            assert pr_gate.hygiene_cmd(Path("."), []) == 3
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        none_prefix = captured.err.split("—", 1)[0] + "—"
+        assert none_prefix == "check-pr-hygiene: could not answer —"
+
+        step3 = _step(_skill(), "### Step 3:", "### Step 4")
+        exit3 = _step(step3, "- **Exit 3", "\n- **")
+        assert "never proceed" in exit3
+        assert f"`{cred_prefix}`" in exit3
+        assert f"`{none_prefix}`" in exit3
+        assert "carry it into the description" not in exit3
+        assert "carry the line into the description" not in exit3
+
+    def test_an_unchecked_advice_result_on_exit_0_is_carried_into_the_description(self):
+        """The other half: a warning or information result that could not
+        read its subject leaves the exit at 0, and THAT is the line Step 5's
+        description carries. Control: the same result as a refusing one is 3."""
+        from lib import pr_gate
+
+        for severity in (pr_gate.WARNING, pr_gate.INFO):
+            report = pr_gate.HygieneReport(
+                base="develop", merge_base="a" * 40, head="b" * 40,
+                results=[pr_gate.Result("closes-unresolved", severity, unchecked="why")],
+            )
+            assert pr_gate.hygiene_exit(report) == 0
+        step3 = _step(_skill(), "### Step 3:", "### Step 4")
+        exit0 = _step(step3, "- **Exit 0 with an `unchecked` line", "- **Warnings")
+        assert "carry the line into the description" in exit0
+        step5 = _step(_skill(), "### Step 5:", "## Update Flow")
+        assert "any `unchecked` line on its exit-0 run" in step5
+
+    def test_step_1b_defers_to_the_predicate_rather_than_restating_it(self):
+        """Step 1b and Step 1c's note must not disagree about what is
+        doc-only. Step 1b names the predicate and what `check_pr_doc_only`
+        also refuses on (shipped suite-coupled state), and never says the test
+        is a `.md` suffix — `.prawduct/` metadata that is not `.md` is not
+        judgeable, and a protected `.md` is."""
+        from lib import coverage_algebra
+
+        step1b = _step(_skill(), "### Step 1b:", "### Step 1c")
+        rule = step1b.split("- **Exit 0", 1)[0]
+        assert "ends in `.md`" not in rule
+        assert "coverage_algebra.is_judgeable_path" in rule
+        for path in sorted(coverage_algebra.TEST_COUPLED_STATE):
+            assert f"`{path}`" in rule, path
+        for protected in ("`skills/`", "`methodology/`", "`templates/`", "`agents/`"):
+            assert protected in rule
+        assert coverage_algebra.is_judgeable_path("skills/x/SKILL.md")
+
     def test_the_hygiene_check_runs_on_a_doc_only_pr_too(self):
         """The doc-only fast path skips the coverage gate, not the hygiene
         check: a credential can sit in prose."""

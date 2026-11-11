@@ -20,7 +20,8 @@ denylist and carries no `prawduct:allow prawduct/credential-shape -- reason` wai
 line and the shape's class and never the text; `closes-unresolved` and `closes-still-open` warn
 when the change record's `closes:` list names an id the backlog does not know, or, on a markdown
 backlog, one still open; `close-owed-at-merge`, `chunks-open` and `review-tree-changed` are
-information the PR description carries. A result it could not read says `unchecked`.
+information the PR description carries. A result it could not read says `unchecked`; when the
+credential check is the one that could not look, the exit is 3 and the PR does not open.
 
 `prawduct-hook check-pr-body [<file>] [--template <path>]` finds the repo's PR template where
 GitHub looks for one (`pull_request_template` in the root, `docs/` or `.github/`, any case, or a
@@ -30,8 +31,9 @@ them. With no file it prints what the description must follow, a `CONTRIBUTING` 
 This is new: nothing in the plugin read a PR template before, and the owner asked on 2026-11-11
 that the flow honour "repo standards like PR templates".
 
-Each refusal is a `guard-refusal` fact (`pr-hygiene`, `pr-body-template`), so how often either
-fires is `prawduct-hook evidence list --kind guard-refusal`.
+Each refusal, and each closure warning, is a `guard-refusal` fact (`pr-hygiene`,
+`pr-body-template`), so how often any of them fires is `prawduct-hook evidence list --kind
+guard-refusal`.
 
 The credential check is a bounded exception to `architecture.md` § Direction ("prawduct never
 re-implements what a product's own tooling already does"), confirmed by the owner on 2026-11-11
@@ -41,7 +43,8 @@ and recorded in that norm's Rulings. No debug-code check is written: that is a l
 
 The Create flow's review gate is `check-cumulative-critic` alone; `check-pr-hygiene` runs where
 the reviewer was dispatched; the description is drafted to `.prawduct/.pr-body.md`, checked by
-`check-pr-body`, passed to `gh pr create --body-file` and removed. Update re-runs the coverage
+`check-pr-body`, passed to `gh pr create --body-file` and removed; the file is a registered
+session file, ignored and swept at the next session boundary if a flow stops early. Update re-runs the coverage
 gate and the hygiene check on every update. Merge checks coverage where it checked for an evidence
 file. "The branch moved after the review" is answered by the coverage gate, which composes over
 trees at HEAD.
@@ -53,7 +56,9 @@ probe and its `gates.json` entry, the scaffolded `.prawduct/.pr-reviews/` direct
 ignore-list entries for it and the dispatch mark. The dispatcher answers each retired command by
 name with a non-zero exit and what to do. A `pr` key in a `.gates-waived` file is reported as
 retired and waives nothing. Recorded `review.pr` ledger events are still read by `review-stats`
-and `tools/pr-review-yield.py`.
+and `tools/pr-review-yield.py` (`stats` reads the evidence store and never read them). The Stop
+hook's doc-only rule is the session work span's own answer; the second predicate the PR-evidence
+gate used went with it.
 
 The removal is outright, outside a major version, on the owner's ruling of 2026-11-11, recorded
 in `api-contract.md` § Deprecation & Compatibility beside #303's.
@@ -98,7 +103,9 @@ reviewer-model row.
 
 `learnings-files --for-diff` and the backlog cache queries `affecting` and `created-since` are
 removed on the owner's ruling of 2026-11-10; each is refused as an unknown flag or query, naming
-what remains. The claim that a reviewer walks the backlog cache is gone from the code and the
+what remains. One planned consumer named the flag, #928's ruling D-7 (the Codex adapter's read of
+area learnings); the owner ruled on 2026-11-11, with that in view, that it stays removed, and the
+requirement is recorded beneath D-7 for the adapter's design. The claim that a reviewer walks the backlog cache is gone from the code and the
 cache spec. The cache's path index is no longer written; its empty table stays in the schema until
 another change bumps the version (#1143), since a bump alone costs each repo a full re-fetch.
 
@@ -109,7 +116,9 @@ the branch adds (a fixture or documented example takes a `prawduct:allow prawduc
 -- reason` comment) and warns when the change record closes an item the backlog does not know; and
 `check-pr-body`, which holds the PR description to your repo's PR template when it has one. The
 Stop hook no longer asks for PR-review evidence, and no longer calls `gh` at the end of a turn.
-Files left in `.prawduct/.pr-reviews/` are unused and safe to delete. A session that was already
+Files left in `.prawduct/.pr-reviews/` are unused and safe to delete. The managed ignore list
+gains one entry, `.prawduct/.pr-body.md`: `prawduct-hook update-gitignore` adds it, and the
+ignore-drift advisory names it until then. A session that was already
 open when the plugin updated must be restarted before it can open a PR: its loaded skill text
 calls commands that were removed, and they say so. `learnings-files --for-diff` and the cache
 queries `affecting` and `created-since` are gone.

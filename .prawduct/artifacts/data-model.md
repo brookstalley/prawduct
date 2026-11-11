@@ -197,7 +197,7 @@ clone that wrote it.
   `critic-dispatch-free-interval`, the `free_files` it waved through plus `mode`/`scope`/`chunk`/
   `branch`. The other two `critic-begin` exit-3 answers, `critic-dispatch-nothing-to-verify` (a verify
   pass over an unchanged tree) and `critic-dispatch-head-covered` (a `chunk`/`final` whose last review
-  covers HEAD), carry `mode`/`scope`/`chunk`/`branch`/`dispatch_commit`: every exit 3 records one. The PR gate's two refusals are recorded the same way, declining to open a PR rather than to dispatch: `pr-hygiene` (reason the refusing result's name, with file, line and shape class, never the matched text) and `pr-body-template` (`missing-template-lines` | `ambiguous-template`). **The interval is nested under `interval`, never spread to the body's top level**, which
+  covers HEAD), carry `mode`/`scope`/`chunk`/`branch`/`dispatch_commit`: every exit 3 records one. The PR gate's two guards are recorded the same way, a refusal declining to open a PR rather than to dispatch: `pr-hygiene` (reason the result's name: the refusing `credential-shape`, with file, line and shape class, never the matched text; or a warning that found something and declines nothing, `closes-unresolved` | `closes-still-open`, with its ids — an `unchecked` or information result records nothing) and `pr-body-template` (`missing-template-lines` | `ambiguous-template`). **The interval is nested under `interval`, never spread to the body's top level**, which
   is where a coverage edge carries `base_tree`/`head_tree`: one level down, no reader walking bodies
   for edges can mistake a refusal for one. **This kind is purely observational and CANNOT become
   authoritative** — composition derives edges from `kind == "review"` alone, so a refusal contributes

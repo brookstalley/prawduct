@@ -27,6 +27,19 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "yes to recs"
+In reply to one decision put to the owner after #1129's boundary review, with two options and a
+recommendation. The review found that removing `learnings-files --for-diff` (ruled 2026-11-10,
+entry below) conflicts with the owner's ruling D-7 on #928, which names that flag as how a host
+with no on-read rule loading gets its area learnings; the removal had been put to the owner as
+having "no shipped reader" without #928 in view. The recommended option, now ruled: the flag stays
+removed, and #928 and its requirements document record that D-7's named mechanism is gone and that
+the adapter's design stage supplies the explicit read. The option not taken was restoring the flag
+in #1129's branch. The same message recommended starting framework sessions with `claude
+--plugin-dir <this checkout>/plugin`; that is advice about how sessions are started and lands
+nowhere in the repo. Landed beneath D-7 in `documentation/issues/928-requirements.md`, on #928, and
+in `build-plan-pr-reviewer-fold.md`.
+
 **2026-11-11.** "yes to both of your recommendations"
 In reply to two numbered questions put to the owner while #1129 was building, each with a
 recommendation. It settles both as recommended. First: a small credential-shape check on a PR's

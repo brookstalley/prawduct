@@ -992,6 +992,7 @@ _SESSION_GITIGNORED_PATHS = (
     ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
+    ".prawduct/.pr-body.md",
     ".prawduct/.test-evidence.json",
     ".prawduct/.test-report.xml",
     ".prawduct/.test-report.xml.scope.json",
@@ -1040,6 +1041,9 @@ _SESSION_RESET_DELETES = (
     # never past the session boundary.
     ".test-report.xml",
     ".test-report.xml.scope.json",
+    # The PR description a `/prawduct:pr` flow drafts and removes after
+    # `gh pr create`; one that stopped first left it, and it belongs to that flow.
+    ".pr-body.md",
 )
 
 
@@ -3196,13 +3200,13 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # - Grades SHAPE, not length. The floor it replaces passed any fifty
     #   characters, so a sentence saying nothing scored what a reflection that
     #   found a root cause scored.
-    # - Its doc-only carveout is derived from the SPAN, never from the session
-    #   porcelain: widening the trigger to committed work while asking a
-    #   porcelain-scoped question about docs makes a docs-only committed session
-    #   fire. The two must move together or not at all.
+    # - Its doc-only carveout is `not span["judgeable"]` over the SAME span as
+    #   its trigger, so a session whose committed work is all docs does not
+    #   fire. A carveout read from the session porcelain, which is empty once
+    #   work is committed, would make exactly that session fire.
     reflection_span = _gates().session_work_span(project_dir, status_output)
-    # The Critic composition gate (Gate 2) fires on the same span, read once:
-    # its trigger and its doc-only carveout move together for the reason above.
+    # The Critic composition gate (Gate 2) reads the same span, read once here:
+    # its trigger is `changed` and its doc-only carveout is `not judgeable`.
     critic_has_work = bool(reflection_span["changed"])
     critic_doc_only = not reflection_span["judgeable"]
     reflected_file = prawduct_dir / ".session-reflected"
