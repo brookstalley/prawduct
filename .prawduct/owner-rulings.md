@@ -27,6 +27,15 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "yes please do PR and merge and advance, anc close 669"
+In reply to three numbered decisions at the hand-over of #1129. It settles two: the branch
+`feature/pr-reviewer-fold` is opened as a PR to `develop`, merged, #1129 closed, and
+`../prawduct-live` advanced to the result; and #669 is closed as overtaken, the backlog walk it
+set out to repair and the `affecting` query that served it both being gone. It says nothing on the
+third, the list of PR-review judgment checks that were dropped rather than moved to the Critic;
+that list stays marked as inferred in `build-plan-pr-reviewer-fold.md`. Landed in that plan, on
+#669 and on #1143 (the item-level `affected` field has no reader left).
+
 **2026-11-11.** "yes to recs"
 In reply to one decision put to the owner after #1129's boundary review, with two options and a
 recommendation. The review found that removing `learnings-files --for-diff` (ruled 2026-11-10,
