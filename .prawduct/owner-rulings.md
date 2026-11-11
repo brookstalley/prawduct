@@ -166,3 +166,9 @@ replicates before merging, to see whether the new check draws attention from oth
 a per-item query rated by the rule as written rather than warned on regardless of the store; open
 the pull request for `feature/read-cost-review` once the replicates are in; and fix #1137 on its
 own branch. The replicate result is recorded in `.prawduct/changes/read-cost-review.md`.
+
+**2026-11-11.** "Yeah try the shorten approach. If that fails, perhaps a preamble somewhere that code may have multiple defects, don't assume the first round is the only one."
+On the read-cost check after the blind test found the new protocol missing a blocking defect the
+old one caught: shorten the Critic line and re-test on the same fixture first; if that does not
+recover the catch, try a preamble telling the reviewer a file can hold more than one defect. The
+outcome of each is recorded in `.prawduct/changes/read-cost-review.md`.
