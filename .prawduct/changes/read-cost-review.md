@@ -33,8 +33,9 @@ Anything else is an observation. It is a Goal 7 check: `final` and `cumulative` 
 `templates/data-model.md` gains an optional **Access Paths** section for a store that grows:
 expected volume per entity, what finds the records of each read that runs often or while someone
 waits, and which fields are heavy. This is what the reviewer judges a read against. Where a store
-that grows states no volume, the Critic's verdict is an observation naming that section, which is
-how a product onboarded before this change learns the section exists.
+that grows states no volume and the read is not a per-request one, the Critic's verdict is an
+observation naming that section, which is how a product onboarded before this change learns the
+section exists.
 `methodology/planning.md` lists the section with the artifact's others.
 
 ### The registry row says what is true
