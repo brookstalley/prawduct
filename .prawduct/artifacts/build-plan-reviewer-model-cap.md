@@ -97,7 +97,7 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
   routing cost on a top-tier session shows up in the delegation telemetry.
 - Backlog and advisory drop a tier on an Opus-class session.
 
-**Inferences, for the owner to veto at the boundary:**
+**Inferences, all four confirmed by the owner on 2026-11-11 (`.prawduct/owner-rulings.md`):**
 - *Inferred:* "above Opus-class" is decided by exclusion. A session model that names Haiku, Sonnet
   or Opus is at or below the ceiling; any other value, and no value at all, is treated as above
   it. A new stronger tier is then capped with no code change. The cost: a session on a model the
@@ -164,8 +164,8 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
 - Review round — the learnings rule that told prose to pick a reviewer's model as a fallback chain
   is rewritten to what now holds: one code home answering from the session's model, or an
   owner-ruled front-matter line. Settled by the owner's two rulings.
-- Review round — the four inferences above are put to the owner in the hand-over that follows this
-  review; the review's finding that they had not yet been put is accepted on that basis.
+- Review round — the four inferences above were put to the owner in the hand-over that followed
+  the review, and confirmed.
 
 **Level:** Medium. The design rests on host behaviour read from the documentation on 2026-11-11
 and not all yet observed: an Agent call's `model` overrides a plugin agent's `model: inherit`
