@@ -87,7 +87,7 @@ testpaths = ["tests"]
 # cache under `<git-common-dir>/prawduct/`, which no fresh checkout has, so elsewhere it skips.
 # `.testament.toml` selects both out, so `testament run` (pool or local fallback) never runs them;
 # the evidence recorder's third `test_commands` entry runs exactly these here, a plain `pytest`
-# run includes them, and CI (`fetch-depth: 0`) runs them on the job beside its pool run.
+# run includes them, and CI's `pytest` job (`fetch-depth: 0`) runs them after its pool run.
 markers = [
     "requires_history: reads this repo's full git history; not runnable on a history-less checkout",
     "requires_local_cache: full assertion needs this clone's backlog cache; skips on a fresh checkout",
@@ -99,8 +99,8 @@ markers = [
 # a suite run in flight.
 #
 # **This value is for a developer's machine, and CI inherits it whenever pytest
-# runs on the job** (the whole suite when the job cannot use testament's pool, the
-# tests the pool leaves out when it can; a pool run takes its parallelism from the
+# runs on GitHub's runner** (the whole suite when the pool did not run it, the
+# tests the pool leaves out when it did; a pool run takes its parallelism from the
 # pool). An
 # earlier comment here argued CI was unaffected "because GitHub's runners have
 # 4 cores, so `auto` was already giving it fewer" — which is the disproof, not

@@ -51,3 +51,4 @@ Rules that fire while writing or changing a test.
 - On stale test evidence, run the suite THROUGH `test-evidence record`, or run the declared command WITH --junit-xml and ingest via --from-junit (or a contract report); --from-counts is refused. Tell: test-status said stale, you reached for pytest
 - Red CI over a green suite: enumerate EVERY axis the machines differ on before fixing — two-variable bugs need both. Prove the repro can FAIL first. Tell: repro green
 - This shell is zsh: an unquoted `$var` holding a list or a command does NOT word-split — pytest saw one bogus path ("no tests ran") and `$H args` was "no such file". Use xargs, a function, or `${=var}`. Tell: a zero or error over N items
+- A claim that X never REACHES Y is tested by what Y can OBTAIN, not what Y was handed — a stripped env or narrowed argument proves the hand-off only. Put Y where X never was (another job, not a child). Tell: the test inspects your own argument

@@ -63,10 +63,16 @@ suite.
 ## In CI
 
 `.github/workflows/tests.yml` runs the pytest suite through `tools/ci-suite.py`, whose docstring
-is the reference for what follows. A job that holds the pool's key downloads the pool's own CLI
-build from its console, runs `testament run --no-fallback`, and then runs on the job the tests
-`.testament.toml` selects out. A job without the key, which is every pull request from a fork,
-runs `python -m pytest` on the job. The run's summary on GitHub says which happened.
+is the reference for what follows. It has two stages, which are two jobs:
+
+- **`pool`** holds the pool's key. It downloads the pool's own CLI build from the pool's console,
+  runs `testament run --no-fallback`, and tells the next job whether the pool ran the suite. It
+  installs nothing from a package index and runs no test, which is why it may hold the key.
+- **`pytest`** runs after it, whatever its result, and is given no secret. When the pool ran the
+  suite it runs the tests `.testament.toml` selects out; otherwise it runs `python -m pytest`,
+  the whole suite. A pull request from a fork is always the second case: it gets no key.
+
+Each job's summary on GitHub says what it ran.
 
 Three repository settings feed it (*Settings → Secrets and variables → Actions*):
 
@@ -78,11 +84,14 @@ Three repository settings feed it (*Settings → Secrets and variables → Actio
 
 Reading a red or yellow run:
 
-- **A warning, "the pool could not be used"**: the pool or its console did not answer, or lost the
-  run twice, or took longer than the runner waits. The suite ran on the job and the job's result
-  is the suite's. Nothing to fix in the repository.
-- **An error, "this job cannot use the pool"**: the pool refused the key, a variable is missing, or
-  the build could not be installed. The suite still ran on the job, so the log shows whether the
-  tree is sound, and the job fails either way until the setting is fixed. A replaced key is the
-  usual cause: make a new one and set the secret again.
+- **A warning on `pool`, "the pool could not be used"**: the pool or its console did not answer,
+  was busy, lost the run twice, or took longer than the ten minutes the runner gives it. `pool`
+  passes, `pytest` ran the whole suite, and its result is the verdict. Nothing to fix in the
+  repository.
+- **`pool` failed with "this workflow cannot use the pool"**: the pool refused the key, a variable
+  is missing, or the build could not be installed. `pytest` still ran the whole suite, so its
+  result says whether the tree is sound, and `pool` stays red until the setting is fixed. A
+  replaced key is the usual cause: make a new one and set the secret again.
+- **`pool` failed with failing tests**: the pool ran the suite and tests failed there. `pytest`
+  still ran the tests the pool leaves out.
 - **Failing tests** are named in the summary whichever machine ran them.

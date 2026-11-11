@@ -1,36 +1,44 @@
 #!/usr/bin/env python3
-"""Run this repo's pytest suite for a CI job: on testament's pool when the job can use it, on
-the job itself when it cannot.
+"""Run this repo's pytest suite for CI: on testament's pool when the workflow can use it, on
+GitHub's runner when it cannot. Two stages, which the workflow runs as two jobs:
 
-    python tools/ci-suite.py
+    python tools/ci-suite.py pool     the job that holds the pool's key
+    python tools/ci-suite.py tests    the job that runs pytest
 
-It reads three settings from the environment and takes no arguments:
+They are separate jobs, on separate machines, because the key must not be within reach of a
+test. Keeping it out of pytest's environment is not enough: a process can read its parent's
+environment (`/proc/<ppid>/environ`), and whatever a test imports runs as the same user. So the
+`pool` stage installs nothing from a package index and runs no test, and the `tests` stage is
+never given the key. The first tells the second where the suite ran, as one word.
+
+The `pool` stage reads three settings from the environment:
 
     TESTAMENT_KEY          a client key for the pool (an Actions secret)
     TESTAMENT_COORDINATOR  the pool's wire address, which `testament run` submits to
     TESTAMENT_CONSOLE      the pool's console (https), which serves the pool's CLI build
 
-Where the suite runs, and what the job's result is:
+What each stage does, and which of the two jobs can fail:
 
-    no key                         the whole suite on the job; the suite's result. A pull
-                                   request from a fork is this case: it is given no secrets.
-    a key, and the pool answers    the pool runs what `.testament.toml` selects and the job
-                                   runs what it selects out; the job fails if either does.
-    a key, and the pool cannot     the whole suite on the job, with a warning; the suite's
-    be reached                     result. An outage says nothing about the tree.
-    a key, and the pool refuses    the whole suite on the job, and the job fails whatever the
-    it, or a setting is missing    suite says: CI has stopped using the pool, and a red job is
-                                   the only thing that says so to the person who can fix it.
+    no key                         `pool` passes and says so; `tests` runs the whole suite.
+                                   A pull request from a fork is this case: it has no secrets.
+    a key, and the pool answers    `pool` takes the pool's result for what `.testament.toml`
+                                   selects; `tests` runs what the manifest selects out.
+    a key, and the pool cannot     `pool` passes with a warning; `tests` runs the whole suite.
+    be reached                     An outage says nothing about the tree.
+    a key, and the pool refuses    `pool` fails; `tests` runs the whole suite, so the tree
+    it, or a setting is missing    still gets its verdict. CI has stopped using the pool, and
+                                   a red job is the only thing that says so to the person who
+                                   can fix it.
 
 Anything not known to be an outage is a refusal: the two are told apart by what the pool
-reports (`error.retryable`), and an end this file does not recognise fails the job rather than
-passing as a fallback nobody reads.
+reports (`error.retryable`) or the console answers, and an end this file does not recognise
+fails the job rather than passing as a fallback nobody reads.
 
 The CLI is the pool's own published build, fetched from its console with the job's key.
 Testament's source is private, so a public repository's job cannot install it from source, and
 a build taken from the pool is never the wrong version for that pool.
 
-Standard library only: this runs before, and apart from, the suite's own environment.
+Standard library only: the `pool` stage runs where nothing has been installed.
 """
 
 from __future__ import annotations
@@ -42,6 +50,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import urllib.error
 import urllib.parse
@@ -62,11 +71,21 @@ WHEEL_SHA256 = "X-Testament-Wheel-SHA256"
 WHEEL_NAME = re.compile(r"testament-[0-9A-Za-z_.!+]+-py3-none-any\.whl")
 DOWNLOAD_SECONDS = 120
 
-# How long the job waits on the pool before running the suite itself. The pool's own run of
-# this suite takes about a minute; the rest is room to queue behind other people's work. It is
-# bounded so that a busy pool costs the job a fallback rather than its whole time limit, which
-# would end it with no verdict at all.
+# How long the `pool` stage waits on the pool, over both attempts, before leaving the suite to
+# the `tests` stage. The pool's own run of this suite takes about a minute; the rest is room to
+# queue behind other people's work. It is bounded so that a busy pool costs a fallback rather
+# than the job's time limit, which would end it with no verdict at all, and the workflow's
+# limit for that job is set from this number.
 POOL_WAIT_SECONDS = 600
+
+# The one word the `pool` stage hands the `tests` stage: where the suite ran. The workflow
+# carries it as a job output into this variable. Any other value, an empty one included, is
+# read as "not on the pool", so a `pool` job that died before answering costs a full run on the
+# job and never a suite that ran nowhere.
+RAN_ON = "CI_SUITE_RAN_ON"
+ON_POOL, ON_JOB = "pool", "job"
+# Console answers that mean "not now" rather than "not you": the server is failing, or busy.
+CONSOLE_OUTAGES = (408, 429)
 
 # Envelope exit codes that are test results: passed, failed, nothing collected. Everything
 # else, 2 included, is not a statement about the tests.
@@ -127,8 +146,9 @@ def read_settings(env: Mapping[str, str]) -> tuple[Settings | None, str | None]:
 def suite_env(env: Mapping[str, str]) -> dict[str, str]:
     """The environment a process that is not the pool's client runs in: nothing of testament's.
 
-    The key must never reach a test process or an installer. The other settings go too, so
-    the suite on the job sees what it saw before the job knew of a pool.
+    This keeps the settings out of what an installer or pytest is handed, so a suite run here
+    sees what it saw before CI knew of a pool. It is not what keeps the key from a test: a
+    child can read its parent's environment. The two stages being separate jobs is.
     """
     return {name: value for name, value in env.items() if not name.startswith("TESTAMENT_")}
 
@@ -163,7 +183,7 @@ def fetch_cli(settings: Settings, dest: Path, opener: Callable = _open) -> Path:
             body = response.read()
             headers = response.headers
     except urllib.error.HTTPError as e:
-        if e.code >= 500:
+        if e.code >= 500 or e.code in CONSOLE_OUTAGES:
             raise Unavailable(f"the pool's console answered {e.code} for its CLI build") from e
         hint = " (the key is unknown to the pool, or revoked)" if e.code in (401, 403) else ""
         raise Refused(f"the pool's console answered {e.code} for its CLI build{hint}") from e
@@ -187,10 +207,9 @@ def fetch_cli(settings: Settings, dest: Path, opener: Callable = _open) -> Path:
 def install_cli(wheel: Path, venv: Path, env: Mapping[str, str], run: Callable = subprocess.run) -> Path:
     """Install the build into an environment of its own and return its `testament`.
 
-    Its own environment, because testament installed beside the suite adds its pytest plugin
-    to the suite. `--no-index`, because the job installs the build the pool sent and nothing
-    else: a build that came to need a package from an index fails here, by name, and someone
-    decides whether CI may fetch it.
+    `--no-index`, because the job that holds the key installs the build the pool sent and
+    nothing from a package index: a build that came to need one fails here, by name, and
+    someone decides whether that job may fetch it.
     """
     steps = (
         [sys.executable, "-m", "venv", str(venv)],
@@ -204,12 +223,18 @@ def install_cli(wheel: Path, venv: Path, env: Mapping[str, str], run: Callable =
 
 
 def pool_run(
-    testament: Path, settings: Settings, env: Mapping[str, str], work: Path, run: Callable = subprocess.run
+    testament: Path,
+    settings: Settings,
+    wait: float,
+    env: Mapping[str, str],
+    work: Path,
+    run: Callable = subprocess.run,
 ) -> tuple[int, dict | None]:
-    """One `testament run` of the manifest's default selection: its exit code and envelope.
+    """One `testament run` of the manifest's default selection, given `wait` seconds: its exit
+    code and envelope.
 
-    `--no-fallback`: the client's own fallback would run the manifest's command on the job,
-    which needs the pool image's tooling and not this job's; the fallback is this file's.
+    `--no-fallback`: the client's own fallback would run the suite in this job, which holds
+    the key and has none of the suite's dependencies; the fallback is the `tests` stage.
     `--advice never`: its advice is for someone at a desk, about caching and slow tests.
     """
     child = suite_env(env) | {"TESTAMENT_KEY": settings.key, "TESTAMENT_COORDINATOR": settings.coordinator}
@@ -219,9 +244,9 @@ def pool_run(
     envelope_path = work / "envelope.json"
     with envelope_path.open("wb") as stdout:
         try:
-            done = run(argv, env=child, stdout=stdout, timeout=POOL_WAIT_SECONDS, check=False)  # noqa: S603 — list-form argv, no shell (project preference)
+            done = run(argv, env=child, stdout=stdout, timeout=wait, check=False)  # noqa: S603 — list-form argv, no shell (project preference)
         except subprocess.TimeoutExpired as e:
-            raise Unavailable(f"the pool did not finish the run in {POOL_WAIT_SECONDS // 60} minutes") from e
+            raise Unavailable(f"the pool did not finish the run in the {POOL_WAIT_SECONDS // 60} minutes it is given") from e
     try:
         envelope = json.loads(envelope_path.read_text())
     except (OSError, ValueError):
@@ -282,15 +307,22 @@ def _name_missing(envelope: dict | None, report: Report) -> None:
         report.summary(f"Never reported by the pool ({len(missing)}): " + ", ".join(f"`{m}`" for m in missing[:20]))
 
 
-def _pool_verdict(testament: Path, settings: Settings, pool: Callable, report: Report) -> tuple[int, dict]:
+def _pool_verdict(
+    testament: Path, settings: Settings, pool: Callable, report: Report, clock: Callable[[], float]
+) -> tuple[int, dict]:
     """The pool's result for the suite, or the reason there is none.
 
     A retryable end (a lost batch, a pool restarting) is run once more, which is what
-    `documentation/running-tests.md` tells a person to do; twice is an outage.
+    `documentation/running-tests.md` tells a person to do; twice is an outage. Both attempts
+    share one allowance, so a run lost late leaves the second only what remains of it.
     """
+    deadline = clock() + POOL_WAIT_SECONDS
     code, envelope = 2, None
     for attempt in (1, 2):
-        code, envelope = pool(testament, settings)
+        left = deadline - clock()
+        if left <= 0:
+            break
+        code, envelope = pool(testament, settings, left)
         if code in RESULT_CODES and envelope is not None:
             return code, envelope
         _name_missing(envelope, report)
@@ -322,73 +354,101 @@ def _describe(envelope: dict, report: Report) -> None:
         report.summary(f"…and {len(failing) - NAMED_FAILURES} more")
 
 
-def run(
+def pool_stage(
     env: Mapping[str, str],
     *,
     install: Callable[[Settings], Path],
-    pool: Callable[[Path, Settings], tuple[int, dict | None]],
-    pytest: Callable[[list[str]], int],
+    pool: Callable[[Path, Settings, float], tuple[int, dict | None]],
     report: Report,
     manifest: Path = MANIFEST,
-) -> int:
-    """Decide where the suite runs, run it, and return the job's exit code."""
-    report.summary("### pytest suite")
+    clock: Callable[[], float] = time.monotonic,
+) -> tuple[int, str]:
+    """The job that holds the key: its exit code, and where the suite ran.
 
-    def on_job(why: str) -> int:
-        report.summary(f"Ran on this job, not the pool: {why}")
-        return pytest([])
-
+    It never runs a test. When the answer is `ON_JOB` the `tests` stage runs the whole suite,
+    whatever this job's own result.
+    """
+    report.summary("### pytest suite: the pool")
     settings, problem = read_settings(env)
     if settings is None and problem is None:
-        why = "the job has no TESTAMENT_KEY (a pull request from a fork is given no secrets)"
-        report.notice(f"the suite runs on this job: {why}")
-        return on_job(why)
+        why = "the workflow has no TESTAMENT_KEY (a pull request from a fork is given no secrets)"
+        report.notice(f"the suite is not sent to the pool: {why}")
+        report.summary(f"Not sent to the pool: {why}. The test job runs the whole suite.")
+        return 0, ON_JOB
     try:
         if settings is None:
             raise Refused(problem or "the job's pool settings are unusable")
-        rest = selected_out(manifest)
-        code, envelope = _pool_verdict(install(settings), settings, pool, report)
+        # Before the pool is asked: a manifest whose selection cannot be read would leave the
+        # `tests` stage unable to say which tests the pool did not run.
+        selected_out(manifest)
+        code, envelope = _pool_verdict(install(settings), settings, pool, report, clock)
     except Unavailable as e:
-        report.warning(f"the pool could not be used, so the suite runs on this job: {e}")
-        return on_job(str(e))
+        report.warning(f"the pool could not be used, so the test job runs the whole suite: {e}")
+        report.summary(f"Not run on the pool: {e}. The test job runs the whole suite.")
+        return 0, ON_JOB
     except Refused as e:
         report.error(
-            f"this job cannot use the pool: {e}. The suite still runs on this job for the tree's verdict, "
-            "and the job fails either way until the pool takes it again."
+            f"this workflow cannot use the pool: {e}. The test job still runs the whole suite, for the "
+            "tree's verdict, and this job fails until the pool takes it again."
         )
-        return on_job(str(e)) or 1
+        report.summary(f"Refused by the pool, or misconfigured: {e}. The test job runs the whole suite.")
+        return 1, ON_JOB
     _describe(envelope, report)
-    rest_code = 0
-    if rest is not None:
-        rest_code = pytest(["-m", rest])
-        if rest_code == NOTHING_COLLECTED:
-            rest_code = 0
-            report.summary(f"No test matches what the manifest selects out (`{rest}`); nothing ran on this job.")
-        else:
-            report.summary(f"The tests the manifest selects out (`{rest}`) ran on this job: exit {rest_code}.")
-    return code or rest_code
+    return code, ON_POOL
 
 
-def main() -> int:
+def tests_stage(
+    ran_on: str, *, pytest: Callable[[list[str]], int], report: Report, manifest: Path = MANIFEST
+) -> int:
+    """The job that runs pytest: the whole suite, or what the pool left out. Its exit code."""
+    report.summary("### pytest suite: this job")
+    if ran_on != ON_POOL:
+        report.summary("The pool did not run the suite, so the whole suite ran here.")
+        return pytest([])
+    try:
+        rest = selected_out(manifest)
+    except Refused as e:
+        report.error(f"{e}. The whole suite runs here, and this job fails until the manifest can be read.")
+        return pytest([]) or 1
+    if rest is None:
+        report.summary("The pool ran the whole suite; the manifest selects nothing out for this job.")
+        return 0
+    code = pytest(["-m", rest])
+    if code == NOTHING_COLLECTED:
+        report.summary(f"No test matches what the manifest selects out (`{rest}`); nothing ran here.")
+        return 0
+    report.summary(f"The pool ran the suite; the tests the manifest selects out (`{rest}`) ran here: exit {code}.")
+    return code
+
+
+def _append(path: str | None, line: str) -> None:
+    """A line for one of the files GitHub reads back from a step, or stdout where there is none."""
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    else:
+        print(line, flush=True)
+
+
+def main(argv: list[str]) -> int:
     env = dict(os.environ)
-    work = Path(tempfile.mkdtemp(prefix="ci-suite-"))
-    summary_path = env.get("GITHUB_STEP_SUMMARY")
-
-    def summarize(line: str) -> None:
-        if summary_path:
-            with open(summary_path, "a", encoding="utf-8") as f:
-                f.write(line + "\n")
-        else:
-            print(line, flush=True)
-
-    return run(
-        env,
-        install=lambda settings: install_cli(fetch_cli(settings, work), work / "venv", env),
-        pool=lambda testament, settings: pool_run(testament, settings, env, work),
-        pytest=lambda args: run_pytest(args, env),
-        report=Report(sys.stdout, summarize),
-    )
+    report = Report(sys.stdout, lambda line: _append(env.get("GITHUB_STEP_SUMMARY"), line))
+    stage = argv[1] if len(argv) == 2 else ""
+    if stage == "pool":
+        work = Path(tempfile.mkdtemp(prefix="ci-suite-"))
+        code, ran_on = pool_stage(
+            env,
+            install=lambda settings: install_cli(fetch_cli(settings, work), work / "venv", env),
+            pool=lambda testament, settings, wait: pool_run(testament, settings, wait, env, work),
+            report=report,
+        )
+        _append(env.get("GITHUB_OUTPUT"), f"suite={ran_on}")
+        return code
+    if stage == "tests":
+        return tests_stage(env.get(RAN_ON, ""), pytest=lambda args: run_pytest(args, env), report=report)
+    print("usage: ci-suite.py pool | tests", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv))

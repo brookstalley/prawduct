@@ -1,20 +1,23 @@
-"""`tools/ci-suite.py`: where a CI job's suite runs, and what the job's result is.
+"""`tools/ci-suite.py`: where CI's suite runs, and which of its two jobs can fail.
 
-The runner has four situations and each has a different answer. The table is the contract:
+The runner has two stages, run as two jobs: `pool`, which holds the key to testament's pool and
+never runs a test, and `tests`, which runs pytest and is never given the key. The table is the
+contract:
 
-| The job                                             | Suite runs                          | Result  |
-|-----------------------------------------------------|-------------------------------------|---------|
-| has no key (a fork's pull request)                  | on the job                          | suite's |
-| has a key and the pool answers                      | pool, plus selected-out on the job  | theirs  |
-| has a key and the pool cannot be reached            | on the job, with a warning          | suite's |
-| has a key and the pool refuses, or settings are off | on the job, for the tree's verdict  | failed  |
+| The workflow                                        | `pool` job           | `tests` job runs       |
+|-----------------------------------------------------|----------------------|------------------------|
+| has no key (a fork's pull request)                  | passes, says so      | the whole suite        |
+| has a key and the pool answers                      | the pool's result    | what the pool left out |
+| has a key and the pool cannot be reached            | passes, with warning | the whole suite        |
+| has a key and the pool refuses, or settings are off | fails                | the whole suite        |
 
 The last two rows are the ones a reader would merge, and the difference is the point: an outage
 is nobody's to fix and must not turn CI red, while a refused key means CI has stopped using the
-pool and nothing but a red job says so.
+pool and nothing but a red job says so. In every row the tree gets a verdict from somewhere.
 
-The runner's three outside calls (install the pool's CLI, run on the pool, run pytest here) are
-replaced in these tests; what is exercised is every decision between them.
+The stages' outside calls (install the pool's CLI, run on the pool, run pytest) are replaced in
+most of these tests; what is exercised is every decision between them. The last class drives the
+entry point with nothing handed to it.
 """
 
 from __future__ import annotations
@@ -76,245 +79,258 @@ def _load():
 ci = _load()
 
 
-class Job:
-    """One job: the three outside calls as fakes, and everything the runner said."""
+class Said:
+    """Everything a stage said: its annotations and its summary."""
 
-    def __init__(self, pool=(), pytest_codes=(), install_error=None):
-        self.pool_answers = list(pool)
-        self.pytest_codes = list(pytest_codes)
-        self.install_error = install_error
-        self.installs = 0
-        self.pool_calls = 0
-        self.pytest_calls: list[list[str]] = []
+    def __init__(self):
         self.stream = io.StringIO()
         self.summary: list[str] = []
+        self.report = ci.Report(self.stream, self.summary.append)
 
-    def install(self, settings):
+    @property
+    def annotations(self) -> list[str]:
+        return self.stream.getvalue().splitlines()
+
+    @property
+    def all(self) -> str:
+        return self.stream.getvalue() + "\n".join(self.summary)
+
+
+class PoolJob(Said):
+    """The `pool` stage with its two outside calls as fakes.
+
+    `pool` answers are taken in order; an answer may be an exception to raise. `takes` is how
+    long each pool call lasts on the stage's clock, which only this fake advances.
+    """
+
+    def __init__(self, pool=(), install_error=None, takes=0.0):
+        super().__init__()
+        self.answers = list(pool)
+        self.install_error = install_error
+        self.takes = takes
+        self.now = 1000.0
+        self.installs = 0
+        self.waits: list[float] = []
+
+    def _install(self, settings):
         self.installs += 1
         if self.install_error is not None:
             raise self.install_error
         return Path("/nonexistent/testament")
 
-    def pool(self, testament, settings):
-        self.pool_calls += 1
-        answer = self.pool_answers.pop(0)
+    def _pool(self, testament, settings, wait):
+        self.waits.append(wait)
+        self.now += self.takes
+        answer = self.answers.pop(0)
         if isinstance(answer, Exception):
             raise answer
         return answer
 
-    def pytest(self, args):
-        self.pytest_calls.append(list(args))
-        return self.pytest_codes.pop(0) if self.pytest_codes else 0
-
     def run(self, env, manifest=MANIFEST):
-        report = ci.Report(self.stream, self.summary.append)
-        return ci.run(
+        return ci.pool_stage(
             env,
-            install=self.install,
-            pool=self.pool,
-            pytest=self.pytest,
-            report=report,
+            install=self._install,
+            pool=self._pool,
+            report=self.report,
             manifest=manifest,
+            clock=lambda: self.now,
         )
 
-    @property
-    def said(self) -> str:
-        return self.stream.getvalue() + "\n".join(self.summary)
+
+class SuiteJob(Said):
+    """The `tests` stage with pytest as a fake that records what it was asked to run."""
+
+    def __init__(self, codes=()):
+        super().__init__()
+        self.codes = list(codes)
+        self.calls: list[list[str]] = []
+
+    def _pytest(self, args):
+        self.calls.append(list(args))
+        return self.codes.pop(0) if self.codes else 0
+
+    def run(self, ran_on, manifest=MANIFEST):
+        return ci.tests_stage(ran_on, pytest=self._pytest, report=self.report, manifest=manifest)
 
 
-class TestAJobWithNoKey:
-    def test_runs_the_whole_suite_on_the_job_and_never_asks_the_pool(self):
-        job = Job()
+class TestThePoolJobWithNoKey:
+    def test_passes_and_leaves_the_suite_to_the_test_job_without_asking_the_pool(self):
+        job = PoolJob()
 
-        code = job.run({})
+        answer = job.run({})
 
-        assert code == 0
-        assert job.pytest_calls == [[]], "the whole suite, with no selection of the runner's own"
-        assert (job.installs, job.pool_calls) == (0, 0)
+        assert answer == (0, ci.ON_JOB)
+        assert (job.installs, job.waits) == (0, [])
 
-    def test_the_suites_failure_is_the_jobs(self):
-        job = Job(pytest_codes=[1])
-
-        assert job.run({}) == 1
-
-    def test_says_where_the_suite_ran_without_a_warning(self):
-        job = Job()
+    def test_says_so_without_a_warning(self):
+        job = PoolJob()
 
         job.run({})
 
-        assert "::notice::" in job.said and "::warning::" not in job.said
-        assert "on this job" in job.said
+        assert [line.split("::")[1] for line in job.annotations] == ["notice"]
+        assert "TESTAMENT_KEY" in job.all
 
     def test_an_empty_key_is_no_key(self):
         # A fork's pull request does not get an unset secret: the expression renders "".
-        job = Job()
+        job = PoolJob()
 
-        code = job.run({**FULL, "TESTAMENT_KEY": ""})
+        answer = job.run({**FULL, "TESTAMENT_KEY": ""})
 
-        assert code == 0 and job.installs == 0
+        assert answer == (0, ci.ON_JOB) and job.installs == 0
 
 
-class TestAJobWhosePoolAnswers:
-    def test_a_passing_pool_run_then_runs_what_the_manifest_selects_out(self):
-        job = Job(pool=[PASSED])
+class TestThePoolJobWhosePoolAnswers:
+    def test_a_passing_run_passes_and_says_the_pool_ran_the_suite(self):
+        job = PoolJob(pool=[PASSED])
 
-        code = job.run(dict(FULL))
+        assert job.run(dict(FULL)) == (0, ci.ON_POOL)
 
-        assert code == 0
-        assert job.pytest_calls == [["-m", ci.selected_out(MANIFEST)]]
+    def test_a_failing_run_fails_the_job_and_is_still_the_pools_run(self):
+        # The test job must run only what the pool left out: the pool did run the suite.
+        job = PoolJob(pool=[FAILED])
 
-    def test_a_failing_pool_run_fails_the_job_and_the_rest_still_runs(self):
-        # Every leg reports: the selected-out tests are not skipped because the pool's failed.
-        job = Job(pool=[FAILED])
+        assert job.run(dict(FULL)) == (1, ci.ON_POOL)
 
-        code = job.run(dict(FULL))
-
-        assert code == 1
-        assert len(job.pytest_calls) == 1
-
-    def test_a_failing_selected_out_test_fails_a_job_whose_pool_run_passed(self):
-        job = Job(pool=[PASSED], pytest_codes=[1])
-
-        assert job.run(dict(FULL)) == 1
-
-    def test_a_pool_run_that_collected_nothing_fails_the_job(self):
+    def test_a_run_that_collected_nothing_fails_the_job(self):
         # Exit 5 from the pool means the selection matched no test: never a pass.
-        job = Job(pool=[(5, {"exit_code": 5, "report": {"counts": {}}})])
+        job = PoolJob(pool=[(5, {"exit_code": 5, "report": {"counts": {}}})])
 
-        assert job.run(dict(FULL)) == 5
+        code, _ = job.run(dict(FULL))
 
-    def test_selected_out_tests_that_match_nothing_are_not_a_failure(self):
-        # pytest exits 5 when every test is deselected. If the manifest selects out a marker
-        # no test carries, the pool ran everything and there is nothing left to run here.
-        job = Job(pool=[PASSED], pytest_codes=[5])
+        assert code == 5
 
-        assert job.run(dict(FULL)) == 0
-
-    def test_a_manifest_that_selects_nothing_out_leaves_nothing_for_the_job(self, tmp_path):
-        manifest = tmp_path / ".testament.toml"
-        manifest.write_text('command = ["python", "-m", "pytest"]\n')
-        job = Job(pool=[PASSED])
-
-        code = job.run(dict(FULL), manifest=manifest)
-
-        assert code == 0 and job.pytest_calls == []
-
-    def test_the_summary_names_the_failing_test_and_no_runner(self):
-        # The run's log is public. A runner's name is one of the owner's machines.
-        job = Job(pool=[FAILED])
-
-        job.run(dict(FULL))
-
-        assert "tests/test_a.py::test_b" in job.said
-        assert "assert 1 == 2" in job.said
-        assert "a-machine-name" not in job.said
-
-    def test_the_summary_says_the_suite_ran_on_the_pool_and_how_it_came_out(self):
-        job = Job(pool=[FAILED])
+    def test_the_summary_says_how_the_run_came_out(self):
+        job = PoolJob(pool=[FAILED])
 
         job.run(dict(FULL))
 
         assert "Ran on the pool: 2 passed, 1 failed" in job.summary
 
+    def test_a_failing_test_is_annotated_under_its_own_id(self):
+        # The exact line. A pytest id is full of `:`, and an annotation's title ends at the
+        # first `::` it is allowed to contain: unencoded, every failing test's annotation would
+        # be cut at the file name and the message would begin with the test's.
+        job = PoolJob(pool=[FAILED])
+
+        job.run(dict(FULL))
+
+        assert "::error title=tests/test_a.py%3A%3Atest_b::assert 1 == 2" in job.annotations
+
+    def test_the_summary_names_the_failing_test_and_no_runner(self):
+        # The run's log is public. A runner's name is one of the owner's machines.
+        job = PoolJob(pool=[FAILED])
+
+        job.run(dict(FULL))
+
+        assert "- `tests/test_a.py::test_b` failed: assert 1 == 2" in job.summary
+        assert "a-machine-name" not in job.all
+
     def test_tests_the_pool_never_reported_are_named(self):
         answer = (2, {"exit_code": 2, "error": {"code": "population_mismatch", "retryable": False},
                       "report": {"counts": {"passed": 1}, "missing": ["tests/test_a.py::test_gone"]}})
-        job = Job(pool=[answer])
+        job = PoolJob(pool=[answer])
 
         job.run(dict(FULL))
 
-        assert "tests/test_a.py::test_gone" in job.said
+        assert "tests/test_a.py::test_gone" in job.all
 
 
-class TestAJobWhosePoolCannotBeReached:
+class TestThePoolJobWhosePoolCannotBeReached:
     def test_a_retryable_end_is_tried_once_more(self):
-        job = Job(pool=[RETRYABLE, PASSED])
+        job = PoolJob(pool=[RETRYABLE, PASSED])
 
-        code = job.run(dict(FULL))
+        assert job.run(dict(FULL)) == (0, ci.ON_POOL)
+        assert len(job.waits) == 2
 
-        assert code == 0 and job.pool_calls == 2
-        assert job.pytest_calls == [["-m", ci.selected_out(MANIFEST)]], "a pool verdict, not a fallback"
+    def test_two_retryable_ends_pass_the_job_and_leave_the_suite_to_the_test_job(self):
+        job = PoolJob(pool=[RETRYABLE, RETRYABLE])
 
-    def test_two_retryable_ends_run_the_whole_suite_on_the_job(self):
-        job = Job(pool=[RETRYABLE, RETRYABLE])
+        assert job.run(dict(FULL)) == (0, ci.ON_JOB)
+        assert len(job.waits) == 2
 
-        code = job.run(dict(FULL))
+    def test_the_fallback_is_a_warning_naming_why_and_not_an_error(self):
+        job = PoolJob(pool=[RETRYABLE, RETRYABLE])
 
-        assert code == 0 and job.pool_calls == 2
-        assert job.pytest_calls == [[]]
+        job.run(dict(FULL))
 
-    def test_the_fallback_is_a_warning_naming_why_and_the_job_takes_the_suites_result(self):
-        job = Job(pool=[RETRYABLE, RETRYABLE], pytest_codes=[1])
+        levels = [line.split("::")[1] for line in job.annotations]
+        assert "warning" in levels and "error" not in levels
+        assert "coordinator_unreachable" in job.all
 
-        code = job.run(dict(FULL))
+    def test_a_console_that_cannot_be_reached_passes_the_job(self):
+        job = PoolJob(install_error=ci.Unavailable("the pool's console could not be reached"))
 
-        assert code == 1
-        assert "::warning::" in job.said and "coordinator_unreachable" in job.said
-        assert "::error::" not in job.said
-
-    def test_a_console_that_cannot_be_reached_runs_the_suite_on_the_job(self):
-        job = Job(install_error=ci.Unavailable("the pool's console could not be reached"))
-
-        code = job.run(dict(FULL))
-
-        assert code == 0 and job.pool_calls == 0 and job.pytest_calls == [[]]
-        assert "::warning::" in job.said
+        assert job.run(dict(FULL)) == (0, ci.ON_JOB)
+        assert job.waits == []
 
     def test_a_pool_run_that_does_not_finish_in_time_is_not_tried_again(self):
-        # It already waited the whole allowance; a second wait would spend the job's own.
-        job = Job(pool=[ci.Unavailable("the pool did not finish in time")])
+        # It already waited the whole allowance.
+        job = PoolJob(pool=[ci.Unavailable("the pool did not finish in time")])
 
-        code = job.run(dict(FULL))
+        assert job.run(dict(FULL)) == (0, ci.ON_JOB)
+        assert len(job.waits) == 1
 
-        assert code == 0 and job.pool_calls == 1 and job.pytest_calls == [[]]
-
-
-class TestAJobThePoolRefuses:
-    def test_a_refusal_fails_the_job_even_when_the_suite_passes_on_it(self):
-        job = Job(pool=[REFUSAL])
-
-        code = job.run(dict(FULL))
-
-        assert code != 0
-        assert job.pytest_calls == [[]], "the tree still gets its verdict"
-        assert "::error::" in job.said and "unauthorized" in job.said
-
-    def test_a_refusal_is_not_tried_again(self):
-        job = Job(pool=[REFUSAL])
+    def test_both_attempts_share_one_allowance(self):
+        # The workflow's time limit for this job is set from the allowance. Two full waits
+        # would outlast it and end the job with no answer for the test job to act on.
+        job = PoolJob(pool=[RETRYABLE, PASSED], takes=450.0)
 
         job.run(dict(FULL))
 
-        assert job.pool_calls == 1
+        assert job.waits == [ci.POOL_WAIT_SECONDS, ci.POOL_WAIT_SECONDS - 450.0]
 
-    def test_a_refused_job_whose_suite_fails_reports_the_suites_code(self):
-        job = Job(pool=[REFUSAL], pytest_codes=[1])
+    def test_a_run_lost_at_the_end_of_the_allowance_is_not_tried_again(self):
+        job = PoolJob(pool=[RETRYABLE, PASSED], takes=float(ci.POOL_WAIT_SECONDS))
 
-        assert job.run(dict(FULL)) == 1
+        assert job.run(dict(FULL)) == (0, ci.ON_JOB)
+        assert len(job.waits) == 1
+
+    def test_the_allowance_is_ten_minutes(self):
+        # Pinned as a number: `tests.yml`'s limit for the pool job is derived from it.
+        assert ci.POOL_WAIT_SECONDS == 600
+
+
+class TestThePoolJobThePoolRefuses:
+    def test_a_refusal_fails_the_job_and_leaves_the_suite_to_the_test_job(self):
+        job = PoolJob(pool=[REFUSAL])
+
+        code, ran_on = job.run(dict(FULL))
+
+        assert code != 0 and ran_on == ci.ON_JOB, "the tree still gets its verdict, from the test job"
+        assert [line for line in job.annotations if line.startswith("::error::")]
+        assert "unauthorized" in job.all
+
+    def test_a_refusal_is_not_tried_again(self):
+        job = PoolJob(pool=[REFUSAL])
+
+        job.run(dict(FULL))
+
+        assert len(job.waits) == 1
 
     def test_a_build_that_cannot_be_installed_fails_the_job(self):
-        job = Job(install_error=ci.Refused("the pool's console answered 401"))
+        job = PoolJob(install_error=ci.Refused("the pool's console answered 401"))
 
-        code = job.run(dict(FULL))
+        code, ran_on = job.run(dict(FULL))
 
-        assert code != 0 and job.pool_calls == 0 and job.pytest_calls == [[]]
+        assert code != 0 and ran_on == ci.ON_JOB and job.waits == []
 
     @pytest.mark.parametrize("missing", ["TESTAMENT_COORDINATOR", "TESTAMENT_CONSOLE"])
     def test_a_key_without_an_address_fails_and_names_the_setting(self, missing):
         env = {k: v for k, v in FULL.items() if k != missing}
-        job = Job()
+        job = PoolJob()
 
-        code = job.run(env)
+        code, ran_on = job.run(env)
 
-        assert code != 0 and job.installs == 0
-        assert missing in job.said and "::error::" in job.said
+        assert code != 0 and ran_on == ci.ON_JOB and job.installs == 0
+        assert missing in job.all
 
     def test_a_console_that_is_not_https_is_refused_before_the_key_is_sent(self):
-        job = Job()
+        job = PoolJob()
 
-        code = job.run({**FULL, "TESTAMENT_CONSOLE": "http://console.example/"})
+        code, _ = job.run({**FULL, "TESTAMENT_CONSOLE": "http://console.example/"})
 
         assert code != 0 and job.installs == 0
-        assert "https" in job.said
+        assert "https" in job.all
 
     @pytest.mark.parametrize(
         "answer",
@@ -328,29 +344,96 @@ class TestAJobThePoolRefuses:
         ],
     )
     def test_an_end_that_is_not_a_known_result_is_a_refusal(self, answer):
-        job = Job(pool=[answer])
+        job = PoolJob(pool=[answer])
 
-        code = job.run(dict(FULL))
+        code, ran_on = job.run(dict(FULL))
 
-        assert code != 0 and job.pytest_calls == [[]]
+        assert code != 0 and ran_on == ci.ON_JOB
 
-    def test_a_manifest_whose_selection_cannot_be_read_fails_the_job(self, tmp_path):
-        # Otherwise the tests the pool leaves out would stop running anywhere, silently.
+    def test_a_manifest_whose_selection_cannot_be_read_is_refused_before_the_pool_is_asked(self, tmp_path):
+        # Otherwise the pool would run its part and nothing could say what was left.
         manifest = tmp_path / ".testament.toml"
         manifest.write_text('name = "x"\n')
-        job = Job(pool=[PASSED])
+        job = PoolJob(pool=[PASSED])
 
-        code = job.run(dict(FULL), manifest=manifest)
+        code, ran_on = job.run(dict(FULL), manifest=manifest)
 
-        assert code != 0 and "::error::" in job.said
+        assert code != 0 and ran_on == ci.ON_JOB and job.waits == []
 
-    def test_nothing_the_runner_says_holds_the_key(self):
-        for job in (Job(pool=[PASSED]), Job(pool=[REFUSAL]), Job(pool=[RETRYABLE, RETRYABLE])):
+    def test_nothing_the_job_says_holds_the_key(self):
+        for job in (PoolJob(pool=[PASSED]), PoolJob(pool=[REFUSAL]), PoolJob(pool=[RETRYABLE, RETRYABLE])):
             job.run(dict(FULL))
-            assert KEY not in job.said
+            assert KEY not in job.all
 
 
-class TestWhatTheJobRunsBesideAPoolRun:
+class TestTheTestJob:
+    def test_runs_only_what_the_pool_left_out_when_the_pool_ran_the_suite(self):
+        job = SuiteJob()
+
+        code = job.run(ci.ON_POOL)
+
+        assert code == 0
+        assert job.calls == [["-m", ci.selected_out(MANIFEST)]]
+
+    @pytest.mark.parametrize("ran_on", [ci.ON_JOB, "", "POOL", "pool ", "yes"])
+    def test_runs_the_whole_suite_on_any_other_word(self, ran_on):
+        # Empty is what a pool job that died before answering leaves behind. Anything that is
+        # not exactly the pool's word costs a full run here, never a suite that ran nowhere.
+        job = SuiteJob()
+
+        code = job.run(ran_on)
+
+        assert code == 0 and job.calls == [[]], "the whole suite, with no selection"
+
+    @pytest.mark.parametrize("ran_on", [ci.ON_POOL, ci.ON_JOB])
+    def test_a_failing_test_fails_the_job(self, ran_on):
+        job = SuiteJob(codes=[1])
+
+        assert job.run(ran_on) == 1
+
+    def test_selected_out_tests_that_match_nothing_are_not_a_failure(self):
+        # pytest exits 5 when every test is deselected. If the manifest selects out a marker
+        # no test carries, the pool ran everything and there is nothing left to run here.
+        job = SuiteJob(codes=[5])
+
+        assert job.run(ci.ON_POOL) == 0
+
+    def test_a_whole_suite_that_collects_nothing_is_a_failure(self):
+        job = SuiteJob(codes=[5])
+
+        assert job.run(ci.ON_JOB) == 5
+
+    def test_a_manifest_that_selects_nothing_out_leaves_nothing_to_run(self, tmp_path):
+        manifest = tmp_path / ".testament.toml"
+        manifest.write_text('command = ["python", "-m", "pytest"]\n')
+        job = SuiteJob()
+
+        code = job.run(ci.ON_POOL, manifest=manifest)
+
+        assert code == 0 and job.calls == []
+
+    def test_a_manifest_it_cannot_read_runs_the_whole_suite_and_fails(self, tmp_path):
+        # The tests the pool left out would otherwise stop running anywhere, silently.
+        manifest = tmp_path / ".testament.toml"
+        manifest.write_text('name = "x"\n')
+        job = SuiteJob()
+
+        code = job.run(ci.ON_POOL, manifest=manifest)
+
+        assert code != 0 and job.calls == [[]]
+        assert [line for line in job.annotations if line.startswith("::error::")]
+
+    def test_the_summary_says_which_it_ran(self):
+        left_out, whole = SuiteJob(), SuiteJob()
+
+        left_out.run(ci.ON_POOL)
+        whole.run(ci.ON_JOB)
+
+        assert "selects out" in "\n".join(left_out.summary)
+        assert "whole suite ran here" in "\n".join(whole.summary)
+
+
+class TestWhatTheTestJobRunsBesideAPoolRun:
     def test_it_is_the_complement_of_the_manifests_own_selection(self):
         command = tomllib.loads(MANIFEST.read_text())["command"]
         selection = command[command.index("pytest") + 1 :]
@@ -459,8 +542,10 @@ class TestFetchingThePoolsBuild:
         with pytest.raises(ci.Refused, match=str(status)):
             ci.fetch_cli(self.settings, tmp_path, opener=opener)
 
-    @pytest.mark.parametrize("status", [500, 502, 503])
-    def test_a_console_that_is_failing_is_an_outage(self, tmp_path, status):
+    @pytest.mark.parametrize("status", [408, 429, 500, 502, 503])
+    def test_a_console_that_is_failing_or_busy_is_an_outage(self, tmp_path, status):
+        # 408 and 429 are "not now", like a 5xx. Read as a refusal they would turn CI red and
+        # send the reader to replace a key that is fine.
         def opener(request, timeout):
             raise urllib.error.HTTPError(request.full_url, status, "no", {}, None)
 
@@ -498,9 +583,10 @@ class TestWhatEachProcessIsGiven:
 
         return calls, run
 
-    def test_pytest_on_the_job_sees_nothing_of_testaments(self):
-        # The key must never reach a test process, and a test that reads the other settings
-        # would behave differently on the job than on a developer's machine.
+    def test_pytest_is_handed_nothing_of_testaments(self):
+        # A suite run here sees what it saw before CI knew of a pool, on a developer's machine
+        # too. This is not what keeps the key from a test (the two jobs are); it is what keeps
+        # a test from behaving differently because a setting happened to be exported.
         calls, run = self._recording()
 
         ci.run_pytest(["-m", "x"], dict(self.ENV), run=run)
@@ -514,35 +600,37 @@ class TestWhatEachProcessIsGiven:
         settings, _ = ci.read_settings(dict(self.ENV))
         calls, run = self._recording(stdout=b'{"exit_code": 0, "report": {"counts": {"passed": 1}}}')
 
-        code, envelope = ci.pool_run(Path("/x/testament"), settings, dict(self.ENV), tmp_path, run=run)
+        code, envelope = ci.pool_run(Path("/x/testament"), settings, 77.0, dict(self.ENV), tmp_path, run=run)
 
         argv, kwargs = calls[0]
         assert argv[:2] == ["/x/testament", "run"]
-        assert "--no-fallback" in argv, "the runner owns the fallback; the client must not also run the suite here"
+        assert "--no-fallback" in argv, "the client must never run the suite in the job that holds the key"
         assert kwargs["env"]["TESTAMENT_KEY"] == KEY
         assert kwargs["env"]["TESTAMENT_COORDINATOR"] == FULL["TESTAMENT_COORDINATOR"]
         assert kwargs["env"]["TESTAMENT_BRANCH"] == "feature/x"
-        assert kwargs["timeout"] == ci.POOL_WAIT_SECONDS
+        assert kwargs["timeout"] == 77.0
         assert (code, envelope["exit_code"]) == (0, 0)
 
     def test_output_that_is_not_an_envelope_is_no_envelope(self, tmp_path):
         settings, _ = ci.read_settings(dict(self.ENV))
         _, run = self._recording(returncode=1, stdout=b"Traceback (most recent call last):")
 
-        assert ci.pool_run(Path("/x/testament"), settings, dict(self.ENV), tmp_path, run=run) == (1, None)
+        answer = ci.pool_run(Path("/x/testament"), settings, 77.0, dict(self.ENV), tmp_path, run=run)
 
-    def test_a_pool_run_that_outlasts_its_allowance_is_an_outage(self, tmp_path):
+        assert answer == (1, None)
+
+    def test_a_pool_run_that_outlasts_its_wait_is_an_outage(self, tmp_path):
         settings, _ = ci.read_settings(dict(self.ENV))
 
         def run(argv, **kwargs):
             raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
 
         with pytest.raises(ci.Unavailable):
-            ci.pool_run(Path("/x/testament"), settings, dict(self.ENV), tmp_path, run=run)
+            ci.pool_run(Path("/x/testament"), settings, 77.0, dict(self.ENV), tmp_path, run=run)
 
     def test_the_build_is_installed_into_its_own_environment_from_the_file_alone(self, tmp_path):
-        # Its own environment: testament in the suite's would put its pytest plugin in the
-        # suite. `--no-index`: the job installs the pool's build and nothing it did not send.
+        # `--no-index`: the job that holds the key installs the pool's build and nothing from a
+        # package index, which is what lets it hold the key at all.
         calls, run = self._recording()
         wheel = tmp_path / "testament-0.44.1-py3-none-any.whl"
 
@@ -563,41 +651,50 @@ class TestWhatEachProcessIsGiven:
 
 class TestWorkflowCommands:
     def test_a_message_cannot_end_its_own_command_or_start_another(self):
-        stream = io.StringIO()
-        report = ci.Report(stream, lambda line: None)
+        said = Said()
 
-        report.warning("first line\n::error::forged 100%")
+        said.report.warning("first line\n::error::forged 100%")
 
-        assert stream.getvalue() == "::warning::first line%0A::error::forged 100%25\n"
+        assert said.annotations == ["::warning::first line%0A::error::forged 100%25"]
+
+    def test_a_title_cannot_end_itself_or_add_a_property(self):
+        said = Said()
+
+        said.report.error("m", title="a::b,file=x\n100%")
+
+        assert said.annotations == ["::error title=a%3A%3Ab%2Cfile=x%0A100%25::m"]
 
 
 class TestTheEntryPointBuildsItsOwnSeams:
-    """Every test above hands `run` its three outside calls. These drive `main`, which has
-    to build them itself: a seam nothing constructs is green in all of the above."""
+    """Every test above hands a stage its outside calls. These drive `main`, which has to
+    build them itself: a seam nothing constructs is green in all of the above."""
 
     @pytest.fixture(autouse=True)
     def _a_job_environment(self, monkeypatch, tmp_path):
         for name in list(os.environ):
-            if name.startswith("TESTAMENT_"):
+            if name.startswith("TESTAMENT_") or name == ci.RAN_ON:
                 monkeypatch.delenv(name)
         self.summary = tmp_path / "summary.md"
+        self.output = tmp_path / "output.txt"
         monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(self.summary))
+        monkeypatch.setenv("GITHUB_OUTPUT", str(self.output))
         self.pytest_calls = []
 
         def run_pytest(args, env, run=None):
-            self.pytest_calls.append((list(args), dict(env)))
+            self.pytest_calls.append(list(args))
             return 0
 
         monkeypatch.setattr(ci, "run_pytest", run_pytest)
 
-    def test_with_no_key_it_runs_pytest_and_writes_the_summary_file(self):
-        code = ci.main()
+    def test_the_pool_stage_with_no_key_answers_job_and_runs_no_test(self):
+        code = ci.main(["ci-suite.py", "pool"])
 
         assert code == 0
-        assert [args for args, _ in self.pytest_calls] == [[]]
-        assert "Ran on this job" in self.summary.read_text()
+        assert self.output.read_text() == "suite=job\n"
+        assert self.pytest_calls == []
+        assert "Not sent to the pool" in self.summary.read_text()
 
-    def test_with_a_key_it_fetches_then_installs_then_asks_the_pool(self, monkeypatch):
+    def test_the_pool_stage_fetches_then_installs_then_asks_the_pool_and_runs_no_test(self, monkeypatch):
         for name, value in FULL.items():
             monkeypatch.setenv(name, value)
         order = []
@@ -611,17 +708,46 @@ class TestTheEntryPointBuildsItsOwnSeams:
             order.append("install")
             return venv / "bin" / "testament"
 
-        def pool_run(testament, settings, env, work):
+        def pool_run(testament, settings, wait, env, work):
             order.append("pool")
-            assert env["TESTAMENT_KEY"] == KEY and settings.key == KEY
-            return PASSED
+            assert settings.key == KEY and 0 < wait <= ci.POOL_WAIT_SECONDS
+            return FAILED
 
         monkeypatch.setattr(ci, "fetch_cli", fetch_cli)
         monkeypatch.setattr(ci, "install_cli", install_cli)
         monkeypatch.setattr(ci, "pool_run", pool_run)
 
-        code = ci.main()
+        code = ci.main(["ci-suite.py", "pool"])
 
-        assert code == 0 and order == ["fetch", "install", "pool"]
-        assert [args for args, _ in self.pytest_calls] == [["-m", ci.selected_out(MANIFEST)]]
-        assert "Ran on the pool" in self.summary.read_text()
+        assert code == 1 and order == ["fetch", "install", "pool"]
+        assert self.output.read_text() == "suite=pool\n"
+        assert self.pytest_calls == [], "the job that holds the key never runs a test"
+
+    def test_the_tests_stage_reads_the_pool_jobs_word(self, monkeypatch):
+        monkeypatch.setenv(ci.RAN_ON, ci.ON_POOL)
+
+        code = ci.main(["ci-suite.py", "tests"])
+
+        assert code == 0
+        assert self.pytest_calls == [["-m", ci.selected_out(MANIFEST)]]
+
+    def test_the_tests_stage_with_no_word_runs_the_whole_suite(self):
+        code = ci.main(["ci-suite.py", "tests"])
+
+        assert code == 0 and self.pytest_calls == [[]]
+
+    def test_the_tests_stage_never_asks_the_pool_even_when_handed_a_key(self, monkeypatch):
+        for name, value in FULL.items():
+            monkeypatch.setenv(name, value)
+        monkeypatch.setattr(ci, "fetch_cli", lambda *a, **k: pytest.fail("the tests stage fetched the CLI"))
+
+        ci.main(["ci-suite.py", "tests"])
+
+        assert self.pytest_calls == [[]]
+
+    @pytest.mark.parametrize("argv", [["ci-suite.py"], ["ci-suite.py", "both"], ["ci-suite.py", "pool", "tests"]])
+    def test_anything_else_is_a_usage_error_that_runs_nothing(self, argv, capsys):
+        code = ci.main(argv)
+
+        assert code == 2 and self.pytest_calls == []
+        assert "usage" in capsys.readouterr().err
