@@ -2499,59 +2499,14 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     if _critic_marker().write_marker(prawduct_dir):
         print("PRAWDUCT: critic-active marker set (session-mutating clear is guarded).")
 
-    # LAST in the dispatch output, because the reviewer reads it before
-    # assessing anything (SKILL.md step 4) and
-    # writes its `resolutions` several steps later — so this is the last thing
-    # in the tool result at the only moment the advice can still change the
-    # claim. Keyed off the manifest's own mode rather than the raw --mode
-    # argument: `begin_review` is what canonicalizes the token, and a
-    # verify-resolutions dispatch that got demoted never reaches here at all.
-    #
-    # ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer
-    # rates the delta BEFORE it judges the prior findings, so the severity
-    # narrowing comes first; then the rule for how a finding is WRITTEN; then
-    # the roll-call of ids that must be accounted for; and the resolution
-    # warning stays LAST, adjacent to the claim it governs — the only one of
-    # the four that can weaken a gate, and therefore the one the reader must
-    # still be holding. The order is pinned: `TestResolutionDirectiveDelivery`
-    # for the claim directive's last place, `TestCarriedBlockersReachTheirReaders`
-    # for the roll-call ahead of it, and `test_finding_scope_rule` for the scope
-    # rule's slot between the narrowing and the claim.
-    #
-    # FINDING_SCOPE_DIRECTIVE rides this slot for a reason of its own: it is
-    # owed to whichever modes read `goals-1-3.md`, which has no room for it,
-    # and `verify-resolutions` is in both sets — so it prints outside the
-    # verify-only branch while keeping its place in the order.
-    verbose_mode = manifest["mode"]
-    is_verify = verbose_mode == consolidate.MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
-    if is_verify:
-        print(consolidate.VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
-    reads_goals_1_3 = {
-        consolidate.MODE_TOKEN_TO_VERBOSE[token]
-        for token in consolidate.GOALS_1_3_MODES
-    }
-    if verbose_mode in reads_goals_1_3:
-        print(consolidate.FINDING_SCOPE_DIRECTIVE)
-    if is_verify:
-        # The roll-call sets the AGENDA — which finding ids must come back with
-        # a verdict — and the claim directive below sets the STANDARD each
-        # verdict has to meet. The standard gets the last word, deliberately:
-        # it governs the only reviewer output that can WEAKEN a gate, and a
-        # roll-call read last would push toward naming every id on it, which is
-        # the over-claiming the standard exists to prevent. Empty when there is
-        # nothing to account for.
-        from lib import evidence as _ev  # noqa: PLC0415 — lazy, as elsewhere here
-
-        roll_call = consolidate.account_for_prior_blockers_directive(
-            consolidate.carried_blocking(
-                _ev.read_facts(project_dir).get("facts") or [],
-                manifest.get("base_tree"),
-                manifest.get("id"),
-            )
-        )
-        if roll_call:
-            print(roll_call)
-        print(consolidate.RESOLUTION_IS_A_CLAIM_DIRECTIVE)
+    # LAST in the dispatch output, because the reviewer reads them before
+    # assessing anything and writes its `resolutions` several steps later — so
+    # they are the last thing in the tool result at the only moment the advice
+    # can still change the claim. `dispatch_directives` renders them in their
+    # pinned order (its docstring says why that order); the manifest carries the
+    # same list for a reviewer the fork hands the review to.
+    for directive in result.get("directives") or []:
+        print(directive)
     return 0
 
 
@@ -2749,7 +2704,7 @@ def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> 
     The deterministic write path of the Critic data plane (kernel v3 D8):
     reviewers write per-role partials against the code-written dispatch
     manifest; this command — invoked by the SubagentStop hook as each
-    finishes, by the single-pass reviewing fork as its last step, and by the
+    finishes, by a fork that reviewed inline as its last step, and by the
     session-end backstop — appends the review fact (idempotent by dispatch
     id), appends any resolution facts, and regenerates .critic-findings.json
     as a derived view carrying its source fact_id. See

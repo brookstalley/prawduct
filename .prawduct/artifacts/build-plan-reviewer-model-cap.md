@@ -125,6 +125,25 @@ everywhere else. The owner gets the cost ceiling without choosing a model per re
   `[DECISION: …]` block: the index parser splits cells on `|`, and the owner made the call directly
   (`docs/norms.md` "One standard"). `nonfunctional-requirements.md` carries the `Amended:` line and
   a `Retires:` line for the two sentences the cap made false. Settled by `docs/norms.md` § Amendment.
+- Every hand-off dispatches through `coordinator.md` (one dispatch file, now covering the
+  single-pass `reviewer` role) rather than a second prompt template in `SKILL.md`, which every
+  review's fork loads. Settled by the review wall-clock norm's payload lever.
+- A capped fork skips steps 5-6 (test evidence and diff): it reviews nothing, so they are the
+  reviewer's. It still reads `goals-1-3.md` at step 2, because the reviewer model is known only
+  after `critic-begin`; reordering the routing to save that read is out of this plan's scope.
+  Settled by the accepted tradeoff that the fork runs on the session's model for routing only.
+- `dispatch_directives` is a list of strings, written as `[]` for a capped `final`/`cumulative`
+  (a mode owed none) and absent without a reviewer model. Not settled by the goals.
+- `critic-consolidate`'s wait message gives a handed-off single-pass review the background story
+  (SubagentStop consolidates; started-marker liveness), not "the fork consolidates itself". Settled
+  by the architecture goal that `SubagentStop` consolidates a capped review.
+- `goals-1-3.md` says single-pass is "one reviewer, no coordinator" instead of "no subagents", which
+  a capped fork reading it would find false; its pin in `tests/test_critic_reviewer_agent.py` was
+  renegotiated to match, and the file's edit was paid in place. Settled by the constraint that
+  at-or-below sessions behave as today (the inline reader's meaning is unchanged).
+- The payload budget gains two routes, `coordinator-fork-inner` and `dispatched-reviewer-inner`,
+  and the fast-path routing tests accept `reviewer_model` as a qualifier for `coordinator.md`.
+  Settled by the review wall-clock norm (every route a reviewer takes is priced).
 
 **Level:** Medium. The design rests on host behaviour read from the documentation on 2026-11-11
 and not all yet observed: an Agent call's `model` overrides a plugin agent's `model: inherit`

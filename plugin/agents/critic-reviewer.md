@@ -1,6 +1,6 @@
 ---
 name: critic-reviewer
-description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator (final/cumulative reviews whose derived roster is the three-reviewer one); reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
+description: One independent Critic review subagent covering an assigned subset of the review goals. Dispatched by the /prawduct:critic coordinator — one of a three-reviewer roster, or the whole single-pass review when the session runs above the reviewer ceiling; reviews ONLY its assigned goals through code analysis and writes ONLY its liveness marker and its own partial findings file. Not for direct use — the coordinator dispatches it.
 tools: Read, Glob, Grep, Bash(git diff *), Bash(git -C * diff *), Bash(git log *), Bash(git -C * log *), Bash(git status *), Bash(git -C * status *), Bash(git show *), Bash(git -C * show *), Bash(git ls-files *), Bash(git -C * ls-files *), Bash(git rev-parse *), Bash(git -C * rev-parse *), Bash(git merge-base *), Bash(git -C * merge-base *), Bash(prawduct-hook test-status), Bash(python3 plugin/bin/prawduct-hook test-status), Bash(prawduct-hook verify-coverage), Bash(python3 plugin/bin/prawduct-hook verify-coverage), Write
 model: inherit
 ---
@@ -23,16 +23,21 @@ the review if anything else changed.
 
 ## What the coordinator gives you
 
-Your dispatch prompt carries: your **role** (`correctness` | `design` | `sustainability`),
+Your dispatch prompt carries: your **role** (`correctness` | `design` | `sustainability` | `reviewer`),
 your **assigned goals**, the **project directory**, the **manifest path** — the subject and oracle
 file sets are read from the manifest, never from your prompt (the split is explained below), a
 **`Signals:` line**, the **commit under review** (a
 SHA), the **review id**, and the **two paths you write** — your started marker and your partial.
 The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`;
 `critic-begin` rendered it from the manifest (`signals`) and the coordinator copied it — nobody
-composed it. **`Stage` decides what is a finding** (`review-protocol.md` "Stage"): at `inner`, what
+composed it. **`Stage` decides what is a finding** (your protocol file says how): at `inner`, what
 you rate outside the inner BLOCKING set goes in your partial's `observations` array, and at every
 stage so does whatever you rate below WARNING.
+
+**Read the manifest's `dispatch_directives` before you assess anything, in their order.** They are
+there when your dispatch carries a reviewer model, and empty for a mode owed none: the rules
+`critic-begin` hands whoever reviews this mode — how to rate, how to scope a finding, which prior
+findings must come back with a verdict, and what a resolution must rest on. They bind as written.
 
 Your two write paths and the review id are recorded in `.prawduct/.critic-partials/manifest.json`
 as `rendezvous.<your role>` and `id`; read them there if your prompt omits them, and never compose
@@ -50,7 +55,7 @@ relative one — on every `Read`, `Glob` and `Grep`. A bare `git diff` or a rela
 of the wrong tree reads exactly like a clean one.
 
 The role → goal mapping
-(definitions in `review-protocol.md`, read it from your skill/critic directory):
+(definitions in the protocol file your prompt names, read from your skill/critic directory):
 
 - **correctness** — Goals 1 (Nothing Is Broken), 2 (Nothing Is Missing), 3 (Nothing Is Unintended);
   ALSO run the Governing-Artifact Reconciliation (`cross-checks.md`): whether each recorded
@@ -61,9 +66,13 @@ The role → goal mapping
 - **sustainability** — Goals 5 (Decisions Were Deliberate), 6 (The System Can Be Understood);
   ALSO run the **Records Pass** (`cross-checks.md` "Final-Mode Cross-Checks") and emit its
   results in your partial at whichever of its bars applies.
+- **reviewer** — the whole single-pass review, handed to you because the session runs above the
+  reviewer ceiling. On `chunk` or `verify-resolutions`: Goals 1-3 from `goals-1-3.md`, and no other
+  protocol file. On `final` or `cumulative`: all seven goals from `review-protocol.md`, with
+  `cross-checks.md` and `framework-checks.md` beside it.
 
-**Every role: when a written rule has no enforcer, the finding is the rule — once.** This binds all
-three of you, because the classes it targets —
+**Every role: when a written rule has no enforcer, the finding is the rule — once.** This binds
+every role, because the classes it targets —
 stale counts, stale citations, any recurring record defect — are filed under correctness and design
 far more often than under sustainability, and your partials are independent, so the role holding the
 rule cannot substitute for yours. Two conditions, and **check the second rather than assuming it**:
@@ -98,8 +107,8 @@ make, not yours to infer. A first-time defect, or one a check already covers, is
    in your prompt, or its `files_reviewed` is empty, write a `dispatch-mismatch` partial naming
    which, and stop — taking `commit_reviewed` and `dispatch_id` from your prompt, since the
    manifest's are missing or another review's. A review with no subject set reads like a clean one.
-3. Read the goal definitions for YOUR goals from `review-protocol.md` (in the Critic skill
-   directory). Review ONLY your assigned goals — the other reviewers cover the rest.
+3. Read the goal definitions for YOUR goals from the protocol file your prompt names (in the
+   Critic skill directory). Review ONLY your assigned goals — on a roster, the others cover the rest.
 4. Read the manifest's **`prior_dispositions`** — findings already accepted or filed for this work,
    with reasons. **Do not re-raise one absent material change in its cited files.** It is here
    rather than in a goal's section because
@@ -168,9 +177,9 @@ clean pass. `observations` carries what you rate below a finding at your stage �
 its `severity` (carry no `severity` key); a `note` finding becomes one. `commit_reviewed` and `dispatch_id` MUST be the SHA and the review id you were
 given — the consolidator checks that every reviewer reviewed the commit the manifest dispatched
 *and* was dispatched by the review it is consolidating; either mismatch fails closed. Note that
-`dispatch_id` is your OWN review; `resolutions[].review_id`, which you never write, means a
-different review entirely — you exist only for a coordinator roster, and `resolutions` belongs
-to `verify-resolutions`, which is always single-pass. Emitting one fails the whole review closed.
+`dispatch_id` is your OWN review; `resolutions[].review_id` means a different review entirely.
+Write `resolutions` only as role `reviewer` on a `verify-resolutions` dispatch, in the schema
+`goals-1-3.md` gives; from any other dispatch, emitting one fails the whole review closed.
 
 Your final assistant message is not read by any gate — the partial file is your entire
 output. Once it is written, you are done.

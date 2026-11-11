@@ -915,9 +915,10 @@ def _next_action_core(
     ad-hoc lane) never does. ``skills/critic/review-cycle.md`` states it more
     fully and is read by nobody in the builder role. :data:`_BATCH_FIX_DIRECTIVE`
     is the runtime carrier and *cannot reach the builder on the single-pass
-    path*: ``verify-resolutions`` and ``chunk`` are always single-pass, so the
-    reviewing fork runs ``critic-consolidate`` itself and the directive prints
-    into the reviewer's context, not the builder's. The docstring above
+    path*: ``verify-resolutions`` and ``chunk`` are always single-pass, so
+    ``critic-consolidate`` runs in the reviewer's context — the fork's own call,
+    or the SubagentStop hook's for a review the fork handed to a dispatched
+    reviewer — and the directive prints there, never into the builder's. The docstring above
     :data:`RESOLUTION_IS_A_CLAIM_DIRECTIVE` already records that reasoning for
     its own sake; this is the same gap answered where it can be closed.
 
@@ -1064,19 +1065,19 @@ def _next_action_core(
 #: Delivered at `verify-resolutions` DISPATCH — before the reviewer judges each
 #: prior finding, not after it has.
 #:
-#: Public because its print site is ``cmd_critic_begin`` in ``bin/prawduct-hook``;
-#: it lives here so the directives the review data plane emits are read and
-#: edited together.
+#: Public because :func:`dispatch_directives` renders it for ``cmd_critic_begin``
+#: in ``bin/prawduct-hook`` and for the manifest; it lives here so the
+#: directives the review data plane emits are read and edited together.
 #:
 #: **Why dispatch and not consolidation.** The obvious slot is beside
 #: :data:`_BATCH_FIX_DIRECTIVE` in :func:`consolidate`, on a "this review
 #: recorded resolutions" trigger. That slot is downstream of the claim on every
-#: path that can carry one. ``verify-resolutions`` is always single-pass
-#: (:func:`_derive_roster` returns :data:`SINGLE_PASS_ROSTER` for it
-#: unconditionally), so the reviewing fork writes its ``resolutions`` into the
-#: partial and THEN runs consolidate itself — the directive would reach
-#: an agent that has already made the claim and is one step from exiting. Nor
-#: does it carry to the builder: the Critic skill is ``context: fork``, and the
+#: path that can carry one: the reviewer writes its ``resolutions`` into the
+#: partial and only THEN does consolidation run — the reviewing fork's own call,
+#: or the SubagentStop hook's when the fork handed the review to a dispatched
+#: reviewer — so the directive would reach an agent that has already made the
+#: claim and is one step from exiting, or nobody. Nor does it carry to the
+#: builder: the Critic skill is ``context: fork``, and the
 #: fork's report-back instruction (``skills/critic/goals-1-3.md``) enumerates
 #: findings and a summary, not the consolidator's stdout. Dispatch is the same
 #: reader in the same review, one step earlier, and upstream of the claim.
@@ -1345,6 +1346,55 @@ FINDING_SCOPE_DIRECTIVE = (
     " member passes through, or a check derived from the source of truth —"
     " never by a longer list of names."
 )
+
+
+def dispatch_directives(manifest: dict, facts: list[dict]) -> list[str]:
+    """The directives a reviewer of this dispatch reads before assessing, in
+    their order. The one renderer: ``critic-begin`` prints this list last in its
+    output (the reviewing fork's copy), and :func:`begin_review` writes the same
+    list into the manifest as ``dispatch_directives`` when it sets a
+    ``reviewer_model``, because a reviewer the fork hands the review to never
+    sees the fork's tool output.
+
+    Keyed off the manifest's own mode rather than a raw ``--mode`` argument:
+    ``begin_review`` canonicalizes the token, and a ``verify-resolutions``
+    dispatch that got demoted never renders these at all.
+
+    ORDER IS DELIBERATE, and a future edit must not flip it: the reviewer rates
+    the delta BEFORE it judges the prior findings, so the severity narrowing
+    comes first; then the rule for how a finding is WRITTEN; then the roll-call
+    of ids that must be accounted for; and the resolution warning stays LAST,
+    adjacent to the claim it governs — the only one of the four that can weaken
+    a gate, and therefore the one the reader must still be holding. The
+    roll-call sets the AGENDA (which ids must come back with a verdict) and the
+    claim directive the STANDARD each verdict meets; a roll-call read last would
+    push toward naming every id on it, which is the over-claiming the standard
+    exists to prevent. The order is pinned: ``TestResolutionDirectiveDelivery``
+    for the claim directive's last place, ``TestCarriedBlockersReachTheirReaders``
+    for the roll-call ahead of it, and ``test_finding_scope_rule`` for the scope
+    rule's slot between the narrowing and the claim.
+
+    :data:`FINDING_SCOPE_DIRECTIVE` is owed to whichever modes read
+    ``goals-1-3.md``, which has no room for it, and ``verify-resolutions`` is in
+    both sets — so it renders outside the verify-only branch while keeping its
+    place in the order. ``final`` and ``cumulative`` are owed none.
+    """
+    verbose_mode = manifest["mode"]
+    is_verify = verbose_mode == MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
+    directives: list[str] = []
+    if is_verify:
+        directives.append(VERIFY_RATES_BLOCKING_ONLY_DIRECTIVE)
+    if verbose_mode in {MODE_TOKEN_TO_VERBOSE[token] for token in GOALS_1_3_MODES}:
+        directives.append(FINDING_SCOPE_DIRECTIVE)
+    if is_verify:
+        roll_call = account_for_prior_blockers_directive(
+            carried_blocking(facts, manifest.get("base_tree"), manifest.get("id"))
+        )
+        if roll_call:
+            directives.append(roll_call)
+        directives.append(RESOLUTION_IS_A_CLAIM_DIRECTIVE)
+    return directives
+
 
 _REVIEW_ID_TS = re.compile(r"^rev-(\d{8}T\d{6}Z)-")
 
@@ -3864,6 +3914,13 @@ def begin_review(
     # Rendered from the three fields above, so the coordinator copies a line
     # rather than composing one.
     manifest["signals"] = signals_line(manifest)
+    # Rendered once: the CLI prints this list to the fork, and a reviewer the
+    # fork hands the review to reads the same list here, since it never sees
+    # the fork's tool output. Absent when no reviewer model is set, because then
+    # the fork reviews inline and its copy is the printed one.
+    directives = dispatch_directives(manifest, read_store().get("facts") or [])
+    if manifest["reviewer_model"] is not None:
+        manifest["dispatch_directives"] = directives
     if not _nonempty_str(session_model):
         notes.append(model_tier.session_model_missing_note("critic-begin"))
     ok, reason = validate_manifest(manifest)
@@ -3932,6 +3989,7 @@ def begin_review(
         "archived_leftovers": str(archived) if archived else None,
         "superseded_findings": superseded,
         "manifest": manifest,
+        "directives": directives,
     }
 
 
@@ -4135,7 +4193,8 @@ def validate_manifest(data) -> tuple[bool, str]:
     must then be ``chunks[0]`` or null),
     ``tier``/``scope``/``scope_chosen_by``/``chunk``/``model``/
     ``base_reviewed``, ``reviewer_model`` (the model a reviewer is dispatched
-    on; null for no override), ``worktree``/``branch`` (visibility fields; ``branch`` is
+    on; null for no override), ``dispatch_directives`` (a list, possibly empty,
+    written only beside a reviewer model), ``worktree``/``branch`` (visibility fields; ``branch`` is
     None on a detached HEAD — PDT-WT9K). Optional and typed: ``stage``
     (``inner``/``boundary`` — the severity rule keys on it), ``judgeable_files``,
     ``chunk_type`` and ``signals`` (the code-rendered reviewer line), absent
@@ -4233,6 +4292,11 @@ def validate_manifest(data) -> tuple[bool, str]:
     # before the field existed still consolidates — and typed because the value
     # reaches the fact and the severity rule keys on it: a misspelt stage must
     # fail here, not read as "neither stage" downstream.
+    # The reviewer's directives, rendered at dispatch when a reviewer model is
+    # set. Typed because a handed-off reviewer reads each entry as an
+    # instruction; an empty list is a mode owed none.
+    if data.get("dispatch_directives") is not None and not _str_list(data.get("dispatch_directives")):
+        return False, "'dispatch_directives' must be a list of non-empty strings or null"
     stage = data.get("stage")
     if stage is not None and stage not in STAGE_VALUES:
         return False, f"'stage' must be one of {sorted(STAGE_VALUES)} or null, got {stage!r}"
@@ -5753,7 +5817,8 @@ def dispatch_age_minutes(review_id: str, *, now: datetime | None = None) -> floa
 
 def _incomplete_noop_message(missing: list[str], present: int, total: int,
                              review_id: str,
-                             prawduct_dir: Path | None = None) -> str:
+                             prawduct_dir: Path | None = None,
+                             handed_off: bool = False) -> str:
     """The incomplete no-op with a liveness verdict, not just a partial count.
     Zero partials shortly after dispatch is the NORMAL background-reviewer
     state — say so explicitly, or the caller infers reviewer death from
@@ -5768,13 +5833,20 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
     past-grace advice fires only when EVERY missing role is past the grace
     window on its own effective age (marker age when present, dispatch age
     otherwise): one dead reviewer among live ones converges — the live roles
-    report and leave ``missing``, and the dead one's age keeps growing."""
+    report and leave ``missing``, and the dead one's age keeps growing.
+
+    ``handed_off`` is a single-pass review the fork dispatched to one reviewer
+    (the manifest set ``reviewer_model``): that reviewer writes a started marker
+    and runs in the background like a roster reviewer, and the SubagentStop
+    trigger consolidates it, so it takes the background story, not the
+    fork-consolidates-itself one."""
     age = dispatch_age_minutes(review_id)
     counts = f"{present}/{total} partials present"
     if age is not None:
         counts += f"; dispatched {age:.1f} min ago"
     started: dict[str, float | None] = {}
-    if prawduct_dir is not None and total > 1:
+    dispatched = total > 1 or handed_off
+    if prawduct_dir is not None and dispatched:
         started = {
             role: started_age_minutes(prawduct_dir, role, review_id)
             for role in missing
@@ -5802,10 +5874,10 @@ def _incomplete_noop_message(missing: list[str], present: int, total: int,
             " — the reviewers may have died. Abandon this review with"
             " `prawduct-hook critic-end`, then re-dispatch."
         )
-    elif total == 1:
-        # Single-pass roster: the reviewer IS the dispatching fork and
-        # consolidates itself — a SubagentStop trigger will never land it, so
-        # the coordinator-roster story would be false here.
+    elif not dispatched:
+        # Single-pass roster reviewed inline: the reviewer IS the dispatching
+        # fork and consolidates itself — a SubagentStop trigger will never land
+        # it, so the background story would be false here.
         line += (
             " The single-pass reviewer (the dispatching fork itself) writes its"
             " partial and consolidates when it finishes — reviews typically take"
@@ -6192,7 +6264,8 @@ def consolidate(
 
     if missing:
         print(_incomplete_noop_message(
-            missing, len(partials), len(roster), review_id, prawduct_dir))
+            missing, len(partials), len(roster), review_id, prawduct_dir,
+            handed_off=bool(manifest.get("reviewer_model"))))
         return 0
 
     # Observations arrive from every stage, and a finding a reviewer still

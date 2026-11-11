@@ -79,11 +79,13 @@ PLUGIN = Path(__file__).resolve().parent.parent / "plugin"
 #: § Direction says unit-cost is "the reviewer's *payload* (what a given MODE
 #: must load to answer its goals)".
 #:
-#: **And the actor differs, not just the mode.** `chunk` and
-#: `verify-resolutions` are always single-pass, so no `critic-reviewer` body is
-#: ever loaded for them — charging the agent definition to those modes prices
-#: ~2.5k nobody reads. Conversely a dispatched reviewer never opens `SKILL.md`;
-#: the coordinator does, and then dispatches.
+#: **And the actor differs, not just the mode.** On a session at or below the
+#: reviewer ceiling, `chunk` and `verify-resolutions` are reviewed inline by the
+#: fork, so no `critic-reviewer` body is loaded for them — charging the agent
+#: definition to those routes prices ~2.5k nobody reads. Above the ceiling the
+#: fork hands the review to one dispatched reviewer, which is a route of its own
+#: (`dispatched-reviewer-inner`). Conversely a dispatched reviewer never opens
+#: `SKILL.md`; the coordinator does, and then dispatches.
 PAYLOAD_ROUTES = {
     # The single-pass fork on the cheap protocol — `chunk`, `verify-resolutions`.
     "single-pass-inner": (
@@ -108,13 +110,28 @@ PAYLOAD_ROUTES = {
         "skills/critic/framework-checks.md",
         "skills/critic/coordinator.md",
     ),
-    # One dispatched `critic-reviewer` on a coordinator roster. Its system
-    # prompt replaces `SKILL.md`, and a roster multiplies this by its size.
+    # One dispatched `critic-reviewer` on a coordinator roster, or the one a
+    # capped single-pass `final`/`cumulative` is handed to. Its system prompt
+    # replaces `SKILL.md`, and a roster multiplies this by its size.
     "dispatched-reviewer": (
         "agents/critic-reviewer.md",
         "skills/critic/review-protocol.md",
         "skills/critic/cross-checks.md",
         "skills/critic/framework-checks.md",
+    ),
+    # The fork on a capped `chunk`/`verify-resolutions`: it has read the cheap
+    # protocol at step 2 (the reviewer model is known only after `critic-begin`),
+    # then reads `coordinator.md`, dispatches one reviewer and stops.
+    "coordinator-fork-inner": (
+        "skills/critic/SKILL.md",
+        "skills/critic/goals-1-3.md",
+        "skills/critic/coordinator.md",
+    ),
+    # The reviewer a capped `chunk`/`verify-resolutions` is handed to: the agent
+    # definition and the cheap protocol, nothing else.
+    "dispatched-reviewer-inner": (
+        "agents/critic-reviewer.md",
+        "skills/critic/goals-1-3.md",
     ),
 }
 
@@ -233,7 +250,15 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
     # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
     # more than any payload this table prices.
-    "single-pass-inner": 5586,
+    # +58 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    "single-pass-inner": 5644,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -316,7 +341,15 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
     # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
     # more than any payload this table prices.
-    "single-pass-full": 9779,
+    # +72 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    "single-pass-full": 9851,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -411,7 +444,15 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # agent definition, and the WARNING arm's cut in cross-checks.md, net. Ceiling raised with it.
     # A few tokens lower after the boundary review: a finding rated `note` is demoted to an
     # observation rather than refused, and the sentence saying so is shorter.
-    "dispatched-reviewer": 9138,
+    # +187 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    "dispatched-reviewer": 9325,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -469,14 +510,31 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # manifest's `reviewer_model` (+30, the coordinator fork only). Priced against the SUM: a few
     # tokens per review against a reviewer run on a tier above Opus-class by accident, which costs
     # more than any payload this table prices.
-    "coordinator-fork": 10391,
+    # +123 on 2026-11-11 (reviewer-model-cap), DECLARED: a review on a session above the reviewer
+    # ceiling is handed from the fork to dispatched reviewers, so the Critic skill routes on the
+    # manifest's `reviewer_model` (step 5 skips to step 7; step 7's new branch), `coordinator.md`
+    # dispatches the single-pass `reviewer` role too, the reviewer contract learns that role and
+    # reads `dispatch_directives`, and `review-protocol.md` says only the fork consolidates.
+    # `goals-1-3.md` was paid in place. Priced against the SUM: tens of tokens per review against
+    # every capped review running on a tier above Opus-class, which costs more per review than this
+    # whole table prices.
+    "coordinator-fork": 10514,
+    # Established 2026-11-11 (reviewer-model-cap). On a session above the
+    # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
+    # the fork to one dispatched reviewer on the capped model, so the cheap
+    # route splits in two: the fork that routes and the reviewer that reviews.
+    # Baselines, recorded where each stood when it first got an owner.
+    "coordinator-fork-inner": 6307,
+    "dispatched-reviewer-inner": 5118,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5587,
-    "single-pass-full": 9780,
-    "dispatched-reviewer": 9139,
-    "coordinator-fork": 10392,
+    "single-pass-inner": 5645,
+    "single-pass-full": 9852,
+    "dispatched-reviewer": 9326,
+    "coordinator-fork": 10515,
+    "coordinator-fork-inner": 6308,
+    "dispatched-reviewer-inner": 5119,
 }
 
 
@@ -524,7 +582,7 @@ def test_the_payload_is_non_empty_and_holds_what_it_names(route):
     assert payload, f"the {route} payload is empty — this sum measures nothing"
     for member, tokens in payload.items():
         assert tokens > 0, f"{member} contributed 0 tokens — it was not read"
-    if route.startswith("single-pass") or route == "coordinator-fork":
+    if route.startswith(("single-pass", "coordinator-fork")):
         assert "skills/critic/SKILL.md" in payload, (
             "a single-pass fork enters through SKILL.md — a sum omitting it "
             "understates what that route loads"

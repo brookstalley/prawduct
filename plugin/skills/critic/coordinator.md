@@ -1,16 +1,16 @@
 # Critic: Coordinator Pattern
 
-Read this only when the manifest's roster is `correctness`/`design`/`sustainability`. You are the
-coordinator: you dispatch the three reviewers and stop. The reviewers never read this file; their
-contract is `agents/critic-reviewer.md`.
+Read this when the manifest's roster is `correctness`/`design`/`sustainability`, or its
+`reviewer_model` is set. You are the coordinator: you dispatch the roster's reviewers and stop. The
+reviewers never read this file; their contract is `agents/critic-reviewer.md`.
 
 ## Coordinator Pattern
 
 Persistence is **decoupled from the review**: reviewers write partials, `critic-consolidate` merges them against the code-written manifest, and no model authors a file the data plane trusts.
 
-1. **Assess** (coordinator): read project state and the manifest (review id, `commit_reviewed`, `files_changed`, and `signals` — the code-rendered `Stage · Judgeable files · Type` line; you compose none), run git diff. The manifest's `tier` is telemetry only and selects no model.
+1. **Assess** (coordinator): read the manifest (review id, `commit_reviewed`, `files_changed`, and `signals` — the code-rendered `Stage · Judgeable files · Type` line; you compose none); on the three-reviewer roster, also project state and git diff. The manifest's `tier` is telemetry only and selects no model.
 
-2. **Dispatch** three **`critic-reviewer`** subagents (Agent tool, `subagent_type: critic-reviewer`) — **all three Agent calls in ONE message, concurrently.** **Model: the manifest's `reviewer_model`**, code's answer from the session model capped at the reviewer ceiling — when set, pass it as each call's `model`; when null, pass no `model` (they inherit the session model). Never choose one. Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>`/`<SIGNALS>` from the manifest (`commit_reviewed`, `id`, `rendezvous.<ROLE>`, `signals` verbatim), `[dir]` from its `worktree`, `<MANIFEST>` as `[dir]` + `.prawduct/.critic-partials/manifest.json`, and `[critic path]` as the absolute path of `${CLAUDE_SKILL_DIR}/review-protocol.md` (the goal definitions; not this file):
+2. **Dispatch** one **`critic-reviewer`** subagent per roster role (Agent tool, `subagent_type: critic-reviewer`) — **all Agent calls in ONE message, concurrently.** **Model: the manifest's `reviewer_model`**, code's answer from the session model capped at the reviewer ceiling — when set, pass it as each call's `model`; when null, pass no `model` (they inherit the session model). Never choose one. Each reviews ONLY its goals and writes ONLY the two files the manifest's `rendezvous` names for its role — never `.critic-findings.json`, `critic-consolidate`, or `critic-end`. Prompt template — substitute `<ROLE>`/`<GOALS>`/`<SHA>`/`<ID>`/`<STARTED>`/`<PARTIAL>`/`<SIGNALS>` from the manifest (`commit_reviewed`, `id`, `rendezvous.<ROLE>`, `signals` verbatim), `[dir]` from its `worktree`, `<MANIFEST>` as `[dir]` + `.prawduct/.critic-partials/manifest.json`, and `[critic path]` as the absolute path of `${CLAUDE_SKILL_DIR}/review-protocol.md` (the goal definitions; not this file) — `goals-1-3.md` for role `reviewer` on `chunk`/`verify-resolutions`:
 
    > "Critic reviewer (`<ROLE>`). FIRST: write your liveness marker `<STARTED>` (content: `<ROLE>`). Then read `[critic path]` for goal definitions. Review ONLY <GOALS>. Project (absolute): `[dir]` — anchor every path and every `git -C` there, never your cwd. Read `files_reviewed` (subject, findings-eligible) and `files_oracle` (read, do not rate) from `<MANIFEST>`. Signals: <SIGNALS>. Commit under review: `<SHA>` — record it verbatim as `commit_reviewed`, and confirm `git -C [dir] rev-parse HEAD` equals it before reading anything. Review id: `<ID>` — record it verbatim as `dispatch_id`. NO tests/builds. Write ONLY your partial to `<PARTIAL>`; nothing else."
 
@@ -19,5 +19,6 @@ Persistence is **decoupled from the review**: reviewers write partials, `critic-
    - **correctness reviewer** (role `correctness`) — Goals 1, 2, 3 + the Governing-Artifact Reconciliation.
    - **design reviewer** (role `design`) — Goals 4, 7 + the Framework-Specific Checks when they apply.
    - **sustainability reviewer** (role `sustainability`) — Goals 5, 6 + the Records Pass over the oracle files.
+   - **single-pass reviewer** (role `reviewer`, only with `reviewer_model` set) — Goals 1-3 on `chunk`/`verify-resolutions`; all seven, with the checks above, on `final`/`cumulative`.
 
 3. **Stop — do not resume to aggregate.** The `SubagentStop` hook runs `critic-consolidate` as each reviewer finishes (no-op until all roles report, then merges once). You do NOT write findings, append the ledger, or run `critic-end` — `critic-consolidate` does all three and clears the marker.
