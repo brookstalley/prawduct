@@ -42,7 +42,6 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -2184,78 +2183,6 @@ def _critic_session_satisfies_gate(project_dir: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def learnings_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """The session's change set, for the learnings read list: ``(files, reason)``.
-
-    The **session's** base tree → the working tree, union untracked: everything
-    this session touched whether or not it has been committed yet. Its one
-    caller is :func:`learnings_review_change_set`, which falls back to it when no
-    review is dispatched.
-
-    ``reason`` is empty on success and names the failure otherwise. It is a
-    return value rather than an exception or a silent ``[]`` because "nothing
-    changed" and "could not tell" are opposite facts and the caller has to say
-    which one it got (`R4`: a degraded advisory path names its consequence).
-    """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    base = _read_session_base_tree(prawduct_dir)
-    if not base:
-        # No session marker (a resume in a fresh checkout, a repo that never ran
-        # SessionStart): HEAD's tree is the honest fallback and is what the
-        # session gate itself degrades to.
-        base = "HEAD"
-    try:
-        return coverage._coverage_changed_files(project_dir, base), ""
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
-        # SubprocessError covers TimeoutExpired: coverage's git calls carry a
-        # 30s bound, and a slow diff must read as "could not tell", not a traceback.
-        return [], f"{type(exc).__name__}: {exc}"
-
-
-def learnings_review_change_set(project_dir: Path) -> "tuple[list[str], str]":
-    """The change set ``learnings-files --for-diff`` lists rules for: ``(files, reason)``.
-
-    **Why the review interval and not the session span.** For a ``cumulative``
-    of already-committed work the session span is EMPTY — the session began
-    after the commits, so its base tree IS ``HEAD^{tree}`` and a clean working
-    tree diffs to nothing.
-
-    Measured 2026-09-20 on this repo: the cumulative reviewing a five-commit
-    branch was handed ``core.md`` alone, at exit 0, indistinguishable from "no
-    area file applies", while the interval touched the areas owned by
-    ``reviews.md``, ``hook-surface.md``, ``tests.md`` and ``authoring.md``. The
-    reviewer caught it only by reading the four area files by hand.
-
-    So the interval comes from the **dispatch manifest** — the one artifact that
-    already records what this review spans, written by code at ``critic-begin``.
-    Nothing new is declared or maintained: no flag, no field, no second copy of
-    the span. When no manifest is on disk there is no review to scope to, and
-    this falls back to the session span, which is the right answer for every
-    caller that is not a dispatched reviewer.
-    """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    manifest_path = prawduct_dir / ".critic-partials" / "manifest.json"
-    try:
-        manifest = json.loads(manifest_path.read_text())
-    except (OSError, ValueError):
-        # No live dispatch (or an unreadable one): not a reviewer context, so
-        # the session span is the honest answer rather than a failure.
-        return learnings_change_set(project_dir)
-
-    base = (manifest or {}).get("base_tree")
-    head = (manifest or {}).get("head_tree")
-    if not base or not head:
-        return learnings_change_set(project_dir)
-
-    changed = evidence.tree_diff(project_dir, base, head)
-    if changed is None:
-        # `tree_diff` returns None rather than guessing. Fail LOUD for the same
-        # reason the CLI does: a silent narrowing hides area files the review
-        # interval really touches, and looks exactly like an answer.
-        return [], f"could not diff the review interval {base[:12]}..{head[:12]}"
-    return changed, ""
-
-
 def _repo_relative(project_dir: Path, path: Path) -> str:
     try:
         return path.relative_to(project_dir).as_posix()
@@ -2266,8 +2193,7 @@ def _repo_relative(project_dir: Path, path: Path) -> str:
 def test_status(project_dir: Path) -> int:
     """Print whether saved test evidence is fresh enough to trust.
 
-    Used by builders, the Critic, and the PR reviewer to decide whether to
-    re-run the test suite.
+    Used by builders and the Critic to decide whether to re-run the test suite.
 
     stdout: the verdict line first — :data:`CURRENT_TREE_LABEL`,
     :data:`CURRENT_SESSION_LABEL`, or `stale:`, each followed by its reason —

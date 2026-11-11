@@ -275,10 +275,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `check-branch-pushed` (0/1/**3**),
   `check-releasability [--release vX.Y.Z]`, `check-released vX.Y.Z [--json] [--allow-unverifiable]`,
   `resolve-base`. (`regen-views` and `stamp-merged` were removed — § Direction, #303.)
-- **Learnings layout (learnings v2)** — `learnings-files [--for-diff] [--json]` (read-only: the one
-  resolver's answer — the rules files under `.claude/rules/learnings/`, and with `--for-diff` the
-  core file plus every area file whose `paths:` intersect the diff; two `allowed-tools` grants bind
-  it and the PR reviewer protocol instructs it, so it sits in the stable tier) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
+- **Learnings layout (learnings v2)** — `learnings-files [--json]` (read-only: the one resolver's
+  answer — every rules file under `.claude/rules/learnings/`, the set the budget gate sizes; the
+  session briefing and the Stop hook's learnings floor name it to the person reading them as how to
+  see what is on disk, so it sits in the stable tier; `--for-diff` was removed — § Deprecation &
+  Compatibility) and `learnings-migrate [--apply] [--map <file>] [--propose-map]
   [--json] [--local]` (mutating with `--apply`: the one-way relayout of a legacy `.prawduct/learnings.md` into
   the rules files, byte-accounted against the tree it writes; refuses on a dirty tree, an uncommitted or
   ignored corpus, or an ignored destination, because a commit is its undo — except under `--local`,
@@ -974,6 +975,17 @@ Evolution rules we want to hold, so new versions stay rare:
 
   **REMOVED 2026-10-21 (#303, owner ruling 2026-09-28: "do").** `stamp-merged` and `regen-views` were deleted outright — the deprecate-then-remove path's *remove* step, taken by owner ruling rather than at a major boundary. Neither was ever registered by a shipped `hooks.json`, so the harness-skew retention rule below does not reach them; a copied script that still calls one now gets the usage error. The clause's "defer removal to a major" makes this a release-time obligation: the release carrying it should be a major, or the release notes must say why not. The parser's special cases for the retired `chunks=` key (comma-split, cross-line union) went in the same change.
 
+  **REMOVED 2026-11-11 (#1129, owner ruling 2026-11-10, recorded in `.prawduct/owner-rulings.md`
+  and on #1129).** `learnings-files --for-diff` and the `backlog cache-query` queries `affecting`
+  and `created-since` were deleted outright, having no shipped reader once the PR reviewer retired —
+  the same *remove* step #303 took by owner ruling rather than at a major boundary. None was registered
+  by a shipped `hooks.json`. A caller holding the flag gets the command's unknown-argument refusal
+  (exit 2, naming `--json` as the flag that remains); one holding either query gets the
+  unknown-query refusal (exit 2, naming the queries that remain). The bare `learnings-files`,
+  `--json`, and the six queries that remain are unchanged. As with #303, the clause's "defer removal to a
+  major" makes this a release-time obligation: the release carrying it should be a major, or the
+  release notes must say why not.
+
   **DEPARTURE, recorded not amended — 2026-08-11 (v3.3.3), pending owner ratification.**
   `build-index` and `user-prompt-submit` join the inert tier printing **nothing on either stream**,
   which the clause above forbids as written. Recorded here rather than by softening the clause: the
@@ -997,7 +1009,8 @@ Evolution rules we want to hold, so new versions stay rare:
 
 - **Stable, allowlistable surface** (intended to be depended on, and scoped into skill
   `allowed-tools`): `evidence status|list`, `review-stats --json`, `stats --json`, `render-dispositions`,
-  `learnings-files` (bound by the Critic skill, the PR reviewer protocol and the reviewer agent),
+  `learnings-files` (named to a person by the session briefing and the Stop hook's learnings floor;
+  no skill or agent grant binds it),
   `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
   `check-*`, `resolve-base`, `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
   exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary

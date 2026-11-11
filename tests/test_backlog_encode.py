@@ -484,33 +484,6 @@ class TestAffected:
         assert entries == ["plugin/lib/backlog", "docs/x.md"]
 
 
-class TestAffectedIntersection:
-    """Consumers 1 and 4: a set intersection instead of a reviewer inferring."""
-
-    def test_a_directory_entry_covers_the_files_under_it(self):
-        touched = encode.affected_matches(
-            ["plugin/lib/backlog"], ["plugin/lib/backlog/sync.py", "README.md"]
-        )
-
-        assert touched == ["plugin/lib/backlog"]
-
-    def test_an_exact_file_entry_matches_only_that_file(self):
-        assert encode.affected_matches(["docs/a.md"], ["docs/a.md"]) == ["docs/a.md"]
-        assert encode.affected_matches(["docs/a.md"], ["docs/ab.md"]) == []
-
-    def test_a_sibling_prefix_is_not_a_match(self):
-        """`plugin/lib` must not swallow `plugin/libexec` — the failure a naive
-        string-prefix comparison makes, and one that reads as a confident hit."""
-        assert encode.affected_matches(["plugin/lib"], ["plugin/libexec/x.py"]) == []
-
-    def test_no_overlap_and_no_paths_recorded_are_different_answers(self):
-        assert encode.affected_matches(["docs"], ["src/x.py"]) == []
-        assert encode.affected_matches([], ["src/x.py"]) == []
-
-    def test_ancestors_are_the_keys_a_changed_file_answers_to(self):
-        assert encode.path_ancestors("a/b/c.py") == ["a/b/c.py", "a/b", "a"]
-
-
 class TestTags:
     def test_tags_decode_from_labels_sorted_and_deduplicated(self):
         issue = {

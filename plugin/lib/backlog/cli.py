@@ -162,8 +162,7 @@ _OP_USAGE: dict[str, str] = {
         "  cache-query <query> [args] --repo owner/repo   (read the local cache; "
         "never touches the network)\n"
         "           open | unstaged | by-area [--all] | stale [--older-than N] |\n"
-        "           search <text> [--area A] | affecting <path>... [--all] |\n"
-        "           created-since <ISO> | resolve <id>\n"
+        "           search <text> [--area A] | resolve <id>\n"
         "           exit 6 means the cache could not be read — NOT that nothing matched\n"
     ),
     "link": (
@@ -1041,8 +1040,7 @@ _STALE_DEFAULT_DAYS = 90
 #: `stale`, not `stale_items` — because the operator typing this has no register
 #: to resolve module names against.
 _CACHE_QUERIES: tuple[str, ...] = (
-    "open", "created-since", "by-area", "affecting", "search",
-    "stale", "unstaged", "resolve",
+    "open", "by-area", "search", "stale", "unstaged", "resolve",
 )
 
 
@@ -1055,8 +1053,8 @@ _CACHE_QUERIES: tuple[str, ...] = (
 #: Arity is the count of positionals, or `None` for "one or more".
 _CACHE_QUERY_ARITY: dict[str, int | None] = {
     "open": 0, "unstaged": 0, "by-area": 0, "stale": 0,
-    "created-since": 1, "resolve": 1,
-    "search": None, "affecting": None,
+    "resolve": 1,
+    "search": None,
 }
 
 #: Valued/boolean flags each query accepts, beyond the universal `--repo`.
@@ -1064,10 +1062,8 @@ _CACHE_QUERY_FLAGS: dict[str, frozenset[str]] = {
     "open": frozenset(),
     "unstaged": frozenset(),
     "by-area": frozenset({"all"}),
-    "affecting": frozenset({"all"}),
     "stale": frozenset({"older-than"}),
     "search": frozenset({"area"}),
-    "created-since": frozenset(),
     "resolve": frozenset(),
 }
 
@@ -1075,17 +1071,16 @@ _CACHE_QUERY_FLAGS: dict[str, frozenset[str]] = {
 def _run_cache_query(rest: list[str], project_dir):
     """Read the local backlog cache — the **agent-facing** door onto ``cachequery``.
 
-    Every consumer bound before this one was in-process Python (the norm probes,
-    ``pick``), so the query surface needed no CLI. The consumers this serves are
-    agents — the Critic's backlog-reconciliation walk, the PR reviewer's
-    resolved-items and closes/status checks, the janitor's Backlog Health block —
-    and an agent reaches a Python module only by running something.
+    The in-process consumers (the norm and upstream probes, record-lint's
+    retired-claim check, the release-readiness check, ``pick``) call
+    ``cachequery`` directly. The consumers this serves are
+    agents — the backlog skill's find and dedup scans, the janitor's Backlog
+    Health block, the bug-report triage — and an agent reaches a Python module
+    only by running something.
 
     **This op reads and does nothing else**: no provider call, no store write, no
-    session state touched. That is what makes it grantable to the ``critic-reviewer``
-    agent type, whose narrow tool list is the Critic's no-execution enforcement — a
-    reviewer holding this can ask the backlog a question and still cannot run a
-    test, reach the network, or mutate the session it is reviewing.
+    session state touched. That is what lets a skill grant it on its own, without
+    the backlog writes beside it.
 
     ``unavailable`` surfaces as exit 6, which is the whole contract for these
     consumers: a reader that cannot reach the store must be able to say so rather
@@ -1153,10 +1148,6 @@ def _run_cache_query(rest: list[str], project_dir):
         if int_err:
             return core.error("validation", int_err)
         return cachequery.stale_items(**common, older_than_days=days)
-    if name == "affecting":
-        return cachequery.items_affecting(**common, changed_paths=args, open_only=open_only)
-    if name == "created-since":
-        return cachequery.items_created_since(**common, since=args[0])
     if name == "search":
         return cachequery.search(**common, text=" ".join(args), area=flags.get("area"))
     # `resolve` — the only remaining member, and the exhaustiveness is guaranteed
