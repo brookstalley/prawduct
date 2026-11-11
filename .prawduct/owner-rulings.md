@@ -27,6 +27,20 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-11.** "yes to both of your recommendations"
+In reply to two numbered questions put to the owner while #1129 was building, each with a
+recommendation. It settles both as recommended. First: a small credential-shape check on a PR's
+added lines stays at the PR gate, reusing the denylist the plugin already keeps for its own
+output, as a bounded exception to `architecture.md` § Direction ("prawduct never re-implements
+what a product's own tooling already does"); no debug-code check is built, that being a linter's
+rule. Second: the retired commands (`pr-review-dispatch`, `pr-review-payload`, `ledger-append
+--event review.pr`, `learnings-files --for-diff`, and the cache queries `affecting` and
+`created-since`) are removed outright in this release rather than kept callable and inert until a
+major, with the dispatcher naming each retired command and what replaced it; put to the owner with
+its cost, that a session whose plugin loaded before the update cannot open a PR until it restarts.
+Landed in `build-plan-pr-reviewer-fold.md` (Goals and `governed_by:`), in the Rulings of the
+architecture norm, and in `api-contract.md` § Deprecation & Compatibility.
+
 **2026-11-11.** "my one concern with 1129 is making sure it honors repo standards like PR templates -- or, if the boundary agent doesn't do that, SOMETHING does it"
 Said while #1129 (the PR reviewer folded into the boundary Critic) was being planned. It sets a
 constraint on that work: when `/prawduct:pr` opens a PR with no reviewer agent, the repo's own

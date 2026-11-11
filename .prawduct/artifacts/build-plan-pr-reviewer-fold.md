@@ -20,14 +20,14 @@ governed_by:
       - "local-first → conforms; the PR template is read from the working tree and backlog status from the local store"
       - "the plugin writes nothing into a governed repo except its own state → conforms; the scaffold stops creating the PR-review evidence directory and nothing new is written"
       - "written in Python, never specific to Python → conforms; credential shapes, template headings and backlog ids read no language, and no debug-statement check is written"
-      - "guides and reviews, never implements → ruling needed; a credential-shape check on a PR's added lines overlaps what a secret scanner owns, while #1129's acceptance asks for one. Put to the owner on 2026-11-11. A debug-code check is not written at all: it is a linter's rule, and the interim rule forbids a new duplicate"
+      - "guides and reviews, never implements → exception; a credential-shape check on a PR's added lines overlaps what a secret scanner owns. The owner confirmed it on 2026-11-11 as a bounded exception (`.prawduct/owner-rulings.md`): it reuses the denylist the plugin already keeps, reads no language, and guards the one PR mistake that cannot be undone. A debug-code check is not written at all: it is a linter's rule, and the interim rule forbids a new duplicate"
       - "goals and verification bind, method is advice → conforms"
       - "every fact has one home → conforms; the credential denylist stays in the one module that has it, the closure list is read through the change record's own reader, and the template locations live in one function"
   - artifact: api-contract
     dispositions:
       - "whole-surface semantic versioning → conforms; no subcommand gains a version of its own"
       - "exit codes are the contract → conforms; the two new commands use the documented scheme and attribute every failure"
-      - "additive-first evolution, deprecation signalled, removal deferred to a major → ruling needed; this removes `pr-review-dispatch`, `pr-review-payload`, `ledger-append --event review.pr`, `learnings-files --for-diff` and the cache queries `affecting` and `created-since` outside a major. The owner ruled the removals (2026-11-10); whether each goes outright or stays callable and inert was put to the owner on 2026-11-11, on the precedent of #303"
+      - "additive-first evolution, deprecation signalled, removal deferred to a major → exception; this removes `pr-review-dispatch`, `pr-review-payload`, `ledger-append --event review.pr`, `learnings-files --for-diff` and the cache queries `affecting` and `created-since` outside a major. The owner ruled the removals (2026-11-10) and, asked on 2026-11-11 whether each goes outright or stays callable and inert, ruled outright (`.prawduct/owner-rulings.md`), on the precedent of #303: the norm's why is protecting a caller across versions, the callers ship in the same plugin at the same version, and an inert payload command would hand a stale session's reviewer nothing to review"
   - artifact: data-model
     dispositions:
       - "verdicts computed from facts, no model in the write path → conforms; the PR gate becomes composed review coverage alone, and a model-written evidence file stops being a gate input"
@@ -61,9 +61,8 @@ owner's rulings in `.prawduct/owner-rulings.md` are its authority: "yes fold PR 
 `created-since` with this item (2026-11-10), and the constraint stated while this plan was being
 drawn (2026-11-11): "my one concern with 1129 is making sure it honors repo standards like PR
 templates -- or, if the boundary agent doesn't do that, SOMETHING does it". Two questions the
-governing norms raise were put to the owner on 2026-11-11 and are marked below as awaiting an
-answer; the build proceeds on the recommended reading of each, built so the other answer is one
-small commit.
+governing norms raise were put to the owner on 2026-11-11, who answered "yes to both of your
+recommendations"; both are recorded below.
 
 **Product:** `/prawduct:pr create` opens a PR with no reviewer agent. Its gate is the composed
 Critic coverage it already requires, plus two commands that answer by code what a reviewer was
@@ -116,17 +115,17 @@ forget them.
 - `check-pr-body` reads the template from the branch's working tree, while GitHub applies the
   default branch's. A branch that changes the template is checked against its own version.
 
-**Awaiting the owner's answer (asked 2026-11-11), with the reading the build proceeds on:**
+**Asked of the owner on 2026-11-11 and confirmed as recommended ("yes to both of your
+recommendations", `.prawduct/owner-rulings.md`):**
 - *The secrets check and the architecture norm.* #1129's acceptance asks that "a secrets-or-debug-code
   check still runs at the PR gate, mechanically". `architecture.md` § Direction says prawduct never
   re-implements what a product's own tooling does, and its interim rule forbids a new check that
-  duplicates an existing linter rule. *Proceeding on:* a small credential-shape check over the PR's
+  duplicates an existing linter rule. *Confirmed:* a small credential-shape check over the PR's
   added lines, reusing the denylist the plugin already keeps for its own output, as a bounded
-  exception the owner confirms; no debug-code check, because that is squarely a linter's rule. Built
-  as its own commit so "drop it" is one revert.
+  exception; no debug-code check, because that is squarely a linter's rule.
 - *How the retired commands leave.* `api-contract.md` § Direction defers removal of anything a
   person or a skill can call to a major version, and its own case law says a ruling to delete does
-  not settle that. *Proceeding on:* outright removal, as #303 did by owner ruling, with the
+  not settle that. *Confirmed:* outright removal, as #303 did by owner ruling, with the
   dispatcher answering each retired name with what replaced it. An inert exit-0 `pr-review-payload`
   would hand a stale session's reviewer an empty payload to review, which is worse than a refusal.
 
@@ -149,7 +148,7 @@ the same table goes in the change record):
 | The branch claims a closure the backlog contradicts (R-2) | `check-pr-hygiene`, read from the change record's `closes:` list |
 | A raise of `core.md`'s cap without the owner's approval | Already code: record-lint's `learnings-core-raise-unapproved` |
 | A review consolidated over a tree that changed mid-review, on the builder's word | `check-pr-hygiene` prints each one for the PR description, where the PR's human reader is the independent reader |
-| Secrets or credentials in the diff | `check-pr-hygiene` (awaiting the owner, above) |
+| Secrets or credentials in the diff | `check-pr-hygiene`, as a bounded exception the owner confirmed |
 | Debug code, commented-out experiments, TODOs and placeholders | Dropped at the PR gate; a linter's rules, and the Critic's Goal 7 covers dead code |
 | Unintended files (lock files, IDE configuration, unrelated formatting) | Dropped; the Critic's Goal 3 covers unlisted dependencies and unplanned work |
 | Migration or rollback notes for a changed persisted format | Dropped as a separate check; the Critic's Goals 4 and 5 judge undocumented decisions and drift |
@@ -166,7 +165,7 @@ code. Code owners and required reviewers are the host's to apply.
 **Decisions made mid-build:** *(appended while building)*
 
 **Level:** Medium. The removal is well understood and its sites are enumerable by query. What would
-raise it: the owner's two answers, and one real `/prawduct:pr create` run through the rewritten flow
+raise it: one real `/prawduct:pr create` run through the rewritten flow
 in a fresh session after the installed plugin advances, which this plan queues rather than claims.
 
 ## Verification Strategy
@@ -207,7 +206,6 @@ installed plugin advances.
   from either command is recorded through `evidence.append_guard_refusal`. Expected yield, stated
   for the ratchet: the closure results inherit R-2's history; a template refusal has no history,
   being the first control of its kind; a credential refusal is expected to be near zero.
-  The credential check lands as its own commit.
 - **Depends on:** none
 - **Exposed API:** `prawduct-hook` CLI
 - **Foreign API:** GitHub pull request templates
