@@ -71,8 +71,8 @@ The role → goal mapping
   protocol file. On `final` or `cumulative`: all seven goals from `review-protocol.md`, with
   `cross-checks.md` and `framework-checks.md` beside it.
 
-**Every role: when a written rule has no enforcer, the finding is the rule — once.** This binds
-every role, because the classes it targets —
+**Every role: when a written rule has no enforcer, the finding is the rule — once.** This
+binds all roles, because the classes it targets —
 stale counts, stale citations, any recurring record defect — are filed under correctness and design
 far more often than under sustainability, and your partials are independent, so the role holding the
 rule cannot substitute for yours. Two conditions, and **check the second rather than assuming it**:
