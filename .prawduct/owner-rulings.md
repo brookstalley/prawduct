@@ -198,3 +198,19 @@ Opus- or Sonnet-class delegates under the delegation protocol, and set aside the
 repo until 3tears-evals is ready. The work is three plans: `build-plan-gate-clarity.md` (#937,
 #1000, #1098, #682), `build-plan-review-round-cost.md` (#961, #900) and
 `build-plan-bounded-cumulative.md` (#890).
+
+**2026-11-11.** "1. yes, follow your recommendation 2. Yes 3. yes 4. Yes please."
+Four answers to four questions asked together:
+1. #890 Decision 2 is re-ruled. The bounded cumulative is built without the vanished-token sweep. The
+   test-evidence relays grade the full merge-base → HEAD span, as record-lint already does under
+   Decision 3, and Chunk 04 measures the real blocking loss against the design's falsifier. This
+   replaces the 2026-09-22 "rated sweep" answer after Chunk 01 measured the sweep catching none of the
+   nine stale-prose losses through a token the finding names, and the same-base loss at about 6%. The
+   amended decision lands in `build-plan-bounded-cumulative.md` and the design's Decisions.
+2. #1098: the Stop gate's relax-only third arm stands. That is the [DECISION] in
+   `build-plan-gate-clarity.md`, with the four narrowings recorded there.
+3. #682: `changes_unjudged` narrows to symbol-less Python files and deleted files. Non-Python paths
+   move to `changes_out_of_remit`, and `changes_unchecked` stays as a deprecated alias until a major
+   release. This is a bounded exception to api-contract's additive-first norm, on the #303 precedent:
+   every reader ships with the plugin.
+4. Pull requests are opened for `feature/gate-clarity` and `feature/review-round-cost`.
