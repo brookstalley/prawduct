@@ -104,6 +104,30 @@ own bar.
   - this repo, release-sized span: about 24 s with 860 calls before, about 0.85 s with 3 after;
   - discodon: 9.0–9.5 s with 200 calls before, 0.7–0.9 s with 5 after;
   - verdicts identical in every case.
+- Chunk 02: `base_moved` is decided by lineage (`merge-base --is-ancestor` against the review's
+  anchor), not by comparing the review's `base_tree`. A tree comparison would call every chunk
+  review a base advance. When the base did move, `head_changed` is narrowed to the branch's own
+  diff, so the advance's files are not reported as the branch's change.
+- Chunk 02: "uncommitted" means tracked edits against HEAD plus untracked files. The PR gate keeps
+  the suite-coupled ones and the Stop gate the judgeable ones. The remedy adds
+  `--include-untracked` for untracked paths, because `git stash push -- <path>` refuses them. The
+  Stop gate's `CAUSE:` line is computed when the blocker renders, not in `session_review_verdict`,
+  so the session-start briefing does not pay for it.
+- Chunk 03: the coverage algebra had no "which files are uncovered" query. A new
+  `coverage_algebra.excused_gap_verdict` reuses `coverage_verdict`'s building blocks: the trees
+  reachable forward from the base and backward from the target, with the gap pairs between them
+  diffed through the caller's memo, capped at 32 pairs per phase. The cap can only deny.
+  The [DECISION] above held, and is narrower in four ways:
+  - it relaxes only `uncovered`, never `blocked`;
+  - every untracked file counts as authored;
+  - a file both authored and imported stays required;
+  - a blocker anywhere on the excused path blocks.
+- Chunk 03: the Stop NOTE says the PR gate still requires review of excused files "not already on
+  the base branch". Files a base sync brings in are outside the PR gate's span, so saying the PR
+  gate requires them would be false.
+- Integration: `check-cumulative-critic` takes about 43–93 s on this branch, against a steady
+  66 s for develop's code on the same state (both measured 2026-11-11). This chunk set does not
+  make it slower. The PR gate's own cost on this repo is pre-existing.
 
 **Level:** High for 01, 02 and 04, whose items carry their own acceptance. Medium for 03. Whether
 the coverage algebra can report which files are left uncovered cheaply, without a second
