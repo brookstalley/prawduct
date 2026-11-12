@@ -689,6 +689,162 @@ def coverage_verdict(
     }
 
 
+#: The most (forward-reached, backward-reached) tree pairs :func:`excused_gap_verdict`
+#: diffs per search phase. A cost bound, not a condition: pairs past it are not
+#: asked, which can only leave a span uncovered that a wider search would have
+#: excused — never excuse one.
+EXCUSED_GAP_MAX_PAIRS = 32
+
+
+def _reach(
+    edges: list[dict],
+    start: str,
+    other_end: str,
+    diff_fn: DiffFn,
+    key_fn: "KeyFn | None",
+    *,
+    reverse: bool,
+) -> dict[str, list[dict]]:
+    """Every tree composed evidence connects to ``start``, with the steps that
+    connect it, in forward order: ``start → node`` when ``reverse`` is False,
+    ``node → start`` when it is True. The same node set and the same free-edge
+    relation :func:`_find_path` searches — review edges plus free edges among
+    the trees the evidence mentions and the two span endpoints — asked as a
+    closure instead of a single path."""
+    nodes = {start, other_end}
+    adjacency: dict[str, list[tuple[str, dict]]] = {}
+    for edge in edges:
+        nodes.add(edge["src"])
+        nodes.add(edge["dst"])
+        step = {
+            "kind": "review",
+            "id": edge["fact"].get("id"),
+            "src": edge["src"],
+            "dst": edge["dst"],
+        }
+        frm, to = (edge["dst"], edge["src"]) if reverse else (edge["src"], edge["dst"])
+        adjacency.setdefault(frm, []).append((to, step))
+    free_adjacency = _free_classes(nodes, key_fn) if key_fn is not None else None
+
+    reached: dict[str, list[dict]] = {start: []}
+    queue: deque[str] = deque([start])
+    while queue:
+        node = queue.popleft()
+        nexts = list(adjacency.get(node, []))
+        if free_adjacency is not None:
+            others = free_adjacency.get(node, ())
+        else:
+            others = [
+                o for o in nodes
+                if o not in reached
+                and _free_edge_files(diff_fn, *((o, node) if reverse else (node, o)))
+                is not None
+            ]
+        for other in others:
+            src, dst = (other, node) if reverse else (node, other)
+            nexts.append((other, {"kind": "free", "src": src, "dst": dst}))
+        for to, step in nexts:
+            if to in reached:
+                continue
+            reached[to] = [step] + reached[node] if reverse else reached[node] + [step]
+            queue.append(to)
+    return reached
+
+
+def excused_gap_verdict(
+    facts: list[dict],
+    base_tree: str,
+    target_tree: str,
+    diff_fn: DiffFn,
+    key_fn: "KeyFn | None",
+    excused: Callable[[list[str]], bool],
+    *,
+    max_pairs: int = EXCUSED_GAP_MAX_PAIRS,
+) -> dict:
+    """Does composed coverage span ``base_tree → target_tree`` EXCEPT for one
+    interval whose judgeable files the caller excuses?
+
+    The question :func:`coverage_verdict` cannot ask: it composes by tree, so a
+    span reads ``uncovered`` whenever any interval on it lacks review, whoever
+    wrote that interval. A caller that knows some files are not the subject of
+    its gate (the Stop gate: files a sync brought in that this session did not
+    author) needs the composition with one hole allowed — evidence from the base
+    forward to a tree ``f``, evidence from a tree ``r`` forward to the target,
+    and the interval ``f → r`` whose judgeable diff ``excused`` accepts.
+
+    **Only relaxes, never covers more than the evidence does.** Every review
+    edge and free edge used is one :func:`coverage_verdict` would use; the gap
+    is the only interval no evidence spans, and ``excused`` sees its full
+    judgeable diff — a file changed both inside and outside the excused set is
+    in that diff and is the caller's to refuse. A diff that cannot be computed
+    is never excused. Blockers settle exactly as in :func:`coverage_verdict`:
+    every review fact standing at a tree on the composed path, the gap's two
+    endpoints included, still blocks.
+
+    Search mirrors :func:`coverage_verdict`'s two phases — blocker-free edges
+    first, then all valid edges — so a gap reachable only through a blocked
+    review settles as ``blocked`` (the blocker is still owed) rather than as
+    ``uncovered``. Pairs are tried longest-evidence first and capped at
+    ``max_pairs`` per phase (:data:`EXCUSED_GAP_MAX_PAIRS`).
+
+    Returns::
+
+        {"status": "covered", "path": [..., {"kind": "gap", "src", "dst",
+         "files"}, ...], "gap": {"src", "dst", "files"}}
+      | {"status": "blocked", "path", "unresolved", "gap"}
+      | {"status": "uncovered", "gap": {"src", "dst", "files"} | None,
+         "capped": True}   # ``capped`` present only when the cap cut a phase
+
+    For ``uncovered``, ``gap`` is the smallest unexcused interval found (the one
+    whose files a message should name), or ``None`` when no pair could be
+    diffed; ``capped`` says pairs went unasked, so a caller can tell "nothing
+    excusable" from "the search stopped". Cost: two closures over the evidence graph plus at most
+    ``max_pairs`` diffs per phase, the second phase's mostly answered by the
+    caller's diff memo.
+    """
+    if not (isinstance(base_tree, str) and base_tree and isinstance(target_tree, str) and target_tree):
+        return {"status": "uncovered", "gap": None}
+    facts = [f for f in facts if f.get("kind") in VERDICT_INPUT_KINDS]
+    resolved = resolution_index(facts)
+    edges = review_edges(facts)
+    clean_edges = [e for e in edges if not unresolved_blocking(e["fact"], resolved)]
+
+    smallest: "dict | None" = None
+    blocked: "dict | None" = None
+    capped = False
+    for phase_edges in (clean_edges, edges):
+        forward = _reach(phase_edges, base_tree, target_tree, diff_fn, key_fn, reverse=False)
+        backward = _reach(phase_edges, target_tree, base_tree, diff_fn, key_fn, reverse=True)
+        candidates = sorted(
+            ((f, r) for f in forward for r in backward if f != r),
+            key=lambda p: (-(len(forward[p[0]]) + len(backward[p[1]])), p),
+        )
+        capped = capped or len(candidates) > max_pairs
+        pairs = candidates[:max_pairs]
+        for f, r in pairs:
+            files = diff_fn(f, r)
+            if files is None:
+                continue
+            judgeable = judgeable_files(files)
+            gap = {"src": f, "dst": r, "files": judgeable}
+            if not excused(judgeable):
+                if smallest is None or len(judgeable) < len(smallest["files"]):
+                    smallest = gap
+                continue
+            path = forward[f] + [{"kind": "gap", **gap}] + backward[r]
+            unresolved = _unresolved_at_nodes(facts, resolved, _path_nodes(base_tree, path))
+            if not unresolved:
+                return {"status": "covered", "path": path, "gap": gap}
+            if blocked is None:
+                blocked = {"status": "blocked", "path": path, "unresolved": unresolved, "gap": gap}
+    if blocked is not None:
+        return blocked
+    uncovered: dict = {"status": "uncovered", "gap": smallest}
+    if capped:
+        uncovered["capped"] = True
+    return uncovered
+
+
 def _find_path(
     edges: list[dict],
     src: str,

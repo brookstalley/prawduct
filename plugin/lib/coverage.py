@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 from .change_log import CHANGE_LOG_REL_PATH, parse_change_log
-from .core import read_str_yaml_key
+from .core import read_str_yaml_key, suite_coupled_prefixes
 
 _BASE_BRANCH_KEY = "base_branch"
 #: The last-resort candidate: a COMMIT relative to HEAD, not a branch. It moves
@@ -641,7 +641,8 @@ def diagnose_base_advance_transfer(
     # transfer the three conditions would have granted, never grant one they
     # would not. It is the store, not the branch, that makes it necessary: every
     # worktree of the clone appends to the same file, and each surviving
-    # endpoint costs a git call below.
+    # endpoint costs a tree comparison below — one line of a single batched git
+    # call since #937, so no subprocess, but git's tree walks still grow with it.
     #
     # It is close to necessary and deliberately not exactly so. A fact on the
     # path from b' to h' spans a sub-interval, so its ``files_changed`` sits
@@ -675,14 +676,21 @@ def diagnose_base_advance_transfer(
         prior_bases = [tree for tree in prior_bases if tree not in pruned]
         prior_heads = [tree for tree in prior_heads if tree not in pruned]
     # `None` from `missing_objects` means git could not answer the batch; the
-    # per-candidate diffs below then meet any absent tree and degrade, which
+    # comparisons below then meet any absent tree and degrade, which
     # is the right reading when nothing could tell absence from failure.
 
-    # Condition 2, one pathspec-limited diff per distinct endpoint: a candidate
-    # endpoint survives only when it agrees with the required span's endpoint on
-    # EVERY file the branch changed. Each candidate list is already distinct and
-    # each is asked about ONE anchor, so there is nothing to memoize — an
-    # earlier version cached on (candidate, anchor) and could never hit.
+    # Condition 2: a candidate endpoint survives only when it agrees with the
+    # required span's endpoint on EVERY file the branch changed. The question
+    # is one pathspec-limited diff per (candidate, anchor) pair, and there is
+    # nothing to memoize within a call — each candidate list is already
+    # distinct and each is asked about ONE anchor (an earlier version cached on
+    # (candidate, anchor) and could never hit). What grew was the SUBPROCESS
+    # count, one per distinct endpoint in a store every worktree appends to
+    # (#937: ~140 diffs, ~2.9 s of a warm Stop). So every pair, heads and bases
+    # alike, goes to git in ONE `diff-tree --stdin` (`evidence.tree_diffs`):
+    # the comparison stays git's own, modes included, and a pair it cannot
+    # answer is re-asked the slow way and degrades exactly as before. Nothing
+    # is persisted, so there is no memo key to get wrong.
     # A path set large enough to overflow git's argv makes the diff fail, which
     # reads as "could not be computed" and denies, the same direction as every
     # other failure here.
@@ -692,6 +700,14 @@ def diagnose_base_advance_transfer(
     def _unresolved(*trees: str) -> None:
         unresolved.extend(t for t in trees if t not in unresolved)
 
+    asked = [
+        (candidate, anchor)
+        for candidates, anchor in ((prior_heads, head_tree), (prior_bases, base_tree))
+        for candidate in candidates
+        if candidate != anchor
+    ]
+    answers = evidence.tree_diffs(project_dir, asked, paths) if asked else {}
+
     def _survivors(candidates: list[str], anchor: str) -> list[str]:
         nonlocal degraded
         kept = []
@@ -699,9 +715,7 @@ def diagnose_base_advance_transfer(
             if candidate == anchor:
                 kept.append(candidate)
                 continue
-            differing = evidence.tree_diff(
-                project_dir, candidate, anchor, paths=paths
-            )
+            differing = answers[(candidate, anchor)]
             if differing is None:
                 degraded = degraded or "a candidate tree could not be diffed"
                 _unresolved(candidate, anchor)
@@ -1000,6 +1014,278 @@ def _format_branch_spend(tally: dict, n: int) -> str:
         f", costing {cost} "
         f"(this branch's own rounds{partial}, not a repo-wide median)"
     )
+
+
+#: How many paths each cause names before eliding the rest with a count.
+_CAUSE_PATHS_SHOWN = 3
+
+
+def _uncommitted_paths(
+    project_dir: Path,
+) -> "tuple[list[str], list[str], list[str]] | str":
+    """``(uncommitted, untracked, index_deleted)`` — every path the working
+    tree holds against HEAD, tracked edits and untracked files alike; the
+    untracked subset on its own; and the paths the index has deleted; or the
+    failure reason as a string.
+
+    Untracked files count because both evidence readers capture them: the
+    Stop gate's target tree holds them, and a suite run records the tree it
+    met with them in it. The two subsets are kept apart because ``git stash
+    push -- <path>`` refuses both: a path git does not track without
+    ``--include-untracked``, and a path the index has deleted (``git rm``, the
+    old name of a ``git mv``) under any flag — so a remedy naming one of those
+    has to set the whole tree aside instead.
+
+    ``--no-renames``: porcelain ``diff`` honours ``diff.renames`` (on by
+    default), which would list a staged ``git mv a.py b.py`` as ``b.py`` alone,
+    and a remedy built from that list would leave the staged deletion of
+    ``a.py`` behind, so the tree would still not meet HEAD."""
+    from . import evidence  # noqa: PLC0415 -- lazy, as this module's other evidence imports are
+
+    rc, out, err = evidence.run_git(
+        project_dir, "diff", "--name-only", "--no-renames", "-z", "HEAD"
+    )
+    if rc != 0:
+        return f"uncommitted paths unreadable ({err.strip()[:80]})"
+    tracked = [p for p in out.split("\0") if p]
+    rc, out, err = evidence.run_git(
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if rc != 0:
+        return f"untracked paths unreadable ({err.strip()[:80]})"
+    untracked = [p for p in out.split("\0") if p and p not in tracked]
+    rc, out, err = evidence.run_git(
+        project_dir, "diff", "--cached", "--name-only", "--no-renames",
+        "--diff-filter=D", "-z", "HEAD",
+    )
+    if rc != 0:
+        return f"index deletions unreadable ({err.strip()[:80]})"
+    index_deleted = [p for p in out.split("\0") if p]
+    return tracked + untracked, untracked, index_deleted
+
+
+def explain_uncovered(
+    project_dir: Path,
+    facts: "list[dict] | None",
+    base_tree: str,
+    head_tree: str,
+    merge_base: str,
+    diff_fn,
+    *,
+    target: str = "head",
+    tally: "dict | None" = None,
+) -> dict:
+    """Why the branch's span is uncovered — the explanation both review gates
+    render as one ``CAUSE:`` line (:func:`format_uncovered_cause`).
+
+    An ``uncovered`` verdict is one word for several states with different
+    remedies: the base advanced since the branch's last review, the branch's
+    own committed head changed since it, an uncommitted file defeats the
+    suite match the base-advance transfer needs, or the branch was never
+    reviewed. This names which hold. It is advice about a verdict already
+    reached and never an input to one.
+
+    ``base_tree`` is the merge-base tree, ``head_tree`` is ``HEAD^{tree}`` —
+    the committed head for both gates, so committed change and uncommitted
+    change are reported apart. ``target`` is the tree the calling gate
+    composes to and decides which uncommitted paths matter: ``"working"``
+    (the Stop gate, whose span holds them) keeps the judgeable ones;
+    ``"head"`` (the PR gate, which never reads them) keeps the suite-coupled
+    ones, because those are what make a suite run in this tree fail to meet
+    HEAD.
+
+    ``tally`` is :func:`count_branch_rounds`' result when the caller already
+    holds it, so the lineage walk is paid once per gate call; it is computed
+    here otherwise. The newest attributed round is the branch's last review.
+
+    Returns::
+
+        {"status": "explained" | "no-branch-review" | "unavailable",
+         "reason": str,                    # non-empty only when unavailable
+         "last_review": fact_id | None,
+         "base_moved": bool,
+         "head_changed": [judgeable files],
+         "uncommitted": [paths], "untracked": [paths],
+         "index_deleted": [paths],      # subsets of uncommitted
+         "merge_base": str}             # absent when unavailable
+
+    **``base_moved`` asks lineage, not trees.** The review's anchor commit
+    either contains today's merge-base or it does not; when it does not, the
+    base advanced into the branch after the review. Comparing the review's
+    ``base_tree`` to the merge-base tree would call every chunk review — whose
+    base is a mid-branch tree — a base advance.
+
+    **``head_changed`` excludes what the advance brought in.** After a base
+    merge, HEAD differs from the reviewed head by the advance's own files too;
+    those are not the branch's change, so when the base moved the list is
+    narrowed to files the current branch diff holds.
+
+    Never raises: advice fails soft, and degrades to ``unavailable`` with a
+    reason rather than to silence — a missing line reads as "no cause", which
+    is the one thing it must not say.
+    """
+    try:
+        return _explain_uncovered(
+            project_dir, facts, base_tree, head_tree, merge_base, diff_fn,
+            target=target, tally=tally,
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never crash the gate that renders it
+        return _unexplained(f"explanation crashed: {exc!r}")
+
+
+def _unexplained(reason: str) -> dict:
+    return {
+        "status": "unavailable",
+        "reason": reason,
+        "last_review": None,
+        "base_moved": False,
+        "head_changed": [],
+        "uncommitted": [],
+        "untracked": [],
+        "index_deleted": [],
+    }
+
+
+def _explain_uncovered(
+    project_dir, facts, base_tree, head_tree, merge_base, diff_fn, *, target, tally
+) -> dict:
+    from . import coverage_algebra, evidence, gitstate  # noqa: PLC0415 -- lazy, as this module's other evidence imports are
+
+    if not isinstance(facts, list):
+        return _unexplained("the evidence store did not read")
+    if not base_tree or not head_tree:
+        return _unexplained("the span's endpoints are unresolved")
+    if tally is None:
+        tally = count_branch_rounds(project_dir, facts, merge_base)
+    if not tally or tally.get("status") != "counted":
+        return _unexplained((tally or {}).get("reason", "branch rounds uncounted"))
+
+    dirty = _uncommitted_paths(project_dir)
+    if isinstance(dirty, str):
+        return _unexplained(dirty)
+    changed, untracked, index_deleted = dirty
+    if target == "working":
+        uncommitted = coverage_algebra.judgeable_files(changed)
+    else:
+        uncommitted = coverage_algebra.suite_coupled_files(
+            changed, suite_coupled_prefixes(project_dir / ".prawduct")
+        )
+    explained = {
+        "status": "no-branch-review",
+        "reason": "",
+        "last_review": None,
+        "base_moved": False,
+        "head_changed": [],
+        "uncommitted": uncommitted,
+        "untracked": [p for p in untracked if p in uncommitted],
+        "index_deleted": [p for p in index_deleted if p in uncommitted],
+        "merge_base": merge_base,
+    }
+
+    reviews = tally.get("reviews") or []
+    if not reviews:
+        return explained
+    last_id = reviews[-1].get("id")
+    fact = next(
+        (f for f in reversed(facts) if f.get("kind") == "review" and f.get("id") == last_id),
+        None,
+    )
+    body = (fact or {}).get("body") or {}
+    anchor = evidence.review_anchor(body)
+    reviewed_head = body.get("head_tree")
+    if not gitstate.is_object_id(anchor) or not gitstate.is_object_id(reviewed_head):
+        return _unexplained(f"review {last_id} carries no readable anchor")
+    if not gitstate.is_object_id(merge_base):
+        return _unexplained("no merge-base to compare the review against")
+
+    rc, _out, err = evidence.run_git(
+        project_dir, "merge-base", "--is-ancestor", merge_base, anchor
+    )
+    if rc not in (0, 1):
+        return _unexplained(f"review {last_id}'s lineage unreadable ({err.strip()[:80]})")
+    base_moved = rc == 1
+
+    head_changed: list[str] = []
+    if reviewed_head != head_tree:
+        since = diff_fn(reviewed_head, head_tree)
+        if since is None:
+            return _unexplained(f"diff since review {last_id} unreadable")
+        head_changed = coverage_algebra.judgeable_files(since)
+        if base_moved and head_changed:
+            branch = diff_fn(base_tree, head_tree)
+            if branch is None:
+                return _unexplained("the branch's own diff is unreadable")
+            own = set(branch)
+            head_changed = [p for p in head_changed if p in own]
+
+    explained.update(
+        {
+            "status": "explained",
+            "last_review": last_id,
+            "base_moved": base_moved,
+            "head_changed": sorted(head_changed),
+        }
+    )
+    return explained
+
+
+def _shown(paths: "list[str]") -> str:
+    head = ", ".join(paths[:_CAUSE_PATHS_SHOWN])
+    if len(paths) > _CAUSE_PATHS_SHOWN:
+        head += f" (+{len(paths) - _CAUSE_PATHS_SHOWN} more)"
+    return head
+
+
+def format_uncovered_cause(explained: "dict | None", *, gate: str) -> str:
+    """The one ``CAUSE:`` line both review gates print directly after their
+    uncovered line. ``gate`` is ``"pr"`` or ``"stop"``; it changes only what
+    the uncommitted cause says, because the two gates read those paths
+    differently — the PR gate composes to HEAD and ignores them, the Stop
+    gate composes to the working tree and judges them.
+
+    Causes in a fixed order, each that holds, up to three paths each: the
+    committed head changed since the last review; the base advanced since it;
+    paths are uncommitted; no review on this branch. When none holds — the
+    newest review stands at this HEAD, the base unmoved, nothing uncommitted —
+    the line says the gap is earlier on the branch rather than saying nothing.
+    """
+    explained = explained or {}
+    status = explained.get("status")
+    if status not in ("explained", "no-branch-review"):
+        return f"CAUSE: unavailable ({explained.get('reason') or 'no explanation'})."
+    review = explained.get("last_review")
+    head_changed = explained.get("head_changed") or []
+    uncommitted = explained.get("uncommitted") or []
+    causes: list[str] = []
+    if status == "explained" and head_changed:
+        causes.append(f"committed head changed since review {review}: {_shown(head_changed)}")
+    if status == "explained" and explained.get("base_moved"):
+        moved = f"base advanced since review {review}"
+        if head_changed:
+            moved += " — the branch's own diff also changed, so the transfer cannot apply"
+        causes.append(moved)
+    if uncommitted:
+        if gate == "stop":
+            causes.append(f"uncommitted: {_shown(uncommitted)} (in this gate's span)")
+        else:
+            causes.append(
+                f"uncommitted: {_shown(uncommitted)} (not part of the PR candidate, "
+                "and the gate ignores them — but a suite run in this tree vouches "
+                "for the working tree, not HEAD)"
+            )
+    if status == "no-branch-review":
+        merge_base = explained.get("merge_base") or ""
+        causes.append(
+            f"no review on this branch since {merge_base[:12] or 'the merge-base'}"
+        )
+    if not causes:
+        return (
+            f"CAUSE: review {review} stands at this HEAD with the base unmoved and "
+            "nothing uncommitted, so the gap is earlier on the branch — an interval "
+            "before that review that no review spans, or a review whose scope missed "
+            "a file its interval changed."
+        )
+    return "CAUSE: " + "; ".join(causes) + "."
 
 
 def resolve_merge_base_tree(project_dir: Path) -> dict:

@@ -1519,8 +1519,9 @@ def tree_diff(
     ``paths`` narrows the question to a pathspec: *do these two trees differ on
     THESE files?* Asked of a whole tree the answer costs a full tree walk; asked
     of a handful of paths it costs a pruned one, which is what makes a per-file
-    equality check affordable across many candidate trees
-    (``coverage.diagnose_base_advance_transfer``). The comparison stays git's
+    equality check affordable across many candidate trees — asked of many pairs
+    at once through :func:`tree_diffs`, the batched form
+    ``coverage.diagnose_base_advance_transfer`` uses. The comparison stays git's
     own, so a mode-only change (``chmod +x``, a file becoming a symlink at the
     same blob) still reports as a difference — the fail-OPEN that a
     ``(path, object id)`` comparison would introduce, and that
@@ -1529,9 +1530,10 @@ def tree_diff(
     **A path this function reports must be a path it can be asked back about,
     and two separate git conventions break that round trip.** Both matter here
     because the returned list becomes the pathspec of the next call
-    (``coverage.diagnose_base_advance_transfer`` asks "do these trees differ on
-    the files you just told me changed?"), and both are answered at this
-    boundary rather than by each caller.
+    (``coverage.diagnose_base_advance_transfer`` asks :func:`tree_diffs` "do
+    these trees differ on the files you just told me changed?", with the same
+    ``-z`` and ``:(literal)``), and both are answered at this boundary rather
+    than by each caller.
 
     - ``-z``, so paths come back RAW. ``--name-only`` alone honours
       ``core.quotepath``, which is on by default, so a non-ASCII filename is
@@ -1571,6 +1573,106 @@ def tree_diff(
     if rc != 0:
         return None
     return [path for path in out.split("\0") if path]
+
+
+def tree_diffs(
+    project_dir: Path, pairs: "list[tuple[str, str]]", paths: "list[str]"
+) -> "dict[tuple[str, str], list[str] | None]":
+    """:func:`tree_diff` over many tree pairs and ONE path set, from one
+    ``git diff-tree --stdin`` however many pairs are asked — so a caller
+    comparing N candidate trees against an anchor pays one subprocess, not N
+    (#937: ~140 diffs, ~2.9 s of a warm Stop, growing with the review facts).
+
+    Each pair's answer has :func:`tree_diff`'s shape: the paths that differ,
+    ``[]`` for agreement, ``None`` when it cannot be computed. The comparison
+    is still git's own tree-to-tree diff, so a mode-only change still reports
+    — never ``cat-file --batch-check <tree>:<path>``, which ignores modes and
+    would pass one (fail-open). Plumbing reads none of the porcelain's
+    ``diff.*`` config, so the LIST can differ from :func:`tree_diff`'s where
+    that config applies — ``diff.renames`` pairs a rename into one name where
+    this reports both, ``diff.ignoreSubmodules`` hides a gitlink change this
+    reports — and whether it is empty differs only toward "they differ", the
+    side that denies.
+
+    **A pair git did not answer is asked again the slow way, never read as
+    agreement.** ``diff-tree --stdin`` skips a pair whose tree it cannot read
+    — it prints an error and moves on, exit 0 — so silence is not "no
+    difference". Every pair's answer starts with a header echoing the pair
+    (``<a> <b>\\n``); a pair with no header goes to :func:`tree_diff`, which
+    returns ``None`` for an unreadable tree and attributes a malformed one,
+    exactly as before. So does every pair when the batch as a whole fails or
+    its output cannot be parsed: a miss costs time, never a verdict.
+
+    **Why the parse is unambiguous.** Paths come back raw under ``-z``, and a
+    raw path may hold a newline, so a path must never read as a header. Each
+    reported path is a pathspec path or lies beneath one (``:(literal)``
+    matches a path and the directory it names, never a wildcard), and a header
+    holds neither ``/`` nor ``\\0``. So when no requested path contains a
+    newline, no reported path can begin with a header line: one that is a
+    requested path has no newline to end a header at, and one beneath it has a
+    ``/`` before any newline it could hold. A path set that does contain a
+    newline, or an empty one (which reports every path in the tree), skips the
+    batch and asks per pair — a rare name costs time, not soundness.
+
+    Only well-formed tree ids are sent: a line that is not two object ids is
+    echoed back by git verbatim (it reads as a commit-log query), so a
+    malformed id could forge output. Those pairs go to :func:`tree_diff`,
+    which rejects them with attribution."""
+    unique = list(dict.fromkeys(pairs))
+    answers: "dict[tuple[str, str], list[str] | None]" = {}
+    batch = [
+        pair for pair in unique
+        if gitstate.is_object_id(pair[0]) and gitstate.is_object_id(pair[1])
+    ]
+    if batch and paths and not any("\n" in p for p in paths):
+        rc, out, _err = run_git(
+            project_dir,
+            "diff-tree", "--stdin", "-r", "--name-only", "-z",
+            "--", *(f":(literal){p}" for p in paths),
+            input="".join(f"{a} {b}\n" for a, b in batch),
+            strip=False,
+        )
+        if rc == 0:
+            parsed = _parse_diff_tree_stdin(out, batch)
+            if parsed is not None:
+                answers.update(parsed)
+    for tree_a, tree_b in unique:
+        if (tree_a, tree_b) not in answers:
+            answers[(tree_a, tree_b)] = tree_diff(project_dir, tree_a, tree_b, paths=paths)
+    return answers
+
+
+def _parse_diff_tree_stdin(
+    out: str, batch: "list[tuple[str, str]]"
+) -> "dict[tuple[str, str], list[str]] | None":
+    """Split ``diff-tree --stdin -z --name-only`` output into per-pair path
+    lists. Pairs whose header never appears are left out (the caller re-asks
+    them). ``None`` when the output does not read as headers in input order
+    followed by NUL-terminated paths — then nothing from this batch is
+    trusted."""
+    order = {f"{a} {b}\n": i for i, (a, b) in enumerate(batch)}
+    longest = max(len(header) for header in order)
+    parsed: "dict[tuple[str, str], list[str]]" = {}
+    current: "list[str] | None" = None
+    last = -1
+    pos = 0
+    while pos < len(out):
+        newline = out.find("\n", pos, pos + longest)
+        index = order.get(out[pos:newline + 1]) if newline != -1 else None
+        if index is not None:
+            if index <= last:
+                return None  # out of order or repeated: not the shape asked for
+            last = index
+            current = parsed[batch[index]] = []
+            pos = newline + 1
+            continue
+        end = out.find("\0", pos)
+        if current is None or end == -1:
+            return None  # a path before any header, or one never terminated
+        if end > pos:
+            current.append(out[pos:end])
+        pos = end + 1
+    return parsed
 
 
 def missing_objects(project_dir: Path, object_ids: "list[str]") -> "set[str] | None":
