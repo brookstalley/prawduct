@@ -557,7 +557,12 @@ LAST_MEASURED_TOKENS = {
     # PR section loses the `pr-reviewer` dispatch, its protocol pointer and the concurrency sentence,
     # and names the two gate commands instead; `.gates-waived` loses its `pr` key. A READING;
     # ceiling lowered with it.
-    "methodology/building.md": 5367,
+    # +37 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: the red-baseline step gains
+    # the run on a clean checkout of the merge-base that lets consolidation waive an inherited
+    # failure — the one action the builder owes for the waiver, so it sits at the step that decides
+    # it — and the Modes sentence narrows "alone records resolution facts" to an earlier review's
+    # findings. Nothing another file owns was left to cut; the ceiling rises with the reading.
+    "methodology/building.md": 5404,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -860,7 +865,10 @@ LAST_MEASURED_TOKENS = {
     # -208 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): the boundary stage is `cumulative` alone; the PR
     # review left it. A READING; ceiling lowered with it.
-    "skills/critic/goals-1-3.md": 2493,
+    # +13 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: a test-failure finding lists
+    # its failing ids in `failed_tests`, the input consolidation's inherited-baseline waiver reads.
+    # Priced against the route sums in test_reviewer_payload_budget.py.
+    "skills/critic/goals-1-3.md": 2506,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1064,7 +1072,10 @@ LAST_MEASURED_TOKENS = {
     # -20 on 2026-11-11 (pr-reviewer-fold Chunk 03): the PR review leaves the boundary stage, the
     # ledger paragraph stops saying the PR skill appends `review.pr`, and the PR gate's advisory
     # sentence stops citing the PR reviewer's severity contract. A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 7755,
+    # +71 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: the evidence model gains
+    # the inherited-baseline waiver — the one resolution consolidation writes itself — and the
+    # three sentences saying only a verify pass resolves name it. No reviewer loads this file.
+    "skills/critic/review-cycle.md": 7826,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -3829,7 +3840,8 @@ class TestBuildingMethodology:
         # RAISED 5308 -> 5368 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5368 -> 5375 (critic-trim merged with audit-guidance, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5375 -> 5368 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 5368, f"building.md is ~{tokens} tokens, should be <5368"
+        # RAISED 5368 -> 5405 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 5405, f"building.md is ~{tokens} tokens, should be <5405"
 
 
 # =============================================================================
@@ -5976,7 +5988,8 @@ class TestCriticGoals13:
         # RAISED 2689 -> 2707 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
         # LOWERED 2707 -> 2499 (critic-trim, 2026-11-10) with the reading.
         # LOWERED 2499 -> 2494 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 2494, f"goals-1-3.md is ~{tokens} tokens, should be <2494"
+        # RAISED 2494 -> 2507 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 2507, f"goals-1-3.md is ~{tokens} tokens, should be <2507"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -6572,7 +6585,8 @@ class TestReviewCycle:
         # RAISED 7746 -> 7776 (reviewer-model-cap, 2026-11-11): the `reviewer_model` manifest key —
         # see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 7776 -> 7756 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 7756, f"review-cycle.md is ~{tokens} tokens, should be <7756"
+        # RAISED 7756 -> 7827 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 7827, f"review-cycle.md is ~{tokens} tokens, should be <7827"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

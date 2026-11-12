@@ -72,7 +72,7 @@ retroactivity). Departing from a norm that already governs your change is a reco
 **Establish a clean baseline.** Before the first work cycle of a session:
 
 - *Tests*: `test-status` current is the baseline (exit 0 — don't re-run); else one run of the declared suite, all passing. A delegate skips this, inheriting the main agent's baseline.
-- *A red baseline*: establish whether your work caused it before fixing it. If it predates your work, record it (`test-evidence record --degraded`) and name it in the handoff rather than folding a fix into your diff; if your work caused it, fix it first.
+- *A red baseline*: establish whether your work caused it before fixing it. If it predates your work, record it (`test-evidence record --degraded`) — and once more in a clean checkout of the merge-base (a detached worktree; the store is clone-shared), which lets consolidation waive its BLOCKING finding — and name it in the handoff rather than folding a fix into your diff; if your work caused it, fix it first.
 - *Git state*: Commit or stash unrelated work. Medium+ work gets a feature branch (`feature/...`, `fix/...`) unless `project-preferences.md` allows direct commits.
 - *Canary findings*: Address or explicitly acknowledge each compliance finding in the session briefing.
 
@@ -199,7 +199,7 @@ Every consolidated review appends a fact to a store shared by all worktrees of t
 
 ### Modes
 
-Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and `verify-resolutions` alone records resolution facts.
+Four modes: `chunk`, `final`, `cumulative`, `verify-resolutions`. What each covers — and the default when no rule fires — is `skills/critic/review-cycle.md`, not restated here. Two facts are worth having before you open it: `cumulative` feeds `/prawduct:pr create`'s gate, and only `verify-resolutions` resolves an earlier review's findings.
 
 **The Critic takes minutes, not seconds** (per-mode targets: `review-cycle.md`). Don't poll. While it runs, never edit the reviewed files: `critic-begin` snapshots a tree, so an edit under review voids the review and the suite evidence together, and `test-status` still exits 0. Any tracked edit, the plan included, needs an attestation (`review-cycle.md`). If it fails, tell the user and re-invoke — never write `.critic-findings.json` yourself.
 

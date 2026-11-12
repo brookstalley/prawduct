@@ -4420,6 +4420,238 @@ class TestResolutionFacts:
 
 
 # ---------------------------------------------------------------------------
+# Integration: an inherited red baseline is waived by consolidate (#900)
+# ---------------------------------------------------------------------------
+
+
+class TestFailedTestsOnAFinding:
+    def _with(self, value) -> dict:
+        return _partial("reviewer", "abc", findings=[
+            {"name": "Suite red", "goal": "Nothing Is Broken", "severity": "blocking",
+             "recommendation": "Fix", "failed_tests": value}
+        ])
+
+    @pytest.mark.parametrize("value", [["t1"], ["t1", "t2"], [], None])
+    def test_a_list_of_ids_or_nothing_is_valid(self, value):
+        ok, reason = cc.validate_partial(self._with(value))
+        assert ok, reason
+
+    @pytest.mark.parametrize("value", ["t1", [""], ["t1", "  "], ["t1", 5], {"t1": 1}, 5])
+    def test_anything_else_fails_validation(self, value):
+        ok, reason = cc.validate_partial(self._with(value))
+        assert not ok
+        assert "failed_tests" in reason
+
+    def test_the_ids_reach_the_review_fact(self):
+        partial = self._with(["t1"])
+        (finding,) = cc.merge_findings([partial])
+        assert finding["failed_tests"] == ["t1"]
+        (bare,) = cc.merge_findings([self._with(None)])
+        assert "failed_tests" not in bare
+
+
+class TestAnInheritedFailureIsWaivedByConsolidate:
+    """A branch whose base is already red is not charged a verify round for it.
+
+    The finding stays BLOCKING on the review fact. Consolidate writes a
+    `waived` resolution fact with `origin: inherited-baseline` only when the
+    newest test-run on the merge-base TREE lists every id the finding names —
+    and in every other case writes nothing, so the finding blocks as before.
+    """
+
+    def _blocker(self, tests=("t1",)) -> dict:
+        finding = {"name": "Suite red", "goal": "Nothing Is Broken",
+                   "severity": "blocking", "recommendation": "Fix the failing test",
+                   "files": ["src/app.py"]}
+        if tests is not None:
+            finding["failed_tests"] = list(tests)
+        return finding
+
+    def _branch(self, tmp_path) -> tuple[Path, str]:
+        """`main` is the base; `feat/work` is cut from it. Returns the repo and
+        the merge-base's tree."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        base_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _git(repo, "checkout", "-b", "feat/work", "--quiet")
+        return repo, base_tree
+
+    def _run_on(self, repo, tree, failed_tests=None, **extra) -> str:
+        body = {"tree": tree, "passed": 3, "failed": len(failed_tests or []),
+                "skipped": 0, "duration_seconds": 1.0, "source": "run", **extra}
+        if failed_tests:
+            body["failed_tests"] = list(failed_tests)
+        out = evidence.append_test_run(repo, body)
+        assert out["status"] == "appended", out
+        return out["id"]
+
+    def _review(self, repo, findings) -> tuple[subprocess.CompletedProcess, dict]:
+        (repo / "src/app.py").write_text("x = 2\n")
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        assert manifest["roster"] == ["reviewer"]
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, f"stderr={done.stderr!r}"
+        return done, manifest
+
+    def _waivers(self, repo) -> list[dict]:
+        return [f for f in _store_facts(repo, "resolution")
+                if (f.get("body") or {}).get("origin") == cc.INHERITED_BASELINE_ORIGIN]
+
+    def _commit(self, repo) -> None:
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "the reviewed work", "--quiet")
+
+    def test_a_failure_the_base_run_lists_is_waived_and_the_gate_passes(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        run_id = self._run_on(repo, base_tree, ["t1"])
+        done, manifest = self._review(repo, [self._blocker()])
+
+        review = _store_facts(repo, "review")[-1]
+        (finding,) = review["body"]["findings"]
+        assert finding["severity"] == "blocking"  # the rating stays
+        assert finding["failed_tests"] == ["t1"]
+        assert review["body"]["counts"]["blocking"] == 1
+
+        (waiver,) = self._waivers(repo)
+        rid = manifest["id"]
+        assert waiver["id"] == f"{rid}:{rid}:{finding['fid']}"
+        body = waiver["body"]
+        assert body["finding"] == {"review_id": rid, "fid": finding["fid"]}
+        assert body["disposition"] == "waived"
+        assert body["verified_by"] == rid
+        assert body["at_tree"] == manifest["head_tree"]
+        assert body["base_run"] == run_id
+        assert run_id in body["rationale"] and "t1" in body["rationale"]
+        assert f"waived {finding['fid']}" in done.stderr
+
+        # The builder's carriers do not send it to fix what it did not cause.
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        assert "waived as inherited" in cache["next_action"]
+        assert "0 blocking" in cache["next_action"]
+        assert "must be resolved" not in cache["summary"]
+        assert "waived as inherited" in done.stdout
+
+        self._commit(repo)
+        assert gates.branch_coverage_verdict(repo)["status"] == "covered"
+        assert gates.session_review_verdict(repo)["status"] == "covered"
+        gate = subprocess.run(
+            [sys.executable, str(HOOK), "check-cumulative-critic"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert gate.returncode == 0, f"stdout={gate.stdout!r} stderr={gate.stderr!r}"
+
+    def _assert_no_waiver_and_still_blocks(self, repo, done) -> None:
+        assert self._waivers(repo) == []
+        assert _store_facts(repo, "resolution") == []
+        assert "waived" not in done.stderr
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        assert cache["next_action"].startswith("1 BLOCKING")
+        self._commit(repo)
+        assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
+
+    def test_an_id_the_base_run_lacks_is_not_waived(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker(("t1", "t2"))])
+        self._assert_no_waiver_and_still_blocks(repo, done)
+
+    def test_no_run_on_the_merge_base_tree_waives_nothing(self, tmp_path):
+        repo, _base_tree = self._branch(tmp_path)
+        other = _git(repo, "rev-parse", "HEAD~1^{tree}").stdout.strip()
+        self._run_on(repo, other, ["t1"])  # the control: a red run, on another tree
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done)
+
+    def test_a_newer_green_run_on_the_base_tree_supersedes_an_older_red_one(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        self._run_on(repo, base_tree)  # green, and newer
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done)
+
+    def test_a_finding_naming_no_tests_is_not_waived(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker(tests=None)])
+        self._assert_no_waiver_and_still_blocks(repo, done)
+
+    def test_a_run_on_the_base_head_with_a_different_tree_proves_nothing(self, tmp_path):
+        repo, _base_tree = self._branch(tmp_path)
+        head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+        dirty = _git(repo, "rev-parse", "HEAD~1^{tree}").stdout.strip()
+        self._run_on(repo, dirty, ["t1"], head=head)
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done)
+
+    def test_a_base_run_recorded_by_test_evidence_record_is_the_one_matched(self, tmp_path):
+        """No injected fact: the run `building.md` asks for — `test-evidence
+        record` in a clean checkout of the merge-base, here a detached worktree
+        — is the one the waiver finds, because the store is clone-shared."""
+        repo, base_tree = self._branch(tmp_path)
+        base_wt = tmp_path / "base-wt"
+        _git(repo, "worktree", "add", "--detach", "--quiet", str(base_wt), "main")
+        report = tmp_path / "report.xml"  # outside both checkouts, so not in the tree
+        report.write_text(
+            '<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="s" time="1">'
+            '<testcase classname="c" name="t1"><failure/></testcase>'
+            '<testcase classname="c" name="ok"/></testsuite></testsuites>'
+        )
+        recorded = subprocess.run(
+            [sys.executable, str(HOOK), "test-evidence", "record", "--from-junit", str(report)],
+            cwd=str(base_wt), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=60,
+        )
+        (run,) = evidence.facts_of_kind(evidence.read_facts(repo), "test-run")
+        assert run["body"]["tree"] == base_tree, recorded.stderr
+        (failing,) = run["body"]["failed_tests"]
+
+        self._review(repo, [self._blocker((failing,))])
+        (waiver,) = self._waivers(repo)
+        assert waiver["body"]["base_run"] == run["id"]
+
+    def test_a_newer_narrowed_run_does_not_supersede_the_suite_run(self, tmp_path):
+        """A scratch worktree's run of a few files is not the suite: it must
+        not overrule the base's real run, as the freshness reader ignores it."""
+        repo, base_tree = self._branch(tmp_path)
+        run_id = self._run_on(repo, base_tree, ["t1"])
+        self._run_on(repo, base_tree, narrowed=True, ceiling="pytest tests/x.py")
+        self._review(repo, [self._blocker()])
+        (waiver,) = self._waivers(repo)
+        assert waiver["body"]["base_run"] == run_id
+
+    def test_a_warning_naming_a_base_failure_gets_no_waiver(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        self._review(repo, [{**self._blocker(), "severity": "warning"}])
+        assert self._waivers(repo) == []
+
+    def test_re_running_consolidate_appends_no_second_waiver(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        _, manifest = self._review(repo, [self._blocker()])
+        assert len(self._waivers(repo)) == 1
+        lines_before = len(_store_lines(repo))
+        # Replay the whole consolidation (the crash window): same manifest,
+        # same partial, so the same deterministic ids.
+        _set_marker(repo)
+        (_partials_dir(repo) / "manifest.json").write_text(json.dumps(manifest))
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[self._blocker()])
+        again = _run_consolidate(repo)
+        assert again.returncode == 0, f"stderr={again.stderr!r}"
+        assert len(self._waivers(repo)) == 1
+        assert len(_store_lines(repo)) == lines_before
+        # The replay still tells the builder the finding is waived.
+        assert "waived as inherited" in again.stdout
+
+
+# ---------------------------------------------------------------------------
 # Integration: each appended fact goes onto the notes transport (#1052)
 # ---------------------------------------------------------------------------
 
