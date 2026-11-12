@@ -129,6 +129,11 @@ not change.
     and it answers the rationale `explicit-args full`. `begin_review` reads that rationale from
     `--chosen-by`, which the skill already forwards verbatim. There is no new flag and no new
     skill step.
+  - **Corrected in Chunk 03:** the rest of the bundle rides as `files_context`, not `files_oracle`.
+    The Records Pass rates the oracle at the boundary stage, so handing the bundle over as oracle
+    would have re-rated its records and put its code through a records-only pass. That is the
+    whole-bundle review this span exists to stop buying. Found while writing the protocol: the
+    `begin_review` comment "The Records Pass at `final`/`cumulative` is what rates this set".
   - A bounded delta with no judgeable file meets the existing free-interval refusal (exit 3).
     That is correct: the frontier's edge plus a free edge already compose.
   - The fact also carries `span_reason`: the declined condition's short code when the span is
@@ -227,8 +232,19 @@ are verified as the design's Build shape says. The full suite runs once, on the 
 
 ### Chunk 03: Protocol
 
-- **Description:** The design's Build shape item 3.
+- **Description:** The design's Build shape item 3, without the sweep: the bounded-mode sentence
+  in `review-protocol.md`, the Per-Mode table row and a bounded-repeat paragraph in
+  `review-cycle.md`, the `full` override where the skill and the precedence list name the modes,
+  and the reviewer prompt naming the span and its frontier. The prompt is the code-rendered
+  `Signals:` line, which ends `Span: bounded from <id>` or `Span: full` on a cumulative. It also
+  corrects every sentence Chunk 02 made false by claiming a cumulative spans merge-base...HEAD.
 - **Depends on:** 02
+- **Deliverables:** `plugin/skills/critic/review-protocol.md`, `plugin/skills/critic/review-cycle.md`,
+  `plugin/skills/critic/SKILL.md`, `plugin/methodology/planning.md`, `plugin/skills/pr/SKILL.md`,
+  `plugin/lib/critic_consolidate.py` (`signals_line`, `files_context`), `tests/test_bounded_cumulative.py`.
+- **Done when:** the prose and the code it names are pinned to each other, the budgets that price
+  reviewer payload say what the span cost, and the change is committed. It is reviewed at the plan
+  boundary.
 
 ### Chunk 04: Measure, and the boundary review
 

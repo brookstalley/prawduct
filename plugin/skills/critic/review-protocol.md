@@ -17,7 +17,7 @@ The Critic reviews changes against principles and specifications as a **separate
 **This file serves `final` and `cumulative`.** `chunk` and `verify-resolutions` read `goals-1-3.md` — self-contained for those two, which is why nothing here restates them. Per-mode behavior: `review-cycle.md`.
 
 - **`final`** — coordinator-pattern eligible. Target 4-10 min.
-- **`cumulative`** — the same goals over `merge-base...HEAD`. Required by `/prawduct:pr create`.
+- **`cumulative`** — the same goals over the committed bundle. Required by `/prawduct:pr create`. On `Span: bounded from <id>` your subject is the delta since that clean boundary review; `files_context` (the rest) is read, never rated. Record-lint and `test-status` (a failure is BLOCKING, whatever file) still cover the whole bundle.
 
 **Chunk type axis.** Chunks declare `Type:` (orthogonal to mode); it adjusts per-goal protocol (`cross-checks.md` "Per-Chunk Type Protocol Selector"). Missing/unrecognized → `code`.
 

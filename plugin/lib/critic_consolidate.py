@@ -2184,7 +2184,8 @@ CHUNK_TYPE_DEFAULT_LABEL = "code (default)"
 
 def signals_line(manifest: dict) -> str:
     """The one-line signals summary a coordinator hands each reviewer —
-    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``.
+    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``, then
+    ``· Span: bounded from <review id>`` or ``· Span: full`` on a cumulative.
 
     Rendered FROM the manifest, by code, so no coordinator composes it: the
     freeform ``Signals: [summary]`` it replaces was the one substitution in the
@@ -2197,11 +2198,20 @@ def signals_line(manifest: dict) -> str:
     stage = manifest.get("stage")
     judgeable = manifest.get("judgeable_files")
     chunk_type = manifest.get("chunk_type") or CHUNK_TYPE_DEFAULT_LABEL
-    return (
+    line = (
         f"Stage: {stage if stage in STAGE_VALUES else 'unknown'} · "
         f"Judgeable files: {judgeable if isinstance(judgeable, int) else '?'} · "
         f"Type: {chunk_type}"
     )
+    # A cumulative names its span, so the reviewer knows whether its subject is
+    # the whole bundle or the delta since a boundary review that already rated
+    # the rest. Other modes carry no span and the line is unchanged.
+    span = manifest.get("span")
+    if span == SPAN_BOUNDED:
+        line += f" · Span: bounded from {manifest.get('bounded_from')}"
+    elif span == SPAN_FULL:
+        line += " · Span: full"
+    return line
 
 
 def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
@@ -3832,9 +3842,17 @@ def begin_review(
     # quantifying only over `judgeable_files(files_changed)`, so a subject-set
     # `files_reviewed` still covers every file an edge asks about.
     files_reviewed, files_oracle = split_subject_oracle(files_reviewed)
+    for f in prior_oracle:
+        if f not in files_oracle and f not in files_reviewed:
+            files_oracle.append(f)
     # A bounded cumulative's reviewer reads the rest of the bundle without
-    # rating it: the earlier boundary review rated those files.
+    # rating it: the earlier boundary review rated those files. They ride as
+    # `files_context`, NOT `files_oracle`, because the Records Pass rates the
+    # oracle at the boundary stage; handed over as oracle, the bundle's records
+    # would be re-rated and its code put through a records-only pass, which is
+    # the whole-bundle review this span exists to stop buying.
     bundle_files: "list[str] | None" = None
+    files_context: list[str] = []
     if span == SPAN_BOUNDED:
         bundle_files = evidence.tree_diff(project_dir, bundle_base_tree, head_tree)
         if bundle_files is None:
@@ -3842,10 +3860,9 @@ def begin_review(
                 "status": "error",
                 "reason": f"cannot diff the bundle {bundle_base_tree[:12]}..{head_tree[:12]}",
             }
-        prior_oracle = list(bundle_files)
-    for f in prior_oracle:
-        if f not in files_oracle and f not in files_reviewed:
-            files_oracle.append(f)
+        files_context = [
+            f for f in bundle_files if f not in files_reviewed and f not in files_oracle
+        ]
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
@@ -3982,6 +3999,7 @@ def begin_review(
         manifest["span"] = span
         manifest["bounded_from"] = bounded_from
         manifest["span_reason"] = span_reason
+        manifest["files_context"] = files_context
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
     # line, the review fact, the findings cache, the ledger event and
@@ -4348,6 +4366,10 @@ def validate_manifest(data) -> tuple[bool, str]:
     # the fact and a reader that walks it must not meet a non-string.
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
+    # Read by a bounded cumulative's reviewer, rated by no pass. Typed for the
+    # same reason as the oracle: a reviewer walks it.
+    if data.get("files_context") is not None and not _str_list(data.get("files_context")):
+        return False, "'files_context' must be a list of non-empty strings or null"
     # The chunks the review names and the code's proposal (ST8). Optional, as a
     # manifest restored from before the fields still consolidates (its fact then
     # carries `chunk` alone, which `plan_status.fact_chunks` reads); typed when

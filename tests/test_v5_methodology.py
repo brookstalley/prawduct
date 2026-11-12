@@ -740,7 +740,10 @@ LAST_MEASURED_TOKENS = {
     # restatement to cut. The bullet is one sentence: a blind test found it raises the same
     # planted mistakes as a draft more than twice its size. Priced with the route sums in
     # test_reviewer_payload_budget.py.
-    "skills/critic/review-protocol.md": 3950,
+    # +50 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: the `cumulative` bullet states the bounded span: the subject is the delta, `files_context` is read and never rated,
+    # and record-lint and `test-status` still cover the bundle. Not paid by trimming: without it a bounded reviewer
+    # either re-rates the bundle (the cost the span removes) or drops the test-evidence relay the owner ruled kept.
+    "skills/critic/review-protocol.md": 4000,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -1064,7 +1067,10 @@ LAST_MEASURED_TOKENS = {
     # -20 on 2026-11-11 (pr-reviewer-fold Chunk 03): the PR review leaves the boundary stage, the
     # ledger paragraph stops saying the PR skill appends `review.pr`, and the PR gate's advisory
     # sentence stops citing the PR reviewer's severity contract. A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 7755,
+    # +242 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: the bounded repeat cumulative — its interval row,
+    # the paragraph saying when it bounds and how it falls back, the `full` override, its manifest keys, and the
+    # `cumulative-final` sentence that claimed merge-base...HEAD. No reviewer loads this file.
+    "skills/critic/review-cycle.md": 7997,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1247,7 +1253,9 @@ LAST_MEASURED_TOKENS = {
     # the header scopes `coordinator.md` to it. Not paid by trimming: the concurrency clause is
     # pinned on both dispatch surfaces, and the rest of step 7 is the inline path, which sessions at
     # or below the ceiling still take.
-    "skills/critic/SKILL.md": 3146,
+    # +11 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: the per-mode scope summary's `cumulative` entry
+    # was false once a repeat is bounded; the shortest true one names the delta and the `Span:` signal.
+    "skills/critic/SKILL.md": 3157,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1552,7 +1560,9 @@ LAST_MEASURED_TOKENS = {
     # preference. A READING.
     # +3 on 2026-11-11 (read-cost-review): the Data Model line names the template's Access Paths
     # section. A READING.
-    "methodology/planning.md": 5752,
+    # +17 on 2026-11-11 (bounded-cumulative Chunk 03): `cumulative-final` no longer claims the review spans
+    # merge-base...HEAD, and says why either span covers `final`'s interval. A READING.
+    "methodology/planning.md": 5769,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -5667,7 +5677,8 @@ class TestCriticSkill:
         # LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3869 -> 3864 (pr-reviewer-fold, 2026-11-11) with the reading.
         # RAISED 3864 -> 3951 (read-cost-review, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 3951, f"review-protocol.md is ~{tokens} tokens, should be <3951"
+        # RAISED 3951 -> 4001 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 4001, f"review-protocol.md is ~{tokens} tokens, should be <4001"
 
 
 # =============================================================================
@@ -6236,7 +6247,8 @@ class TestCriticSkillRoutesByMode:
         # see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3089 -> 3147 (reviewer-model-cap, 2026-11-11): the hand-off branch — see
         # LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3147, f"SKILL.md is ~{tokens} tokens, should be <3147"
+        # RAISED 3147 -> 3158 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 3158, f"SKILL.md is ~{tokens} tokens, should be <3158"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6572,7 +6584,8 @@ class TestReviewCycle:
         # RAISED 7746 -> 7776 (reviewer-model-cap, 2026-11-11): the `reviewer_model` manifest key —
         # see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 7776 -> 7756 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 7756, f"review-cycle.md is ~{tokens} tokens, should be <7756"
+        # RAISED 7756 -> 7998 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 7998, f"review-cycle.md is ~{tokens} tokens, should be <7998"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

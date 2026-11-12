@@ -331,8 +331,11 @@ class TestBoundedDispatch:
         assert m["stage"] == "boundary"
         assert m["files_changed"] == ["src/c.py"]
         assert m["files_reviewed"] == ["src/c.py"]
-        # The rest of the bundle is read, not rated.
-        assert {"docs/notes.md", "src/b.py"} <= set(m["files_oracle"])
+        # The rest of the bundle is read, not rated — and not handed over as
+        # oracle, which the Records Pass rates at the boundary stage.
+        assert m["files_context"] == ["docs/notes.md", "src/b.py"]
+        assert not {"docs/notes.md", "src/b.py"} & set(m["files_oracle"])
+        assert m["signals"].endswith(f" · Span: bounded from {fid}")
         assert any(fid in n and "bounded" in n for n in result["notes"]), result["notes"]
 
     def test_the_machine_relays_grade_the_bundle_as_a_full_span_would(self, tmp_path):
@@ -374,6 +377,8 @@ class TestBoundedDispatch:
             "full", None, gates.SPAN_FULL_OVERRIDE
         )
         assert m["base_tree"] == _tree(repo, _merge_base(repo))
+        assert m["files_context"] == []
+        assert m["signals"].endswith(" · Span: full")
         assert any("full" in n and "override" in n for n in result["notes"]), result["notes"]
 
     def test_a_declined_frontier_dispatches_full_with_its_reason(self, tmp_path):
@@ -393,6 +398,7 @@ class TestBoundedDispatch:
         assert cc.begin_review(repo, "chunk", chosen_by="rule-4", force=True)["status"] == "ok"
         m = _manifest(repo)
         assert (m.get("span"), m.get("bounded_from"), m.get("span_reason")) == (None, None, None)
+        assert "files_context" not in m and "Span:" not in m["signals"]
 
 
 class TestTheRecordAndTheGate:
@@ -437,6 +443,12 @@ class TestManifestValidation:
         ok, reason = cc.validate_manifest(m)
         assert not ok and "span" in reason
 
+    def test_a_malformed_context_set_is_refused(self, tmp_path):
+        m = self._valid(tmp_path)
+        m["files_context"] = ["ok.py", ""]
+        ok, reason = cc.validate_manifest(m)
+        assert not ok and "files_context" in reason
+
     def test_bounded_without_its_frontier_is_refused(self, tmp_path):
         m = self._valid(tmp_path)
         m["bounded_from"] = None
@@ -445,7 +457,7 @@ class TestManifestValidation:
 
     def test_a_manifest_from_before_the_fields_still_validates(self, tmp_path):
         m = self._valid(tmp_path)
-        for key in ("span", "bounded_from", "span_reason"):
+        for key in ("span", "bounded_from", "span_reason", "files_context"):
             m.pop(key)
         assert cc.validate_manifest(m) == (True, "")
 
@@ -471,3 +483,36 @@ class TestFullToken:
     def test_plain_cumulative_is_unchanged(self, tmp_path):
         repo, _fid, _t1 = _bounded_repo(tmp_path)
         assert critic_mode.infer_mode(repo, "cumulative") == ("cumulative", "explicit-args")
+
+
+# ---------------------------------------------------------------------------
+# The protocol names what the code renders
+# ---------------------------------------------------------------------------
+
+
+class TestProtocolAgreesWithCode:
+    """The reviewer meets the span through the `Signals:` line (code) and the
+    protocol's `cumulative` bullet (prose); the operator meets the override
+    through the skill and `review-cycle.md`. Each pair is pinned both ways."""
+
+    def _bullet(self) -> str:
+        text = (ROOT / "skills" / "critic" / "review-protocol.md").read_text(encoding="utf-8")
+        (line,) = [ln for ln in text.splitlines() if ln.startswith("- **`cumulative`**")]
+        return line
+
+    def test_the_cumulative_bullet_reads_the_rendered_span(self):
+        rendered = cc.signals_line({"stage": "boundary", "span": cc.SPAN_BOUNDED, "bounded_from": "<id>"})
+        assert rendered.endswith(" · Span: bounded from <id>")
+        assert "`Span: bounded from <id>`" in self._bullet()
+
+    def test_the_cumulative_bullet_names_the_unrated_set_and_the_kept_relays(self):
+        bullet = self._bullet()
+        assert "`files_context`" in bullet and "never rated" in bullet
+        assert "Record-lint" in bullet and "`test-status`" in bullet
+
+    def test_the_override_is_spelled_as_the_code_answers_it(self):
+        cycle = (ROOT / "skills" / "critic" / "review-cycle.md").read_text(encoding="utf-8")
+        skill = (ROOT / "skills" / "critic" / "SKILL.md").read_text(encoding="utf-8")
+        assert f"`{critic_mode.FULL_SPAN_RATIONALE}`" in cycle
+        assert f"cumulative {critic_mode.FULL_SPAN_TOKEN}" in cycle
+        assert f"cumulative [{critic_mode.FULL_SPAN_TOKEN}]" in skill
