@@ -51,7 +51,9 @@ roster role has reported a schema-valid partial at the manifest's dispatch
 commit. Anything else is a no-op naming the missing roles (still in flight)
 or a hard error (malformed / inconsistent / off-protocol). Success appends
 the review fact (skipped when the id already exists — the CRT-4B7X race dies
-here), appends any resolution facts, regenerates ``.critic-findings.json``
+here), appends any resolution facts — a verify pass's, and the
+inherited-baseline waivers consolidation writes itself in every mode
+(:func:`_waive_inherited_failures`) — regenerates ``.critic-findings.json``
 as a derived cache carrying its source ``fact_id`` (D7), anchors the ledger,
 clears the critic-active marker, and removes the partials so every repeat
 call is a clean no-op.
@@ -75,7 +77,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger, model_tier
+from . import coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -815,8 +817,9 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     it. Two reasons not to. The phrasings are an open set, so a parser that
     misses one fails silently in the same direction as the bug. And
     ``data-model.md`` forbids the result outright: a resolution fact requires a
-    ``verify-resolutions`` origin and a pre-existing target finding — minting
-    one from narration would record a judgment nobody made. So nothing is
+    ``verify-resolutions`` origin (or an ``inherited-baseline`` one, backed by a
+    base-tree test run naming every failing id) and a pre-existing target
+    finding — minting one from narration would record a judgment nobody made. So nothing is
     invented here; the pass simply stops being able to claim it finished while a
     blocker it inherited is still outstanding.
 
@@ -885,15 +888,33 @@ def next_action_line(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    waived: "list[str] | None" = None,
 ) -> str:
     """:func:`_next_action_core`'s sentence, ending on :func:`uncertified_clause`
     when ``uncertified`` (the review's mode and the plan's open chunks) says a
     whole-plan review certified nothing. Every arm carries it: a fix round does
-    not change which chunks this review left open."""
+    not change which chunks this review left open.
+
+    ``waived`` names this review's BLOCKING findings consolidate waived as
+    inherited from the base tree. They still count in ``blocking`` on the
+    fact, so they are taken out here and named first: told to fix them, the
+    builder would buy the very round the waiver exists to save. Its one caller
+    is :func:`fact_to_cache_record`, which derives the list from the store
+    (:func:`dispositions.inherited_waivers`); the relayed ``NEXT-ACTION:`` line
+    is that record's own ``next_action``, so no caller computes it twice."""
+    if waived:
+        blocking = max(blocking - len(waived), 0)
     line = _next_action_core(
         fact_id, blocking, warning, note, price_sentence, carried, span,
         observations, cost, rides_next_review,
     )
+    if waived:
+        line = (
+            f"{len(waived)} BLOCKING finding(s) ({', '.join(waived)}) failed on"
+            " the merge-base tree too and are waived as inherited (`origin:"
+            " inherited-baseline` resolution facts); no fix or verify round is"
+            " owed for them. " + line
+        )
     if uncertified:
         line += " " + uncertified_clause(*uncertified)
     return line
@@ -3270,7 +3291,9 @@ def begin_review(
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
     # Findings a THIS-mode review could still resolve. Only verify-resolutions
-    # records resolution facts, so it is the only mode that can carry a nonzero
+    # records resolution facts for an EARLIER review's findings (a review's own
+    # inherited-baseline waivers are written when it consolidates), so it is
+    # the only mode that can carry a nonzero
     # value; for every other mode there is nothing outstanding that running it
     # would clear. Read by the free-interval refusal below, where it is the
     # conjunct that keeps the gate from deadlocking.
@@ -4171,7 +4194,8 @@ def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
     Schema: ``{role, goals, dispatch_id, commit_reviewed, model?,
-    duration_seconds?, findings:[{name, goal, severity, recommendation, files?}],
+    duration_seconds?, findings:[{name, goal, severity, recommendation, files?,
+    failed_tests?}],
     resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
     load-bearing. ``severity`` must be ``blocking`` or ``warning`` so a typo
@@ -4245,6 +4269,18 @@ def validate_partial(data) -> tuple[bool, str]:
         # META-finding otherwise bricked every review).
         if "files" in f and not isinstance(f["files"], list):
             return False, f"finding[{idx}] 'files' must be a list"
+        # The test ids a test-failure finding rates, which consolidate matches
+        # against the base tree's run to waive an inherited failure. Unlike
+        # ``files`` a bad element is refused, not dropped: a dropped id would
+        # shrink the set the waiver must cover, so the waiver could fire on
+        # less than the reviewer named. Absent, null and ``[]`` all mean "names
+        # no test".
+        tests = f.get("failed_tests")
+        if tests is not None and not _str_list(tests):
+            return False, (
+                f"finding[{idx}] 'failed_tests' must be a list of non-empty "
+                "strings (the failing ids from .test-evidence.json)"
+            )
     ok, why = _validate_observations(data.get("observations"))
     if not ok:
         return False, why
@@ -4918,8 +4954,9 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     with sequential ``fid``s assigned in merge order (deterministic: roster
     order × each partial's findings order).
 
-    Each partial finding ``{name, goal, severity, recommendation, files?}``
-    maps to ``{fid, goal, severity, title, recommendation, files?}`` — the
+    Each partial finding ``{name, goal, severity, recommendation, files?,
+    failed_tests?}`` maps to ``{fid, goal, severity, title, recommendation,
+    files?, failed_tests?}`` — the
     reviewer's ``name`` becomes the fact ``title`` (the field the coverage
     algebra surfaces for unresolved blockers; the derived cache renders it
     as the record ``summary``). The ``fid`` is what resolution facts join on
@@ -4945,6 +4982,10 @@ def merge_findings(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            tests = [t.strip() for t in (f.get("failed_tests") or [])]
+            if tests:
+                # What `_waive_inherited_failures` matches against the base run.
+                entry["failed_tests"] = tests
             if partial.get("role") == RECORD_LINT_SOURCE:
                 entry["source"] = RECORD_LINT_SOURCE
             existing = merged.get(key)
@@ -5027,7 +5068,9 @@ def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
             continue
         identity = _lint_identity(finding)
         ref = f"{key[0]}/{key[1]}"
-        if resolutions.get(key) == "waived":
+        if resolutions.get(key) in (
+            dispositions.STATE_WAIVED, dispositions.STATE_WAIVED_INHERITED
+        ):
             answered["blocking"].setdefault(
                 identity, f"already waived by a resolution of {ref}"
             )
@@ -5787,7 +5830,9 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     # than the one it would displace, since they would anchor on it.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
-    atomic_write_text(candidate, json.dumps(fact_to_cache_record(fact, carried=carried), indent=2))
+    atomic_write_text(candidate, json.dumps(
+        fact_to_cache_record(fact, carried=carried, store={"facts": usable}), indent=2
+    ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
         return {"status": "invalid", "review": review,
@@ -5804,12 +5849,23 @@ def fact_to_cache_record(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    *,
+    store: dict,
+    not_waived: "dict[str, str] | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
     and briefings read it for content; no gate reads it). Carries the source
     ``fact_id`` so staleness is detectable and the verify-resolutions
     dispatch can locate its anchor fact.
+
+    ``store`` (required: a :func:`evidence.read_facts` answer, or ``{"facts":
+    [...]}``) is where the review's inherited-baseline waivers are READ from
+    (:func:`dispositions.inherited_waivers`), never handed in. Consolidation
+    and the ingest path (:func:`derive_branch_cache`) both render through here,
+    so a clone that ingested the review shows the same waivers the reviewing
+    clone wrote: each waived entry is marked ``waived: inherited-baseline``,
+    and the summary and ``next_action`` stop counting it as open.
 
     ``price_sentence`` rides through to :func:`next_action_line`. It is a
     parameter rather than a ledger read here because this function is a pure
@@ -5820,6 +5876,7 @@ def fact_to_cache_record(
     builder who met them saying different things about the branch would have no
     way to tell which was computed."""
     body = fact.get("body") or {}
+    waived = dispositions.inherited_waivers(store, fact)
     findings = []
     for f in body.get("findings", []):
         entry = {
@@ -5834,6 +5891,16 @@ def fact_to_cache_record(
         # Additive key; the schema validator checks required fields only and
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
+        if f.get("fid") in waived:
+            # So a verify reviewer reading this as the prior record can tell a
+            # waived blocker from an open one. Additive, like `fix_cost`.
+            entry["waived"] = INHERITED_BASELINE_ORIGIN
+        elif f.get("fid") in (not_waived or {}):
+            # Why a finding that named failing tests was not waived as
+            # inherited. Only the consolidating clone knows it (the reason is
+            # computed from its store and git, never persisted), so an
+            # ingesting clone's render simply lacks the key. Additive.
+            entry["not_waived"] = not_waived[f["fid"]]
         findings.append(entry)
     # The builder's only surface for these. Observation ids are assigned HERE,
     # at consolidation — the reviewer wrote prose and never saw an `O-n` — so
@@ -5854,7 +5921,7 @@ def fact_to_cache_record(
     blocking = counts.get("blocking", 0)
     warning = counts.get("warning", 0)
     note = counts.get("note", 0)
-    if blocking:
+    if blocking - len(waived) > 0:
         verdict = "Blocking findings must be resolved before proceeding."
     else:
         verdict = "Changes ready to proceed."
@@ -5891,6 +5958,7 @@ def fact_to_cache_record(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
             cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
+            waived=waived,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -6261,6 +6329,476 @@ def _tree_changed_line(body: dict) -> str:
     return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
 
 
+#: The ``origin`` of a resolution fact consolidate writes for a BLOCKING
+#: test-failure finding the base tree already failed — the one resolution not
+#: written by a ``verify-resolutions`` pass. Its home, and its one reader, is
+#: ``dispositions`` (:func:`dispositions.resolution_detail_index`).
+INHERITED_BASELINE_ORIGIN = dispositions.INHERITED_BASELINE_ORIGIN
+
+
+def _inherited_baseline(project_dir: Path, manifest: dict, store: dict) -> dict:
+    """The tree before the reviewed work, and what its suite run and the
+    reviewed tree's own run say — or why neither can be trusted.
+
+    Returns ``{"reason": str}`` when no waiver may fire, else ``{"run",
+    "base_tree", "inherited", "new"}``: the base-tree run's id, the ids it
+    failed among the reviewed tree's failures and the findings' named ids, and
+    the reviewed tree's failures the base did NOT have (the ones this branch
+    caused).
+
+    The base is ``coverage.resolve_merge_base_tree``'s — the one prelude every
+    gate anchors its span with — and it is refused unless it is genuinely
+    BEFORE the reviewed work. A merge-base is "the tree before this work" only
+    when the work is not in it, so three answers are refused: the moving
+    ``HEAD~1`` fallback (the base is then this branch's own previous commit); a
+    merge-base that is not an ancestor of (or equal to) the review interval's
+    own base commit (work committed straight onto the base branch, where the
+    merge-base is HEAD, the base tree holds the reviewed commits, and the
+    builder's own red record reads as the base's run); and a base tree equal to
+    the reviewed tree. Uncommitted work on a branch cut from its base is the
+    ordinary case and passes: the merge-base is HEAD, but the interval starts
+    there too, so nothing the review judged is in the base tree.
+
+    The reviewed tree's own newest suite run must list EVERY failure (the
+    100-id cap fails closed), because the caller also checks that each failure
+    this branch caused is still answered by an unwaived finding: a reviewer
+    that named only the inherited subset of a mixed red suite must not have the
+    whole suite waived.
+    """
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return {"reason": f"no merge-base to compare against ({resolved['reason']})"}
+    if resolved.get("moving"):
+        return {"reason": (
+            f"the base resolved to the moving {coverage.MOVING_FALLBACK_BASE} "
+            "fallback (no origin/main, main or base_branch:), so the \"base\" is "
+            "this branch's own previous commit — set base_branch: in "
+            ".prawduct/project-state.yaml"
+        )}
+    merge_base = resolved["merge_base"]
+    interval_base = manifest.get("base_commit")
+    if not isinstance(interval_base, str) or not interval_base:
+        return {"reason": (
+            "the review's interval names no base commit, so nothing shows the "
+            "merge-base is before the reviewed work"
+        )}
+    rc, _, _ = evidence.run_git(
+        project_dir, "merge-base", "--is-ancestor", merge_base, interval_base
+    )
+    if rc != 0:
+        rc_head, head, _ = evidence.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+        where = (
+            "the merge-base is HEAD itself"
+            if rc_head == 0 and head.strip() == merge_base
+            else "the merge-base"
+        )
+        return {"reason": (
+            f"{where} ({merge_base[:12]}), and this review's interval starts "
+            f"before it at {interval_base[:12]}: commits the review judged sit on "
+            f"the base branch {resolved['base_branch']}, so the base tree holds "
+            "the work"
+        )}
+    base_tree = resolved["tree"]
+    if base_tree == manifest["head_tree"]:
+        return {"reason": (
+            f"the merge-base tree {base_tree[:12]} is the reviewed tree, so a "
+            "run on it is a run of this work"
+        )}
+    head_run, why = evidence.newest_suite_run(store, manifest["head_tree"])
+    if head_run is None:
+        return {"reason": f"the reviewed tree's own run cannot vouch: {why}"}
+    head_failed, complete = evidence.run_failed_tests(head_run)
+    if not complete:
+        return {"reason": (
+            f"the reviewed tree's run {head_run['id']} failed "
+            f"{(head_run.get('body') or {}).get('failed')} test(s) but lists "
+            f"{len(head_failed)} id(s) (the 100-id cap) — the unlisted ones may "
+            "be new"
+        )}
+    review = next(
+        (r for r in evidence.facts_of_kind(store, "review") if r.get("id") == manifest["id"]),
+        {},
+    )
+    named = {
+        t for f in coverage_algebra.blocking_findings(review)
+        for t in (f.get("failed_tests") or []) if isinstance(t, str)
+    }
+    run_id, inherited, why = evidence.inherited_failures(
+        store, base_tree, head_failed | named
+    )
+    if run_id is None:
+        # Recording the base run now does not reach back: a waiver is written
+        # only at the consolidation of the review whose finding it waives.
+        return {"reason": (
+            f"no base-tree run to match: {why}. A base run recorded after this "
+            "review serves only later reviews' findings; this one clears through "
+            "verify-resolutions"
+        )}
+    return {
+        "run": run_id,
+        "base_tree": base_tree,
+        "inherited": inherited,
+        "new": head_failed - inherited,
+    }
+
+
+def _waive_inherited_failures(
+    project_dir: Path, manifest: dict, review_id: str, review_anchor: "str | None",
+    refusals: "dict[str, str] | None" = None,
+) -> "list[str] | None":
+    """Waive each BLOCKING finding of ``review_id`` whose failing tests the base
+    tree already failed. Returns the waived fids, or ``None`` when an append
+    failed (the caller fails closed and a retry heals it).
+
+    A finding qualifies only when it is BLOCKING, names a non-empty
+    ``failed_tests``, EVERY id it names failed in :func:`_inherited_baseline`'s
+    base-tree run too, and every failure of the reviewed tree's own run that
+    the base did NOT have is named by a BLOCKING finding of this review that
+    stays unwaived. The finding stays BLOCKING on the review fact; what is
+    written is a ``waived`` resolution fact citing that run (``base_run``), so
+    the record shows both the rating and why it no longer gates. Its id is
+    ``{review_id}:{review_id}:{fid}`` — the resolution-id shape with the review
+    as its own verifier — so a re-run finds it held and appends nothing.
+
+    A finding that named tests and was NOT waived gets one line saying why. It
+    goes into ``refusals`` (fid → reason), which the caller renders onto that
+    finding's ``.critic-findings.json`` entry as ``not_waived`` — the surface a
+    builder reads after any roster, where stderr is lost once consolidation
+    runs inside SubagentStop — and is mirrored on stderr for the log.
+
+    Runs in every mode, after the review fact is appended, because the review
+    is what the waiver resolves: no separate round is owed for a failure the
+    branch did not cause.
+    """
+    store = evidence.read_facts(project_dir)
+    fact = next(
+        (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == review_id),
+        None,
+    )
+    if fact is None:
+        return []
+    candidates = [
+        f for f in coverage_algebra.blocking_findings(fact)
+        if isinstance(f.get("fid"), str)
+        and isinstance(f.get("failed_tests"), list)
+        and f["failed_tests"]
+    ]
+    if not candidates:
+        return []
+    held = {
+        f.get("id"): f for f in evidence.facts_of_kind(store, "resolution")
+    }
+    waived: list[str] = []
+    pending: list[dict] = []
+    for finding in candidates:
+        res_id = f"{review_id}:{review_id}:{finding['fid']}"
+        if res_id in held:
+            _attach_note(project_dir, held[res_id], review_anchor)
+            waived.append(finding["fid"])
+        else:
+            pending.append(finding)
+    if not pending:
+        return waived
+
+    def refuse(fid: str, reason: str) -> None:
+        if refusals is not None:
+            refusals[fid] = reason
+        print(
+            f"critic-consolidate: {fid} names failing tests but was not waived "
+            f"as inherited — {reason}.",
+            file=sys.stderr,
+        )
+
+    base = _inherited_baseline(project_dir, manifest, store)
+    if "reason" in base:
+        for finding in pending:
+            refuse(finding["fid"], base["reason"])
+        return waived
+    base_run, inherited = base["run"], base["inherited"]
+    eligible: list[tuple[dict, list[str]]] = []
+    unwaived_names: set[str] = set()
+    for finding in pending:
+        ids = [t for t in finding["failed_tests"] if isinstance(t, str)]
+        missing = [t for t in ids if t not in inherited]
+        if ids and not missing:
+            eligible.append((finding, ids))
+            continue
+        unwaived_names.update(ids)
+        refuse(finding["fid"], (
+            f"{', '.join(missing) or 'its ids'} did not fail in the newest suite "
+            f"run on the merge-base tree {base['base_tree'][:12]} (test-run "
+            f"{base_run}; a newer green run supersedes a red one, and an id past "
+            "its 100-id cap is never matched)"
+        ))
+    unanswered = sorted(base["new"] - unwaived_names)
+    if unanswered:
+        for finding, _ in eligible:
+            refuse(finding["fid"], (
+                f"the reviewed tree's run also fails {', '.join(unanswered)}, "
+                "which the base did not, and no unwaived BLOCKING finding names "
+                "them — a waiver would let them ride"
+            ))
+        return waived
+    for finding, ids in eligible:
+        fid = finding["fid"]
+        named = ", ".join(ids)
+        body = {
+            "finding": {"review_id": review_id, "fid": fid},
+            "disposition": "waived",
+            "verified_by": review_id,
+            "at_tree": manifest["head_tree"],
+            "origin": INHERITED_BASELINE_ORIGIN,
+            "base_run": base_run,
+            "rationale": (
+                f"Inherited failure: {named} also failed on the merge-base tree "
+                f"(test-run {base_run}). The finding stays BLOCKING on the "
+                "record; this branch did not cause it, so no fix round is owed."
+            ),
+        }
+        result = evidence.append_fact(
+            project_dir, "resolution", f"{review_id}:{review_id}:{fid}", body
+        )
+        if result["status"] != "appended":
+            print(
+                f"critic-consolidate: could not append the inherited-baseline "
+                f"waiver for {fid} — {result['reason']}",
+                file=sys.stderr,
+            )
+            return None
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
+        print(
+            f"critic-consolidate: waived {fid} as an inherited failure — {named} "
+            f"also failed on the merge-base tree (test-run {base_run}); it stays "
+            "BLOCKING on the record and needs no fix or verify-resolutions round.",
+            file=sys.stderr,
+        )
+        waived.append(fid)
+    return waived
+
+
+def _load_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[dict | None, str]":
+    """Read one reviewer partial and judge it: ``(data, "")`` when it is sound,
+    ``(None, reason)`` when it is not. The body of :func:`check_partial`, kept
+    separate only because consolidation needs the parsed record and a second
+    read of the file would be a second verdict on bytes that may have changed.
+
+    Every check consolidation makes on ONE partial lives here and nowhere else
+    — parse, schema (:func:`validate_partial`), the keyed location, the role,
+    the dispatching review's id and the commit it reviewed — so the verb a
+    reviewer runs on its own file and the consolidation that later reads it
+    cannot disagree. ``reason`` names the role and is a clause, not a sentence
+    about what to do next: that is the caller's.
+    """
+    try:
+        if path.resolve() != partial_path(prawduct_dir, role, manifest["id"]).resolve():
+            return None, (
+                f"partial {role!r} at {path} is not where this review keeps it "
+                f"({partial_path(prawduct_dir, role, manifest['id'])})"
+            )
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        return None, f"partial {role!r} unreadable ({exc})"
+    valid, preason = validate_partial(data)
+    if not valid:
+        return None, f"partial {role!r} invalid — {preason}"
+    if data["role"] != role:
+        return None, (
+            f"partial for {role!r} declares role {data['role']!r} — roster mismatch"
+        )
+    # Belt-and-braces against the commit binding being the ONLY one. The
+    # keyed filename already stops a straggler from another review landing
+    # here; this catches the case the name cannot — a reviewer handed the
+    # wrong id in its dispatch prompt, writing to the right file with the
+    # wrong review's identity. Stripped before comparing, because
+    # surrounding whitespace normalizes identically and must not abort a
+    # whole consolidation (the `files: []` lesson, same module): hard-fail
+    # is for genuine ambiguity, which a different id is and a padded one
+    # is not.
+    review_id = manifest["id"]
+    if data["dispatch_id"].strip() != review_id.strip():
+        return None, (
+            f"reviewer {role!r} was dispatched by {data['dispatch_id'].strip()} "
+            f"but this manifest is {review_id} — the partial belongs to a "
+            "different review"
+        )
+    if data["commit_reviewed"] != manifest["commit_reviewed"]:
+        return None, (
+            f"reviewer {role!r} reviewed {data['commit_reviewed'][:12]} but "
+            f"dispatch was at {manifest['commit_reviewed'][:12]} — inconsistent, "
+            "re-review"
+        )
+    return data, ""
+
+
+def check_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[bool, str]":
+    """Whether ``path`` is a partial consolidation would accept for ``role``.
+
+    The one verdict on a single partial, shared by :func:`consolidate`'s read
+    loop and by ``prawduct-hook validate-partial`` (a reviewer's own check
+    before it returns), so a partial the reviewer was told is sound cannot be
+    refused when consolidation reads it. ``(True, "")`` or ``(False, reason)``;
+    a parse failure's reason carries the decoder's line and column.
+    """
+    data, reason = _load_partial(prawduct_dir, manifest, role, path)
+    return data is not None, reason
+
+
+def _partial_failure_message(
+    prawduct_dir: Path, manifest: dict, role: str, reason: str
+) -> str:
+    """Why consolidation refused, and the route that costs one reviewer.
+
+    A bad partial leaves the others untouched on disk; the message says so and
+    which ones, because nothing else tells the builder that a re-run of the
+    whole round is not the only recovery. Every line is derived from the disk:
+    the other roles are judged by :func:`check_partial`, so a role still in
+    flight, a role that passed and a second failing one each read as what they
+    are rather than as "the others passed".
+    """
+    roster = manifest["roster"]
+    review_id = manifest["id"]
+    passed: list[str] = []
+    pending: list[str] = []
+    failing: list[tuple[str, str]] = [(role, reason)]
+    for other in roster:
+        if other == role:
+            continue
+        opath = partial_path(prawduct_dir, other, review_id)
+        if not opath.is_file():
+            pending.append(other)
+            continue
+        ok, why = check_partial(prawduct_dir, manifest, other, opath)
+        if ok:
+            passed.append(other)
+        else:
+            failing.append((other, why))
+    lines = [
+        f"critic-consolidate: {reason} — fail-closed, not persisting a partial "
+        "review as complete."
+    ]
+    for other, why in failing[1:]:
+        lines.append(f"  Also failing: {why}.")
+    if passed:
+        lines.append(
+            f"  The other {len(passed)} partial(s) passed and are kept on disk "
+            f"({', '.join(passed)})."
+        )
+    if pending:
+        lines.append(f"  Not yet written: {', '.join(pending)}.")
+    names = [name for name, _ in failing]
+    paths = ", ".join(str(partial_path(prawduct_dir, name, review_id)) for name in names)
+    if roster == ["reviewer"] and not manifest.get("reviewer_model"):
+        # The fork reviewed inline, so there is no reviewer to send back.
+        lines.append(
+            f"  Remedy: rewrite {paths} and re-run `prawduct-hook critic-consolidate`. "
+            "Do not run `critic-begin` or `critic-discard` — they archive the "
+            "partials that are sound."
+        )
+    else:
+        who = " and ".join(f"`{name}`" for name in names)
+        lines.append(
+            f"  Remedy: re-dispatch the {who} `critic-reviewer` alone — the same "
+            f"manifest and the same dispatch prompt — to rewrite {paths}; its "
+            "SubagentStop re-runs consolidation. Do not run `critic-begin` or "
+            "`critic-discard` — they archive the partials that are sound."
+        )
+    return "\n".join(lines)
+
+
+#: `validate-partial`'s exit when the partial cannot be checked at all — no
+#: readable or valid manifest owns it, or it is keyed to another review. Its
+#: own code because the remedy differs from exit 1's: a reviewer cannot fix
+#: its file into a review that consolidated already or is not its own, so it
+#: stops. The same "could not answer" code the hook's other probes use.
+VALIDATE_PARTIAL_CANNOT_CHECK = 3
+
+
+def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
+    """``prawduct-hook validate-partial <path>``: the reviewer's own check.
+
+    Read-only. Finds which roster role of the pending review ``path`` is the
+    keyed partial of, then asks :func:`check_partial` — the verdict
+    consolidation will reach on the same file.
+
+    The review is read from the partial's OWN ``.prawduct`` directory when the
+    path sits in a partials directory (``<prawduct>/.critic-partials/<file>``),
+    and from the caller's project only otherwise: a subagent's process can
+    resolve a different checkout than the one that dispatched it, and the file
+    is the one thing that names its review. A relative path is resolved against
+    the project directory.
+
+    Exits: 0 prints ``ok``; 1 means this file fails the check (a parse error
+    with its line and column, or the validation reason) — fix it and re-run;
+    :data:`VALIDATE_PARTIAL_CANNOT_CHECK` means there is nothing to check it
+    against (no readable or valid manifest owns it, or it is keyed to another
+    review) — the review consolidated already or is not the caller's, so the
+    caller stops rather than rewriting the file.
+    """
+    target = Path(path_arg)
+    if not target.is_absolute():
+        target = project_dir / target
+    try:
+        resolved = target.resolve()
+    except OSError as exc:
+        print(f"validate-partial: cannot resolve {path_arg!r} ({exc})", file=sys.stderr)
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    if resolved.parent.name == PARTIALS_DIRNAME:
+        prawduct_dir = resolved.parent.parent
+    else:
+        prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    mpath = manifest_path(prawduct_dir)
+    try:
+        manifest = json.loads(mpath.read_text())
+    except (OSError, ValueError) as exc:
+        print(
+            f"validate-partial: no readable review manifest at {mpath} ({exc}) — "
+            "there is no pending review to check this partial against (it may "
+            "have consolidated already). Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    ok, reason = validate_manifest(manifest)
+    if not ok:
+        print(
+            f"validate-partial: invalid manifest — {reason}. Nothing to fix in "
+            "the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    for role in manifest["roster"]:
+        if partial_path(prawduct_dir, role, manifest["id"]).resolve() == resolved:
+            ok, reason = check_partial(prawduct_dir, manifest, role, target)
+            if ok:
+                print("ok")
+                return 0
+            print(f"validate-partial: {reason}", file=sys.stderr)
+            return 1
+    # `<role>.<review id>.json` is the keyed shape (:func:`partial_path`); a
+    # file keyed to ANOTHER review id is a straggler or a replaced review's,
+    # which no edit makes this review's. Any other wrong name is fixable.
+    stem = resolved.name[: -len(".json")] if resolved.name.endswith(".json") else ""
+    keyed_id = stem.split(".", 1)[1] if "." in stem else None
+    if keyed_id is not None and keyed_id != manifest["id"]:
+        print(
+            f"validate-partial: {path_arg!r} is not keyed to the pending review "
+            f"{manifest['id']} — it belongs to another review, which this one "
+            "replaced or never was. Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    print(
+        f"validate-partial: {path_arg!r} is not a partial of review {manifest['id']} — "
+        "write it at the path your manifest's `rendezvous` names for your role.",
+        file=sys.stderr,
+    )
+    return 1
+
 def consolidate(
     project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
 ) -> int:
@@ -6280,8 +6818,9 @@ def consolidate(
         dispatch age and whether silence is still normal (wait) or past the
         grace window (critic-end + re-dispatch).
       - ``0`` + ``consolidated:`` — review fact appended (or already present),
-        resolution facts appended, cache regenerated, ledger anchored, marker
-        cleared, partials removed.
+        resolution facts appended (a verify pass's, and any inherited-baseline
+        waivers), cache regenerated, ledger anchored, marker cleared, partials
+        removed.
       - ``1`` — fail-closed: malformed manifest/partial, a partial reviewed a
         different commit than dispatched, off-protocol resolutions, a
         resolution referencing a finding the store doesn't hold, a working
@@ -6322,7 +6861,6 @@ def consolidate(
         return 1
 
     roster = manifest["roster"]
-    manifest_commit = manifest["commit_reviewed"]
     review_id = manifest["id"]
     is_verify = manifest["mode"] == _VERBOSE_VERIFY_RESOLUTIONS
 
@@ -6334,53 +6872,10 @@ def consolidate(
         if not ppath.is_file():
             missing.append(role)
             continue
-        try:
-            data = json.loads(ppath.read_text())
-        except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        data, why = _load_partial(prawduct_dir, manifest, role, ppath)
+        if data is None:
             print(
-                f"critic-consolidate: partial {role!r} unreadable ({exc}) — "
-                "fail-closed, not persisting a partial review as complete.",
-                file=sys.stderr,
-            )
-            return 1
-        valid, preason = validate_partial(data)
-        if not valid:
-            print(
-                f"critic-consolidate: partial {role!r} invalid — {preason}. "
-                "Fail-closed; not consolidating.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["role"] != role:
-            print(
-                f"critic-consolidate: partial for {role!r} declares role "
-                f"{data['role']!r} — roster mismatch, fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        # Belt-and-braces against the commit binding being the ONLY one. The
-        # keyed filename already stops a straggler from another review landing
-        # here; this catches the case the name cannot — a reviewer handed the
-        # wrong id in its dispatch prompt, writing to the right file with the
-        # wrong review's identity. Stripped before comparing, because
-        # surrounding whitespace normalizes identically and must not abort a
-        # whole consolidation (the `files: []` lesson, same module): hard-fail
-        # is for genuine ambiguity, which a different id is and a padded one
-        # is not.
-        if data["dispatch_id"].strip() != review_id.strip():
-            print(
-                f"critic-consolidate: reviewer {role!r} was dispatched by "
-                f"{data['dispatch_id'].strip()} but this manifest is "
-                f"{review_id} — the partial belongs to a different review, "
-                "fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["commit_reviewed"] != manifest_commit:
-            print(
-                f"critic-consolidate: reviewer {role!r} reviewed "
-                f"{data['commit_reviewed'][:12]} but dispatch was at "
-                f"{manifest_commit[:12]} — inconsistent, re-review.",
+                _partial_failure_message(prawduct_dir, manifest, role, why),
                 file=sys.stderr,
             )
             return 1
@@ -6417,8 +6912,10 @@ def consolidate(
                 file=sys.stderr,
             )
 
-    # Resolutions may only arrive from a verify-resolutions dispatch — they
-    # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.
+    # A reviewer's resolutions may only arrive from a verify-resolutions
+    # dispatch — they WEAKEN gates (they unblock findings), so off-protocol ones
+    # fail closed. The one resolution written in other modes is consolidate's
+    # own inherited-baseline waiver, computed from facts, never from a partial.
     resolutions: list[dict] = []
     seen_res: set[tuple[str, str]] = set()
     for partial in partials:
@@ -6427,7 +6924,8 @@ def consolidate(
             print(
                 f"critic-consolidate: partial {partial['role']!r} carries "
                 f"resolutions but the dispatch mode is {manifest['mode']!r} — "
-                "only a verify-resolutions dispatch may resolve findings; "
+                "only a verify-resolutions dispatch may carry a reviewer's "
+                "resolutions; "
                 "fail-closed.",
                 file=sys.stderr,
             )
@@ -6577,6 +7075,15 @@ def consolidate(
         _attach_note(project_dir, result.get("envelope"), review_anchor)
         appended_resolutions += 1
 
+    # Inherited-baseline waivers: a BLOCKING test failure the merge-base tree
+    # already had is resolved here, from the base run's fact, not by a round.
+    # The renderers below read the waivers back from the store re-read next.
+    waiver_refusals: dict[str, str] = {}
+    if _waive_inherited_failures(
+        project_dir, manifest, review_id, review_anchor, waiver_refusals
+    ) is None:
+        return 1
+
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
     # retry after a partial failure renders the original fact, not a new one.
     store = evidence.read_facts(project_dir)
@@ -6666,7 +7173,8 @@ def consolidate(
 
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
-        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
+        store=store, not_waived=waiver_refusals,
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
@@ -6819,23 +7327,9 @@ def consolidate(
     # that fork to relay `NEXT-ACTION:` verbatim as its closing line. Code owns
     # the wording so it cannot be paraphrased into something weaker, and so it
     # stays identical to the `next_action` the builder reads in
-    # `.critic-findings.json` whenever the reviewers were dispatched instead.
-    print(
-        "NEXT-ACTION: "
-        + next_action_line(
-            review_id,
-            counts.get("blocking", 0),
-            counts.get("warning", 0),
-            counts.get("note", 0),
-            price_sentence,
-            carried=carried,
-            span=span,
-            observations=len(fact_body.get("observations") or []),
-            cost=cost_sentence,
-            rides_next_review=rides_next_review,
-            uncertified=uncertified,
-        )
-    )
+    # `.critic-findings.json` whenever the reviewers were dispatched instead —
+    # identical by construction: it IS that record's sentence, rendered once.
+    print("NEXT-ACTION: " + record["next_action"])
     return 0
 
 

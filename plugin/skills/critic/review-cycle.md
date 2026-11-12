@@ -97,6 +97,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 - A rebase or amend changes the tree → a gap composition cannot close (the transfer below closes one case). A squash-merge preserves the tree, so squashed PRs stay covered.
 - A **selective commit** (only part of the reviewed state) produces a tree nobody reviewed — a gap. `/prawduct:critic verify-resolutions` reviews that delta and closes it.
 - Blocking findings don't die with re-runs: they stay on the path until a `verify-resolutions` pass appends resolution facts for them.
+- **Except an inherited test failure:** when every id in a BLOCKING finding's `failed_tests` failed in the newest run on the merge-base *tree* (a base before the reviewed work, and each new failure of the reviewed tree's own run named by an unwaived finding), consolidation (any mode) appends a `waived` resolution citing that run (`origin: inherited-baseline`), or records why not as the finding's `not_waived` in `.critic-findings.json`. The finding stays BLOCKING on the record; no verify round is owed.
 - Review and resolution facts reach other clones as notes on `refs/notes/prawduct`, pushed by `/prawduct:pr` (`evidence sync`) and ingested at session start. A clone lacking a fact's tree reads that interval as a gap, so only reviews of committed trees — the PR gate's `cumulative` among them — count in every clone.
 
 ### Cumulative mode and the PR gate
@@ -113,7 +114,7 @@ Every consolidated review appends a **fact** to the shared evidence store (`<git
 
 ### Verify-resolutions anchoring and demotion
 
-`verify-resolutions` is the only mode anchored to a *prior* review fact rather than HEAD. It exists to cut re-review latency after a round flags 1-2 BLOCKING findings and the builder fixes them — a full `chunk`/`final` re-run walks the whole diff again for a localized change. Its consolidation is also the only path that may append **resolution facts** (the judgment that unblocks a prior blocking finding); a `resolutions` payload in any other mode fails consolidation closed.
+`verify-resolutions` is the only mode anchored to a *prior* review fact rather than HEAD. It exists to cut re-review latency after a round flags 1-2 BLOCKING findings and the builder fixes them — a full `chunk`/`final` re-run walks the whole diff again for a localized change. Its consolidation is also the only path that may append **resolution facts** for a *prior* review's findings (the judgment that unblocks a prior blocking finding); a `resolutions` payload in any other mode fails consolidation closed.
 
 **Anchoring.** `critic-begin --mode verify-resolutions` locates the prior review fact via the findings cache's `fact_id` pointer and derives the interval: prior fact's `head_tree` → the captured working tree. Scope = the prior `files_reviewed` plus the delta, split into subject and oracle — all computed in code and recorded in the manifest. Tree keying makes a dirty-tree verify sound: no commit needs to precede the pass, and the resulting fact extends coverage to whatever tree it saw.
 
@@ -142,7 +143,7 @@ re-dispatching one spends a full round on a bundle the gate already passes.
 
 1. Builder completes a chunk's implementation and tests.
 2. Critic reviews using the goal-based approach (see SKILL.md).
-3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass, changing a spec to match wrong implementation, a workaround where the finding named the root cause. Each is a **BLOCKING** finding in its own right *and* grounds to withhold the resolution: the finding was not fixed, so leaving it out of `resolutions` keeps it blocking, which is the answer that fails closed. Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding — the gate keeps blocking until then.
+3. **If BLOCKING findings exist:** builder fixes; Critic re-reviews (`verify-resolutions`), specifically watching for **fix-by-fudging** — weakening a test to make it pass, changing a spec to match wrong implementation, a workaround where the finding named the root cause. Each is a **BLOCKING** finding in its own right *and* grounds to withhold the resolution: the finding was not fixed, so leaving it out of `resolutions` keeps it blocking, which is the answer that fails closed. Repeat until no blocking findings remain. Only the resolution facts a verify pass records unblock a blocking finding (bar the inherited-failure waiver) — the gate keeps blocking until then.
 4. Every review persists through `critic-consolidate` — a review fact in the store plus the regenerated `.prawduct/.critic-findings.json`. A clean pass records an empty findings array; there is no review without a record.
 5. **If no BLOCKING findings:** chunk complete; proceed.
 
@@ -239,7 +240,7 @@ The command validates that the finding exists before it records anything, and re
 BLOCKING finding without `--owner-ruling "<text>"` — the severity rule below, enforced in code rather
 than remembered. Re-dispositioning appends a newer fact; the older one stays as history, and an
 identical re-run is a reported no-op. **A disposition never satisfies a gate**: a BLOCKING finding
-stays blocking until a verify pass records a real resolution, so recording one costs you nothing and
+stays blocking until a real resolution is recorded, so recording one costs you nothing and
 protects nothing you shouldn't want protected.
 
 **Then render the census — never author it:**

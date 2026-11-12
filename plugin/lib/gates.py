@@ -1830,7 +1830,8 @@ def covered_frontier(
     ``absent`` gets one ``FRONTIER_ABSENT_*`` code naming which:
 
     - the nearest composing tree carries an unresolved blocker — those clear
-      through ``verify-resolutions``, the only mode that records resolutions;
+      through ``verify-resolutions``, the only mode that records resolutions
+      for an earlier review's findings;
     - the nearest composing tree is covered by free edges alone, i.e. nothing
       on the branch has been reviewed yet. Extending there from a dirty tree would
       turn the first inner-stage review into a review of everything the branch

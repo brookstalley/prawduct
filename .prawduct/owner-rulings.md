@@ -244,3 +244,11 @@ old-only blocking rate (about 7 in 114 on the 2026-11-11 dated reading, re-deriv
    is trimmed rather than the ceilings raised; a trim that would lose meaning comes back to the owner.
 3. PR #1118 (Codex Phase 1 spike) stays out of this batch.
 4. The merged local branch `worktree-agent-a76c0614686964c8c` is removed (done by `git-tidy --apply`).
+
+**2026-11-12.** "1. Yes" — answering whether, when `feature/review-round-cost` (#1152) syncs with `develop`, the
+reviewer payload ceilings may rise to the merged readings rather than #1152's partial-validation and refusal-remedy
+wording being cut to fit `develop`'s ceilings. They rise: each merged reading is `develop`'s plus the raises #1152
+already declared and had reviewed (within one token of rounding), and the merge adds no new text. This narrows the
+same day's ruling that a trim, not a raise, pays for fitting #1152 under the ceilings — that ask assumed the ceilings
+were fixed limits, when each is one over its last reading. Lands in `tests/test_reviewer_payload_budget.py` and
+`tests/test_v5_methodology.py`.

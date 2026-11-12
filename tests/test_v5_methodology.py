@@ -560,7 +560,18 @@ LAST_MEASURED_TOKENS = {
     # -8 on 2026-11-11 (asks-last, owner ruling): the Session Scope sentence stops saying where
     # the closing line goes ("last, after every other word"), which the asks that now follow it
     # falsified; session-hygiene.md and the digest own the placement. A CUT; ceiling lowered.
-    "methodology/building.md": 5359,
+    # +37 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: the red-baseline step gains
+    # the run on a clean checkout of the merge-base that lets consolidation waive an inherited
+    # failure — the one action the builder owes for the waiver, so it sits at the step that decides
+    # it — and the Modes sentence narrows "alone records resolution facts" to an earlier review's
+    # findings. Nothing another file owns was left to cut; the ceiling rises with the reading.
+    # +11 on 2026-11-11 (review-round-cost Critic round), DECLARED: "if it fails, re-invoke" sent the main session to a fresh
+    # review that `critic-begin` refuses over a complete roster, and that archives the partials
+    # that passed; the sentence now defers to the remedy the refusal prints (R-8). It replaces
+    # the clause it falsified, and the remedy's wording stays in code (one home).
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    "methodology/building.md": 5408,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -751,7 +762,12 @@ LAST_MEASURED_TOKENS = {
     # made false is the delta's finding), and SKILL step 5, `coordinator.md` and the reviewer contract point at it.
     # Not paid by trimming: an absolute "never rated" would make reviewers drop the stale-prose class, the largest
     # residual loss once the sweep was cut.
-    "skills/critic/review-protocol.md": 4048,
+    # +13 on 2026-11-11 (review-round-cost Critic round), DECLARED: Goal 1 names `failed_tests` on a test-failure finding, as
+    # goals-1-3.md does (R-7/R-9) — the input the inherited-baseline waiver reads, so a boundary
+    # review can waive an inherited red base too. Priced with the route sums.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    "skills/critic/review-protocol.md": 4061,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -871,7 +887,10 @@ LAST_MEASURED_TOKENS = {
     # -208 on 2026-11-10 (critic-trim): the Backlog Reconciliation, the Learnings Cross-Check, the `priors:` note, the relayed record-lint table and NOTE as a finding severity left the Critic; consolidation records record-lint results itself. A READING; ceiling lowered with it.
     # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): the boundary stage is `cumulative` alone; the PR
     # review left it. A READING; ceiling lowered with it.
-    "skills/critic/goals-1-3.md": 2493,
+    # +13 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: a test-failure finding lists
+    # its failing ids in `failed_tests`, the input consolidation's inherited-baseline waiver reads.
+    # Priced against the route sums in test_reviewer_payload_budget.py.
+    "skills/critic/goals-1-3.md": 2506,
     # +9 on 2026-08-13: the PR-gate section gained the base-advance transfer —
     # a computed pass the gate can now print, which a reader who only knows
     # "uncovered means run a cumulative" will otherwise re-review straight
@@ -1080,7 +1099,18 @@ LAST_MEASURED_TOKENS = {
     # `cumulative-final` sentence that claimed merge-base...HEAD. No reviewer loads this file.
     # +50 on 2026-11-11 (bounded-cumulative review round), DECLARED: the cumulative paragraph stops promising every
     # commit is reviewed and names `cumulative full`; the superseded-blocker sentence is corrected. No reviewer loads it.
-    "skills/critic/review-cycle.md": 8047,
+    # +71 on 2026-11-11 (review-round-cost Chunk 02, #900), DECLARED: the evidence model gains
+    # the inherited-baseline waiver — the one resolution consolidation writes itself — and the
+    # three sentences saying only a verify pass resolves name it. No reviewer loads this file.
+    # +35 on 2026-11-11 (review-round-cost Critic round), DECLARED: the inherited-failure bullet
+    # states the waiver's two new conditions (a base before the reviewed work; every new failure of
+    # the reviewed tree named by an unwaived finding) and that a refusal says why on stderr. The
+    # bullet was the rule's statement here and would otherwise be false (R-1, R-2, R-10); nothing
+    # another file owns sits in it to cut.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +5 on 2026-11-12 (review-round-cost merge review), DECLARED: the inherited-failure bullet names where a refused waiver's reason lands (`not_waived` in the cache), R-4. No reviewer loads it.
+    "skills/critic/review-cycle.md": 8157,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1267,7 +1297,17 @@ LAST_MEASURED_TOKENS = {
     # was false once a repeat is bounded; the shortest true one names the delta and the `Span:` signal.
     # +20 on 2026-11-11 (bounded-cumulative review round), DECLARED: step 5 points at the `files_context` rule, and
     # the exit-3 paragraph says a cumulative's interval COMPOSES to the gate's span (it no longer IS it).
-    "skills/critic/SKILL.md": 3177,
+    # +57 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the skill grants `validate-partial`
+    # (both spellings, since the single-pass fork writes a partial too), the fork's write step runs it,
+    # and one sentence names the one-reviewer re-dispatch remedy a failed partial check points to. Not
+    # paid by trimming: the grant and the remedy are the mechanism, and a reviewer that validates its
+    # own partial costs one tool call where an unreadable one discarded every valid partial.
+    # -15 on 2026-11-11 (review-round-cost Critic round): the refusal sentence names the remedy the fork meets (rewrite its own
+    # partial) instead of the coordinator's re-dispatch (R-8). A READING; ceiling lowered.
+    # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
+    # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
+    # +7 on 2026-11-12 (review-round-cost merge review), DECLARED: the single-pass write step says what the fork does when `validate-partial` exits 3 (stop), R-1/R-3.
+    "skills/critic/SKILL.md": 3227,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1300,6 +1340,11 @@ LAST_MEASURED_TOKENS = {
     # role, the protocol path for that role, and its goal line. Read only by a fork that dispatches,
     # never by a reviewer.
     # +7 on 2026-11-11 (bounded-cumulative review round), DECLARED: the dispatch template names `files_context`.
+    # +36 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: one sentence naming the remedy
+    # for a refused partial (re-dispatch only that role's reviewer, never `critic-begin` or
+    # `critic-discard`). Read only by a fork that dispatches, never by a reviewer.
+    # -36 on 2026-11-11 (review-round-cost Critic round): the refused-partial remedy left — the coordinator stops before
+    # consolidation and never meets a refusal (R-8). A READING; ceiling lowered with it.
     "skills/critic/coordinator.md": 670,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
@@ -3880,7 +3925,10 @@ class TestBuildingMethodology:
         # RAISED 5368 -> 5375 (critic-trim merged with audit-guidance, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5375 -> 5368 (pr-reviewer-fold, 2026-11-11) with the reading.
         # LOWERED 5368 -> 5360 (asks-last, 2026-11-11) with the reading's cut.
-        assert tokens < 5360, f"building.md is ~{tokens} tokens, should be <5360"
+        # RAISED 5368 -> 5405 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 5405 -> 5416 (review-round-cost Critic round, R-8) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 5360 -> 5409 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
+        assert tokens < 5409, f"building.md is ~{tokens} tokens, should be <5409"
 
 
 # =============================================================================
@@ -5720,7 +5768,9 @@ class TestCriticSkill:
         # RAISED 3864 -> 3951 (read-cost-review, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
         # RAISED 3951 -> 4001 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
         # RAISED 4001 -> 4049 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 4049, f"review-protocol.md is ~{tokens} tokens, should be <4049"
+        # RAISED 3951 -> 3964 (review-round-cost Critic round, R-7/R-9) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 4049 -> 4062 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
+        assert tokens < 4062, f"review-protocol.md is ~{tokens} tokens, should be <4062"
 
 
 # =============================================================================
@@ -6029,7 +6079,8 @@ class TestCriticGoals13:
         # RAISED 2689 -> 2707 (flaky-rerun, 2026-10-26), DECLARED — see LAST_MEASURED_TOKENS.
         # LOWERED 2707 -> 2499 (critic-trim, 2026-11-10) with the reading.
         # LOWERED 2499 -> 2494 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 2494, f"goals-1-3.md is ~{tokens} tokens, should be <2494"
+        # RAISED 2494 -> 2507 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 2507, f"goals-1-3.md is ~{tokens} tokens, should be <2507"
 
     def test_is_self_contained(self):
         """No follow-the-pointer reads at review time — the acceptance criterion
@@ -6291,7 +6342,12 @@ class TestCriticSkillRoutesByMode:
         # LAST_MEASURED_TOKENS. Declared.
         # RAISED 3147 -> 3158 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
         # RAISED 3158 -> 3178 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 3178, f"SKILL.md is ~{tokens} tokens, should be <3178"
+        # RAISED 3147 -> 3204 (review-round-cost Chunk 01, #961): `validate-partial` grant, step and
+        # remedy sentence — see LAST_MEASURED_TOKENS. Declared.
+        # LOWERED 3204 -> 3189 (review-round-cost Critic round, R-8) with the reading.
+        # RAISED 3178 -> 3221 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
+        # RAISED 3221 -> 3228 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3228, f"SKILL.md is ~{tokens} tokens, should be <3228"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6629,7 +6685,11 @@ class TestReviewCycle:
         # LOWERED 7776 -> 7756 (pr-reviewer-fold, 2026-11-11) with the reading.
         # RAISED 7756 -> 7998 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
         # RAISED 7998 -> 8048 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 8048, f"review-cycle.md is ~{tokens} tokens, should be <8048"
+        # RAISED 7756 -> 7827 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 7827 -> 7862 (review-round-cost Critic round, R-1/R-2/R-10) — see LAST_MEASURED_TOKENS. Declared.
+        # RAISED 8048 -> 8153 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
+        # RAISED 8153 -> 8158 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 8158, f"review-cycle.md is ~{tokens} tokens, should be <8158"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
@@ -6656,6 +6716,9 @@ class TestReviewCycle:
         # RAISED 613 -> 664 (reviewer-model-cap, 2026-11-11): the single-pass `reviewer` dispatch —
         # see LAST_MEASURED_TOKENS. Declared.
         # RAISED 664 -> 671 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
+        # RAISED 664 -> 700 (review-round-cost Chunk 01, #961): the failed-partial remedy sentence —
+        # see LAST_MEASURED_TOKENS. Declared.
+        # LOWERED 700 -> 664 (review-round-cost Critic round, R-8) with the reading.
         assert tokens < 671, f"coordinator.md is ~{tokens} tokens, should be <671"
 
     def test_framework_checks_token_budget(self):

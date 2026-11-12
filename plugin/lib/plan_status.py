@@ -134,8 +134,9 @@ RETRACTED_KIND = "chunk-retracted"
 UNREADABLE_PLAN = "?"
 
 #: Resolution dispositions that clear a blocking finding — the values
-#: ``dispositions.finding_state`` returns for a passing ``resolution`` fact.
-_PASSING = frozenset({dispositions.STATE_FIXED, dispositions.STATE_WAIVED})
+#: ``dispositions.finding_state`` returns for a passing ``resolution`` fact,
+#: an inherited-baseline waiver among them.
+_PASSING = dispositions.RESOLVED_STATES
 
 #: Review modes whose proposal also counts the chunks a commit subject names;
 #: ``chunk`` proposes by diff alone (:func:`chunk_proposal`).
