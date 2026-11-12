@@ -17,10 +17,11 @@ its text is kept per clone in `.prawduct/.native-reviews/`. The build plan and i
    It prints, per Critic goal, the findings both raised, only the Critic raised, and only the
    native review raised; each instrument's wall clock; native fork tokens when given transcripts;
    and progress toward the stop condition. With `--out` it writes `blind-sheet.json` and
-   `blind-key.json`. Two lines to read before the table: `count check` (the script's count of each
-   text against the ledger's; a mismatch means the parse changed or a text was edited) and, with
-   `--transcripts`, any `WARNING` naming forks that ran a recipe other than `high` — the comparison
-   assumes level and model match the Critic's, so investigate those runs before trusting the table.
+   `blind-key.json`. Read before the table: the `count check` line (each text against what the
+   ledger recorded; a disagreement means the parse changed or a text was edited since) and every
+   `WARNING` line the script prints. The comparison assumes each native run matched its Critic
+   review's level and model, and each warning names runs where that failed — investigate those
+   before trusting the table.
 2. Hand `blind-sheet.json` alone to a verifier that has not seen the key. A fresh subagent is
    enough: have it read the code at each finding's location and answer each item's `ask`. That is
    "same defect?" for a pair the file match proposed, "real defect?" for a unique finding, and,
