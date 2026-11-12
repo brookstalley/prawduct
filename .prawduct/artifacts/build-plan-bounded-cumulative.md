@@ -89,8 +89,8 @@ are verified as the design's Build shape says. The full suite runs once, on the 
 
   It takes a repo path and reads that repo's ledger and git history read-only.
 - **Depends on:** none
-- **Deliverables:** new `tools/measure-repeat-cumulative-yield.py`, new
-  `tests/test_measure_repeat_cumulative_yield.py`, and this plan's design doc (brought in with
+- **Deliverables:** new `tools/measure-repeat-cumulative-yield.py`,
+  new `tests/test_measure_repeat_cumulative_yield.py`, and this plan's design doc (brought in with
   the plan).
 - **Tests:** Red first, on a synthetic repo built in a temporary directory. These cases trip the
   classification:
