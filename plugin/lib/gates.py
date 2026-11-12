@@ -1544,12 +1544,12 @@ def _cached_diff_fn(project_dir: Path):
     gate invocation.
 
     Free-edge *connectivity* no longer comes from here — every production call
-    site pairs this with :func:`_tree_key_fn`, so the BFS groups trees by key
-    and this function is reached only by ``_attribute_free_steps``, filling in
-    the file list for the free steps on a path already found. What the memo
-    still buys is the repetition across passes: a gate may run the clean-edges
-    search, then the all-edges search, then the merge-base fallback, and the
-    same interval can be attributed in more than one of them. Cache scope is
+    site pairs this with :func:`_tree_key_fn`, so the BFS groups trees by key.
+    What reaches this function is every caller that needs a pair's actual file
+    list within one gate call, and the memo is what keeps a pair asked by more
+    than one of them — or by more than one pass (clean edges, all edges, the
+    merge-base fallback) — to one ``git diff``. Removing it makes those callers
+    pay their diffs again on every uncovered gate. Cache scope is
     one verdict call, so staleness cannot leak across gates (same one-capture
     discipline as STH-6Q9D)."""
     cache: dict[tuple[str, str], "list[str] | None"] = {}

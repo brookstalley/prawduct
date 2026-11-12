@@ -3113,22 +3113,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     KNOWN_WAIVER_KEYS = set(_WAIVER_KEY_BY_GATE.values())
     retired_waiver_keys = sorted(k for k in waivers if k in _RETIRED_WAIVER_KEYS)
     if retired_waiver_keys:
-        print(
-            "\nNOTE: .gates-waived has retired keys (no effect): "
+        stop_advisories.append(
+            "NOTE: .gates-waived has retired keys (no effect): "
             + "; ".join(f"{k} — {_RETIRED_WAIVER_KEYS[k]}" for k in retired_waiver_keys)
-            + ".",
-            file=sys.stderr,
+            + "."
         )
     unknown_waiver_keys = sorted(
         k for k in waivers if k not in KNOWN_WAIVER_KEYS and k not in _RETIRED_WAIVER_KEYS
     )
     if unknown_waiver_keys:
-        # Stderr-only warning so the agent learns about typos. Doesn't affect gate
-        # behavior — unknown keys simply have no effect.
-        print(
-            f"\nNOTE: .gates-waived has unknown keys (no effect): {', '.join(unknown_waiver_keys)}. "
-            f"Valid keys: {', '.join(sorted(KNOWN_WAIVER_KEYS))}.",
-            file=sys.stderr,
+        # An advisory, so a typo is heard about: unknown keys have no effect on
+        # any gate, which is exactly why a typo would otherwise go unnoticed.
+        stop_advisories.append(
+            f"NOTE: .gates-waived has unknown keys (no effect): {', '.join(unknown_waiver_keys)}. "
+            f"Valid keys: {', '.join(sorted(KNOWN_WAIVER_KEYS))}."
         )
 
     # The learnings layout, read ONCE and in its OWN guarded step — three
@@ -3163,11 +3161,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         _learnings_both = _lf.STATE_BOTH
         _unmigrated_states = (_lf.STATE_LEGACY, _lf.STATE_BOTH)
     except Exception as exc:  # prawduct:allow prawduct/broad-except -- gate check must not crash session end
-        print(
-            f"\nNOTE: the learnings layout could not be read ({type(exc).__name__}: {exc}).\n"
+        stop_advisories.append(
+            f"NOTE: the learnings layout could not be read ({type(exc).__name__}: {exc}).\n"
             "  The cutover floor and the budget gate did NOT run this session — nothing\n"
-            "  below says whether this repo's rules were loaded or whether they fit.\n",
-            file=sys.stderr,
+            "  below says whether this repo's rules were loaded or whether they fit."
         )
 
     # Where a durable rule goes, named by the ONE resolver rather than by a path
@@ -3397,11 +3394,10 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     "  agent → the session briefing carries the migration recipe; "
                     "`prawduct-hook learnings-files` shows what is on disk"
                 )
-                print(
-                    f"\nNOTE: the learnings directive could not be rendered "
+                stop_advisories.append(
+                    f"NOTE: the learnings directive could not be rendered "
                     f"({type(exc).__name__}: {exc}) — the floor still blocks, but the short\n"
-                    "  form below is all it can say. The full recipe is in the session briefing.\n",
-                    file=sys.stderr,
+                    "  form below is all it can say. The full recipe is in the session briefing."
                 )
             blockers.append(_attributed("learnings-unmigrated",
                 _headline
@@ -3481,14 +3477,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         # `unchecked` is not a pass, and it is never silent: a ceiling that could
         # not be measured must not read as a ceiling that held.
         for _entry in _budget_unchecked:
-            print(f"\nNOTE: {_entry}", file=sys.stderr)
+            stop_advisories.append(f"NOTE: {_entry}")
         # Advisory findings print as a NOTE and never block: an unapproved core
         # raise is already IGNORED by the check (the cap holds), so blocking on
         # the declaration would charge the session for text that changes nothing.
         _budget_advisory = {"learnings-core-raise-unapproved"}
         for _f in _budget_findings:
             if _f["check"] in _budget_advisory:
-                print(f"\nNOTE: {_f['path']}: {_f['detail']}", file=sys.stderr)
+                stop_advisories.append(f"NOTE: {_f['path']}: {_f['detail']}")
         _budget_findings = [
             _f for _f in _budget_findings if _f["check"] not in _budget_advisory
         ]
@@ -3612,14 +3608,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                             file=_lt_rel, unit_hash=_lt_hash, seen=_lt_seen,
                         )
             except Exception as _lt_exc:  # prawduct:allow prawduct/broad-except -- telemetry must never change a gate's verdict
-                print(
-                    "\nNOTE: `learning.written` was not recorded this turn "
+                # Log-only: the user cannot act on a telemetry miss, and no gate changes.
+                stop_advisories.append(_LogOnlyAdvisory(
+                    "NOTE: `learning.written` was not recorded this turn "
                     f"({type(_lt_exc).__name__}: {_lt_exc}) — the rules written "
                     "in this session are missing from the governance ledger, so "
                     "an audit of the learning loop will under-count them. The "
-                    "gates above are unaffected.",
-                    file=sys.stderr,
-                )
+                    "gates above are unaffected."
+                ))
 
     # Gate 2: Critic review (only when building against a plan)
     # Skipped for doc-only changes (no code to review). The waiver is only
@@ -4043,13 +4039,11 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
         shown = ", ".join(imported[:3]) + (
             f" (+{len(imported) - 3} more)" if len(imported) > 3 else ""
         )
-        print("", file=sys.stderr)
-        print(
+        stop_advisories.append(
             f"NOTE: the Critic gate judged this session's own work; {len(imported)} "
             f"judgeable file(s) a sync brought in were not judged here ({shown}) — "
             "the PR gate's merge-base span still requires review of any not "
-            "already on the base branch.",
-            file=sys.stderr,
+            "already on the base branch."
         )
 
     # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
@@ -4064,18 +4058,17 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     if critic_has_work and not critic_doc_only and not critic_would_block:
         mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(project_dir)
         if not mode_satisfied:
-            print("", file=sys.stderr)
-            print(f"NOTE: {mode_reason}", file=sys.stderr)
+            stop_advisories.append(f"NOTE: {mode_reason}")
 
     # Surface any waivers so the agent (and reviewer) can see what was skipped.
     # Waivers clear at the next session BOUNDARY (a fresh start or /clear), so they
     # never carry into a new session — but they DO outlive a resume/compact/fork,
     # which is correct: the waiver is session-scoped and that session continues.
     if waiver_notes:
-        print("", file=sys.stderr)
-        print("GATE WAIVERS (this session, .gates-waived):", file=sys.stderr)
-        for note in waiver_notes:
-            print(f"  {note}", file=sys.stderr)
+        stop_advisories.append(
+            "GATE WAIVERS (this session, .gates-waived):\n"
+            + "\n".join(f"  {note}" for note in waiver_notes)
+        )
 
     # STH-3W7F deferral: harness-tracked background work is still producing the
     # diff, so the gate(s) below would fire on work that isn't finished and a

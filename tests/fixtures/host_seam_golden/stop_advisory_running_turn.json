@@ -1,5 +1,5 @@
 {
   "exit": 0,
-  "stdout": "",
+  "stdout": "{\"systemMessage\": \"GATE WAIVERS (this session, .gates-waived):\\n  critic: waived (golden fixture)\"}\n",
   "stderr": "\nGATE WAIVERS (this session, .gates-waived):\n  critic: waived (golden fixture)\n"
 }

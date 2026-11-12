@@ -1354,12 +1354,41 @@ class TestHistoryThisSessionDidNotWrite:
         )
         (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
         rc = _hook.cmd_stop(repo, {})
-        err = capsys.readouterr().err
-        assert rc == 0, err
-        notes = [ln for ln in err.splitlines() if "a sync brought in" in ln]
+        captured = capsys.readouterr()
+        assert rc == 0, captured.err
+        # Read what the user is shown — the exit-0 systemMessage — never stderr,
+        # which at exit 0 is logged and reaches nobody.
+        shown = json.loads(captured.out)["systemMessage"] if captured.out.strip() else ""
+        notes = [ln for ln in shown.splitlines() if "a sync brought in" in ln]
         assert notes == [
             "NOTE: the Critic gate judged this session's own work; 1 judgeable "
             "file(s) a sync brought in were not judged here (b.py) — the PR "
             "gate's merge-base span still requires review of any not already on "
             "the base branch."
-        ], err
+        ], captured
+
+
+class TestStopNotesReachAReader:
+    """A `NOTE:` from the Stop hook is an advisory, and at exit 0 an advisory
+    reaches the user only through `_deliver_stop_advisories` (systemMessage):
+    plain stderr there is logged and read by nobody. So `cmd_stop` never prints
+    a `NOTE:` itself — it appends to `stop_advisories`, which also carries it
+    into the block reason when another gate blocks."""
+
+    def test_cmd_stop_prints_no_note_directly(self):
+        import ast
+        tree = ast.parse(Path(_hook.__file__).read_text())
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == "cmd_stop")
+        direct = []
+        for node in ast.walk(fn):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "print"):
+                continue
+            literal = "".join(
+                c.value for a in node.args for c in ast.walk(a)
+                if isinstance(c, ast.Constant) and isinstance(c.value, str)
+            )
+            if "NOTE:" in literal:
+                direct.append(node.lineno)
+        assert direct == [], f"cmd_stop prints a NOTE: directly at line(s) {direct}"
+
