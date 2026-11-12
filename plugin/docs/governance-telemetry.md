@@ -240,6 +240,8 @@ overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
+by_span          [{span, ...stat block}] — `bounded` / `full`, cumulatives
+                 only; the `full` entry adds `reasons` {decline code: count}
 consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
                  — review.critic events per `trigger`, every path listed even
                  at zero; `unrecorded` is events without a known value
@@ -329,6 +331,14 @@ cache onto `review.critic` events. It is **read, never derived from the mode**: 
 before the field existed groups under `null` (rendered "(unrecorded)"), and so does a `review.pr`
 event, which carries none. Schema 5 added the key. This is the yield-by-stage query the
 stage-keyed rigor norm (`nonfunctional-requirements.md` § Direction) was drawn to answer.
+
+`by_span` groups `cumulative` reviews by the record's `span`: `bounded` (the delta since an earlier
+boundary review) or `full` (the whole bundle). Both are listed even at zero. A cumulative event
+written before the field reads `full`, which is true, because nothing was bounded then; its reason
+is `unrecorded`. The `full` entry's `reasons` counts each recorded decline code (`gates.SPAN_FULL_*`),
+so why a repeat ran full is a query. Other modes carry no span and are not grouped. Schema 11 added
+the key. This is the bounded-cumulative lever's yield, read against its falsifier
+(`.prawduct/artifacts/bounded-cumulative-design.md`).
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
 `verify-resolutions`), derived from the persisted verbose strings. `review.pr`

@@ -204,6 +204,11 @@ close whose reason points "above"/"below". Both were built on `feature/asks-last
 inference from the ruling above; this confirms them. Lands in `STOP_BLOCK_ANSWER`,
 `methodology/session-hygiene.md` and `lib/standing_block.py`.
 
+**2026-11-11.** "3. Confirmed" — answering whether #890's falsifier may be restated against the same-base
+old-only blocking rate (about 7 in 114 on the 2026-11-11 dated reading, re-derived by
+`tools/measure-repeat-cumulative-yield.py`) instead of the design's all-rows ~1%. Lands in
+`build-plan-bounded-cumulative.md` § Goals (Falsifier) and the design's "Falsifies the lever".
+
 **2026-11-11.** "4. Yes PR and merge both and update prawduct-live"
-`feature/asks-last` and `feature/bounded-cumulative` are opened as PRs into `develop` and merged, and the
-`prawduct-live` worktree is advanced to the merged `develop`.
+`feature/bounded-cumulative` and `feature/asks-last` are opened as PRs into `develop` and merged, and the
+`prawduct-live` worktree (the lumens profile's plugin source) is advanced to the merged `develop`.
