@@ -1950,6 +1950,7 @@ def boundary_frontier(project_dir: Path, *, read: "dict | None" = None) -> dict:
 
     facts = read.get("facts", [])
     base_moved = False
+    base_unreadable = False
     for fact in reversed(facts):
         if fact.get("kind") != "review":
             continue
@@ -1971,6 +1972,11 @@ def boundary_frontier(project_dir: Path, *, read: "dict | None" = None) -> dict:
             if isinstance(base_reviewed, str) and base_reviewed
             else body.get("base_tree")
         )
+        if bundle_base is None and isinstance(base_reviewed, str) and base_reviewed:
+            # A base commit git cannot resolve (gc'd, or a shallow clone) says
+            # nothing about whether the base moved.
+            base_unreadable = True
+            continue
         if bundle_base != resolved["tree"]:
             base_moved = True
             continue
@@ -1996,6 +2002,11 @@ def boundary_frontier(project_dir: Path, *, read: "dict | None" = None) -> dict:
             "status": "bounded", "fact_id": fid,
             "head_tree": frontier_tree, "head_commit": fact_head,
         }
+    if base_unreadable and not base_moved:
+        return _full(
+            SPAN_FULL_UNREADABLE,
+            "the base this branch's last boundary review recorded could not be resolved",
+        )
     if base_moved:
         return _full(
             SPAN_FULL_BASE_MOVED,

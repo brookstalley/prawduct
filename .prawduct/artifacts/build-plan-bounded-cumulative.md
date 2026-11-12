@@ -17,9 +17,9 @@ governed_by:
     dispositions:
       - "an independent reviewer never mutates the session it reviews → conforms; the reviewer's subject narrows and it gains no write"
       - "authority fails closed; advice fails soft → conforms; any frontier condition that declines falls back to the full span, with its reason"
-      - "local-first → conforms; the sweep is `git grep -F`, local, and Chunk 01 reads local ledgers and git"
+      - "local-first → conforms; the frontier reads the local evidence store and git, and Chunk 01 reads local ledgers and git"
       - "the plugin writes nothing into a governed repo except its own state → conforms; the tool reads a consumer repo read-only and writes only its report"
-      - "written in Python, never specific to Python → conforms; the vanished-token sweep is plain text search over any file type (design, § The interaction sweep)"
+      - "written in Python, never specific to Python → conforms; the frontier and the span compare trees, commits and review facts, never a file's language or contents"
       - "guides and reviews, never implements → conforms"
       - "goals and verification bind, method is advice → conforms"
       - "every fact has one home → conforms; the frontier is one function next to gates.covered_frontier"
@@ -141,14 +141,17 @@ not change.
     so it is recorded where it is known. Chunk 04's `review-stats` split is the first reader of
     `span`, and it reads a fact without one as full.
 
-**Level:** Medium. Whether the vanished-token sweep catches enough of the nine stale-prose losses
-is not measured (the design says so). The cheapest step that would raise the level is Chunk 01's
-replay of the sweep on those nine.
+**Level:** Medium. The open risk is the real same-base blocking loss of bounded reviews, which
+only consumer rows after the release can measure (#1153). Chunk 01's sweep replay is done and
+settled Decision 2.
 
 **Falsifier (from the design):** the lever is retired if either holds:
 - bounded rows on discodon do not come in well under the full rows of similar total bundle size;
 - bounded rows whose later full span or PR review finds blockers on old-only files do so at a rate
-  well above the ~1% measured.
+  well above the same-base old-only blocking rate: about 7 in 114 on the 2026-11-11 dated reading,
+  re-derived by `python3 tools/measure-repeat-cumulative-yield.py <repo>`. The design's ~1% was
+  across all rows, and bounded reviews run only on same-base ones. The owner ruled on Decision 2
+  (2026-11-11) with that 6% figure in hand.
 
 ## Verification Strategy
 
@@ -200,7 +203,7 @@ are verified as the design's Build shape says. The full suite runs once, on the 
 
 - **Description:** The design's Build shape item 2, as amended by the owner's 2026-11-11 re-ruling
   of Decision 2. It builds:
-  - `coverage.boundary_frontier` (conditions 1–5, each declining with a reason);
+  - `gates.boundary_frontier` (conditions 1–5, each declining with a reason);
   - the bounded branch in `begin_review`;
   - `span` and `bounded_from` on the manifest, fact and ledger;
   - the `full` override token in `infer-critic-mode`;
@@ -217,7 +220,7 @@ are verified as the design's Build shape says. The full suite runs once, on the 
   - a sibling lineage's newer boundary fact is skipped, not taken;
   - a blocker on the newest boundary review forces a full span, not an older frontier;
   - a bounded dispatch's manifest: interval frontier → HEAD, `span: bounded`, `bounded_from`, subject
-    is the delta, the rest of the bundle rides as oracle, roster from the delta, and record-lint and
+    is the delta, the rest of the bundle rides as `files_context`, roster from the delta, and record-lint and
     the chunk proposal graded on the bundle span;
   - its fact composes with the frontier's to a passing PR gate (`check_cumulative_critic`);
   - `span`/`bounded_from` reach the fact and the findings cache (which the ledger copies);

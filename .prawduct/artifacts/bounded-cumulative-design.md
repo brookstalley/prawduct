@@ -2,7 +2,7 @@
 artifact: design
 scope: bounded-cumulative
 drawn: 2026-09-22
-status: decisions recorded 2026-09-22 (owner) — NOT to be built until the data is in: #885 and the ~2-week consumer re-baseline
+status: decisions recorded 2026-09-22 (owner); Decision 2 re-ruled 2026-11-11 (no sweep). Built on feature/bounded-cumulative (#890), the re-baseline being its Chunk 01
 parent: .prawduct/artifacts/cumulative-latency-discovery.md (driver 1)
 ---
 
@@ -107,12 +107,14 @@ merge-base → HEAD, as today. The manifest and the fact record `span: bounded |
 
 - **Subject:** judgeable files changed in the delta. `files_changed` holds the delta only, which
   keeps the edge valid.
-- **Oracle:** the delta's own oracle, plus every other file the bundle (merge-base → HEAD) changed.
-  The reviewer reads these and does not rate them.
+- **Oracle:** the delta's own oracle.
+- **Context:** every other file the bundle (merge-base → HEAD) changed, as `files_context`. The
+  reviewer reads these and does not rate them on their own merits. A description there that the
+  delta made false is a finding about the delta file. As built, this is not `files_oracle`,
+  because the Records Pass rates the oracle at the boundary stage.
 - **Protocol:** `review-protocol.md`, all seven goals, boundary severities. That is unchanged.
-- **One addition, bounded mode only (Decision 2):** an interaction sweep, described in the next
-  section. Its hits are rated even when the file is outside the subject set, an exception to the
-  findings-eligible contract.
+- **No sweep.** The interaction sweep below was Decision 2's addition; the 2026-11-11 re-ruling
+  dropped it, and the section stays as the record of what was measured and why.
 
 ### The interaction sweep: a text search computed in code, not a call graph
 
@@ -224,12 +226,12 @@ The reading is in `build-plan-bounded-cumulative.md` § Decisions made mid-build
    reports two things the decisions above depend on: whether a vanished-token scan would have
    caught each of the nine stale-prose losses (Decision 2), and the file-overlap rate on
    base-advanced repeats (Decision 4's v2).
-2. **Frontier and interval.** `coverage.boundary_frontier` (conditions 1–5, each with a reason
-   when it declines, following `gates.covered_frontier`), the bounded branch in `begin_review`,
-   `span` / `bounded_from` on the manifest, fact and ledger, record-lint on the bundle span, the
-   vanished-token sweep with its caps, and the `full` override token in `infer-critic-mode`. Tests: each condition declining on its own, fact
+2. **Frontier and interval.** `gates.boundary_frontier` (conditions 1–5, each with a reason
+   when it declines, beside `gates.covered_frontier`), the bounded branch in `begin_review`,
+   `span` / `bounded_from` on the manifest, fact and ledger, record-lint on the bundle span, and
+   the `full` override token in `infer-critic-mode`. No sweep (re-ruled 2026-11-11). Tests: each condition declining on its own, fact
    composition to the PR gate, and a superseded blocker forcing a full span.
-3. **Protocol.** The bounded-mode paragraph and the interaction sweep in `review-protocol.md`, the
+3. **Protocol.** The bounded-mode paragraph in `review-protocol.md`, the
    Per-Mode table row in `review-cycle.md`, and the reviewer prompt naming the span and its
    frontier.
 4. **Measure.** A review-stats split by `span`, the yield tool re-run on consumers after they
@@ -237,4 +239,7 @@ The reading is in `build-plan-bounded-cumulative.md` § Decisions made mid-build
 
 **Falsifies the lever:** bounded rows on discodon that do not come in well under the full rows of
 similar total bundle size, or bounded rows whose later full span or PR review finds blockers on
-old-only files at a rate well above the ~1% measured here.
+old-only files at a rate well above the same-base old-only blocking rate. That rate was about 7 in 114 on the
+2026-11-11 dated reading (`python3 tools/measure-repeat-cumulative-yield.py <repo> --until
+2026-09-22T23:00:00Z`); bounded reviews run only on same-base rows, so the all-rows ~1% above is
+not their baseline.

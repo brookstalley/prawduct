@@ -26,12 +26,14 @@ ruled that no sweep is built.
 `gates.boundary_frontier` finds the newest boundary review that the current bundle extends cleanly:
 same base, on this branch's history, not already at HEAD, and a clean path to it from the
 merge-base. Another branch's review in the clone-wide store is skipped, and only this branch's own
-review can report its base as moved. A blocker on the newest candidate forces the full span rather
-than an older frontier, so a superseded blocker still clears only through a full span.
+review can report its base as moved. A blocker on the path to the frontier forces the full span,
+never an older frontier; one recorded after the frontier lies inside the bounded interval, which
+spans it.
 
 `critic-begin --mode cumulative` bounds the interval to that review's tree → HEAD when one exists.
 The delta is the subject, the roster comes from the delta, and the rest of the bundle reaches the
-reviewer as `files_context`, read and rated by no pass. Record-lint and the chunk proposal still
+reviewer as `files_context`, never rated on its own merits: a description there that the delta
+made false is a finding about the delta file. Record-lint and the chunk proposal still
 grade the whole bundle, exactly as a full span would. Any declined condition falls back to the full
 span and says why. `span`, `bounded_from` and `span_reason` ride the manifest, the review fact and
 the findings cache, which the ledger copies. `/prawduct:critic cumulative full` (or `full`) asks
@@ -41,8 +43,9 @@ for the whole bundle; `infer-critic-mode` answers it with the rationale `explici
 ### Protocol (Chunk 03)
 
 The reviewer's `Signals:` line ends `Span: bounded from <id>` or `Span: full` on a cumulative.
-`review-protocol.md` says what a bounded reviewer rates: the delta, never `files_context`, with
-record-lint and `test-status` still covering the whole bundle. `review-cycle.md` and the Critic
+`review-protocol.md` says what a bounded reviewer rates: the delta, and a `files_context` file only
+where the delta made its description false, with record-lint and `test-status` still covering the
+whole bundle. `review-cycle.md` and the Critic
 skill describe the bounded repeat and the `full` override, and every sentence that said a
 cumulative always spans merge-base...HEAD now says when it does.
 
@@ -53,3 +56,10 @@ cumulative always spans merge-base...HEAD now says when it does.
 full. A cumulative recorded before the field reads `full`, because nothing was bounded then. The
 measurement against the design's falsifier needs bounded rows from consumer repos, so it is filed
 for after the release.
+
+## Consumer note
+
+A repeat `/prawduct:critic cumulative` on a long-lived branch now reviews only what changed since
+the branch's last clean boundary review, and says so when it dispatches (`Span: bounded from
+<id>`). The PR gate is unchanged. Before a risky merge, `/prawduct:critic cumulative full` reviews
+the whole branch again; a product that wants that every time can require it in its own process.

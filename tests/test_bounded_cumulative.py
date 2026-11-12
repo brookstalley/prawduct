@@ -260,6 +260,41 @@ class TestFrontier:
         got = _frontier(repo)
         assert (got["status"], got["code"]) == ("full", gates.SPAN_FULL_PATH_NOT_CLEAN), got
 
+    def test_an_unusable_store_falls_back_to_full_as_unreadable(self, tmp_path):
+        # A clone shared by worktrees on different plugin builds can hold a
+        # newer-schema fact; every dispatch there must fall back, not raise.
+        repo = _repo(tmp_path)
+        for read in (
+            {"status": "error", "reason": "store corrupt"},
+            {"status": "ok", "facts": [], "schema_ahead": [{"schema": 99}]},
+        ):
+            got = gates.boundary_frontier(repo, read=read)
+            assert (got["status"], got["code"]) == ("full", gates.SPAN_FULL_UNREADABLE), got
+            assert "could not be read" in got["reason"]
+
+    def test_an_unresolvable_merge_base_falls_back_to_full_as_unreadable(self, tmp_path, monkeypatch):
+        # Injected: a repo whose base cannot resolve falls back to another
+        # base rather than failing, so no fixture reaches this branch honestly.
+        repo = _repo(tmp_path)
+        _frontier_fact(repo)
+        _commit(repo, "src/c.py", "c = 1\n", "c")
+        from lib import coverage
+
+        monkeypatch.setattr(coverage, "resolve_merge_base_tree",
+                            lambda _p: {"status": "error", "step": "merge-base", "reason": "no base"})
+        got = _frontier(repo)
+        assert (got["status"], got["code"]) == ("full", gates.SPAN_FULL_UNREADABLE), got
+        assert "no base" in got["reason"]
+
+    def test_an_unresolvable_recorded_base_is_unreadable_not_base_moved(self, tmp_path):
+        repo = _repo(tmp_path)
+        _frontier_fact(repo)
+        facts = evidence.read_facts(repo)["facts"]
+        facts[-1]["body"]["base_reviewed"] = "f" * 40  # a commit git does not hold
+        _commit(repo, "src/c.py", "c = 1\n", "c")
+        got = gates.boundary_frontier(repo, read={"status": "ok", "facts": facts})
+        assert (got["status"], got["code"]) == ("full", gates.SPAN_FULL_UNREADABLE), got
+
     def test_a_bounded_review_is_itself_a_frontier_for_the_next_repeat(self, tmp_path):
         # Its base_tree is the earlier frontier, not the merge-base: condition 2
         # reads the bundle base it records (`base_reviewed`).
@@ -510,10 +545,16 @@ class TestProtocolAgreesWithCode:
         assert rendered.endswith(" · Span: bounded from <id>")
         assert "`Span: bounded from <id>`" in self._bullet()
 
-    def test_the_cumulative_bullet_names_the_unrated_set_and_the_kept_relays(self):
+    def test_the_cumulative_bullet_names_the_kept_relays_and_the_rule_has_one_home(self):
         bullet = self._bullet()
-        assert "`files_context`" in bullet and "never rated" in bullet
+        assert "`files_context`" in bullet
         assert "Record-lint" in bullet and "`test-status`" in bullet
+        text = (ROOT / "skills" / "critic" / "review-protocol.md").read_text(encoding="utf-8")
+        (home,) = [ln for ln in text.splitlines() if ln.startswith("**Subject and oracle")]
+        # Relational, not absolute: a context file is not rated on its own merits,
+        # but a description there the delta made false is the delta's finding.
+        assert "never rated on its own merits" in home
+        assert "a finding about the delta file" in home
 
     def test_the_override_is_spelled_as_the_code_answers_it(self):
         cycle = (ROOT / "skills" / "critic" / "review-cycle.md").read_text(encoding="utf-8")

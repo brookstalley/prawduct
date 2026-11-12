@@ -4366,7 +4366,7 @@ def validate_manifest(data) -> tuple[bool, str]:
     # the fact and a reader that walks it must not meet a non-string.
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
-    # Read by a bounded cumulative's reviewer, rated by no pass. Typed for the
+    # Read by a bounded cumulative's reviewer, never rated on its own merits. Typed for the
     # same reason as the oracle: a reviewer walks it.
     if data.get("files_context") is not None and not _str_list(data.get("files_context")):
         return False, "'files_context' must be a list of non-empty strings or null"
