@@ -6137,6 +6137,188 @@ def _tree_changed_line(body: dict) -> str:
     return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
 
 
+def _load_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[dict | None, str]":
+    """Read one reviewer partial and judge it: ``(data, "")`` when it is sound,
+    ``(None, reason)`` when it is not. The body of :func:`check_partial`, kept
+    separate only because consolidation needs the parsed record and a second
+    read of the file would be a second verdict on bytes that may have changed.
+
+    Every check consolidation makes on ONE partial lives here and nowhere else
+    — parse, schema (:func:`validate_partial`), the keyed location, the role,
+    the dispatching review's id and the commit it reviewed — so the verb a
+    reviewer runs on its own file and the consolidation that later reads it
+    cannot disagree. ``reason`` names the role and is a clause, not a sentence
+    about what to do next: that is the caller's.
+    """
+    try:
+        if path.resolve() != partial_path(prawduct_dir, role, manifest["id"]).resolve():
+            return None, (
+                f"partial {role!r} at {path} is not where this review keeps it "
+                f"({partial_path(prawduct_dir, role, manifest['id'])})"
+            )
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        return None, f"partial {role!r} unreadable ({exc})"
+    valid, preason = validate_partial(data)
+    if not valid:
+        return None, f"partial {role!r} invalid — {preason}"
+    if data["role"] != role:
+        return None, (
+            f"partial for {role!r} declares role {data['role']!r} — roster mismatch"
+        )
+    # Belt-and-braces against the commit binding being the ONLY one. The
+    # keyed filename already stops a straggler from another review landing
+    # here; this catches the case the name cannot — a reviewer handed the
+    # wrong id in its dispatch prompt, writing to the right file with the
+    # wrong review's identity. Stripped before comparing, because
+    # surrounding whitespace normalizes identically and must not abort a
+    # whole consolidation (the `files: []` lesson, same module): hard-fail
+    # is for genuine ambiguity, which a different id is and a padded one
+    # is not.
+    review_id = manifest["id"]
+    if data["dispatch_id"].strip() != review_id.strip():
+        return None, (
+            f"reviewer {role!r} was dispatched by {data['dispatch_id'].strip()} "
+            f"but this manifest is {review_id} — the partial belongs to a "
+            "different review"
+        )
+    if data["commit_reviewed"] != manifest["commit_reviewed"]:
+        return None, (
+            f"reviewer {role!r} reviewed {data['commit_reviewed'][:12]} but "
+            f"dispatch was at {manifest['commit_reviewed'][:12]} — inconsistent, "
+            "re-review"
+        )
+    return data, ""
+
+
+def check_partial(
+    prawduct_dir: Path, manifest: dict, role: str, path: Path
+) -> "tuple[bool, str]":
+    """Whether ``path`` is a partial consolidation would accept for ``role``.
+
+    The one verdict on a single partial, shared by :func:`consolidate`'s read
+    loop and by ``prawduct-hook validate-partial`` (a reviewer's own check
+    before it returns), so a partial the reviewer was told is sound cannot be
+    refused when consolidation reads it. ``(True, "")`` or ``(False, reason)``;
+    a parse failure's reason carries the decoder's line and column.
+    """
+    data, reason = _load_partial(prawduct_dir, manifest, role, path)
+    return data is not None, reason
+
+
+def _partial_failure_message(
+    prawduct_dir: Path, manifest: dict, role: str, reason: str
+) -> str:
+    """Why consolidation refused, and the route that costs one reviewer.
+
+    A bad partial leaves the others untouched on disk; the message says so and
+    which ones, because nothing else tells the builder that a re-run of the
+    whole round is not the only recovery. Every line is derived from the disk:
+    the other roles are judged by :func:`check_partial`, so a role still in
+    flight, a role that passed and a second failing one each read as what they
+    are rather than as "the others passed".
+    """
+    roster = manifest["roster"]
+    review_id = manifest["id"]
+    passed: list[str] = []
+    pending: list[str] = []
+    failing: list[tuple[str, str]] = [(role, reason)]
+    for other in roster:
+        if other == role:
+            continue
+        opath = partial_path(prawduct_dir, other, review_id)
+        if not opath.is_file():
+            pending.append(other)
+            continue
+        ok, why = check_partial(prawduct_dir, manifest, other, opath)
+        if ok:
+            passed.append(other)
+        else:
+            failing.append((other, why))
+    lines = [
+        f"critic-consolidate: {reason} — fail-closed, not persisting a partial "
+        "review as complete."
+    ]
+    for other, why in failing[1:]:
+        lines.append(f"  Also failing: {why}.")
+    if passed:
+        lines.append(
+            f"  The other {len(passed)} partial(s) passed and are kept on disk "
+            f"({', '.join(passed)})."
+        )
+    if pending:
+        lines.append(f"  Not yet written: {', '.join(pending)}.")
+    names = [name for name, _ in failing]
+    paths = ", ".join(str(partial_path(prawduct_dir, name, review_id)) for name in names)
+    if roster == ["reviewer"] and not manifest.get("reviewer_model"):
+        # The fork reviewed inline, so there is no reviewer to send back.
+        lines.append(
+            f"  Remedy: rewrite {paths} and re-run `prawduct-hook critic-consolidate`. "
+            "Do not run `critic-begin` or `critic-discard` — they archive the "
+            "partials that are sound."
+        )
+    else:
+        who = " and ".join(f"`{name}`" for name in names)
+        lines.append(
+            f"  Remedy: re-dispatch the {who} `critic-reviewer` alone — the same "
+            f"manifest and the same dispatch prompt — to rewrite {paths}; its "
+            "SubagentStop re-runs consolidation. Do not run `critic-begin` or "
+            "`critic-discard` — they archive the partials that are sound."
+        )
+    return "\n".join(lines)
+
+
+def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
+    """``prawduct-hook validate-partial <path>``: the reviewer's own check.
+
+    Read-only. Finds which roster role of the pending review ``path`` is the
+    keyed partial of, then asks :func:`check_partial` — the verdict
+    consolidation will reach on the same file. Exit 0 and ``ok``; exit 1 and
+    the reason (a parse error carries its line and column). A relative path is
+    resolved against the project directory, not the caller's cwd: a subagent's
+    cwd is not the project.
+    """
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    mpath = manifest_path(prawduct_dir)
+    try:
+        manifest = json.loads(mpath.read_text())
+    except (OSError, ValueError) as exc:
+        print(
+            f"validate-partial: no readable review manifest at {mpath} ({exc}) — "
+            "there is no pending review to check this partial against.",
+            file=sys.stderr,
+        )
+        return 1
+    ok, reason = validate_manifest(manifest)
+    if not ok:
+        print(f"validate-partial: invalid manifest — {reason}", file=sys.stderr)
+        return 1
+    target = Path(path_arg)
+    if not target.is_absolute():
+        target = project_dir / target
+    try:
+        resolved = target.resolve()
+    except OSError as exc:
+        print(f"validate-partial: cannot resolve {path_arg!r} ({exc})", file=sys.stderr)
+        return 1
+    for role in manifest["roster"]:
+        if partial_path(prawduct_dir, role, manifest["id"]).resolve() == resolved:
+            ok, reason = check_partial(prawduct_dir, manifest, role, target)
+            if ok:
+                print("ok")
+                return 0
+            print(f"validate-partial: {reason}", file=sys.stderr)
+            return 1
+    print(
+        f"validate-partial: {path_arg!r} is not a partial of review {manifest['id']} — "
+        "write it at the path your manifest's `rendezvous` names for your role.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def consolidate(
     project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
 ) -> int:
@@ -6198,7 +6380,6 @@ def consolidate(
         return 1
 
     roster = manifest["roster"]
-    manifest_commit = manifest["commit_reviewed"]
     review_id = manifest["id"]
     is_verify = manifest["mode"] == _VERBOSE_VERIFY_RESOLUTIONS
 
@@ -6210,53 +6391,10 @@ def consolidate(
         if not ppath.is_file():
             missing.append(role)
             continue
-        try:
-            data = json.loads(ppath.read_text())
-        except (OSError, ValueError) as exc:  # ValueError: see the findings-cache read
+        data, why = _load_partial(prawduct_dir, manifest, role, ppath)
+        if data is None:
             print(
-                f"critic-consolidate: partial {role!r} unreadable ({exc}) — "
-                "fail-closed, not persisting a partial review as complete.",
-                file=sys.stderr,
-            )
-            return 1
-        valid, preason = validate_partial(data)
-        if not valid:
-            print(
-                f"critic-consolidate: partial {role!r} invalid — {preason}. "
-                "Fail-closed; not consolidating.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["role"] != role:
-            print(
-                f"critic-consolidate: partial for {role!r} declares role "
-                f"{data['role']!r} — roster mismatch, fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        # Belt-and-braces against the commit binding being the ONLY one. The
-        # keyed filename already stops a straggler from another review landing
-        # here; this catches the case the name cannot — a reviewer handed the
-        # wrong id in its dispatch prompt, writing to the right file with the
-        # wrong review's identity. Stripped before comparing, because
-        # surrounding whitespace normalizes identically and must not abort a
-        # whole consolidation (the `files: []` lesson, same module): hard-fail
-        # is for genuine ambiguity, which a different id is and a padded one
-        # is not.
-        if data["dispatch_id"].strip() != review_id.strip():
-            print(
-                f"critic-consolidate: reviewer {role!r} was dispatched by "
-                f"{data['dispatch_id'].strip()} but this manifest is "
-                f"{review_id} — the partial belongs to a different review, "
-                "fail-closed.",
-                file=sys.stderr,
-            )
-            return 1
-        if data["commit_reviewed"] != manifest_commit:
-            print(
-                f"critic-consolidate: reviewer {role!r} reviewed "
-                f"{data['commit_reviewed'][:12]} but dispatch was at "
-                f"{manifest_commit[:12]} — inconsistent, re-review.",
+                _partial_failure_message(prawduct_dir, manifest, role, why),
                 file=sys.stderr,
             )
             return 1

@@ -260,7 +260,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # whole table prices.
     # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review as a
     # boundary-stage review. Ceiling lowered with it.
-    "single-pass-inner": 5639,
+    # +57 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the Critic skill grants and instructs `validate-partial` on the fork's own partial, and its refusal path names the one-reviewer re-dispatch. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    "single-pass-inner": 5696,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -360,7 +363,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # reviewer applies it. What that buys is a rated, countable verdict on a class reviewers
     # raised unprompted under four goals and never above a note; its `read-cost:` yield is the
     # evidence it is kept or retired on.
-    "single-pass-full": 9912,
+    # +57 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same SKILL.md edit as `single-pass-inner`. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    "single-pass-full": 9969,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -469,7 +475,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
     # Ceiling lowered with it.
     # +87 on 2026-11-11 (read-cost-review), DECLARED: the same check as `single-pass-full`.
-    "dispatched-reviewer": 9382,
+    # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: `critic-reviewer.md`'s `tools:` grants `validate-partial` and its write step says to run it. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    "dispatched-reviewer": 9432,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -538,7 +547,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
     # Ceiling lowered with it.
     # +87 on 2026-11-11 (read-cost-review), DECLARED: the same check as `single-pass-full`.
-    "coordinator-fork": 10575,
+    # +93 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the SKILL.md edit (+57) and one sentence in `coordinator.md` naming the one-reviewer re-dispatch remedy (+36). Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    "coordinator-fork": 10668,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -546,17 +558,23 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Baselines, recorded where each stood when it first got an owner.
     # -5 each on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review
     # as a boundary-stage review. Ceilings lowered with them.
-    "coordinator-fork-inner": 6302,
-    "dispatched-reviewer-inner": 5109,
+    # +93 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same two edits as `coordinator-fork`. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    "coordinator-fork-inner": 6395,
+    # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
+    # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
+    # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
+    "dispatched-reviewer-inner": 5159,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5640,
-    "single-pass-full": 9913,
-    "dispatched-reviewer": 9383,
-    "coordinator-fork": 10576,
-    "coordinator-fork-inner": 6303,
-    "dispatched-reviewer-inner": 5110,
+    "single-pass-inner": 5697,
+    "single-pass-full": 9970,
+    "dispatched-reviewer": 9433,
+    "coordinator-fork": 10669,
+    "coordinator-fork-inner": 6396,
+    "dispatched-reviewer-inner": 5160,
 }
 
 

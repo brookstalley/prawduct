@@ -464,6 +464,7 @@ def test_documented_invocations_are_not_refused(capsys):
         ("critic-discard", []),
         ("critic-restore", ["rev-abc"]),
         ("critic-consolidate", []),
+        ("validate-partial", [".prawduct/.critic-partials/design.rev-1.json"]),
         ("subagent-stop", []),
         ("stop", []),
         ("jurisdiction", ["--file", "plan.md"]),
@@ -552,7 +553,7 @@ def test_every_dispatched_command_appears_in_the_documented_list():
     from both is one nobody checked against the guard."""
     listed = {
         "clear", "critic-begin", "critic-end", "critic-discard", "critic-restore",
-        "critic-consolidate", "subagent-stop", "stop", "jurisdiction", "test-status",
+        "critic-consolidate", "validate-partial", "subagent-stop", "stop", "jurisdiction", "test-status",
         "validate-evidence", "test-evidence", "check-cumulative-critic",
         "verify-chunk-refs", "verify-records", "verify-coverage", "ledger-append",
         "handoff", "review-stats", "stats", "contribute", "aggregate-stats", "classify-diff-risk",

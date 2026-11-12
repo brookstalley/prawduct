@@ -2748,6 +2748,25 @@ def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> 
     )
 
 
+def cmd_validate_partial(project_dir: Path, path: str | None) -> int:
+    """Read-only: would consolidation accept this reviewer partial?
+
+    A reviewer runs it on its own file before returning. Exit 0 prints ``ok``;
+    exit 1 prints the parse error (line and column) or the validation reason;
+    exit 2 is a missing path. The verdict is
+    ``critic_consolidate.check_partial``, the same function consolidation
+    reads each partial through."""
+    if not path:
+        print("usage: prawduct-hook validate-partial <partial path>", file=sys.stderr)
+        return 2
+    lib_root = _plugin_root()
+    if lib_root not in sys.path:
+        sys.path.insert(0, lib_root)
+    from lib import critic_consolidate  # noqa: PLC0415 — lazy keeps top-level cheap
+
+    return critic_consolidate.validate_partial_cmd(project_dir, path)
+
+
 def cmd_subagent_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     """SubagentStop trigger: consolidate Critic partials as each reviewer finishes.
 
@@ -10637,7 +10656,7 @@ def cmd_repo_disable(project_dir: Path, argv: list[str]) -> int:
 _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
-    "critic-restore <review-id>|critic-consolidate|"
+    "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
     "subagent-stop|"
     "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
@@ -11118,6 +11137,8 @@ _EPHEMERAL_SAFE_COMMANDS = frozenset({
     "aggregate-stats",
     "test-status",
     "validate-evidence",
+    # Read-only: parses one reviewer partial and prints a verdict; writes nothing.
+    "validate-partial",
     "verify-chunk-refs",
     "verify-coverage",
     "verify-records",
@@ -11637,6 +11658,7 @@ _NO_ARGUMENT_NOTE_ONLY_COMMANDS = frozenset({
 _SINGLE_POSITIONAL_COMMANDS = frozenset({
     "accept-operator-verification",
     "check-branch-pushed",
+    "validate-partial",
     "verify-chunk-refs",
     "verify-operator-verification",
 })
@@ -11753,6 +11775,9 @@ def _dispatch() -> int:
         return cmd_critic_restore(project_dir, sys.argv[2:])
     elif command == "critic-consolidate":
         return cmd_critic_consolidate(project_dir, sys.argv[2:])
+    elif command == "validate-partial":
+        partial = sys.argv[2] if len(sys.argv) > 2 else None
+        return cmd_validate_partial(project_dir, partial)
     elif command == "subagent-stop":
         return cmd_subagent_stop(project_dir, _read_stop_stdin())
     elif command == "jurisdiction":

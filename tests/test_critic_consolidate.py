@@ -4104,6 +4104,256 @@ class TestConsolidateIntegration:
 # ---------------------------------------------------------------------------
 
 
+def _run_validate_partial(repo: Path, path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(HOOK), "validate-partial", str(path)],
+        cwd=str(repo), capture_output=True, text=True,
+        env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+    )
+
+
+def _partial_file(repo: Path, role: str) -> Path:
+    return _partials_dir(repo) / f"{role}.{FAKE_REVIEW_ID}.json"
+
+
+def _write_unescaped_quote_partial(repo: Path, role: str, head: str) -> Path:
+    """A partial a reviewer wrote with a `"` inside a JSON string, unescaped —
+    the observed field failure."""
+    text = json.dumps(_partial(role, head, summary="PLACEHOLDER"))
+    path = _partial_file(repo, role)
+    path.write_text(text.replace("PLACEHOLDER", 'it said "hello" and stopped'))
+    return path
+
+
+class TestOneUnreadablePartialCostsOneReviewer:
+    """A partial that fails its check fails consolidation closed, and the
+    message says which role to send back and that the rest are kept."""
+
+    def _three_roles_one_bad(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _write_partial(repo, "correctness", head)
+        _write_partial(repo, "design", head)
+        bad = _write_unescaped_quote_partial(repo, "sustainability", head)
+        return repo, head, bad
+
+    def test_the_fixture_really_is_unparseable(self, tmp_path):
+        repo, head, bad = self._three_roles_one_bad(tmp_path)
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(bad.read_text())
+
+    def test_stderr_names_the_role_the_kept_partials_and_the_cheap_remedy(self, tmp_path):
+        repo, head, bad = self._three_roles_one_bad(tmp_path)
+        kept = {r: _partial_file(repo, r).read_bytes() for r in ("correctness", "design")}
+        result = _run_consolidate(repo)
+        assert result.returncode == 1
+        err = result.stderr
+        assert "partial 'sustainability' unreadable" in err
+        assert re.search(r"line \d+ column \d+", err), err
+        assert "The other 2 partial(s) passed and are kept" in err
+        assert "re-dispatch the `sustainability` `critic-reviewer` alone" in err
+        assert "same manifest and the same dispatch prompt" in err
+        assert str(bad) in err
+        assert "SubagentStop re-runs consolidation" in err
+        assert "Do not run `critic-begin` or `critic-discard`" in err
+        # Nothing was persisted, and the valid partials are untouched.
+        assert not (repo / FINDINGS_REL).is_file()
+        for role, before in kept.items():
+            assert _partial_file(repo, role).read_bytes() == before
+
+    def test_rewriting_only_the_bad_partial_consolidates_without_a_new_begin(self, tmp_path):
+        repo, head, bad = self._three_roles_one_bad(tmp_path)
+        assert _run_consolidate(repo).returncode == 1
+        manifest_before = (_partials_dir(repo) / "manifest.json").read_bytes()
+        _write_partial(repo, "sustainability", head)
+        result = _run_consolidate(repo)
+        assert result.returncode == 0, result.stderr
+        assert "consolidated:" in result.stdout
+        assert len(_store_facts(repo, "review")) == 1
+        # The manifest this review was dispatched under is the one consolidated;
+        # no `critic-begin` replaced it in between.
+        assert json.loads(manifest_before)["id"] == FAKE_REVIEW_ID
+
+    def test_the_message_is_derived_from_the_disk(self, tmp_path):
+        """A role still in flight is not 'passed', and a second bad partial is named."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head)
+        _write_partial(repo, "correctness", head)
+        _write_unescaped_quote_partial(repo, "design", head)
+        # sustainability: not written yet.
+        err = _run_consolidate(repo).stderr
+        assert "The other 1 partial(s) passed and are kept on disk (correctness)" in err
+        assert "Not yet written: sustainability" in err
+        _write_partial(repo, "sustainability", "deadbeefdeadbeef")  # wrong commit
+        err = _run_consolidate(repo).stderr
+        assert "Also failing: reviewer 'sustainability' reviewed deadbeefdead" in err
+        assert "re-dispatch the `design` and `sustainability` `critic-reviewer`" in err
+        assert "Not yet written" not in err
+
+    def test_an_inline_single_pass_review_is_told_to_rewrite_not_re_dispatch(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"])
+        _partial_file(repo, "reviewer").write_text('{"role": "reviewer", "summary": "a "b""}')
+        err = _run_consolidate(repo).stderr
+        assert "rewrite" in err and "re-run `prawduct-hook critic-consolidate`" in err
+        assert "re-dispatch" not in err
+        assert "Do not run `critic-begin` or `critic-discard`" in err
+
+    def test_a_handed_off_single_pass_reviewer_is_re_dispatched(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"], reviewer_model="sonnet")
+        _partial_file(repo, "reviewer").write_text("{not json")
+        err = _run_consolidate(repo).stderr
+        assert "re-dispatch the `reviewer` `critic-reviewer` alone" in err
+
+
+class TestValidatePartialVerb:
+    """`prawduct-hook validate-partial <path>` and `consolidate` share ONE verdict."""
+
+    def _case(self, tmp_path, kind):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        head = _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _set_marker(repo)
+        _write_manifest(repo, head, roster=["reviewer"])
+        path = _partial_file(repo, "reviewer")
+        good = _partial("reviewer", head)
+        if kind == "malformed":
+            path.write_text(json.dumps(good).replace("reviewer review complete.", 'a "b" c'))
+            return repo, path
+        if kind == "schema":
+            good["findings"] = [{"name": "x", "goal": "g", "severity": "showstopper",
+                                 "recommendation": "y"}]
+        elif kind == "wrong-role":
+            good["role"] = "design"
+        elif kind == "wrong-dispatch":
+            good["dispatch_id"] = "rev-other"
+        elif kind == "wrong-commit":
+            good["commit_reviewed"] = "deadbeefdeadbeef"
+        else:
+            assert kind == "valid", kind
+        path.write_text(json.dumps(good))
+        return repo, path
+
+    @pytest.mark.parametrize(
+        "kind", ["valid", "malformed", "schema", "wrong-role", "wrong-dispatch", "wrong-commit"]
+    )
+    def test_verb_and_consolidate_reach_the_same_verdict(self, tmp_path, kind):
+        repo, path = self._case(tmp_path, kind)
+        verb = _run_validate_partial(repo, path)
+        cons = _run_consolidate(repo)
+        assert (verb.returncode == 0) == (cons.returncode == 0), (verb, cons)
+        if kind == "valid":
+            assert verb.returncode == 0 and verb.stdout.strip() == "ok"
+        else:
+            assert verb.returncode == 1
+            reason = verb.stderr.strip().removeprefix("validate-partial: ")
+            assert reason and reason in cons.stderr, (reason, cons.stderr)
+
+    def test_a_parse_error_reports_line_and_column(self, tmp_path):
+        repo, path = self._case(tmp_path, "malformed")
+        verb = _run_validate_partial(repo, path)
+        assert verb.returncode == 1
+        assert re.search(r"line \d+ column \d+", verb.stderr), verb.stderr
+
+    def test_a_schema_violation_names_the_field(self, tmp_path):
+        repo, path = self._case(tmp_path, "schema")
+        assert "severity" in _run_validate_partial(repo, path).stderr
+
+    def test_a_relative_path_resolves_against_the_project_not_the_cwd(self, tmp_path):
+        repo, path = self._case(tmp_path, "valid")
+        result = _run_validate_partial(repo, path.relative_to(repo))
+        assert result.returncode == 0, result.stderr
+
+    def test_a_path_that_is_no_roster_partial_is_refused(self, tmp_path):
+        repo, path = self._case(tmp_path, "valid")
+        stray = _partials_dir(repo) / "reviewer.rev-other.json"
+        stray.write_text(path.read_text())
+        result = _run_validate_partial(repo, stray)
+        assert result.returncode == 1
+        assert "not a partial of review" in result.stderr
+
+    def test_no_pending_review_is_a_refusal_not_an_ok(self, tmp_path):
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        result = _run_validate_partial(repo, repo / ".prawduct" / "x.json")
+        assert result.returncode == 1
+        assert "no readable review manifest" in result.stderr
+
+    def test_it_is_read_only(self, tmp_path):
+        repo, path = self._case(tmp_path, "valid")
+        before = sorted((p.name, p.read_bytes()) for p in _partials_dir(repo).iterdir())
+        _run_validate_partial(repo, path)
+        after = sorted((p.name, p.read_bytes()) for p in _partials_dir(repo).iterdir())
+        assert before == after
+        assert not (repo / FINDINGS_REL).is_file()
+
+    def test_a_missing_path_is_a_usage_error(self, tmp_path):
+        repo, _ = self._case(tmp_path, "valid")
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "validate-partial"], cwd=str(repo),
+            capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert result.returncode == 2
+
+
+class TestTheReviewerIsToldToCheckItsPartial:
+    """The grant and the instruction travel together: an instruction to run a
+    verb the reviewer may not run is a prompt nobody can answer."""
+
+    @staticmethod
+    def _agent_tools() -> str:
+        agent = (ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
+        return re.search(r"^tools:(.*)$", agent, re.M).group(1)
+
+    def test_the_agent_and_the_critic_skill_grant_both_spellings(self):
+        skill = re.search(
+            r"^allowed-tools:(.*)$", _CRITIC_SKILL.read_text(encoding="utf-8"), re.M
+        ).group(1)
+        for grants in (self._agent_tools(), skill):
+            assert "Bash(prawduct-hook validate-partial*)" in grants
+            assert "Bash(python3 plugin/bin/prawduct-hook validate-partial*)" in grants
+
+    def test_the_grant_covers_the_instructed_call_and_reaches_no_data_plane_write(self):
+        patterns = [
+            p[:-1] for p in re.findall(r"Bash\(([^)]*)\)", self._agent_tools()) if p.endswith("*")
+        ]
+        call = "prawduct-hook validate-partial /x/.prawduct/.critic-partials/design.rev.json"
+        assert any(call.startswith(p) for p in patterns)
+        for op in sorted(_load_hook()._DATA_PLANE_COMMANDS):
+            assert not any(
+                f"prawduct-hook {op}".startswith(p) for p in patterns
+                if p.startswith("prawduct-hook validate")
+            ), op
+
+    def test_the_write_step_carries_the_check_and_the_exit_rule(self):
+        agent = (ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
+        assert (
+            "Then run `prawduct-hook validate-partial <your partial path>`; on exit 1, "
+            "fix the file and run it again. You are done only on exit 0."
+        ) in " ".join(agent.split())
+
+    def test_the_skill_and_coordinator_carry_the_one_reviewer_remedy(self):
+        for path in (_CRITIC_SKILL, ROOT / "skills" / "critic" / "coordinator.md"):
+            flat = " ".join(path.read_text(encoding="utf-8").split())
+            assert "re-dispatch" in flat and "`critic-reviewer`" in flat, path
+            assert "never `critic-begin` or `critic-discard`" in flat, path
+
+
 def _seed_prior_review_with_blocker(repo: Path, head: str, **overrides) -> str:
     """Run a full consolidation that leaves one blocking finding in the store
     and the cache pointing at its fact. Returns the prior review's fact id.
