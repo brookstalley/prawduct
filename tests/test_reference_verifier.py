@@ -88,7 +88,7 @@ def mini_repo(tmp_path: Path) -> Path:
 
 
 class TestEvidenceShape:
-    """The verifier always emits the seven F4a fields, in any execution path."""
+    """The verifier always emits the same F4a fields, in any execution path."""
 
     def test_default_run_prints_all_evidence_fields(self, mini_repo: Path):
         result = _run_verifier(mini_repo)
@@ -102,7 +102,8 @@ class TestEvidenceShape:
             "changes_referenced",
             "changes_unreferenced",
             "changes_unjudged",
-            "changes_unchecked",
+            "changes_out_of_remit",
+            "changes_out_of_remit_reason",
         }
 
     def test_coverage_level_is_referenced_floor(self, mini_repo: Path):
@@ -234,9 +235,9 @@ class TestSymbolExtraction:
         evidence = json.loads(result.stdout)
         assert "tools_cli" in evidence["changes_referenced"]
 
-    def test_non_python_file_is_unjudged_not_stem_matched(self, mini_repo: Path):
-        """Renegotiated contract (gate-soundness ch.1): non-Python files are
-        classified `changes_unjudged`, NOT stem-matched into
+    def test_non_python_file_is_out_of_remit_not_stem_matched(self, mini_repo: Path):
+        """Renegotiated contract (gate-soundness ch.1, #682): non-Python files
+        are classified `changes_out_of_remit`, NOT stem-matched into
         `changes_referenced`. The old stem fallback was noise in both
         directions — a test mentioning the word "config" vouched for
         `config.yaml` — and its false-negative half made `verify-coverage`
@@ -251,20 +252,23 @@ class TestSymbolExtraction:
 
         evidence = json.loads(result.stdout)
         assert "config.yaml" not in evidence["changes_referenced"]
-        assert "config.yaml" in evidence["changes_unjudged"]
+        assert "config.yaml" in evidence["changes_out_of_remit"]
 
 
 class TestUnjudgedClassification:
-    """`changes_unjudged` (gate-soundness ch.1): files the symbol-grep
-    mechanism structurally cannot judge are declared, not silently dropped —
+    """`changes_unjudged` (gate-soundness ch.1): files in the symbol-grep
+    mechanism's remit that it cannot judge are declared, not silently dropped —
     so `verify-coverage` can report them instead of false-blocking on them.
+    Non-Python files are NOT here: they are out of remit (#682), see
+    `TestOutOfRemitClassification`.
     """
 
-    def test_markdown_file_is_unjudged(self, mini_repo: Path):
+    def test_markdown_file_is_out_of_remit_not_unjudged(self, mini_repo: Path):
         (mini_repo / "README.md").write_text("# Docs\n")
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
-        assert "README.md" in evidence["changes_unjudged"]
+        assert "README.md" in evidence["changes_out_of_remit"]
+        assert "README.md" not in evidence["changes_unjudged"]
         assert "README.md" not in evidence["changes_referenced"]
 
     def test_symbol_less_python_file_is_unjudged(self, mini_repo: Path):
@@ -302,9 +306,10 @@ class TestUnjudgedClassification:
         assert "orphan.py" not in evidence["changes_referenced"]
         assert "orphan.py" not in evidence["changes_unjudged"]
 
-    def test_the_three_buckets_partition_the_changed_set(self, mini_repo: Path):
-        """referenced, unreferenced and unjudged are pairwise disjoint and their
-        union is exactly the changed set (#556) — one file of each shape."""
+    def test_the_four_buckets_partition_the_changed_set(self, mini_repo: Path):
+        """referenced, unreferenced, unjudged and out-of-remit are pairwise
+        disjoint and their union is exactly the changed set (#556, #682) — one
+        file of each shape."""
         (mini_repo / "src" / "core.py").write_text(
             "def existing_helper():\n    return 2\n"
         )  # referenced
@@ -325,6 +330,7 @@ class TestUnjudgedClassification:
         referenced = set(evidence["changes_referenced"])
         unreferenced = set(evidence["changes_unreferenced"])
         unjudged = set(evidence["changes_unjudged"])
+        out_of_remit = set(evidence["changes_out_of_remit"])
         changed = {
             "src/core.py",
             "src/orphan.py",
@@ -334,66 +340,77 @@ class TestUnjudgedClassification:
         }
         assert referenced == {"src/core.py"}
         assert unreferenced == {"src/orphan.py"}
-        assert referenced | unreferenced | unjudged == changed
-        assert not referenced & unreferenced
-        assert not referenced & unjudged
-        assert not unreferenced & unjudged
+        assert unjudged == {"src/constants.py", "gone.py"}
+        assert out_of_remit == {"notes.txt"}
+        buckets = [referenced, unreferenced, unjudged, out_of_remit]
+        assert set().union(*buckets) == changed
+        assert sum(len(b) for b in buckets) == len(changed)  # pairwise disjoint
 
 
-class TestUncheckedClassification:
-    """`changes_unchecked` (#164): the files this verifier never analysed, told
-    apart from the ones it analysed and found nothing in.
+class TestOutOfRemitClassification:
+    """`changes_out_of_remit` (#682, #164): the files
+    this verifier never reads, told apart from the ones it analysed and found
+    nothing in.
 
-    The gate this feeds is BLOCKING. Without the distinction, a repo whose whole
-    diff is Swift produces an empty `changes_referenced` that reads identically
-    to a repo with genuinely nothing to cover — the gate passes having inspected
-    nothing. These tests pin the partition, not just the presence of the key.
+    A flat `changes_unjudged` list that mixed the two read as missing evidence
+    and was mistaken for it twice. And the gate this feeds is BLOCKING: without
+    the distinction, a repo whose whole diff is Swift produces an empty
+    `changes_referenced` that reads identically to a repo with genuinely nothing
+    to cover. These tests pin the partition, not just the presence of the key.
     """
 
-    def test_non_python_file_is_unchecked_as_well_as_unjudged(self, mini_repo: Path):
-        (mini_repo / "Feature.swift").write_text("struct Feature {}\n")
+    @pytest.mark.parametrize("name", ["notes.md", "web/app.ts", "Feature.swift"])
+    def test_non_python_file_is_out_of_remit_with_its_reason(
+        self, mini_repo: Path, name: str
+    ):
+        target = mini_repo / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("content\n")
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
-        assert "Feature.swift" in evidence["changes_unchecked"]
-        assert "Feature.swift" in evidence["changes_unjudged"]
+        assert name in evidence["changes_out_of_remit"]
+        assert name not in evidence["changes_unjudged"]
+        assert name not in evidence["changes_referenced"]
+        assert name not in evidence["changes_unreferenced"]
+        reason = evidence["changes_out_of_remit_reason"]
+        assert reason.startswith("not Python:")
+        assert "no evidence is missing" in reason
 
-    def test_unchecked_is_a_subset_of_unjudged(self, mini_repo: Path):
-        """Additive by construction: every unchecked file is also unjudged, so a
-        consumer reading only the old field keeps its current behaviour."""
-        (mini_repo / "Feature.swift").write_text("struct Feature {}\n")
-        (mini_repo / "README.md").write_text("# Docs\n")
-        (mini_repo / "src" / "constants.py").write_text("LIMIT = 10\n")
-
-        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
-        assert set(evidence["changes_unchecked"]) <= set(evidence["changes_unjudged"])
-
-    def test_symbol_less_python_is_unjudged_but_not_unchecked(self, mini_repo: Path):
-        """It WAS analysed. Reporting it unchecked would overstate the hole and
-        make the signal useless on a Python repo, which is most of them."""
+    def test_python_with_no_grep_signal_stays_unjudged(self, mini_repo: Path):
+        """It WAS analysed, so it is not out of remit: reporting it there would
+        hide the one kind of file the symbol grep could have judged."""
         (mini_repo / "src" / "constants.py").write_text("LIMIT = 10\n")
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
         assert "src/constants.py" in evidence["changes_unjudged"]
-        assert "src/constants.py" not in evidence["changes_unchecked"]
+        assert "src/constants.py" not in evidence["changes_out_of_remit"]
 
-    def test_deleted_file_is_unjudged_but_not_unchecked(self, mini_repo: Path):
+    def test_deleted_file_is_unjudged_not_out_of_remit(self, mini_repo: Path):
         """There is no file on disk to have failed to analyse."""
         _git(mini_repo, "rm", "-q", "src/core.py")
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
         assert "src/core.py" in evidence["changes_unjudged"]
-        assert "src/core.py" not in evidence["changes_unchecked"]
+        assert "src/core.py" not in evidence["changes_out_of_remit"]
 
-    def test_python_shebang_script_without_suffix_is_not_unchecked(
+    def test_the_retired_unchecked_key_is_gone(self, mini_repo: Path):
+        """One fact, one key: a second list naming the out-of-remit files as a
+        subset of another bucket would drift from it."""
+        (mini_repo / "Feature.swift").write_text("struct Feature {}\n")
+
+        evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
+        assert "changes_unchecked" not in evidence
+
+    def test_python_shebang_script_without_suffix_is_not_out_of_remit(
         self, mini_repo: Path
     ):
         """`_looks_like_python` already rescues these — a CLI verb with a Python
-        shebang is analysed, so calling it unchecked would be a false hole."""
+        shebang is analysed, so calling it out of remit would be a false hole."""
         script = mini_repo / "bin-tool"
         script.write_text("#!/usr/bin/env python3\ndef run():\n    return 1\n")
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
-        assert "bin-tool" not in evidence["changes_unchecked"]
+        assert "bin-tool" not in evidence["changes_out_of_remit"]
 
     def test_a_run_that_analysed_nothing_warns_on_stderr(self, mini_repo: Path):
         """The vacuous-pass case. Nothing judgeable, files sitting unanalysed —
@@ -403,7 +420,9 @@ class TestUncheckedClassification:
 
         result = _run_verifier(mini_repo, "--base", "main")
         assert result.returncode == 0, result.stderr
-        assert "cannot analyse" in result.stderr
+        assert "out of this verifier's remit (not Python)" in result.stderr
+        assert "inspected nothing" in result.stderr
+        assert "changes_out_of_remit" in result.stderr
         assert "Feature.swift" in result.stderr
 
     def test_no_warning_when_something_was_judgeable(self, mini_repo: Path):
@@ -413,7 +432,7 @@ class TestUncheckedClassification:
         (mini_repo / "src" / "extra.py").write_text("def extra():\n    return 2\n")
 
         result = _run_verifier(mini_repo, "--base", "main")
-        assert "cannot analyse" not in result.stderr
+        assert "inspected nothing" not in result.stderr
 
 
 class TestMultipleTestsDirs:

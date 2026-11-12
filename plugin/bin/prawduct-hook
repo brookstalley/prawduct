@@ -4144,9 +4144,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
 #: silent, because a directive that prints every time is one the reader learns
 #: to skip. The trigger is language-agnostic (see
 #: ``_evidence_changed_judged_code``): it fires off ``changes_referenced`` and
-#: ``changes_unreferenced`` (#556), and ALSO off any ``changes_unjudged`` path
-#: that needs review coverage, which is how a Swift/Go/Rust/C#/TS product
-#: reaches it at all.
+#: ``changes_unreferenced`` (#556), and ALSO off any ``changes_out_of_remit`` or
+#: ``changes_unjudged`` path that needs review coverage, which is how a
+#: Swift/Go/Rust/C#/TS product reaches it at all.
 #:
 #: **Not "a restamp stays silent."** An earlier draft of this comment, the plan,
 #: and the change-log all said so, and it is false: ``--no-rerun`` takes the same
@@ -4195,8 +4195,9 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
     holds still carries the empty seed.
 
     **Two senses of "judged" meet in this function — do not conflate them.**
-    ``changes_unjudged`` means *the symbol-grep overlay had no signal for this
-    file* (it is not Python, declares no symbols, or was deleted).
+    ``changes_out_of_remit`` / ``changes_unjudged`` mean *the symbol-grep overlay
+    had no signal for this file* (it is not Python, declares no symbols, or was
+    deleted).
     ``coverage_algebra.is_judgeable_path`` means *a change here needs review
     coverage*. A Swift file is unjudged in the first sense and judgeable in the
     second, which is exactly the population this trigger has to reach.
@@ -4241,15 +4242,23 @@ def _evidence_changed_judged_code(evidence_path: Path) -> bool:
     # `.prawduct/`-resident Python file can sit in `changes_referenced` while
     # `is_judgeable_path` calls it framework metadata, and substituting the new
     # predicate would take that case dark.
-    unjudged = merged.get("changes_unjudged")
-    if not isinstance(unjudged, list):
+    # Both no-signal buckets are read: a non-Python path is in
+    # `changes_out_of_remit` (#682) in a fresh record and in `changes_unjudged`
+    # in one written before the split, so reading either alone would take a
+    # whole language dark.
+    no_signal: list = []
+    for key in ("changes_out_of_remit", "changes_unjudged"):
+        bucket = merged.get(key)
+        if isinstance(bucket, list):
+            no_signal.extend(bucket)
+    if not no_signal:
         return False
     try:
         is_judgeable = _coverage_algebra().is_judgeable_path
     except ImportError:
         # Broken install — advice fails soft, same as an unreadable record.
         return False
-    return any(isinstance(p, str) and is_judgeable(p) for p in unjudged)
+    return any(isinstance(p, str) and is_judgeable(p) for p in no_signal)
 
 
 #: How many untracked paths the warning names before it summarises the rest.
