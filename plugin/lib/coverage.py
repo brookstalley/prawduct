@@ -637,7 +637,8 @@ def diagnose_base_advance_transfer(
     # transfer the three conditions would have granted, never grant one they
     # would not. It is the store, not the branch, that makes it necessary: every
     # worktree of the clone appends to the same file, and each surviving
-    # endpoint costs a git call below.
+    # endpoint costs a tree comparison below — one line of a single batched git
+    # call since #937, so no subprocess, but git's tree walks still grow with it.
     #
     # It is close to necessary and deliberately not exactly so. A fact on the
     # path from b' to h' spans a sub-interval, so its ``files_changed`` sits
@@ -671,14 +672,21 @@ def diagnose_base_advance_transfer(
         prior_bases = [tree for tree in prior_bases if tree not in pruned]
         prior_heads = [tree for tree in prior_heads if tree not in pruned]
     # `None` from `missing_objects` means git could not answer the batch; the
-    # per-candidate diffs below then meet any absent tree and degrade, which
+    # comparisons below then meet any absent tree and degrade, which
     # is the right reading when nothing could tell absence from failure.
 
-    # Condition 2, one pathspec-limited diff per distinct endpoint: a candidate
-    # endpoint survives only when it agrees with the required span's endpoint on
-    # EVERY file the branch changed. Each candidate list is already distinct and
-    # each is asked about ONE anchor, so there is nothing to memoize — an
-    # earlier version cached on (candidate, anchor) and could never hit.
+    # Condition 2: a candidate endpoint survives only when it agrees with the
+    # required span's endpoint on EVERY file the branch changed. The question
+    # is one pathspec-limited diff per (candidate, anchor) pair, and there is
+    # nothing to memoize within a call — each candidate list is already
+    # distinct and each is asked about ONE anchor (an earlier version cached on
+    # (candidate, anchor) and could never hit). What grew was the SUBPROCESS
+    # count, one per distinct endpoint in a store every worktree appends to
+    # (#937: ~140 diffs, ~2.9 s of a warm Stop). So every pair, heads and bases
+    # alike, goes to git in ONE `diff-tree --stdin` (`evidence.tree_diffs`):
+    # the comparison stays git's own, modes included, and a pair it cannot
+    # answer is re-asked the slow way and degrades exactly as before. Nothing
+    # is persisted, so there is no memo key to get wrong.
     # A path set large enough to overflow git's argv makes the diff fail, which
     # reads as "could not be computed" and denies, the same direction as every
     # other failure here.
@@ -688,6 +696,14 @@ def diagnose_base_advance_transfer(
     def _unresolved(*trees: str) -> None:
         unresolved.extend(t for t in trees if t not in unresolved)
 
+    asked = [
+        (candidate, anchor)
+        for candidates, anchor in ((prior_heads, head_tree), (prior_bases, base_tree))
+        for candidate in candidates
+        if candidate != anchor
+    ]
+    answers = evidence.tree_diffs(project_dir, asked, paths) if asked else {}
+
     def _survivors(candidates: list[str], anchor: str) -> list[str]:
         nonlocal degraded
         kept = []
@@ -695,9 +711,7 @@ def diagnose_base_advance_transfer(
             if candidate == anchor:
                 kept.append(candidate)
                 continue
-            differing = evidence.tree_diff(
-                project_dir, candidate, anchor, paths=paths
-            )
+            differing = answers[(candidate, anchor)]
             if differing is None:
                 degraded = degraded or "a candidate tree could not be diffed"
                 _unresolved(candidate, anchor)
