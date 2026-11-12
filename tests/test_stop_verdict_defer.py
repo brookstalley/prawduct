@@ -83,8 +83,9 @@ def _line(disposition: str, verdict: str, reason: str = "the reason.") -> str:
 DNC_LINE = _line("RUNNING", "DO NOT CLEAR", "the cumulative review is in flight, about 4 minutes.")
 SAFE_LINE = _line("COMPLETE", "SAFE TO CLEAR", "nothing is outstanding.")
 ASK_DNC_LINE = _line("YOUR TURN", "DO NOT CLEAR", "I need your decision first.")
-# A hand-over: the asks restated just above the line, which follows them
+# The older hand-over shape: the asks just above the line, which follows them
 # without a blank line — the last LINE is the close, not the last paragraph.
+# Still read, since a turn with no asks header closes on its last line.
 ASK_SAFE_LINE = (
     "Two decisions for you.\n\n"
     "1. Merge commit or squash? Recommended: merge commit.\n"
@@ -259,6 +260,143 @@ class TestTheOneLineClose:
         )
         assert standing_block.self_citation(text) is None
         assert standing_block.verdict_line(text).startswith("`YOUR TURN`")
+
+
+def _with_asks(close: str, *asks: str, header: str = "**Needs you:**") -> str:
+    """A turn whose asks for the user come last: the one-line close, a blank
+    line, then the asks block under its header — the shape the methodology now
+    prescribes for a turn that needs the user."""
+    numbered = "\n".join(f"{i}. {ask}" for i, ask in enumerate(asks, 1))
+    return f"Did the work; details above.\n\n{close}\n\n{header}\n{numbered}"
+
+
+_DNC_CLOSE = "`RUNNING` · `DO NOT CLEAR` — the verify pass is running; a clear would lose it."
+_ASK_SAFE_CLOSE = "`YOUR TURN` · `SAFE TO CLEAR` — the plan is in the handoff notes."
+_ASK = "Store format 16 for the servable figure? I recommend yes."
+DNC_ASKS = _with_asks(_DNC_CLOSE, _ASK)
+# The same turn with the header dropped: the last line is an ask, not a close.
+DNC_ASKS_NO_HEADER = f"Did the work; details above.\n\n{_DNC_CLOSE}\n\n1. {_ASK}"
+
+
+class TestTheAsksBlock:
+    """A turn that needs the user ends with its asks, under the fixed
+    ``**Needs you:**`` header, AFTER the one-line close. The close is then read
+    from the line just before that header — and only there, because this
+    reading relaxes an authority gate: only the exact header opens the block,
+    the close must be the line immediately before it, and nothing inside the
+    block is ever read as the verdict."""
+
+    def test_the_header_is_the_module_constant(self):
+        assert standing_block.ASKS_HEADER == "**Needs you:**"
+
+    @pytest.mark.parametrize(
+        ("text", "disposition", "verdict"),
+        [
+            (DNC_ASKS, "RUNNING", "DO NOT CLEAR"),
+            (_with_asks(_ASK_SAFE_CLOSE, _ASK, "Keep the flag? I recommend yes."),
+             "YOUR TURN", "SAFE TO CLEAR"),
+            # No blank line between the close and the header.
+            (f"Done.\n\n{_DNC_CLOSE}\n**Needs you:**\n1. {_ASK}", "RUNNING", "DO NOT CLEAR"),
+            # The header's decoration is the module's usual tolerance.
+            (_with_asks(_DNC_CLOSE, _ASK, header="Needs you:"), "RUNNING", "DO NOT CLEAR"),
+            (_with_asks(_DNC_CLOSE, _ASK, header="`Needs you:`"), "RUNNING", "DO NOT CLEAR"),
+            # The first ask on the header's own line.
+            (f"Done.\n\n{_DNC_CLOSE}\n\n**Needs you:** {_ASK}", "RUNNING", "DO NOT CLEAR"),
+        ],
+        ids=["running-dnc", "your-turn-safe", "no-blank-line", "plain-header",
+             "backticked-header", "ask-on-header-line"],
+    )
+    def test_the_close_before_the_asks_is_read(self, text, disposition, verdict):
+        assert standing_block.disposition(text) == disposition
+        assert standing_block.clear_verdict(text) == verdict
+
+    def test_the_verdict_line_is_the_close_not_the_asks(self):
+        assert standing_block.verdict_line(DNC_ASKS) == _DNC_CLOSE
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # No header: the last line is an ask, so there is no close.
+            DNC_ASKS_NO_HEADER,
+            # Not the exact header.
+            _with_asks(_DNC_CLOSE, _ASK, header="## Needs you:"),
+            _with_asks(_DNC_CLOSE, _ASK, header="**needs you:**"),
+            _with_asks(_DNC_CLOSE, _ASK, header="**Needs you**"),
+            _with_asks(_DNC_CLOSE, _ASK, header="**Needs your input:**"),
+            _with_asks(_DNC_CLOSE, _ASK, header="Here is what **Needs you:**"),
+            # The close is not the line immediately before the header.
+            f"Done.\n\n{_DNC_CLOSE}\n\nOne more thing.\n\n**Needs you:**\n1. {_ASK}",
+            # The header opens the turn: nothing precedes it.
+            f"**Needs you:**\n1. {_ASK}\n\n{_DNC_CLOSE}",
+            # Two headers: which block is the asks is ambiguous.
+            f"Done.\n\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n\n**Needs you:**\n2. x",
+            # Both verdicts on the close before the block.
+            _with_asks("`RUNNING` · `DO NOT CLEAR` — not SAFE TO CLEAR yet.", _ASK),
+        ],
+        ids=["no-header", "heading-header", "lower-case-header", "no-colon",
+             "other-wording", "header-mid-line", "close-not-adjacent", "header-first",
+             "two-headers", "both-verdicts"],
+    )
+    def test_no_verdict_unless_the_close_immediately_precedes_the_header(self, text):
+        assert standing_block.clear_verdict(text) is None
+        assert standing_block.contradiction(text) is None
+
+    @pytest.mark.parametrize(
+        ("text", "verdict"),
+        [
+            # A close-shaped line as the asks block's last line: under the old
+            # reading it was the turn's last line, so it was THE close.
+            (_with_asks(_ASK_SAFE_CLOSE, _ASK) + "\n`RUNNING` · `DO NOT CLEAR` — quoted.",
+             "SAFE TO CLEAR"),
+            # A close-shaped line inside the block with no real close before it.
+            (f"Done.\n\n**Needs you:**\n1. {_ASK}\n`RUNNING` · `DO NOT CLEAR` — quoted.", None),
+            # The three-paragraph close followed by an asks block whose last
+            # paragraph leads with a clear label: the block is not read.
+            (_block("RUNNING", "DO NOT CLEAR") + "\n\n**Needs you:**\n1. x\n\n`DO NOT CLEAR` — y.",
+             None),
+        ],
+        ids=["close-shaped-ask-after-a-close", "close-shaped-ask-alone", "legacy-then-asks"],
+    )
+    def test_a_label_inside_the_asks_block_is_never_the_verdict(self, text, verdict):
+        assert standing_block.clear_verdict(text) == verdict
+        assert _on_event(
+            gates.turn_declares_in_flight, {"last_assistant_message": text}
+        ) == (False, None)
+
+    def test_the_three_paragraph_form_is_not_read_across_an_asks_block(self):
+        """Every reader skips the older form's block once an asks block is
+        present: its region would run into the asks."""
+        text = _block("RUNNING", "DO NOT CLEAR") + "\n\n**Needs you:**\n1. x\n\n`DO NOT CLEAR` — y."
+        assert standing_block.disposition(text) is None
+        assert standing_block.verdict_line(text) == ""
+        # Control: without the header, the same block is read.
+        bare = _block("RUNNING", "DO NOT CLEAR")
+        assert standing_block.disposition(bare) == standing_block.RUNNING
+
+    def test_a_handed_over_dnc_before_the_asks_contradicts(self):
+        text = _with_asks("`YOUR TURN` · `DO NOT CLEAR` — I need your decision.", _ASK)
+        assert standing_block.contradiction(text) == standing_block.YOUR_TURN
+
+    def test_the_reason_is_the_close_alone(self):
+        """An ask that happens to say 'this message' is not the close's
+        reason; a reason that cites the turn still is."""
+        sound = _with_asks(
+            "`YOUR TURN` · `SAFE TO CLEAR` — nothing is running.",
+            "The whole plan is in this message: approve it? I recommend yes.",
+        )
+        assert standing_block.self_citation(sound) is None
+        citing = _with_asks(
+            "`YOUR TURN` · `SAFE TO CLEAR` — the questions are in this message.", _ASK,
+        )
+        assert standing_block.self_citation(citing) == "are in this message"
+
+    def test_the_payload_ladder_sees_the_close_through_the_asks(self):
+        assert _on_event(
+            gates.turn_declares_in_flight, {"last_assistant_message": DNC_ASKS}
+        ) == (True, "DO NOT CLEAR")
+        assert _on_event(
+            gates.turn_declares_in_flight, {"last_assistant_message": DNC_ASKS_NO_HEADER}
+        ) == (False, None)
 
 
 class TestDisposition:
@@ -563,6 +701,26 @@ class TestStopDefersOnTheVerdict:
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "GATES DEFERRED" not in result.stderr
 
+    def test_asks_after_a_dnc_close_still_defer_both_gates(self, tmp_path):
+        """The asks come last now; the close above them still defers."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_ASKS)
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert "says RUNNING and closed on DO NOT CLEAR" in result.stderr
+        assert "gate: reflection" in result.stderr
+        assert "gate: critic-review" in result.stderr
+
+    def test_the_same_asks_without_the_header_defer_nothing(self, tmp_path):
+        """Control for the test above: only the header opens the asks block."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(DNC_ASKS_NO_HEADER)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
     def test_dnc_defers_the_reflection_gate(self, tmp_path):
         # No build plan, so no Critic gate: reflection is the only blocker.
         prawduct = tmp_path / ".prawduct"
@@ -830,9 +988,26 @@ class TestVocabularyHasOneHome:
         assert standing_block.clear_verdict(fences[0]) == standing_block.DO_NOT_CLEAR
         assert standing_block.disposition(fences[1]) == standing_block.YOUR_TURN
         assert standing_block.clear_verdict(fences[1]) == standing_block.SAFE_TO_CLEAR
-        # The hand-over example restates its asks, numbered, above the line.
-        assert re.search(r"^1\. .+\n2\. .+", fences[1], re.M)
+        # The hand-over example opens on the line and ENDS with its asks,
+        # numbered, under the header — the asks are the last thing it shows.
+        lines = [line for line in fences[1].splitlines() if line.strip()]
+        assert lines[0] == standing_block.verdict_line(fences[1])
+        assert lines[1] == standing_block.ASKS_HEADER
+        assert [line[:3] for line in lines[2:]] == ["1. ", "2. "]
         assert standing_block.self_citation(fences[1]) is None
+
+    @pytest.mark.parametrize(
+        ("guide", "heading"),
+        [("session-hygiene.md", "## The closing line"),
+         ("session-digest.md", "## Closing the turn")],
+    )
+    def test_each_carrier_names_exactly_the_asks_header(self, guide, heading):
+        """Both directions: the prose names the constant, and every bold
+        "Needs ...:" header the prose names is the constant — so a header
+        renamed in the code or in either carrier fails here."""
+        section = _section((_METHODOLOGY / guide).read_text(encoding="utf-8"), heading)
+        named = set(re.findall(r"\*\*Needs[^*\n]*\*\*", section))
+        assert named == {standing_block.ASKS_HEADER}, named
 
     def test_digest_closing_section_states_exactly_the_vocabulary(self):
         text = (_METHODOLOGY / "session-digest.md").read_text(encoding="utf-8")

@@ -1001,7 +1001,8 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
       - non-dict input, field absent, non-string or blank → ``(False, None)``;
       - the message's close states no single verdict where the close puts it
         (``standing_block.clear_verdict`` returns ``None``: a label quoted
-        mid-prose, both labels, trailing text after the close) →
+        mid-prose or inside the asks block, both labels, trailing text after
+        the close other than the asks block it may end with) →
         ``(False, None)``;
       - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
       - the verdict is ``DO NOT CLEAR`` but the close states no single

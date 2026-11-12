@@ -716,7 +716,10 @@ class TestTheClosingLineIsTheDigestsLastWord:
     evidence). These tests pin the placement, not the hypothesis.
     """
 
-    RULE = "Close with one line, last"
+    # "last" left the rule's opening words on 2026-11-11 (asks-last): the line
+    # is last unless the user must act, when the asks follow it, and the
+    # rule says so a sentence later. The anchor is the rule's opening words.
+    RULE = "Close with one line"
 
     def _digest(self) -> str:
         return DIGEST_SRC.read_text(encoding="utf-8").strip()

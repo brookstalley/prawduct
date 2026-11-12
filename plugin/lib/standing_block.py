@@ -1,18 +1,21 @@
 """The close's vocabulary, and how to read its verdict off a turn.
 
-A turn that ends a work cycle or leaves work outstanding closes on ONE line,
-last: a DISPOSITION label, a CLEAR verdict, then a short reason —
+A turn that ends a work cycle or leaves work outstanding closes on ONE line:
+a DISPOSITION label, a CLEAR verdict, then a short reason —
 ``RUNNING · DO NOT CLEAR — the review is in flight, about 4 minutes``, with
 the labels backticked (``methodology/session-hygiene.md`` owns the shape;
-``methodology/session-digest.md`` injects it into every session). This module
-is the one code home for those labels. The prose names them; a test pins the
-prose to the tuples below in both directions, so a label renamed in either
-place fails rather than drifting.
+``methodology/session-digest.md`` injects it into every session). The line is
+last unless the turn needs the user: then the ASKS BLOCK follows it and ends
+the turn — the :data:`ASKS_HEADER` line, then the numbered asks — so what the
+reader must do is the last thing they see. This module is the one code home
+for the labels and the header. The prose names them; a test pins the prose to
+the constants below in both directions, so a label or the header renamed in
+either place fails rather than drifting.
 
 Sessions on an older digest still close with the three-paragraph form — a
 ``---`` rule, then paragraphs led by ``STATE``, the disposition and the
 verdict — so that form is read too: a turn whose last line is not a one-line
-close is read the old way.
+close, and which has no asks block, is read the old way.
 
 Code reads the close for one reason: the Stop hook fires at EVERY turn end, but
 its reflection and Critic gates are about SESSION end, and the agent's clear
@@ -28,6 +31,11 @@ verdict counts only where the close puts it:
   BEGINS with a disposition label followed directly (across markdown
   decoration and at most one separator such as ``·``, ``/``, ``|`` or a dash)
   by a clear label;
+* when the turn has an ASKS BLOCK — a line that LEADS, after markdown
+  decoration only, with :data:`ASKS_HEADER`, and everything after it — the
+  one-line close is instead the last non-blank line BEFORE that header, and
+  nothing inside the block is read. Two header lines, or a header with no line
+  before it, yield no verdict, and the three-paragraph form is not read;
 * otherwise, the three-paragraph close: the CLOSING BLOCK is the text after
   the last ``---`` rule line (with no rule, the final paragraph alone), and
   the verdict is its FINAL paragraph, only if that paragraph BEGINS with a
@@ -35,10 +43,12 @@ verdict counts only where the close puts it:
 * a close naming BOTH clear labels — on the line, or anywhere in the block —
   is ambiguous and yields no verdict.
 
-So a label quoted mid-prose, a verdict followed by further text, or a close
-that says both, all read as "no verdict" — which the gate treats as a session
-end and blocks. Labels match case-sensitively: the close's labels are
-upper-case tokens, and lower-case "do not clear" in a sentence is prose.
+So a label quoted mid-prose or inside the asks, a verdict followed by further
+text other than the asks block, a close separated from the asks block by
+anything, or a close that says both, all read as "no verdict" — which the gate
+treats as a session end and blocks. Labels and the header match
+case-sensitively: the close's labels are upper-case tokens, and lower-case
+"do not clear" in a sentence is prose.
 
 The two labels are not independent. ``DO NOT CLEAR`` says something a clear
 would kill is in flight. ``COMPLETE`` says nothing is, so it owes
@@ -91,6 +101,11 @@ CLEAR_VERDICT_REASONS: tuple[str, ...] = tuple(
 
 #: Every label the close uses, in the order the close states them.
 ALL_LABELS: tuple[str, ...] = (*DISPOSITION_LABELS, *CLEAR_LABELS)
+
+#: The header that opens the asks block — what the turn needs from the user,
+#: numbered, after the one-line close and last in the turn. Only a line that
+#: LEADS with it (after markdown decoration) opens the block.
+ASKS_HEADER = "**Needs you:**"
 
 # A horizontal-rule line: three or more dashes and nothing else.
 _RULE_LINE = re.compile(r"^\s*-{3,}\s*$")
@@ -147,16 +162,31 @@ def _leading_label(paragraph: str, labels: tuple[str, ...]) -> str | None:
     return found[0] if found else None
 
 
-def _one_line_close(text: str) -> "tuple[str, str | None, str] | None":
-    """``(disposition, verdict, line)`` when the turn's last non-blank line is
-    a one-line close, else ``None``. ``verdict`` is ``None`` when the line
-    names both clear labels: it is still the close, and it states none."""
-    if not isinstance(text, str):
+# The header with its decoration stripped: what a line must lead with.
+_ASKS_HEADER_TEXT = ASKS_HEADER.strip("*_`")
+
+
+def _opens_asks(line: str) -> bool:
+    """Whether ``line`` LEADS with :data:`ASKS_HEADER`, after markdown
+    decoration only — so a header named mid-sentence opens nothing."""
+    return line[_LEADING_DECORATION.match(line).end():].startswith(_ASKS_HEADER_TEXT)
+
+
+def _asks_start(lines: list[str]) -> "int | None":
+    """The index in ``lines`` (non-blank, stripped) of the line opening the
+    asks block, or ``None`` when no line does. ``-1`` when the block cannot be
+    placed — more than one header line, which leaves which block is the asks
+    ambiguous."""
+    starts = [idx for idx, line in enumerate(lines) if _opens_asks(line)]
+    if not starts:
         return None
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
-        return None
-    line = lines[-1]
+    return starts[0] if len(starts) == 1 else -1
+
+
+def _close_line(line: str) -> "tuple[str, str | None, str] | None":
+    """``(disposition, verdict, line)`` when ``line`` is a one-line close,
+    else ``None``. ``verdict`` is ``None`` when the line names both clear
+    labels: it is still the close, and it states none."""
     disposition_found = _lead(line, DISPOSITION_LABELS)
     if disposition_found is None:
         return None
@@ -169,13 +199,45 @@ def _one_line_close(text: str) -> "tuple[str, str | None, str] | None":
     return label, (present[0] if len(present) == 1 else None), line
 
 
+def _has_asks(text: str) -> bool:
+    """Whether the turn carries an asks block, so its close can only be the
+    one-line close just before it (the three-paragraph form is not read)."""
+    if not isinstance(text, str):
+        return False
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return _asks_start(lines) is not None
+
+
+def _one_line_close(text: str) -> "tuple[str, str | None, str] | None":
+    """The turn's one-line close as :func:`_close_line` reads it, else
+    ``None``.
+
+    Without an asks block, the close is the turn's last non-blank line. With
+    one, it is the last non-blank line before the block's header, and nothing
+    in the block is read: an asks block opened at the turn's first line, or
+    two header lines, yields no close."""
+    if not isinstance(text, str):
+        return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    start = _asks_start(lines)
+    if start is None:
+        return _close_line(lines[-1])
+    if start <= 0:
+        return None
+    return _close_line(lines[start - 1])
+
+
 def verdict_line(text: str) -> str:
     """The text that carries the turn's clear verdict and its reason: the
-    one-line close, or the three-paragraph close's final paragraph. Empty when
-    there is neither."""
+    one-line close (never the asks block after it), or the three-paragraph
+    close's final paragraph. Empty when there is neither."""
     one = _one_line_close(text)
     if one is not None:
         return one[2]
+    if _has_asks(text):
+        return ""
     paragraphs = _paragraphs(closing_block(text))
     return paragraphs[-1] if paragraphs else ""
 
@@ -192,6 +254,8 @@ def disposition(text: str) -> str | None:
     one = _one_line_close(text)
     if one is not None:
         return one[0]
+    if _has_asks(text):
+        return None
     block = closing_block(text)
     if not block:
         return None
@@ -311,14 +375,17 @@ def clear_verdict(text: str) -> str | None:
     """The clear verdict a turn closes on — ``SAFE_TO_CLEAR``, ``DO_NOT_CLEAR``,
     or ``None`` when the turn states no single verdict where the close puts it.
 
-    ``None`` covers: no text, no close, a last line that is not a one-line
-    close over a final paragraph that does not lead with a clear label, and a
-    close naming both labels. Callers that relax a gate on a verdict must treat
+    ``None`` covers: no text, no close, a last line (or, with an asks block,
+    a line just before its header) that is not a one-line close over a final
+    paragraph that does not lead with a clear label, and a close naming both
+    labels. Callers that relax a gate on a verdict must treat
     ``None`` as "no permission".
     """
     one = _one_line_close(text)
     if one is not None:
         return one[1]
+    if _has_asks(text):
+        return None
     block = closing_block(text)
     if not block:
         return None

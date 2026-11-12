@@ -557,7 +557,10 @@ LAST_MEASURED_TOKENS = {
     # PR section loses the `pr-reviewer` dispatch, its protocol pointer and the concurrency sentence,
     # and names the two gate commands instead; `.gates-waived` loses its `pr` key. A READING;
     # ceiling lowered with it.
-    "methodology/building.md": 5367,
+    # -8 on 2026-11-11 (asks-last, owner ruling): the Session Scope sentence stops saying where
+    # the closing line goes ("last, after every other word"), which the asks that now follow it
+    # falsified; session-hygiene.md and the digest own the placement. A CUT; ceiling lowered.
+    "methodology/building.md": 5359,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -1682,7 +1685,11 @@ LAST_MEASURED_TOKENS = {
     # went; the asks rule and its example are the growth. A READING, no ceiling.
     # -7 on 2026-11-11 (pr-reviewer-fold Chunk 03): "a `/prawduct:pr` reviewer still running" left
     # the outstanding-work list; there is no such reviewer. A READING.
-    "methodology/session-hygiene.md": 3287,
+    # +98 on 2026-11-11 (asks-last, owner ruling): the asks move from just above the close to
+    # after it, under the fixed `**Needs you:**` header, so they are the last thing the reader
+    # sees; the close's reason may no longer point at them by position, and the Stop-hook
+    # paragraph says the verdict is then read from the line before the header. A READING.
+    "methodology/session-hygiene.md": 3385,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -2241,8 +2248,14 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # framework 3074 -> 3071 on 2026-11-11 (pr-reviewer-fold Chunk 03): AGENTS.md's PR section
     # stops describing a dispatched release-readiness reviewer and its protocol, and the layout
     # paragraph names the Critic protocol alone.
-    "framework": 3071,
-    "product": 2192,
+    # framework 3071 -> 3058, product 2192 -> 2179 on 2026-11-11 (asks-last, owner ruling): the
+    # closing section's asks sentence now puts the asks after the line under `**Needs you:**`
+    # and bars a reason pointing at them. Paid in place, and then some, by the take-the-next-
+    # step paragraph's last clause, which restated the three dispositions the next sentence
+    # defines, and "last," in the rule's opening, which the asks sentence now qualifies. Digest
+    # 9412 -> 9358 characters.
+    "framework": 3058,
+    "product": 2179,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2409,8 +2422,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # 3080 -> 3075, 2198 -> 2193 on 2026-11-10 (audit-guidance): ratcheted with the
     # reading, one over each.
     # 3075 -> 3072 on 2026-11-11 (pr-reviewer-fold Chunk 03): ratcheted with the reading.
-    "framework": 3072,
-    "product": 2193,
+    # 3072 -> 3059, 2193 -> 2180 on 2026-11-11 (asks-last): ratcheted with the reading's cut,
+    # one over each.
+    "framework": 3059,
+    "product": 2180,
 }
 
 
@@ -2947,13 +2962,23 @@ class TestBuildingMethodology:
                     f"replaced by {absorbed_by}. Two live vocabularies for one "
                     "slot is worse than either alone."
                 )
-            # The ask rule (owner ruling 2026-11-10, #1131): a turn that needs
-            # the user ends with the asks restated just above the line, because
-            # the reader reads the bottom and a pointer upstream is a search,
-            # not a question. Pinned on both carriers by its discriminating
-            # content: where the asks go, and the pointer that is never one.
-            assert "just above" in flat, (
-                f"{name} no longer puts the asks just above the closing line"
+            # The ask rule (owner rulings 2026-11-10, #1131, and 2026-11-11,
+            # asks-last): a turn that needs the user ends with the asks, AFTER
+            # the closing line under a fixed header, because the reader reads
+            # the bottom and a pointer upstream is a search, not a question.
+            # The 2026-11-10 placement, just above the line, left the close
+            # last and its reason pointing back up at the asks — the shape the
+            # owner found hard to parse — so it is pinned gone. Pinned on both
+            # carriers by its discriminating content: the header (its one code
+            # home is `lib/standing_block.ASKS_HEADER`, which the Stop hook
+            # reads past), and the pointer that is never one.
+            from lib import standing_block
+
+            assert standing_block.ASKS_HEADER in flat, (
+                f"{name} no longer names the asks header the Stop hook reads past"
+            )
+            assert "just above" not in flat, (
+                f"{name} still puts the asks just above the closing line"
             )
             assert '"see above"' in flat, (
                 f"{name} no longer names \"see above\" as the ask that is not one"
@@ -3829,7 +3854,8 @@ class TestBuildingMethodology:
         # RAISED 5308 -> 5368 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5368 -> 5375 (critic-trim merged with audit-guidance, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5375 -> 5368 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 5368, f"building.md is ~{tokens} tokens, should be <5368"
+        # LOWERED 5368 -> 5360 (asks-last, 2026-11-11) with the reading's cut.
+        assert tokens < 5360, f"building.md is ~{tokens} tokens, should be <5360"
 
 
 # =============================================================================
