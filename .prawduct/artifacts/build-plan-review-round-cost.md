@@ -67,6 +67,23 @@ the base-tree run.
 
 **Decisions made mid-build:** (appended while building)
 
+- Chunk 02: `next_action_line` and `fact_to_cache_record` take the waived findings and take them out
+  of the open blocking count. The NEXT-ACTION line names them first, and the review fact's `counts`
+  are unchanged. Settled by the goal: telling the builder to fix a waived finding buys the very
+  round #900 removes. This edit is outside the block the partition assigned to Chunk 02, but it
+  does not touch Chunk 01's per-partial loop.
+- Chunk 02: the classifier skips narrowed runs, matching `_store_run_vouching`, and a test pins it.
+  A degraded base run still supplies failing ids. Settled by matching the product's other choices
+  about what a run vouches for.
+- Chunk 02: a `failed_tests` that is a bare string fails validation, as #900's acceptance says.
+  That is stricter than `hook-surface.md`'s tolerance for a model-written field. Chunk 01's
+  `validate-partial` lets the reviewer catch it before returning. Not settled by the goals: the
+  issue's acceptance outranked the learnings rule here, and the boundary review should weigh it.
+- Chunk 02: the methodology budget raises were declared with reasons in `test_v5_methodology.py`
+  (`building.md` +37, `goals-1-3.md` +13, `review-cycle.md` +71). Dated records that state the old
+  rule are left as history: the loop-nontermination diagnosis, an archived plan, and the #167
+  design.
+
 **Level:** High. Both items name their functions, their acceptance and their red-first tests.
 
 ## Verification Strategy
