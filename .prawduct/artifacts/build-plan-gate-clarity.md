@@ -94,6 +94,16 @@ own bar.
   for #303. The removal the builder first made is undone, so the only departure from the norm is
   the narrowing | user can veto/override] Inferred, not ruled. The builder chose the shape, and the
   coordinator restored the alias.
+- Chunk 01: condition 2 sends every (candidate, anchor) pair to git in one
+  `git diff-tree --stdin` call (`evidence.tree_diffs`) instead of memoising. The cost was the
+  number of subprocesses. Head anchors and path sets move every turn, so a memo would mostly miss,
+  and persisting nothing leaves no memo key to get wrong. A pair git skips, or a batch that fails,
+  is asked again per pair through `tree_diff`, so an unreadable tree still degrades and denies.
+  Measured (diagnosis only, warm, same command before and after):
+  - this repo, PR-sized span: 3.0–4.6 s with 137 git calls before, 0.15–0.18 s with 4 after;
+  - this repo, release-sized span: about 24 s with 860 calls before, about 0.85 s with 3 after;
+  - discodon: 9.0–9.5 s with 200 calls before, 0.7–0.9 s with 5 after;
+  - verdicts identical in every case.
 
 **Level:** High for 01, 02 and 04, whose items carry their own acceptance. Medium for 03. Whether
 the coverage algebra can report which files are left uncovered cheaply, without a second
