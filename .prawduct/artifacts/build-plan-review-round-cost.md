@@ -10,24 +10,35 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 → conforms; 01 turns a lost round into one reviewer re-dispatch, and 02 removes a verify-resolutions round from every branch with an inherited red base"
-      - "proportionality ratchets both ways → conforms"
+      - "proportionality ratchets both ways → conforms; no control is added that blocks, and the new verb is a reviewer-side check whose refusal is the existing fail-closed consolidation, met earlier"
+      - "state-file growth is advisory, never a hard block → inapplicable because no state file's growth rule changes; the run fact gains at most the 100 ids the evidence record already caps"
       - "review rigor is stage-keyed → conforms; an inherited failure is still rated BLOCKING (owner ruling 2026-10-21 on #900), and only its waiver is automated"
   - artifact: architecture
     dispositions:
       - "an independent reviewer never mutates the session it reviews → conforms; the reviewer gains a read-only check of its own output, and no write to anything else"
       - "authority fails closed; advice fails soft → conforms; consolidation stays fail-closed on any unreadable partial, and the waiver fails closed when no base-tree run lists every id"
+      - "local-first → conforms; the classifier reads the clone-shared store and git, nothing networked"
+      - "the plugin writes nothing into a governed repo except its own state → conforms; the waiver is a fact in the shared evidence store, and nothing else is written"
+      - "written in Python, never specific to Python → conforms; test ids are opaque strings from whatever JUnit report the suite wrote"
+      - "guides and reviews, never implements → conforms; no product code, config or tooling is written"
+      - "goals and verification bind, method is advice → conforms; Chunk 01 departed from the issue's grant spelling to the house form, recorded below"
       - "every fact has one home → conforms; 01 has one check_partial that both the verb and consolidate call, and 02 has one classifier for inherited failures"
   - artifact: data-model
     dispositions:
       - "verdicts computed from facts, no model in the write path → conforms; the waiver is written by consolidate from the base-tree run fact, and the reviewer only names the ids it rated"
       - "facts immutable and append-only → conforms; the waiver is a new resolution fact with a deterministic id"
-      - "a resolution fact requires a verify-resolutions origin → amendment proposed; the owner ruled auto-waive on 2026-10-21 (#900), and data-model.md:438 gains the inherited-baseline origin as that item specifies"
-      - "a newer-schema fact is surfaced, never dropped → conforms; `failed_tests` on a run fact and `origin`/`base_run` on a resolution fact are additive"
+      - "derived views never authoritative → conforms; the findings cache shows waived findings, and no gate reads it"
+      - "a governance document reaches a terminal state and is never deleted → inapplicable because no plan or record is deleted"
+      - "backlog issues conform to the title rules → inapplicable because no backlog write path changes"
+      - "a newer-schema fact is surfaced, never dropped → conforms; `failed_tests` on a run fact and `origin`/`base_run` on a resolution fact are additive, and the classifier fails closed on a run fact it cannot parse"
+      - "two stores, two lifetimes → conforms; the waiver is a fact in the clone-shared store, and nothing per-clone becomes an answer"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable because no backlog read changes"
+      - "a resolution fact requires a verify-resolutions origin (the constraint in the data model's body) → amended by owner ruling; the owner ruled auto-waive on 2026-10-21 (#900), and the constraint gains the inherited-baseline origin as that item specifies"
   - artifact: api-contract
     dispositions:
-      - "whole-surface semantic versioning → conforms"
-      - "exit codes are the contract → conforms; validate-partial exits 0 ok and 1 with the reason"
-      - "additive-first evolution → conforms; one new read-only verb, and one optional finding field"
+      - "whole-surface semantic versioning → conforms; no subcommand gains a version of its own"
+      - "exit codes are the contract → conforms; validate-partial exits 0 ok, 1 with the reason, 2 on a usage error"
+      - "additive-first evolution → conforms; one new read-only verb, one optional finding field, and two additive fact fields"
 depends_on:
   - plugin/lib/critic_consolidate.py
   - plugin/lib/evidence.py

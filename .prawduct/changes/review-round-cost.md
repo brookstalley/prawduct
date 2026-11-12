@@ -1,6 +1,6 @@
 ---
 schema: 1
-type: feat
+type: feature
 scope: review-round-cost
 date: 2026-11-11
 title: an unreadable reviewer partial costs one reviewer, and an inherited red baseline is waived without a round
