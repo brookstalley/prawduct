@@ -2,7 +2,7 @@
 """What would a cumulative review bounded to the delta have given away?
 
 Run:  python3 tools/measure-repeat-cumulative-yield.py REPO [--source ledger|evidence|both]
-          [--until 2026-09-22T23:59:59Z] [--json]
+          [--since TS] [--until 2026-09-22T23:59:59Z] [--vanished-in changed|source] [--json]
 
 Read-only. This is the method behind the bounded-cumulative design's
 § Measured trade (`.prawduct/artifacts/bounded-cumulative-design.md`), kept as a
@@ -34,8 +34,12 @@ rated files the base advance also touched (Decision 4's v2 question).
 
 For every old-only BLOCKING finding it replays the design's interaction sweep
 (§ The interaction sweep, steps 2-3): the identifiers and string literals on the
-delta's removed lines that appear nowhere in the delta's changed files at the
-reviewed commit, then one `git grep -F` per token over that commit's tree. A
+delta's removed lines that are gone at the reviewed commit, then one
+`git grep -F` per token over that commit's tree. "Gone" has two readings,
+selected by `--vanished-in`: from every file the delta changed (`changed`, the
+default and the 2026-11-11 reading), or from the files the removed lines came
+from (`source`, step 2 read literally). They differ when the delta's own plan,
+change record or tests newly mention a name it retired. A
 finding is `caught` when one of its files is hit by a token inside the token
 budget whose site count is within the per-token cap (past the cap the design
 relays "wide reach", not the sites). `caught_uncapped` drops both caps.
@@ -57,6 +61,10 @@ Choices that reproduce the 2026-09-22 reading, each checked against it:
   delta moved or deleted counts as changed under its old name too. The
   2026-09-22 script used git's default rename folding, so on a renamed path
   this reads one more delta file than that reading did.
+* Removed lines are read by hunk state. The 2026-11-11 run dropped a removed
+  line starting with `--`, and took one starting with `-- ` for a file header,
+  losing the rest of that file's removed lines; its token sets were that much
+  smaller.
 
 What it cannot see: whether a bounded reviewer would have raised an old-only
 finding anyway from the oracle, or missed a delta finding that needed the whole
@@ -116,15 +124,9 @@ class Git:
         return self._changed[key]
 
     def removed_lines(self, a: str, b: str) -> dict[str, list[str]]:
-        out = self.run("diff", "-U0", "--no-renames", "--no-color", "--no-ext-diff", a, b, "--")
-        removed: dict[str, list[str]] = collections.defaultdict(list)
-        current = None
-        for line in out.stdout.splitlines():
-            if line.startswith("--- "):
-                current = line[6:] if line.startswith("--- a/") else None
-            elif line.startswith("-") and not line.startswith("---") and current:
-                removed[current].append(line[1:])
-        return removed
+        out = self.run("-c", "core.quotePath=false", "diff", "-U0", "--no-renames", "--no-color",
+                       "--no-ext-diff", "--src-prefix=a/", "--dst-prefix=b/", a, b, "--")
+        return parse_removed_lines(out.stdout)
 
     def blob(self, commit: str, path: str) -> str:
         key = (commit, path)
@@ -141,6 +143,31 @@ class Git:
             self._grep[key] = sorted(line[len(prefix):] if line.startswith(prefix) else line
                                      for line in out.stdout.splitlines() if line)
         return self._grep[key]
+
+
+def parse_removed_lines(diff: str) -> dict[str, list[str]]:
+    """Removed lines per old path, read from a unified diff by hunk state.
+
+    A `--- ` line is the old-file header only between a `diff --git` line and
+    that file's first `@@` hunk header. Inside a hunk every line carries a
+    one-character prefix, so a removed line whose text starts with `--` (a
+    `--flag`, an SQL or Lua `-- comment`) reads as `---...` and is content, not
+    a header.
+    """
+    removed: dict[str, list[str]] = collections.defaultdict(list)
+    current, in_header = None, False
+    for line in diff.splitlines():
+        if line.startswith("diff --git "):
+            current, in_header = None, True
+        elif in_header:
+            if line.startswith("--- "):
+                path = line[4:].rstrip("\t")
+                current = path[2:] if path.startswith("a/") else None
+            elif line.startswith("@@"):
+                in_header = False
+        elif line.startswith("-") and current:
+            removed[current].append(line[1:])
+    return removed
 
 
 # ---------------------------------------------------------------- reading
@@ -296,10 +323,9 @@ def classify(rows: list[dict], git: Git) -> dict:
         subject = set(row["files_reviewed"])
         delta_subject = subject & changed
         prior_rated = set(prior["files_reviewed"])
-        classes, buckets = {}, {}
-        for n, f in enumerate(row["findings"]):
-            key = f["fid"] or f"#{n}"
-            classes[key], buckets[key] = classify_finding(f["files"], delta_subject, changed, prior_rated)
+        # By position, not by fid: two findings of one review may share an id.
+        verdicts = [classify_finding(f["files"], delta_subject, changed, prior_rated)
+                   for f in row["findings"]]
         same_base = bool(row["base"]) and row["base"] == prior["base"]
         rec = {
             "id": row["id"], "source": row["source"], "ts": row["ts"],
@@ -307,7 +333,9 @@ def classify(rows: list[dict], git: Git) -> dict:
             "base": row["base"], "prior_base": prior["base"],
             "same_base": same_base, "rereview": rereview,
             "subject_files": len(subject), "delta_files": len(delta_subject),
-            "classes": classes, "buckets": buckets, "row": row, "changed": changed,
+            "findings": [{"fid": f["fid"], "severity": f["severity"], "class": cls, "bucket": bucket}
+                         for f, (cls, bucket) in zip(row["findings"], verdicts)],
+            "row": row, "changed": changed,
         }
         base_anc = git.ancestors(row["base"]) if not same_base and row["base"] else None
         # The earlier review's commit is already in this one's base: it was on a
@@ -335,13 +363,11 @@ def _table(repeats: list[dict]) -> dict:
         out[sev] = {c: 0 for c in CLASSES}
     old_buckets = collections.Counter()
     for r in repeats:
-        for n, f in enumerate(r["row"]["findings"]):
-            key = f["fid"] or f"#{n}"
-            cls = r["classes"][key]
+        for f in r["findings"]:
             if f["severity"] in SEVERITIES:
-                out[f["severity"]][cls] += 1
-            if cls == "old_only" and f["severity"] == "blocking":
-                old_buckets[r["buckets"][key]] += 1
+                out[f["severity"]][f["class"]] += 1
+            if f["class"] == "old_only" and f["severity"] == "blocking":
+                old_buckets[f["bucket"]] += 1
     out["blocking_old_only_by_bucket"] = dict(old_buckets)
     return out
 
@@ -401,17 +427,36 @@ def _specificity(token: str) -> tuple:
     return (0 if code else 1, -len(token), token)
 
 
-def vanished_tokens(git: Git, a: str, b: str, phrase_words: int = 0) -> list[str]:
-    """Tokens on the delta's removed lines that no changed file still holds at ``b``."""
-    removed = git.removed_lines(a, b)
-    candidates = set()
-    for lines in removed.values():
+VANISHED_IN = ("changed", "source")
+
+
+def vanished_tokens(git: Git, a: str, b: str, phrase_words: int = 0,
+                    vanished_in: str = "changed") -> list[str]:
+    """Tokens on the delta's removed lines that are gone at ``b``.
+
+    ``vanished_in`` says gone from where:
+
+    * ``changed``: from every file the delta changed, including files that only
+      gained lines. A retired name the delta's own plan, change record or tests
+      now mention is masked: it never vanishes.
+    * ``source``: from the files its removed lines came from: the design's step 2
+      read literally ("no longer appear anywhere in those files at HEAD").
+    """
+    if vanished_in not in VANISHED_IN:
+        raise ValueError(f"vanished_in must be one of {VANISHED_IN}: {vanished_in!r}")
+    sources: dict[str, set[str]] = collections.defaultdict(set)
+    for path, lines in git.removed_lines(a, b).items():
         for line in lines:
-            candidates |= line_tokens(line, phrase_words)
-    if not candidates:
+            for token in line_tokens(line, phrase_words):
+                sources[token].add(path)
+    if not sources:
         return []
-    texts = [git.blob(b, p) for p in sorted(git.changed(a, b) or ())]
-    return sorted((t for t in candidates if not any(t in text for text in texts)), key=_specificity)
+    if vanished_in == "changed":
+        texts = [git.blob(b, p) for p in sorted(git.changed(a, b) or ())]
+        gone = (t for t in sources if not any(t in text for text in texts))
+    else:
+        gone = (t for t, paths in sources.items() if not any(t in git.blob(b, p) for p in paths))
+    return sorted(gone, key=_specificity)
 
 
 def sweep_hits(git: Git, commit: str, tokens: list[str], *, max_tokens: int, max_sites: int) -> dict:
@@ -424,8 +469,8 @@ def sweep_hits(git: Git, commit: str, tokens: list[str], *, max_tokens: int, max
 
 
 def replay_sweep(git: Git, rec: dict, finding: dict, *, max_tokens: int, max_sites: int,
-                 phrase_words: int = 0) -> dict:
-    tokens = vanished_tokens(git, rec["prior_commit"], rec["commit"], phrase_words)
+                 phrase_words: int = 0, vanished_in: str = "changed") -> dict:
+    tokens = vanished_tokens(git, rec["prior_commit"], rec["commit"], phrase_words, vanished_in)
     targets = set(finding["files"] or ())
     capped = sweep_hits(git, rec["commit"], tokens, max_tokens=max_tokens, max_sites=max_sites)
     hit_tokens = sorted(t for t, h in capped.items() if targets & set(h["files"]))
@@ -451,7 +496,7 @@ def replay_sweep(git: Git, rec: dict, finding: dict, *, max_tokens: int, max_sit
 def measure(repo: Path, *, source: str = "ledger", since: str | None = None,
             until: str | None = None, sweep: bool = True,
             max_tokens: int = DEFAULT_MAX_TOKENS, max_sites: int = DEFAULT_MAX_SITES,
-            phrase_words: int = 0) -> dict:
+            phrase_words: int = 0, vanished_in: str = "changed") -> dict:
     repo = Path(repo)
     git = Git(repo)
     rows, corrupt = load_rows(repo, git, source)
@@ -462,16 +507,15 @@ def measure(repo: Path, *, source: str = "ledger", since: str | None = None,
 
     old_only_blocking = []
     for rec in repeats:
-        for n, f in enumerate(rec["row"]["findings"]):
-            key = f["fid"] or f"#{n}"
-            if f["severity"] != "blocking" or rec["classes"][key] != "old_only":
+        for f, c in zip(rec["row"]["findings"], rec["findings"]):
+            if f["severity"] != "blocking" or c["class"] != "old_only":
                 continue
             entry = {"id": rec["id"], "fid": f["fid"], "ts": rec["ts"],
                      "kind": rec["kind"], "same_base": rec["same_base"], "rereview": rec["rereview"],
-                     "bucket": rec["buckets"][key], "files": f["files"], "title": f["title"]}
+                     "bucket": c["bucket"], "files": f["files"], "title": f["title"]}
             if sweep:
                 entry.update(replay_sweep(git, rec, f, max_tokens=max_tokens, max_sites=max_sites,
-                                          phrase_words=phrase_words))
+                                          phrase_words=phrase_words, vanished_in=vanished_in))
             old_only_blocking.append(entry)
 
     public = [{k: v for k, v in r.items() if k not in ("row", "changed")} for r in repeats]
@@ -491,7 +535,8 @@ def measure(repo: Path, *, source: str = "ledger", since: str | None = None,
             "prior_in_base": _table([r for r in repeats if r["kind"] == "prior_in_base"]),
         },
         "base_advance": base_advance_overlap(repeats),
-        "sweep_caps": ({"max_tokens": max_tokens, "max_sites": max_sites, "phrase_words": phrase_words}
+        "sweep_caps": ({"max_tokens": max_tokens, "max_sites": max_sites, "phrase_words": phrase_words,
+                        "vanished_in": vanished_in}
                        if sweep else None),
         "old_only_blocking": old_only_blocking,
         "repeats": public,
@@ -535,7 +580,8 @@ def render(data: dict) -> str:
         caps = data["sweep_caps"]
         out += ["", "Old-only BLOCKING findings" + (
             f" (sweep: {caps['max_tokens']} tokens, {caps['max_sites']} sites per token, "
-            f"phrase words {caps['phrase_words'] or 'off'})" if caps else "")]
+            f"phrase words {caps['phrase_words'] or 'off'}, vanished in {caps['vanished_in']})"
+            if caps else "")]
         for e in data["old_only_blocking"]:
             sweep = ""
             if "caught" in e:
@@ -562,11 +608,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-sites", type=int, default=DEFAULT_MAX_SITES)
     parser.add_argument("--phrase-words", type=int, default=0,
                         help="also sweep every N-word run inside a removed literal (0: off, the design's sweep)")
+    parser.add_argument("--vanished-in", choices=VANISHED_IN, default="changed",
+                        help="a removed token vanishes when gone from every changed file (changed, the "
+                             "2026-11-11 reading) or from the files its removed lines came from "
+                             "(source, the design's step 2 read literally)")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     data = measure(args.repo, source=args.source, since=args.since, until=args.until,
                    sweep=not args.no_sweep, max_tokens=args.max_tokens, max_sites=args.max_sites,
-                   phrase_words=args.phrase_words)
+                   phrase_words=args.phrase_words, vanished_in=args.vanished_in)
     print(json.dumps(data, indent=2) if args.json else render(data))
     return 0
 
