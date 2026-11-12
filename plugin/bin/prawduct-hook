@@ -6099,6 +6099,12 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             run_fact["head"] = head_sha.strip()
         if degraded_reason:
             run_fact["degraded"] = degraded_reason
+        if record.get("failed_tests"):
+            # The record's own value and cap, omitted the same way when no id
+            # was visible. Its reader is `evidence.inherited_failures`, which
+            # lets consolidate waive a failure this run proves the base tree
+            # already had.
+            run_fact["failed_tests"] = record["failed_tests"]
         appended = _evidence_mod.append_test_run(project_dir, run_fact)
         if appended.get("status") != "appended":
             print(

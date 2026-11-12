@@ -51,7 +51,9 @@ roster role has reported a schema-valid partial at the manifest's dispatch
 commit. Anything else is a no-op naming the missing roles (still in flight)
 or a hard error (malformed / inconsistent / off-protocol). Success appends
 the review fact (skipped when the id already exists — the CRT-4B7X race dies
-here), appends any resolution facts, regenerates ``.critic-findings.json``
+here), appends any resolution facts — a verify pass's, and the
+inherited-baseline waivers consolidation writes itself in every mode
+(:func:`_waive_inherited_failures`) — regenerates ``.critic-findings.json``
 as a derived cache carrying its source ``fact_id`` (D7), anchors the ledger,
 clears the critic-active marker, and removes the partials so every repeat
 call is a clean no-op.
@@ -808,8 +810,9 @@ def carried_blocking(facts: list[dict], base_tree: "str | None",
     it. Two reasons not to. The phrasings are an open set, so a parser that
     misses one fails silently in the same direction as the bug. And
     ``data-model.md`` forbids the result outright: a resolution fact requires a
-    ``verify-resolutions`` origin and a pre-existing target finding — minting
-    one from narration would record a judgment nobody made. So nothing is
+    ``verify-resolutions`` origin (or an ``inherited-baseline`` one, backed by a
+    base-tree test run naming every failing id) and a pre-existing target
+    finding — minting one from narration would record a judgment nobody made. So nothing is
     invented here; the pass simply stops being able to claim it finished while a
     blocker it inherited is still outstanding.
 
@@ -878,15 +881,30 @@ def next_action_line(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    waived: "list[str] | None" = None,
 ) -> str:
     """:func:`_next_action_core`'s sentence, ending on :func:`uncertified_clause`
     when ``uncertified`` (the review's mode and the plan's open chunks) says a
     whole-plan review certified nothing. Every arm carries it: a fix round does
-    not change which chunks this review left open."""
+    not change which chunks this review left open.
+
+    ``waived`` names this review's BLOCKING findings consolidate waived as
+    inherited from the base tree. They still count in ``blocking`` on the
+    fact, so they are taken out here and named first: told to fix them, the
+    builder would buy the very round the waiver exists to save."""
+    if waived:
+        blocking = max(blocking - len(waived), 0)
     line = _next_action_core(
         fact_id, blocking, warning, note, price_sentence, carried, span,
         observations, cost, rides_next_review,
     )
+    if waived:
+        line = (
+            f"{len(waived)} BLOCKING finding(s) ({', '.join(waived)}) failed on"
+            " the merge-base tree too and are waived as inherited (`origin:"
+            " inherited-baseline` resolution facts); no fix or verify round is"
+            " owed for them. " + line
+        )
     if uncertified:
         line += " " + uncertified_clause(*uncertified)
     return line
@@ -3246,7 +3264,9 @@ def begin_review(
     files_reviewed: list[str] | None = None
     prior_oracle: list[str] = []
     # Findings a THIS-mode review could still resolve. Only verify-resolutions
-    # records resolution facts, so it is the only mode that can carry a nonzero
+    # records resolution facts for an EARLIER review's findings (a review's own
+    # inherited-baseline waivers are written when it consolidates), so it is
+    # the only mode that can carry a nonzero
     # value; for every other mode there is nothing outstanding that running it
     # would clear. Read by the free-interval refusal below, where it is the
     # conjunct that keeps the gate from deadlocking.
@@ -4072,7 +4092,8 @@ def validate_partial(data) -> tuple[bool, str]:
     """Validate a single reviewer partial.
 
     Schema: ``{role, goals, dispatch_id, commit_reviewed, model?,
-    duration_seconds?, findings:[{name, goal, severity, recommendation, files?}],
+    duration_seconds?, findings:[{name, goal, severity, recommendation, files?,
+    failed_tests?}],
     resolutions?:[{review_id, fid, disposition, rationale?}], summary}``.
     ``model``/``duration_seconds`` are nullable telemetry; everything else is
     load-bearing. ``severity`` must be ``blocking`` or ``warning`` so a typo
@@ -4146,6 +4167,18 @@ def validate_partial(data) -> tuple[bool, str]:
         # META-finding otherwise bricked every review).
         if "files" in f and not isinstance(f["files"], list):
             return False, f"finding[{idx}] 'files' must be a list"
+        # The test ids a test-failure finding rates, which consolidate matches
+        # against the base tree's run to waive an inherited failure. Unlike
+        # ``files`` a bad element is refused, not dropped: a dropped id would
+        # shrink the set the waiver must cover, so the waiver could fire on
+        # less than the reviewer named. Absent, null and ``[]`` all mean "names
+        # no test".
+        tests = f.get("failed_tests")
+        if tests is not None and not _str_list(tests):
+            return False, (
+                f"finding[{idx}] 'failed_tests' must be a list of non-empty "
+                "strings (the failing ids from .test-evidence.json)"
+            )
     ok, why = _validate_observations(data.get("observations"))
     if not ok:
         return False, why
@@ -4806,8 +4839,9 @@ def merge_findings(partials: list[dict]) -> list[dict]:
     with sequential ``fid``s assigned in merge order (deterministic: roster
     order × each partial's findings order).
 
-    Each partial finding ``{name, goal, severity, recommendation, files?}``
-    maps to ``{fid, goal, severity, title, recommendation, files?}`` — the
+    Each partial finding ``{name, goal, severity, recommendation, files?,
+    failed_tests?}`` maps to ``{fid, goal, severity, title, recommendation,
+    files?, failed_tests?}`` — the
     reviewer's ``name`` becomes the fact ``title`` (the field the coverage
     algebra surfaces for unresolved blockers; the derived cache renders it
     as the record ``summary``). The ``fid`` is what resolution facts join on
@@ -4833,6 +4867,10 @@ def merge_findings(partials: list[dict]) -> list[dict]:
             }
             if files:
                 entry["files"] = files
+            tests = [t.strip() for t in (f.get("failed_tests") or [])]
+            if tests:
+                # What `_waive_inherited_failures` matches against the base run.
+                entry["failed_tests"] = tests
             if partial.get("role") == RECORD_LINT_SOURCE:
                 entry["source"] = RECORD_LINT_SOURCE
             existing = merged.get(key)
@@ -5685,6 +5723,7 @@ def fact_to_cache_record(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
+    waived: "list[str] | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -5735,7 +5774,7 @@ def fact_to_cache_record(
     blocking = counts.get("blocking", 0)
     warning = counts.get("warning", 0)
     note = counts.get("note", 0)
-    if blocking:
+    if blocking - len(waived or []) > 0:
         verdict = "Blocking findings must be resolved before proceeding."
     else:
         verdict = "Changes ready to proceed."
@@ -5767,6 +5806,7 @@ def fact_to_cache_record(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
             cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
+            waived=waived,
         ),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
@@ -6137,6 +6177,100 @@ def _tree_changed_line(body: dict) -> str:
     return f"\nTree changed during the review (builder-attested): {describe_tree_change(changed)}"
 
 
+#: The ``origin`` of a resolution fact consolidate writes for a BLOCKING
+#: test-failure finding the base tree already failed — the one resolution not
+#: written by a ``verify-resolutions`` pass.
+INHERITED_BASELINE_ORIGIN = "inherited-baseline"
+
+
+def _waive_inherited_failures(
+    project_dir: Path, manifest: dict, review_id: str, review_anchor: "str | None"
+) -> "list[str] | None":
+    """Waive each BLOCKING finding of ``review_id`` whose failing tests the base
+    tree already failed. Returns the waived fids, or ``None`` when an append
+    failed (the caller fails closed and a retry heals it).
+
+    A finding qualifies only when it is BLOCKING, names a non-empty
+    ``failed_tests``, and EVERY id it names is in the set
+    :func:`evidence.inherited_failures` returns for the newest run on the
+    merge-base tree. The finding stays BLOCKING on the review fact; what is
+    written is a ``waived`` resolution fact citing that run (``base_run``), so
+    the record shows both the rating and why it no longer gates. Its id is
+    ``{review_id}:{review_id}:{fid}`` — the resolution-id shape with the review
+    as its own verifier — so a re-run finds it held and appends nothing.
+
+    Runs in every mode, after the review fact is appended, because the review
+    is what the waiver resolves: no separate round is owed for a failure the
+    branch did not cause.
+    """
+    store = evidence.read_facts(project_dir)
+    fact = next(
+        (f for f in evidence.facts_of_kind(store, "review") if f.get("id") == review_id),
+        None,
+    )
+    if fact is None:
+        return []
+    candidates = [
+        f for f in coverage_algebra.blocking_findings(fact)
+        if isinstance(f.get("fid"), str)
+        and isinstance(f.get("failed_tests"), list)
+        and f["failed_tests"]
+    ]
+    if not candidates:
+        return []
+    held = {
+        f.get("id"): f for f in evidence.facts_of_kind(store, "resolution")
+    }
+    waived: list[str] = []
+    classified: "tuple[str | None, set[str]] | None" = None
+    for finding in candidates:
+        fid = finding["fid"]
+        res_id = f"{review_id}:{review_id}:{fid}"
+        if res_id in held:
+            _attach_note(project_dir, held[res_id], review_anchor)
+            waived.append(fid)
+            continue
+        ids = [t for t in finding["failed_tests"] if isinstance(t, str)]
+        if classified is None:
+            every_id = sorted({t for f in candidates for t in f["failed_tests"]
+                               if isinstance(t, str)})
+            classified = evidence.inherited_failures(project_dir, every_id)
+        base_run, inherited = classified
+        if base_run is None or not ids or not set(ids) <= inherited:
+            continue
+        named = ", ".join(ids)
+        body = {
+            "finding": {"review_id": review_id, "fid": fid},
+            "disposition": "waived",
+            "verified_by": review_id,
+            "at_tree": manifest["head_tree"],
+            "origin": INHERITED_BASELINE_ORIGIN,
+            "base_run": base_run,
+            "rationale": (
+                f"Inherited failure: {named} also failed on the merge-base tree "
+                f"(test-run {base_run}). The finding stays BLOCKING on the "
+                "record; this branch did not cause it, so no fix round is owed."
+            ),
+        }
+        result = evidence.append_fact(project_dir, "resolution", res_id, body)
+        if result["status"] != "appended":
+            print(
+                f"critic-consolidate: could not append the inherited-baseline "
+                f"waiver for {fid} — {result['reason']}",
+                file=sys.stderr,
+            )
+            return None
+        _attach_note(project_dir, result.get("envelope"), review_anchor)
+        print(
+            f"critic-consolidate: waived {fid} as an inherited failure — {named} "
+            f"also failed on the merge-base tree (test-run {base_run}); it stays "
+            "BLOCKING on the record and needs no fix or verify-resolutions round.",
+            file=sys.stderr,
+        )
+        waived.append(fid)
+    return waived
+
+
 def consolidate(
     project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
 ) -> int:
@@ -6156,8 +6290,9 @@ def consolidate(
         dispatch age and whether silence is still normal (wait) or past the
         grace window (critic-end + re-dispatch).
       - ``0`` + ``consolidated:`` — review fact appended (or already present),
-        resolution facts appended, cache regenerated, ledger anchored, marker
-        cleared, partials removed.
+        resolution facts appended (a verify pass's, and any inherited-baseline
+        waivers), cache regenerated, ledger anchored, marker cleared, partials
+        removed.
       - ``1`` — fail-closed: malformed manifest/partial, a partial reviewed a
         different commit than dispatched, off-protocol resolutions, a
         resolution referencing a finding the store doesn't hold, a working
@@ -6293,8 +6428,10 @@ def consolidate(
                 file=sys.stderr,
             )
 
-    # Resolutions may only arrive from a verify-resolutions dispatch — they
-    # WEAKEN gates (they unblock findings), so off-protocol ones fail closed.
+    # A reviewer's resolutions may only arrive from a verify-resolutions
+    # dispatch — they WEAKEN gates (they unblock findings), so off-protocol ones
+    # fail closed. The one resolution written in other modes is consolidate's
+    # own inherited-baseline waiver, computed from facts, never from a partial.
     resolutions: list[dict] = []
     seen_res: set[tuple[str, str]] = set()
     for partial in partials:
@@ -6303,7 +6440,8 @@ def consolidate(
             print(
                 f"critic-consolidate: partial {partial['role']!r} carries "
                 f"resolutions but the dispatch mode is {manifest['mode']!r} — "
-                "only a verify-resolutions dispatch may resolve findings; "
+                "only a verify-resolutions dispatch may carry a reviewer's "
+                "resolutions; "
                 "fail-closed.",
                 file=sys.stderr,
             )
@@ -6453,6 +6591,12 @@ def consolidate(
         _attach_note(project_dir, result.get("envelope"), review_anchor)
         appended_resolutions += 1
 
+    # Inherited-baseline waivers: a BLOCKING test failure the merge-base tree
+    # already had is resolved here, from the base run's fact, not by a round.
+    waived = _waive_inherited_failures(project_dir, manifest, review_id, review_anchor)
+    if waived is None:
+        return 1
+
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
     # retry after a partial failure renders the original fact, not a new one.
     store = evidence.read_facts(project_dir)
@@ -6542,7 +6686,8 @@ def consolidate(
 
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
-        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified
+        fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
+        waived=waived,
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
@@ -6710,6 +6855,7 @@ def consolidate(
             cost=cost_sentence,
             rides_next_review=rides_next_review,
             uncertified=uncertified,
+            waived=waived,
         )
     )
     return 0
