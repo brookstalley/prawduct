@@ -10,18 +10,29 @@ governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 → conforms; a repeat cumulative on an unchanged base reviews the delta, not the bundle"
-      - "review rigor is stage-keyed → conforms; a bounded cumulative is still a boundary review with all seven goals, and record-lint keeps grading merge-base → HEAD (Decision 3)"
       - "proportionality ratchets both ways → conforms; Chunk 04 measures the yield, and the falsifier below says what retires the lever"
+      - "state-file growth is advisory, never a hard block → inapplicable because no state file's growth rule changes; Chunk 01 writes nothing outside its report"
+      - "review rigor is stage-keyed → conforms; a bounded cumulative is still a boundary review with all seven goals, and record-lint keeps grading merge-base → HEAD (Decision 3)"
   - artifact: architecture
     dispositions:
+      - "an independent reviewer never mutates the session it reviews → conforms; the reviewer's subject narrows and it gains no write"
       - "authority fails closed; advice fails soft → conforms; any frontier condition that declines falls back to the full span, with its reason"
+      - "local-first → conforms; the sweep is `git grep -F`, local, and Chunk 01 reads local ledgers and git"
+      - "the plugin writes nothing into a governed repo except its own state → conforms; the tool reads a consumer repo read-only and writes only its report"
+      - "written in Python, never specific to Python → conforms; the vanished-token sweep is plain text search over any file type (design, § The interaction sweep)"
+      - "guides and reviews, never implements → conforms"
+      - "goals and verification bind, method is advice → conforms"
       - "every fact has one home → conforms; the frontier is one function next to gates.covered_frontier"
-      - "local-first → conforms; the sweep is `git grep -F`, local"
   - artifact: data-model
     dispositions:
+      - "verdicts computed from facts, no model in the write path → conforms; composition and the PR gate are unchanged (design, § Unchanged)"
       - "facts immutable and append-only → conforms; `span` and `bounded_from` are additive fields on new facts"
+      - "derived views never authoritative → conforms"
+      - "a governance document reaches a terminal state and is never deleted → conforms; the design doc moves from an unmerged branch onto this one rather than being redrawn"
+      - "backlog issues conform to the title rules → inapplicable because no backlog write path changes"
       - "a newer-schema fact is surfaced, never dropped → conforms; old facts read as `span: full`"
-      - "verdicts computed from facts → conforms; composition and the PR gate are unchanged (design, § Unchanged)"
+      - "two stores, two lifetimes → conforms; the new fields ride the shared review fact"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable because no backlog read changes"
 depends_on:
   - .prawduct/artifacts/bounded-cumulative-design.md
   - plugin/lib/critic_consolidate.py
