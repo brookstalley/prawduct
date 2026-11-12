@@ -191,3 +191,10 @@ fix. Recorded in `.prawduct/changes/read-cost-review.md`.
 **2026-11-11.** "yes merge then we'll clear and do requirements"
 On pull requests #1146 (the #1137 fix) and #1148 (the read-cost check): both merge to `develop`.
 The requirements for the seeded-defect check (#1147) are the next session's work.
+
+**2026-11-11.** "Yes please for 937, 890, 961, 900, 1000, 682, and 1098 using subagents, opus or sonnet, each with appropriate effort level and following our delegation protocol"
+On next priorities for consumer QOL and performance, the owner chose seven backlog items, built by
+Opus- or Sonnet-class delegates under the delegation protocol, and set aside the seeded-defect test
+repo until 3tears-evals is ready. The work is three plans: `build-plan-gate-clarity.md` (#937,
+#1000, #1098, #682), `build-plan-review-round-cost.md` (#961, #900) and
+`build-plan-bounded-cumulative.md` (#890).
