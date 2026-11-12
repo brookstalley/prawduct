@@ -28,7 +28,7 @@ your **assigned goals**, the **project directory**, the **manifest path** — th
 file sets are read from the manifest, never from your prompt (the split is explained below), a
 **`Signals:` line**, the **commit under review** (a
 SHA), the **review id**, and the **two paths you write** — your started marker and your partial.
-The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`;
+The `Signals:` line reads `Stage: <inner|boundary> · Judgeable files: <n> · Type: <chunk type>`, plus `· Span: …` on a cumulative;
 `critic-begin` rendered it from the manifest (`signals`) and the coordinator copied it — nobody
 composed it. **`Stage` decides what is a finding** (your protocol file says how): at `inner`, what
 you rate outside the inner BLOCKING set goes in your partial's `observations` array, and at every
@@ -123,7 +123,8 @@ make, not yours to infer. A first-time defect, or one a check already covers, is
    `verify-coverage` report what a previous run recorded) are the only commands your goals ever ask
    you to issue, besides the `validate-partial` check on your own file below.
    The manifest's `files_reviewed` is your subject set and `files_oracle` is what the code is judged
-   against; `review-protocol.md` "Subject and oracle" says which passes may rate an oracle file.
+   against; `review-protocol.md` "Subject and oracle" says which passes may rate an oracle file, and
+   what a finding may say about a `files_context` file.
    *"The code violates this spec"* has the code as its subject, at full severity.
 7. Assess your goals and report every finding with its severity, `blocking` or `warning`, and
    everything lesser as an observation (definitions in `review-protocol.md`). A clean pass has

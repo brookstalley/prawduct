@@ -1001,7 +1001,8 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
       - non-dict input, field absent, non-string or blank → ``(False, None)``;
       - the message's close states no single verdict where the close puts it
         (``standing_block.clear_verdict`` returns ``None``: a label quoted
-        mid-prose, both labels, trailing text after the close) →
+        mid-prose or inside the asks block, both labels, trailing text after
+        the close other than the asks block it may end with) →
         ``(False, None)``;
       - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
       - the verdict is ``DO NOT CLEAR`` but the close states no single
@@ -1056,6 +1057,23 @@ def turn_self_citation(event) -> "tuple[str, str] | None":
     if message is None:
         return None
     return standing_block.self_citation_match(message)
+
+
+def turn_positional_pointer(event) -> "tuple[str, str] | None":
+    """The phrase by which a turn's close points at its own content by
+    position, under any disposition — "the one ask above is for you" — with
+    the pointer's kind beside it (``standing_block.positional_pointer_match``),
+    or ``None``.
+
+    The reason owes the reader what the asks are, not where; with the asks
+    after the close, an "above" points the wrong way. The kind is what the
+    ``close-pointer`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_self_citation`.
+    """
+    message = _last_message(event)
+    if message is None:
+        return None
+    return standing_block.positional_pointer_match(message)
 
 
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
@@ -1859,6 +1877,165 @@ def covered_frontier(
             return None
     _absent(FRONTIER_ABSENT_NONE_COMPOSES)
     return None
+
+
+#: Why a ``cumulative`` dispatch reviews the whole bundle rather than the delta
+#: since the last boundary review — :func:`boundary_frontier`'s decline codes.
+#: Short and stable because the review fact records them (``span_reason``), so
+#: how often each fires is a query over the store.
+SPAN_FULL_NO_BOUNDARY_REVIEW = "no-boundary-review"
+SPAN_FULL_BASE_MOVED = "base-moved"
+SPAN_FULL_HEAD_REVIEWED = "head-reviewed"
+SPAN_FULL_PATH_NOT_CLEAN = "path-not-clean"
+SPAN_FULL_UNREADABLE = "unreadable"
+#: Not a decline: the dispatcher asked for the whole bundle
+#: (`/prawduct:critic cumulative full`, :data:`critic_mode.FULL_SPAN_RATIONALE`).
+SPAN_FULL_OVERRIDE = "override"
+
+
+def boundary_frontier(project_dir: Path, *, read: "dict | None" = None) -> dict:
+    """The boundary review a repeat ``cumulative`` can be bounded from.
+
+    A ``cumulative`` re-reviewing a long branch re-rates every file an earlier
+    boundary review already rated at full rigor. When that review still stands
+    for the bundle — same base, on this lineage, a clean path to it — the
+    interval from its tree to HEAD is the only unrated work, and a fact over
+    it composes with the earlier one to the same PR-gate verdict the whole
+    span would reach.
+
+    The frontier is the newest ``review`` fact, in append order, that is:
+
+    1. at the ``boundary`` stage (read from its mode when it predates the field);
+    2. against the current merge-base — its bundle base, the tree of the
+       ``base_reviewed`` commit it records, else its ``base_tree``; a bounded
+       fact's ``base_tree`` is its own frontier, so that alone would refuse
+       every second repeat;
+    3. on this lineage: its ``head_commit`` is one of this branch's commits
+       since the merge-base. The store is shared by every worktree of the
+       clone, so a sibling branch's review stands beside this branch's;
+    4. not already at HEAD's tree — then the bundle is boundary-reviewed and a
+       dispatch is today's full span;
+    5. reached from the merge-base tree with no unresolved blocker
+       (``coverage_verdict`` is ``covered``).
+
+    A fact failing 1-3 is skipped: it belongs to another stage, branch or
+    base, and an older fact may still stand. Condition 3 is asked before 2, so
+    only this branch's own review can report the base as moved. The newest candidate past them
+    is then decided by 4 and 5 and never passed over. Falling back to an older
+    frontier would bound the interval around the newer review's blocker, and
+    only a review spanning the whole bundle may clear one it supersedes
+    (:func:`coverage_algebra._verify_anchor_id`).
+
+    Returns ``{"status": "bounded", "fact_id", "head_tree", "head_commit"}`` or
+    ``{"status": "full", "code", "reason"}``: ``code`` is one of the
+    ``SPAN_FULL_*`` constants, and ``reason`` the sentence the dispatch prints.
+    Anything unreadable is ``full`` with :data:`SPAN_FULL_UNREADABLE` — the
+    whole span is today's behaviour, so not finding a frontier never costs
+    coverage.
+    """
+    from . import critic_consolidate  # noqa: PLC0415 — lazy: critic_consolidate imports this module
+
+    def _full(code: str, reason: str) -> dict:
+        return {"status": "full", "code": code, "reason": reason}
+
+    if read is None:
+        read = evidence.read_facts(project_dir)
+    precheck = _store_precheck(read)
+    if precheck is not None:
+        return _full(SPAN_FULL_UNREADABLE, f"the evidence store could not be read ({precheck[1]})")
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return _full(SPAN_FULL_UNREADABLE, f"the merge-base could not be resolved ({resolved['reason']})")
+    rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+    if rc != 0 or not head_tree:
+        return _full(SPAN_FULL_UNREADABLE, f"HEAD's tree could not be read ({err or 'no tree'})")
+
+    # This branch's own commits since the base, read once. A frontier's head
+    # descends from the merge-base it was reviewed against, so lineage is
+    # membership here — one git call, where an ancestry test per boundary fact
+    # in a clone-wide store cost seconds per dispatch.
+    rc, out, err = evidence.run_git(project_dir, "rev-list", f"{resolved['merge_base']}..HEAD")
+    if rc != 0:
+        return _full(SPAN_FULL_UNREADABLE, f"the branch history could not be read ({err or 'git rev-list failed'})")
+    lineage = {line.strip() for line in out.splitlines() if line.strip()}
+
+    trees: dict[str, "str | None"] = {}
+
+    def _tree_of(commit: str) -> "str | None":
+        if commit not in trees:
+            rc, tree, _err = evidence.run_git(project_dir, "rev-parse", f"{commit}^{{tree}}")
+            trees[commit] = tree if rc == 0 and tree else None
+        return trees[commit]
+
+    facts = read.get("facts", [])
+    base_moved = False
+    base_unreadable = False
+    for fact in reversed(facts):
+        if fact.get("kind") != "review":
+            continue
+        body = fact.get("body") or {}
+        try:
+            stage = critic_consolidate.stage_of_manifest(body)
+        except ValueError:
+            continue
+        if stage != critic_consolidate.STAGE_BOUNDARY:
+            continue
+        # Lineage before base: another branch's review says nothing about this
+        # one, so only a review on this branch may report the base as moved.
+        fact_head = body.get("head_commit")
+        if fact_head not in lineage:
+            continue
+        base_reviewed = body.get("base_reviewed")
+        bundle_base = (
+            _tree_of(base_reviewed)
+            if isinstance(base_reviewed, str) and base_reviewed
+            else body.get("base_tree")
+        )
+        if bundle_base is None and isinstance(base_reviewed, str) and base_reviewed:
+            # A base commit git cannot resolve (gc'd, or a shallow clone) says
+            # nothing about whether the base moved.
+            base_unreadable = True
+            continue
+        if bundle_base != resolved["tree"]:
+            base_moved = True
+            continue
+        fid = fact.get("id")
+        frontier_tree = body.get("head_tree")
+        if frontier_tree == head_tree:
+            return _full(
+                SPAN_FULL_HEAD_REVIEWED,
+                f"the last boundary review ({fid}) already reviewed HEAD's tree",
+            )
+        verdict = coverage_algebra.coverage_verdict(
+            facts, resolved["tree"], frontier_tree,
+            _cached_diff_fn(project_dir), _tree_key_fn(project_dir),
+        )
+        if verdict["status"] != "covered":
+            return _full(
+                SPAN_FULL_PATH_NOT_CLEAN,
+                f"the path from the merge-base to the last boundary review ({fid}) is "
+                f"{verdict['status']}, and only a review spanning the whole bundle can "
+                "route around a blocker on it",
+            )
+        return {
+            "status": "bounded", "fact_id": fid,
+            "head_tree": frontier_tree, "head_commit": fact_head,
+        }
+    if base_unreadable and not base_moved:
+        return _full(
+            SPAN_FULL_UNREADABLE,
+            "the base this branch's last boundary review recorded could not be resolved",
+        )
+    if base_moved:
+        return _full(
+            SPAN_FULL_BASE_MOVED,
+            "the base has moved since this branch's last boundary review, so the "
+            "delta since it would carry the base's own changes",
+        )
+    return _full(
+        SPAN_FULL_NO_BOUNDARY_REVIEW,
+        "this branch has no boundary review against its current base yet",
+    )
 
 
 def session_review_verdict(project_dir: Path, *, record_grants: bool = False) -> dict:

@@ -160,8 +160,9 @@ worktrees get deleted.
 - **A Stop-hook check that observes without blocking** appends one
   `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
   through `append_stop_observation`, carrying the same `reason` and `observed`
-  a block of that check would. `clear-verdict` (#1044) and `clear-reason`
-  (#1131) are the two such checks; no Stop gate blocks on the close's wording.
+  a block of that check would. `clear-verdict` (#1044), `clear-reason`
+  (#1131) and `close-pointer` (owner ruling 2026-11-11, asks come last) are the three such checks; no Stop
+  gate blocks on the close's wording.
   `stats` scores these with the block verdict
   rules and reports them as *observed only*, never as Stops blocked or guard
   refusals.
@@ -188,12 +189,13 @@ Each firing records what was observed, never a judgment of it. A reader derives 
 judgment (below), so a revised definition re-reads every recorded firing. A
 control that records neither is counted as `unspecified`.
 
-The Stop checks that record a reason (both observe without blocking):
+The Stop checks that record a reason (all observe without blocking):
 
 | Gate | `reason` | `observed` |
 |---|---|---|
 | `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
 | `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
+| `close-pointer` | `points-above`, `points-below`: which way the close's reason points at the turn by position, under any disposition (`standing_block.POSITIONAL_POINTER_KINDS`); the phrase itself is not recorded. A `SAFE TO CLEAR` reason saying "is above" can fire this and `clear-reason` both | the same three |
 
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
@@ -238,6 +240,8 @@ overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]
 by_scope         [{scope, ...stat block}]
 by_stage         [{stage, ...stat block}] — `inner` / `boundary` / null
+by_span          [{span, ...stat block}] — `bounded` / `full`, cumulatives
+                 only; the `full` entry adds `reasons` {decline code: count}
 consolidated_by  {subagent-stop, explicit, session-end-backstop, unrecorded}
                  — review.critic events per `trigger`, every path listed even
                  at zero; `unrecorded` is events without a known value
@@ -327,6 +331,14 @@ cache onto `review.critic` events. It is **read, never derived from the mode**: 
 before the field existed groups under `null` (rendered "(unrecorded)"), and so does a `review.pr`
 event, which carries none. Schema 5 added the key. This is the yield-by-stage query the
 stage-keyed rigor norm (`nonfunctional-requirements.md` § Direction) was drawn to answer.
+
+`by_span` groups `cumulative` reviews by the record's `span`: `bounded` (the delta since an earlier
+boundary review) or `full` (the whole bundle). Both are listed even at zero. A cumulative event
+written before the field reads `full`, which is true, because nothing was bounded then; its reason
+is `unrecorded`. The `full` entry's `reasons` counts each recorded decline code (`gates.SPAN_FULL_*`),
+so why a repeat ran full is a query. Other modes carry no span and are not grouped. Schema 11 added
+the key. This is the bounded-cumulative lever's yield, read against its falsifier
+(`.prawduct/artifacts/bounded-cumulative-design.md`).
 
 Mode keys are the short tokens (`chunk` / `final` / `cumulative` /
 `verify-resolutions`), derived from the persisted verbose strings. `review.pr`
@@ -425,6 +437,9 @@ The definitions (their one home):
       that keeps a gate. Its firings are now observations, not blocks
       (counts across that change do not compare), scored by this same rule
       under *observed only*.
+    - `close-pointer` has no rule: a reason that points by position is the
+      defect whatever the session's state, so no observation separates a catch
+      from a slip. Its firings are counted by kind only.
 - **observed only**: firings of a Stop check that records without blocking
   (`stop-observed:` facts), by check, with the verdicts above. Never counted
   in stops blocked or guard refusals.

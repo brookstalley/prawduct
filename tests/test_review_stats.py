@@ -404,6 +404,50 @@ class TestAboveReviewerCeiling:
         assert report["above_reviewer_ceiling"]["reviews"] == 1
 
 
+class TestSpanRollup:
+    """The bounded-cumulative lever's split: a cumulative is `bounded` (the
+    delta since a boundary review) or `full`. A cumulative event from before
+    the field reviewed the whole bundle — nothing was bounded then — so it
+    reads `full`, its reason `unrecorded`. Other modes have no span."""
+
+    def test_cumulatives_split_by_span_with_the_full_reasons(self, tmp_path):
+        repo = tmp_path / "repo"
+        bounded = _event(mode=CUMULATIVE_MODE, stage="boundary", findings=[
+            {"goal": "2", "severity": "blocking", "summary": "b"},
+        ])
+        bounded["review"].update(span="bounded", bounded_from="rev-1", span_reason=None)
+        full = _event(mode=CUMULATIVE_MODE, stage="boundary")
+        full["review"].update(span="full", bounded_from=None, span_reason="path-not-clean")
+        _write_ledger(repo, [
+            bounded, full,
+            _event(mode=CUMULATIVE_MODE),  # before the field: the whole bundle
+            _event(mode=CHUNK_MODE, stage="inner"),  # no span at all
+        ])
+        report = json.loads(_run(repo, "--json").stdout)
+        by = {e["span"]: e for e in report["by_span"]}
+        assert [e["span"] for e in report["by_span"]] == ["bounded", "full"]
+        assert by["bounded"]["reviews"] == 1 and by["bounded"]["findings"]["blocking"] == 1
+        assert by["full"]["reviews"] == 2
+        assert by["full"]["reasons"] == {"path-not-clean": 1, "unrecorded": 1}
+        assert "reasons" not in by["bounded"]
+
+    def test_both_spans_are_listed_at_zero(self, tmp_path):
+        repo = tmp_path / "repo"
+        _write_ledger(repo, [_event(mode=CHUNK_MODE)])
+        report = json.loads(_run(repo, "--json").stdout)
+        assert [(e["span"], e["reviews"]) for e in report["by_span"]] == [("bounded", 0), ("full", 0)]
+
+    def test_the_human_rendering_prints_the_split_and_the_reasons(self, tmp_path):
+        repo = tmp_path / "repo"
+        full = _event(mode=CUMULATIVE_MODE, stage="boundary")
+        full["review"].update(span="full", span_reason="base-moved")
+        _write_ledger(repo, [full])
+        out = _run(repo).stdout
+        (line,) = [ln for ln in out.splitlines() if ln.startswith("  full: ")]
+        assert line.endswith(" — base-moved 1")
+        assert "by span (cumulative only):" in out
+
+
 class TestStageRollup:
     """The yield-by-stage query the stage-keyed rigor norm was drawn to answer
     (`nonfunctional-requirements.md` § Direction). `critic-begin` stamps
@@ -540,7 +584,7 @@ class TestJsonSchemaStability:
         report = json.loads(_run(repo, "--json").stdout)
         assert list(report) == [
             "schema_version", "project", "generated_at", "window", "dispositions", "events_total",
-            "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage",
+            "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage", "by_span",
             "consolidated_by", "above_reviewer_ceiling", "top_files",
             "files_attributed_total", "learning",
         ]
@@ -570,7 +614,10 @@ class TestJsonSchemaStability:
         # 9 -> 10 (reviewer-model-cap): an `above_reviewer_ceiling` count of
         # reviews recorded on a model above the reviewer ceiling joined the top
         # level. Added.
-        assert report["schema_version"] == 10
+        # 10 -> 11 (bounded-cumulative Chunk 04): a `by_span` grouping of
+        # cumulative reviews, with why each full one ran full, joined the top
+        # level. Added.
+        assert report["schema_version"] == 11
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -589,6 +636,9 @@ class TestJsonSchemaStability:
         assert list(report["by_role_model_mode"][0]) == ["role", "model", "mode", *stat_keys]
         assert list(report["by_scope"][0]) == ["scope", *stat_keys]
         assert list(report["by_stage"][0]) == ["stage", *stat_keys]
+        assert [list(e) for e in report["by_span"]] == [
+            ["span", *stat_keys], ["span", *stat_keys, "reasons"],
+        ]
         assert list(report["top_files"][0]) == ["path", "actionable_findings", "findings"]
         for key in ("duration_measured", "duration_self_reported"):
             assert list(report["overall"][key]) == ["reviews", "total_seconds", "median_seconds"]
@@ -834,14 +884,14 @@ class TestDurationProvenanceSplit:
         """The control for the rendering change: `--json` is a published
         contract, so the older keys still carry the estimate over every review
         that had one. No key is repurposed, so the rendering change moved no
-        schema version; 9 and 10 are later key additions, not this change."""
+        schema version; 9, 10 and 11 are later key additions, not this change."""
         repo = tmp_path / "repo"
         _write_ledger(repo, [
             _event(duration=600, dispatched_at="2026-06-10T11:56:00Z"),
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 10
+        assert report["schema_version"] == 11
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 

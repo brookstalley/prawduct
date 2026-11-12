@@ -110,7 +110,8 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 #: ``begin_review`` chooses the interval by mode — ``chunk``/``final`` review
 #: to the working tree from HEAD (or from the covered frontier behind it),
 #: ``verify-resolutions`` the delta since the prior fact,
-#: ``cumulative`` merge-base → HEAD — so the stage is a function of the mode
+#: ``cumulative`` the committed bundle to HEAD, or the part of it since the last
+#: boundary review — so the stage is a function of the mode
 #: token. This mapping is that function's one home: the dispatch writes the
 #: result onto the manifest as ``stage``, and every reader downstream (the
 #: reviewer prompt, the fact, the findings cache, the ledger event,
@@ -118,6 +119,12 @@ _VERBOSE_VERIFY_RESOLUTIONS = MODE_TOKEN_TO_VERBOSE["verify-resolutions"]
 STAGE_INNER = "inner"
 STAGE_BOUNDARY = "boundary"
 STAGE_VALUES = frozenset({STAGE_INNER, STAGE_BOUNDARY})
+
+#: A ``cumulative``'s span: the delta since the last boundary review, or the
+#: whole bundle (``begin_review``; ``gates.boundary_frontier`` decides).
+SPAN_BOUNDED = "bounded"
+SPAN_FULL = "full"
+SPAN_VALUES = frozenset({SPAN_BOUNDED, SPAN_FULL})
 STAGE_OF_MODE = {
     "chunk": STAGE_INNER,
     "final": STAGE_INNER,
@@ -1538,7 +1545,7 @@ def _widened_fallback_mode(
                 "the delta includes committed work, and `final`'s interval starts at "
                 f"the last reviewed state ({start['commit'][:12]}), so it covers "
                 "those commits and the uncommitted work — a narrower span than "
-                "`cumulative`'s merge-base…HEAD"
+                "a full `cumulative`'s merge-base…HEAD"
             )
         if start["origin"] == BASE_AT_MERGE_BASE:
             return "final", (
@@ -1575,8 +1582,9 @@ def _widened_fallback_mode(
     return "cumulative", (
         "the delta includes committed work that `final` cannot reach — no "
         "reviewed state without an open blocker sits behind it for its interval "
-        "to start from; `cumulative` spans merge-base…HEAD — the work this "
-        "branch owes, and the PR gate's own span"
+        "to start from; `cumulative` spans merge-base…HEAD, or the delta since "
+        "the last clean boundary review — either way the work this branch owes, "
+        "composing to the PR gate's own span"
     )
 
 
@@ -2197,7 +2205,8 @@ CHUNK_TYPE_DEFAULT_LABEL = "code (default)"
 
 def signals_line(manifest: dict) -> str:
     """The one-line signals summary a coordinator hands each reviewer —
-    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``.
+    ``Stage: <stage> · Judgeable files: <n> · Type: <chunk type>``, then
+    ``· Span: bounded from <review id>`` or ``· Span: full`` on a cumulative.
 
     Rendered FROM the manifest, by code, so no coordinator composes it: the
     freeform ``Signals: [summary]`` it replaces was the one substitution in the
@@ -2210,11 +2219,20 @@ def signals_line(manifest: dict) -> str:
     stage = manifest.get("stage")
     judgeable = manifest.get("judgeable_files")
     chunk_type = manifest.get("chunk_type") or CHUNK_TYPE_DEFAULT_LABEL
-    return (
+    line = (
         f"Stage: {stage if stage in STAGE_VALUES else 'unknown'} · "
         f"Judgeable files: {judgeable if isinstance(judgeable, int) else '?'} · "
         f"Type: {chunk_type}"
     )
+    # A cumulative names its span, so the reviewer knows whether its subject is
+    # the whole bundle or the delta since a boundary review that already rated
+    # the rest. Other modes carry no span and the line is unchanged.
+    span = manifest.get("span")
+    if span == SPAN_BOUNDED:
+        line += f" · Span: bounded from {manifest.get('bounded_from')}"
+    elif span == SPAN_FULL:
+        line += " · Span: full"
+    return line
 
 
 def _dispatch_chunk_type(prawduct_dir: Path, lint: dict) -> "str | None":
@@ -3098,8 +3116,14 @@ def begin_review(
       clean (:func:`working_tree_interval_base` owns the choice; an extended
       base is recorded as ``base_extended_from``); head = the captured working
       tree (D3 temp-index capture; non-mutating).
-    - ``cumulative`` — base = merge-base(resolve-base, HEAD), head = ``HEAD``
-      (the committed bundle; a dirty working tree is noted, not reviewed).
+    - ``cumulative`` — head = ``HEAD`` (the committed bundle; a dirty working
+      tree is noted, not reviewed). base = the last boundary review's tree when
+      :func:`gates.boundary_frontier` finds one (``span: bounded``), else
+      merge-base(resolve-base, HEAD) (``span: full``, with ``span_reason``). A
+      bounded review rates the delta and reads the rest of the bundle as
+      oracle; record-lint and the chunk proposal grade the whole bundle either
+      way. ``--chosen-by`` equal to ``critic_mode.FULL_SPAN_RATIONALE`` (the
+      ``full`` token) asks for the whole bundle.
     - ``verify-resolutions`` — base = the prior review FACT's ``head_tree``;
       head is **intent-aware**, because this mode serves two gate targets that
       diverge once the tree is dirty. When content was committed that the prior
@@ -3276,6 +3300,18 @@ def begin_review(
     pending_actionable = 0
 
     base_extended_from: "str | None" = None
+    # A `cumulative`'s span (bounded-cumulative design): `bounded` reviews the
+    # delta since the last boundary review (`gates.boundary_frontier`), `full`
+    # the whole bundle. `span_reason` is the decline code when full. The bundle
+    # interval is kept beside the review's own, because the machine relays —
+    # record-lint and the chunk proposal — grade the bundle whatever the span,
+    # and the bundle's other files ride to the reviewer as oracle. Every other
+    # mode leaves these unset and its manifest carries no span.
+    span: "str | None" = None
+    bounded_from: "str | None" = None
+    span_reason: "str | None" = None
+    bundle_base_commit: "str | None" = None
+    bundle_base_tree: "str | None" = None
     # Where a `chunk`/`final` interval started, read at the empty-interval check
     # below: an empty interval whose start is HEAD_COVERED is "the last review
     # already covers HEAD", which is not the same answer as "committed work sits
@@ -3351,6 +3387,40 @@ def begin_review(
         if not capture["clean"]:
             excluded_wip = _judgeable_wip(project_dir, capture)
             dirty_note = _dirty_anchor_note("cumulative", excluded_wip)
+        # Bounded by default, so a repeat cumulative stops re-rating what an
+        # earlier boundary review already rated. The fact over frontier → HEAD
+        # composes with the frontier's own, so the PR gate's verdict is the one
+        # the whole span would reach. `base_reviewed` stays the merge-base: it
+        # is the bundle this review stands for, and what the next repeat's
+        # frontier search compares.
+        from . import critic_mode  # noqa: PLC0415 — lazy; critic_mode imports this module lazily too
+
+        bundle_base_commit, bundle_base_tree = base_commit, base_tree
+        span = SPAN_FULL
+        if (chosen_by or "").strip() == critic_mode.FULL_SPAN_RATIONALE:
+            span_reason = gates.SPAN_FULL_OVERRIDE
+            notes.append(
+                "this cumulative reviews the whole bundle (merge-base → HEAD) because "
+                "the dispatch asked for `full` — the override"
+            )
+        else:
+            frontier = gates.boundary_frontier(project_dir, read=read_store())
+            if frontier["status"] == "bounded":
+                span, bounded_from = SPAN_BOUNDED, frontier["fact_id"]
+                base_commit, base_tree = frontier["head_commit"], frontier["head_tree"]
+                notes.append(
+                    f"this cumulative is bounded: it rates what changed since boundary "
+                    f"review {bounded_from} at {base_commit[:12]}, and reads the rest of "
+                    "the bundle as oracle. Record-lint and the chunk proposal still grade "
+                    "the whole bundle. `/prawduct:critic cumulative full` reviews the "
+                    "whole bundle instead"
+                )
+            else:
+                span_reason = frontier["code"]
+                notes.append(
+                    f"this cumulative reviews the whole bundle (merge-base → HEAD): "
+                    f"{frontier['reason']}"
+                )
     else:  # verify-resolutions
         prior, reason = _prior_review_fact(project_dir, prawduct_dir, read_store())
         if prior is None:
@@ -3798,6 +3868,24 @@ def begin_review(
     for f in prior_oracle:
         if f not in files_oracle and f not in files_reviewed:
             files_oracle.append(f)
+    # A bounded cumulative's reviewer reads the rest of the bundle without
+    # rating it: the earlier boundary review rated those files. They ride as
+    # `files_context`, NOT `files_oracle`, because the Records Pass rates the
+    # oracle at the boundary stage; handed over as oracle, the bundle's records
+    # would be re-rated and its code put through a records-only pass, which is
+    # the whole-bundle review this span exists to stop buying.
+    bundle_files: "list[str] | None" = None
+    files_context: list[str] = []
+    if span == SPAN_BOUNDED:
+        bundle_files = evidence.tree_diff(project_dir, bundle_base_tree, head_tree)
+        if bundle_files is None:
+            return {
+                "status": "error",
+                "reason": f"cannot diff the bundle {bundle_base_tree[:12]}..{head_tree[:12]}",
+            }
+        files_context = [
+            f for f in bundle_files if f not in files_reviewed and f not in files_oracle
+        ]
 
     roster, roster_chosen_by = _derive_roster(mode_token, files_changed, prawduct_dir)
     review_id = mint_review_id()
@@ -3807,9 +3895,15 @@ def begin_review(
     # proposal is recorded as declared, and said: `chunks_proposed` sits beside
     # it on the fact, so the edit is visible on the record. Resolved BEFORE
     # record-lint, so the deliverables it grades are the chunks the fact names.
+    # The machine relays grade the bundle whatever the span (the owner's
+    # 2026-11-11 ruling on Decision 2), so a bounded review proposes, and
+    # record-lint grades, exactly what a full one would.
+    relay_files = bundle_files if bundle_files is not None else files_changed
+    relay_base_commit = bundle_base_commit if span == SPAN_BOUNDED else base_commit
+    relay_base_tree = bundle_base_tree if span == SPAN_BOUNDED else base_tree
     chunks_proposed, proposal_notes = _proposed_chunks(
-        project_dir, graded_plan, read_store, files_changed, mode_token, verify_anchor,
-        base_commit, head_tree,
+        project_dir, graded_plan, read_store, relay_files, mode_token, verify_anchor,
+        relay_base_commit, head_tree,
     )
     notes.extend(proposal_notes)
     if declared_chunks is None:
@@ -3833,7 +3927,7 @@ def begin_review(
     # chunk the fact will name (`chunk_ids`), not only the first.
     from . import record_lint  # noqa: PLC0415 — lazy; keeps the import graph flat
     lint = record_lint.lint_records_safe(
-        project_dir, prawduct_dir, files_changed, base_tree, head_tree, chunk, scope,
+        project_dir, prawduct_dir, relay_files, relay_base_tree, head_tree, chunk, scope,
         chunk_ids=list(declared_chunks),
     )
 
@@ -3924,6 +4018,11 @@ def begin_review(
         # notice a review that changed the product it was judging.
         "dispatch_tree": capture["tree"],
     }
+    if span is not None:
+        manifest["span"] = span
+        manifest["bounded_from"] = bounded_from
+        manifest["span_reason"] = span_reason
+        manifest["files_context"] = files_context
     # The review STAGE, derived once here from the mode (which chose the
     # interval above) and read everywhere else — the reviewer prompt's signals
     # line, the review fact, the findings cache, the ledger event and
@@ -4303,6 +4402,10 @@ def validate_manifest(data) -> tuple[bool, str]:
     # the fact and a reader that walks it must not meet a non-string.
     if data.get("files_oracle") is not None and not _str_list(data.get("files_oracle")):
         return False, "'files_oracle' must be a list of non-empty strings or null"
+    # Read by a bounded cumulative's reviewer, never rated on its own merits. Typed for the
+    # same reason as the oracle: a reviewer walks it.
+    if data.get("files_context") is not None and not _str_list(data.get("files_context")):
+        return False, "'files_context' must be a list of non-empty strings or null"
     # The chunks the review names and the code's proposal (ST8). Optional, as a
     # manifest restored from before the fields still consolidates (its fact then
     # carries `chunk` alone, which `plan_status.fact_chunks` reads); typed when
@@ -4320,7 +4423,8 @@ def validate_manifest(data) -> tuple[bool, str]:
         )
     for opt in ("base_commit", "head_commit", "tier", "scope", "scope_chosen_by",
                 "scope_unresolved_cause", "scope_reason", "base_extended_from", "chunk", "model", "base_reviewed", "worktree", "branch",
-                "chunk_type", "signals", "dispatch_tree", "reviewer_model"):
+                "chunk_type", "signals", "dispatch_tree", "reviewer_model",
+                "bounded_from", "span_reason"):
         val = data.get(opt)
         if val is not None and not _nonempty_str(val):
             return False, f"'{opt}' must be a non-empty string or null"
@@ -4333,6 +4437,14 @@ def validate_manifest(data) -> tuple[bool, str]:
     # instruction; an empty list is a mode owed none.
     if data.get("dispatch_directives") is not None and not _str_list(data.get("dispatch_directives")):
         return False, "'dispatch_directives' must be a list of non-empty strings or null"
+    # A cumulative's span. Optional, as a manifest from before the field still
+    # consolidates; typed, because `bounded` without its frontier is a fact
+    # nobody could trace back to the review it extends.
+    span = data.get("span")
+    if span is not None and span not in SPAN_VALUES:
+        return False, f"'span' must be one of {sorted(SPAN_VALUES)} or null, got {span!r}"
+    if span == SPAN_BOUNDED and not _nonempty_str(data.get("bounded_from")):
+        return False, "'bounded_from' must name the frontier review when 'span' is bounded"
     stage = data.get("stage")
     if stage is not None and stage not in STAGE_VALUES:
         return False, f"'stage' must be one of {sorted(STAGE_VALUES)} or null, got {stage!r}"
@@ -5506,6 +5618,13 @@ def build_fact_body(
         # on principle instead of retired on evidence). No gate reads this copy:
         # its results reach `findings` above, through `record_lint_partial`.
         "record_lint": manifest.get("record_lint"),
+        # A cumulative's span, the review it was bounded from, and why it ran
+        # full when it did — so review-stats can split the two and the decline
+        # codes are countable. Absent on every other mode, and on a fact from
+        # before the fields, which a reader takes as full.
+        "span": manifest.get("span"),
+        "bounded_from": manifest.get("bounded_from"),
+        "span_reason": manifest.get("span_reason"),
     }
     # The dispatch clock, on the one record every worktree of the clone can
     # read. `duration_seconds` above is the reviewers' own estimate; this is
@@ -5809,6 +5928,11 @@ def fact_to_cache_record(
         # Rides the cache because the ledger's `review.critic` event copies this
         # record verbatim — `review-stats --json` groups on it (`by_stage`).
         "stage": body.get("stage"),
+        # Beside `stage`, for the same reader: the ledger's copy of this record
+        # is what `review-stats`'s `by_span` groups on, and counts full spans by.
+        "span": body.get("span"),
+        "bounded_from": body.get("bounded_from"),
+        "span_reason": body.get("span_reason"),
         "model": models[0] if models else None,
         "commit_reviewed": body.get("dispatch_commit"),
         "base_reviewed": body.get("base_reviewed"),
