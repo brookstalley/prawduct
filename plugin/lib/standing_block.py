@@ -34,8 +34,11 @@ verdict counts only where the close puts it:
 * when the turn has an ASKS BLOCK — a line that LEADS, after markdown
   decoration only, with :data:`ASKS_HEADER`, and everything after it — the
   one-line close is instead the last non-blank line BEFORE that header, and
-  nothing inside the block is read. Two header lines, or a header with no line
-  before it, yield no verdict, and the three-paragraph form is not read;
+  nothing inside the block is read. A header inside a code fence is a
+  quotation, not a header. Two header lines, a header with no line before it,
+  or a one-line close anywhere after the header (the layout was quoted some
+  other way, and the turn then closed for itself) yield no verdict, and the
+  three-paragraph form is not read;
 * otherwise, the three-paragraph close: the CLOSING BLOCK is the text after
   the last ``---`` rule line (with no rule, the final paragraph alone), and
   the verdict is its FINAL paragraph, only if that paragraph BEGINS with a
@@ -178,12 +181,40 @@ def _opens_asks(line: str) -> bool:
     return line[_LEADING_DECORATION.match(line).end():].startswith(_ASKS_HEADER_TEXT)
 
 
-def _asks_start(lines: list[str]) -> "int | None":
+_FENCE = re.compile(r"^(```|~~~)")
+
+
+def _lines(text: str) -> "tuple[list[str], list[bool]]":
+    """The turn's non-blank lines, stripped, and beside each whether it sits in
+    a fenced code block (the fence lines included). A turn that QUOTES the
+    close-then-asks layout in a fence must not have the quotation read as its
+    close: that would defer the session-end gates on a turn whose real close
+    says nothing is running."""
+    lines: list[str] = []
+    fenced: list[bool] = []
+    inside = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        is_fence = bool(_FENCE.match(line))
+        lines.append(line)
+        fenced.append(inside or is_fence)
+        if is_fence:
+            inside = not inside
+    return lines, fenced
+
+
+def _asks_start(lines: list[str], fenced: "list[bool] | None" = None) -> "int | None":
     """The index in ``lines`` (non-blank, stripped) of the line opening the
     asks block, or ``None`` when no line does. ``-1`` when the block cannot be
     placed — more than one header line, which leaves which block is the asks
-    ambiguous."""
-    starts = [idx for idx, line in enumerate(lines) if _opens_asks(line)]
+    ambiguous. A header inside a fenced code block is a quotation, not a
+    header."""
+    fenced = fenced if fenced is not None else [False] * len(lines)
+    starts = [
+        idx for idx, line in enumerate(lines) if not fenced[idx] and _opens_asks(line)
+    ]
     if not starts:
         return None
     return starts[0] if len(starts) == 1 else -1
@@ -210,8 +241,7 @@ def _has_asks(text: str) -> bool:
     one-line close just before it (the three-paragraph form is not read)."""
     if not isinstance(text, str):
         return False
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return _asks_start(lines) is not None
+    return _asks_start(*_lines(text)) is not None
 
 
 def _one_line_close(text: str) -> "tuple[str, str | None, str] | None":
@@ -224,13 +254,22 @@ def _one_line_close(text: str) -> "tuple[str, str | None, str] | None":
     two header lines, yields no close."""
     if not isinstance(text, str):
         return None
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines, fenced = _lines(text)
     if not lines:
         return None
-    start = _asks_start(lines)
+    start = _asks_start(lines, fenced)
     if start is None:
         return _close_line(lines[-1])
-    if start <= 0:
+    # The close must stand outside any fence: a fenced line before the header
+    # is a quotation that happens to precede it.
+    if start <= 0 or fenced[start - 1]:
+        return None
+    # A close AFTER the header means the header did not end the turn: it was
+    # quoted (a blockquote, an indented block, a fence inside a fence — every
+    # way markdown can quote the layout), and the turn then closed for itself.
+    # Which line is the real close is not decidable from shape alone, so the
+    # turn states none, and the gates block as for any session end.
+    if any(not fenced[idx] and _close_line(lines[idx]) for idx in range(start + 1, len(lines))):
         return None
     return _close_line(lines[start - 1])
 

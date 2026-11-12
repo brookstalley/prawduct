@@ -1689,10 +1689,12 @@ LAST_MEASURED_TOKENS = {
     # after it, under the fixed `**Needs you:**` header, so they are the last thing the reader
     # sees; the close's reason may no longer point at them by position, and the Stop-hook
     # paragraph says the verdict is then read from the line before the header. A READING.
-    # +45 the same day (asks-last follow-up, owner-confirmed): "Answering a block" says a turn that
+    # +45 the same day (asks-last follow-up, inferred from the owner's ruling and put to them): "Answering a block" says a turn that
     # ended with asks ends its answer with them again, unchanged, after any re-written close; the
     # Stop-hook paragraph names the `close-pointer` record of a reason pointing "above". A READING.
-    "methodology/session-hygiene.md": 3430,
+    # +4 on 2026-11-11 (asks-last review round): the header is read only outside a code fence, and the
+    # guide says so instead of "exactly". A READING.
+    "methodology/session-hygiene.md": 3434,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -2887,7 +2889,7 @@ class TestBuildingMethodology:
         assert "cold cache" in digest
 
     def test_closing_line_is_on_every_surface_that_claims_it(self):
-        """One line — disposition, clear verdict, reason — the asks above it,
+        """One line — disposition, clear verdict, reason — the asks after it,
         the in-flight rule, and one shared trigger.
 
         What this guards is COVERAGE: the shape has to reach an agent through a

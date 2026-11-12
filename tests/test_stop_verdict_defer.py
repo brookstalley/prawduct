@@ -276,13 +276,19 @@ _ASK = "Store format 16 for the servable figure? I recommend yes."
 DNC_ASKS = _with_asks(_DNC_CLOSE, _ASK)
 # The same turn with the header dropped: the last line is an ask, not a close.
 DNC_ASKS_NO_HEADER = f"Did the work; details above.\n\n{_DNC_CLOSE}\n\n1. {_ASK}"
+# A turn that quotes the close-then-asks layout in a fence, then closes for itself.
+FENCED_LAYOUT_THEN_SAFE = (
+    f"The new shape looks like this:\n\n```\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n```\n\n"
+    f"{SAFE_LINE}"
+)
 
 
 class TestTheAsksBlock:
     """A turn that needs the user ends with its asks, under the fixed
     ``**Needs you:**`` header, AFTER the one-line close. The close is then read
     from the line just before that header — and only there, because this
-    reading relaxes an authority gate: only the exact header opens the block,
+    reading relaxes an authority gate: only a line leading with the header
+    (its emphasis optional, outside any code fence) opens the block,
     the close must be the line immediately before it, and nothing inside the
     block is ever read as the verdict."""
 
@@ -312,6 +318,54 @@ class TestTheAsksBlock:
 
     def test_the_verdict_line_is_the_close_not_the_asks(self):
         assert standing_block.verdict_line(DNC_ASKS) == _DNC_CLOSE
+
+    def test_a_fenced_quotation_of_the_layout_is_not_the_close(self):
+        # A turn may QUOTE the close-then-asks layout (explaining it, as this
+        # guide's own example does) and then close for itself. The quotation
+        # must not be read: here it would defer the gates on a SAFE turn.
+        assert standing_block.clear_verdict(FENCED_LAYOUT_THEN_SAFE) == "SAFE TO CLEAR"
+        assert standing_block.disposition(FENCED_LAYOUT_THEN_SAFE) == "COMPLETE"
+        # Control: unfenced, the header is read, so the reader reaches the
+        # asks path — and the close after it voids the reading instead.
+        unfenced = FENCED_LAYOUT_THEN_SAFE.replace("```\n", "")
+        assert standing_block.clear_verdict(unfenced) is None
+
+    @pytest.mark.parametrize(
+        "quoted",
+        [
+            # A blockquote: `>` is stripped as decoration, so shape alone
+            # cannot tell the quoted close and header from real ones.
+            f"> {_DNC_CLOSE}\n\n> **Needs you:**\n> 1. {_ASK}",
+            # An indented code block.
+            f"    {_DNC_CLOSE}\n\n    **Needs you:**\n    1. {_ASK}",
+            # A four-backtick fence quoting a three-backtick one.
+            f"````\n```\n```\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n````",
+        ],
+        ids=["blockquote", "indented-code", "nested-fence"],
+    )
+    def test_a_close_after_a_quoted_layout_yields_no_verdict(self, quoted):
+        # The class R-1 named, not its one example: any way of quoting the
+        # layout followed by the turn's own close. No verdict is read, so the
+        # deferral never fires — the gates block as for any session end.
+        text = f"The new shape:\n\n{quoted}\n\n{SAFE_LINE}"
+        # The property, not one reading: the quoted RUNNING · DO NOT CLEAR is
+        # never the turn's verdict. (A nested fence happens to read the real
+        # SAFE close; the others read none. Neither defers.)
+        assert standing_block.clear_verdict(text) in (None, "SAFE TO CLEAR")
+        assert standing_block.disposition(text) in (None, "COMPLETE")
+
+    def test_a_real_asks_block_after_a_fenced_quotation_is_still_read(self):
+        text = f"Example:\n\n```\n{_DNC_CLOSE}\n\n**Needs you:**\n1. x\n```\n\n{DNC_ASKS}"
+        assert standing_block.clear_verdict(text) == "DO NOT CLEAR"
+        assert standing_block.verdict_line(text) == _DNC_CLOSE
+
+    def test_a_close_inside_a_fence_before_a_real_header_is_not_read(self):
+        # The fence line itself carries close-shaped text, and the reader
+        # strips backticks as decoration — so only the fence check stops it.
+        text = f"Done.\n\n```\nx = 1\n```{_DNC_CLOSE}\n**Needs you:**\n1. {_ASK}"
+        assert standing_block.clear_verdict(text) is None
+        # Control: the same line outside a fence is the close.
+        assert standing_block.clear_verdict(text.replace("```\nx = 1\n```", "")) == "DO NOT CLEAR"
 
     @pytest.mark.parametrize(
         "text",
@@ -345,9 +399,13 @@ class TestTheAsksBlock:
         ("text", "verdict"),
         [
             # A close-shaped line as the asks block's last line: under the old
-            # reading it was the turn's last line, so it was THE close.
+            # reading it was the turn's last line, so it was THE close. Still
+            # never read from inside the block — and since a close after the
+            # header is also how a QUOTED layout followed by the turn's own
+            # close looks, the turn states no verdict at all (was SAFE TO CLEAR
+            # before the asks-last review round; both block the gates).
             (_with_asks(_ASK_SAFE_CLOSE, _ASK) + "\n`RUNNING` · `DO NOT CLEAR` — quoted.",
-             "SAFE TO CLEAR"),
+             None),
             # A close-shaped line inside the block with no real close before it.
             (f"Done.\n\n**Needs you:**\n1. {_ASK}\n`RUNNING` · `DO NOT CLEAR` — quoted.", None),
             # The three-paragraph close followed by an asks block whose last
@@ -790,6 +848,27 @@ class TestStopDefersOnTheVerdict:
         assert "gate: reflection" in result.stderr
         assert "gate: critic-review" in result.stderr
 
+    def test_a_fenced_quotation_of_the_layout_defers_nothing(self, tmp_path):
+        """A turn that quotes the close-then-asks layout in a fence and closes
+        COMPLETE · SAFE TO CLEAR is a session end: both gates still block."""
+        _plan_repo(tmp_path, reflected=False)
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(FENCED_LAYOUT_THEN_SAFE)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
+    def test_a_blockquoted_layout_then_a_safe_close_defers_nothing(self, tmp_path):
+        """The finding's class at the layer it was reported: a quoted layout
+        (here a blockquote, which no fence check sees) must not defer."""
+        _plan_repo(tmp_path, reflected=False)
+        text = f"The new shape:\n\n> {_DNC_CLOSE}\n\n> **Needs you:**\n> 1. {_ASK}\n\n{SAFE_LINE}"
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(text)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
     def test_the_same_asks_without_the_header_defer_nothing(self, tmp_path):
         """Control for the test above: only the header opens the asks block."""
         _plan_repo(tmp_path, reflected=False)
@@ -1140,8 +1219,8 @@ def assert_block_says_how_to_answer(stderr: str) -> None:
         "(to keep a deferral, or because what you just started"
     ) in line, line
     assert "an item faults it" not in line, line
-    # The one exception to not repeating (owner-confirmed 2026-11-11,
-    # asks-last): a turn that ended with its asks ends with them again, so the
+    # The one exception to not repeating (inferred from the owner's 2026-11-11
+    # ruling that asks come last, `.prawduct/owner-rulings.md`): a turn that ended with its asks ends with them again, so the
     # asks stay the last thing the user sees after the block.
     assert_the_asks_are_restated(line)
 

@@ -161,7 +161,7 @@ worktrees get deleted.
   `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
   through `append_stop_observation`, carrying the same `reason` and `observed`
   a block of that check would. `clear-verdict` (#1044), `clear-reason`
-  (#1131) and `close-pointer` (asks-last) are the three such checks; no Stop
+  (#1131) and `close-pointer` (owner ruling 2026-11-11, asks come last) are the three such checks; no Stop
   gate blocks on the close's wording.
   `stats` scores these with the block verdict
   rules and reports them as *observed only*, never as Stops blocked or guard
