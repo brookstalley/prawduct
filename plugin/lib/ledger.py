@@ -97,15 +97,17 @@ _EVENT_ROLES = {
     "learning.compacted": "builder",
     # The paired native review (#1130): one event per Critic review a
     # development build paired, written by `native-review record` from the
-    # wrapper's text. Its payload sits under `review` with a `findings` list so
-    # `review-stats` reads it as one more role beside `critic`.
-    "review.native": "native",
+    # wrapper's text. Deliberately NOT under `review.`: every reader of this
+    # ledger, older builds included, takes a `review.*` event with a `review`
+    # payload as a Critic review, so this kind and its `native` payload key are
+    # ones those readers skip as unknown. `review-stats` reports it apart.
+    "native.review": "native",
 }
 
 #: Kinds only their own writer appends, outside the `learning.` family. A
-#: hand-appended `review.native` would be built from `.critic-findings.json`,
+#: hand-appended `native.review` would be built from `.critic-findings.json`,
 #: which is the Critic's review, not the native one.
-_MACHINE_ONLY_KINDS = frozenset({"review.native"})
+_MACHINE_ONLY_KINDS = frozenset({"native.review"})
 
 #: Kinds the CLI refuses. A hand-appended learning event would be a measurement
 #: of nothing: the emitters derive `unit_hash` from the corpus and `session`
@@ -619,11 +621,11 @@ def append_native_review_event(
     dispatched_at: "str | None",
     duration_seconds: "float | None",
 ) -> Path:
-    """Append one ``review.native`` event — the only writer of the kind,
+    """Append one ``native.review`` event — the only writer of the kind,
     called by ``native_review.record``. ``dispatched_at`` is the dispatch time
     ``critic-begin`` stamped, so the duration is a code clock, not a report."""
     path, _reason = _append_event(
-        project_dir, prawduct_dir, "review.native", "review", payload,
+        project_dir, prawduct_dir, "native.review", "native", payload,
         duration_seconds=duration_seconds, scope=scope, actor_model=model,
         dispatched_at=dispatched_at,
     )
@@ -631,16 +633,16 @@ def append_native_review_event(
 
 
 def native_review_event_exists(prawduct_dir: Path, review_id: str) -> bool:
-    """True if a ``review.native`` event already records the native run paired
+    """True if a ``native.review`` event already records the native run paired
     with Critic review ``review_id`` — ``record``'s idempotency probe."""
     if not isinstance(review_id, str) or not review_id:
         return False
     for _lineno, event in iter_events_newest_first(prawduct_dir):
-        review = event.get("review")
+        native = event.get("native")
         if (
-            event.get("event") == "review.native"
-            and isinstance(review, dict)
-            and review.get("critic_review_id") == review_id
+            event.get("event") == "native.review"
+            and isinstance(native, dict)
+            and native.get("critic_review_id") == review_id
         ):
             return True
     return False

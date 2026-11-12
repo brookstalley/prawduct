@@ -78,7 +78,7 @@ tokens, and the wrapper roughly 33k cache-write and 0.5M cache-read (`fork_costs
 experiment ends itself at #1130 step 7; worth revisiting earlier if a month's cost surprises.
 
 **Decisions made in planning:**
-- [DECISION: record each native run as a per-clone ledger event `review.native`, not an
+- [DECISION: record each native run as a per-clone ledger event `native.review`, not an
   evidence-store fact | #1130 says "fact"; evidence facts travel between clones through
   `/prawduct:pr`, and the data model's newer-schema rule makes a released reader block on a kind it
   does not know, while the ledger is per-clone, gitignored, tolerant of unknown kinds in its
@@ -113,11 +113,18 @@ experiment ends itself at #1130 step 7; worth revisiting earlier if a month's co
   right": the advisory alone would leave every un-reconciled repo one `git add -A` from committing it.
 - 02: the wrapper's record command names the binary that ran `critic-begin`
   (`native_review_record_command`), not PATH's, so the sidecar's writer and reader are one build.
-- 02: the event's payload sits under `review` with a `findings` list of `{file, line}` and no
-  `fact_id`, so it never joins the Critic's dispositions.
-- 03 (from 02's Critic, observation 1): `review-stats` splits `review.native` out of every Critic
+- 02: the event's payload carries a `findings` list of `{file, line}` and no `fact_id`, so it never
+  joins the Critic's dispositions.
+- 03 (from 02's Critic, observation 1): `review-stats` splits `native.review` out of every Critic
   aggregate and reports it as its own top-level `native_review` block (report schema 12 → 13),
   replacing 02's "its own role" row, which still let it into `overall`, stage, span and scope.
+- Boundary review (rev-20261112T214846Z-a45b99ac, R-2): the kind is `native.review` with its payload
+  under `native`, not `review.native` under `review` — every reader of the ledger, older builds
+  included, counts a `review.*` event with a `review` payload as a Critic review, and a repo that
+  returns to a released build after the experiment would carry those lines into its stats forever.
+- Boundary review R-5: the `NEXT-ACTION` clause is part of the findings record itself
+  (`fact_to_cache_record`, keyed on the review's sidecar), so the record rendered on any path says
+  it, and its wording ("may still be running", a count once landed) stays true as the cache ages.
 - 03: the matcher pairs by file alone, one to one. Critic findings carry `files` and no line
   (measured over this clone's store: every finding has `files` or none, none has a line), so
   "nearby line" was unbuildable. The blind sheet therefore asks the verifier to confirm each
@@ -174,7 +181,7 @@ paired reviews recorded so far.
 
 - **Description:**
   - `prawduct-hook native-review record` reads the manifest's `native` block and the text file,
-    and appends one ledger event `review.native`: the Critic review id, base and head trees, the
+    and appends one ledger event `native.review`: the Critic review id, base and head trees, the
     requested level, the model, findings counted by code from the text (a JSON array's length; no
     array and a `(none)` result count zero; anything else records the count as unknown), and the
     duration from dispatch to record. No finding text enters the ledger or any tracked file.
@@ -201,13 +208,13 @@ paired reviews recorded so far.
 ### Chunk 03: The comparison, and the boundary review
 
 - **Description:**
-  - `.prawduct/research/native-review-paired/compare.py` joins each `review.native` event to its
+  - `.prawduct/research/native-review-paired/compare.py` joins each `native.review` event to its
     Critic review fact, matches findings by file (one to one), and reports per Critic goal:
     shared, Critic-only and native-only findings; per instrument: wall clock and, via
     `fork_costs.py`, tokens; and progress toward #1130's stop condition. It writes a blind
     verification sheet — each unique finding with its source removed — for the verifier #1130 step 5
     names, and the README says how to run it monthly.
-  - `review-stats` keeps `review.native` events out of every Critic aggregate (`overall`, stage,
+  - `review-stats` keeps `native.review` events out of every Critic aggregate (`overall`, stage,
     span, scope, files, the reviewer-ceiling rows) and reports them on their own line: today they
     are read as boundary reviews and inflate the boundary-stage yield the rigor norm reads (Chunk
     02's Critic, observation 1). A test pins that a native event moves no Critic total.

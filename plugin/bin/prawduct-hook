@@ -2767,7 +2767,7 @@ def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
     The paired native review's record (#1130, ``lib/native_review.py``).
     ``record`` is run by the wrapper a development build's boundary review
     dispatches, once it has written the review's text: it appends one
-    ``review.native`` ledger event (exit 0, also when already recorded) or says
+    ``native.review`` ledger event (exit 0, also when already recorded) or says
     why there is nothing to record (exit 1). ``show`` prints a native review's
     text, the newest by default (exit 0), or why it cannot (exit 1). Exit 2 on a
     usage error."""

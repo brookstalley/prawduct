@@ -6008,7 +6008,8 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
     atomic_write_text(candidate, json.dumps(
-        fact_to_cache_record(fact, carried=carried, store={"facts": usable}), indent=2
+        fact_to_cache_record(fact, carried=carried, store={"facts": usable}, prawduct_dir=prawduct_dir),
+        indent=2
     ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
@@ -6016,6 +6017,14 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
                 "reason": "the rendered record failed the findings schema"}
     os.replace(candidate, findings_path)
     return {"status": "derived", "review": review, "reason": None}
+
+
+def _native_clause(prawduct_dir: "Path | None", review_id) -> str:
+    if prawduct_dir is None:
+        return ""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return native_review.next_action_clause(prawduct_dir, review_id)
 
 
 def fact_to_cache_record(
@@ -6029,6 +6038,7 @@ def fact_to_cache_record(
     *,
     store: dict,
     not_waived: "dict[str, str] | None" = None,
+    prawduct_dir: "Path | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -6131,12 +6141,16 @@ def fact_to_cache_record(
         # The builder's copy of the loop-termination rule, computed from the
         # counts just read. See `next_action_line` for why the findings file is
         # the carrier that had a reader and no message.
+        # A paired native review's list (#1130) is named in this one sentence,
+        # which reaches the builder however the review ran, so they work from
+        # both. Here rather than at one caller, so every path that renders this
+        # record from the fact says it; it needs only the review's sidecar.
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
             cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
             waived=waived,
-        ),
+        ) + _native_clause(prawduct_dir, fact.get("id")),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -7351,13 +7365,8 @@ def consolidate(
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
         fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
-        store=store, not_waived=waiver_refusals,
+        store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
     )
-    # The paired native review's list (#1130), named in the one sentence that
-    # reaches the builder however the review ran — so the builder works from both.
-    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
-
-    record["next_action"] += native_review.next_action_clause(prawduct_dir, manifest)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 

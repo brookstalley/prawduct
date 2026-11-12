@@ -4,12 +4,13 @@
 Usage:
     python3 -I compare.py <repo> [<repo> ...] [--out <dir>] [--transcripts <subagents dir> ...]
 
-For every ``review.native`` event in each repo's governance ledger, joins the
+For every ``native.review`` event in each repo's governance ledger, joins the
 native run to the Critic review it was paired with (the evidence store's review
 fact of the same id) and matches their findings. Prints, per Critic goal, the
 findings both raised, those only the Critic raised, and the native-only
 findings; per instrument, wall clock (and, with ``--transcripts``, the native
-forks' tokens via ``fork_costs.py``); and progress toward #1130's stop
+forks' tokens and the recipe each ran via ``fork_costs.py``); the runs that
+were dispatched and never recorded; and progress toward #1130's stop
 condition. With ``--out`` it also writes the blind verification sheet and its
 key.
 
@@ -113,11 +114,12 @@ def load_pairs(repo: Path) -> list[dict]:
         review = event.get("review") if isinstance(event.get("review"), dict) else {}
         if event.get("event") == "review.critic" and review.get("fact_id"):
             critic_events.setdefault(review["fact_id"], event)
-        if event.get("event") != "review.native":
+        native = event.get("native") if isinstance(event.get("native"), dict) else {}
+        if event.get("event") != "native.review":
             continue
-        review_id = review.get("critic_review_id")
+        review_id = native.get("critic_review_id")
         path = native_review.text_path(prawduct_dir, review_id)
-        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
         pairs.append({
             "repo": str(repo),
             "review_id": review_id,
@@ -129,6 +131,13 @@ def load_pairs(repo: Path) -> list[dict]:
     for pair in pairs:
         pair["critic_event"] = critic_events.get(pair["review_id"])
     return pairs
+
+
+def unrecorded(repo: Path, recorded: "set[str]") -> "list[str]":
+    """Review ids whose native run was dispatched (a sidecar exists) and never
+    recorded — a wrapper that died, was refused, or is still running."""
+    reviews = native_review.reviews_dir(gitstate.get_prawduct_dir(repo))
+    return sorted(p.stem for p in reviews.glob("rev-*.json") if p.stem not in recorded)
 
 
 def _seconds(event: "dict | None") -> "float | None":
@@ -182,8 +191,11 @@ def main(argv: list[str]) -> int:
     joined = [p for p in pairs if p["critic_fact"] is not None and p["native_findings"] is not None]
     matches = [match(p["critic_fact"]["body"].get("findings") or [], p["native_findings"]) for p in joined]
 
+    missing = [i for repo in args.repos
+               for i in unrecorded(repo.resolve(), {p["review_id"] for p in pairs})]
     print(f"paired reviews: {len(pairs)} recorded, {len(joined)} comparable "
-          f"(a Critic fact in the store and a countable native text)")
+          f"(a Critic fact in the store and a countable native text); "
+          f"{len(missing)} dispatched and never recorded{': ' + ', '.join(missing) if missing else ''}")
     print(f"stop condition (#1130 step 7): {stop_progress([p['ts'] for p in pairs if p['ts']])}")
     print("\nper Critic goal — shared / Critic only / native only:")
     for goal, row in tally_by_goal(matches).items():
@@ -199,11 +211,16 @@ def main(argv: list[str]) -> int:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import fork_costs  # noqa: PLC0415
 
-        ranges = {p["native_event"]["review"].get("args", "").split(" ", 1)[-1] for p in joined}
+        ranges = {p["native_event"]["native"].get("args", "").split(" ", 1)[-1] for p in joined}
         forks = [r for d in args.transcripts for p in sorted(d.glob("agent-*.jsonl"))
                  if (r := fork_costs.fork_row(p)) and r["target"].strip("`") in ranges]
         tokens = {k: sum(r[k] for r in forks) for k in ("cache_create", "cache_read", "input", "output")}
-        print(f"native fork tokens over {len(forks)} fork(s): {tokens}")
+        recipes: dict[str, int] = {}
+        for r in forks:
+            recipes[r["recipe"] or "unknown"] = recipes.get(r["recipe"] or "unknown", 0) + 1
+        # The level asked is not always the level run (`medium` ran `high` in
+        # 2.1.322), so the recipe each fork's own prompt names is what is reported.
+        print(f"native fork tokens over {len(forks)} fork(s): {tokens}; recipes run: {recipes}")
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
         items, key = blind_sheet(joined, matches)

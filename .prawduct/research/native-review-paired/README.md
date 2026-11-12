@@ -2,7 +2,7 @@
 
 On a development build of the plugin (a `-dev` version), every `cumulative` Critic review also
 starts the host's native `/code-review` at `high` over the same range, unless the repo sets
-`native_review_pairing: false`. Each native run is recorded as a `review.native` ledger event, and
+`native_review_pairing: false`. Each native run is recorded as a `native.review` ledger event, and
 its text is kept per clone in `.prawduct/.native-reviews/`. The build plan and its decisions are
 `.prawduct/artifacts/build-plan-native-review-paired.md`. The host facts the design rests on are in
 `host-facts-2026-11-12.md`, which `fork_costs.py` re-derives.

@@ -163,3 +163,33 @@ class TestEndToEnd:
         assert f"{compare.NO_GOAL}: 0 / 0 / 1" in printed
         items = json.loads((out / "blind-sheet.json").read_text())
         assert sorted(i["ask"] for i in items) == ["real defect? and which goal?", "same defect?"]
+
+    def test_a_dispatched_run_never_recorded_is_reported(self, paired_repo, tmp_path, capsys):
+        """Boundary review R-6: a wrapper that died leaves a sidecar and no event,
+        and only a comparison of the two can see it."""
+        repo, _review_id = paired_repo
+        orphan = "rev-20990101T000000Z-deadbeef"
+        (repo / ".prawduct" / ".native-reviews" / f"{orphan}.json").write_text("{}")
+        assert compare.main([str(repo)]) == 0
+        assert f"1 dispatched and never recorded: {orphan}" in capsys.readouterr().out
+
+    def test_the_recipe_each_fork_ran_is_reported(self, paired_repo, tmp_path, capsys):
+        """Boundary review R-8: the level asked is not the level run, so the
+        report names the recipe from each fork's own prompt."""
+        repo, _review_id = paired_repo
+        [pair] = compare.load_pairs(repo)
+        target = pair["native_event"]["native"]["args"].split(" ", 1)[1]
+        forks = tmp_path / "subagents"
+        forks.mkdir()
+        lines = [
+            {"type": "user", "timestamp": "2026-11-12T10:00:00Z",
+             "message": {"content": f"Review target: `{target}`\n\n`high effort → 8 inline angles`"}},
+            {"type": "assistant", "timestamp": "2026-11-12T10:01:30Z",
+             "message": {"model": "claude-opus-5-5", "usage": {
+                 "input_tokens": 1, "output_tokens": 2, "cache_creation_input_tokens": 3,
+                 "cache_read_input_tokens": 4}}},
+        ]
+        (forks / "agent-x.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+        assert compare.main([str(repo), "--transcripts", str(forks)]) == 0
+        out = capsys.readouterr().out
+        assert "over 1 fork(s)" in out and "recipes run: {'high': 1}" in out

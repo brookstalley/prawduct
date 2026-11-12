@@ -242,6 +242,13 @@ def _read_events(
             learning[bucket] += 1
             units[bucket].add(unit)
             continue
+        if kind == NATIVE_EVENT:
+            native = event.get("native")
+            if isinstance(native, dict) and isinstance(native.get("findings"), list):
+                events.append(event)
+            else:
+                skipped["invalid_payloads"] += 1
+            continue
         if not kind.startswith("review."):
             skipped["unknown_kinds"] += 1
             continue
@@ -368,8 +375,9 @@ def _extract_row(event: dict) -> dict:
 #: The paired native review's event (#1130). A second instrument run beside the
 #: Critic, not a Critic review: counted into any Critic aggregate it would read
 #: as a boundary review and inflate the boundary yield the rigor norm is judged
-#: on. So every Critic reader splits it out here and it is reported apart.
-NATIVE_EVENT = "review.native"
+#: on. Its kind sits outside `review.` (so older readers skip it as unknown),
+#: `_read_events` admits it by name, and every Critic reader splits it out here.
+NATIVE_EVENT = "native.review"
 
 
 def _split_native(events: list[dict]) -> "tuple[list[dict], list[dict]]":
@@ -384,12 +392,12 @@ def _native_block(native: list[dict]) -> dict:
     from ``critic-begin``'s dispatch stamp), and the findings of the runs whose
     text was countable."""
     measured = [d for d in (_measured_duration(e) for e in native) if d is not None]
-    countable = [e for e in native if e["review"].get("findings_parsed") is True]
+    countable = [e for e in native if e["native"].get("findings_parsed") is True]
     return {
         "runs": len(native),
         "duration_measured": _population(measured),
         "countable_runs": len(countable),
-        "findings": sum(len(e["review"]["findings"]) for e in countable),
+        "findings": sum(len(e["native"]["findings"]) for e in countable),
     }
 
 

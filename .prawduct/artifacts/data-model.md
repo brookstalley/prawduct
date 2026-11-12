@@ -288,7 +288,7 @@ the verdict is reproducible across worktrees and across time, not tied to a muta
 #### Governance Ledger — `.prawduct/.governance-ledger.jsonl` (gitignored)
 
 Append-only telemetry of governance events (a consolidated review anchors a `review.critic` event
-here; on a development build, a paired native review records a `review.native` event, counts and
+here; on a development build, a paired native review records a `native.review` event, counts and
 range only — `plugin/docs/governance-telemetry.md`). Distinct from the evidence store: the ledger is *observability* (what happened, for
 audit/telemetry), the evidence store is *authority* (what the gate trusts). Intended to stay a
 thin event trail, not a second source of truth.
@@ -296,7 +296,7 @@ thin event trail, not a second source of truth.
 **`dispatched_at` (optional envelope key, UTC ISO-8601).** Present on a `review.*` event whose
 dispatch was marked before the reviewer was spawned — `prawduct-hook pr-review-dispatch --begin`
 for a `review.pr`, `critic-begin` itself for a `review.critic`; written at append from a per-clone
-marker, once, never edited. A `review.native` event takes it from the dispatch stamp `critic-begin`
+marker, once, never edited. A `native.review` event takes it from the dispatch stamp `critic-begin`
 wrote into the native review's sidecar, which is the same code clock. It exists because the
 envelope's `duration_seconds` is **self-reported by the reviewing model** — a recollection, not a
 clock — and a performance target stated against an estimate is a target stated against an estimate.

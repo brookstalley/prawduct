@@ -10,7 +10,7 @@ that:
   wrapper will write. The manifest cannot carry the run's record: consolidation
   deletes it on success, and the native run may finish after that.
 - **When the wrapper finishes** it runs ``native-review record <review id>``:
-  :func:`record` reads the sidecar and the text and appends ONE ``review.native``
+  :func:`record` reads the sidecar and the text and appends ONE ``native.review``
   ledger event — counts, the range, the clocked duration, the file and line of
   each finding, never the finding text (the text stays in the per-clone,
   gitignored file).
@@ -114,10 +114,12 @@ def findings_detail(text: str) -> "list[dict] | None":
     nothing countable. For the comparison's blind sheet, which reads the
     per-clone text; nothing durable stores these words.
 
-    A JSON array of objects wins — the ``high`` recipe's output, which may follow
-    a ``(none)`` the host prints in its result header. With no such array, a
-    line that is exactly ``(none)`` is an empty run. Anything else is not
-    counted: a guessed zero would read as a clean review."""
+    A JSON array of objects wins — the ``high`` recipe's output. With no such
+    array, a ``(none)`` line in the review's own body is an empty run. The host
+    opens EVERY result with a ``(none)`` line of its own, whatever the review
+    found, so a leading one is its header, not the review's answer, and does
+    not count. Anything else is not counted: a guessed zero would read as a
+    clean review."""
     def _str(value):
         return value if isinstance(value, str) else None
 
@@ -133,9 +135,25 @@ def findings_detail(text: str) -> "list[dict] | None":
                 }
                 for item in candidate
             ]
-    if _NONE_LINE.search(text):
+    if _NONE_LINE.search(_without_host_header(text)):
         return []
     return None
+
+
+def _without_host_header(text: str) -> str:
+    """``text`` minus the host's leading ``(none)`` line, when more follows it.
+    A text that is only ``(none)`` keeps it: there is no review body to hold any
+    other answer."""
+    lines = text.strip().splitlines()
+    if len(lines) > 1 and lines[0].strip() == "(none)":
+        return "\n".join(lines[1:])
+    return text
+
+
+def _read_text(path: Path) -> str:
+    """A native text as written by a model: read leniently, because one bad byte
+    must not make every retry of ``record`` or ``critic-consolidate`` fail."""
+    return path.read_text(encoding="utf-8", errors="replace")
 
 
 def parse_findings(text: str) -> "list[dict] | None":
@@ -169,7 +187,7 @@ def _seconds_since(stamp) -> "float | None":
 
 
 def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int, str]":
-    """Append the native run's ``review.native`` ledger event. ``(0, message)``
+    """Append the native run's ``native.review`` ledger event. ``(0, message)``
     on an append or when it is already recorded; ``(1, reason)`` when there is
     nothing to record. Idempotent per review id."""
     from . import ledger  # noqa: PLC0415 — lazy, matching the lib's other imports
@@ -181,7 +199,7 @@ def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int,
         return 1, reason
     path = text_path(prawduct_dir, review_id)
     try:
-        text = path.read_text(encoding="utf-8")
+        text = _read_text(path)
     except FileNotFoundError:
         return 1, f"the native review's text has not been written to {path}"
     except OSError as exc:
@@ -227,34 +245,33 @@ def show(prawduct_dir: Path, review_id: "str | None" = None) -> "tuple[int, str]
     else:
         path = text_path(prawduct_dir, review_id)
     try:
-        return 0, f"native review {path.stem} ({path}):\n\n{path.read_text(encoding='utf-8')}"
+        return 0, f"native review {path.stem} ({path}):\n\n{_read_text(path)}"
     except FileNotFoundError:
         return 1, f"no native review text at {path} — it may still be running"
     except OSError as exc:
         return 1, f"{path} is unreadable ({exc.__class__.__name__})"
 
 
-def next_action_clause(prawduct_dir: Path, manifest: dict) -> str:
+def next_action_clause(prawduct_dir: Path, review_id: "str | None") -> str:
     """The sentence the Critic's ``NEXT-ACTION`` gains when its review was
-    paired, or ``""``. Says whether the native list is in yet, and how to read
-    it, so the builder works from both lists; it never says the native review
-    gates anything, because it does not."""
-    if not manifest.get("native_review") or not is_safe_id(manifest.get("id")):
+    paired, or ``""``. Paired means a sidecar exists for the review — the record
+    ``critic-begin`` wrote — so every path that renders the findings record from
+    the fact says it, not only the consolidation that had the manifest in hand.
+
+    Worded to stay true as the cache ages: a count only once the text has
+    landed (it is written once), and otherwise that it may still be running —
+    never "still running", which the next session's briefing would repeat after
+    it finished. It never says the native review gates anything."""
+    if not is_safe_id(review_id) or not sidecar_path(prawduct_dir, review_id).is_file():
         return ""
-    review_id = manifest["id"]
     command = f"`{SHOW_COMMAND} {review_id}`"
     try:
-        text = text_path(prawduct_dir, review_id).read_text(encoding="utf-8")
+        text = _read_text(text_path(prawduct_dir, review_id))
     except OSError:
         text = ""
-    if not text.strip():
-        return (
-            f" A paired native review of this range (#1130) is still running: once {command} "
-            "prints it, work from both lists before fixing. It gates nothing."
-        )
-    findings = parse_findings(text)
-    counted = f"{len(findings)} finding(s)" if findings is not None else "findings"
+    findings = parse_findings(text) if text.strip() else None
+    counted = f" ({len(findings)} finding(s))" if findings is not None else " (it may still be running)"
     return (
-        f" A paired native review of this range (#1130) also ran — {counted}, read with "
-        f"{command}: work from both lists before fixing. It gates nothing."
+        f" A paired native review of this range (#1130) ran beside it{counted}: read its list "
+        f"with {command} and work from both lists before fixing. It gates nothing."
     )

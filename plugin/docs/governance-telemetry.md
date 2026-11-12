@@ -48,13 +48,15 @@ kind-named key (`review` for `review.*`):
 - `review.critic` (the Critic, after writing its findings file, whose only trusted source is the
   canonical `.critic-findings.json`). A ledger may also hold `review.pr` events, which `stats` and
   `review-stats` read and `ledger-append` refuses to write.
-- `review.native` (role `native`; a development build's paired native review, #1130), written only
+- `native.review` (role `native`; a development build's paired native review, #1130), written only
   by `native-review record` once the wrapper has saved the review's text, one per Critic review it
-  was paired with (`review.critic_review_id`). Its `review` payload carries the range, the level,
+  was paired with (`native.critic_review_id`). Its `native` payload carries the range, the level,
   each finding's `file` and `line` — never its text, which stays in `.prawduct/.native-reviews/` —
   and `findings_parsed` (false when the text held nothing countable). `dispatched_at` is the time
-  `critic-begin` stamped. It carries no `fact_id`, so it never joins the Critic's dispositions;
-  `review-stats` shows it as its own role. `ledger-append` refuses to write it.
+  `critic-begin` stamped. The kind sits outside `review.` and the payload under `native`, so a
+  reader that takes `review.*` events as Critic reviews (older builds of this plugin included)
+  skips it as unknown; `review-stats` reports it in its own `native_review` block, in no Critic
+  total. `ledger-append` refuses to write it.
 - `learning.written`, `learning.fired` and `learning.compacted` — the learning loop, below.
 - **Consumers skip unknown event kinds and unknown fields** — that contract is
   what lets producers grow without migrating the ledger.
@@ -241,7 +243,8 @@ window           {since, until} — the bounds in force, stated even when both
                  are null so a slice is never mistaken for the whole corpus
 dispositions     {status: available, as_of} or {status: unavailable, reason}
                  — whether the evidence store could be joined (below)
-events_total     reportable review.* events, review.native excepted
+events_total     reportable review.* events (Critic reviews; native.review is
+                 not one)
 native_review    {runs, duration_measured, countable_runs, findings} — a
                  development build's paired native review runs (#1130),
                  counted in no other key: a second instrument, not a review

@@ -30,11 +30,13 @@ its changed-tree refusal.
 
 ### Chunk 02: the record, and the builder sees both lists
 `critic-begin` writes a sidecar beside the text, because consolidation deletes the manifest and the
-native run may finish later. `prawduct-hook native-review record <id>` appends one `review.native`
+native run may finish later. `prawduct-hook native-review record <id>` appends one `native.review`
 ledger event per paired review. The event holds the range, the level, a duration clocked from the
 dispatch stamp, and each finding's file and line, but never its text. `ledger-append` refuses that
-event kind. `native-review show [<id>]` prints a native review's text. The Critic's `NEXT-ACTION`
-names the native list, whether still running or landed, so the builder works from both. The
+event kind, which sits outside `review.` so that older readers skip it rather than count it as a
+Critic review. `native-review show [<id>]` prints a native review's text. The Critic's
+`NEXT-ACTION`, on every path that renders the findings record, names the native list and its count
+once the text has landed, so the builder works from both. The
 directory ignores itself, so a repo whose root `.gitignore` predates the entry never sees it as
 untracked. The wrapper records with the binary that dispatched it, so the sidecar's writer and reader
 are one build.

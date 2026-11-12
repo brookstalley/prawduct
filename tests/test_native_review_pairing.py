@@ -296,8 +296,20 @@ class TestParseFindings:
             {"file": "a.py", "line": 3}, {"file": "b.py", "line": 9}, {"file": "c.py", "line": None},
         ]
 
-    def test_none_alone_is_an_empty_run(self):
-        assert native_review.parse_findings("Result:\n(none)\n\nThe pass found nothing.") == []
+    # Renegotiated at the boundary review (R-1): this case once read
+    # "Result:\n(none)\n\nThe pass found nothing." and expected an empty run.
+    # The wrapper writes what FOLLOWS `Result:`, so the host's header is the
+    # text's first line — and the host prints that `(none)` on every result,
+    # whatever the review found. A leading `(none)` is therefore no answer.
+    def test_a_lone_none_is_an_empty_run(self):
+        assert native_review.parse_findings("(none)\n") == []
+
+    def test_the_host_header_alone_before_prose_is_not_countable(self):
+        text = "(none)\n\nThe pass found one wrong condition in a.py and an unchecked None in b.py."
+        assert native_review.parse_findings(text) is None
+
+    def test_the_reviews_own_none_after_the_header_is_an_empty_run(self):
+        assert native_review.parse_findings("(none)\n\nI read the diff once.\n\n(none)\n") == []
 
     def test_prose_is_not_countable(self):
         """Control for the line above: prose with no ``(none)`` line and no array
@@ -337,9 +349,13 @@ class TestRecord:
         rc, message = native_review.record(branch_repo, pd, result["id"])
         assert rc == 0, message
         assert "3 finding(s)" in message
-        [event] = _ledger_events(branch_repo, "review.native")
+        [event] = _ledger_events(branch_repo, "native.review")
+        # Boundary review R-2: every ledger reader, older builds included, takes a
+        # `review.*` event with a `review` payload as a Critic review — this one
+        # must look like neither, so those readers skip it as unknown.
+        assert not event["event"].startswith("review.") and "review" not in event
         assert event["actor"]["role"] == "native"
-        review = event["review"]
+        review = event["native"]
         assert review["critic_review_id"] == result["id"]
         assert review["findings"] == [
             {"file": "a.py", "line": 3}, {"file": "b.py", "line": 9}, {"file": "c.py", "line": None},
@@ -362,7 +378,7 @@ class TestRecord:
         assert native_review.record(branch_repo, pd, result["id"])[0] == 0
         rc, message = native_review.record(branch_repo, pd, result["id"])
         assert rc == 0 and "already recorded" in message
-        assert len(_ledger_events(branch_repo, "review.native")) == 1
+        assert len(_ledger_events(branch_repo, "native.review")) == 1
 
     def test_prose_records_as_not_countable(self, branch_repo, monkeypatch):
         result = _paired(branch_repo, monkeypatch)
@@ -370,8 +386,8 @@ class TestRecord:
         native_review.text_path(pd, result["id"]).write_text("It reads fine to me.")
         rc, message = native_review.record(branch_repo, pd, result["id"])
         assert rc == 0 and "not countable" in message
-        [event] = _ledger_events(branch_repo, "review.native")
-        assert event["review"]["findings_parsed"] is False
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["findings_parsed"] is False
 
     def test_record_works_after_consolidation_removed_the_manifest(self, branch_repo, monkeypatch):
         """The native run may finish after the Critic consolidates, which deletes
@@ -390,7 +406,7 @@ class TestRecord:
         assert rc == 1 and "has not been written" in reason
         rc, reason = native_review.record(branch_repo, pd, "rev-20990101T000000Z-deadbeef")
         assert rc == 1 and "no paired native review" in reason
-        assert _ledger_events(branch_repo, "review.native") == []
+        assert _ledger_events(branch_repo, "native.review") == []
 
     @pytest.mark.parametrize("bad", ["../manifest", "rev-1/../../x", "", "rev-a.b"])
     def test_an_id_that_could_leave_the_directory_is_refused(self, tmp_path, bad):
@@ -422,10 +438,10 @@ class TestShow:
 class TestLedgerKind:
     def test_review_native_cannot_be_hand_appended(self, tmp_path, capsys):
         (tmp_path / ".prawduct").mkdir()
-        rc = ledger.ledger_append(tmp_path, ["--event", "review.native"])
+        rc = ledger.ledger_append(tmp_path, ["--event", "native.review"])
         assert rc == 1
         assert "native-review record" in capsys.readouterr().err
-        assert "review.native" not in ledger._cli_appendable()
+        assert "native.review" not in ledger._cli_appendable()
 
     def test_review_stats_reports_native_runs_apart_and_in_no_critic_total(self, branch_repo, monkeypatch):
         """Renegotiated in Chunk 03: Chunk 02 let the native event read as a role
@@ -483,11 +499,15 @@ class TestNextAction:
     def _next_action(self, repo: Path) -> str:
         return json.loads((repo / ".prawduct" / ".critic-findings.json").read_text())["next_action"]
 
-    def test_a_running_native_review_is_named(self, branch_repo, monkeypatch):
+    def test_an_unlanded_native_review_is_named_without_going_stale(self, branch_repo, monkeypatch):
+        """The record outlives the moment it was written (the next session's
+        briefing reads it), so it says the run MAY still be running — never that
+        it is."""
         result = self._consolidate(branch_repo, monkeypatch)
         assert cc.consolidate(branch_repo, trigger="explicit") == 0
         sentence = self._next_action(branch_repo)
-        assert "native review" in sentence and "still running" in sentence
+        assert "native review" in sentence and "may still be running" in sentence
+        assert "is still running" not in sentence
         assert f"native-review show {result['id']}" in sentence
 
     def test_a_landed_native_review_is_counted(self, branch_repo, monkeypatch):
@@ -495,7 +515,34 @@ class TestNextAction:
         native_review.text_path(branch_repo / ".prawduct", result["id"]).write_text(THREE)
         assert cc.consolidate(branch_repo, trigger="explicit") == 0
         sentence = self._next_action(branch_repo)
-        assert "3 finding(s)" in sentence and "still running" not in sentence
+        assert "(3 finding(s))" in sentence and "still running" not in sentence
+
+    def test_the_record_rendered_from_the_fact_names_it_too(self, branch_repo, monkeypatch):
+        """Boundary review R-5: the clause belongs to the record, so a clone that
+        re-renders `.critic-findings.json` from the fact (`derive_branch_cache`)
+        tells its builder the same thing consolidation did."""
+        result = self._consolidate(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        (pd / ".critic-findings.json").unlink()
+        from lib import evidence
+
+        facts = evidence.read_facts(branch_repo)["facts"]
+        head = result["manifest"]["commit_reviewed"]
+        derived = cc.derive_branch_cache(pd, facts, [head])
+        assert derived["status"] == "derived", derived
+        assert "(3 finding(s))" in self._next_action(branch_repo)
+
+    def test_a_text_with_bad_bytes_neither_breaks_record_nor_consolidate(self, branch_repo, monkeypatch):
+        """Boundary review R-7: the text is model output; one undecodable byte
+        must not make every retry fail."""
+        result = self._consolidate(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_bytes(b"(none)\n\n\xff\xfe broken\n\n(none)\n")
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        assert "(0 finding(s))" in self._next_action(branch_repo)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
 
     def test_control_an_unpaired_review_says_nothing(self, branch_repo, monkeypatch):
         (branch_repo / ".prawduct" / "project-state.yaml").write_text("native_review_pairing: false\n")
