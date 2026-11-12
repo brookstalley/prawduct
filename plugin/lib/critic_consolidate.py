@@ -3040,6 +3040,144 @@ def _proposed_chunks(
     return proposal.chunks, proposal.notes
 
 
+# --- The paired native review (#1130) ------------------------------------------
+#
+# On a development build, every boundary review also runs the host's native
+# `/code-review` over the same range, so the two can be compared before any
+# Critic goal is ceded to it. The Critic itself is unchanged: the native review
+# is a second instrument its dispatch starts beside the reviewers, it rates and
+# blocks nothing, and consolidation never waits for it. What the host does, as
+# measured rather than documented, is in
+# `.prawduct/research/native-review-paired/host-facts-2026-11-12.md` of the
+# prawduct repo.
+
+#: The ``project-state.yaml`` key a repo opts out with (``false``).
+NATIVE_REVIEW_PAIRING_KEY = "native_review_pairing"
+#: The host skill and the level it runs at (owner ruling 2026-11-12). Always
+#: passed explicitly: the host remembers the last level typed, so an omitted one
+#: would run whatever the last person chose.
+NATIVE_REVIEW_SKILL = "code-review"
+NATIVE_REVIEW_LEVEL = "high"
+#: Never passed: a flag that writes (to the tree under review or to the PR), or
+#: a level the host reserves for an explicit request — ``max``, and ``ultra``,
+#: the cloud review. The validator refuses a manifest carrying one.
+NATIVE_REVIEW_FORBIDDEN = ("--fix", "--comment", "--post", "max", "ultra")
+
+
+def native_review_pairing(
+    prawduct_dir: Path, mode_token: str, *, version: "str | None" = None
+) -> "tuple[bool, str]":
+    """Whether this dispatch pairs a native review, and why not when it does
+    not. Pairs only a ``cumulative`` review, on a development build (``version``,
+    default the running plugin's), in a repo that has not set
+    ``native_review_pairing: false``.
+
+    Only an explicit ``false`` opts out: pairing is the development build's
+    default, so a misspelt value keeps the measurement running rather than
+    ending it silently.
+    """
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    if mode_token != "cumulative":
+        return False, f"only a cumulative review pairs, and this is {mode_token}"
+    if not core.is_dev_version(core.PRAWDUCT_VERSION if version is None else version):
+        return False, "a released build never pairs"
+    state, raw = core.read_scalar_yaml_key(
+        Path(prawduct_dir) / "project-state.yaml", NATIVE_REVIEW_PAIRING_KEY
+    )
+    if state == core.YAML_SCALAR_VALUE and (raw or "").strip().lower() == "false":
+        return False, f"project-state.yaml sets {NATIVE_REVIEW_PAIRING_KEY}: false"
+    return True, "paired"
+
+
+def native_review_prompt(review_id: str, worktree: str, args: str, text_path: str) -> str:
+    """The wrapper subagent's whole instruction, rendered once so no skill file
+    composes it. The wrapper exists because the native review runs on its
+    caller's model and may come back in the background: it holds the model
+    fixed and stays alive until the text lands."""
+    return (
+        f"Native review for Critic review `{review_id}`. Project (absolute): `{worktree}`. "
+        f"Invoke the Skill tool with skill `{NATIVE_REVIEW_SKILL}` and args `{args}` — exactly "
+        "those, adding and changing nothing. If the result says it is running in the "
+        "background, stay alive until its completion notification arrives (start a "
+        "background `sleep 900`, and stop it once the notification lands). Then write the "
+        "review's complete text, everything after `Result:`, verbatim, to "
+        f"`{text_path}` with the Write tool, and run "
+        f"`{native_review_record_command(review_id)}`. Edit nothing else and fix "
+        "nothing. Report one line: that command's output."
+    )
+
+
+def native_review_record_command(review_id: str) -> str:
+    """The record command, naming the binary that ran this dispatch. The one on
+    PATH may be another build (a framework checkout runs its own), and the record
+    must be written by the code that wrote the sidecar it reads."""
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return f'python3 "{core.FRAMEWORK_DIR / "bin" / "prawduct-hook"}" native-review record {review_id}'
+
+
+
+def native_review_block(
+    prawduct_dir: Path, review_id: str, worktree: str, base_commit: str,
+    head_commit: str, reviewer_model: "str | None",
+) -> dict:
+    """The manifest's ``native_review`` block: everything the coordinator
+    dispatches, derived here. ``model`` is the reviewers' model (null means
+    the wrapper inherits the session's, as they do), because a comparison
+    between instruments on different models measures the models."""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    args = f"{NATIVE_REVIEW_LEVEL} {base_commit}...{head_commit}"
+    text_path = str(native_review.text_path(prawduct_dir, review_id))
+    return {
+        "skill": NATIVE_REVIEW_SKILL,
+        "level": NATIVE_REVIEW_LEVEL,
+        "args": args,
+        "model": reviewer_model,
+        "text_path": text_path,
+        "prompt": native_review_prompt(review_id, worktree, args, text_path),
+        "dispatched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def native_review_line(manifest: dict) -> "str | None":
+    """The dispatch line ``critic-begin`` prints when the manifest pairs a native
+    review, or ``None``. The fork acts on it in the same message as the reviewers;
+    nothing about the pairing is the fork's to decide."""
+    native = manifest.get("native_review")
+    if not native:
+        return None
+    model = (
+        f"model `{native['model']}`" if native.get("model")
+        else "no `model` (it inherits yours, as the reviewers do)"
+    )
+    return (
+        "native review paired (#1130) — in the same message as the reviewers (or, "
+        "single-pass, before you start reviewing), dispatch ONE general-purpose Agent, "
+        f"in the background, with {model} and the manifest's `native_review.prompt` "
+        "verbatim. Do not wait for it, read its result or mention it in your review: "
+        "consolidation never waits for it, and it records itself."
+    )
+
+
+def _validate_native_review(block) -> "tuple[bool, str]":
+    if not isinstance(block, dict):
+        return False, "'native_review' must be an object or absent"
+    for key in ("skill", "level", "args", "text_path", "prompt", "dispatched_at"):
+        if not _nonempty_str(block.get(key)):
+            return False, f"'native_review.{key}' must be a non-empty string"
+    if block.get("model") is not None and not _nonempty_str(block.get("model")):
+        return False, "'native_review.model' must be a non-empty string or null"
+    tokens = block["args"].split()
+    if tokens[0] != block["level"]:
+        return False, "'native_review.args' must open with its level, explicitly"
+    forbidden = sorted(set(tokens) & set(NATIVE_REVIEW_FORBIDDEN))
+    if forbidden:
+        return False, f"'native_review.args' carries a forbidden argument: {', '.join(forbidden)}"
+    return True, ""
+
+
 def begin_review(
     project_dir: Path,
     mode_token: str,
@@ -4036,6 +4174,23 @@ def begin_review(
     # Rendered from the three fields above, so the coordinator copies a line
     # rather than composing one.
     manifest["signals"] = signals_line(manifest)
+    # The paired native review (#1130), decided here once so the dispatch fires
+    # on code's answer and not on a skill remembering to. A development build's
+    # boundary review that does not pair says why, since a silent skip reads as a
+    # native review that never landed; a released build says nothing new.
+    paired, pairing_reason = native_review_pairing(prawduct_dir, mode_token)
+    if paired and base_commit and head_commit:
+        manifest["native_review"] = native_review_block(
+            prawduct_dir, review_id, manifest["worktree"], base_commit, head_commit,
+            manifest["reviewer_model"],
+        )
+    elif paired:
+        notes.append("native review not paired: the interval has no base or head commit to name as a range")
+    else:
+        from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        if mode_token == "cumulative" and core.is_dev_build():
+            notes.append(f"native review not paired: {pairing_reason}")
     # Rendered once: the CLI prints this list to the fork, and a reviewer the
     # fork hands the review to reads the same list here, since it never sees
     # the fork's tool output. Absent when no reviewer model is set, because then
@@ -4074,6 +4229,20 @@ def begin_review(
     superseded = _mark_cache_superseded(prawduct_dir, review_id)
     pdir.mkdir(parents=True, exist_ok=True)
     atomic_write_text(manifest_path(prawduct_dir), json.dumps(manifest, indent=2))
+    if "native_review" in manifest:
+        # The native run's own record, beside its text: the manifest is deleted
+        # when the Critic consolidates, which may be before the native run ends.
+        # Advice fails soft — an unwritable sidecar costs the experiment one
+        # record, never the Critic its review.
+        from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        try:
+            native_review.write_dispatch(prawduct_dir, manifest, session_model)
+        except OSError as exc:
+            notes.append(
+                f"native review paired but its dispatch record was not written "
+                f"({exc.__class__.__name__}: {exc}); `native-review record` will refuse it"
+            )
 
     # Start this review's stopwatch — LAST, so the mark attests an interval a
     # reviewer actually spends. Every refusal above returns before here, and a
@@ -4437,6 +4606,14 @@ def validate_manifest(data) -> tuple[bool, str]:
     # instruction; an empty list is a mode owed none.
     if data.get("dispatch_directives") is not None and not _str_list(data.get("dispatch_directives")):
         return False, "'dispatch_directives' must be a list of non-empty strings or null"
+    # The paired native review's block, when a development build's boundary
+    # review wrote one. Validated because the coordinator hands its arguments to
+    # the host verbatim: a manifest carrying a writing flag or a reserved level
+    # must fail here, not run.
+    if "native_review" in data:
+        ok, reason = _validate_native_review(data["native_review"])
+        if not ok:
+            return False, reason
     # A cumulative's span. Optional, as a manifest from before the field still
     # consolidates; typed, because `bounded` without its frontier is a fact
     # nobody could trace back to the review it extends.
@@ -5831,7 +6008,8 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
     atomic_write_text(candidate, json.dumps(
-        fact_to_cache_record(fact, carried=carried, store={"facts": usable}), indent=2
+        fact_to_cache_record(fact, carried=carried, store={"facts": usable}, prawduct_dir=prawduct_dir),
+        indent=2
     ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
@@ -5839,6 +6017,14 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
                 "reason": "the rendered record failed the findings schema"}
     os.replace(candidate, findings_path)
     return {"status": "derived", "review": review, "reason": None}
+
+
+def _native_clause(prawduct_dir: "Path | None", review_id) -> str:
+    if prawduct_dir is None:
+        return ""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return native_review.next_action_clause(prawduct_dir, review_id)
 
 
 def fact_to_cache_record(
@@ -5852,6 +6038,7 @@ def fact_to_cache_record(
     *,
     store: dict,
     not_waived: "dict[str, str] | None" = None,
+    prawduct_dir: "Path | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -5954,12 +6141,16 @@ def fact_to_cache_record(
         # The builder's copy of the loop-termination rule, computed from the
         # counts just read. See `next_action_line` for why the findings file is
         # the carrier that had a reader and no message.
+        # A paired native review's list (#1130) is named in this one sentence,
+        # which reaches the builder however the review ran, so they work from
+        # both. Here rather than at one caller, so every path that renders this
+        # record from the fact says it; it needs only the review's sidecar.
         "next_action": next_action_line(
             fact.get("id"), blocking, warning, note, price_sentence,
             carried=carried, span=span, observations=len(observations),
             cost=cost, rides_next_review=rides_next_review, uncertified=uncertified,
             waived=waived,
-        ),
+        ) + _native_clause(prawduct_dir, fact.get("id")),
         # Recomputed from the fact's own findings, so this advisory grouping
         # adds nothing to the persisted schema and keeps no model in the write
         # path. Additive key: `--json` readers tolerate unknown fields.
@@ -7174,7 +7365,7 @@ def consolidate(
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
         fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
-        store=store, not_waived=waiver_refusals,
+        store=store, not_waived=waiver_refusals, prawduct_dir=prawduct_dir,
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))

@@ -71,7 +71,9 @@ from .timewindow import in_window, is_usable_bound
 #: full, so the bounded-cumulative lever can be judged against its falsifier.
 #: Bumped to 12 when `waived_inherited` joined `by_outcome`'s fixed key set:
 #: consolidation's own waiver of a failure the base tree already had.
-REPORT_SCHEMA_VERSION = 12
+#: Bumped to 13 when `native_review` joined the top level: the paired native
+#: review's runs (#1130), reported apart from every Critic aggregate.
+REPORT_SCHEMA_VERSION = 13
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -240,6 +242,13 @@ def _read_events(
             learning[bucket] += 1
             units[bucket].add(unit)
             continue
+        if kind == NATIVE_EVENT:
+            native = event.get("native")
+            if isinstance(native, dict) and isinstance(native.get("findings"), list):
+                events.append(event)
+            else:
+                skipped["invalid_payloads"] += 1
+            continue
         if not kind.startswith("review."):
             skipped["unknown_kinds"] += 1
             continue
@@ -360,6 +369,35 @@ def _extract_row(event: dict) -> dict:
         "remedies": remedies,
         "findings": findings,
         "observations": observations,
+    }
+
+
+#: The paired native review's event (#1130). A second instrument run beside the
+#: Critic, not a Critic review: counted into any Critic aggregate it would read
+#: as a boundary review and inflate the boundary yield the rigor norm is judged
+#: on. Its kind sits outside `review.` (so older readers skip it as unknown),
+#: `_read_events` admits it by name, and every Critic reader splits it out here.
+NATIVE_EVENT = "native.review"
+
+
+def _split_native(events: list[dict]) -> "tuple[list[dict], list[dict]]":
+    """``(critic events, native events)`` — the one place the two are told apart."""
+    critic = [e for e in events if e.get("event") != NATIVE_EVENT]
+    native = [e for e in events if e.get("event") == NATIVE_EVENT]
+    return critic, native
+
+
+def _native_block(native: list[dict]) -> dict:
+    """The paired native runs on their own: how many, how long (code-clocked
+    from ``critic-begin``'s dispatch stamp), and the findings of the runs whose
+    text was countable."""
+    measured = [d for d in (_measured_duration(e) for e in native) if d is not None]
+    countable = [e for e in native if e["native"].get("findings_parsed") is True]
+    return {
+        "runs": len(native),
+        "duration_measured": _population(measured),
+        "countable_runs": len(countable),
+        "findings": sum(len(e["native"]["findings"]) for e in countable),
     }
 
 
@@ -601,7 +639,8 @@ def round_price(prawduct_dir: Path, *, mode: str = PRICED_MODE) -> dict:
             "status": "unavailable",
             "reason": f"this repo's governance ledger could not be read ({unreadable})",
         }
-    rows = [row for row in (_extract_row(e) for e in events) if row["mode"] == mode]
+    critic_events, _native = _split_native(events)
+    rows = [row for row in (_extract_row(e) for e in critic_events) if row["mode"] == mode]
     measured = [row["duration_measured"] for row in rows if row["duration_measured"] is not None]
     if len(measured) >= MIN_PRICED_SAMPLE:
         return {
@@ -723,6 +762,7 @@ def aggregate_review_stats(
     outcome}}}``, or ``{"status": "unavailable", "reason"}``. Omitted, the join
     is unavailable, never a 0%."""
     joins = dispositions or {"status": "unavailable", "reason": "the evidence store was not read"}
+    events, native = _split_native(events)
     rows = [_extract_row(e) for e in events]
 
     by_rmm: dict[tuple, list[dict]] = {}
@@ -748,6 +788,7 @@ def aggregate_review_stats(
             else {"status": "unavailable", "reason": joins.get("reason")}
         ),
         "events_total": len(rows),
+        "native_review": _native_block(native),
         "skipped": dict(skipped),
         "overall": _group_stats(rows, joins),
         "by_role_model_mode": [
@@ -930,6 +971,22 @@ def _fmt_remedies(remedies: dict) -> str:
     return " | ".join(parts) if parts else "(no findings)"
 
 
+def _native_line(block: dict) -> "list[str]":
+    """The paired native runs' line, or nothing when there were none."""
+    if not block.get("runs"):
+        return []
+    duration = block["duration_measured"]
+    clocked = (
+        f"median {duration['median_seconds']}s over {duration['reviews']} clocked"
+        if duration["reviews"] else "none clocked"
+    )
+    return [
+        f"native review (paired, #1130; in no total here): {block['runs']} run(s) | "
+        f"duration {clocked} | {block['findings']} finding(s) over "
+        f"{block['countable_runs']} countable run(s)"
+    ]
+
+
 def _render_human(report: dict, ledger_rel: str) -> str:
     sk = report["skipped"]
     lines = [
@@ -942,6 +999,7 @@ def _render_human(report: dict, ledger_rel: str) -> str:
         "",
         f"overall: {_fmt_stats(report['overall'])}",
         f"remedies: {_fmt_remedies(report['overall']['remedies'])}",
+        *_native_line(report.get("native_review") or {}),
         "",
         "by role x model x mode:",
     ]
@@ -1079,7 +1137,10 @@ def review_stats(project_dir: Path, argv: list[str]) -> int:
         events, skipped = [], {"corrupt_lines": 0, "unknown_kinds": 0, "invalid_payloads": 0}
         learning = {"written": 0, "fired": 0, "units_written": 0, "units_fired": 0, "units_uncited": 0}
 
-    report = aggregate_review_stats(events, skipped, learning, _read_dispositions(project_dir, events))
+    critic_events, _native = _split_native(events)
+    report = aggregate_review_stats(
+        events, skipped, learning, _read_dispositions(project_dir, critic_events)
+    )
     # Header fields the pure aggregation can't know — added once, here, so the
     # JSON and human renderings always agree.
     report = {

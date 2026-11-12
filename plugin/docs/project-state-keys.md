@@ -401,6 +401,18 @@ reading.
 Set to `null` to disable it entirely; raise it if this repo genuinely reviews more. A budget that
 gets `--force`d past every time is a budget set wrong.
 
+## native_review_pairing (development builds only, on by default)
+
+Only a development build of the plugin (a `-dev` version) reads this key. There, every
+`cumulative` review also starts the host's native `/code-review` over the same range, at `high`,
+so the two reviews can be compared before any Critic goal is handed to it (#1130). The Critic is
+unchanged: the native review runs beside its reviewers, blocks and rates nothing, and
+consolidation never waits for it. Its text is kept per clone in `.prawduct/.native-reviews/`.
+
+Set `native_review_pairing: false` to opt this repo out. Only an explicit `false` does: the
+pairing is the development build's default, so a misspelt value keeps it running rather than
+silently ending the measurement. A released build ignores the key and never pairs.
+
 ## oversized_file_threshold_kb, evidence_store_threshold_mb (opt-in overrides)
 
 Size thresholds for two advisories, as positive integers. `oversized_file_threshold_kb` (default

@@ -27,6 +27,19 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-12.** "1. yes PR and mege and push to prawduct-live"
+In reply to two asks at the end of #1130's build: open the PR and merge `feature/native-review-paired`
+to develop, then advance `../prawduct-live` to it — which turns the paired native review on in every
+repo that runs the development build. Landed as the merge and the live checkout's advance; #1130
+stays open until its stop condition.
+
+**2026-11-12.** "yes to high, and yes to changes, and yes build"
+In reply to three asks on #1130's plan. It settles: every paired native review runs at `high`;
+each native run is recorded as a per-clone ledger event rather than an evidence-store fact, and its
+text is kept in `.prawduct/.native-reviews/` rather than beside the partials (both departures from
+#1130's wording); and the build proceeds. Landed in
+`.prawduct/artifacts/build-plan-native-review-paired.md` Goals.
+
 **2026-11-11.** "yes please do PR and merge and advance, anc close 669"
 In reply to three numbered decisions at the hand-over of #1129. It settles two: the branch
 `feature/pr-reviewer-fold` is opened as a PR to `develop`, merged, #1129 closed, and

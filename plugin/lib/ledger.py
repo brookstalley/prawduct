@@ -95,7 +95,19 @@ _EVENT_ROLES = {
     # `unit_hash` the unit it became. Not a new rule, so it is neither counted
     # as written nor allowed to orphan the rule's citation history.
     "learning.compacted": "builder",
+    # The paired native review (#1130): one event per Critic review a
+    # development build paired, written by `native-review record` from the
+    # wrapper's text. Deliberately NOT under `review.`: every reader of this
+    # ledger, older builds included, takes a `review.*` event with a `review`
+    # payload as a Critic review, so this kind and its `native` payload key are
+    # ones those readers skip as unknown. `review-stats` reports it apart.
+    "native.review": "native",
 }
+
+#: Kinds only their own writer appends, outside the `learning.` family. A
+#: hand-appended `native.review` would be built from `.critic-findings.json`,
+#: which is the Critic's review, not the native one.
+_MACHINE_ONLY_KINDS = frozenset({"native.review"})
 
 #: Kinds the CLI refuses. A hand-appended learning event would be a measurement
 #: of nothing: the emitters derive `unit_hash` from the corpus and `session`
@@ -130,7 +142,10 @@ def _cli_appendable() -> list[str]:
     """The kinds `ledger-append` accepts, for its own error message — derived
     so a kind added above cannot be advertised as hand-appendable by accident.
     """
-    return sorted(k for k in _EVENT_ROLES if not k.startswith(_MACHINE_ONLY_PREFIX))
+    return sorted(
+        k for k in _EVENT_ROLES
+        if not k.startswith(_MACHINE_ONLY_PREFIX) and k not in _MACHINE_ONLY_KINDS
+    )
 
 
 def ledger_path(prawduct_dir: Path) -> Path:
@@ -149,6 +164,7 @@ def _append_event(
     chunk: str | None = None,
     actor_model: str | None = None,
     trigger: str | None = None,
+    dispatched_at: str | None = None,
 ) -> Path:
     """Build the envelope and append ONE line. The only writer.
 
@@ -171,7 +187,13 @@ def _append_event(
     """
     base, _reason = _resolve_base(project_dir)
     head = review_dispatch.head_sha(project_dir)
-    dispatched_at, dispatch_reason = review_dispatch.consume(prawduct_dir, event_kind, head)
+    marked_at, dispatch_reason = review_dispatch.consume(prawduct_dir, event_kind, head)
+    # A kind with no dispatch-mark slot may carry its own code-read clock (the
+    # native review's dispatch time, stamped by `critic-begin`); a mark, where
+    # the kind has one, is the stronger witness and wins.
+    if marked_at is None and dispatched_at is not None:
+        marked_at, dispatch_reason = dispatched_at, "dispatch time stamped by the caller's dispatch"
+    dispatched_at = marked_at
     event = {
         "schema_version": LEDGER_SCHEMA_VERSION,
         "event": event_kind,
@@ -261,6 +283,14 @@ def ledger_append(project_dir: Path, argv: list[str]) -> int:
             "carries a unit hash and a session nothing derived, so it "
             "measures nothing. Those two record it themselves; there is "
             "nothing to append here.",
+            file=sys.stderr,
+        )
+        return 1
+    if event_kind in _MACHINE_ONLY_KINDS:
+        print(
+            f"ledger-append: {event_kind!r} is written by `prawduct-hook "
+            "native-review record`, never by hand — it is built from the native "
+            "review's own text, which this command does not read.",
             file=sys.stderr,
         )
         return 1
@@ -579,6 +609,43 @@ def append_learning_event(
         actor_model=None,
     )
     return True
+
+
+def append_native_review_event(
+    project_dir: Path,
+    prawduct_dir: Path,
+    payload: dict,
+    *,
+    model: "str | None",
+    scope: "str | None",
+    dispatched_at: "str | None",
+    duration_seconds: "float | None",
+) -> Path:
+    """Append one ``native.review`` event — the only writer of the kind,
+    called by ``native_review.record``. ``dispatched_at`` is the dispatch time
+    ``critic-begin`` stamped, so the duration is a code clock, not a report."""
+    path, _reason = _append_event(
+        project_dir, prawduct_dir, "native.review", "native", payload,
+        duration_seconds=duration_seconds, scope=scope, actor_model=model,
+        dispatched_at=dispatched_at,
+    )
+    return path
+
+
+def native_review_event_exists(prawduct_dir: Path, review_id: str) -> bool:
+    """True if a ``native.review`` event already records the native run paired
+    with Critic review ``review_id`` — ``record``'s idempotency probe."""
+    if not isinstance(review_id, str) or not review_id:
+        return False
+    for _lineno, event in iter_events_newest_first(prawduct_dir):
+        native = event.get("native")
+        if (
+            event.get("event") == "native.review"
+            and isinstance(native, dict)
+            and native.get("critic_review_id") == review_id
+        ):
+            return True
+    return False
 
 
 def review_event_exists(prawduct_dir: Path, fact_id: str) -> bool:

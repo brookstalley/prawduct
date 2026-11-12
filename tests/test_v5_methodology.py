@@ -1110,7 +1110,10 @@ LAST_MEASURED_TOKENS = {
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
     # +5 on 2026-11-12 (review-round-cost merge review), DECLARED: the inherited-failure bullet names where a refused waiver's reason lands (`not_waived` in the cache), R-4. No reviewer loads it.
-    "skills/critic/review-cycle.md": 8157,
+    # +29 on 2026-11-12 (native-review-paired Chunk 01, #1130), DECLARED: the manifest key list names
+    # `native_review`, the paired native review's wrapper. This list is the manifest's described
+    # schema, and a key it omits is one no reader knows exists; no reviewer loads this file.
+    "skills/critic/review-cycle.md": 8186,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -6689,7 +6692,8 @@ class TestReviewCycle:
         # RAISED 7827 -> 7862 (review-round-cost Critic round, R-1/R-2/R-10) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 8048 -> 8153 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
         # RAISED 8153 -> 8158 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 8158, f"review-cycle.md is ~{tokens} tokens, should be <8158"
+        # RAISED 8158 -> 8187 (native-review-paired Chunk 01, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 8187, f"review-cycle.md is ~{tokens} tokens, should be <8187"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

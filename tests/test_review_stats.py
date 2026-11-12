@@ -585,7 +585,7 @@ class TestJsonSchemaStability:
         report = json.loads(_run(repo, "--json").stdout)
         assert list(report) == [
             "schema_version", "project", "generated_at", "window", "dispositions", "events_total",
-            "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage", "by_span",
+            "native_review", "skipped", "overall", "by_role_model_mode", "by_scope", "by_stage", "by_span",
             "consolidated_by", "above_reviewer_ceiling", "top_files",
             "files_attributed_total", "learning",
         ]
@@ -618,7 +618,9 @@ class TestJsonSchemaStability:
         # 10 -> 11 (bounded-cumulative Chunk 04): a `by_span` grouping of
         # cumulative reviews, with why each full one ran full, joined the top
         # level. Added.
-        assert report["schema_version"] == 12
+        # 12 -> 13 (native-review-paired Chunk 03): `native_review`, the paired
+        # native review's runs reported apart from every Critic total. Added.
+        assert report["schema_version"] == 13
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -892,7 +894,7 @@ class TestDurationProvenanceSplit:
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 12
+        assert report["schema_version"] == 13
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 

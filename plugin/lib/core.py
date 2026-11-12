@@ -40,6 +40,23 @@ try:
 except FileNotFoundError:
     PRAWDUCT_VERSION = "dev"
 
+#: What marks a development build's version (``3.8.2-dev.1``): the one test both
+#: the contribution buckets and the native-review pairing ask, so they cannot
+#: disagree on which builds are development builds.
+DEV_VERSION_MARKER = "-dev"
+
+
+def is_dev_version(version: "str | None") -> bool:
+    """True when ``version`` names a development build. The bare ``"dev"`` a
+    tree without a ``VERSION`` file reads is no version at all, so it is not."""
+    return isinstance(version, str) and DEV_VERSION_MARKER in version
+
+
+def is_dev_build() -> bool:
+    """True when the running plugin is a development build. Reads
+    :data:`PRAWDUCT_VERSION` at call time, so tests can set it."""
+    return is_dev_version(PRAWDUCT_VERSION)
+
 BLOCK_BEGIN = "<!-- PRAWDUCT:BEGIN -->"
 BLOCK_END = "<!-- PRAWDUCT:END -->"
 
@@ -82,6 +99,11 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials/",
     ".prawduct/.critic-partials-archive/",
+    # The paired native review's text (#1130), one file per Critic review. Its
+    # wrapper writes it while the reviewers still run, so it must be a session
+    # path: consolidation exempts these by path, and anything else written
+    # mid-review refuses the review as a changed tree.
+    ".prawduct/.native-reviews/",
     ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",
