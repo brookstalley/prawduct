@@ -260,7 +260,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # whole table prices.
     # -5 on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review as a
     # boundary-stage review. Ceiling lowered with it.
-    "single-pass-inner": 5639,
+    # +11 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `SKILL.md`'s per-mode `cumulative` entry, which every fork route loads. Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +20 on 2026-11-11 (bounded-cumulative review round), DECLARED: SKILL step 5's pointer and the exit-3 wording. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    "single-pass-inner": 5670,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -360,7 +365,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # reviewer applies it. What that buys is a rated, countable verdict on a class reviewers
     # raised unprompted under four goals and never above a note; its `read-cost:` yield is the
     # evidence it is kept or retired on.
-    "single-pass-full": 9912,
+    # +61 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `review-protocol.md`'s bounded-span bullet (+50) and `SKILL.md`'s per-mode `cumulative` entry (+11). Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +68 on 2026-11-11 (bounded-cumulative review round), DECLARED: the `files_context` rule's one home in `review-protocol.md` plus SKILL's pointer and exit-3 wording. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    "single-pass-full": 10041,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -469,7 +479,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
     # Ceiling lowered with it.
     # +87 on 2026-11-11 (read-cost-review), DECLARED: the same check as `single-pass-full`.
-    "dispatched-reviewer": 9382,
+    # +50 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `review-protocol.md`'s bounded-span bullet. Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +71 on 2026-11-11 (bounded-cumulative review round), DECLARED: the `files_context` rule's one home plus the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    "dispatched-reviewer": 9503,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -538,7 +553,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -26 on 2026-11-11 (pr-reviewer-fold Chunk 03): the same two cuts as `single-pass-full`.
     # Ceiling lowered with it.
     # +87 on 2026-11-11 (read-cost-review), DECLARED: the same check as `single-pass-full`.
-    "coordinator-fork": 10575,
+    # +61 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `review-protocol.md`'s bounded-span bullet (+50) and `SKILL.md`'s per-mode `cumulative` entry (+11). Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +75 on 2026-11-11 (bounded-cumulative review round), DECLARED: the `files_context` rule's one home plus SKILL's and `coordinator.md`'s pointers. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    "coordinator-fork": 10711,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -546,17 +566,24 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # Baselines, recorded where each stood when it first got an owner.
     # -5 each on 2026-11-11 (pr-reviewer-fold Chunk 03): `goals-1-3.md` stops naming the PR review
     # as a boundary-stage review. Ceilings lowered with them.
-    "coordinator-fork-inner": 6302,
-    "dispatched-reviewer-inner": 5109,
+    # +11 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: `SKILL.md`'s per-mode `cumulative` entry, which every fork route loads. Priced against the SUM: tens of
+    # tokens per review against a repeat cumulative re-rating a whole bundle the earlier boundary review rated
+    # (the design measured same-base repeats cutting subject files 32-46%).
+    # +27 on 2026-11-11 (bounded-cumulative review round), DECLARED: SKILL's pointer and exit-3 wording plus `coordinator.md`'s template. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    "coordinator-fork-inner": 6340,
+    # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
+    # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
+    "dispatched-reviewer-inner": 5132,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5640,
-    "single-pass-full": 9913,
-    "dispatched-reviewer": 9383,
-    "coordinator-fork": 10576,
-    "coordinator-fork-inner": 6303,
-    "dispatched-reviewer-inner": 5110,
+    "single-pass-inner": 5671,
+    "single-pass-full": 10042,
+    "dispatched-reviewer": 9504,
+    "coordinator-fork": 10712,
+    "coordinator-fork-inner": 6341,
+    "dispatched-reviewer-inner": 5133,
 }
 
 

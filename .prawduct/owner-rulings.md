@@ -191,3 +191,12 @@ fix. Recorded in `.prawduct/changes/read-cost-review.md`.
 **2026-11-11.** "yes merge then we'll clear and do requirements"
 On pull requests #1146 (the #1137 fix) and #1148 (the read-cost check): both merge to `develop`.
 The requirements for the seeded-defect check (#1147) are the next session's work.
+
+**2026-11-11.** "3. Confirmed" — answering whether #890's falsifier may be restated against the same-base
+old-only blocking rate (about 7 in 114 on the 2026-11-11 dated reading, re-derived by
+`tools/measure-repeat-cumulative-yield.py`) instead of the design's all-rows ~1%. Lands in
+`build-plan-bounded-cumulative.md` § Goals (Falsifier) and the design's "Falsifies the lever".
+
+**2026-11-11.** "4. Yes PR and merge both and update prawduct-live"
+`feature/bounded-cumulative` and `feature/asks-last` are opened as PRs into `develop` and merged, and the
+`prawduct-live` worktree (the lumens profile's plugin source) is advanced to the merged `develop`.
