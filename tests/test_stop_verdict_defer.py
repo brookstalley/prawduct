@@ -399,6 +399,84 @@ class TestTheAsksBlock:
         ) == (False, None)
 
 
+class TestACloseThatPointsByPosition:
+    """The close's reason says what the asks are, or nothing — never where.
+    The owner's own example closed ``YOUR TURN`` · ``DO NOT CLEAR`` with "The
+    one ask above is for you." ``standing_block.positional_pointer_match``
+    finds such a reason under ANY disposition and verdict, so the Stop hook can
+    record it (``close-pointer``) without refusing it."""
+
+    @pytest.mark.parametrize(
+        ("close", "phrase", "kind"),
+        [
+            ("`YOUR TURN` · `DO NOT CLEAR` — the verify pass runs. The one ask above is for you.",
+             "above", "points-above"),
+            ("`YOUR TURN` · `SAFE TO CLEAR` — answer the questions above.", "above", "points-above"),
+            ("`RUNNING` · `DO NOT CLEAR` — the review runs; see above for the ask.",
+             "see above", "points-above"),
+            ("`COMPLETE` · `SAFE TO CLEAR` — the summary is above.", "above", "points-above"),
+            ("`RUNNING` · `DO NOT CLEAR` — the review runs; the asks below need you.",
+             "below", "points-below"),
+            ("`YOUR TURN` · `SAFE TO CLEAR` — two decisions below — the plan is in the notes.",
+             "below", "points-below"),
+            ("`YOUR TURN` · `SAFE TO CLEAR` — see below.", "see below", "points-below"),
+            # Both directions: the first pointer in the reason is the one named.
+            ("`YOUR TURN` · `SAFE TO CLEAR` — the decision below, not the notes above.",
+             "below", "points-below"),
+        ],
+        ids=["owner-example", "answer-above", "see-above", "complete-above", "asks-below",
+             "dash-after", "see-below", "first-of-two"],
+    )
+    def test_a_positional_reason_is_named(self, close, phrase, kind):
+        text = f"Did the work.\n\n{close}"
+        assert standing_block.positional_pointer_match(text) == (phrase, kind)
+        # The same close before an asks block is read through it.
+        assert standing_block.positional_pointer_match(_with_asks(close, _ASK)) == (phrase, kind)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            # Comparatives, not positions.
+            "Done.\n\n`COMPLETE` · `SAFE TO CLEAR` — coverage is above the floor.",
+            "Done.\n\n`RUNNING` · `DO NOT CLEAR` — the suite stays below 5 minutes; I re-check then.",
+            "Done.\n\n`COMPLETE` · `SAFE TO CLEAR` — the above-mentioned file is committed.",
+            # A sound reason.
+            _with_asks(_ASK_SAFE_CLOSE, _ASK),
+            # Positional words elsewhere in the turn, not in the close's reason.
+            "The asks are above.\n\n`YOUR TURN` · `SAFE TO CLEAR` — one decision on the flag.",
+            _with_asks(_ASK_SAFE_CLOSE, "The table above: keep it? I recommend yes."),
+            # No close the reader can place: the caller records a firing, so
+            # an uncertain reading names nothing.
+            "Done.\n\nThe ask above is for you.",
+            _with_asks("`RUNNING` · `DO NOT CLEAR` — not SAFE TO CLEAR; the ask above.", _ASK),
+            None,
+        ],
+        ids=["comparative-above", "comparative-below", "hyphenated", "sound-reason",
+             "body-text", "inside-asks", "no-close", "both-verdicts", "none"],
+    )
+    def test_nothing_else_is_named(self, text):
+        assert standing_block.positional_pointer_match(text) is None  # type: ignore[arg-type]
+
+    def test_the_kinds_are_every_kind_the_matcher_returns(self):
+        assert standing_block.POSITIONAL_POINTER_KINDS == ("points-above", "points-below")
+
+    @pytest.mark.parametrize(
+        ("stop_input", "expected"),
+        [
+            ({"last_assistant_message": _line("YOUR TURN", "DO NOT CLEAR", "the one ask above.")},
+             "points-above"),
+            ({"last_assistant_message": DNC_LINE}, None),
+            ({"last_assistant_message": None}, None),
+            ({}, None),
+            ("not a dict", None),
+        ],
+        ids=["pointer", "sound", "null", "empty", "str"],
+    )
+    def test_the_payload_ladder(self, stop_input, expected):
+        match = _on_event(gates.turn_positional_pointer, stop_input)
+        assert (match[1] if match else None) == expected
+
+
 class TestDisposition:
     @pytest.mark.parametrize(
         "label", ["RUNNING", "YOUR TURN", "COMPLETE"],
@@ -1014,6 +1092,15 @@ class TestVocabularyHasOneHome:
         section = _section(text, "## Closing the turn")
         assert set(_LABEL_TOKEN.findall(section)) == set(standing_block.ALL_LABELS)
 
+    def test_the_guide_names_every_close_check_the_hook_records(self):
+        """The Stop-hook paragraph lists the checks that record a close without
+        refusing it; the pointer check is one of them."""
+        text = (_METHODOLOGY / "session-hygiene.md").read_text(encoding="utf-8")
+        para = text[text.index("**The Stop hook reads this verdict.**"):]
+        para = para[: para.index("\n")]
+        for check in ("`clear-verdict`", "`clear-reason`", "`close-pointer`"):
+            assert check in para, check
+
     def test_the_tuples_partition_the_vocabulary(self):
         # `STATE` led the three-paragraph close's first paragraph. No reader
         # keys on it, so it left the vocabulary with the paragraph (#1131).
@@ -1047,15 +1134,38 @@ def assert_block_says_how_to_answer(stderr: str) -> None:
     itself since `clear-reason` stopped blocking, so the block no longer says
     one might."""
     line = _answer_line(stderr)
-    assert "Do not repeat your answer." in line, line
+    assert "Do not repeat your answer" in line, line
     assert (
         "Write the closing line again only if you must now close `RUNNING` · `DO NOT CLEAR` "
         "(to keep a deferral, or because what you just started"
     ) in line, line
     assert "an item faults it" not in line, line
+    # The one exception to not repeating (owner-confirmed 2026-11-11,
+    # asks-last): a turn that ended with its asks ends with them again, so the
+    # asks stay the last thing the user sees after the block.
+    assert_the_asks_are_restated(line)
+
+
+def assert_the_asks_are_restated(text: str) -> None:
+    """``text`` tells a blocked turn to end with its asks block again, under
+    the header the reader reads past, unchanged and after any close."""
+    flat = " ".join(text.split())
+    assert standing_block.ASKS_HEADER in flat, flat
+    clause = flat[flat.index(standing_block.ASKS_HEADER):]
+    assert "again, unchanged" in clause, clause
 
 
 class TestABlockSaysHowToAnswerIt:
+    def test_the_guide_says_the_same_as_the_hook(self):
+        """The rule has two carriers — the hook's answer line and the guide's
+        "Answering a block" sentence — so both are read here: a rule reworded
+        in one is two rules."""
+        text = (_METHODOLOGY / "session-hygiene.md").read_text(encoding="utf-8")
+        sentence = text[text.index("**Answering a block:**"):]
+        sentence = sentence[: sentence.index("\n")]
+        assert_the_asks_are_restated(sentence)
+        assert "before the asks" in sentence, sentence
+
     def test_a_gate_block_says_it_before_the_items(self, tmp_path):
         _plan_repo(tmp_path, reflected=True)
         result = run_plugin_hook("stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(SAFE_TURN))

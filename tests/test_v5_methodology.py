@@ -1689,7 +1689,10 @@ LAST_MEASURED_TOKENS = {
     # after it, under the fixed `**Needs you:**` header, so they are the last thing the reader
     # sees; the close's reason may no longer point at them by position, and the Stop-hook
     # paragraph says the verdict is then read from the line before the header. A READING.
-    "methodology/session-hygiene.md": 3385,
+    # +45 the same day (asks-last follow-up, owner-confirmed): "Answering a block" says a turn that
+    # ended with asks ends its answer with them again, unchanged, after any re-written close; the
+    # Stop-hook paragraph names the `close-pointer` record of a reason pointing "above". A READING.
+    "methodology/session-hygiene.md": 3430,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this

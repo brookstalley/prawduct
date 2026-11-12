@@ -1059,6 +1059,23 @@ def turn_self_citation(event) -> "tuple[str, str] | None":
     return standing_block.self_citation_match(message)
 
 
+def turn_positional_pointer(event) -> "tuple[str, str] | None":
+    """The phrase by which a turn's close points at its own content by
+    position, under any disposition — "the one ask above is for you" — with
+    the pointer's kind beside it (``standing_block.positional_pointer_match``),
+    or ``None``.
+
+    The reason owes the reader what the asks are, not where; with the asks
+    after the close, an "above" points the wrong way. The kind is what the
+    ``close-pointer`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_self_citation`.
+    """
+    message = _last_message(event)
+    if message is None:
+        return None
+    return standing_block.positional_pointer_match(message)
+
+
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
 _CRITIC_MODE_FINAL = "final (full review, ready for push)"
 _CRITIC_MODE_CUMULATIVE = "cumulative (bundle review, ready for merge)"

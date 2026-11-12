@@ -63,6 +63,12 @@ whether the work behind a ``YOUR TURN`` is observable.
 must point at something a clear leaves behind. A reason that points at the turn
 itself ("the questions are in this message") names the one thing a clear
 deletes; :func:`self_citation` finds it so the Stop hook can record it.
+
+Under any verdict, the reason says what the asks are, or nothing — never where
+they are. A reason that points by position ("the one ask above is for you")
+sends the reader searching, and once the asks follow the close, an "above"
+points the wrong way; :func:`positional_pointer_match` finds it so the Stop
+hook can record it too.
 """
 
 from __future__ import annotations
@@ -369,6 +375,58 @@ def self_citation_match(text: str) -> "tuple[str, str] | None":
             if not _DENIAL.search(_clause_around(reason, found.start(), found.end())):
                 return found.group(0), kind
     return None
+
+
+# A close's reason that points at the turn's own content by POSITION — "the
+# one ask above is for you", "see below" — rather than saying what it is. The
+# reader came to the bottom to be told; a pointer sends them searching, and
+# with the asks block after the close an "above" points the wrong way. A
+# positional "above"/"below" is followed by the end of a clause or a verb ("is
+# above.", "above is for you", "below need you"); a comparative one by what it
+# compares to ("above the floor", "below 5 minutes"), so that is not matched,
+# nor is a hyphenated compound ("above-mentioned"). "see above/below" always
+# points. Each form carries the kind the close-pointer check records.
+_POSITIONAL_TAIL = (
+    r"(?=\s*(?:[.;,:)!?\u2014\u2013]|$|(?:is|are|for|needs?|waits?)\b))"
+)
+_POSITIONAL_POINTERS = (
+    ("points-above", re.compile(r"\bsee above\b|\babove\b" + _POSITIONAL_TAIL, re.I)),
+    ("points-below", re.compile(r"\bsee below\b|\bbelow\b" + _POSITIONAL_TAIL, re.I)),
+)
+
+#: Every kind :func:`positional_pointer_match` can return.
+POSITIONAL_POINTER_KINDS: tuple[str, ...] = tuple(kind for kind, _ in _POSITIONAL_POINTERS)
+
+
+def positional_pointer_match(text: str) -> "tuple[str, str] | None":
+    """``(phrase, kind)`` for the first place a turn's close points by
+    position in its reason, or ``None``; ``kind`` is one of
+    :data:`POSITIONAL_POINTER_KINDS`.
+
+    Under any disposition and either verdict: the close's reason says what
+    the asks are, or nothing, never where. Reads only what follows the verdict
+    on the close (:func:`verdict_line`) — never the turn's body or its asks
+    block — and only when :func:`clear_verdict` reads a single verdict, since
+    the caller records each hit as a firing and an uncertain reading would
+    record a false one.
+    """
+    verdict = clear_verdict(text)
+    if verdict is None:
+        return None
+    line = verdict_line(text)
+    at = line.find(verdict)
+    if at < 0:  # unreachable while clear_verdict matches the label exactly
+        return None
+    reason = line[at + len(verdict):]
+    found = [
+        (match.start(), match.group(0), kind)
+        for kind, pattern in _POSITIONAL_POINTERS
+        if (match := pattern.search(reason)) is not None
+    ]
+    if not found:
+        return None
+    _, phrase, kind = min(found)
+    return phrase, kind
 
 
 def clear_verdict(text: str) -> str | None:

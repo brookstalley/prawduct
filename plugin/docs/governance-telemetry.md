@@ -160,8 +160,9 @@ worktrees get deleted.
 - **A Stop-hook check that observes without blocking** appends one
   `guard-refusal` fact per firing, with `guard` = `stop-observed:<check id>`,
   through `append_stop_observation`, carrying the same `reason` and `observed`
-  a block of that check would. `clear-verdict` (#1044) and `clear-reason`
-  (#1131) are the two such checks; no Stop gate blocks on the close's wording.
+  a block of that check would. `clear-verdict` (#1044), `clear-reason`
+  (#1131) and `close-pointer` (asks-last) are the three such checks; no Stop
+  gate blocks on the close's wording.
   `stats` scores these with the block verdict
   rules and reports them as *observed only*, never as Stops blocked or guard
   refusals.
@@ -188,12 +189,13 @@ Each firing records what was observed, never a judgment of it. A reader derives 
 judgment (below), so a revised definition re-reads every recorded firing. A
 control that records neither is counted as `unspecified`.
 
-The Stop checks that record a reason (both observe without blocking):
+The Stop checks that record a reason (all observe without blocking):
 
 | Gate | `reason` | `observed` |
 |---|---|---|
 | `clear-verdict` | `handed-over-your-turn`, `handed-over-complete`: the disposition paired with `DO NOT CLEAR` | `work_live`: harness background tasks in flight, or a live Critic review. `notes_present`: a non-empty `.handoff-notes.md`. `session_changed`: the session authored a non-metadata change, committed or not (`gates.session_work_span`) |
 | `clear-reason` | `in-this-message`, `message-holds`, `above-below`: the self-citation's form (`standing_block.SELF_CITATION_KINDS`); the phrase itself is not recorded | the same three |
+| `close-pointer` | `points-above`, `points-below`: which way the close's reason points at the turn by position, under any disposition (`standing_block.POSITIONAL_POINTER_KINDS`); the phrase itself is not recorded. A `SAFE TO CLEAR` reason saying "is above" can fire this and `clear-reason` both | the same three |
 
 ## `prawduct-hook review-stats [--json] [--since <stamp>] [--until <stamp>]`
 
@@ -425,6 +427,9 @@ The definitions (their one home):
       that keeps a gate. Its firings are now observations, not blocks
       (counts across that change do not compare), scored by this same rule
       under *observed only*.
+    - `close-pointer` has no rule: a reason that points by position is the
+      defect whatever the session's state, so no observation separates a catch
+      from a slip. Its firings are counted by kind only.
 - **observed only**: firings of a Stop check that records without blocking
   (`stop-observed:` facts), by check, with the verdicts above. Never counted
   in stops blocked or guard refusals.

@@ -33,6 +33,24 @@ because a `RUNNING` · `DO NOT CLEAR` close defers the reflection and Critic gat
 Without this change, the new shape would have read as "no verdict", which turns off the deferral
 and both checks without any sign.
 
+**After a Stop block.** A blocked turn is told not to repeat its answer. The one exception, which
+the owner confirmed: a turn that ended with an asks block ends its answer with that block again,
+unchanged, so the asks stay the last thing the user sees. A close written again goes before the
+asks. The hook's answer line (`STOP_BLOCK_ANSWER`) and the guide's "Answering a block" sentence
+both say so, and one test reads both. The six Stop-block goldens under
+`tests/fixtures/host_seam_golden/` carry the answer line, so each changed by that string alone.
+
+**A close that points.** A new Stop check, `close-pointer`, records a close whose reason points
+at the turn by position ("the one ask above is for you", "see below"), under any disposition, and
+never blocks. It follows `clear-reason`: one matcher in `standing_block`
+(`positional_pointer_match`, kinds in `POSITIONAL_POINTER_KINDS`), one wrapper in `gates`
+(`turn_positional_pointer`), and one record in `cmd_stop` with the same three observations. It
+records the kind (`points-above` or `points-below`), never the phrase. A comparative ("coverage
+is above the floor"), a hyphenated compound, and a positional word in the turn's body or its asks
+are not matched, and a close the reader cannot place records nothing. The check has no
+catch-or-slip rule in `stats`, so its firings are counted by kind only. `docs/governance-telemetry.md`
+gains its row, and a test pins the row's kinds to the constant in both directions.
+
 `tests/test_stop_verdict_defer.py` pins each guard. Every guard test was seen to fail with that
 guard removed, and a mutant that changes nothing survived as the control. The file also pins the
 header end to end through `prawduct-hook stop`, with a control that has no header, and pins it to
@@ -44,5 +62,7 @@ by cutting a clause that restated the three dispositions defined in the next sen
 ## Consumer note
 When a turn needs you to decide, approve or supply something, those asks are now the last thing
 in the turn. They appear under a **Needs you:** header after the one-line status close, not above
-it. Nothing else changes: the close keeps its labels, and a turn with nothing for you still ends
-on the close.
+it, and they are repeated after the agent answers a Stop-hook block. The close keeps its labels,
+and a turn with nothing for you still ends on the close. `prawduct-hook stats` gains a
+`close-pointer` row under *observed only*, counting closes whose reason pointed "above" or
+"below" instead of saying what the asks were.
