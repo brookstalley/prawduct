@@ -108,27 +108,43 @@ def _json_arrays(text: str):
             yield value
 
 
-def parse_findings(text: str) -> "list[dict] | None":
-    """The findings a native review's text holds, as ``{file, line}`` only, or
-    ``None`` when the text says nothing countable.
+def findings_detail(text: str) -> "list[dict] | None":
+    """The findings a native review's text holds, with their words — ``file``,
+    ``line``, ``summary``, ``failure_scenario`` — or ``None`` when the text says
+    nothing countable. For the comparison's blind sheet, which reads the
+    per-clone text; nothing durable stores these words.
 
     A JSON array of objects wins — the ``high`` recipe's output, which may follow
     a ``(none)`` the host prints in its result header. With no such array, a
     line that is exactly ``(none)`` is an empty run. Anything else is not
     counted: a guessed zero would read as a clean review."""
+    def _str(value):
+        return value if isinstance(value, str) else None
+
     for candidate in _json_arrays(text):
         if candidate and all(isinstance(item, dict) for item in candidate):
             return [
                 {
-                    "file": item["file"] if isinstance(item.get("file"), str) else None,
+                    "file": _str(item.get("file")),
                     "line": item["line"] if isinstance(item.get("line"), int)
                     and not isinstance(item.get("line"), bool) else None,
+                    "summary": _str(item.get("summary")),
+                    "failure_scenario": _str(item.get("failure_scenario")),
                 }
                 for item in candidate
             ]
     if _NONE_LINE.search(text):
         return []
     return None
+
+
+def parse_findings(text: str) -> "list[dict] | None":
+    """:func:`findings_detail` without the words — ``{file, line}`` per finding,
+    the most the ledger may carry."""
+    detail = findings_detail(text)
+    if detail is None:
+        return None
+    return [{"file": f["file"], "line": f["line"]} for f in detail]
 
 
 def _read_sidecar(prawduct_dir: Path, review_id: str) -> "tuple[dict | None, str]":

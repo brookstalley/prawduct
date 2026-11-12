@@ -427,18 +427,42 @@ class TestLedgerKind:
         assert "native-review record" in capsys.readouterr().err
         assert "review.native" not in ledger._cli_appendable()
 
-    def test_review_stats_reads_the_native_event_as_its_own_role(self, branch_repo, monkeypatch):
-        result = _paired(branch_repo, monkeypatch)
+    def test_review_stats_reports_native_runs_apart_and_in_no_critic_total(self, branch_repo, monkeypatch):
+        """Renegotiated in Chunk 03: Chunk 02 let the native event read as a role
+        in the Critic's grouping, and so into `overall`, the stage and span rows
+        and every other Critic total — a boundary review's yield inflated by a
+        second instrument. The contract now: a native run moves no Critic figure
+        and is reported on its own."""
+        TestNextAction()._consolidate(branch_repo, monkeypatch)
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+
+        def stats() -> dict:
+            out = subprocess.run(
+                [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "review-stats", "--json"],
+                cwd=str(branch_repo), capture_output=True, text=True, timeout=60,
+            )
+            assert out.returncode == 0, out.stderr
+            return json.loads(out.stdout)
+
+        before = stats()
+        assert before["events_total"] == 1  # the Critic's review, read
+        assert before["native_review"]["runs"] == 0
         pd = branch_repo / ".prawduct"
-        native_review.text_path(pd, result["id"]).write_text(THREE)
-        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
-        out = subprocess.run(
+        review_id = json.loads((pd / ".critic-findings.json").read_text())["fact_id"]
+        native_review.text_path(pd, review_id).write_text(THREE)
+        assert native_review.record(branch_repo, pd, review_id)[0] == 0
+        after = stats()
+        for key in ("events_total", "overall", "by_role_model_mode", "by_stage", "by_span", "by_scope"):
+            assert after[key] == before[key], key
+        assert after["skipped"] == before["skipped"]  # neither dropped nor misread
+        assert after["native_review"]["runs"] == 1
+        assert after["native_review"]["findings"] == 3
+        assert after["native_review"]["countable_runs"] == 1
+        human = subprocess.run(
             [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "review-stats"],
             cwd=str(branch_repo), capture_output=True, text=True, timeout=60,
-        )
-        assert out.returncode == 0, out.stderr
-        assert "native / " in out.stdout, out.stdout
-        assert "0 invalid payload(s)" in out.stdout and "0 unknown kind(s)" in out.stdout
+        ).stdout
+        assert "native review (paired, #1130; in no total here): 1 run(s)" in human, human
 
 
 class TestNextAction:

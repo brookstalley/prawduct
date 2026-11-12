@@ -241,7 +241,10 @@ window           {since, until} — the bounds in force, stated even when both
                  are null so a slice is never mistaken for the whole corpus
 dispositions     {status: available, as_of} or {status: unavailable, reason}
                  — whether the evidence store could be joined (below)
-events_total     reportable review.* events
+events_total     reportable review.* events, review.native excepted
+native_review    {runs, duration_measured, countable_runs, findings} — a
+                 development build's paired native review runs (#1130),
+                 counted in no other key: a second instrument, not a review
 skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]

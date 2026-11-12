@@ -114,8 +114,14 @@ experiment ends itself at #1130 step 7; worth revisiting earlier if a month's co
 - 02: the wrapper's record command names the binary that ran `critic-begin`
   (`native_review_record_command`), not PATH's, so the sidecar's writer and reader are one build.
 - 02: the event's payload sits under `review` with a `findings` list of `{file, line}` and no
-  `fact_id`, so `review-stats` shows `native` as its own role and never joins it to the Critic's
-  dispositions.
+  `fact_id`, so it never joins the Critic's dispositions.
+- 03 (from 02's Critic, observation 1): `review-stats` splits `review.native` out of every Critic
+  aggregate and reports it as its own top-level `native_review` block (report schema 12 → 13),
+  replacing 02's "its own role" row, which still let it into `overall`, stage, span and scope.
+- 03: the matcher pairs by file alone, one to one. Critic findings carry `files` and no line
+  (measured over this clone's store: every finding has `files` or none, none has a line), so
+  "nearby line" was unbuildable. The blind sheet therefore asks the verifier to confirm each
+  proposed pair as well as to judge each unique finding — the file match is a proposal.
 
 **Level:** High for Chunks 01-02: every host fact they use was measured. Medium for Chunk 03's
 overlap matcher: whether file-and-line proximity agrees with a reader's judgement of "the same
@@ -196,7 +202,7 @@ paired reviews recorded so far.
 
 - **Description:**
   - `.prawduct/research/native-review-paired/compare.py` joins each `review.native` event to its
-    Critic review fact, matches findings by file and nearby line, and reports per Critic goal:
+    Critic review fact, matches findings by file (one to one), and reports per Critic goal:
     shared, Critic-only and native-only findings; per instrument: wall clock and, via
     `fork_costs.py`, tokens; and progress toward #1130's stop condition. It writes a blind
     verification sheet — each unique finding with its source removed — for the verifier #1130 step 5
