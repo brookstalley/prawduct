@@ -253,7 +253,7 @@ are verified as the design's Build shape says. The full suite runs once, on the 
   What ships here is the instrument: `review-stats` gains `by_span` (schema 11), which groups
   cumulatives as bounded or full and counts why each full one ran full. `span_reason` rides the
   findings cache, which the ledger copies. The measurement itself needs bounded rows from
-  consumers, which exist only after release, so it is filed as a backlog item with the method:
+  consumers, which exist only after release, so it is filed as #1153 with the method:
   `review-stats --json` `by_span` and the yield tool with `--since <release>`. The Decision 6
   revisit is filed with it.
 - **Type:** cumulative-final
