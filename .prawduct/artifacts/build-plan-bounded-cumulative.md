@@ -67,6 +67,29 @@ not change.
 
 **Decisions made mid-build:** (appended while building)
 
+- Chunk 01 result, 2026-11-11, re-derivable with `python3 tools/measure-repeat-cumulative-yield.py <repo>`;
+  `--until 2026-09-22T23:00:00Z` gives the dated reading.
+  - **The dated table reproduces.** Same-base blocking old-only matches exactly: 3 of 54, 7 of 25,
+    3 of 35. The subject-file cut on same-base repeats now reads −58% on discodon and −32% on
+    prawduct from the ledger alone, and −60% and −37% with the evidence store, which the ledger
+    undercounts.
+  - **The 33 old-only blockers are mostly not losses.** Only 13 sit on same-base rows; the other 20
+    are on new-branch or base-advanced rows, which run full-span under conditions 2 and 4. On
+    same-base rows the split is 4 stale prose, 3 code already seen, and 6 machine relays.
+    Decision 3 covers record-lint, but not the 2 test-evidence relays among those 6. With no sweep
+    catches, the expected same-base blocking loss is about 7 in 114 (about 6%), not about 1%.
+  - **Decision 2's sweep fails its test.** As designed (vanished tokens, `git grep -F`, capped), it
+    reaches the finding's file through a token the finding names in 0 of the nine stale-prose
+    losses. It reaches the file by accident in 2. A 4-word phrase variant catches 2 of the nine,
+    both on new-branch rows. Two causes:
+    - masking: a retired name still appears in the delta's own plan, change-log and tests, so it
+      never "vanishes";
+    - hard-wrapping: wrapped markdown defeats a whole-string grep.
+  - **Decision 4 (v2):** about 10–19% of a base-advanced repeat's rated files overlap the advance.
+    The per-file version would transfer more than half the rated files on discodon.
+  - By the design's own rule ("If it catches few, Decision 2 reopens before any build"), Decision 2
+    goes back to the owner, and Chunk 02 is held until it is ruled.
+
 **Level:** Medium. Whether the vanished-token sweep catches enough of the nine stale-prose losses
 is not measured (the design says so). The cheapest step that would raise the level is Chunk 01's
 replay of the sweep on those nine.
