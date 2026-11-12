@@ -173,8 +173,9 @@ paired reviews recorded so far.
     array and a `(none)` result count zero; anything else records the count as unknown), and the
     duration from dispatch to record. No finding text enters the ledger or any tracked file.
   - `prawduct-hook native-review show [<review id>]` prints the text, newest by default.
-  - `critic-consolidate`'s summary names the native file and its count when the record exists, and
-    says it is still running when it does not — the builder reads both before fixing (#1130 step 4).
+  - `critic-consolidate`'s `NEXT-ACTION` names the native review's `show` command and its count once
+    the text exists, and says it is still running when it does not — the builder reads both before
+    fixing (#1130 step 4).
   - `.prawduct/.native-reviews/` is gitignored where the plugin reconciles `.gitignore`.
 - **Depends on:** 01
 - **Deliverables:** `plugin/lib/ledger.py` (the event kind and role), `plugin/bin/prawduct-hook`
@@ -200,6 +201,10 @@ paired reviews recorded so far.
     `fork_costs.py`, tokens; and progress toward #1130's stop condition. It writes a blind
     verification sheet — each unique finding with its source removed — for the verifier #1130 step 5
     names, and the README says how to run it monthly.
+  - `review-stats` keeps `review.native` events out of every Critic aggregate (`overall`, stage,
+    span, scope, files, the reviewer-ceiling rows) and reports them on their own line: today they
+    are read as boundary reviews and inflate the boundary-stage yield the rigor norm reads (Chunk
+    02's Critic, observation 1). A test pins that a native event moves no Critic total.
   - Change fragment `.prawduct/changes/native-review-paired.md`; the boundary cumulative review.
 - **Type:** cumulative-final
 - **Depends on:** 01, 02

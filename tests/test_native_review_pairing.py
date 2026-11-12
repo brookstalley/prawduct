@@ -494,3 +494,30 @@ class TestUntrackedFootprint:
         # Control: the same status call does see an ordinary untracked file.
         (pd / "note.txt").write_text("x")
         assert ".prawduct/note.txt" in _git(branch_repo, "status", "--porcelain", "--untracked-files=all")
+
+
+class TestRecordCommandBinary:
+    def test_the_wrapper_records_with_the_binary_that_dispatched(self, branch_repo, monkeypatch):
+        """The sidecar's writer and reader must be one build: the prompt names the
+        dispatching plugin's own hook, never whatever `prawduct-hook` PATH finds
+        (a framework checkout and its installed plugin differ)."""
+        result = _paired(branch_repo, monkeypatch)
+        command = cc.native_review_record_command(result["id"])
+        assert str(core.FRAMEWORK_DIR / "bin" / "prawduct-hook") in command
+        assert command.endswith(f"native-review record {result['id']}")
+        prompt = result["manifest"]["native_review"]["prompt"]
+        assert command in prompt
+        # Control: the PATH form is not what the prompt carries.
+        assert f"`prawduct-hook native-review record {result['id']}`" not in prompt
+
+
+class TestSidecarFailure:
+    def test_an_unwritable_sidecar_costs_a_note_not_the_review(self, branch_repo, monkeypatch):
+        def boom(*_a, **_k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(native_review, "write_dispatch", boom)
+        result = _paired(branch_repo, monkeypatch)
+        assert result["status"] == "ok"
+        assert "native_review" in result["manifest"]
+        assert any("dispatch record was not written" in n and "disk full" in n for n in result["notes"]), result["notes"]
