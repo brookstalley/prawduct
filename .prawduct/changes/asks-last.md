@@ -34,14 +34,14 @@ Without this change, the new shape would have read as "no verdict", which turns 
 and both checks without any sign.
 
 **After a Stop block.** A blocked turn is told not to repeat its answer. The one exception, inferred
-from the owner's ruling and put to them for confirmation: a turn that ended with an asks block ends its answer with that block again,
+from the owner's ruling and then confirmed by them (`.prawduct/owner-rulings.md`): a turn that ended with an asks block ends its answer with that block again,
 unchanged, so the asks stay the last thing the user sees. A close written again goes before the
 asks. The hook's answer line (`STOP_BLOCK_ANSWER`) and the guide's "Answering a block" sentence
 both say so, and one test reads both. The six Stop-block goldens under
 `tests/fixtures/host_seam_golden/` carry the answer line, so each changed by that string alone.
 
-**A close that points.** A new Stop check, `close-pointer` (inferred from the same ruling and put to the
-owner for confirmation), records a close whose reason points
+**A close that points.** A new Stop check, `close-pointer` (inferred from the same ruling and then confirmed by the
+owner), records a close whose reason points
 at the turn by position ("the one ask above is for you", "see below"), under any disposition, and
 never blocks. It follows `clear-reason`: one matcher in `standing_block`
 (`positional_pointer_match`, kinds in `POSITIONAL_POINTER_KINDS`), one wrapper in `gates`

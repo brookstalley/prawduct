@@ -197,3 +197,13 @@ The close changes order: the one status line comes first, and any asks follow it
 block, under a fixed prominent header, so nothing points "above". The Stop hook's reading of the
 close learns that trailing block. Lands in `methodology/session-hygiene.md`, the session digest and
 `lib/standing_block.py` on `feature/asks-last`.
+
+**2026-11-11.** "1. Yes 2. Yes" — answering (1) whether a turn interrupted by a Stop block repeats its
+`**Needs you:**` block, so the asks stay last, and (2) whether to keep the `close-pointer` record of a
+close whose reason points "above"/"below". Both were built on `feature/asks-last` as the coordinator's
+inference from the ruling above; this confirms them. Lands in `STOP_BLOCK_ANSWER`,
+`methodology/session-hygiene.md` and `lib/standing_block.py`.
+
+**2026-11-11.** "4. Yes PR and merge both and update prawduct-live"
+`feature/asks-last` and `feature/bounded-cumulative` are opened as PRs into `develop` and merged, and the
+`prawduct-live` worktree is advanced to the merged `develop`.
