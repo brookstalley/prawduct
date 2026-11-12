@@ -1088,3 +1088,95 @@ class TestExcusedGapVerdict:
             )
             assert verdict["status"] == "covered", (key_fn, verdict)
             assert verdict["gap"]["src"] == T11
+
+
+def _random_evidence_case(rng):
+    """One generated evidence graph over trees that differ in judgeable and
+    doc-only content, so both review edges and free edges occur. Returns
+    ``(facts, contents, nodes)`` where ``nodes`` are the trees the valid review
+    edges mention — the node set both searches build when their endpoints are
+    drawn from it."""
+    names = [_tree(f"g{i}") for i in range(rng.randint(3, 7))]
+    contents = {
+        t: {"lib/a.py": rng.choice("xyz"), "docs/r.md": rng.choice("12")}
+        for t in names
+    }
+    facts = []
+    for i in range(rng.randint(2, 9)):
+        src, dst = rng.sample(names, 2)
+        changed = sorted(
+            p for p in contents[src] if contents[src][p] != contents[dst][p]
+        )
+        reviewed = changed if rng.random() > 0.15 else []  # some under-reviewed
+        findings = [BLOCKER] if rng.random() < 0.2 else []
+        facts.append(_review(f"g-r{i}", src, dst, changed, reviewed, findings))
+    nodes = {n for e in ca.review_edges(facts) for n in (e["src"], e["dst"])}
+    return facts, contents, sorted(nodes)
+
+
+class TestOneEvidenceGraph:
+    """The excused-gap search and the coverage search must walk ONE graph.
+    ``excused_gap_verdict`` claims every review and free edge it composes is one
+    ``coverage_verdict`` would use; that claim fails open in the Stop gate the
+    moment the two searches build different graphs. Generated cases, both
+    free-edge forms (pairwise reference and per-tree keys)."""
+
+    SEEDS = range(300)
+
+    def test_reach_closure_is_exactly_what_find_path_reaches(self):
+        import random
+
+        checked = 0
+        for seed in self.SEEDS:
+            rng = random.Random(seed)
+            facts, contents, nodes = _random_evidence_case(rng)
+            if len(nodes) < 2:
+                continue
+            base, target = rng.sample(nodes, 2)
+            edges = ca.review_edges(facts)
+            diff_fn, key_fn = _trees(contents)
+            for kf in (None, key_fn):
+                forward = ca._reach(edges, base, target, diff_fn, kf, reverse=False)
+                backward = ca._reach(edges, target, base, diff_fn, kf, reverse=True)
+                for n in nodes:
+                    to_n = ca._find_path(edges, base, n, diff_fn, kf)
+                    from_n = ca._find_path(edges, n, target, diff_fn, kf)
+                    assert (n in forward) == (to_n is not None), (seed, kf, n)
+                    assert (n in backward) == (from_n is not None), (seed, kf, n)
+                    checked += 1
+        assert checked > 1000  # the generator really produced graphs to compare
+
+    def test_every_non_gap_step_of_an_excused_path_is_an_evidence_edge(self):
+        import random
+
+        composed = 0
+        for seed in self.SEEDS:
+            rng = random.Random(seed)
+            facts, contents, nodes = _random_evidence_case(rng)
+            if len(nodes) < 2:
+                continue
+            base, target = rng.sample(nodes, 2)
+            valid = {
+                (e["fact"]["id"], e["src"], e["dst"]) for e in ca.review_edges(facts)
+            }
+            diff_fn, key_fn = _trees(contents)
+            for kf in (None, key_fn):
+                verdict = ca.excused_gap_verdict(
+                    facts, base, target, diff_fn, kf, lambda files: True
+                )
+                path = verdict.get("path") or []
+                if not path:
+                    continue
+                composed += 1
+                assert path[0]["src"] == base and path[-1]["dst"] == target, seed
+                for a, b in zip(path, path[1:]):
+                    assert a["dst"] == b["src"], (seed, kf)
+                assert [s["kind"] for s in path].count("gap") == 1, (seed, kf)
+                for step in path:
+                    if step["kind"] == "review":
+                        assert (step["id"], step["src"], step["dst"]) in valid, seed
+                    elif step["kind"] == "free":
+                        assert step["src"] in nodes and step["dst"] in nodes, seed
+                        files = diff_fn(step["src"], step["dst"])
+                        assert files is not None and not ca.judgeable_files(files), seed
+        assert composed > 100  # excused paths were actually produced and walked

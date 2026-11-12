@@ -59,7 +59,7 @@ coverage, because its tree is not a node the path stands on.
 from __future__ import annotations
 
 from collections import deque
-from typing import Callable
+from typing import Callable, Iterator
 
 from . import buildplan_refs
 from .gitstate import METADATA_PREFIXES, is_object_id
@@ -455,6 +455,77 @@ def _free_classes(nodes: "set[str]", key_fn: KeyFn) -> dict[str, list[str]]:
     return adjacency
 
 
+class _EvidenceGraph:
+    """The one graph composed coverage is searched over: review edges plus free
+    edges among the trees the evidence mentions and the span's two endpoints.
+
+    Every search builds it here — :func:`_find_path` for the single path
+    :func:`coverage_verdict` settles, :func:`_reach` for the closures
+    :func:`excused_gap_verdict` composes across one gap. The excused-gap verdict
+    is relax-only because it uses no edge the coverage verdict would not; that
+    holds by construction only while both read the same graph, so neither
+    builds its own. Free edges between trees outside the node set are left out
+    because nothing connects such trees to anything.
+
+    Free edges come from ``key_fn`` when one is supplied (:func:`_free_classes`
+    — *n* keys, the form every gate uses) and from pairwise ``diff_fn`` probing
+    otherwise (*n²* diffs, the reference implementation the injected-table
+    tests exercise). Both decide "no judgeable path differs", one per tree and
+    one per pair.
+    """
+
+    def __init__(
+        self,
+        edges: list[dict],
+        start: str,
+        end: str,
+        diff_fn: DiffFn,
+        key_fn: "KeyFn | None",
+    ) -> None:
+        self.nodes = {start, end}
+        self._out: dict[str, list[dict]] = {}
+        self._in: dict[str, list[dict]] = {}
+        for edge in edges:
+            self.nodes.add(edge["src"])
+            self.nodes.add(edge["dst"])
+            step = {
+                "kind": "review",
+                "id": edge["fact"].get("id"),
+                "src": edge["src"],
+                "dst": edge["dst"],
+            }
+            self._out.setdefault(edge["src"], []).append(step)
+            self._in.setdefault(edge["dst"], []).append(step)
+        self._diff_fn = diff_fn
+        self._free = _free_classes(self.nodes, key_fn) if key_fn is not None else None
+
+    def steps_from(
+        self, node: str, *, reverse: bool, skip: Callable[[str], bool]
+    ) -> "Iterator[tuple[str, dict]]":
+        """Each tree one evidence step from ``node`` — after it when ``reverse``
+        is False, before it when True — with that step in forward orientation
+        (``src`` precedes ``dst``). Review steps first, then free steps.
+
+        ``skip`` is asked lazily, per candidate, and only spares the pairwise
+        probe a diff for a tree the caller has already reached; a caller still
+        re-checks every yielded tree, so ``skip`` cannot change what is reached.
+        """
+        for step in (self._in if reverse else self._out).get(node, ()):
+            yield (step["src"] if reverse else step["dst"]), step
+        if self._free is not None:
+            for other in self._free.get(node, ()):
+                src, dst = (other, node) if reverse else (node, other)
+                yield other, {"kind": "free", "src": src, "dst": dst}
+            return
+        for other in self.nodes:
+            if other == node or skip(other):
+                continue
+            src, dst = (other, node) if reverse else (node, other)
+            files = _free_edge_files(self._diff_fn, src, dst)
+            if files is not None:
+                yield other, {"kind": "free", "src": src, "dst": dst, "files": files}
+
+
 def _attribute_free_steps(path: list[dict], diff_fn: DiffFn) -> list[dict]:
     """Fill in the ``files`` a ``free`` step reports, for the steps on a
     *found* path only.
@@ -707,43 +778,15 @@ def _reach(
 ) -> dict[str, list[dict]]:
     """Every tree composed evidence connects to ``start``, with the steps that
     connect it, in forward order: ``start → node`` when ``reverse`` is False,
-    ``node → start`` when it is True. The same node set and the same free-edge
-    relation :func:`_find_path` searches — review edges plus free edges among
-    the trees the evidence mentions and the two span endpoints — asked as a
-    closure instead of a single path."""
-    nodes = {start, other_end}
-    adjacency: dict[str, list[tuple[str, dict]]] = {}
-    for edge in edges:
-        nodes.add(edge["src"])
-        nodes.add(edge["dst"])
-        step = {
-            "kind": "review",
-            "id": edge["fact"].get("id"),
-            "src": edge["src"],
-            "dst": edge["dst"],
-        }
-        frm, to = (edge["dst"], edge["src"]) if reverse else (edge["src"], edge["dst"])
-        adjacency.setdefault(frm, []).append((to, step))
-    free_adjacency = _free_classes(nodes, key_fn) if key_fn is not None else None
-
+    ``node → start`` when it is True. The graph :func:`_find_path` searches —
+    one :class:`_EvidenceGraph`, so the two cannot disagree on an edge — asked
+    as a closure instead of a single path."""
+    graph = _EvidenceGraph(edges, start, other_end, diff_fn, key_fn)
     reached: dict[str, list[dict]] = {start: []}
     queue: deque[str] = deque([start])
     while queue:
         node = queue.popleft()
-        nexts = list(adjacency.get(node, []))
-        if free_adjacency is not None:
-            others = free_adjacency.get(node, ())
-        else:
-            others = [
-                o for o in nodes
-                if o not in reached
-                and _free_edge_files(diff_fn, *((o, node) if reverse else (node, o)))
-                is not None
-            ]
-        for other in others:
-            src, dst = (other, node) if reverse else (node, other)
-            nexts.append((other, {"kind": "free", "src": src, "dst": dst}))
-        for to, step in nexts:
+        for to, step in graph.steps_from(node, reverse=reverse, skip=reached.__contains__):
             if to in reached:
                 continue
             reached[to] = [step] + reached[node] if reverse else reached[node] + [step]
@@ -852,66 +895,20 @@ def _find_path(
     diff_fn: DiffFn,
     key_fn: "KeyFn | None" = None,
 ) -> "list[dict] | None":
-    """BFS from ``src`` to ``dst`` over review edges plus free edges between
-    known nodes. Nodes are the trees the evidence mentions plus the two
-    endpoints — free edges between *unknown* trees can't help because nothing
-    connects them to anything.
-
-    Free edges come from ``key_fn`` when one is supplied (``_free_classes`` —
-    *n* keys, the form every gate uses) and from pairwise ``diff_fn`` probing
-    otherwise (*n²* diffs, retained as the reference implementation the
-    injected-table tests exercise). The two agree by construction: both
-    decide "no judgeable path differs", one per tree and one per pair.
-    """
-    nodes = {src, dst}
-    adjacency: dict[str, list[dict]] = {}
-    for edge in edges:
-        nodes.add(edge["src"])
-        nodes.add(edge["dst"])
-        adjacency.setdefault(edge["src"], []).append(
-            {
-                "kind": "review",
-                "id": edge["fact"].get("id"),
-                "src": edge["src"],
-                "dst": edge["dst"],
-            }
-        )
-
-    free_adjacency = _free_classes(nodes, key_fn) if key_fn is not None else None
-
+    """BFS from ``src`` to ``dst`` over the :class:`_EvidenceGraph` — review
+    edges plus free edges among the trees the evidence mentions and the two
+    endpoints. Free steps on the returned path carry their ``files``, filled in
+    for the found path only when the key form established them."""
+    graph = _EvidenceGraph(edges, src, dst, diff_fn, key_fn)
     visited = {src}
     queue: deque[tuple[str, list[dict]]] = deque([(src, [])])
-    probed: set[tuple[str, str]] = set()
     while queue:
         node, path = queue.popleft()
         if node == dst:
             return _attribute_free_steps(path, diff_fn)
-        for step in adjacency.get(node, []):
-            if step["dst"] not in visited:
-                visited.add(step["dst"])
-                queue.append((step["dst"], path + [step]))
-        if free_adjacency is not None:
-            for other in free_adjacency.get(node, ()):
-                if other in visited:
-                    continue
-                visited.add(other)
-                queue.append(
-                    (other, path + [{"kind": "free", "src": node, "dst": other}])
-                )
-            continue
-        for other in nodes:
-            if other in visited or (node, other) in probed:
-                continue
-            probed.add((node, other))
-            files = _free_edge_files(diff_fn, node, other)
-            if files is None:
+        for other, step in graph.steps_from(node, reverse=False, skip=visited.__contains__):
+            if other in visited:
                 continue
             visited.add(other)
-            queue.append(
-                (
-                    other,
-                    path
-                    + [{"kind": "free", "src": node, "dst": other, "files": files}],
-                )
-            )
+            queue.append((other, path + [step]))
     return None
