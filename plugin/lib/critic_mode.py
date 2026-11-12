@@ -132,6 +132,18 @@ _VALID_ARG_MODES = frozenset({
     "verify-resolutions",
 })
 
+#: The word that asks a ``cumulative`` for the whole bundle rather than the
+#: delta since the last boundary review — ``/prawduct:critic cumulative full``,
+#: or ``full`` alone. A cumulative is bounded by default (bounded-cumulative
+#: design, Decision 1); this is the explicit route back to the full span.
+FULL_SPAN_TOKEN = "full"
+
+#: The rationale :func:`infer_mode` answers for that request. It reaches
+#: ``critic-begin`` as ``--chosen-by``, which the skill forwards verbatim, and
+#: ``critic_consolidate.begin_review`` reads it there, so the override needs no
+#: flag and no skill step of its own.
+FULL_SPAN_RATIONALE = "explicit-args full"
+
 # The chunk field this module reads, built from the shared field grammar in
 # ``buildplan_refs`` — the same factories the ``**Type:**`` reader uses. Hand
 # copying the shape into a second module is how the two delimiter sets came to
@@ -237,7 +249,10 @@ def infer_mode(
     if args is not None:
         stripped = args.strip()
         if stripped:
-            token = stripped.split()[0]
+            words = stripped.split()
+            token = words[0]
+            if token == FULL_SPAN_TOKEN or words[:2] == ["cumulative", FULL_SPAN_TOKEN]:
+                return "cumulative", FULL_SPAN_RATIONALE
             if token in _VALID_ARG_MODES:
                 return _explicit_mode(token, prawduct_dir, project_dir)
 

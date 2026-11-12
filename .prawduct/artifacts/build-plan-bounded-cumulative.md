@@ -96,6 +96,45 @@ not change.
     grading merge-base → HEAD while the review is bounded.
   - Chunk 04 measures the real same-base blocking loss against the falsifier.
   - Chunk 02 is unblocked.
+- **Chunk 01 fix round, 2026-11-11** (67bb137b): the removed-line parse now follows hunk state, and
+  `--vanished-in source` selects the design's literal "gone from those files" reading. On the
+  dated window (`--until 2026-09-22T23:00:00Z`), the nine stale-prose losses come out like this:
+  - **Default reading** (`changed`): 0 reached through a token the finding names, and 2 reached
+    by accident. This is the reading Decision 2 was re-ruled on.
+  - **Literal reading** (`source`): 1 real catch through the finding's own words, or 2 with 4-word
+    phrases. Two more look named, but they hit only because a build plan was renamed. All of these
+    are on prior-in-base rows. Those are new-branch rows, which run full-span, so no sweep would
+    run on them. As built, this reading counts a renamed file's old path as gone, so the path's
+    tokens flood the token budget; a literal sweep would have to follow renames.
+  - **Same-base rows**, the only rows a bounded review runs on: the sweep reaches 0 of the 4
+    stale-prose losses through a named token, under either reading. The re-ruling stands, and
+    nothing goes back to the owner.
+  - The literal reading's other extra hits are mostly common words (`Never`, `chose`, `Since`).
+- **Chunk 02 decisions, 2026-11-11** (made while reading the code, before building):
+  - `boundary_frontier` lives in `gates.py` beside `covered_frontier`, not in `coverage.py`. The
+    plan's `coverage.` prefix was a slip: the governed-by disposition already says "next to
+    gates.covered_frontier", and the store and diff helpers it needs live in `gates`.
+  - Condition 2 compares the fact's bundle base: the tree of its `base_reviewed` commit when it
+    records one, else its `base_tree`. A bounded fact's `base_tree` is its own frontier, so reading
+    `base_tree` alone would refuse every second bounded repeat.
+  - The walk skips a newer fact that fails condition 2 or 3 (another lineage, an older base). It
+    declines on the newest candidate's condition 4 or 5 and never falls back to an older frontier,
+    which would bound around that blocker.
+  - "Machine relays grade merge-base → HEAD" in code: record-lint and the chunk proposal run on the
+    bundle's files and trees, exactly as a full span would. The test-evidence relays are the
+    reviewer's own `test-status`, which reads the HEAD tree whatever the span. So for those, the
+    manifest carries the bundle span, and Chunk 03's protocol says they are rated regardless of
+    subject.
+  - The `full` override: `/prawduct:critic cumulative full` reaches `infer-critic-mode` verbatim,
+    and it answers the rationale `explicit-args full`. `begin_review` reads that rationale from
+    `--chosen-by`, which the skill already forwards verbatim. There is no new flag and no new
+    skill step.
+  - A bounded delta with no judgeable file meets the existing free-interval refusal (exit 3).
+    That is correct: the frontier's edge plus a free edge already compose.
+  - The fact also carries `span_reason`: the declined condition's short code when the span is
+    full, or null when it is bounded. Chunk 04's measurement needs to know why reviews ran full,
+    so it is recorded where it is known. Chunk 04's `review-stats` split is the first reader of
+    `span`, and it reads a fact without one as full.
 
 **Level:** Medium. Whether the vanished-token sweep catches enough of the nine stale-prose losses
 is not measured (the design says so). The cheapest step that would raise the level is Chunk 01's
@@ -164,6 +203,27 @@ are verified as the design's Build shape says. The full suite runs once, on the 
 
   The vanished-token sweep is not built.
 - **Depends on:** 01
+- **Deliverables:** `plugin/lib/gates.py` (`boundary_frontier`), `plugin/lib/critic_consolidate.py`
+  (the bounded branch, manifest validation, fact and findings-cache fields), `plugin/lib/critic_mode.py`
+  (the `full` token), new `tests/test_bounded_cumulative.py`.
+- **Tests:** Red first, on real git repos with facts written through `evidence.append_fact`:
+  - each frontier condition declining on its own, with its reason: no boundary review; base moved;
+    head not an ancestor; head already reviewed; path to the frontier blocked;
+  - a sibling lineage's newer boundary fact is skipped, not taken;
+  - a blocker on the newest boundary review forces a full span, not an older frontier;
+  - a bounded dispatch's manifest: interval frontier → HEAD, `span: bounded`, `bounded_from`, subject
+    is the delta, the rest of the bundle rides as oracle, roster from the delta, and record-lint and
+    the chunk proposal graded on the bundle span;
+  - its fact composes with the frontier's to a passing PR gate (`check_cumulative_critic`);
+  - `span`/`bounded_from` reach the fact and the findings cache (which the ledger copies);
+  - `cumulative full` answers explicit-args full, and that dispatch is full-span with its reason.
+- **Acceptance criteria:**
+  - A repeat cumulative on an unchanged base, with a clean path to the last boundary review, reviews
+    only the delta, and the PR gate's verdict is unchanged.
+  - Every declined condition falls back to the full span and says why on the dispatch's notes.
+- **Done when:**
+  1. Acceptance criteria met and the chunk's own tests pass
+  2. Committed (reviewed at the plan boundary)
 
 ### Chunk 03: Protocol
 
