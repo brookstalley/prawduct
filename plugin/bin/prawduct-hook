@@ -317,16 +317,23 @@ def _deliver_stop_advisories(advisories: list[str]) -> None:
 #: How a blocked turn should answer the block, said once at the top of every
 #: Stop block reason. The turn's answer and its closing line are already
 #: above the block; a model that writes both again reads to the operator as
-#: the hook firing twice. The close is written again only when the turn must
-#: now close `RUNNING` · `DO NOT CLEAR`, because the deferral reads the close
-#: from the LAST message: to keep a deferral of the session-end gates, or
-#: because the fix starts work a clear would kill, such as a dispatched
-#: review. No gate blocks on the close's own wording.
+#: the hook firing twice. The one exception is the asks block
+#: (`lib/standing_block.ASKS_HEADER`, spelled out here because this constant
+#: is built before any `lib` import): a turn that ended with one has put the
+#: block between its asks and the user, so the answer ends with the asks again,
+#: unchanged, to keep them the last thing shown. The close is written again
+#: only when the turn must now close `RUNNING` · `DO NOT CLEAR`, because the
+#: deferral reads the close from the LAST message: to keep a deferral of the
+#: session-end gates, or because the fix starts work a clear would kill, such
+#: as a dispatched review. It goes before the asks, where the reader looks for
+#: it. No gate blocks on the close's own wording.
 STOP_BLOCK_ANSWER = (
     "Your answer above stands. Do only what the items below ask, then end with a short "
-    "note of what you did. Do not repeat your answer. Write the closing line again only "
-    "if you must now close `RUNNING` · `DO NOT CLEAR` (to keep a deferral, or because "
-    "what you just started, such as a review, would die on a clear)."
+    "note of what you did. Do not repeat your answer, except: if it ended with a "
+    "`**Needs you:**` block, end with that block again, unchanged, so your asks stay "
+    "the last thing shown. Write the closing line again only if you must now close "
+    "`RUNNING` · `DO NOT CLEAR` (to keep a deferral, or because what you just started, "
+    "such as a review, would die on a clear), before the asks."
 )
 
 
@@ -2951,12 +2958,14 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     path: a turn whose close says ``RUNNING`` and ``DO NOT CLEAR`` is not a
     session end, so the session-end gates (reflection, Critic) defer while
     every other gate still blocks (``lib/gates.turn_declares_in_flight``). The
-    same field drives two clear checks that record and never refuse: a turn
+    same field drives three close checks that record and never refuse: a turn
     that hands the session over (``YOUR TURN`` / ``COMPLETE``) while saying
     ``DO NOT CLEAR`` (``clear-verdict``,
     ``lib/gates.turn_contradicts_its_verdict``) — ``YOUR TURN`` only when no
-    work a clear would kill is observed — and a ``SAFE TO CLEAR`` whose reason
-    is the turn itself (``clear-reason``, ``lib/gates.turn_self_citation``).
+    work a clear would kill is observed — a ``SAFE TO CLEAR`` whose reason
+    is the turn itself (``clear-reason``, ``lib/gates.turn_self_citation``),
+    and, under any disposition, a close whose reason points at the turn by
+    position (``close-pointer``, ``lib/gates.turn_positional_pointer``).
     """
     prawduct_dir = get_prawduct_dir(project_dir)
 
@@ -3063,6 +3072,21 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             project_dir,
             "clear-reason",
             reason=self_citation[1],
+            observed=_clear_observations(project_dir, defer_active),
+        )
+    # A close whose reason points by position ("the one ask above is for
+    # you"), under any disposition: the reader came to the bottom to be told
+    # what the asks are, and with the asks after the close an "above" points
+    # the wrong way. Recorded, not blocked, like the two checks above, under
+    # its own check id so its firings count apart from theirs; a turn can
+    # fire it and `clear-reason` both. It records the pointer's kind, never
+    # the phrase.
+    positional_pointer = _gates().turn_positional_pointer(event)
+    if positional_pointer:
+        _record_stop_observation(
+            project_dir,
+            "close-pointer",
+            reason=positional_pointer[1],
             observed=_clear_observations(project_dir, defer_active),
         )
 

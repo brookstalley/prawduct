@@ -1001,7 +1001,8 @@ def turn_declares_in_flight(event) -> tuple[bool, str | None]:
       - non-dict input, field absent, non-string or blank → ``(False, None)``;
       - the message's close states no single verdict where the close puts it
         (``standing_block.clear_verdict`` returns ``None``: a label quoted
-        mid-prose, both labels, trailing text after the close) →
+        mid-prose or inside the asks block, both labels, trailing text after
+        the close other than the asks block it may end with) →
         ``(False, None)``;
       - the verdict is ``SAFE TO CLEAR`` → ``(False, None)``;
       - the verdict is ``DO NOT CLEAR`` but the close states no single
@@ -1056,6 +1057,23 @@ def turn_self_citation(event) -> "tuple[str, str] | None":
     if message is None:
         return None
     return standing_block.self_citation_match(message)
+
+
+def turn_positional_pointer(event) -> "tuple[str, str] | None":
+    """The phrase by which a turn's close points at its own content by
+    position, under any disposition — "the one ask above is for you" — with
+    the pointer's kind beside it (``standing_block.positional_pointer_match``),
+    or ``None``.
+
+    The reason owes the reader what the asks are, not where; with the asks
+    after the close, an "above" points the wrong way. The kind is what the
+    ``close-pointer`` check records, since the phrase is the turn's own words.
+    Same payload handling as :func:`turn_self_citation`.
+    """
+    message = _last_message(event)
+    if message is None:
+        return None
+    return standing_block.positional_pointer_match(message)
 
 
 _CRITIC_MODE_CHUNK = "chunk (lighter pass, not ready for push)"
