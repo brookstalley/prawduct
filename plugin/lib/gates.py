@@ -1543,10 +1543,12 @@ def _cached_diff_fn(project_dir: Path):
     """A ``coverage_algebra.DiffFn`` that memoizes ``evidence.tree_diff`` per
     gate invocation.
 
-    Free-edge *connectivity* no longer comes from here — every production call
-    site pairs this with :func:`_tree_key_fn`, so the BFS groups trees by key.
-    What reaches this function is every caller that needs a pair's actual file
-    list within one gate call, and the memo is what keeps a pair asked by more
+    Free-edge *connectivity* does not come from here — every call site that
+    searches the evidence graph pairs this with :func:`_tree_key_fn`, so the
+    search groups trees by key; the uncovered-cause explanation takes this
+    alone because it only lists the files of named intervals and searches
+    nothing. What reaches this function is every caller that needs a pair's
+    actual file list within one gate call, and the memo is what keeps a pair asked by more
     than one of them — or by more than one pass (clean edges, all edges, the
     merge-base fallback) — to one ``git diff``. Removing it makes those callers
     pay their diffs again on every uncovered gate. Cache scope is
