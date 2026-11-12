@@ -77,15 +77,21 @@ _EVIDENCE_COVERAGE_FIELDS: dict[str, tuple[type, ...]] = {
 }
 _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 # Optional fields — validated when present, never required. ``changes_unjudged``
-# (gate-soundness ch.1) lists changed files the evidence producer structurally
-# cannot judge (non-Python, symbol-less, deleted); absent means empty, so
-# product-authored evidence and ``executed``-level verifiers that predate the
-# field keep their existing gate behavior.
+# (gate-soundness ch.1) lists changed files the evidence producer could not judge
+# (symbol-less Python, deleted; evidence that predates ``changes_out_of_remit``
+# also lists non-Python here); absent means empty, so product-authored evidence
+# and ``executed``-level verifiers that predate the field keep their existing
+# gate behavior. ``changes_out_of_remit`` (#682) lists changed non-Python files
+# the symbol-grep floor never read — out of scope by construction, not missing
+# evidence — and ``changes_out_of_remit_reason`` is the record's own statement
+# of why. The gate treats both lists identically (reported, never gated).
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
+    "changes_out_of_remit": (list,),
+    "changes_out_of_remit_reason": (str,),
     # ``changes_unreferenced`` (#556): changed Python files declaring symbols no
-    # test mentions. With ``changes_referenced`` and ``changes_unjudged`` it
-    # partitions the changed set. Absent means empty; no gate reads it —
+    # test mentions. With ``changes_referenced``, ``changes_unjudged`` and
+    # ``changes_out_of_remit`` it partitions the changed set. Absent means empty; no gate reads it —
     # ``verify-coverage`` derives "missing" from the diff itself, so a record
     # without it gates exactly as before.
     "changes_unreferenced": (list,),
@@ -3019,10 +3025,12 @@ def verify_coverage(project_dir: Path) -> int:
           missing/invalid, schema lacks F4a fields, git base unresolved).
 
     Gate-soundness ch.1: the gate only blocks on files its evidence producer
-    can vouch for. Files listed in ``changes_unjudged`` (non-Python, symbol-less,
+    can vouch for. Files listed in ``changes_out_of_remit`` (non-Python — never in
+    the symbol-grep floor's scope) or ``changes_unjudged`` (symbol-less Python,
     deleted — see ``bin/test-reference-verify``) and files absent from the
     working tree (deleted on the branch) are reported informationally on
-    stdout, never as ``missing-coverage``. Before this split, the whole-branch
+    stdout, never as ``missing-coverage``, each bucket under its own note so
+    out-of-scope is not read as unjudged (#682). Before this split, the whole-branch
     comparison guaranteed false blockers on docs/config changes, which trained
     products to neutralize the gate (scriob 4ca5bd3) — an unsatisfiable gate
     is worse than no gate.
@@ -3081,6 +3089,8 @@ def verify_coverage(project_dir: Path) -> int:
     coverage_level = evidence["coverage_level"]
     referenced = set(evidence.get("changes_referenced", []))
     unjudged = set(evidence.get("changes_unjudged", []))
+    out_of_remit = set(evidence.get("changes_out_of_remit", []))
+    reason = evidence.get("changes_out_of_remit_reason")
 
     base, base_reason = coverage._coverage_resolve_base(project_dir)
     if base is None:
@@ -3093,33 +3103,51 @@ def verify_coverage(project_dir: Path) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    # A file the evidence declares unjudgeable, or one no longer on disk
-    # (deleted on the branch — nothing to test), is outside the gate's
-    # jurisdiction: reported, never blocked on.
+    # A file the evidence declares out of remit or unjudgeable, or one no longer
+    # on disk (deleted on the branch — nothing to test), is outside the gate's
+    # jurisdiction: reported, never blocked on. Out-of-remit paths are split off
+    # first so each bucket is reported under its own note; both still leave
+    # `missing`.
+    out_of_remit_changed = [f for f in changed if f in out_of_remit]
     skipped = [
         f for f in changed
-        if f in unjudged or not (project_dir / f).is_file()
+        if f not in out_of_remit
+        and (f in unjudged or not (project_dir / f).is_file())
     ]
     # Nothing can execute a prose file, so demanding an executing test for one
     # buys a token reference-test and nothing else (COV-8R2K). Reported like
     # `skipped` rather than gated, and asked of
     # `coverage_algebra.is_executable_path` — the one predicate — so this stays
     # a reading of the CRT-5D8Q boundary rather than a second file-type table
-    # beside it. `skipped` keeps precedence: a file the verifier disclaimed is
-    # out of jurisdiction whatever its suffix.
+    # beside it. `skipped` and `out_of_remit_changed` keep precedence: a file the
+    # verifier disclaimed is out of jurisdiction whatever its suffix.
     nonexecutable = [
         f for f in changed
-        if f not in skipped and not coverage_algebra.is_executable_path(f)
+        if f not in skipped
+        and f not in out_of_remit_changed
+        and not coverage_algebra.is_executable_path(f)
     ]
     missing = [
         f for f in changed
-        if f not in referenced and f not in skipped and f not in nonexecutable
+        if f not in referenced
+        and f not in skipped
+        and f not in out_of_remit_changed
+        and f not in nonexecutable
     ]
+    if out_of_remit_changed:
+        why = reason if isinstance(reason, str) and reason else (
+            "not Python: the symbol-grep floor reads only Python"
+        )
+        print(
+            f"note: {len(out_of_remit_changed)} changed file(s) out of the "
+            f"verifier's remit (changes_out_of_remit) — {why}; reported, "
+            f"not gated (level: {coverage_level})."
+        )
     if skipped:
         print(
-            f"note: {len(skipped)} changed file(s) outside the verifier's "
-            f"judgment (changes_unjudged / deleted) — reported, not gated "
-            f"(level: {coverage_level})."
+            f"note: {len(skipped)} changed file(s) the verifier could not "
+            f"judge (changes_unjudged / deleted: symbol-less or gone) — "
+            f"reported, not gated (level: {coverage_level})."
         )
     if nonexecutable:
         preview = ", ".join(nonexecutable[:3]) + (
@@ -3131,7 +3159,7 @@ def verify_coverage(project_dir: Path) -> int:
         )
     if not missing:
         print(
-            f"ok: {len(changed) - len(skipped) - len(nonexecutable)} judged "
+            f"ok: {len(changed) - len(skipped) - len(out_of_remit_changed) - len(nonexecutable)} judged "
             f"changed file(s) covered (level: {coverage_level})"
         )
         return 0

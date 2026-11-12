@@ -3791,9 +3791,9 @@ class TestGreenIsEvidenceDelivery:
         """A changed source file the symbol-grep overlay cannot judge at all.
 
         `.swift` stands in for every non-Python product (Go, Rust, C#, TS): the
-        overlay classifies it `changes_unjudged` and leaves `changes_referenced`
-        empty, which is the exact shape that kept this directive dark in every
-        such repo.
+        overlay classifies it `changes_out_of_remit` and leaves
+        `changes_referenced` empty, which is the exact shape that kept this
+        directive dark in every such repo.
         """
         (repo / "Widget.swift").write_text("struct Widget { let n = 1 }\n")
 
@@ -3817,7 +3817,7 @@ class TestGreenIsEvidenceDelivery:
             "fixture leaked a judged Python change — this test would then pass "
             "on the OLD trigger and prove nothing about non-Python products"
         )
-        assert "Widget.swift" in ev["changes_unjudged"]
+        assert "Widget.swift" in ev["changes_out_of_remit"]
         hook = _load_hook_module()
         assert hook._GREEN_IS_EVIDENCE_DIRECTIVE in res.stdout
 
@@ -3974,7 +3974,9 @@ class TestGreenIsEvidenceTrigger:
     def test_fires_on_non_python_source_the_overlay_could_not_judge(self, tmp_path):
         """The non-Python product, at the predicate. `changes_referenced` is
         empty there by construction — symbol-grep judges Python only — so the
-        trigger has to read `changes_unjudged` or it can never fire off Python.
+        trigger has to read the no-signal buckets or it can never fire off
+        Python. This record is the pre-split shape, non-Python under
+        `changes_unjudged`; the fresh shape is pinned below.
         """
         hook = _load_hook_module()
         path = self._write(
@@ -3984,6 +3986,49 @@ class TestGreenIsEvidenceTrigger:
             ),
         )
         assert hook._evidence_changed_judged_code(path) is True
+
+    def test_fires_on_non_python_source_in_the_out_of_remit_bucket(self, tmp_path):
+        """#682: a fresh record files non-Python under `changes_out_of_remit`,
+        and `changes_unjudged` no longer holds it. The trigger reads BOTH
+        buckets — the unjudged-only version of this predicate would take every
+        non-Python product dark the day the producer split them."""
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {
+                    "changes_referenced": [],
+                    "changes_unjudged": [],
+                    "changes_out_of_remit": ["src/main.swift"],
+                }
+            ),
+        )
+        assert hook._evidence_changed_judged_code(path) is True
+
+    @pytest.mark.parametrize(
+        "out_of_remit",
+        [
+            ["README.md", "docs/guide.md"],
+            [".prawduct/project-state.yaml", ".claude/settings.json"],
+        ],
+        ids=["prose", "framework-metadata"],
+    )
+    def test_silent_when_every_out_of_remit_path_needs_no_review(
+        self, tmp_path, out_of_remit
+    ):
+        """The out-of-remit bucket keeps the silence the unjudged one had."""
+        hook = _load_hook_module()
+        path = self._write(
+            tmp_path,
+            json.dumps(
+                {
+                    "changes_referenced": [],
+                    "changes_unjudged": [],
+                    "changes_out_of_remit": out_of_remit,
+                }
+            ),
+        )
+        assert hook._evidence_changed_judged_code(path) is False
 
     @pytest.mark.parametrize(
         "unjudged",
@@ -3996,8 +4041,9 @@ class TestGreenIsEvidenceTrigger:
     def test_silent_when_every_unjudged_path_needs_no_review(self, tmp_path, unjudged):
         """Widening the trigger must not cost it its silence.
 
-        `changes_unjudged` is a mixed bag — non-Python source, prose, framework
-        metadata, and files deleted in the diff all land there — so reading it
+        The no-signal buckets are a mixed bag — non-Python source, prose,
+        framework metadata, and files deleted in the diff all land in them (and
+        in `changes_unjudged` alone, in a record written before the split) — so reading it
         wholesale would fire on every docs-only cycle, and a directive that
         prints every time is one the reader learns to skip. Only the paths that
         need review coverage count.
