@@ -1109,7 +1109,8 @@ LAST_MEASURED_TOKENS = {
     # another file owns sits in it to cut.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "skills/critic/review-cycle.md": 8152,
+    # +5 on 2026-11-12 (review-round-cost merge review), DECLARED: the inherited-failure bullet names where a refused waiver's reason lands (`not_waived` in the cache), R-4. No reviewer loads it.
+    "skills/critic/review-cycle.md": 8157,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1305,7 +1306,8 @@ LAST_MEASURED_TOKENS = {
     # partial) instead of the coordinator's re-dispatch (R-8). A READING; ceiling lowered.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "skills/critic/SKILL.md": 3220,
+    # +7 on 2026-11-12 (review-round-cost merge review), DECLARED: the single-pass write step says what the fork does when `validate-partial` exits 3 (stop), R-1/R-3.
+    "skills/critic/SKILL.md": 3227,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -6344,7 +6346,8 @@ class TestCriticSkillRoutesByMode:
         # remedy sentence — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3204 -> 3189 (review-round-cost Critic round, R-8) with the reading.
         # RAISED 3178 -> 3221 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
-        assert tokens < 3221, f"SKILL.md is ~{tokens} tokens, should be <3221"
+        # RAISED 3221 -> 3228 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3228, f"SKILL.md is ~{tokens} tokens, should be <3228"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6685,7 +6688,8 @@ class TestReviewCycle:
         # RAISED 7756 -> 7827 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 7827 -> 7862 (review-round-cost Critic round, R-1/R-2/R-10) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 8048 -> 8153 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
-        assert tokens < 8153, f"review-cycle.md is ~{tokens} tokens, should be <8153"
+        # RAISED 8153 -> 8158 (review-round-cost merge review, 2026-11-12) — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 8158, f"review-cycle.md is ~{tokens} tokens, should be <8158"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to

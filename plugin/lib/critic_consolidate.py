@@ -5851,6 +5851,7 @@ def fact_to_cache_record(
     uncertified: "tuple[str, list[str]] | None" = None,
     *,
     store: dict,
+    not_waived: "dict[str, str] | None" = None,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
@@ -5894,6 +5895,12 @@ def fact_to_cache_record(
             # So a verify reviewer reading this as the prior record can tell a
             # waived blocker from an open one. Additive, like `fix_cost`.
             entry["waived"] = INHERITED_BASELINE_ORIGIN
+        elif f.get("fid") in (not_waived or {}):
+            # Why a finding that named failing tests was not waived as
+            # inherited. Only the consolidating clone knows it (the reason is
+            # computed from its store and git, never persisted), so an
+            # ingesting clone's render simply lacks the key. Additive.
+            entry["not_waived"] = not_waived[f["fid"]]
         findings.append(entry)
     # The builder's only surface for these. Observation ids are assigned HERE,
     # at consolidation — the reviewer wrote prose and never saw an `O-n` — so
@@ -6422,7 +6429,13 @@ def _inherited_baseline(project_dir: Path, manifest: dict, store: dict) -> dict:
         store, base_tree, head_failed | named
     )
     if run_id is None:
-        return {"reason": f"no base-tree run to match: {why}"}
+        # Recording the base run now does not reach back: a waiver is written
+        # only at the consolidation of the review whose finding it waives.
+        return {"reason": (
+            f"no base-tree run to match: {why}. A base run recorded after this "
+            "review serves only later reviews' findings; this one clears through "
+            "verify-resolutions"
+        )}
     return {
         "run": run_id,
         "base_tree": base_tree,
@@ -6432,7 +6445,8 @@ def _inherited_baseline(project_dir: Path, manifest: dict, store: dict) -> dict:
 
 
 def _waive_inherited_failures(
-    project_dir: Path, manifest: dict, review_id: str, review_anchor: "str | None"
+    project_dir: Path, manifest: dict, review_id: str, review_anchor: "str | None",
+    refusals: "dict[str, str] | None" = None,
 ) -> "list[str] | None":
     """Waive each BLOCKING finding of ``review_id`` whose failing tests the base
     tree already failed. Returns the waived fids, or ``None`` when an append
@@ -6448,9 +6462,11 @@ def _waive_inherited_failures(
     ``{review_id}:{review_id}:{fid}`` — the resolution-id shape with the review
     as its own verifier — so a re-run finds it held and appends nothing.
 
-    A finding that named tests and was NOT waived gets one stderr line saying
-    why, so a builder who recorded a base run learns what it failed to prove
-    rather than re-recording blindly or paying the verify round.
+    A finding that named tests and was NOT waived gets one line saying why. It
+    goes into ``refusals`` (fid → reason), which the caller renders onto that
+    finding's ``.critic-findings.json`` entry as ``not_waived`` — the surface a
+    builder reads after any roster, where stderr is lost once consolidation
+    runs inside SubagentStop — and is mirrored on stderr for the log.
 
     Runs in every mode, after the review fact is appended, because the review
     is what the waiver resolves: no separate round is owed for a failure the
@@ -6487,6 +6503,8 @@ def _waive_inherited_failures(
         return waived
 
     def refuse(fid: str, reason: str) -> None:
+        if refusals is not None:
+            refusals[fid] = reason
         print(
             f"critic-consolidate: {fid} names failing tests but was not waived "
             f"as inherited — {reason}.",
@@ -6693,31 +6711,35 @@ def _partial_failure_message(
     return "\n".join(lines)
 
 
+#: `validate-partial`'s exit when the partial cannot be checked at all — no
+#: readable or valid manifest owns it, or it is keyed to another review. Its
+#: own code because the remedy differs from exit 1's: a reviewer cannot fix
+#: its file into a review that consolidated already or is not its own, so it
+#: stops. The same "could not answer" code the hook's other probes use.
+VALIDATE_PARTIAL_CANNOT_CHECK = 3
+
+
 def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
     """``prawduct-hook validate-partial <path>``: the reviewer's own check.
 
     Read-only. Finds which roster role of the pending review ``path`` is the
     keyed partial of, then asks :func:`check_partial` — the verdict
-    consolidation will reach on the same file. Exit 0 and ``ok``; exit 1 and
-    the reason (a parse error carries its line and column). A relative path is
-    resolved against the project directory, not the caller's cwd: a subagent's
-    cwd is not the project.
+    consolidation will reach on the same file.
+
+    The review is read from the partial's OWN ``.prawduct`` directory when the
+    path sits in a partials directory (``<prawduct>/.critic-partials/<file>``),
+    and from the caller's project only otherwise: a subagent's process can
+    resolve a different checkout than the one that dispatched it, and the file
+    is the one thing that names its review. A relative path is resolved against
+    the project directory.
+
+    Exits: 0 prints ``ok``; 1 means this file fails the check (a parse error
+    with its line and column, or the validation reason) — fix it and re-run;
+    :data:`VALIDATE_PARTIAL_CANNOT_CHECK` means there is nothing to check it
+    against (no readable or valid manifest owns it, or it is keyed to another
+    review) — the review consolidated already or is not the caller's, so the
+    caller stops rather than rewriting the file.
     """
-    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
-    mpath = manifest_path(prawduct_dir)
-    try:
-        manifest = json.loads(mpath.read_text())
-    except (OSError, ValueError) as exc:
-        print(
-            f"validate-partial: no readable review manifest at {mpath} ({exc}) — "
-            "there is no pending review to check this partial against.",
-            file=sys.stderr,
-        )
-        return 1
-    ok, reason = validate_manifest(manifest)
-    if not ok:
-        print(f"validate-partial: invalid manifest — {reason}", file=sys.stderr)
-        return 1
     target = Path(path_arg)
     if not target.is_absolute():
         target = project_dir / target
@@ -6725,7 +6747,30 @@ def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
         resolved = target.resolve()
     except OSError as exc:
         print(f"validate-partial: cannot resolve {path_arg!r} ({exc})", file=sys.stderr)
-        return 1
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    if resolved.parent.name == PARTIALS_DIRNAME:
+        prawduct_dir = resolved.parent.parent
+    else:
+        prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    mpath = manifest_path(prawduct_dir)
+    try:
+        manifest = json.loads(mpath.read_text())
+    except (OSError, ValueError) as exc:
+        print(
+            f"validate-partial: no readable review manifest at {mpath} ({exc}) — "
+            "there is no pending review to check this partial against (it may "
+            "have consolidated already). Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
+    ok, reason = validate_manifest(manifest)
+    if not ok:
+        print(
+            f"validate-partial: invalid manifest — {reason}. Nothing to fix in "
+            "the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
     for role in manifest["roster"]:
         if partial_path(prawduct_dir, role, manifest["id"]).resolve() == resolved:
             ok, reason = check_partial(prawduct_dir, manifest, role, target)
@@ -6734,13 +6779,25 @@ def validate_partial_cmd(project_dir: Path, path_arg: str) -> int:
                 return 0
             print(f"validate-partial: {reason}", file=sys.stderr)
             return 1
+    # `<role>.<review id>.json` is the keyed shape (:func:`partial_path`); a
+    # file keyed to ANOTHER review id is a straggler or a replaced review's,
+    # which no edit makes this review's. Any other wrong name is fixable.
+    stem = resolved.name[: -len(".json")] if resolved.name.endswith(".json") else ""
+    keyed_id = stem.split(".", 1)[1] if "." in stem else None
+    if keyed_id is not None and keyed_id != manifest["id"]:
+        print(
+            f"validate-partial: {path_arg!r} is not keyed to the pending review "
+            f"{manifest['id']} — it belongs to another review, which this one "
+            "replaced or never was. Nothing to fix in the file: stop.",
+            file=sys.stderr,
+        )
+        return VALIDATE_PARTIAL_CANNOT_CHECK
     print(
         f"validate-partial: {path_arg!r} is not a partial of review {manifest['id']} — "
         "write it at the path your manifest's `rendezvous` names for your role.",
         file=sys.stderr,
     )
     return 1
-
 
 def consolidate(
     project_dir: Path, *, trigger: str, tree_changed_by_builder: "str | None" = None
@@ -7021,7 +7078,10 @@ def consolidate(
     # Inherited-baseline waivers: a BLOCKING test failure the merge-base tree
     # already had is resolved here, from the base run's fact, not by a round.
     # The renderers below read the waivers back from the store re-read next.
-    if _waive_inherited_failures(project_dir, manifest, review_id, review_anchor) is None:
+    waiver_refusals: dict[str, str] = {}
+    if _waive_inherited_failures(
+        project_dir, manifest, review_id, review_anchor, waiver_refusals
+    ) is None:
         return 1
 
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
@@ -7114,7 +7174,7 @@ def consolidate(
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
         fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
-        store=store,
+        store=store, not_waived=waiver_refusals,
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))

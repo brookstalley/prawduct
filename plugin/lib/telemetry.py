@@ -69,7 +69,9 @@ from .timewindow import in_window, is_usable_bound
 #: Bumped to 11 when `by_span` joined: a cumulative's span (bounded to the
 #: delta since a boundary review, or the whole bundle) and why a full one ran
 #: full, so the bounded-cumulative lever can be judged against its falsifier.
-REPORT_SCHEMA_VERSION = 11
+#: Bumped to 12 when `waived_inherited` joined `by_outcome`'s fixed key set:
+#: consolidation's own waiver of a failure the base tree already had.
+REPORT_SCHEMA_VERSION = 12
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the

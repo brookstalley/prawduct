@@ -140,8 +140,8 @@ Besides the started marker above, write a single JSON file at your
 `prawduct-hook critic-consolidate`, and do NOT run `prawduct-hook critic-end` — a
 deterministic step external to you merges the partials and persists the canonical record.
 That decoupling is what makes the review survive the harness backgrounding subagents.
-Then run `prawduct-hook validate-partial <your partial path>`; on exit 1, fix the file and run it
-again. You are done only on exit 0.
+Then run `prawduct-hook validate-partial <your partial path>`: exit 0, you are done; exit 1, fix
+the file and run it again; exit 3, nothing can check it (the review consolidated, or is not yours): stop.
 
 Partial schema (validated by `lib/critic_consolidate.py`; a malformed partial fails the
 whole consolidation closed, so match it exactly):
@@ -186,4 +186,4 @@ Write `resolutions` only as role `reviewer` on a `verify-resolutions` dispatch, 
 `goals-1-3.md` gives; from any other dispatch, emitting one fails the whole review closed.
 
 Your final assistant message is not read by any gate — the partial file is your entire
-output. Once it passes `validate-partial`, you are done.
+output.

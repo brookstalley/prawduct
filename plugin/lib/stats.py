@@ -37,7 +37,7 @@ from . import dispositions, evidence, gitstate
 from .review_dispatch import fact_interval_seconds
 from .timewindow import in_window, is_usable_bound
 
-REPORT_SCHEMA_VERSION = 3  # 3: `stop_observations` per version
+REPORT_SCHEMA_VERSION = 4  # 3: `stop_observations` per version; 4: the `waived_inherited` outcome
 
 #: Severities whose findings a review is expected to act on.
 _ACTIONABLE = ("blocking", "warning")

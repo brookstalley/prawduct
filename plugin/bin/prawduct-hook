@@ -2759,8 +2759,10 @@ def cmd_validate_partial(project_dir: Path, path: str | None) -> int:
     """Read-only: would consolidation accept this reviewer partial?
 
     A reviewer runs it on its own file before returning. Exit 0 prints ``ok``;
-    exit 1 prints the parse error (line and column) or the validation reason;
-    exit 2 is a missing path. The verdict is
+    exit 1 prints the parse error (line and column) or the validation reason —
+    the file is the caller's to fix; exit 3 means nothing can check it (no
+    manifest owns it, or it is keyed to another review) — the caller stops;
+    exit 2 is a usage error (no path given). The verdict is
     ``critic_consolidate.check_partial``, the same function consolidation
     reads each partial through."""
     if not path:

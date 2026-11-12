@@ -169,9 +169,11 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   the ledger append after it still consumes the mark; when a partial fails its check it names the
   role, the partials that passed and are kept, and the one-reviewer re-dispatch remedy, exit 1),
   `validate-partial <path>` (read-only; the verdict consolidation will reach on one reviewer partial,
-  through the same `check_partial` — exit 0 prints `ok`, exit 1 prints the parse error with its line
-  and column or the validation reason, exit 2 is a missing path; a reviewer runs it on its own file
-  before returning), `critic-end`, `critic-discard` (archive-then-remove a
+  through the same `check_partial`, reading the review from the partial's own `.prawduct` directory
+  — exit 0 prints `ok`, exit 1 prints the parse error with its line and column or the validation
+  reason (fix the file), exit 3 means nothing can check it: no manifest owns it, or it is keyed to
+  another review (stop), exit 2 is a usage error; a reviewer runs it on its own file before
+  returning), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on

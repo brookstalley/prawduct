@@ -301,8 +301,9 @@ finding's outcome comes from `stats.finding_outcome`, the rule `prawduct-hook st
   `review.pr` event carries no `fact_id`, so it is always unjoined, and so is an event whose fact
   is not in this clone's store. The rate is over the joined reviews only.
 - `by_outcome`: blocking and warning findings of the joined reviews, by `stats`'s outcome names
-  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `undispositioned`, `other`). A
-  finding with no `fid` is `other`.
+  (`fixed`, `fixed_unreviewed`, `filed`, `accepted`, `waived`, `waived_inherited`,
+  `undispositioned`, `other`). A finding with no `fid` is `other`. Schema 12 added
+  `waived_inherited`.
 - `answered` and `acted_on_rate`: the same definition as `stats` (§ below, through the one
   helper `stats.acted_on`). `acted_on_rate` is `null` when nothing was answered.
 
@@ -456,12 +457,14 @@ The definitions (their one home):
   - A resolution outranks any disposition; among dispositions, the newest
     wins.
   - Outcomes are fixed (a verify pass confirmed it), fixed_unreviewed (recorded
-    fixed with no review), filed, accepted, waived and undispositioned. Anything
-    else lands in `other`, including a state a later plugin adds or a malformed
-    finding.
+    fixed with no review), filed, accepted, waived, waived_inherited
+    (consolidation waived a failure the base tree already had; schema 4) and
+    undispositioned. Anything else lands in `other`, including a state a later
+    plugin adds or a malformed finding.
   - *acted on* = (fixed + fixed_unreviewed + filed) / (those + accepted +
-    waived). Undispositioned findings are left out of the rate and reported
-    beside it. The denominator is exported as `answered`.
+    waived). Undispositioned and waived_inherited findings are left out of the
+    rate (the latter is a fact about the base, not an answer to the finding)
+    and reported beside it. The denominator is exported as `answered`.
 - **blocking fixed by goal**, and **blocking and warnings fixed per scope**.
   Both kinds of fixed count.
 - **red suite runs**: recorded suite runs with a failure.

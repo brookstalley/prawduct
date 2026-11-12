@@ -277,7 +277,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # remedy (R-8). A READING; ceiling lowered with it.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "single-pass-inner": 5726,
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    "single-pass-inner": 5733,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -392,7 +395,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # round #900 removes at the boundary, where it costs most. Net a READING; ceiling lowered.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "single-pass-full": 10097,
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    "single-pass-full": 10104,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -517,7 +523,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # cut in the schema block; the Goal 1 clause is the same sentence goals-1-3.md carries.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "dispatched-reviewer": 9586,
+    # +5 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: the reviewer contract's write step gives `validate-partial`'s three exits, net of cutting its duplicated closing sentence. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    "dispatched-reviewer": 9591,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -599,7 +608,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # (declared on single-pass-full). A READING; ceiling lowered with it.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "coordinator-fork": 10767,
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    "coordinator-fork": 10774,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -622,7 +634,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # -51 on 2026-11-11 (review-round-cost Critic round): coordinator.md -36 and SKILL.md -15 (R-8). A READING; ceiling lowered.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "coordinator-fork-inner": 6396,
+    # +7 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: SKILL.md's single-pass write step says what the fork does on exit 3. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    "coordinator-fork-inner": 6403,
     # +23 on 2026-11-11 (bounded-cumulative review round), DECLARED: the reviewer contract's pointer and `Span` field. Priced against the SUM: tens of
     # tokens per review against reviewers dropping, or double-rating, the stale prose a bounded delta leaves behind.
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
@@ -637,16 +652,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # is told to match exactly did not admit it.
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "dispatched-reviewer-inner": 5215,
+    # +5 on 2026-11-12 (review-round-cost merge review, R-1/R-3), DECLARED: the reviewer contract's write step gives `validate-partial`'s three exits, net of cutting its duplicated closing sentence. Priced against
+    # the SUM: exit 3 (nothing can check the file: the review consolidated, or is not yours) means stop,
+    # where one exit code for both sent a reviewer to rewrite a sound partial in a loop.
+    "dispatched-reviewer-inner": 5220,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5727,
-    "single-pass-full": 10098,
-    "dispatched-reviewer": 9587,
-    "coordinator-fork": 10768,
-    "coordinator-fork-inner": 6397,
-    "dispatched-reviewer-inner": 5216,
+    "single-pass-inner": 5734,
+    "single-pass-full": 10105,
+    "dispatched-reviewer": 9592,
+    "coordinator-fork": 10775,
+    "coordinator-fork-inner": 6404,
+    "dispatched-reviewer-inner": 5221,
 }
 
 

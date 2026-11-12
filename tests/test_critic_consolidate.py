@@ -4281,21 +4281,56 @@ class TestValidatePartialVerb:
         result = _run_validate_partial(repo, path.relative_to(repo))
         assert result.returncode == 0, result.stderr
 
-    def test_a_path_that_is_no_roster_partial_is_refused(self, tmp_path):
+    def test_a_wrong_name_in_the_review_is_the_callers_to_fix(self, tmp_path):
         repo, path = self._case(tmp_path, "valid")
-        stray = _partials_dir(repo) / "reviewer.rev-other.json"
+        stray = _partials_dir(repo) / "reviewer.json"
         stray.write_text(path.read_text())
         result = _run_validate_partial(repo, stray)
         assert result.returncode == 1
         assert "not a partial of review" in result.stderr
 
-    def test_no_pending_review_is_a_refusal_not_an_ok(self, tmp_path):
+    def test_a_partial_keyed_to_another_review_cannot_be_checked(self, tmp_path):
+        """A straggler, or a review this one replaced: no edit makes it this
+        review's, so the answer is stop (3), never fix-and-rerun (1)."""
+        repo, path = self._case(tmp_path, "valid")
+        stray = _partials_dir(repo) / "reviewer.rev-other.json"
+        stray.write_text(path.read_text())
+        result = _run_validate_partial(repo, stray)
+        assert result.returncode == cc.VALIDATE_PARTIAL_CANNOT_CHECK == 3
+        assert "not keyed to the pending review" in result.stderr
+
+    def test_no_pending_review_cannot_be_checked(self, tmp_path):
         repo = tmp_path / "r"
         _init_repo(repo)
         _commit_file(repo, "src/app.py", "x = 1\n", "init")
         result = _run_validate_partial(repo, repo / ".prawduct" / "x.json")
-        assert result.returncode == 1
+        assert result.returncode == 3
         assert "no readable review manifest" in result.stderr
+
+    def test_a_review_that_consolidated_meanwhile_is_stop_not_fix(self, tmp_path):
+        """A sibling reviewer's SubagentStop can consolidate the roster between
+        this reviewer's Write and its check, removing the manifest. The file
+        was fine; the reviewer must stop, not rewrite it into a gone review."""
+        repo, path = self._case(tmp_path, "valid")
+        (_partials_dir(repo) / "manifest.json").unlink()
+        result = _run_validate_partial(repo, path)
+        assert result.returncode == 3, result.stderr
+        assert "stop" in result.stderr
+
+    def test_the_review_comes_from_the_partials_own_checkout(self, tmp_path):
+        """A reviewer whose process resolves another checkout still checks its
+        own file: the absolute path names the review, not the cwd."""
+        repo, path = self._case(tmp_path, "valid")
+        elsewhere = tmp_path / "other"
+        _init_repo(elsewhere)
+        _commit_file(elsewhere, "README.md", "x\n", "init")
+        result = subprocess.run(
+            [sys.executable, str(HOOK), "validate-partial", str(path)],
+            cwd=str(elsewhere), capture_output=True, text=True,
+            env={**_git_env(elsewhere), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "ok"
 
     def test_it_is_read_only(self, tmp_path):
         repo, path = self._case(tmp_path, "valid")
@@ -4347,8 +4382,9 @@ class TestTheReviewerIsToldToCheckItsPartial:
     def test_the_write_step_carries_the_check_and_the_exit_rule(self):
         agent = (ROOT / "agents" / "critic-reviewer.md").read_text(encoding="utf-8")
         assert (
-            "Then run `prawduct-hook validate-partial <your partial path>`; on exit 1, "
-            "fix the file and run it again. You are done only on exit 0."
+            "Then run `prawduct-hook validate-partial <your partial path>`: exit 0, you are "
+            "done; exit 1, fix the file and run it again; exit 3, nothing can check it (the "
+            "review consolidated, or is not yours): stop."
         ) in " ".join(agent.split())
 
     def test_each_surface_that_meets_a_refusal_follows_its_own_remedy(self):
@@ -4846,12 +4882,18 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         assert _store_facts(repo, "resolution") == []
         assert "critic-consolidate: waived " not in done.stderr
         refusals = [ln for ln in done.stderr.splitlines() if "not waived as inherited" in ln]
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        not_waived = [f["not_waived"] for f in cache["findings"] if "not_waived" in f]
         if why is None:
             assert refusals == [], done.stderr
+            assert not_waived == [], cache
         else:
             (line,) = refusals
             assert why in line, line
-        cache = json.loads((repo / FINDINGS_REL).read_text())
+            # The reason rides the cache entry too: on a roster, consolidation
+            # runs inside SubagentStop and its stderr reaches nobody.
+            (reason,) = not_waived
+            assert why in reason, reason
         assert cache["next_action"].startswith("1 BLOCKING")
         if gate is not None:
             self._commit(repo)
@@ -4869,6 +4911,34 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         self._run_on(repo, other, ["t1"])  # the control: a red run, on another tree
         done, _ = self._review(repo, [self._blocker()])
         self._assert_no_waiver_and_still_blocks(repo, done, why=base_tree[:12])
+        # Recording the base run now cannot reach back to this finding, so the
+        # reason names the round that clears it rather than inviting a re-record.
+        (entry,) = json.loads((repo / FINDINGS_REL).read_text())["findings"]
+        assert "clears through verify-resolutions" in entry["not_waived"], entry
+
+    def test_the_reason_reaches_the_cache_when_subagent_stop_consolidates(self, tmp_path):
+        """On a roster, `critic-consolidate` runs inside SubagentStop, which
+        exits 0 and whose stderr nobody reads. The reason must still reach the
+        builder, on the finding's cache entry."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        (repo / "src/app.py").write_text("x = 2\n")
+        begin = _run_begin(repo, "--mode", "chunk")
+        assert begin.returncode == 0, f"stderr={begin.stderr!r}"
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        self._run_on(repo, manifest["head_tree"], ["t1", "t2"])
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[self._blocker(("t1", "t2"))])
+        hook = subprocess.run(
+            [sys.executable, str(HOOK), "subagent-stop"],
+            input=json.dumps({"cwd": str(repo), "agent_type": "prawduct:critic-reviewer"}),
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert hook.returncode == 0, hook.stderr
+        assert self._waivers(repo) == []
+        (entry,) = json.loads((repo / FINDINGS_REL).read_text())["findings"]
+        assert "t2" in entry.get("not_waived", ""), entry
 
     def test_a_newer_green_run_on_the_base_tree_supersedes_an_older_red_one(self, tmp_path):
         repo, base_tree = self._branch(tmp_path)

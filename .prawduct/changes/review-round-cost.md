@@ -46,7 +46,8 @@ cap fails closed on this side too), and each failure it has that the base did no
 a BLOCKING finding that stays unwaived, so a reviewer naming only the inherited subset of a mixed
 red suite waives nothing. Any id missing from the base run, no run on either tree, or a newer
 green run on the base means no waiver either, and the finding blocks as before. A finding that
-named tests and was not waived gets one stderr line saying why.
+named tests and was not waived carries one line saying why, as `not_waived` on its
+`.critic-findings.json` entry, which reaches the builder on every roster.
 
 The finding stays BLOCKING on the record. Both the PR gate and the Stop gate read the waiver as
 resolving it. The findings cache reads the waivers from the store rather than taking them from
@@ -74,7 +75,12 @@ raise with its reason, and methodology prose budgets rose in `tests/test_v5_meth
   refuses one, its message names the role and gives the remedy: re-dispatch that one reviewer.
   Follow it; do not start a new review, which is refused while the other partials are on disk.
 - **Reviewers check their own partial.** They now run `prawduct-hook validate-partial` before
-  returning, so a malformed partial is usually caught before consolidation.
+  returning, so a malformed partial is usually caught before consolidation. It reads the review
+  from the partial's own path and exits 3 when nothing can check the file (the review already
+  consolidated, or the file is keyed to another review); a reviewer stops there rather than
+  rewriting a sound partial.
+- **Telemetry readers:** `review-stats --json` is schema 12 and `stats --json` schema 4. Both gained
+  the `waived_inherited` outcome, which neither acted-on count includes.
 - **Getting an inherited failure waived without a round.** If your branch's base already fails a
   test, record the suite once in a clean checkout of the merge-base, for example
   `git worktree add --detach <dir> $(git merge-base HEAD <base>)` and then
@@ -82,5 +88,7 @@ raise with its reason, and methodology prose budgets rose in `tests/test_v5_meth
   branch's next review, in any mode, waives a BLOCKING finding for that same failure itself, as
   long as your own tree's recorded run fails nothing new that no other finding names. The finding
   still shows on the record, marked waived and citing the base run. When a waiver does not fire,
-  consolidation prints one line saying why. A repo whose base resolves to the `HEAD~1` fallback
+  the finding's `not_waived` in `.critic-findings.json` says why. Record the base run before the
+  review: a run recorded after it serves only later reviews, and a finding already raised clears
+  through `verify-resolutions`. A repo whose base resolves to the `HEAD~1` fallback
   gets no waiver; set `base_branch:` in `.prawduct/project-state.yaml`.

@@ -37,7 +37,7 @@ governed_by:
   - artifact: api-contract
     dispositions:
       - "whole-surface semantic versioning → conforms; no subcommand gains a version of its own"
-      - "exit codes are the contract → conforms; validate-partial exits 0 ok, 1 with the reason, 2 on a usage error"
+      - "exit codes are the contract → conforms; validate-partial exits 0 ok, 1 with the reason (fix the file), 3 when nothing can check it (stop; added by the merge review's R-1/R-3), 2 on a usage error"
       - "additive-first evolution → conforms; one new read-only verb, one optional finding field, and two additive fact fields"
 depends_on:
   - plugin/lib/critic_consolidate.py

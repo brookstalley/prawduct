@@ -21,6 +21,7 @@ pyc-cache learning, mirroring tests/test_governance_ledger.py.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import subprocess
 from pathlib import Path
@@ -617,7 +618,7 @@ class TestJsonSchemaStability:
         # 10 -> 11 (bounded-cumulative Chunk 04): a `by_span` grouping of
         # cumulative reviews, with why each full one ran full, joined the top
         # level. Added.
-        assert report["schema_version"] == 11
+        assert report["schema_version"] == 12
         assert report["project"] == "repo"
 
     def test_group_entry_keys_pinned(self, tmp_path):
@@ -891,7 +892,7 @@ class TestDurationProvenanceSplit:
             _event(duration=300),
         ])
         report = json.loads(_run(repo, "--json").stdout)
-        assert report["schema_version"] == 11
+        assert report["schema_version"] == 12
         assert report["overall"]["duration_total_seconds"] == 900
         assert report["overall"]["duration_median_seconds"] == 450
 
@@ -1488,8 +1489,29 @@ class TestJsonContractMatchesTheDoc:
                     "acted_on_rate", "as_of"):
             assert f"`{key}`" in section, key
 
+    def test_every_outcome_name_is_documented_in_both_reports(self):
+        """`by_outcome`'s keys and `stats`'s per-severity outcomes are one fixed
+        set, `stats.OUTCOMES`, and a nested key set is a contract too: a name the
+        code emits and the doc's lists omit is an outcome no reader can decode,
+        and adding one bumps both reports' schema versions."""
+        doc = (ROOT / "docs" / "governance-telemetry.md").read_text()
+        review_stats = doc.split("## `prawduct-hook review-stats", 1)[1].split("\n## ", 1)[0]
+        stats_section = doc.split("## `prawduct-hook stats", 1)[1].split("\n## ", 1)[0]
+        # The list items themselves, not the whole section: a "Schema N added"
+        # sentence naming the outcome must not stand in for the list.
+        by_outcome = (
+            review_stats.split("- `by_outcome`:", 1)[1].split("(", 1)[1].split(")", 1)[0]
+        )
+        stats_words = set(re.findall(
+            r"[a-z_]+", stats_section.split("Outcomes are", 1)[1].split("Anything", 1)[0]
+        ))
+        for name in _stats.OUTCOMES:
+            assert f"`{name}`" in by_outcome, f"by_outcome list omits {name}"
+            if name != "other":
+                assert name in stats_words, f"stats outcome list omits {name}"
 
-REPORT_SCHEMA = 10
+
+REPORT_SCHEMA = 12
 
 
 class TestRecordedPrReviewsStayReadable:
