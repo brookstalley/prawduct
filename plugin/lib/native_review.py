@@ -141,15 +141,23 @@ def findings_detail(text: str) -> "list[dict] | None":
 
 
 def _without_host_header(text: str) -> str:
-    """``text`` minus the host's result header — a ``Result:`` line, which the
-    wrapper is told to drop and may keep, then the ``(none)`` line the host
-    prints under it — when more follows. A text that is only the header keeps
-    its ``(none)``: there is no review body to hold any other answer."""
-    lines = text.strip().splitlines()
-    if lines and lines[0].strip() == "Result:":
+    """``text`` minus the host's result header: a ``Result:`` line, which the
+    wrapper is told to drop and may keep, and the ``(none)`` the host prints
+    under it or beside it, blank lines between them allowed. The header's answer
+    must not depend on its layout. A text that is only the header keeps one
+    ``(none)``: there is no review body to hold any other answer."""
+    lines = [line.strip() for line in text.strip().splitlines()]
+    saw_none = False
+    if lines and lines[0].startswith("Result:"):
+        saw_none = lines[0][len("Result:"):].strip() == "(none)"
         lines = lines[1:]
-    if len(lines) > 1 and lines[0].strip() == "(none)":
-        return "\n".join(lines[1:])
+    while lines and not lines[0]:
+        lines = lines[1:]
+    if not saw_none and lines and lines[0] == "(none)":
+        saw_none = True
+        lines = lines[1:]
+    if not any(lines):
+        return "(none)" if saw_none else ""
     return "\n".join(lines)
 
 
@@ -261,19 +269,26 @@ def next_action_clause(prawduct_dir: Path, review_id: "str | None") -> str:
     ``critic-begin`` wrote — so every path that renders the findings record from
     the fact says it, not only the consolidation that had the manifest in hand.
 
-    Worded to stay true as the cache ages: a count only once the text has
-    landed (it is written once), and otherwise that it may still be running —
-    never "still running", which the next session's briefing would repeat after
-    it finished. It never says the native review gates anything."""
+    Worded to stay true as the cache ages, in four states: a count once the text
+    has landed and parses (it is written once); "landed, not countable" when it
+    landed and holds no countable answer; "text unreadable" when it exists and
+    cannot be read; and otherwise that it may still be running — never "still
+    running", which the next session's briefing would repeat after it finished.
+    It never says the native review gates anything."""
     if not is_safe_id(review_id) or not sidecar_path(prawduct_dir, review_id).is_file():
         return ""
     command = f"`{SHOW_COMMAND} {review_id}`"
+    unreadable = False
     try:
         text = _read_text(text_path(prawduct_dir, review_id))
-    except OSError:
+    except FileNotFoundError:
         text = ""
+    except OSError:
+        text, unreadable = "", True
     findings = parse_findings(text) if text.strip() else None
-    if findings is not None:
+    if unreadable:
+        counted = " (text unreadable)"
+    elif findings is not None:
         counted = f" ({len(findings)} finding(s))"
     elif text.strip():
         counted = " (landed, not countable)"

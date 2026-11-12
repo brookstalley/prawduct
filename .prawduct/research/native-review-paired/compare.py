@@ -38,7 +38,7 @@ PLUGIN = Path(__file__).resolve().parents[3] / "plugin"
 if str(PLUGIN) not in sys.path:
     sys.path.insert(0, str(PLUGIN))
 
-from lib import evidence, gitstate, ledger, native_review  # noqa: E402
+from lib import evidence, gitstate, ledger, model_tier, native_review  # noqa: E402
 
 #: #1130 step 7: stop after four weeks or sixty paired reviews, whichever is later.
 STOP_WEEKS = 4
@@ -121,6 +121,7 @@ def load_pairs(repo: Path) -> list[dict]:
         path = native_review.text_path(prawduct_dir, review_id)
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
         pairs.append({
+            "text_present": bool(text.strip()),
             "repo": str(repo),
             "review_id": review_id,
             "ts": event.get("ts"),
@@ -141,21 +142,44 @@ def unrecorded(repo: Path, recorded: "set[str]") -> "list[str]":
 
 
 def count_check(pairs: list[dict]) -> "tuple[int, list[str]]":
-    """Whether this script's count of each native text matches what the ledger
-    recorded when the run landed — the two parse one text, so a mismatch is a
-    parse change or a text edited since. Runs the ledger could not count are
-    not compared."""
+    """Whether this script's reading of each native text matches what the
+    ledger recorded when the run landed — the two parse one text, so a mismatch
+    is a parse change or a text edited since. Compared whenever either side
+    could count: a run whose countability changed is exactly what a parse
+    change looks like. Compared by WHICH findings (file and line), not how
+    many. Not compared: a run neither side could count, and one whose text is
+    not in this clone."""
     agree, disagree = 0, []
     for pair in pairs:
         native = pair["native_event"].get("native") or {}
-        if not native.get("findings_parsed") or pair["native_findings"] is None:
+        ledger_list = native.get("findings") if native.get("findings_parsed") else None
+        text_list = (
+            [{"file": f["file"], "line": f["line"]} for f in pair["native_findings"]]
+            if pair["native_findings"] is not None else None
+        )
+        if not pair.get("text_present") or (ledger_list is None and text_list is None):
             continue
-        ledger_n, text_n = len(native.get("findings") or []), len(pair["native_findings"])
-        if ledger_n == text_n:
+        if ledger_list == text_list:
             agree += 1
-        else:
-            disagree.append(f"{pair['review_id']} (ledger {ledger_n}, text {text_n})")
+            continue
+        ledger_n = "not countable" if ledger_list is None else len(ledger_list)
+        text_n = "not countable" if text_list is None else len(text_list)
+        differ = ", findings differ" if ledger_n == text_n else ""
+        disagree.append(f"{pair['review_id']} (ledger {ledger_n}, text {text_n}{differ})")
     return agree, disagree
+
+
+def model_mismatches(pairs: list[dict]) -> "list[str]":
+    """Pairs whose native run and Critic review ran on different model
+    families — the comparison assumes they did not. Compared by family, since
+    the two record the model under different spellings."""
+    out = []
+    for pair in pairs:
+        critic = model_tier.canonical_model(((pair.get("critic_event") or {}).get("actor") or {}).get("model"))
+        native = model_tier.canonical_model((pair["native_event"].get("actor") or {}).get("model"))
+        if critic and native and critic != native:
+            out.append(f"{pair['review_id']} (critic {critic}, native {native})")
+    return out
 
 
 def _seconds(event: "dict | None") -> "float | None":
@@ -218,6 +242,9 @@ def main(argv: list[str]) -> int:
     agree, disagree = count_check(pairs)
     print(f"count check: {agree} of {agree + len(disagree)} countable run(s) agree with the ledger"
           + (": " + ", ".join(disagree) if disagree else ""))
+    mismatched = model_mismatches(pairs)
+    if mismatched:
+        print(f"WARNING: {len(mismatched)} model mismatch(es): " + ", ".join(mismatched))
     print("\nper Critic goal — shared / Critic only / native only:")
     for goal, row in tally_by_goal(matches).items():
         print(f"  {goal}: {row['shared']} / {row['critic_only']} / {row['native_only']}")
@@ -232,24 +259,31 @@ def main(argv: list[str]) -> int:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import fork_costs  # noqa: PLC0415
 
-        ranges = {p["native_event"]["native"].get("args", "").split(" ", 1)[-1] for p in joined}
+        levels = {
+            p["native_event"]["native"].get("args", "").split(" ", 1)[-1]: p["native_event"]["native"].get("level")
+            for p in joined
+        }
         forks = [r for d in args.transcripts for p in sorted(d.glob("agent-*.jsonl"))
-                 if (r := fork_costs.fork_row(p)) and r["target"].strip("`") in ranges]
+                 if (r := fork_costs.fork_row(p)) and r["target"].strip("`") in levels]
         tokens = {k: sum(r[k] for r in forks) for k in ("cache_create", "cache_read", "input", "output")}
         recipes: dict[str, int] = {}
         models: dict[str, int] = {}
         for r in forks:
             recipes[r["recipe"] or "unknown"] = recipes.get(r["recipe"] or "unknown", 0) + 1
-            for model in r["models"] or ["unknown"]:
-                models[model] = models.get(model, 0) + 1
+            # One count per fork, so the tally sums to the fork count.
+            model = "/".join(m for m in r["models"] if m != "?") or "unknown"
+            models[model] = models.get(model, 0) + 1
         # The level asked is not always the level run (`medium` ran `high` in
         # 2.1.322), and the review runs on its caller's model, so both come from
         # each fork's own transcript — and a fork off the assumed level is named.
         print(f"native fork tokens over {len(forks)} fork(s): {tokens}; "
               f"recipes run: {recipes}; models: {models}")
-        off = {k: v for k, v in recipes.items() if k != "high"}
+        off: dict[str, int] = {}
+        for r in forks:
+            if r["recipe"] != levels.get(r["target"].strip("`")):
+                off[r["recipe"] or "unknown"] = off.get(r["recipe"] or "unknown", 0) + 1
         if off:
-            print("WARNING: {} fork(s) ran a recipe other than high: {}".format(
+            print("WARNING: {} fork(s) ran a recipe other than their run's recorded level: {}".format(
                 sum(off.values()), ", ".join(f"{k} {v}" for k, v in sorted(off.items()))))
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
