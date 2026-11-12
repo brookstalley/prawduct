@@ -8,7 +8,8 @@ branch (scriob recurrence ×3, then the product neutralized the gate by
 unioning the full diff into ``changes_referenced``). These tests pin the
 reconciled contract:
 
-  * files in ``changes_unjudged`` are reported, never ``missing-coverage``
+  * files in ``changes_unjudged`` or ``changes_out_of_remit`` are reported,
+    never ``missing-coverage``, each bucket under its own note (#682)
   * files deleted on the branch are never ``missing-coverage``
   * a judged file with no test reference still BLOCKS (exit 1) — the gate
     keeps its teeth where the evidence actually vouches
@@ -117,7 +118,14 @@ class TestUnjudgedFilesAreNotGated:
 
         assert result.returncode == 0, result.stderr
         assert "missing-coverage" not in result.stderr
-        assert "outside the verifier's judgment" in result.stdout
+        # A record written before the out-of-remit split lists non-Python here;
+        # the unjudged note still names its own bucket.
+        assert (
+            "note: 2 changed file(s) the verifier could not judge "
+            "(changes_unjudged / deleted: symbol-less or gone) — reported, "
+            "not gated (level: referenced)." in result.stdout
+        )
+        assert "out of the verifier's remit" not in result.stdout
 
     def test_deleted_file_is_not_missing_coverage(self, gated_repo: Path):
         """A file deleted on the branch has nothing to test — never a
@@ -138,6 +146,135 @@ class TestUnjudgedFilesAreNotGated:
 
         assert "src/core.py" not in result.stderr
         assert result.returncode == 0, result.stderr
+
+
+class TestOutOfRemitFilesAreNotGated:
+    """#682: non-Python paths are reported as out of remit, under their own
+    note, and never as unjudged or missing — a reader of the gate's output must
+    not conclude evidence is missing."""
+
+    def _commit_code_and_ts(self, repo: Path) -> None:
+        (repo / "src" / "core.py").write_text("def helper():\n    return 2\n")
+        (repo / "web").mkdir()
+        (repo / "web" / "app.ts").write_text("export const a = 1;\n")
+        _git(repo, "add", ".")
+        _git(repo, "commit", "-q", "-m", "code + ts")
+
+    def test_out_of_remit_note_carries_the_records_reason(self, gated_repo: Path):
+        self._commit_code_and_ts(gated_repo)
+        _write_evidence(
+            gated_repo,
+            changes_referenced=["src/core.py"],
+            changes_out_of_remit=["web/app.ts", ".prawduct/.test-evidence.json"],
+            changes_out_of_remit_reason="not Python: for the test",
+        )
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert (
+            "note: 2 changed file(s) out of the verifier's remit "
+            "(changes_out_of_remit) — not Python: for the test; reported, "
+            "not gated (level: referenced)." in result.stdout
+        )
+        assert "could not judge" not in result.stdout
+        assert "ok: 1 judged changed file(s) covered" in result.stdout
+
+    def test_out_of_remit_note_falls_back_to_a_verifier_neutral_reason(
+        self, gated_repo: Path
+    ):
+        """Evidence from a producer that emits the bucket but no reason.
+
+        Renegotiated (Critic R-3, rev-20261112T014213Z): the fallback was the
+        Python floor's own reason ("not Python: the symbol-grep floor reads
+        only Python"), which told a language-native verifier's operator that
+        their files were "not Python". The field is verifier-generic, so the
+        gate's fallback names no verifier; the floor's reason lives only in
+        `bin/test-reference-verify`, which writes it into every record."""
+        self._commit_code_and_ts(gated_repo)
+        _write_evidence(
+            gated_repo,
+            changes_referenced=["src/core.py"],
+            changes_out_of_remit=["web/app.ts", ".prawduct/.test-evidence.json"],
+        )
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        note = [ln for ln in result.stdout.splitlines() if "changes_out_of_remit" in ln]
+        assert note == [
+            "note: 2 changed file(s) out of the verifier's remit "
+            "(changes_out_of_remit) — the verifier that wrote this record does "
+            "not read them, and the record gives no reason; reported, not gated "
+            "(level: referenced)."
+        ], result.stdout
+        assert "Python" not in note[0]
+
+    def test_the_two_buckets_are_reported_under_their_own_counts(
+        self, gated_repo: Path
+    ):
+        (gated_repo / "src" / "core.py").write_text("def helper():\n    return 2\n")
+        (gated_repo / "src" / "consts.py").write_text("LIMIT = 1\n")
+        (gated_repo / "README.md").write_text("# docs\n")
+        _git(gated_repo, "add", ".")
+        _git(gated_repo, "commit", "-q", "-m", "mixed")
+        _write_evidence(
+            gated_repo,
+            changes_referenced=["src/core.py"],
+            changes_unjudged=["src/consts.py"],
+            changes_out_of_remit=["README.md", ".prawduct/.test-evidence.json"],
+        )
+
+        result = _run_gate(gated_repo)
+
+        assert result.returncode == 0, result.stderr
+        assert "note: 2 changed file(s) out of the verifier's remit" in result.stdout
+        assert "note: 1 changed file(s) the verifier could not judge" in result.stdout
+
+    def test_an_out_of_remit_executable_file_is_not_missing_coverage(
+        self, gated_repo: Path
+    ):
+        """A `.ts` is executable (`is_executable_path`), so only the evidence's
+        declaration keeps it out of `missing` — the control below shows the same
+        file blocks when undeclared."""
+        self._commit_code_and_ts(gated_repo)
+        _write_evidence(
+            gated_repo,
+            changes_referenced=["src/core.py"],
+            changes_out_of_remit=["web/app.ts", ".prawduct/.test-evidence.json"],
+        )
+        assert _run_gate(gated_repo).returncode == 0
+
+        _write_evidence(
+            gated_repo,
+            changes_referenced=["src/core.py"],
+            changes_out_of_remit=[".prawduct/.test-evidence.json"],
+        )
+        control = _run_gate(gated_repo)
+        assert control.returncode == 1
+        assert "missing-coverage: web/app.ts" in control.stderr
+
+    def test_wrong_typed_out_of_remit_fields_are_schema_violations(
+        self, gated_repo: Path
+    ):
+        self._commit_code_and_ts(gated_repo)
+        _write_evidence(
+            gated_repo,
+            changes_referenced=["src/core.py"],
+            changes_out_of_remit="not-a-list",
+        )
+        result = _run_gate(gated_repo)
+        assert result.returncode == 1
+        assert "changes_out_of_remit" in result.stderr
+
+        _write_evidence(
+            gated_repo,
+            changes_referenced=["src/core.py"],
+            changes_out_of_remit_reason=["not", "a", "string"],
+        )
+        result = _run_gate(gated_repo)
+        assert result.returncode == 1
+        assert "changes_out_of_remit_reason" in result.stderr
 
 
 class TestJudgedGapsStillBlock:
@@ -242,7 +379,7 @@ class TestNonExecutableFilesAreNotGated:
     a `.md` had no honest way through.
 
     **Reachable, despite looking dormant.** A freshly-run stock
-    `bin/test-reference-verify` routes non-Python into `changes_unjudged`,
+    `bin/test-reference-verify` routes non-Python into `changes_out_of_remit`,
     which masks the symptom. The gate recomputes `changed` at gate time,
     independently of when the evidence was written, so any misalignment reopens
     it: evidence written before a doc edit, product-authored evidence, legacy
@@ -331,23 +468,30 @@ class TestNonExecutableFilesAreNotGated:
         assert result.returncode == 1
         assert "missing-coverage: config/app.yaml" in result.stderr
 
-    def test_the_unjudged_declaration_still_takes_precedence(
-        self, gated_repo: Path
+    @pytest.mark.parametrize(
+        "bucket,note",
+        [
+            ("changes_unjudged", "the verifier could not judge"),
+            ("changes_out_of_remit", "out of the verifier's remit"),
+        ],
+    )
+    def test_a_declared_bucket_still_takes_precedence(
+        self, gated_repo: Path, bucket: str, note: str
     ):
         """Bucket order is asserted rather than assumed: a file the verifier
-        disclaimed is out of jurisdiction whatever its suffix, so it is
-        reported by the `skipped` note and counted once, not twice."""
+        disclaimed (either bucket) is out of jurisdiction whatever its suffix,
+        so it is reported by its own note and counted once, not twice."""
         (gated_repo / "NOTES.md").write_text("notes\n")
         _git(gated_repo, "add", ".")
         _git(gated_repo, "commit", "-q", "-m", "doc only")
         _write_evidence(
-            gated_repo, changes_referenced=[], changes_unjudged=["NOTES.md"]
+            gated_repo, changes_referenced=[], **{bucket: ["NOTES.md"]}
         )
 
         result = _run_gate(gated_repo)
 
         assert result.returncode == 0, result.stderr
-        assert "outside the verifier's judgment" in result.stdout
+        assert f"note: 1 changed file(s) {note}" in result.stdout
         nonexec_lines = [
             line for line in result.stdout.splitlines()
             if "no test can execute" in line
