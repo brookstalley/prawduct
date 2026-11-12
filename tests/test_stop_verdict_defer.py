@@ -354,6 +354,45 @@ class TestTheAsksBlock:
         assert standing_block.clear_verdict(text) in (None, "SAFE TO CLEAR")
         assert standing_block.disposition(text) in (None, "COMPLETE")
 
+    @pytest.mark.parametrize(
+        ("quote", "control"),
+        [
+            (lambda ln: f"> {ln}", lambda ln: ln),
+            (lambda ln: f"    {ln}", lambda ln: ln),
+        ],
+        ids=["blockquote", "indented-code"],
+    )
+    def test_a_quoted_layout_followed_by_prose_states_no_verdict(self, quote, control):
+        # No close after the header to give the quotation away: the header's
+        # own raw line has to say it is quoted, or the quoted close before it
+        # is read as the turn's.
+        body = [_DNC_CLOSE, "**Needs you:**", f"1. {_ASK}"]
+        quoted = "The new shape:\n\n" + "\n\n".join(quote(b) for b in body) + "\n\nDoes that read better?"
+        assert standing_block.clear_verdict(quoted) is None
+        assert standing_block.disposition(quoted) is None
+        # Control: the same lines unquoted ARE an asks turn, closed DO NOT CLEAR
+        # — the fixture reaches the path the quotation must not.
+        real = "Done.\n\n" + "\n\n".join(control(b) for b in body)
+        assert standing_block.clear_verdict(real) == "DO NOT CLEAR"
+
+    @pytest.mark.parametrize(
+        ("outer", "inner"),
+        [("````", "```"), ("~~~~", "~~~"), ("```", "~~~")],
+        ids=["longer-backticks", "longer-tildes", "other-character"],
+    )
+    def test_a_fence_closes_only_on_its_own_kind_and_length(self, outer, inner):
+        # An inner fence line inside the outer one is content, not a close: a
+        # reader that toggled on every fence line would leave the quoted close
+        # and header below it unquoted, and defer the gates on prose.
+        text = (f"The new shape:\n\n{outer}\n{inner}\n{_DNC_CLOSE}\n\n**Needs you:**\n1. {_ASK}\n"
+                f"{inner}\n{outer}\n\nDoes that read better?")
+        assert standing_block.clear_verdict(text) is None
+        assert standing_block.disposition(text) is None
+
+    def test_a_fence_with_an_info_string_closes_on_a_bare_fence(self):
+        text = f"Example:\n\n```text\nx\n```\n\n{DNC_ASKS}"
+        assert standing_block.clear_verdict(text) == "DO NOT CLEAR"
+
     def test_a_real_asks_block_after_a_fenced_quotation_is_still_read(self):
         text = f"Example:\n\n```\n{_DNC_CLOSE}\n\n**Needs you:**\n1. x\n```\n\n{DNC_ASKS}"
         assert standing_block.clear_verdict(text) == "DO NOT CLEAR"
@@ -869,6 +908,18 @@ class TestStopDefersOnTheVerdict:
         assert result.returncode == 2, (result.stdout, result.stderr)
         assert "GATES DEFERRED" not in result.stderr
 
+    def test_a_blockquoted_layout_then_prose_defers_nothing(self, tmp_path):
+        """The case a close-after-the-header check cannot see: the quoted layout
+        is followed by prose, not by the turn's own close."""
+        _plan_repo(tmp_path, reflected=False)
+        text = (f"The new shape:\n\n> {_DNC_CLOSE}\n\n> **Needs you:**\n> 1. {_ASK}\n\n"
+                "Does that read better?")
+        result = run_plugin_hook(
+            "stop", tmp_path, git_status=_CODE_DIFF, stdin=_payload(text)
+        )
+        assert result.returncode == 2, (result.stdout, result.stderr)
+        assert "GATES DEFERRED" not in result.stderr
+
     def test_the_same_asks_without_the_header_defer_nothing(self, tmp_path):
         """Control for the test above: only the header opens the asks block."""
         _plan_repo(tmp_path, reflected=False)
@@ -1219,8 +1270,8 @@ def assert_block_says_how_to_answer(stderr: str) -> None:
         "(to keep a deferral, or because what you just started"
     ) in line, line
     assert "an item faults it" not in line, line
-    # The one exception to not repeating (inferred from the owner's 2026-11-11
-    # ruling that asks come last, `.prawduct/owner-rulings.md`): a turn that ended with its asks ends with them again, so the
+    # The one exception to not repeating (confirmed by the owner 2026-11-11,
+    # `.prawduct/owner-rulings.md`): a turn that ended with its asks ends with them again, so the
     # asks stay the last thing the user sees after the block.
     assert_the_asks_are_restated(line)
 

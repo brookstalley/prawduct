@@ -34,11 +34,11 @@ verdict counts only where the close puts it:
 * when the turn has an ASKS BLOCK — a line that LEADS, after markdown
   decoration only, with :data:`ASKS_HEADER`, and everything after it — the
   one-line close is instead the last non-blank line BEFORE that header, and
-  nothing inside the block is read. A header inside a code fence is a
-  quotation, not a header. Two header lines, a header with no line before it,
-  or a one-line close anywhere after the header (the layout was quoted some
-  other way, and the turn then closed for itself) yield no verdict, and the
-  three-paragraph form is not read;
+  no line inside the block is read as the close. A QUOTED line — in a code
+  fence, a blockquote or an indented code block — is never the header or that
+  close (:func:`_is_quoted`). Two header lines, a header with no line before
+  it, a quoted line before it, or a one-line close anywhere after it yield no
+  verdict, and the three-paragraph form is not read;
 * otherwise, the three-paragraph close: the CLOSING BLOCK is the text after
   the last ``---`` rule line (with no rule, the final paragraph alone), and
   the verdict is its FINAL paragraph, only if that paragraph BEGINS with a
@@ -181,43 +181,53 @@ def _opens_asks(line: str) -> bool:
     return line[_LEADING_DECORATION.match(line).end():].startswith(_ASKS_HEADER_TEXT)
 
 
-_FENCE = re.compile(r"^(```|~~~)")
+# A fence line: three or more backticks or tildes. Group 0 is the whole run, so
+# its length is the fence's length; group 1's first character is its kind.
+_FENCE = re.compile(r"^(`{3,}|~{3,})")
+
+
+def _is_quoted(raw: str, in_fence: bool) -> bool:
+    """Whether a RAW line is QUOTED — inside a fenced code block (its fence
+    lines included), a blockquote (it opens with ``>``), or an indented code
+    block (four spaces or a tab). A quoted line is never the asks header or the
+    close before it: a turn that quotes the close-then-asks layout, to explain
+    it, must not have the quotation read as its own close, because that would
+    defer the session-end gates on a turn that never said it was running.
+
+    This is decided from the raw line because the shape test strips ``>`` and
+    leading space as decoration, so after stripping a quotation and the real
+    thing are the same string."""
+    return in_fence or raw.lstrip().startswith(">") or raw.startswith(("    ", "\t"))
 
 
 def _lines(text: str) -> "tuple[list[str], list[bool]]":
-    """The turn's non-blank lines, stripped, and beside each whether it sits in
-    a fenced code block (the fence lines included). A turn that QUOTES the
-    close-then-asks layout in a fence must not have the quotation read as its
-    close: that would defer the session-end gates on a turn whose real close
-    says nothing is running."""
+    """The turn's non-blank lines, stripped, and beside each whether it is
+    quoted (:func:`_is_quoted`)."""
     lines: list[str] = []
-    fenced: list[bool] = []
-    inside = False
+    quoted: list[bool] = []
+    # The open fence's character and length, as markdown closes it: only on a
+    # line of the same character, at least as long, carrying nothing else. A
+    # fence that merely toggled on every fence line would let a four-backtick
+    # fence quoting a three-backtick one end at the inner fence, and the
+    # quotation after it read as the turn's own close.
+    opened: "tuple[str, int] | None" = None
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             continue
-        is_fence = bool(_FENCE.match(line))
+        fence = _FENCE.match(line)
         lines.append(line)
-        fenced.append(inside or is_fence)
-        if is_fence:
-            inside = not inside
-    return lines, fenced
-
-
-def _asks_start(lines: list[str], fenced: "list[bool] | None" = None) -> "int | None":
-    """The index in ``lines`` (non-blank, stripped) of the line opening the
-    asks block, or ``None`` when no line does. ``-1`` when the block cannot be
-    placed — more than one header line, which leaves which block is the asks
-    ambiguous. A header inside a fenced code block is a quotation, not a
-    header."""
-    fenced = fenced if fenced is not None else [False] * len(lines)
-    starts = [
-        idx for idx, line in enumerate(lines) if not fenced[idx] and _opens_asks(line)
-    ]
-    if not starts:
-        return None
-    return starts[0] if len(starts) == 1 else -1
+        if opened is None:
+            quoted.append(_is_quoted(raw, fence is not None))
+            if fence is not None:
+                opened = (fence.group(1)[0], len(fence.group(0)))
+            continue
+        quoted.append(True)
+        char, length = opened
+        if fence is not None and fence.group(1)[0] == char and len(fence.group(0)) >= length \
+                and not line[len(fence.group(0)):].strip():
+            opened = None
+    return lines, quoted
 
 
 def _close_line(line: str) -> "tuple[str, str | None, str] | None":
@@ -236,52 +246,50 @@ def _close_line(line: str) -> "tuple[str, str | None, str] | None":
     return label, (present[0] if len(present) == 1 else None), line
 
 
-def _has_asks(text: str) -> bool:
-    """Whether the turn carries an asks block, so its close can only be the
-    one-line close just before it (the three-paragraph form is not read)."""
-    if not isinstance(text, str):
-        return False
-    return _asks_start(*_lines(text)) is not None
+#: What :func:`_read` found: a one-line close; an asks block (so nothing else is
+#: read, and with no readable close the turn states no verdict); or neither, so
+#: the three-paragraph form is the reader's to try.
+_ONE_LINE, _ASKS, _FALLBACK = "one-line", "asks", "fallback"
 
 
-def _one_line_close(text: str) -> "tuple[str, str | None, str] | None":
-    """The turn's one-line close as :func:`_close_line` reads it, else
+def _read(text: str) -> "tuple[str, tuple[str, str | None, str] | None]":
+    """The one reading of a turn's close that every public reader takes —
+    ``(kind, close)``, where ``close`` is :func:`_close_line`'s triple or
     ``None``.
 
-    Without an asks block, the close is the turn's last non-blank line. With
-    one, it is the last non-blank line before the block's header, and nothing
-    in the block is read: an asks block opened at the turn's first line, or
-    two header lines, yields no close."""
+    Without an unquoted asks header, the close is the turn's last non-blank
+    line (``_ONE_LINE``), else the three-paragraph form is tried
+    (``_FALLBACK``). With one, the kind is ``_ASKS`` and the close is the
+    unquoted line just before the header, and nothing in the block is read. It
+    is ``None`` — no verdict — when there are two headers, the header opens the
+    turn, the line before it is quoted, or a one-line close stands anywhere
+    after the header (the layout was quoted in some way no line shape reveals,
+    and the turn then closed for itself)."""
     if not isinstance(text, str):
-        return None
-    lines, fenced = _lines(text)
+        return _FALLBACK, None
+    lines, quoted = _lines(text)
     if not lines:
-        return None
-    start = _asks_start(lines, fenced)
-    if start is None:
-        return _close_line(lines[-1])
-    # The close must stand outside any fence: a fenced line before the header
-    # is a quotation that happens to precede it.
-    if start <= 0 or fenced[start - 1]:
-        return None
-    # A close AFTER the header means the header did not end the turn: it was
-    # quoted (a blockquote, an indented block, a fence inside a fence — every
-    # way markdown can quote the layout), and the turn then closed for itself.
-    # Which line is the real close is not decidable from shape alone, so the
-    # turn states none, and the gates block as for any session end.
-    if any(not fenced[idx] and _close_line(lines[idx]) for idx in range(start + 1, len(lines))):
-        return None
-    return _close_line(lines[start - 1])
+        return _FALLBACK, None
+    starts = [idx for idx, line in enumerate(lines) if not quoted[idx] and _opens_asks(line)]
+    if not starts:
+        one = _close_line(lines[-1])
+        return (_ONE_LINE, one) if one is not None else (_FALLBACK, None)
+    start = starts[0]
+    if len(starts) > 1 or start == 0 or quoted[start - 1]:
+        return _ASKS, None
+    if any(not quoted[idx] and _close_line(lines[idx]) for idx in range(start + 1, len(lines))):
+        return _ASKS, None
+    return _ASKS, _close_line(lines[start - 1])
 
 
 def verdict_line(text: str) -> str:
     """The text that carries the turn's clear verdict and its reason: the
     one-line close (never the asks block after it), or the three-paragraph
     close's final paragraph. Empty when there is neither."""
-    one = _one_line_close(text)
+    kind, one = _read(text)
     if one is not None:
         return one[2]
-    if _has_asks(text):
+    if kind == _ASKS:
         return ""
     paragraphs = _paragraphs(closing_block(text))
     return paragraphs[-1] if paragraphs else ""
@@ -296,10 +304,10 @@ def disposition(text: str) -> str | None:
     a label mentioned inside another line's copy is prose, and two paragraphs
     leading with different dispositions state none.
     """
-    one = _one_line_close(text)
+    kind, one = _read(text)
     if one is not None:
         return one[0]
-    if _has_asks(text):
+    if kind == _ASKS:
         return None
     block = closing_block(text)
     if not block:
@@ -478,10 +486,10 @@ def clear_verdict(text: str) -> str | None:
     labels. Callers that relax a gate on a verdict must treat
     ``None`` as "no permission".
     """
-    one = _one_line_close(text)
+    kind, one = _read(text)
     if one is not None:
         return one[1]
-    if _has_asks(text):
+    if kind == _ASKS:
         return None
     block = closing_block(text)
     if not block:

@@ -1709,7 +1709,7 @@ LAST_MEASURED_TOKENS = {
     # after it, under the fixed `**Needs you:**` header, so they are the last thing the reader
     # sees; the close's reason may no longer point at them by position, and the Stop-hook
     # paragraph says the verdict is then read from the line before the header. A READING.
-    # +45 the same day (asks-last follow-up, inferred from the owner's ruling and put to them): "Answering a block" says a turn that
+    # +45 the same day (asks-last follow-up, confirmed by the owner 2026-11-11): "Answering a block" says a turn that
     # ended with asks ends its answer with them again, unchanged, after any re-written close; the
     # Stop-hook paragraph names the `close-pointer` record of a reason pointing "above". A READING.
     # +4 on 2026-11-11 (asks-last review round): the header is read only outside a code fence, and the

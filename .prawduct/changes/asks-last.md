@@ -23,10 +23,12 @@ and its two clear checks (`clear-verdict`, `clear-reason`) need no change of the
 with an asks block is read from the line just before the header. The reading stays narrow,
 because a `RUNNING` · `DO NOT CLEAR` close defers the reflection and Critic gates:
 
-- Only a line that leads with `Needs you:` opens the block. Markdown emphasis, code ticks or a
-  blockquote marker may come first, the same decoration a label may carry.
+- Only a line that leads with `Needs you:` opens the block; markdown emphasis or code ticks may
+  come first. A quoted line (in a code fence, a blockquote or an indented code block) is never
+  the header or the close, so a turn that quotes the layout to explain it is not read as one.
 - The close must be the last non-blank line before the header.
-- Nothing inside the block is read, not even a close-shaped last line.
+- No line inside the block is read as the close; a close-shaped line there means the turn
+  states no verdict.
 - Two header lines, or a header with nothing before it, give no verdict.
 - When a header is present, the older three-paragraph form is not read.
 
