@@ -1255,9 +1255,13 @@ class TestDispositionJoin:
         }
         assert block["by_outcome"] == expected
         # The fixture reaches every branch it claims to: one of each, the note
-        # outside the block, and R-5 left open.
+        # outside the block, and R-5 left open. `waived_inherited` is zero: R-4's
+        # waiver is a verify pass's, and consolidation's own inherited-base
+        # waiver is counted apart (pinned in `test_critic_consolidate`,
+        # `test_review_stats_counts_an_inherited_waiver_apart_from_a_judged_one`).
         assert expected == {"fixed": 1, "fixed_unreviewed": 0, "filed": 1, "accepted": 1,
-                            "waived": 1, "undispositioned": 1, "other": 0}
+                            "waived": 1, "waived_inherited": 0, "undispositioned": 1,
+                            "other": 0}
         answered = sum(by_version["findings"][s]["answered"] for s in ("blocking", "warning"))
         assert block["answered"] == answered == 4
         assert block["acted_on_rate"] == 0.5  # fixed + filed over four answered

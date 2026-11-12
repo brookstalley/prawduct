@@ -93,8 +93,9 @@ SUPPORTED_SCHEMAS = frozenset({1})
 # another branch. Like ``guard-refusal`` it is observational to the COVERAGE
 # data plane — ``coverage_algebra`` never reads it. Its readers are the
 # test-evidence freshness fallback (``gates._store_run_vouching``),
-# :func:`inherited_failures` (whose answer lets consolidate waive a failure the
-# base tree already had), and ``evidence list``, which only displays it.
+# :func:`newest_suite_run` (through which consolidate waives a failure the base
+# tree already had, and checks the reviewed tree's own run accounts for every
+# failure), and ``evidence list``, which only displays it.
 #
 # ``session-start`` records one session boundary (startup or /clear, never a
 # resume) — the denominator that turns a count of Stop-hook blocks or guard
@@ -695,7 +696,7 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     (the commit checked out, when there is one), ``degraded`` when the run
     reported itself so, and ``failed_tests`` — the evidence record's failing
     ids, under the same cap, omitted when it has none — which
-    :func:`inherited_failures` reads. A restamp records no fact: it measures nothing, and the
+    :func:`run_failed_tests` reads, with ``failed`` telling whether the cap cut it. A restamp records no fact: it measures nothing, and the
     run whose counts it reuses already has its own. A later run on the same
     tree is a NEW fact, and the newest one for a tree decides it, so a red
     re-run supersedes an earlier green without editing the store.
@@ -712,65 +713,83 @@ def append_test_run(project_dir: Path, body: dict) -> dict:
     return append_fact(project_dir, "test-run", fact_id, body)
 
 
-def inherited_failures(
-    project_dir: Path, test_ids: "list[str] | set[str]"
-) -> "tuple[str | None, set[str]]":
-    """Which of ``test_ids`` the base tree already failed, and the run that says so.
+def newest_suite_run(store: dict, tree: str) -> "tuple[dict | None, str]":
+    """The newest whole-suite ``test-run`` fact recorded on ``tree``, as
+    ``(fact, "")`` — or ``(None, reason)`` naming why there is none to trust.
 
-    Returns ``(run_fact_id, subset)``: the id of the newest ``test-run`` fact
-    recorded on the merge-base's tree, and the ids of ``test_ids`` in its
-    ``failed_tests``. The base is :func:`coverage._resolve_base_branch`'s, the
-    one every gate resolves, and the run must have met ``<merge-base>^{tree}``
-    — a clean checkout of the base. Matching on ``head`` would accept a run on
-    a dirty checkout of the base commit, which proves nothing about the base.
+    The NEWEST run on a tree decides, so a later green run supersedes an older
+    red one. A scratch worktree's narrowed run is skipped, as the freshness
+    reader (``gates._store_run_vouching``) skips it: a few files' run is not
+    the suite, and it must not overrule a run that was.
 
-    The NEWEST run on that tree decides, so a later green run supersedes an
-    older red one and its empty set waives nothing. A scratch worktree's
-    narrowed run is skipped, as the freshness reader skips it: a few files'
-    run is not the suite, and it must not overrule a run that was.
-
-    Fails closed — ``(None, set())`` — when no base resolves, git cannot name
-    the merge-base or its tree, the store is unreadable, a newer plugin wrote
-    a ``test-run`` fact this reader cannot see, or no run met that tree. An id
-    the run's 100-id cap dropped is not in its set, so it is never matched.
-    Its one caller is ``critic_consolidate.consolidate``, which waives a
-    BLOCKING test-failure finding only when every id it names is returned.
-    """
-    from . import coverage  # noqa: PLC0415 — lazy keeps this module's import DAG light
-
-    base, _ = coverage._resolve_base_branch(project_dir)
-    if not base:
-        return None, set()
-    rc, merge_base, _ = run_git(project_dir, "merge-base", "HEAD", base)
-    if rc != 0 or not merge_base.strip():
-        return None, set()
-    rc, base_tree, _ = run_git(
-        project_dir, "rev-parse", "--verify", "-q", merge_base.strip() + "^{tree}"
-    )
-    if rc != 0 or not base_tree.strip():
-        return None, set()
-    base_tree = base_tree.strip()
-    read = read_facts(project_dir)
-    if read.get("status") != "ok":
-        return None, set()
-    if any(entry.get("kind") == "test-run" for entry in read.get("schema_ahead") or []):
-        return None, set()
+    ``store`` is :func:`read_facts`' answer. Fails closed when that read failed,
+    and when a newer plugin wrote a ``test-run`` fact this reader cannot see:
+    that fact may be the newest run on ``tree``, and a reader that skipped it
+    would answer from an older one."""
+    if store.get("status") == "error":
+        return None, f"the evidence store is unreadable ({store.get('reason')})"
+    if any(entry.get("kind") == "test-run" for entry in store.get("schema_ahead") or []):
+        return None, (
+            "a newer plugin recorded a test-run this reader cannot see — update "
+            "the plugin (/reload-plugins or restart Claude Code)"
+        )
     newest: "dict | None" = None
-    for fact in facts_of_kind(read, "test-run"):
+    for fact in facts_of_kind(store, "test-run"):
         body = fact.get("body")
         if not isinstance(body, dict) or body.get("narrowed") is True:
             continue
-        if body.get("tree") == base_tree:
+        if body.get("tree") == tree and isinstance(fact.get("id"), str):
             newest = fact  # store order is append order: the last one is newest
-    if newest is None or not isinstance(newest.get("id"), str):
-        return None, set()
-    failed = newest["body"].get("failed_tests")
-    base_set = (
-        {t for t in failed if isinstance(t, str) and t}
-        if isinstance(failed, list)
+    if newest is None:
+        return None, f"no whole-suite test run is recorded on tree {tree[:12]}"
+    return newest, ""
+
+
+def run_failed_tests(fact: dict) -> "tuple[set[str], bool]":
+    """A ``test-run`` fact's failing ids, and whether they are ALL of its failures.
+
+    The ids are capped at 100 when recorded, so a run whose ``failed`` count
+    exceeds the ids it carries is incomplete: the dropped ids are unknown, and
+    a reader proving something of EVERY failure must not take the visible ones
+    for the set. A run with no usable ``failed`` count is incomplete too."""
+    body = fact.get("body") or {}
+    listed = body.get("failed_tests")
+    ids = (
+        {t for t in listed if isinstance(t, str) and t}
+        if isinstance(listed, list)
         else set()
     )
-    return newest["id"], {t for t in test_ids if t in base_set}
+    failed = body.get("failed")
+    complete = (
+        isinstance(failed, int) and not isinstance(failed, bool) and failed <= len(ids)
+    )
+    return ids, complete
+
+
+def inherited_failures(
+    store: dict, base_tree: str, test_ids: "list[str] | set[str]"
+) -> "tuple[str | None, set[str], str]":
+    """Which of ``test_ids`` the base tree already failed, and the run that says so.
+
+    Returns ``(run_fact_id, subset, "")``: the id of :func:`newest_suite_run`
+    on ``base_tree`` and the ids of ``test_ids`` in its ``failed_tests``. The
+    run must have met that tree — a clean checkout of the base. Matching on
+    ``head`` would accept a run on a dirty checkout of the base commit, which
+    proves nothing about the base. A later green run supersedes an older red
+    one, and its empty set waives nothing; an id the run's 100-id cap dropped
+    is not in its set, so it is never matched.
+
+    Fails closed — ``(None, set(), reason)`` — whenever :func:`newest_suite_run`
+    finds no run to trust. WHICH tree is the base is not this reader's question:
+    its one caller, ``critic_consolidate._waive_inherited_failures``, resolves
+    it with ``coverage.resolve_merge_base_tree`` and refuses a "base" that is not
+    before the reviewed work.
+    """
+    run, reason = newest_suite_run(store, base_tree)
+    if run is None:
+        return None, set(), reason
+    base_set, _complete = run_failed_tests(run)
+    return run["id"], {t for t in test_ids if t in base_set}, ""
 
 
 #: Observation keys a clear check records, named once so its writer (the Stop

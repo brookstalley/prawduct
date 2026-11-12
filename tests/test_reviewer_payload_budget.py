@@ -267,7 +267,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # telling the reviewer to list a test-failure finding's failing ids in `failed_tests`. Priced
     # against the SUM: those ids are what lets consolidate waive an inherited failure itself, against a
     # verify-resolutions round per branch whose base is already red.
-    "single-pass-inner": 5709,
+    # -15 on 2026-11-11 (review-round-cost Critic round): the fork's refusal sentence in SKILL.md names the remedy the fork actually
+    # meets (rewrite its own partial, re-run consolidate) in place of the coordinator's re-dispatch
+    # remedy (R-8). A READING; ceiling lowered with it.
+    "single-pass-inner": 5694,
     # RAISED +43 (reviewer-prompt-file-list, 2026-09-22), DECLARED: all of it the
     # `review-protocol.md` template change that sends coordinator reviewers to the
     # manifest for their file sets; see the dispatched-reviewer entry for the price.
@@ -370,7 +373,12 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +57 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same SKILL.md edit as `single-pass-inner`. Priced against
     # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
     # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
-    "single-pass-full": 9969,
+    # -2 on 2026-11-11 (review-round-cost Critic round): SKILL.md -15 (the fork's own refusal remedy, R-8) against review-protocol.md
+    # +13, DECLARED: Goal 1 tells the boundary reviewer to list a test-failure finding's ids in
+    # `failed_tests` (R-7/R-9), the one input the inherited-baseline waiver reads. Without it the
+    # waiver could not fire at `final`/`cumulative`, and the builder paid the verify-resolutions
+    # round #900 removes at the boundary, where it costs most. Net a READING; ceiling lowered.
+    "single-pass-full": 9967,
     # +2 in the same chunk: adapting the ported prose off the retired
     # `learnings.md` vocabulary onto `.claude/rules/learnings/`, which the
     # single-resolver guard requires and which a near-verbatim port carries
@@ -482,7 +490,13 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: `critic-reviewer.md`'s `tools:` grants `validate-partial` and its write step says to run it. Priced against
     # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
     # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
-    "dispatched-reviewer": 9432,
+    # +34 on 2026-11-11 (review-round-cost Critic round), DECLARED: review-protocol.md's Goal 1 `failed_tests` clause (+13, see
+    # single-pass-full) and the field in `critic-reviewer.md`'s partial schema (+21), which says
+    # "match it exactly" and so read the field's absence as a ban (R-7/R-9). Priced against the
+    # SUM: ~34 tokens per dispatched reviewer — x3 on a roster — against a verify-resolutions
+    # round (minutes) per branch whose base is already red. Nothing another file owns was left to
+    # cut in the schema block; the Goal 1 clause is the same sentence goals-1-3.md carries.
+    "dispatched-reviewer": 9466,
     # New on 2026-09-28 (opus-55-w3b): the fork on a coordinator roster, priced once C-20 gave it a file
     # of its own (coordinator.md). It reads less than single-pass-full did before the split.
     # -9 on 2026-10-09 (requirements-alignment w1): Goal 2 checks the plan's Goals in a shorter line.
@@ -554,7 +568,10 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # +93 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the SKILL.md edit (+57) and one sentence in `coordinator.md` naming the one-reviewer re-dispatch remedy (+36). Priced against
     # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
     # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
-    "coordinator-fork": 10668,
+    # -38 on 2026-11-11 (review-round-cost Critic round): coordinator.md -36 (its refused-partial remedy left: the coordinator stops
+    # before consolidation and never meets a refusal, R-8), SKILL.md -15, review-protocol.md +13
+    # (declared on single-pass-full). A READING; ceiling lowered with it.
+    "coordinator-fork": 10630,
     # Established 2026-11-11 (reviewer-model-cap). On a session above the
     # reviewer ceiling, a `chunk` or `verify-resolutions` review is handed from
     # the fork to one dispatched reviewer on the capped model, so the cheap
@@ -569,7 +586,8 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # telling the reviewer to list a test-failure finding's failing ids in `failed_tests`. Priced
     # against the SUM: those ids are what lets consolidate waive an inherited failure itself, against a
     # verify-resolutions round per branch whose base is already red.
-    "coordinator-fork-inner": 6408,
+    # -51 on 2026-11-11 (review-round-cost Critic round): coordinator.md -36 and SKILL.md -15 (R-8). A READING; ceiling lowered.
+    "coordinator-fork-inner": 6357,
     # +50 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the same agent-definition edit as `dispatched-reviewer`. Priced against
     # the SUM: a reviewer that validates its own partial before returning costs one tool call, against
     # an unreadable partial that otherwise discards every reviewer's valid work and re-runs the round.
@@ -577,16 +595,19 @@ LAST_MEASURED_PAYLOAD_TOKENS = {
     # telling the reviewer to list a test-failure finding's failing ids in `failed_tests`. Priced
     # against the SUM: those ids are what lets consolidate waive an inherited failure itself, against a
     # verify-resolutions round per branch whose base is already red.
-    "dispatched-reviewer-inner": 5172,
+    # +21 on 2026-11-11 (review-round-cost Critic round), DECLARED: `failed_tests` in `critic-reviewer.md`'s partial schema (R-7) —
+    # see dispatched-reviewer. goals-1-3.md already instructs the field; the schema the agent
+    # is told to match exactly did not admit it.
+    "dispatched-reviewer-inner": 5193,
 }
 
 PAYLOAD_CEILINGS = {
-    "single-pass-inner": 5710,
-    "single-pass-full": 9970,
-    "dispatched-reviewer": 9433,
-    "coordinator-fork": 10669,
-    "coordinator-fork-inner": 6409,
-    "dispatched-reviewer-inner": 5173,
+    "single-pass-inner": 5695,
+    "single-pass-full": 9968,
+    "dispatched-reviewer": 9467,
+    "coordinator-fork": 10631,
+    "coordinator-fork-inner": 6358,
+    "dispatched-reviewer-inner": 5194,
 }
 
 

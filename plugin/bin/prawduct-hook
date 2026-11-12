@@ -3753,9 +3753,9 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         "CRITIC REVIEW (consolidation failed): every reviewer reported, but\n"
                         "  the partials could not be consolidated — the specific cause is on\n"
                         "  stderr above (e.g. the working tree changed since dispatch, a\n"
-                        "  malformed partial, or a ledger failure). Follow its remedy, or\n"
-                        "  re-run the review:\n"
-                        "    /prawduct:critic\n"
+                        "  malformed partial, or a ledger failure). Follow the remedy it\n"
+                        "  names: a refused partial costs that one reviewer, and a fresh\n"
+                        "  /prawduct:critic is refused while this complete roster is on disk.\n"
                     ))
             elif state == "incomplete":
                 abandoned_critic = True
@@ -6120,9 +6120,10 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             run_fact["degraded"] = degraded_reason
         if record.get("failed_tests"):
             # The record's own value and cap, omitted the same way when no id
-            # was visible. Its reader is `evidence.inherited_failures`, which
-            # lets consolidate waive a failure this run proves the base tree
-            # already had.
+            # was visible. Its reader is `evidence.run_failed_tests`, through
+            # which consolidate waives a failure this run proves the base tree
+            # already had — and, on the reviewed tree, checks every failure is
+            # accounted for.
             run_fact["failed_tests"] = record["failed_tests"]
         appended = _evidence_mod.append_test_run(project_dir, run_fact)
         if appended.get("status") != "appended":

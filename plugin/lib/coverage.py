@@ -39,7 +39,11 @@ from .change_log import CHANGE_LOG_REL_PATH, parse_change_log
 from .core import read_str_yaml_key
 
 _BASE_BRANCH_KEY = "base_branch"
-_DEFAULT_BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
+#: The last-resort candidate: a COMMIT relative to HEAD, not a branch. It moves
+#: with every commit, so a merge-base taken against it is not "the tree before
+#: this work" — :func:`resolve_merge_base_tree` reports it as ``moving``.
+MOVING_FALLBACK_BASE = "HEAD~1"
+_DEFAULT_BASE_CANDIDATES = ("origin/main", "main", MOVING_FALLBACK_BASE)
 
 #: Branch names the historical candidate list already answers correctly — and
 #: the one roster of "the integration line" other modules read (``plan_mint``,
@@ -1006,11 +1010,14 @@ def resolve_merge_base_tree(project_dir: Path) -> dict:
     ``critic_consolidate.begin_review`` each carried a divergent copy — the
     same drift class the judgeability-predicate consolidation killed.
 
-    Returns ``{"status": "ok", "base_branch", "merge_base", "tree"}`` or
-    ``{"status": "error", "step": "resolve-base" | "merge-base" |
-    "rev-parse", "reason"}``. ``reason`` carries the full detail; callers
+    Returns ``{"status": "ok", "base_branch", "merge_base", "tree",
+    "moving"}`` or ``{"status": "error", "step": "resolve-base" | "merge-base"
+    | "rev-parse", "reason"}``. ``reason`` carries the full detail; callers
     map ``step`` onto their own error posture (loud stderr with a per-step
-    remedy, silent degradation, or an error dict).
+    remedy, silent degradation, or an error dict). ``moving`` is True when the
+    base fell through to :data:`MOVING_FALLBACK_BASE`: the merge-base is then
+    HEAD's parent, which a caller asking "what did the tree look like before
+    this work" must not take as the answer (the inherited-baseline waiver).
     """
     from . import evidence  # noqa: PLC0415 -- lazy: mirrors the gates/consolidate import posture; avoids import-cycle risk at module load
 
@@ -1040,6 +1047,7 @@ def resolve_merge_base_tree(project_dir: Path) -> dict:
         "base_branch": base_branch,
         "merge_base": merge_base,
         "tree": tree,
+        "moving": base_branch == MOVING_FALLBACK_BASE,
     }
 
 

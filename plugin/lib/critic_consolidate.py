@@ -77,7 +77,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import coverage_algebra, critic_marker, evidence, evidence_notes, gates, gitstate, ledger, model_tier
+from . import coverage_algebra, critic_marker, dispositions, evidence, evidence_notes, gates, gitstate, ledger, model_tier
 from .core import GITIGNORE_ENTRIES, atomic_write_text
 
 PARTIALS_DIRNAME = ".critic-partials"
@@ -891,7 +891,10 @@ def next_action_line(
     ``waived`` names this review's BLOCKING findings consolidate waived as
     inherited from the base tree. They still count in ``blocking`` on the
     fact, so they are taken out here and named first: told to fix them, the
-    builder would buy the very round the waiver exists to save."""
+    builder would buy the very round the waiver exists to save. Its one caller
+    is :func:`fact_to_cache_record`, which derives the list from the store
+    (:func:`dispositions.inherited_waivers`); the relayed ``NEXT-ACTION:`` line
+    is that record's own ``next_action``, so no caller computes it twice."""
     if waived:
         blocking = max(blocking - len(waived), 0)
     line = _next_action_core(
@@ -4953,7 +4956,9 @@ def answered_lint_results(store: "dict | None", scope: "str | None") -> dict:
             continue
         identity = _lint_identity(finding)
         ref = f"{key[0]}/{key[1]}"
-        if resolutions.get(key) == "waived":
+        if resolutions.get(key) in (
+            dispositions.STATE_WAIVED, dispositions.STATE_WAIVED_INHERITED
+        ):
             answered["blocking"].setdefault(
                 identity, f"already waived by a resolution of {ref}"
             )
@@ -5706,7 +5711,9 @@ def derive_branch_cache(prawduct_dir: Path, facts: list[dict], branch_commits: "
     # than the one it would displace, since they would anchor on it.
     prawduct_dir.mkdir(parents=True, exist_ok=True)
     candidate = prawduct_dir / ".critic-findings.json.derived"
-    atomic_write_text(candidate, json.dumps(fact_to_cache_record(fact, carried=carried), indent=2))
+    atomic_write_text(candidate, json.dumps(
+        fact_to_cache_record(fact, carried=carried, store={"facts": usable}), indent=2
+    ))
     if not gates.validate_critic_findings(candidate):
         candidate.unlink(missing_ok=True)
         return {"status": "invalid", "review": review,
@@ -5723,13 +5730,22 @@ def fact_to_cache_record(
     cost: "str | None" = None,
     rides_next_review: "str | None" = None,
     uncertified: "tuple[str, list[str]] | None" = None,
-    waived: "list[str] | None" = None,
+    *,
+    store: dict,
 ) -> dict:
     """Render the derived ``.critic-findings.json`` record from a review fact
     (D7: the cache is a code-regenerated VIEW of the latest fact — builders
     and briefings read it for content; no gate reads it). Carries the source
     ``fact_id`` so staleness is detectable and the verify-resolutions
     dispatch can locate its anchor fact.
+
+    ``store`` (required: a :func:`evidence.read_facts` answer, or ``{"facts":
+    [...]}``) is where the review's inherited-baseline waivers are READ from
+    (:func:`dispositions.inherited_waivers`), never handed in. Consolidation
+    and the ingest path (:func:`derive_branch_cache`) both render through here,
+    so a clone that ingested the review shows the same waivers the reviewing
+    clone wrote: each waived entry is marked ``waived: inherited-baseline``,
+    and the summary and ``next_action`` stop counting it as open.
 
     ``price_sentence`` rides through to :func:`next_action_line`. It is a
     parameter rather than a ledger read here because this function is a pure
@@ -5740,6 +5756,7 @@ def fact_to_cache_record(
     builder who met them saying different things about the branch would have no
     way to tell which was computed."""
     body = fact.get("body") or {}
+    waived = dispositions.inherited_waivers(store, fact)
     findings = []
     for f in body.get("findings", []):
         entry = {
@@ -5754,6 +5771,10 @@ def fact_to_cache_record(
         # Additive key; the schema validator checks required fields only and
         # `--json` readers tolerate unknown ones (api-contract § Direction).
         entry["fix_cost"] = finding_fix_cost(f.get("files"))
+        if f.get("fid") in waived:
+            # So a verify reviewer reading this as the prior record can tell a
+            # waived blocker from an open one. Additive, like `fix_cost`.
+            entry["waived"] = INHERITED_BASELINE_ORIGIN
         findings.append(entry)
     # The builder's only surface for these. Observation ids are assigned HERE,
     # at consolidation — the reviewer wrote prose and never saw an `O-n` — so
@@ -5774,7 +5795,7 @@ def fact_to_cache_record(
     blocking = counts.get("blocking", 0)
     warning = counts.get("warning", 0)
     note = counts.get("note", 0)
-    if blocking - len(waived or []) > 0:
+    if blocking - len(waived) > 0:
         verdict = "Blocking findings must be resolved before proceeding."
     else:
         verdict = "Changes ready to proceed."
@@ -6179,8 +6200,111 @@ def _tree_changed_line(body: dict) -> str:
 
 #: The ``origin`` of a resolution fact consolidate writes for a BLOCKING
 #: test-failure finding the base tree already failed — the one resolution not
-#: written by a ``verify-resolutions`` pass.
-INHERITED_BASELINE_ORIGIN = "inherited-baseline"
+#: written by a ``verify-resolutions`` pass. Its home, and its one reader, is
+#: ``dispositions`` (:func:`dispositions.resolution_detail_index`).
+INHERITED_BASELINE_ORIGIN = dispositions.INHERITED_BASELINE_ORIGIN
+
+
+def _inherited_baseline(project_dir: Path, manifest: dict, store: dict) -> dict:
+    """The tree before the reviewed work, and what its suite run and the
+    reviewed tree's own run say — or why neither can be trusted.
+
+    Returns ``{"reason": str}`` when no waiver may fire, else ``{"run",
+    "base_tree", "inherited", "new"}``: the base-tree run's id, the ids it
+    failed among the reviewed tree's failures and the findings' named ids, and
+    the reviewed tree's failures the base did NOT have (the ones this branch
+    caused).
+
+    The base is ``coverage.resolve_merge_base_tree``'s — the one prelude every
+    gate anchors its span with — and it is refused unless it is genuinely
+    BEFORE the reviewed work. A merge-base is "the tree before this work" only
+    when the work is not in it, so three answers are refused: the moving
+    ``HEAD~1`` fallback (the base is then this branch's own previous commit); a
+    merge-base that is not an ancestor of (or equal to) the review interval's
+    own base commit (work committed straight onto the base branch, where the
+    merge-base is HEAD, the base tree holds the reviewed commits, and the
+    builder's own red record reads as the base's run); and a base tree equal to
+    the reviewed tree. Uncommitted work on a branch cut from its base is the
+    ordinary case and passes: the merge-base is HEAD, but the interval starts
+    there too, so nothing the review judged is in the base tree.
+
+    The reviewed tree's own newest suite run must list EVERY failure (the
+    100-id cap fails closed), because the caller also checks that each failure
+    this branch caused is still answered by an unwaived finding: a reviewer
+    that named only the inherited subset of a mixed red suite must not have the
+    whole suite waived.
+    """
+    from . import coverage  # noqa: PLC0415 — lazy; coverage pulls git helpers
+
+    resolved = coverage.resolve_merge_base_tree(project_dir)
+    if resolved["status"] != "ok":
+        return {"reason": f"no merge-base to compare against ({resolved['reason']})"}
+    if resolved.get("moving"):
+        return {"reason": (
+            f"the base resolved to the moving {coverage.MOVING_FALLBACK_BASE} "
+            "fallback (no origin/main, main or base_branch:), so the \"base\" is "
+            "this branch's own previous commit — set base_branch: in "
+            ".prawduct/project-state.yaml"
+        )}
+    merge_base = resolved["merge_base"]
+    interval_base = manifest.get("base_commit")
+    if not isinstance(interval_base, str) or not interval_base:
+        return {"reason": (
+            "the review's interval names no base commit, so nothing shows the "
+            "merge-base is before the reviewed work"
+        )}
+    rc, _, _ = evidence.run_git(
+        project_dir, "merge-base", "--is-ancestor", merge_base, interval_base
+    )
+    if rc != 0:
+        rc_head, head, _ = evidence.run_git(project_dir, "rev-parse", "--verify", "-q", "HEAD")
+        where = (
+            "the merge-base is HEAD itself"
+            if rc_head == 0 and head.strip() == merge_base
+            else "the merge-base"
+        )
+        return {"reason": (
+            f"{where} ({merge_base[:12]}), and this review's interval starts "
+            f"before it at {interval_base[:12]}: commits the review judged sit on "
+            f"the base branch {resolved['base_branch']}, so the base tree holds "
+            "the work"
+        )}
+    base_tree = resolved["tree"]
+    if base_tree == manifest["head_tree"]:
+        return {"reason": (
+            f"the merge-base tree {base_tree[:12]} is the reviewed tree, so a "
+            "run on it is a run of this work"
+        )}
+    head_run, why = evidence.newest_suite_run(store, manifest["head_tree"])
+    if head_run is None:
+        return {"reason": f"the reviewed tree's own run cannot vouch: {why}"}
+    head_failed, complete = evidence.run_failed_tests(head_run)
+    if not complete:
+        return {"reason": (
+            f"the reviewed tree's run {head_run['id']} failed "
+            f"{(head_run.get('body') or {}).get('failed')} test(s) but lists "
+            f"{len(head_failed)} id(s) (the 100-id cap) — the unlisted ones may "
+            "be new"
+        )}
+    review = next(
+        (r for r in evidence.facts_of_kind(store, "review") if r.get("id") == manifest["id"]),
+        {},
+    )
+    named = {
+        t for f in coverage_algebra.blocking_findings(review)
+        for t in (f.get("failed_tests") or []) if isinstance(t, str)
+    }
+    run_id, inherited, why = evidence.inherited_failures(
+        store, base_tree, head_failed | named
+    )
+    if run_id is None:
+        return {"reason": f"no base-tree run to match: {why}"}
+    return {
+        "run": run_id,
+        "base_tree": base_tree,
+        "inherited": inherited,
+        "new": head_failed - inherited,
+    }
 
 
 def _waive_inherited_failures(
@@ -6191,13 +6315,18 @@ def _waive_inherited_failures(
     failed (the caller fails closed and a retry heals it).
 
     A finding qualifies only when it is BLOCKING, names a non-empty
-    ``failed_tests``, and EVERY id it names is in the set
-    :func:`evidence.inherited_failures` returns for the newest run on the
-    merge-base tree. The finding stays BLOCKING on the review fact; what is
+    ``failed_tests``, EVERY id it names failed in :func:`_inherited_baseline`'s
+    base-tree run too, and every failure of the reviewed tree's own run that
+    the base did NOT have is named by a BLOCKING finding of this review that
+    stays unwaived. The finding stays BLOCKING on the review fact; what is
     written is a ``waived`` resolution fact citing that run (``base_run``), so
     the record shows both the rating and why it no longer gates. Its id is
     ``{review_id}:{review_id}:{fid}`` — the resolution-id shape with the review
     as its own verifier — so a re-run finds it held and appends nothing.
+
+    A finding that named tests and was NOT waived gets one stderr line saying
+    why, so a builder who recorded a base run learns what it failed to prove
+    rather than re-recording blindly or paying the verify round.
 
     Runs in every mode, after the review fact is appended, because the review
     is what the waiver resolves: no separate round is owed for a failure the
@@ -6222,22 +6351,56 @@ def _waive_inherited_failures(
         f.get("id"): f for f in evidence.facts_of_kind(store, "resolution")
     }
     waived: list[str] = []
-    classified: "tuple[str | None, set[str]] | None" = None
+    pending: list[dict] = []
     for finding in candidates:
-        fid = finding["fid"]
-        res_id = f"{review_id}:{review_id}:{fid}"
+        res_id = f"{review_id}:{review_id}:{finding['fid']}"
         if res_id in held:
             _attach_note(project_dir, held[res_id], review_anchor)
-            waived.append(fid)
-            continue
+            waived.append(finding["fid"])
+        else:
+            pending.append(finding)
+    if not pending:
+        return waived
+
+    def refuse(fid: str, reason: str) -> None:
+        print(
+            f"critic-consolidate: {fid} names failing tests but was not waived "
+            f"as inherited — {reason}.",
+            file=sys.stderr,
+        )
+
+    base = _inherited_baseline(project_dir, manifest, store)
+    if "reason" in base:
+        for finding in pending:
+            refuse(finding["fid"], base["reason"])
+        return waived
+    base_run, inherited = base["run"], base["inherited"]
+    eligible: list[tuple[dict, list[str]]] = []
+    unwaived_names: set[str] = set()
+    for finding in pending:
         ids = [t for t in finding["failed_tests"] if isinstance(t, str)]
-        if classified is None:
-            every_id = sorted({t for f in candidates for t in f["failed_tests"]
-                               if isinstance(t, str)})
-            classified = evidence.inherited_failures(project_dir, every_id)
-        base_run, inherited = classified
-        if base_run is None or not ids or not set(ids) <= inherited:
+        missing = [t for t in ids if t not in inherited]
+        if ids and not missing:
+            eligible.append((finding, ids))
             continue
+        unwaived_names.update(ids)
+        refuse(finding["fid"], (
+            f"{', '.join(missing) or 'its ids'} did not fail in the newest suite "
+            f"run on the merge-base tree {base['base_tree'][:12]} (test-run "
+            f"{base_run}; a newer green run supersedes a red one, and an id past "
+            "its 100-id cap is never matched)"
+        ))
+    unanswered = sorted(base["new"] - unwaived_names)
+    if unanswered:
+        for finding, _ in eligible:
+            refuse(finding["fid"], (
+                f"the reviewed tree's run also fails {', '.join(unanswered)}, "
+                "which the base did not, and no unwaived BLOCKING finding names "
+                "them — a waiver would let them ride"
+            ))
+        return waived
+    for finding, ids in eligible:
+        fid = finding["fid"]
         named = ", ".join(ids)
         body = {
             "finding": {"review_id": review_id, "fid": fid},
@@ -6252,7 +6415,9 @@ def _waive_inherited_failures(
                 "record; this branch did not cause it, so no fix round is owed."
             ),
         }
-        result = evidence.append_fact(project_dir, "resolution", res_id, body)
+        result = evidence.append_fact(
+            project_dir, "resolution", f"{review_id}:{review_id}:{fid}", body
+        )
         if result["status"] != "appended":
             print(
                 f"critic-consolidate: could not append the inherited-baseline "
@@ -6731,8 +6896,8 @@ def consolidate(
 
     # Inherited-baseline waivers: a BLOCKING test failure the merge-base tree
     # already had is resolved here, from the base run's fact, not by a round.
-    waived = _waive_inherited_failures(project_dir, manifest, review_id, review_anchor)
-    if waived is None:
+    # The renderers below read the waivers back from the store re-read next.
+    if _waive_inherited_failures(project_dir, manifest, review_id, review_anchor) is None:
         return 1
 
     # Regenerate the derived cache FROM the stored fact (D7) — re-read so a
@@ -6825,7 +6990,7 @@ def consolidate(
     uncertified = _uncertified_open_chunks(project_dir, prawduct_dir, store, fact)
     record = fact_to_cache_record(
         fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
-        waived=waived,
+        store=store,
     )
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
@@ -6978,24 +7143,9 @@ def consolidate(
     # that fork to relay `NEXT-ACTION:` verbatim as its closing line. Code owns
     # the wording so it cannot be paraphrased into something weaker, and so it
     # stays identical to the `next_action` the builder reads in
-    # `.critic-findings.json` whenever the reviewers were dispatched instead.
-    print(
-        "NEXT-ACTION: "
-        + next_action_line(
-            review_id,
-            counts.get("blocking", 0),
-            counts.get("warning", 0),
-            counts.get("note", 0),
-            price_sentence,
-            carried=carried,
-            span=span,
-            observations=len(fact_body.get("observations") or []),
-            cost=cost_sentence,
-            rides_next_review=rides_next_review,
-            uncertified=uncertified,
-            waived=waived,
-        )
-    )
+    # `.critic-findings.json` whenever the reviewers were dispatched instead —
+    # identical by construction: it IS that record's sentence, rendered once.
+    print("NEXT-ACTION: " + record["next_action"])
     return 0
 
 

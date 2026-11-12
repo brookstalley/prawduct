@@ -56,7 +56,7 @@ out where reality still lags.
 
 - **Governance verdicts on the Critic data plane are computed from the append-only fact ledger, never from mutable model-written state — no model sits in a fact's write path.** Facts are written by deterministic code; a reviewer's judgment enters only as validated content inside a partial that code checks against a code-written manifest before it becomes a fact.
   Why: the governed party must never be able to certify itself — deriving every verdict from code-written facts is what keeps model judgment out of the authority path and lets any worktree reconstruct the same verdict from the same log.
-  Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness fallback and the inherited-baseline classifier (`evidence.inherited_failures`) are the readers that decide anything by them (`evidence list` only displays them), and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
+  Status: steady-state — scoped to the Critic data plane (kernel v3). Test runs are indexed on the store as `test-run` facts (#653, owner decision 2026-09-23) — the test-evidence freshness fallback and the inherited-baseline waiver (`evidence.newest_suite_run`, on the base tree and the reviewed one) are the readers that decide anything by them (`evidence list` only displays them), and the per-worktree `.test-evidence.json` remains the run's primary record; PR-review evidence still lives in its own file. Extending the store to subsume the rest (reserved kinds `pr-review`/`promotion`) is design direction, not yet a ratified norm.
   Amended: 2026-11-10, owner ruling (`.prawduct/owner-rulings.md`): "yes fold PR reviewer in". `/prawduct:pr` dispatches no reviewer and nothing writes PR-review evidence, so the Status line's "PR-review evidence still lives in its own file" and the reserved `pr-review` kind describe nothing; `promotion` is the one reserved kind. The PR gate's verdict is composed Critic coverage over this store, so the PR boundary is inside this norm's scope rather than beside it. The Status line keeps its words.
 - **Facts are immutable and append-only; a state change is expressed as a new fact, never an edit or delete in place.**
   Why: append-only history is what lets any checkout replay the same verdict from the same log — an in-place edit or delete would make the ledger unreproducible and a verdict unauditable.
@@ -175,7 +175,16 @@ clone that wrote it.
   any mode for a BLOCKING finding of the review it consolidates when the newest `test-run` on the
   merge-base tree lists every id in the finding's `failed_tests`, with `disposition: waived`,
   `verified_by` that same review, `origin: inherited-baseline` and `base_run` (that run's fact id).
-  Either way it must reference a finding already in the store (fail-closed). It may
+  The merge-base must be before the reviewed work — not the moving `HEAD~1` fallback, an ancestor
+  of the review interval's base commit, and a tree other than the reviewed one — and the reviewed
+  tree's own newest run must list every failure (its 100-id cap fails closed), each failure the
+  base did not have named by a BLOCKING finding left unwaived. Either way it must reference a
+  finding already in the store (fail-closed). **`origin` has one reader**,
+  `dispositions.resolution_detail_index`, which reads an inherited-baseline waiver as its own
+  state (`waived-inherited`): the census and `review-stats` count it apart from a judged waiver,
+  and the derived findings cache reads the review's waivers from the store through it, so every
+  clone renders them alike. The gate reads it as `waived` (`coverage_algebra` reads only the
+  disposition). It may
   instead confirm an observation fix: `fid` then carries the observation's `O-n` id (the slot a
   disposition already uses for one; `R-n` and `O-n` never collide), and only `fixed` is accepted.
   No gate reads it, because no gate reads observations.
@@ -263,8 +272,9 @@ clone that wrote it.
   (`gates._store_run_vouching`) lets a run recorded from
   another branch or worktree vouch for a tree judgeably identical to the one it met, once this
   worktree's own record has declined; among the candidates, the newest run that met the tree
-  decides it. `evidence.inherited_failures` finds the newest non-narrowed run whose `tree` is the
-  merge-base's tree, and its `failed_tests` are what an inherited-baseline waiver may cover. **Observational to the coverage data plane**: composition never reads
+  decides it. `evidence.newest_suite_run` finds the newest non-narrowed run on a tree: on the
+  merge-base's tree its `failed_tests` are what an inherited-baseline waiver may cover, and on the
+  reviewed tree they must all be accounted for. **Observational to the coverage data plane**: composition never reads
   it, and it is one of `evidence.OBSERVATIONAL_KINDS`, which the verdict cache's key leaves out.
   **Droppability:** coverage-neutral, not freshness-neutral — `gates._store_run_vouching` reads it,
   and among the candidates the newest run that met a tree decides it, so dropping one can flip a

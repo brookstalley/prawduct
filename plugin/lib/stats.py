@@ -50,6 +50,11 @@ _OUTCOME_OF_STATE = {
     dispositions.STATE_FILED: "filed",
     dispositions.STATE_ACCEPTED: "accepted",
     dispositions.STATE_WAIVED: "waived",
+    # Consolidation's own waiver of a failure the base tree already had. Apart
+    # from ``waived`` because no reviewer weighed it, and in neither count of
+    # :func:`acted_on`: it is not an answer to this work's finding but a fact
+    # about the base, so it would dilute the rate either way it was counted.
+    dispositions.STATE_WAIVED_INHERITED: "waived_inherited",
     dispositions.STATE_OPEN: "undispositioned",
 }
 #: Public: ``review-stats`` reports the same names, in this order.
@@ -169,8 +174,8 @@ def acted_on(counts) -> "tuple[int, int, float | None]":
     """``(acted, answered, rate)`` over outcome counts keyed by this report's
     outcome names. The one definition of the rate, which ``review-stats``
     reports per grouping as well: two reports reading one store must not
-    disagree about what "acted on" means. ``undispositioned`` and ``other``
-    are in neither count."""
+    disagree about what "acted on" means. ``undispositioned``,
+    ``waived_inherited`` and ``other`` are in neither count."""
     acted = sum(counts.get(o, 0) for o in _FIXED) + counts.get("filed", 0)
     answered = acted + counts.get("accepted", 0) + counts.get("waived", 0)
     return acted, answered, _rate(acted, answered)
@@ -555,7 +560,8 @@ def render_human(report: dict) -> str:
             lines.append(
                 f"    {severity:<9} raised {s['raised']}: fixed {s['fixed']} "
                 f"(+{s['fixed_unreviewed']} unreviewed), filed {s['filed']}, "
-                f"accepted {s['accepted']}, waived {s['waived']}, "
+                f"accepted {s['accepted']}, waived {s['waived']} "
+                f"(+{s['waived_inherited']} inherited from the base), "
                 f"undispositioned {s['undispositioned']} (acted on {_fmt(s['acted_on_rate'])})"
             )
         lines.append(

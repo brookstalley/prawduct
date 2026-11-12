@@ -202,6 +202,10 @@ def _store_lines(repo: Path) -> list[str]:
 
 FAKE_REVIEW_ID = "rev-test-0001"
 
+#: A store holding no facts, for rendering a review fact that nothing resolved:
+#: `fact_to_cache_record` reads its waivers from the store, so it takes one.
+_NO_FACTS = {"facts": []}
+
 from conftest import V2_MANIFEST as _V2_MANIFEST  # noqa: E402 — one home for the shape
 
 
@@ -623,7 +627,7 @@ class TestObservationsReachTheBuilder:
                 ],
             },
         }
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         assert record["observations"] == [{
             "oid": "O-1", "goal": "Nothing Is Unintended",
             "summary": "the helper reads as a verb but returns a value",
@@ -641,7 +645,7 @@ class TestObservationsReachTheBuilder:
                 ],
             },
         }
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         assert record["summary"].startswith("0 blocking, 0 warning, 0 note")
         assert "Changes ready to proceed." in record["summary"]
 
@@ -657,7 +661,7 @@ class TestObservationsReachTheBuilder:
                               "title": "old note", "recommendation": "r"}],
                 "counts": {"blocking": 0, "warning": 0, "note": 1},
             },
-        })
+        }, store=_NO_FACTS)
         assert record["summary"].startswith("0 blocking, 0 warning, 1 note")
         assert [f["severity"] for f in record["findings"]] == ["note"]
         assert "1 note(s) gate nothing" in record["next_action"]
@@ -666,7 +670,7 @@ class TestObservationsReachTheBuilder:
         record = cc.fact_to_cache_record({
             "ts": "2026-09-16T00:00:00Z",
             "body": {"findings": [], "counts": {"blocking": 0, "warning": 0, "note": 0}},
-        })
+        }, store=_NO_FACTS)
         assert record["observations"] == []
 
 
@@ -749,7 +753,7 @@ class TestMergeFindings:
                  "severity": "blocking", "recommendation": "Fix it"}])])
         fact = {"schema": 1, "kind": "review", "id": manifest["id"],
                 "ts": "2026-07-13T00:00:00Z", "body": body}
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         p = tmp_path / "f.json"
         p.write_text(json.dumps(record))
         assert gates.validate_critic_findings(p)
@@ -1468,7 +1472,7 @@ class TestSpanClause:
         # would leave no way to tell which was computed.
         clause = cc.span_clause(self.UNCOVERED, 12)
         fact = {"id": "rev-1", "body": {"counts": {"blocking": 0, "warning": 1, "note": 0}}}
-        record = cc.fact_to_cache_record(fact, None, None, clause)
+        record = cc.fact_to_cache_record(fact, None, None, clause, store=_NO_FACTS)
         assert record["next_action"] == cc.next_action_line(
             "rev-1", 0, 1, 0, None, carried=None, span=clause
         )
@@ -1540,7 +1544,7 @@ class TestFindingFixCost:
             ])])
         fact = {"schema": 1, "kind": "review", "id": manifest["id"],
                 "ts": "2026-07-13T00:00:00Z", "body": body}
-        record = cc.fact_to_cache_record(fact)
+        record = cc.fact_to_cache_record(fact, store=_NO_FACTS)
         costs = [f["fix_cost"] for f in record["findings"]]
         assert costs == [cc.FIX_COST_FREE, cc.FIX_COST_CHARGED, cc.FIX_COST_UNKNOWN]
         # Additive only: the record must still satisfy the schema its readers
@@ -4347,11 +4351,31 @@ class TestTheReviewerIsToldToCheckItsPartial:
             "fix the file and run it again. You are done only on exit 0."
         ) in " ".join(agent.split())
 
-    def test_the_skill_and_coordinator_carry_the_one_reviewer_remedy(self):
-        for path in (_CRITIC_SKILL, ROOT / "skills" / "critic" / "coordinator.md"):
-            flat = " ".join(path.read_text(encoding="utf-8").split())
-            assert "re-dispatch" in flat and "`critic-reviewer`" in flat, path
-            assert "never `critic-begin` or `critic-discard`" in flat, path
+    def test_each_surface_that_meets_a_refusal_follows_its_own_remedy(self):
+        """Renegotiated by the review-round-cost Critic (R-8): the remedy goes
+        where the refusal is MET. The coordinator stops before consolidation and
+        never sees one, so it carries none; the fork meets only its own inline
+        consolidate's refusal, whose remedy is to rewrite its partial; the main
+        session meets the rest (building.md, the Stop backstop's blocker), and
+        each defers to the refusal's printed remedy rather than offering a fresh
+        review — which `critic-begin` refuses over a complete roster anyway.
+        The remedy's wording has one home, `_partial_failure_message`."""
+        def flat(path):
+            return " ".join(path.read_text(encoding="utf-8").split())
+
+        coordinator = flat(ROOT / "skills" / "critic" / "coordinator.md")
+        assert "consolidation refuses" not in coordinator
+        assert "rewrite that partial and re-run consolidate" in flat(_CRITIC_SKILL)
+        building = flat(ROOT / "methodology" / "building.md")
+        assert "follow the remedy the refusal prints" in building
+        assert "re-invoke" not in building
+        hook = (ROOT / "bin" / "prawduct-hook").read_text(encoding="utf-8")
+        start = hook.index("CRITIC REVIEW (consolidation failed)") - 1  # its opening quote
+        literals = re.findall(r'"((?:[^"\\]|\\.)*)"', hook[start:hook.index("))", start)])
+        blocker = " ".join("".join(literals).replace("\\n", " ").split())
+        assert "Follow the remedy it names" in blocker, blocker
+        assert "re-run the review" not in blocker, blocker
+        assert "is refused while this complete roster is on disk" in blocker, blocker
 
 
 def _seed_prior_review_with_blocker(repo: Path, head: str, **overrides) -> str:
@@ -4737,12 +4761,26 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         assert out["status"] == "appended", out
         return out["id"]
 
-    def _review(self, repo, findings) -> tuple[subprocess.CompletedProcess, dict]:
-        (repo / "src/app.py").write_text("x = 2\n")
+    _AUTO = object()
+
+    def _review(self, repo, findings, *, head_failed=_AUTO, content="x = 2\n",
+                head_extra=None) -> tuple[subprocess.CompletedProcess, dict]:
+        """Dispatch a chunk review of ``content``, record the reviewed tree's
+        own suite run, and consolidate ``findings``.
+
+        ``head_failed`` is that run's failing ids — by default exactly the ids
+        the BLOCKING findings name, the honest run the reviewer copied them
+        from — or ``None`` for no run on the reviewed tree at all."""
+        (repo / "src/app.py").write_text(content)
         begin = _run_begin(repo, "--mode", "chunk")
         assert begin.returncode == 0, f"stderr={begin.stderr!r}"
         manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
         assert manifest["roster"] == ["reviewer"]
+        if head_failed is self._AUTO:
+            head_failed = sorted({t for f in findings if f.get("severity") == "blocking"
+                                  for t in f.get("failed_tests") or []})
+        if head_failed is not None:
+            self._run_on(repo, manifest["head_tree"], head_failed, **(head_extra or {}))
         _write_partial(repo, "reviewer", manifest["commit_reviewed"], findings=findings)
         done = _run_consolidate(repo)
         assert done.returncode == 0, f"stderr={done.stderr!r}"
@@ -4796,34 +4834,48 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         )
         assert gate.returncode == 0, f"stdout={gate.stdout!r} stderr={gate.stderr!r}"
 
-    def _assert_no_waiver_and_still_blocks(self, repo, done) -> None:
+    def _assert_no_waiver_and_still_blocks(self, repo, done, why=None,
+                                           gate="blocked") -> None:
+        """No waiver is written and the finding blocks as before. ``why`` is a
+        fragment of the one stderr line that says why the waiver did not fire
+        (``None`` for a finding that never asked for one: it names no test).
+        ``gate`` is the branch verdict expected after committing — ``blocked``,
+        or a stricter refusal the fixture itself causes; ``None`` on ``main``,
+        where the branch span is empty and the verdict says nothing."""
         assert self._waivers(repo) == []
         assert _store_facts(repo, "resolution") == []
-        assert "waived" not in done.stderr
+        assert "critic-consolidate: waived " not in done.stderr
+        refusals = [ln for ln in done.stderr.splitlines() if "not waived as inherited" in ln]
+        if why is None:
+            assert refusals == [], done.stderr
+        else:
+            (line,) = refusals
+            assert why in line, line
         cache = json.loads((repo / FINDINGS_REL).read_text())
         assert cache["next_action"].startswith("1 BLOCKING")
-        self._commit(repo)
-        assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
+        if gate is not None:
+            self._commit(repo)
+            assert gates.branch_coverage_verdict(repo)["status"] == gate
 
     def test_an_id_the_base_run_lacks_is_not_waived(self, tmp_path):
         repo, base_tree = self._branch(tmp_path)
         self._run_on(repo, base_tree, ["t1"])
         done, _ = self._review(repo, [self._blocker(("t1", "t2"))])
-        self._assert_no_waiver_and_still_blocks(repo, done)
+        self._assert_no_waiver_and_still_blocks(repo, done, why="t2")
 
     def test_no_run_on_the_merge_base_tree_waives_nothing(self, tmp_path):
-        repo, _base_tree = self._branch(tmp_path)
+        repo, base_tree = self._branch(tmp_path)
         other = _git(repo, "rev-parse", "HEAD~1^{tree}").stdout.strip()
         self._run_on(repo, other, ["t1"])  # the control: a red run, on another tree
         done, _ = self._review(repo, [self._blocker()])
-        self._assert_no_waiver_and_still_blocks(repo, done)
+        self._assert_no_waiver_and_still_blocks(repo, done, why=base_tree[:12])
 
     def test_a_newer_green_run_on_the_base_tree_supersedes_an_older_red_one(self, tmp_path):
         repo, base_tree = self._branch(tmp_path)
         self._run_on(repo, base_tree, ["t1"])
-        self._run_on(repo, base_tree)  # green, and newer
+        green = self._run_on(repo, base_tree)  # green, and newer
         done, _ = self._review(repo, [self._blocker()])
-        self._assert_no_waiver_and_still_blocks(repo, done)
+        self._assert_no_waiver_and_still_blocks(repo, done, why=green)
 
     def test_a_finding_naming_no_tests_is_not_waived(self, tmp_path):
         repo, base_tree = self._branch(tmp_path)
@@ -4832,12 +4884,232 @@ class TestAnInheritedFailureIsWaivedByConsolidate:
         self._assert_no_waiver_and_still_blocks(repo, done)
 
     def test_a_run_on_the_base_head_with_a_different_tree_proves_nothing(self, tmp_path):
-        repo, _base_tree = self._branch(tmp_path)
+        repo, base_tree = self._branch(tmp_path)
         head = _git(repo, "rev-parse", "HEAD").stdout.strip()
         dirty = _git(repo, "rev-parse", "HEAD~1^{tree}").stdout.strip()
         self._run_on(repo, dirty, ["t1"], head=head)
         done, _ = self._review(repo, [self._blocker()])
-        self._assert_no_waiver_and_still_blocks(repo, done)
+        self._assert_no_waiver_and_still_blocks(repo, done, why=base_tree[:12])
+
+    # -- R-1: the "base" must be before the reviewed work ----------------------
+
+    def test_work_committed_on_the_base_branch_is_not_its_own_baseline(self, tmp_path):
+        """HEAD on `main`, base `main`, and the reviewed interval holds a commit
+        made straight onto `main` (an interval that starts at an earlier
+        reviewed state — the shape a frontier or verify-resolutions interval
+        takes): the merge-base IS HEAD, so the builder's own red record of
+        HEAD's tree would read as the base's run of the work that broke t1.
+
+        The manifest is written by hand because `critic-begin` on `main` never
+        starts a chunk interval behind the merge-base today; the guard is on
+        the property, not on which begin path can produce it."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        start = _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        head = _commit_file(repo, "src/other.py", "y = 1\n", "the work that broke t1, on main")
+        head_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        self._run_on(repo, head_tree, ["t1"])  # the builder's own red record
+        (repo / "src/app.py").write_text("x = 3\n")
+        reviewed = evidence.capture_tree(repo)["tree"]
+        assert reviewed != head_tree  # isolates this guard from the tree-equality one
+        self._run_on(repo, reviewed, ["t1"])
+        _set_marker(repo)
+        _write_manifest(
+            repo, head, roster=["reviewer"], base_commit=start,
+            base_tree=_git(repo, "rev-parse", f"{start}^{{tree}}").stdout.strip(),
+            head_tree=reviewed,
+        )
+        _write_partial(repo, "reviewer", head, findings=[self._blocker()])
+        done = _run_consolidate(repo)
+        assert done.returncode == 0, done.stderr
+        self._assert_no_waiver_and_still_blocks(repo, done, why="merge-base is HEAD", gate=None)
+
+    def test_uncommitted_work_on_the_base_branch_keeps_its_waiver(self, tmp_path):
+        """The control, and the ordinary case: on `main` the merge-base is HEAD
+        too, but a chunk review of uncommitted work starts its interval AT
+        HEAD, so HEAD's tree genuinely is the tree before the reviewed work."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        head = _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        self._run_on(repo, _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip(), ["t1"])
+        _, manifest = self._review(repo, [self._blocker()])
+        assert manifest["base_commit"] == head
+        assert len(self._waivers(repo)) == 1
+
+    def test_a_reviewed_tree_equal_to_the_base_tree_is_not_its_own_baseline(self, tmp_path):
+        """The branch moved (merge-base is not HEAD) but the reviewed tree is the
+        base tree byte for byte: the base run is a run of the reviewed work."""
+        repo, base_tree = self._branch(tmp_path)
+        _commit_file(repo, "src/app.py", "x = 2\n", "the work")
+        self._run_on(repo, base_tree, ["t1"])
+        done, manifest = self._review(repo, [self._blocker()], content="x = 1\n")
+        assert manifest["head_tree"] == base_tree  # the precondition, not a skip
+        self._assert_no_waiver_and_still_blocks(repo, done, why="is the reviewed tree")
+
+    def test_the_moving_head_parent_fallback_is_not_a_baseline(self, tmp_path):
+        """No `origin/main`, no `main`, no `base_branch:` — the base falls through
+        to `HEAD~1`, so the "base" is this branch's own previous commit."""
+        repo = tmp_path / "r"
+        _init_repo(repo)
+        _commit_file(repo, "src/app.py", "x = 1\n", "init")
+        _commit_file(repo, ".prawduct/project-state.yaml", "project_name: t\n", "seed")
+        _git(repo, "branch", "-m", "master")
+        parent_tree = _git(repo, "rev-parse", "HEAD^{tree}").stdout.strip()
+        _commit_file(repo, "src/other.py", "y = 1\n", "the work that broke t1")
+        assert coverage.resolve_merge_base_tree(repo)["moving"] is True
+        self._run_on(repo, parent_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker()])
+        self._assert_no_waiver_and_still_blocks(repo, done, why="HEAD~1")
+
+    # -- R-2: the reviewed tree's own run must be wholly accounted for --------
+
+    def test_no_suite_run_on_the_reviewed_tree_waives_nothing(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, manifest = self._review(repo, [self._blocker()], head_failed=None)
+        self._assert_no_waiver_and_still_blocks(repo, done, why=manifest["head_tree"][:12])
+
+    def test_a_capped_failure_list_on_the_reviewed_tree_waives_nothing(self, tmp_path):
+        """120 failures, 100 ids recorded: the hidden 20 may be new ones the
+        branch caused, so the visible ids matching the base proves nothing."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker()], head_failed=["t1"],
+                               head_extra={"failed": 120})
+        self._assert_no_waiver_and_still_blocks(repo, done, why="120")
+
+    def test_a_new_failure_no_blocker_names_keeps_the_inherited_one_blocking(self, tmp_path):
+        """The reviewer named only the inherited subset of a mixed red suite:
+        t2 is new, and nothing else on the record answers for it."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        done, _ = self._review(repo, [self._blocker()], head_failed=["t1", "t2"])
+        self._assert_no_waiver_and_still_blocks(repo, done, why="t2")
+
+    def test_a_new_failure_another_blocker_names_leaves_the_inherited_one_waived(self, tmp_path):
+        """The control: the same mixed suite, with t2 on the record as its own
+        unwaived BLOCKING finding — t1 is waived, t2 still blocks, and the line
+        says why t2's finding was not."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        new = {**self._blocker(("t2",)), "name": "A new failure"}
+        done, manifest = self._review(repo, [self._blocker(), new])
+        (waiver,) = self._waivers(repo)
+        rid = manifest["id"]
+        assert waiver["body"]["finding"] == {"review_id": rid, "fid": "R-1"}
+        (line,) = [ln for ln in done.stderr.splitlines() if "not waived as inherited" in ln]
+        assert "R-2" in line and "t2" in line
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        assert cache["next_action"].startswith("1 BLOCKING finding(s) (R-1)")
+        self._commit(repo)
+        assert gates.branch_coverage_verdict(repo)["status"] == "blocked"
+
+    # -- R-4: the fail-closed error paths ---------------------------------------
+
+    def test_a_test_run_from_a_newer_schema_waives_nothing(self, tmp_path):
+        """That fact may be the newest run on the base tree — a green one."""
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        with open(evidence.store_path(repo), "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "schema": 99, "kind": "test-run", "id": "run-future",
+                "ts": "2030-01-01T00:00:00Z", "body": {"tree": base_tree},
+            }) + "\n")
+        done, _ = self._review(repo, [self._blocker()])
+        # The gate refuses a store it cannot fully read, which is stricter still.
+        self._assert_no_waiver_and_still_blocks(repo, done, why="newer plugin",
+                                                gate="store-precheck")
+
+    def test_a_failed_waiver_append_fails_closed_and_a_retry_heals(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        (repo / "src/app.py").write_text("x = 2\n")
+        assert _run_begin(repo, "--mode", "chunk").returncode == 0
+        manifest = json.loads((repo / PARTIALS_REL / "manifest.json").read_text())
+        self._run_on(repo, manifest["head_tree"], ["t1"])
+        _write_partial(repo, "reviewer", manifest["commit_reviewed"],
+                       findings=[self._blocker()])
+        partial = _partials_dir(repo) / f"reviewer.{manifest['id']}.json"
+
+        real_append = evidence.append_fact
+
+        def refuse_resolutions(project_dir, kind, fact_id, body):
+            if kind == "resolution":
+                return {"status": "error", "reason": "disk full (injected)"}
+            return real_append(project_dir, kind, fact_id, body)
+
+        monkeypatch.setattr(evidence, "append_fact", refuse_resolutions)
+        assert cc.consolidate(repo, trigger="explicit") == 1
+        assert "could not append the inherited-baseline waiver" in capsys.readouterr().err
+        assert self._waivers(repo) == []
+        assert partial.is_file()  # kept, so a retry has something to consolidate
+
+        monkeypatch.setattr(evidence, "append_fact", real_append)
+        assert cc.consolidate(repo, trigger="explicit") == 0
+        (waiver,) = self._waivers(repo)
+        assert waiver["body"]["finding"]["review_id"] == manifest["id"]
+        assert not partial.exists()
+
+    # -- R-3 / R-5: every renderer reads the waiver from the facts -------------
+
+    def test_an_ingesting_clone_renders_the_waiver_as_consolidation_does(self, tmp_path):
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        self._review(repo, [self._blocker()])
+        consolidated = json.loads((repo / FINDINGS_REL).read_text())
+        (repo / FINDINGS_REL).unlink()  # the clone has the facts, not the view
+
+        facts = evidence.read_facts(repo)["facts"]
+        review = _store_facts(repo, "review")[-1]
+        anchor = evidence.review_anchor(review["body"])
+        derived = cc.derive_branch_cache(repo / ".prawduct", facts, [anchor])
+        assert derived["status"] == "derived", derived
+        cache = json.loads((repo / FINDINGS_REL).read_text())
+        assert cache["fact_id"] == consolidated["fact_id"]
+        assert "must be resolved" not in cache["summary"]
+        assert cache["next_action"].startswith("1 BLOCKING finding(s) (R-1)")
+        assert "waived as inherited" in cache["next_action"]
+        # Each carrier marks the entry, so a verify reviewer reading the prior
+        # record can tell a waived blocker from an open one.
+        for record in (consolidated, cache):
+            (entry,) = record["findings"]
+            assert entry["waived"] == cc.INHERITED_BASELINE_ORIGIN
+
+    # -- R-11: the census and review-stats tell an inherited waiver apart ------
+
+    def test_review_stats_counts_an_inherited_waiver_apart_from_a_judged_one(self, tmp_path):
+        from lib import stats  # noqa: PLC0415
+
+        repo, base_tree = self._branch(tmp_path)
+        self._run_on(repo, base_tree, ["t1"])
+        _, manifest = self._review(repo, [self._blocker()])
+        rid = manifest["id"]
+        store = evidence.read_facts(repo)
+        assert _dispositions_mod.resolution_detail_index(store)[(rid, "R-1")] == (
+            _dispositions_mod.STATE_WAIVED_INHERITED
+        )
+        assert stats.finding_outcome(store)((rid, "R-1")) == "waived_inherited"
+        # The control: a verify pass's judged waiver of the same finding shape.
+        judged = {"facts": [*store["facts"], {
+            "kind": "resolution", "id": "judged",
+            "body": {"finding": {"review_id": "rev-other", "fid": "R-1"},
+                     "disposition": "waived", "verified_by": "rev-v",
+                     "rationale": "accepted by the reviewer"},
+        }]}
+        assert stats.finding_outcome(judged)(("rev-other", "R-1")) == "waived"
+        report = subprocess.run(
+            [sys.executable, str(HOOK), "review-stats", "--json"],
+            cwd=str(repo), capture_output=True, text=True,
+            env={**_git_env(repo), "CLAUDE_PLUGIN_ROOT": str(ROOT)}, timeout=30,
+        )
+        assert report.returncode == 0, report.stderr
+        by_outcome = json.loads(report.stdout)["overall"]["dispositions"]["by_outcome"]
+        assert by_outcome["waived_inherited"] == 1, by_outcome
+        assert by_outcome["waived"] == 0, by_outcome
 
     def test_a_base_run_recorded_by_test_evidence_record_is_the_one_matched(self, tmp_path):
         """No injected fact: the run `building.md` asks for — `test-evidence
@@ -5431,7 +5703,7 @@ class TestStageReachesEveryReader:
     def test_the_fact_body_and_cache_carry_a_null_stage_for_an_old_manifest(self):
         body = cc.build_fact_body(_manifest_dict(), [_partial("reviewer", "abc123")])
         assert "stage" in body and body["stage"] is None
-        record = cc.fact_to_cache_record({"ts": "2026-09-17T00:00:00Z", "body": body})
+        record = cc.fact_to_cache_record({"ts": "2026-09-17T00:00:00Z", "body": body}, store=_NO_FACTS)
         assert "stage" in record and record["stage"] is None
 
 
@@ -9552,7 +9824,7 @@ class TestTheCostLeadReachesBothCarriers:
                 "body": {"counts": {"blocking": 0, "warning": 2, "note": 1},
                          "findings": [], "roster": [{"model": "m"}]}}
         lead = cc.cost_lead({"paths": [], "judgeable": [], "free": []})
-        record = cc.fact_to_cache_record(fact, None, None, None, lead)
+        record = cc.fact_to_cache_record(fact, None, None, None, lead, store=_NO_FACTS)
         assert record["next_action"].startswith(lead), (
             "`.critic-findings.json` is the carrier that HAS a reader in the "
             "builder role — dropping the lead here guts Chunk 01 on the "
@@ -9573,7 +9845,7 @@ class TestTheCostLeadReachesBothCarriers:
                 "body": {"counts": {"blocking": 0, "warning": 1, "note": 0},
                          "findings": [], "roster": [{"model": "m"}]}}
         lead = cc.cost_lead({"paths": ["a.py"], "judgeable": ["a.py"], "free": []})
-        persisted = cc.fact_to_cache_record(fact, None, None, None, lead)["next_action"]
+        persisted = cc.fact_to_cache_record(fact, None, None, None, lead, store=_NO_FACTS)["next_action"]
         assert "At review time" in persisted
         assert "Re-derive with `prawduct-hook cost-of-commit`" in persisted
         for present_tense in ("You are ALREADY", "You are NOT currently",
@@ -9612,17 +9884,32 @@ class TestTheCostLeadReachesBothCarriers:
             "commit_cost must be asked about the WORKING TREE (one arg); passing "
             "paths answers what fixing THOSE would cost, a different question"
         )
-        for carrier in ("fact_to_cache_record", "next_action_line"):
-            hits = [c for c in calls if _name(c) == carrier]
-            assert hits, f"consolidate no longer calls {carrier}"
-            assert any(
-                any(isinstance(a, ast.Name) and a.id == "cost_sentence" for a in c.args)
-                or any(k.arg == "cost" for k in c.keywords)
-                for c in hits
-            ), (
-                f"{carrier} no longer receives the cost lead — the two carriers of "
-                f"one sentence would disagree, and nothing else would go red"
+        hits = [c for c in calls if _name(c) == "fact_to_cache_record"]
+        assert hits, "consolidate no longer calls fact_to_cache_record"
+        assert any(
+            any(isinstance(a, ast.Name) and a.id == "cost_sentence" for a in c.args)
+            or any(k.arg == "cost" for k in c.keywords)
+            for c in hits
+        ), "fact_to_cache_record no longer receives the cost lead"
+        # The printed carrier is the record's own sentence, so the two cannot
+        # disagree by construction (the review-round-cost Critic, R-3/R-5: a
+        # second render that took its inputs separately is how the waivers went
+        # missing from one carrier). Contract renegotiated from "both calls
+        # receive the lead" to "there is one render, and the print relays it".
+        assert not [c for c in calls if _name(c) == "next_action_line"], (
+            "consolidate renders the NEXT-ACTION sentence a second time — the "
+            "printed line and the cache record can then disagree"
+        )
+        relayed = [
+            c for c in calls if _name(c) == "print"
+            and any(
+                isinstance(s, ast.Subscript)
+                and isinstance(s.value, ast.Name) and s.value.id == "record"
+                and isinstance(s.slice, ast.Constant) and s.slice.value == "next_action"
+                for a in c.args for s in ast.walk(a)
             )
+        ]
+        assert relayed, "the printed NEXT-ACTION line is not the record's `next_action`"
 
 
 class TestIntervalExtension:
