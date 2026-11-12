@@ -166,7 +166,12 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —
-  the ledger append after it still consumes the mark), `critic-end`, `critic-discard` (archive-then-remove a
+  the ledger append after it still consumes the mark; when a partial fails its check it names the
+  role, the partials that passed and are kept, and the one-reviewer re-dispatch remedy, exit 1),
+  `validate-partial <path>` (read-only; the verdict consolidation will reach on one reviewer partial,
+  through the same `check_partial` — exit 0 prints `ok`, exit 1 prints the parse error with its line
+  and column or the validation reason, exit 2 is a missing path; a reviewer runs it on its own file
+  before returning), `critic-end`, `critic-discard` (archive-then-remove a
   stranded review's partials, mutating), `critic-restore <review-id>` (copy an archived review's
   manifest + partials back so it consolidates under its own id, mutating — `critic-discard`'s
   inverse), `evidence status|list` (`status` also prints `N transported fact(s) with no note on
@@ -1075,7 +1080,7 @@ Evolution rules we want to hold, so new versions stay rare:
   `allowed-tools`): `evidence status|list`, `review-stats --json`, `stats --json`, `render-dispositions`,
   `learnings-files` (named to a person by the session briefing and the Stop hook's learnings floor;
   no skill or agent grant binds it),
-  `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`,
+  `disposition`, and the query/gate subcommands skills bind to (`test-status`, `verify-coverage`, `validate-partial`,
   `check-*` — the PR flow's `check-pr-hygiene` and `check-pr-body` among them —, `resolve-base`,
   `coverage-status`, `advisory *`, `infer-critic-mode`). Several of these
   exist *specifically* to give skills a narrow, stable command to allowlist instead of arbitrary

@@ -1258,7 +1258,12 @@ LAST_MEASURED_TOKENS = {
     # the header scopes `coordinator.md` to it. Not paid by trimming: the concurrency clause is
     # pinned on both dispatch surfaces, and the rest of step 7 is the inline path, which sessions at
     # or below the ceiling still take.
-    "skills/critic/SKILL.md": 3146,
+    # +57 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: the skill grants `validate-partial`
+    # (both spellings, since the single-pass fork writes a partial too), the fork's write step runs it,
+    # and one sentence names the one-reviewer re-dispatch remedy a failed partial check points to. Not
+    # paid by trimming: the grant and the remedy are the mechanism, and a reviewer that validates its
+    # own partial costs one tool call where an unreadable one discarded every valid partial.
+    "skills/critic/SKILL.md": 3203,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1290,7 +1295,10 @@ LAST_MEASURED_TOKENS = {
     # `reviewer` role when `reviewer_model` is set — the entry condition, one dispatch per roster
     # role, the protocol path for that role, and its goal line. Read only by a fork that dispatches,
     # never by a reviewer.
-    "skills/critic/coordinator.md": 663,
+    # +36 on 2026-11-11 (review-round-cost Chunk 01, #961), DECLARED: one sentence naming the remedy
+    # for a refused partial (re-dispatch only that role's reviewer, never `critic-begin` or
+    # `critic-discard`). Read only by a fork that dispatches, never by a reviewer.
+    "skills/critic/coordinator.md": 699,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -6249,7 +6257,9 @@ class TestCriticSkillRoutesByMode:
         # see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3089 -> 3147 (reviewer-model-cap, 2026-11-11): the hand-off branch — see
         # LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3147, f"SKILL.md is ~{tokens} tokens, should be <3147"
+        # RAISED 3147 -> 3204 (review-round-cost Chunk 01, #961): `validate-partial` grant, step and
+        # remedy sentence — see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 3204, f"SKILL.md is ~{tokens} tokens, should be <3204"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6612,7 +6622,9 @@ class TestReviewCycle:
         # `reviewer_model` — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 613 -> 664 (reviewer-model-cap, 2026-11-11): the single-pass `reviewer` dispatch —
         # see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 664, f"coordinator.md is ~{tokens} tokens, should be <664"
+        # RAISED 664 -> 700 (review-round-cost Chunk 01, #961): the failed-partial remedy sentence —
+        # see LAST_MEASURED_TOKENS. Declared.
+        assert tokens < 700, f"coordinator.md is ~{tokens} tokens, should be <700"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's
