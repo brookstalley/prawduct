@@ -974,3 +974,109 @@ class TestReviewEligibilityIsItsOwnQuestion:
         assert ca.review_subjects(
             ["b.py", ".prawduct/x.md", "a.py"]
         ) == ["b.py", "a.py"]
+
+
+# ---------------------------------------------------------------------------
+# One excused interval (the session gate's imported-history arm)
+# ---------------------------------------------------------------------------
+
+
+def _not_any(paths: set[str]):
+    return lambda files: not any(f in paths for f in files)
+
+
+class TestExcusedGapVerdict:
+    """``excused_gap_verdict`` composes with ONE interval no evidence spans,
+    when the caller excuses every judgeable file in it. Each case below is a
+    span ``coverage_verdict`` reports uncovered."""
+
+    def test_a_gap_after_the_reviewed_interval_is_excused(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        assert ca.coverage_verdict(facts, T0, T2, _diff(table))["status"] == "uncovered"
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "covered", verdict
+        assert verdict["gap"] == {"src": T1, "dst": T2, "files": ["lib/b.py"]}
+        assert [s["kind"] for s in verdict["path"]] == ["review", "gap"]
+
+    def test_a_gap_before_the_reviewed_interval_is_excused(self):
+        # Sync first, then the session's own reviewed work: the gap sits at
+        # the START of the span, reached by walking evidence backward.
+        facts = [_review("r1", T1, T2, ["lib/a.py"])]
+        table = {(T0, T1): ["lib/b.py"], (T0, T2): ["lib/a.py", "lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "covered", verdict
+        assert [s["kind"] for s in verdict["path"]] == ["gap", "review"]
+
+    def test_a_gap_holding_a_refused_file_is_not_excused(self):
+        """A file both authored and imported is in the gap's diff, so the
+        caller sees it and refuses — authorship is per path."""
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        table = {
+            (T0, T2): ["lib/a.py", "lib/b.py"],
+            (T1, T2): ["lib/a.py", "lib/b.py"],
+        }
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "uncovered"
+        assert sorted(verdict["gap"]["files"]) == ["lib/a.py", "lib/b.py"]
+
+    def test_an_uncomputable_gap_is_never_excused(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff({}), None, lambda files: True
+        )
+        assert verdict == {"status": "uncovered", "gap": None}
+
+    def test_a_blocker_on_the_path_still_blocks(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER])]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "blocked", verdict
+        assert [u["fid"] for u in verdict["unresolved"]] == ["F-1"]
+
+    def test_a_resolved_blocker_lets_the_gap_cover(self):
+        facts = [
+            _review("r1", T0, T1, ["lib/a.py"], findings=[BLOCKER]),
+            _resolution("res1", "r1", "F-1"),
+        ]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"})
+        )
+        assert verdict["status"] == "covered", verdict
+
+    def test_the_pair_cap_can_only_deny(self):
+        facts = [_review("r1", T0, T1, ["lib/a.py"])]
+        table = {(T0, T2): ["lib/a.py", "lib/b.py"], (T1, T2): ["lib/b.py"]}
+        verdict = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"}), max_pairs=0
+        )
+        assert verdict["status"] == "uncovered"
+
+    def test_the_key_form_agrees_with_the_pairwise_form(self):
+        """Free edges from per-tree keys (the form every gate uses) reach the
+        trees the pairwise probe does: T1 and T11 differ only in docs, and
+        only T11 has a diff to the target the table can answer. T11 is a tree
+        some unrelated review ended at — free edges join only trees the
+        evidence mentions."""
+        facts = [_review("r1", T0, T1, ["lib/a.py"]), _review("r9", T3, T11, ["lib/z.py"])]
+        table = {
+            (T1, T11): ["docs/x.md"],
+            (T11, T1): ["docs/x.md"],
+            (T11, T2): ["lib/b.py"],
+        }
+        keys = {T0: "k0", T1: "k1", T11: "k1", T2: "k2"}
+        for key_fn in (None, keys.get):
+            verdict = ca.excused_gap_verdict(
+                facts, T0, T2, _diff(table), key_fn, _not_any({"lib/a.py"})
+            )
+            assert verdict["status"] == "covered", (key_fn, verdict)
+            assert verdict["gap"]["src"] == T11

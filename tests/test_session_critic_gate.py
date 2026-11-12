@@ -1039,3 +1039,132 @@ class TestModeAdvisoryReadsTheWorkSpan:
             self._committed_session(tmp_path, "notes.md"), monkeypatch, capsys
         )
         assert self._SENTINEL not in err
+
+
+def _imported_history_session(
+    tmp_path: Path, *, review_own: bool = True, findings: "list[dict] | None" = None
+) -> Path:
+    """#1098's shape: a session on a feature branch commits its own file
+    (`a.py`), then merges the base, which advanced BEFORE the session with a
+    file nobody on this branch reviewed (`b.py`).
+
+    The session's start is pinned ten minutes ahead of the real clock and its
+    git moves stamped after it, so the reflog tells the session's own commit
+    and merge from the history made before it — the authorship read the
+    firing span already trusts (`gates._session_authored_paths`)."""
+    import os  # noqa: PLC0415 — only this fixture needs a pinned clock
+    import time  # noqa: PLC0415
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / ".gitignore").write_text(".prawduct/.session-*\n")
+    _commit(repo, "code.py", "x = 1\n", "c1")
+    (repo / ".prawduct").mkdir()
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _git(repo, "checkout", "-q", "main")
+    _commit(repo, "b.py", "b = 1\n", "upstream work, made before the session")
+    _git(repo, "checkout", "-q", "feature")
+
+    started = int(time.time()) + 600
+    _write_marker(repo)
+    (repo / ".prawduct" / ".session-start").write_text(
+        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started))
+    )
+    session_base = _tree(repo)
+    env = dict(os.environ, GIT_COMMITTER_DATE=f"@{started + 60} +0000")
+
+    def _session_git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            cwd=str(repo), capture_output=True, text=True, timeout=15,
+            check=True, env=env,
+        )
+
+    (repo / "a.py").write_text("a = 1\n")
+    _session_git("add", "a.py")
+    _session_git("commit", "-q", "-m", "the session's own work")
+    if review_own:
+        _fact(repo, session_base, _tree(repo), ["a.py"], findings=findings)
+    _session_git("merge", "-q", "--no-ff", "-m", "merge main", "main")
+    assert (repo / "b.py").is_file()
+    return repo
+
+
+class TestHistoryThisSessionDidNotWrite:
+    """#1098: the session gate's span is base tree → working tree, so a session
+    that wrote code AND synced was asked to cover the sync's history too. The
+    third arm excuses an unreviewed interval holding only files the session did
+    not author; it never relaxes anything else, and never without authorship."""
+
+    def test_an_imported_unreviewed_file_does_not_block_reviewed_own_work(self, tmp_path):
+        repo = _imported_history_session(tmp_path)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "covered", verdict
+        assert verdict["imported"] == ["b.py"]
+        assert verdict["base_source"] == "marker"
+
+    def test_the_same_session_blocked_before_the_third_arm(self, tmp_path, monkeypatch):
+        """The control: with authorship unavailable the verdict is today's —
+        uncovered — on the very fixture the case above passes."""
+        repo = _imported_history_session(tmp_path)
+        monkeypatch.setattr(gates, "_session_authored_paths", lambda *a, **k: None)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "imported" not in verdict
+
+    def test_unreviewed_own_work_still_blocks_and_is_named(self, tmp_path):
+        repo = _imported_history_session(tmp_path, review_own=False)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "unreviewed files this session wrote: a.py" in verdict["reason"]
+        assert "b.py" not in verdict["reason"].split("wrote:")[1]
+
+    def test_an_unreadable_reflog_blocks_as_today(self, tmp_path, monkeypatch):
+        repo = _imported_history_session(tmp_path)
+        real = gates.evidence.run_git
+
+        def _no_reflog(project_dir, *args, **kwargs):
+            if args and args[0] == "reflog":
+                return 1, "", "simulated failure"
+            return real(project_dir, *args, **kwargs)
+
+        monkeypatch.setattr(gates.evidence, "run_git", _no_reflog)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "imported" not in verdict
+        assert "this session wrote" not in verdict["reason"]
+
+    def test_a_blocking_finding_on_own_work_still_blocks(self, tmp_path):
+        blocker = {"fid": "R-1", "severity": "BLOCKING", "title": "a.py is wrong",
+                   "files": ["a.py"]}
+        repo = _imported_history_session(tmp_path, findings=[blocker])
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "blocked", verdict
+        assert [u["fid"] for u in verdict["unresolved"]] == ["R-1"]
+
+    def test_the_pr_gate_is_untouched(self, tmp_path, capsys):
+        """The PR gate still composes over the whole merge-base span: the
+        session's review of a.py does not span it, so it stays uncovered."""
+        repo = _imported_history_session(tmp_path)
+        assert gates.check_cumulative_critic(repo) == 1
+        assert "uncovered" in capsys.readouterr().err
+
+    def test_the_stop_hook_says_what_it_excused_in_one_line(self, tmp_path, capsys):
+        repo = _imported_history_session(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [ ] Chunk 01: work\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+        assert rc == 0, err
+        notes = [ln for ln in err.splitlines() if "a sync brought in" in ln]
+        assert notes == [
+            "NOTE: the Critic gate judged this session's own work; 1 judgeable "
+            "file(s) a sync brought in were not judged here (b.py) — the PR "
+            "gate's merge-base span still requires review of any not already on "
+            "the base branch."
+        ], err

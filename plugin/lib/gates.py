@@ -1904,6 +1904,12 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
       session end, sending the builder to run exactly the cumulative round
       the transfer exists to remove. Conditions and their shape:
       :func:`_merge_base_verdict`.
+    - Both arms leave the session span uncovered, but the only interval no
+      review spans holds judgeable files this session did not author (a sync
+      brought them in) → covered, or blocked when a tree on that path still
+      carries a blocker, with an ``imported`` key naming the excused files.
+      Never when authorship cannot be read; never at the PR gate, which still
+      composes over the whole merge-base span. :func:`_imported_history_verdict`.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     read = evidence.read_facts(project_dir)
@@ -1952,6 +1958,14 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
         ):
             verdict = mb_verdict
             base, base_source = mb_verdict["base"], "merge-base-fallback"
+    # The third arm: history this session did not write. Asked only of the
+    # session span (the marker's), only once both arms above left it uncovered,
+    # and only on an authorship read that fully completed — so it can turn an
+    # uncovered span covered or blocked, never the reverse.
+    if verdict["status"] == "uncovered" and base_source == "marker":
+        verdict = _imported_history_verdict(
+            project_dir, prawduct_dir, facts, base, target, diff_fn, key_fn, verdict
+        )
     # The near-miss and could-not-run notes are computed against the merge-base
     # span but carried onto whichever verdict is RETURNED, because that is the
     # one the Stop hook renders (as the `reason` in its block message) and this
@@ -1961,6 +1975,72 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
     if transfer_note and verdict["status"] == "uncovered":
         verdict["reason"] = f"{verdict.get('reason', 'no path')} — {transfer_note}"
     verdict.update({"base": base, "target": target, "base_source": base_source})
+    return verdict
+
+
+def _imported_history_verdict(
+    project_dir: Path,
+    prawduct_dir: Path,
+    facts: list[dict],
+    base: str,
+    target: str,
+    diff_fn,
+    key_fn,
+    verdict: dict,
+) -> dict:
+    """The session gate's relax-only third arm: an uncovered session span
+    passes when the only interval no review spans holds judgeable files this
+    session did not author — history a pull, merge or branch switch brought in.
+
+    The session span (base tree → working tree) is the right span for the
+    session's OWN work, and the wrong one for what a sync imported: that was
+    written, and reviewed or not, on another branch, so demanding a review of
+    it here sends the builder to review work that is not theirs. The PR gate
+    still composes over the whole merge-base span, so nothing excused here
+    leaves a branch unreviewed at merge.
+
+    Authorship is :func:`_session_authored_paths` — the read the firing span
+    already trusts — with every untracked file counted as authored, since a
+    sync brings in none. When it returns ``None`` (unrecognised or unreadable
+    reflog, no session start, HEAD's tree unmoved) ``verdict`` is returned
+    untouched: the arm narrows only on a read it fully completed. A path both
+    authored and imported is authored, so it stays required. A blocking finding
+    on any tree the excused path stands on still blocks.
+
+    Returns ``verdict`` unchanged, or a ``covered``/``blocked`` verdict carrying
+    ``imported`` (the excused files), or ``verdict`` with its ``reason`` naming
+    the unreviewed files this session did author."""
+    rc, out, _err = evidence.run_git(
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if rc != 0:
+        return verdict
+    untracked = [p for p in out.split("\0") if p]
+    authored = _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+    if authored is None:
+        return verdict
+    gapped = coverage_algebra.excused_gap_verdict(
+        facts, base, target, diff_fn, key_fn,
+        lambda files: not any(f in authored for f in files),
+    )
+    gap = gapped.get("gap") or {}
+    if gapped["status"] == "covered":
+        return {"status": "covered", "path": gapped["path"], "imported": gap["files"]}
+    if gapped["status"] == "blocked":
+        return {
+            "status": "blocked",
+            "path": gapped["path"],
+            "unresolved": gapped["unresolved"],
+            "imported": gap["files"],
+        }
+    own = [f for f in gap.get("files", []) if f in authored]
+    if own:
+        shown = ", ".join(own[:3]) + (f" (+{len(own) - 3} more)" if len(own) > 3 else "")
+        verdict = dict(verdict)
+        verdict["reason"] = (
+            f"{verdict.get('reason', 'no path')} — unreviewed files this session "
+            f"wrote: {shown}"
+        )
     return verdict
 
 
