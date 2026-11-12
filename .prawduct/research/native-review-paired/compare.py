@@ -140,6 +140,24 @@ def unrecorded(repo: Path, recorded: "set[str]") -> "list[str]":
     return sorted(p.stem for p in reviews.glob("rev-*.json") if p.stem not in recorded)
 
 
+def count_check(pairs: list[dict]) -> "tuple[int, list[str]]":
+    """Whether this script's count of each native text matches what the ledger
+    recorded when the run landed — the two parse one text, so a mismatch is a
+    parse change or a text edited since. Runs the ledger could not count are
+    not compared."""
+    agree, disagree = 0, []
+    for pair in pairs:
+        native = pair["native_event"].get("native") or {}
+        if not native.get("findings_parsed") or pair["native_findings"] is None:
+            continue
+        ledger_n, text_n = len(native.get("findings") or []), len(pair["native_findings"])
+        if ledger_n == text_n:
+            agree += 1
+        else:
+            disagree.append(f"{pair['review_id']} (ledger {ledger_n}, text {text_n})")
+    return agree, disagree
+
+
 def _seconds(event: "dict | None") -> "float | None":
     if not event:
         return None
@@ -197,6 +215,9 @@ def main(argv: list[str]) -> int:
           f"(a Critic fact in the store and a countable native text); "
           f"{len(missing)} dispatched and never recorded{': ' + ', '.join(missing) if missing else ''}")
     print(f"stop condition (#1130 step 7): {stop_progress([p['ts'] for p in pairs if p['ts']])}")
+    agree, disagree = count_check(pairs)
+    print(f"count check: {agree} of {agree + len(disagree)} countable run(s) agree with the ledger"
+          + (": " + ", ".join(disagree) if disagree else ""))
     print("\nper Critic goal — shared / Critic only / native only:")
     for goal, row in tally_by_goal(matches).items():
         print(f"  {goal}: {row['shared']} / {row['critic_only']} / {row['native_only']}")
@@ -216,11 +237,20 @@ def main(argv: list[str]) -> int:
                  if (r := fork_costs.fork_row(p)) and r["target"].strip("`") in ranges]
         tokens = {k: sum(r[k] for r in forks) for k in ("cache_create", "cache_read", "input", "output")}
         recipes: dict[str, int] = {}
+        models: dict[str, int] = {}
         for r in forks:
             recipes[r["recipe"] or "unknown"] = recipes.get(r["recipe"] or "unknown", 0) + 1
+            for model in r["models"] or ["unknown"]:
+                models[model] = models.get(model, 0) + 1
         # The level asked is not always the level run (`medium` ran `high` in
-        # 2.1.322), so the recipe each fork's own prompt names is what is reported.
-        print(f"native fork tokens over {len(forks)} fork(s): {tokens}; recipes run: {recipes}")
+        # 2.1.322), and the review runs on its caller's model, so both come from
+        # each fork's own transcript — and a fork off the assumed level is named.
+        print(f"native fork tokens over {len(forks)} fork(s): {tokens}; "
+              f"recipes run: {recipes}; models: {models}")
+        off = {k: v for k, v in recipes.items() if k != "high"}
+        if off:
+            print("WARNING: {} fork(s) ran a recipe other than high: {}".format(
+                sum(off.values()), ", ".join(f"{k} {v}" for k, v in sorted(off.items()))))
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
         items, key = blind_sheet(joined, matches)

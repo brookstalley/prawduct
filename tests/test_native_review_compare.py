@@ -193,3 +193,40 @@ class TestEndToEnd:
         assert compare.main([str(repo), "--transcripts", str(forks)]) == 0
         out = capsys.readouterr().out
         assert "over 1 fork(s)" in out and "recipes run: {'high': 1}" in out
+        # #1161: the model too, since the comparison assumes it matches the Critic's.
+        assert "models: {'claude-opus-5-5': 1}" in out
+        assert "WARNING" not in out
+
+    def test_a_fork_that_ran_another_recipe_is_flagged(self, paired_repo, tmp_path, capsys):
+        """#1161: the comparison assumes every native run was `high`; a fork whose
+        own prompt names another recipe breaks that, and the report says so."""
+        repo, _review_id = paired_repo
+        [pair] = compare.load_pairs(repo)
+        target = pair["native_event"]["native"]["args"].split(" ", 1)[1]
+        forks = tmp_path / "subagents"
+        forks.mkdir()
+        lines = [
+            {"type": "user", "timestamp": "2026-11-12T10:00:00Z",
+             "message": {"content": f"Review target: `{target}`\n\n`low effort → 1 diff pass`"}},
+            {"type": "assistant", "timestamp": "2026-11-12T10:00:05Z",
+             "message": {"model": "claude-sonnet-5-5", "usage": {"output_tokens": 1}}},
+        ]
+        (forks / "agent-y.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+        assert compare.main([str(repo), "--transcripts", str(forks)]) == 0
+        out = capsys.readouterr().out
+        assert "WARNING: 1 fork(s) ran a recipe other than high: low 1" in out
+
+    def test_the_counts_are_checked_against_the_ledger(self, paired_repo, capsys):
+        """#1161 acceptance: compare reports the same counts as the ledger events —
+        checked by the script itself on every run, so a parse change that moves a
+        count is seen, not assumed."""
+        repo, review_id = paired_repo
+        assert compare.main([str(repo)]) == 0
+        assert "count check: 1 of 1 countable run(s) agree with the ledger" in capsys.readouterr().out
+        # Control: a text edited after it was recorded disagrees, and is named.
+        text = repo / ".prawduct" / ".native-reviews" / f"{review_id}.md"
+        text.write_text(json.dumps([{"file": "only.py", "line": 1, "summary": "s"}]))
+        assert compare.main([str(repo)]) == 0
+        out = capsys.readouterr().out
+        assert "count check: 0 of 1 countable run(s) agree with the ledger" in out
+        assert f"{review_id} (ledger 2, text 1)" in out

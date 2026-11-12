@@ -141,13 +141,16 @@ def findings_detail(text: str) -> "list[dict] | None":
 
 
 def _without_host_header(text: str) -> str:
-    """``text`` minus the host's leading ``(none)`` line, when more follows it.
-    A text that is only ``(none)`` keeps it: there is no review body to hold any
-    other answer."""
+    """``text`` minus the host's result header — a ``Result:`` line, which the
+    wrapper is told to drop and may keep, then the ``(none)`` line the host
+    prints under it — when more follows. A text that is only the header keeps
+    its ``(none)``: there is no review body to hold any other answer."""
     lines = text.strip().splitlines()
+    if lines and lines[0].strip() == "Result:":
+        lines = lines[1:]
     if len(lines) > 1 and lines[0].strip() == "(none)":
         return "\n".join(lines[1:])
-    return text
+    return "\n".join(lines)
 
 
 def _read_text(path: Path) -> str:
@@ -270,7 +273,12 @@ def next_action_clause(prawduct_dir: Path, review_id: "str | None") -> str:
     except OSError:
         text = ""
     findings = parse_findings(text) if text.strip() else None
-    counted = f" ({len(findings)} finding(s))" if findings is not None else " (it may still be running)"
+    if findings is not None:
+        counted = f" ({len(findings)} finding(s))"
+    elif text.strip():
+        counted = " (landed, not countable)"
+    else:
+        counted = " (it may still be running)"
     return (
         f" A paired native review of this range (#1130) ran beside it{counted}: read its list "
         f"with {command} and work from both lists before fixing. It gates nothing."
