@@ -159,7 +159,7 @@ restated as app policy.
    cumulative full` → `explicit-args` rationale) for a builder who wants a fresh whole-bundle look.
    An opt-in lever saves nothing unless someone remembers to use it, and `rule-2` inference
    dispatches cumulatives with nobody there to ask.
-2. **The interaction sweep: rated, or advisory?** **Rated**, computed as above (findings eligible on any file
+2. **The interaction sweep: rated, or advisory?** *(Re-ruled 2026-11-11, see below: no sweep is built.)* **Rated**, computed as above (findings eligible on any file
    it reaches), because the stale-prose class is 9 of the 33 losses and a blocker in it is
    still real. The risk is that it grows back into a whole-bundle review. The sweep is scoped to
    what the delta changed, so its size tracks the delta. **Rated means amending a stated contract:**
@@ -203,6 +203,19 @@ restated as app policy.
    framework ships the `full` override. A product that wants a whole-branch review, for example as
    part of its develop → main promotion, can require it in its own process. Chunk 4's yield
    comparison is still how the framework default gets revisited.
+
+**Decision 2, re-ruled by the owner on 2026-11-11.** Chunk 01's tool replayed the sweep on the nine
+stale-prose losses. It reached the finding's file through a token the finding names in none of them.
+Two causes:
+- a retired name still appears in the delta's own plan, change-log and tests, so it never "vanishes";
+- hard-wrapped markdown defeats a whole-string grep.
+
+The same replay put the same-base blocking loss at about 7 in 114, not about 1%. The owner ruled:
+- build no sweep;
+- every machine relay (record-lint and the test-evidence relays) grades merge-base → HEAD;
+- measure the real loss in Chunk 4.
+
+The reading is in `build-plan-bounded-cumulative.md` § Decisions made mid-build.
 
 ## Build shape (not yet: waits on #885 and the re-baseline)
 

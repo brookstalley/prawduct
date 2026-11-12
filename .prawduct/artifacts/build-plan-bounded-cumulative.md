@@ -89,6 +89,13 @@ not change.
     The per-file version would transfer more than half the rated files on discodon.
   - By the design's own rule ("If it catches few, Decision 2 reopens before any build"), Decision 2
     goes back to the owner, and Chunk 02 is held until it is ruled.
+- **Owner re-ruling, 2026-11-11** (`.prawduct/owner-rulings.md` on `feature/gate-clarity`): "yes,
+  follow your recommendation".
+  - No vanished-token sweep is built.
+  - Every machine relay (record-lint, plus the test-evidence relays Decision 3 did not name) keeps
+    grading merge-base → HEAD while the review is bounded.
+  - Chunk 04 measures the real same-base blocking loss against the falsifier.
+  - Chunk 02 is unblocked.
 
 **Level:** Medium. Whether the vanished-token sweep catches enough of the nine stale-prose losses
 is not measured (the design says so). The cheapest step that would raise the level is Chunk 01's
@@ -147,8 +154,15 @@ are verified as the design's Build shape says. The full suite runs once, on the 
 
 ### Chunk 02: Frontier and interval
 
-- **Description:** The design's Build shape item 2. Built after the coordinator reads Chunk 01's
-  report. If the sweep catches few of the nine, Decision 2 goes back to the owner first.
+- **Description:** The design's Build shape item 2, as amended by the owner's 2026-11-11 re-ruling
+  of Decision 2. It builds:
+  - `coverage.boundary_frontier` (conditions 1–5, each declining with a reason);
+  - the bounded branch in `begin_review`;
+  - `span` and `bounded_from` on the manifest, fact and ledger;
+  - the `full` override token in `infer-critic-mode`;
+  - record-lint and the test-evidence relays grading the bundle span merge-base → HEAD.
+
+  The vanished-token sweep is not built.
 - **Depends on:** 01
 
 ### Chunk 03: Protocol
