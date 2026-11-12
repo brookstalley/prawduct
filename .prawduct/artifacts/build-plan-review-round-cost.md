@@ -83,6 +83,19 @@ the base-tree run.
   (`building.md` +37, `goals-1-3.md` +13, `review-cycle.md` +71). Dated records that state the old
   rule are left as history: the loop-nontermination diagnosis, an archived plan, and the #167
   design.
+- Chunk 01: `check_partial` keeps the `(ok, reason)` signature. Its body is `_load_partial`, which
+  returns the parsed record, so `consolidate` reads each file once and gets one verdict on it. The
+  check also refuses a file that is not the review's keyed partial path. That condition is always
+  true inside consolidate, and it is what makes the verb refuse a stray file. The verb resolves a
+  relative path against the project, not the caller's working directory.
+- Chunk 01: the grants use the house form with the star attached to the word
+  (`validate-partial*`), as `test_skill_command_grants.py` enforces, rather than the issue's
+  spaced form. The spaced form would not cover the bare call.
+- Chunk 01: an inline single-pass fork (roster `reviewer` and no `reviewer_model`) is told to
+  rewrite its partial and re-run consolidate, because it has no reviewer to re-dispatch.
+- Integration: both chunks added functions at the same place in `critic_consolidate.py`, and the
+  merge keeps both. The payload budget takes Chunk 02's declared +13 on the three inner routes, on
+  top of Chunk 01's raises.
 
 **Level:** High. Both items name their functions, their acceptance and their red-first tests.
 
