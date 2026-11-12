@@ -214,3 +214,24 @@ Four answers to four questions asked together:
    release. This is a bounded exception to api-contract's additive-first norm, on the #303 precedent:
    every reader ships with the plugin.
 4. Pull requests are opened for `feature/gate-clarity` and `feature/review-round-cost`.
+
+**2026-11-11.** "So the new dev version is improvef in most ways, but this is really hard for a human to parse: [a turn that listed its one ask, then closed `YOUR TURN · DO NOT CLEAR — … The one ask above is for you.`] ... if there ares asks for the user, it's confusing to say "don't clear, waiting on you, look above". Let's try to tune things so any actions required of the user are the last thing shown, and prominent."
+The close changes order: the one status line comes first, and any asks follow it as the turn's last
+block, under a fixed prominent header, so nothing points "above". The Stop hook's reading of the
+close learns that trailing block. Lands in `methodology/session-hygiene.md`, the session digest and
+`lib/standing_block.py` on `feature/asks-last`.
+
+**2026-11-11.** "1. Yes 2. Yes" — answering (1) whether a turn interrupted by a Stop block repeats its
+`**Needs you:**` block, so the asks stay last, and (2) whether to keep the `close-pointer` record of a
+close whose reason points "above"/"below". Both were built on `feature/asks-last` as the coordinator's
+inference from the ruling above; this confirms them. Lands in `STOP_BLOCK_ANSWER`,
+`methodology/session-hygiene.md` and `lib/standing_block.py`.
+
+**2026-11-11.** "3. Confirmed" — answering whether #890's falsifier may be restated against the same-base
+old-only blocking rate (about 7 in 114 on the 2026-11-11 dated reading, re-derived by
+`tools/measure-repeat-cumulative-yield.py`) instead of the design's all-rows ~1%. Lands in
+`build-plan-bounded-cumulative.md` § Goals (Falsifier) and the design's "Falsifies the lever".
+
+**2026-11-11.** "4. Yes PR and merge both and update prawduct-live"
+`feature/bounded-cumulative` and `feature/asks-last` are opened as PRs into `develop` and merged, and the
+`prawduct-live` worktree (the lumens profile's plugin source) is advanced to the merged `develop`.

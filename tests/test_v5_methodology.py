@@ -557,7 +557,10 @@ LAST_MEASURED_TOKENS = {
     # PR section loses the `pr-reviewer` dispatch, its protocol pointer and the concurrency sentence,
     # and names the two gate commands instead; `.gates-waived` loses its `pr` key. A READING;
     # ceiling lowered with it.
-    "methodology/building.md": 5367,
+    # -8 on 2026-11-11 (asks-last, owner ruling): the Session Scope sentence stops saying where
+    # the closing line goes ("last, after every other word"), which the asks that now follow it
+    # falsified; session-hygiene.md and the digest own the placement. A CUT; ceiling lowered.
+    "methodology/building.md": 5359,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -740,7 +743,15 @@ LAST_MEASURED_TOKENS = {
     # restatement to cut. The bullet is one sentence: a blind test found it raises the same
     # planted mistakes as a draft more than twice its size. Priced with the route sums in
     # test_reviewer_payload_budget.py.
-    "skills/critic/review-protocol.md": 3950,
+    # +50 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: the `cumulative` bullet states the bounded span: the subject is the delta, `files_context` is read and never rated,
+    # and record-lint and `test-status` still cover the bundle. Not paid by trimming: without it a bounded reviewer
+    # either re-rates the bundle (the cost the span removes) or drops the test-evidence relay the owner ruled kept.
+    # +48 on 2026-11-11 (bounded-cumulative review round), DECLARED: the boundary review's R-3: the rule for `files_context` is stated relationally in its one home
+    # (`review-protocol.md` "Subject and oracle": never rated on its own merits, but a description the delta
+    # made false is the delta's finding), and SKILL step 5, `coordinator.md` and the reviewer contract point at it.
+    # Not paid by trimming: an absolute "never rated" would make reviewers drop the stale-prose class, the largest
+    # residual loss once the sweep was cut.
+    "skills/critic/review-protocol.md": 4048,
     # +71 on 2026-08-13, ceiling 2000 -> 2250: same pass, same reason. This file
     # is the one every chunk and verify reviewer reads, so it is where the
     # volume-cutting instructions have to live: prior_dispositions (don't
@@ -1064,7 +1075,12 @@ LAST_MEASURED_TOKENS = {
     # -20 on 2026-11-11 (pr-reviewer-fold Chunk 03): the PR review leaves the boundary stage, the
     # ledger paragraph stops saying the PR skill appends `review.pr`, and the PR gate's advisory
     # sentence stops citing the PR reviewer's severity contract. A READING; ceiling lowered with it.
-    "skills/critic/review-cycle.md": 7755,
+    # +242 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: the bounded repeat cumulative — its interval row,
+    # the paragraph saying when it bounds and how it falls back, the `full` override, its manifest keys, and the
+    # `cumulative-final` sentence that claimed merge-base...HEAD. No reviewer loads this file.
+    # +50 on 2026-11-11 (bounded-cumulative review round), DECLARED: the cumulative paragraph stops promising every
+    # commit is reviewed and names `cumulative full`; the superseded-blocker sentence is corrected. No reviewer loads it.
+    "skills/critic/review-cycle.md": 8047,
     # First reading, 2026-08-15, taken because the demotion property landed here
     # and nothing was watching. This is the payload EVERY mode loads -- including
     # the fast `chunk` path whose whole reason for existing is to not read the
@@ -1247,7 +1263,11 @@ LAST_MEASURED_TOKENS = {
     # the header scopes `coordinator.md` to it. Not paid by trimming: the concurrency clause is
     # pinned on both dispatch surfaces, and the rest of step 7 is the inline path, which sessions at
     # or below the ceiling still take.
-    "skills/critic/SKILL.md": 3146,
+    # +11 on 2026-11-11 (bounded-cumulative Chunk 03), DECLARED: the per-mode scope summary's `cumulative` entry
+    # was false once a repeat is bounded; the shortest true one names the delta and the `Span:` signal.
+    # +20 on 2026-11-11 (bounded-cumulative review round), DECLARED: step 5 points at the `files_context` rule, and
+    # the exit-3 paragraph says a cumulative's interval COMPOSES to the gate's span (it no longer IS it).
+    "skills/critic/SKILL.md": 3177,
     # -8 on 2026-09-28 (opus-55-w3), C-24: the dangling S1/S2/S6 ids cut per the Opus 5.5
     # prompt audit's slice C; the ceiling lowered with it.
     "skills/critic/framework-checks.md": 1108,
@@ -1279,7 +1299,8 @@ LAST_MEASURED_TOKENS = {
     # `reviewer` role when `reviewer_model` is set — the entry condition, one dispatch per roster
     # role, the protocol path for that role, and its goal line. Read only by a fork that dispatches,
     # never by a reviewer.
-    "skills/critic/coordinator.md": 663,
+    # +7 on 2026-11-11 (bounded-cumulative review round), DECLARED: the dispatch template names `files_context`.
+    "skills/critic/coordinator.md": 670,
     # The on-demand class, first recorded 2026-08-19 (#688) — readings, no
     # ceilings; the block above this dict is the decision and its reasoning.
     # These three are baselines, not achievements: they record where the class
@@ -1552,7 +1573,9 @@ LAST_MEASURED_TOKENS = {
     # preference. A READING.
     # +3 on 2026-11-11 (read-cost-review): the Data Model line names the template's Access Paths
     # section. A READING.
-    "methodology/planning.md": 5752,
+    # +17 on 2026-11-11 (bounded-cumulative Chunk 03): `cumulative-final` no longer claims the review spans
+    # merge-base...HEAD, and says why either span covers `final`'s interval. A READING.
+    "methodology/planning.md": 5769,
     # 4529 -> 4644 on 2026-08-19, and this is the new control's FIRST firing:
     # the assertion went red the moment the file changed without its reading,
     # carrying the number to write. Cause — Critic R-7, the unpriceable-ledger
@@ -1682,7 +1705,16 @@ LAST_MEASURED_TOKENS = {
     # went; the asks rule and its example are the growth. A READING, no ceiling.
     # -7 on 2026-11-11 (pr-reviewer-fold Chunk 03): "a `/prawduct:pr` reviewer still running" left
     # the outstanding-work list; there is no such reviewer. A READING.
-    "methodology/session-hygiene.md": 3287,
+    # +98 on 2026-11-11 (asks-last, owner ruling): the asks move from just above the close to
+    # after it, under the fixed `**Needs you:**` header, so they are the last thing the reader
+    # sees; the close's reason may no longer point at them by position, and the Stop-hook
+    # paragraph says the verdict is then read from the line before the header. A READING.
+    # +45 the same day (asks-last follow-up, confirmed by the owner 2026-11-11): "Answering a block" says a turn that
+    # ended with asks ends its answer with them again, unchanged, after any re-written close; the
+    # Stop-hook paragraph names the `close-pointer` record of a reason pointing "above". A READING.
+    # +4 on 2026-11-11 (asks-last review round): the header is read only outside a code fence, and the
+    # guide says so instead of "exactly". A READING.
+    "methodology/session-hygiene.md": 3434,
     # First reading, 2026-08-21, taken at birth: a new on-demand guide, so it
     # joins the class above — a READING, no ceiling. `test_every_methodology_guide_is_accounted_for`
     # requires the entry; the decision block above this
@@ -2241,8 +2273,14 @@ LAST_MEASURED_INJECTED_TOKENS = {
     # framework 3074 -> 3071 on 2026-11-11 (pr-reviewer-fold Chunk 03): AGENTS.md's PR section
     # stops describing a dispatched release-readiness reviewer and its protocol, and the layout
     # paragraph names the Critic protocol alone.
-    "framework": 3071,
-    "product": 2192,
+    # framework 3071 -> 3058, product 2192 -> 2179 on 2026-11-11 (asks-last, owner ruling): the
+    # closing section's asks sentence now puts the asks after the line under `**Needs you:**`
+    # and bars a reason pointing at them. Paid in place, and then some, by the take-the-next-
+    # step paragraph's last clause, which restated the three dispositions the next sentence
+    # defines, and "last," in the rule's opening, which the asks sentence now qualifies. Digest
+    # 9412 -> 9358 characters.
+    "framework": 3058,
+    "product": 2179,
 }
 
 #: Ceilings. HARD, like the per-file prose ceilings in this module and
@@ -2409,8 +2447,10 @@ INJECTED_FOOTPRINT_CEILINGS = {
     # 3080 -> 3075, 2198 -> 2193 on 2026-11-10 (audit-guidance): ratcheted with the
     # reading, one over each.
     # 3075 -> 3072 on 2026-11-11 (pr-reviewer-fold Chunk 03): ratcheted with the reading.
-    "framework": 3072,
-    "product": 2193,
+    # 3072 -> 3059, 2193 -> 2180 on 2026-11-11 (asks-last): ratcheted with the reading's cut,
+    # one over each.
+    "framework": 3059,
+    "product": 2180,
 }
 
 
@@ -2869,7 +2909,7 @@ class TestBuildingMethodology:
         assert "cold cache" in digest
 
     def test_closing_line_is_on_every_surface_that_claims_it(self):
-        """One line — disposition, clear verdict, reason — the asks above it,
+        """One line — disposition, clear verdict, reason — the asks after it,
         the in-flight rule, and one shared trigger.
 
         What this guards is COVERAGE: the shape has to reach an agent through a
@@ -2947,13 +2987,23 @@ class TestBuildingMethodology:
                     f"replaced by {absorbed_by}. Two live vocabularies for one "
                     "slot is worse than either alone."
                 )
-            # The ask rule (owner ruling 2026-11-10, #1131): a turn that needs
-            # the user ends with the asks restated just above the line, because
-            # the reader reads the bottom and a pointer upstream is a search,
-            # not a question. Pinned on both carriers by its discriminating
-            # content: where the asks go, and the pointer that is never one.
-            assert "just above" in flat, (
-                f"{name} no longer puts the asks just above the closing line"
+            # The ask rule (owner rulings 2026-11-10, #1131, and 2026-11-11,
+            # asks-last): a turn that needs the user ends with the asks, AFTER
+            # the closing line under a fixed header, because the reader reads
+            # the bottom and a pointer upstream is a search, not a question.
+            # The 2026-11-10 placement, just above the line, left the close
+            # last and its reason pointing back up at the asks — the shape the
+            # owner found hard to parse — so it is pinned gone. Pinned on both
+            # carriers by its discriminating content: the header (its one code
+            # home is `lib/standing_block.ASKS_HEADER`, which the Stop hook
+            # reads past), and the pointer that is never one.
+            from lib import standing_block
+
+            assert standing_block.ASKS_HEADER in flat, (
+                f"{name} no longer names the asks header the Stop hook reads past"
+            )
+            assert "just above" not in flat, (
+                f"{name} still puts the asks just above the closing line"
             )
             assert '"see above"' in flat, (
                 f"{name} no longer names \"see above\" as the ask that is not one"
@@ -3829,7 +3879,8 @@ class TestBuildingMethodology:
         # RAISED 5308 -> 5368 (audit-guidance, #1135, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5368 -> 5375 (critic-trim merged with audit-guidance, 2026-11-10) — see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 5375 -> 5368 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 5368, f"building.md is ~{tokens} tokens, should be <5368"
+        # LOWERED 5368 -> 5360 (asks-last, 2026-11-11) with the reading's cut.
+        assert tokens < 5360, f"building.md is ~{tokens} tokens, should be <5360"
 
 
 # =============================================================================
@@ -5667,7 +5718,9 @@ class TestCriticSkill:
         # LAST_MEASURED_TOKENS. Declared.
         # LOWERED 3869 -> 3864 (pr-reviewer-fold, 2026-11-11) with the reading.
         # RAISED 3864 -> 3951 (read-cost-review, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
-        assert tokens < 3951, f"review-protocol.md is ~{tokens} tokens, should be <3951"
+        # RAISED 3951 -> 4001 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        # RAISED 4001 -> 4049 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 4049, f"review-protocol.md is ~{tokens} tokens, should be <4049"
 
 
 # =============================================================================
@@ -6236,7 +6289,9 @@ class TestCriticSkillRoutesByMode:
         # see LAST_MEASURED_TOKENS. Declared.
         # RAISED 3089 -> 3147 (reviewer-model-cap, 2026-11-11): the hand-off branch — see
         # LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 3147, f"SKILL.md is ~{tokens} tokens, should be <3147"
+        # RAISED 3147 -> 3158 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        # RAISED 3158 -> 3178 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 3178, f"SKILL.md is ~{tokens} tokens, should be <3178"
 
     def test_step_2_names_both_payloads(self):
         line = next(ln for ln in self.content.split("\n") if ln.startswith("2. "))
@@ -6572,7 +6627,9 @@ class TestReviewCycle:
         # RAISED 7746 -> 7776 (reviewer-model-cap, 2026-11-11): the `reviewer_model` manifest key —
         # see LAST_MEASURED_TOKENS. Declared.
         # LOWERED 7776 -> 7756 (pr-reviewer-fold, 2026-11-11) with the reading.
-        assert tokens < 7756, f"review-cycle.md is ~{tokens} tokens, should be <7756"
+        # RAISED 7756 -> 7998 (bounded-cumulative, 2026-11-11), DECLARED — see LAST_MEASURED_TOKENS.
+        # RAISED 7998 -> 8048 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 8048, f"review-cycle.md is ~{tokens} tokens, should be <8048"
 
     def test_cross_checks_token_budget(self):
         # cross-checks.md is the reviewer-facing half review-cycle.md used to
@@ -6598,7 +6655,8 @@ class TestReviewCycle:
         # `reviewer_model` — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 613 -> 664 (reviewer-model-cap, 2026-11-11): the single-pass `reviewer` dispatch —
         # see LAST_MEASURED_TOKENS. Declared.
-        assert tokens < 664, f"coordinator.md is ~{tokens} tokens, should be <664"
+        # RAISED 664 -> 671 (bounded-cumulative review round), DECLARED — see LAST_MEASURED_TOKENS.
+        assert tokens < 671, f"coordinator.md is ~{tokens} tokens, should be <671"
 
     def test_framework_checks_token_budget(self):
         # Ceiling 1150. This file is `final`/`cumulative` payload: SKILL.md's

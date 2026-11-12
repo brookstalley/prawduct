@@ -66,7 +66,10 @@ from .timewindow import in_window, is_usable_bound
 #: reviewer labelled.
 #: Bumped to 10 when `above_reviewer_ceiling` joined: how many reviews ran on a
 #: model above the reviewer ceiling, the cost the owner capped.
-REPORT_SCHEMA_VERSION = 10
+#: Bumped to 11 when `by_span` joined: a cumulative's span (bounded to the
+#: delta since a boundary review, or the whole bundle) and why a full one ran
+#: full, so the bounded-cumulative lever can be judged against its falsifier.
+REPORT_SCHEMA_VERSION = 11
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -74,6 +77,12 @@ REPORT_SCHEMA_VERSION = 10
 #: the field existed, or a value this reader does not know — groups as
 #: ``None``, rendered "(unrecorded)": "not measured" must not read as a stage.
 _STAGES = ("inner", "boundary")
+
+#: A cumulative's two spans, as `critic-begin` records them. Unlike a stage, a
+#: missing span IS known: no cumulative was bounded before the field existed,
+#: so a cumulative event without one reviewed the whole bundle and reads `full`
+#: (its reason `unrecorded`). Other modes have no span and are not grouped.
+_SPANS = ("bounded", "full")
 
 #: Ledger kind -> the tally it feeds. Exact kinds, never a `learning.` prefix
 #: match: a future kind this report has no column for must surface as
@@ -333,6 +342,8 @@ def _extract_row(event: dict) -> dict:
         "model": _canonical_model(model),
         "mode": _short_mode(event["review"].get("mode")),
         "stage": stage if stage in _STAGES else None,
+        "span": event["review"].get("span"),
+        "span_reason": event["review"].get("span_reason"),
         # Read, never inferred — an event written before the key existed says
         # nothing about which path consolidated it.
         "trigger": trigger if trigger in CONSOLIDATION_TRIGGERS else None,
@@ -715,10 +726,13 @@ def aggregate_review_stats(
     by_rmm: dict[tuple, list[dict]] = {}
     by_scope: dict[str | None, list[dict]] = {}
     by_stage: dict[str | None, list[dict]] = {}
+    by_span: dict[str, list[dict]] = {span: [] for span in _SPANS}
     for row in rows:
         by_rmm.setdefault((row["role"], row["model"], row["mode"]), []).append(row)
         by_scope.setdefault(row["scope"], []).append(row)
         by_stage.setdefault(row["stage"], []).append(row)
+        if row["mode"] == "cumulative":
+            by_span["bounded" if row["span"] == "bounded" else "full"].append(row)
 
     top_files, files_attributed_total = _top_files(rows)
     return {
@@ -754,6 +768,15 @@ def aggregate_review_stats(
                 by_stage.items(),
                 key=lambda kv: _STAGES.index(kv[0]) if kv[0] in _STAGES else len(_STAGES),
             )
+        ],
+        # The bounded-cumulative lever's own numbers: what a bounded repeat
+        # cost and found beside a full one, and why each full one ran full.
+        # Both spans are listed even at zero, so an absent lever reads as a
+        # zero rather than as a missing key.
+        "by_span": [
+            {"span": span, **_group_stats(by_span[span], joins),
+             **({"reasons": _span_reasons(by_span[span])} if span == "full" else {})}
+            for span in _SPANS
         ],
         # Which path consolidated each Critic review. The three leave identical
         # state, so the only symptom of a dead path is its count here sitting at
@@ -810,6 +833,16 @@ def _fmt_dispositions(block: dict) -> str:
         f"acted on {round(block['acted_on_rate'] * 100)}% of {block['answered']} "
         f"answered blocking/warning findings, {open_} undispositioned ({joined})"
     )
+
+
+def _span_reasons(rows: list[dict]) -> dict:
+    """Why each full-span cumulative ran full: its recorded decline code, or
+    ``unrecorded`` for one written before the field existed."""
+    reasons: dict[str, int] = {}
+    for row in rows:
+        code = row["span_reason"] if isinstance(row["span_reason"], str) and row["span_reason"] else "unrecorded"
+        reasons[code] = reasons.get(code, 0) + 1
+    return dict(sorted(reasons.items()))
 
 
 def _fmt_stats(stats: dict) -> str:
@@ -919,6 +952,11 @@ def _render_human(report: dict, ledger_rel: str) -> str:
     lines += ["", "by stage:"]
     for entry in report["by_stage"]:
         lines.append(f"  {entry['stage'] or '(unrecorded)'}: {_fmt_stats(entry)}")
+    lines += ["", "by span (cumulative only):"]
+    for entry in report["by_span"]:
+        reasons = entry.get("reasons")
+        why = (" — " + ", ".join(f"{code} {n}" for code, n in reasons.items())) if reasons else ""
+        lines.append(f"  {entry['span']}: {_fmt_stats(entry)}{why}")
     lines += ["", "critic reviews consolidated by: " + ", ".join(
         f"{trigger} {count}" for trigger, count in report["consolidated_by"].items()
     )]

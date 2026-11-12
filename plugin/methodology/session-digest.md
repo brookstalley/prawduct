@@ -117,15 +117,15 @@ issue, showing you the exact outbound bytes first and sending nothing you have n
 ## Closing the turn
 
 **If you can take the next step with what you have, take it.** Don't end a turn to announce the
-next step, offer to continue, or list decisions you could make yourself; a turn ends when the work
-is done, when a machine event must land, or when only the user can unblock it.
+next step, offer to continue, or list decisions you could make yourself.
 
-**Close with one line, last**, a blank line above it, on any turn that ends a chunk or work
+**Close with one line**, a blank line above it, on any turn that ends a chunk or work
 cycle or leaves work outstanding: `RUNNING` · `DO NOT CLEAR` — reason. The first label is
 what produces the next turn: `RUNNING` (a machine event — name it and what you do if it never
 lands) / `YOUR TURN` (only they can) / `COMPLETE` (nothing, and no next action to propose); the
-second is `SAFE TO CLEAR` or `DO NOT CLEAR`. **A turn that needs them ends with the asks**,
-restated in full just above the line, numbered, with your recommendation — never "see above".
+second is `SAFE TO CLEAR` or `DO NOT CLEAR`. It is last unless they must act: then **the asks
+end the turn** — `**Needs you:**` on its own line, each ask in full, numbered, with your
+recommendation; never "see above", in an ask or the reason.
 If they must speak it is `YOUR TURN` even when something also runs, naming it (`DO NOT CLEAR`
 only if a clear would kill it — a server running on its own survives one); never predict that
 they will. Work in flight (a dispatched review, an unread agent) is `RUNNING`, never `COMPLETE`,
