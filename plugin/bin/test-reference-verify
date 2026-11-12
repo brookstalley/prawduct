@@ -34,6 +34,9 @@ Produces the F4a fields of `.test-evidence.json`:
                              buckets informationally instead of gating on them —
                              a gate must never block on a file its evidence
                              producer structurally cannot vouch for.
+    - `changes_unchecked`  — deprecated alias of `changes_out_of_remit`, the
+                             name this list had before #682; kept until the
+                             next major release, then removed.
     - `tests_executed`     — test files discovered under the tests directory
 
 `changes_referenced`, `changes_unreferenced`, `changes_unjudged` and
@@ -369,6 +372,10 @@ def _build_evidence_fields(
         "changes_unjudged": sorted(unjudged),
         "changes_out_of_remit": sorted(out_of_remit),
         "changes_out_of_remit_reason": OUT_OF_REMIT_REASON,
+        # Deprecated alias of `changes_out_of_remit`, kept working until the
+        # next major release: published `--json` keys are never removed outside
+        # one (api-contract.md, additive-first evolution).
+        "changes_unchecked": sorted(out_of_remit),
     }
 
 

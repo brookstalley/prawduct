@@ -83,6 +83,18 @@ own bar.
 
 **Decisions made mid-build:** (appended while building)
 
+- [DECISION: Chunk 04. `changes_unjudged` narrows to symbol-less Python files and deleted files.
+  Non-Python paths move to the new `changes_out_of_remit`, with a record-level
+  `changes_out_of_remit_reason`. `changes_unchecked`, the same set under its pre-#682 name, stays
+  emitted as a deprecated alias until a major release | api-contract.md's additive-first norm says
+  a published key is never repurposed. Its reason is protecting a caller across versions. Every
+  reader of this record ships in the same plugin at the same version, and each one now reads both
+  buckets: the gate in `verify_coverage` and the directive trigger in `_evidence_changed_judged_code`.
+  A record written before the split still reads correctly. This is the precedent the owner ruled
+  for #303. The removal the builder first made is undone, so the only departure from the norm is
+  the narrowing | user can veto/override] Inferred, not ruled. The builder chose the shape, and the
+  coordinator restored the alias.
+
 **Level:** High for 01, 02 and 04, whose items carry their own acceptance. Medium for 03. Whether
 the coverage algebra can report which files are left uncovered cheaply, without a second
 composition, is unknown until the builder reads `coverage_algebra`. The cheapest step that would

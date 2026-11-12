@@ -104,7 +104,11 @@ class TestEvidenceShape:
             "changes_unjudged",
             "changes_out_of_remit",
             "changes_out_of_remit_reason",
+            "changes_unchecked",
         }
+        # The deprecated alias carries exactly the new bucket's value, so a
+        # reader of the pre-#682 name sees the same paths it always did.
+        assert evidence["changes_unchecked"] == evidence["changes_out_of_remit"]
 
     def test_coverage_level_is_referenced_floor(self, mini_repo: Path):
         """The floor verifier MUST declare ``referenced`` — products that
@@ -268,6 +272,7 @@ class TestUnjudgedClassification:
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
         assert "README.md" in evidence["changes_out_of_remit"]
+        assert "README.md" in evidence["changes_unchecked"]  # deprecated alias
         assert "README.md" not in evidence["changes_unjudged"]
         assert "README.md" not in evidence["changes_referenced"]
 
@@ -393,13 +398,17 @@ class TestOutOfRemitClassification:
         assert "src/core.py" in evidence["changes_unjudged"]
         assert "src/core.py" not in evidence["changes_out_of_remit"]
 
-    def test_the_retired_unchecked_key_is_gone(self, mini_repo: Path):
-        """One fact, one key: a second list naming the out-of-remit files as a
-        subset of another bucket would drift from it."""
+    def test_the_unchecked_key_is_a_deprecated_alias_of_out_of_remit(self, mini_repo: Path):
+        """`changes_unchecked` was this list's published name before #682.
+        Additive-first evolution (api-contract.md) keeps it working until a
+        major release, so it must carry exactly the new bucket's value; a
+        derived alias cannot drift from it, which a separately computed list
+        could. Removing it is the major release's change, not this one's."""
         (mini_repo / "Feature.swift").write_text("struct Feature {}\n")
 
         evidence = json.loads(_run_verifier(mini_repo, "--base", "main").stdout)
-        assert "changes_unchecked" not in evidence
+        assert evidence["changes_out_of_remit"] == ["Feature.swift"]
+        assert evidence["changes_unchecked"] == evidence["changes_out_of_remit"]
 
     def test_python_shebang_script_without_suffix_is_not_out_of_remit(
         self, mini_repo: Path
