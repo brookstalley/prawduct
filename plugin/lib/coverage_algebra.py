@@ -792,11 +792,13 @@ def excused_gap_verdict(
         {"status": "covered", "path": [..., {"kind": "gap", "src", "dst",
          "files"}, ...], "gap": {"src", "dst", "files"}}
       | {"status": "blocked", "path", "unresolved", "gap"}
-      | {"status": "uncovered", "gap": {"src", "dst", "files"} | None}
+      | {"status": "uncovered", "gap": {"src", "dst", "files"} | None,
+         "capped": True}   # ``capped`` present only when the cap cut a phase
 
     For ``uncovered``, ``gap`` is the smallest unexcused interval found (the one
     whose files a message should name), or ``None`` when no pair could be
-    diffed. Cost: two closures over the evidence graph plus at most
+    diffed; ``capped`` says pairs went unasked, so a caller can tell "nothing
+    excusable" from "the search stopped". Cost: two closures over the evidence graph plus at most
     ``max_pairs`` diffs per phase, the second phase's mostly answered by the
     caller's diff memo.
     """
@@ -809,13 +811,16 @@ def excused_gap_verdict(
 
     smallest: "dict | None" = None
     blocked: "dict | None" = None
+    capped = False
     for phase_edges in (clean_edges, edges):
         forward = _reach(phase_edges, base_tree, target_tree, diff_fn, key_fn, reverse=False)
         backward = _reach(phase_edges, target_tree, base_tree, diff_fn, key_fn, reverse=True)
-        pairs = sorted(
+        candidates = sorted(
             ((f, r) for f in forward for r in backward if f != r),
             key=lambda p: (-(len(forward[p[0]]) + len(backward[p[1]])), p),
-        )[:max_pairs]
+        )
+        capped = capped or len(candidates) > max_pairs
+        pairs = candidates[:max_pairs]
         for f, r in pairs:
             files = diff_fn(f, r)
             if files is None:
@@ -834,7 +839,10 @@ def excused_gap_verdict(
                 blocked = {"status": "blocked", "path": path, "unresolved": unresolved, "gap": gap}
     if blocked is not None:
         return blocked
-    return {"status": "uncovered", "gap": smallest}
+    uncovered: dict = {"status": "uncovered", "gap": smallest}
+    if capped:
+        uncovered["capped"] = True
+    return uncovered
 
 
 def _find_path(

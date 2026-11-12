@@ -4011,15 +4011,6 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                     + "  A `Type: designer-handoff` chunk skips this gate automatically.\n"
                 ))
 
-    # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
-    # coverage vouches for the current state). The mode is telemetry read from
-    # the latest review FACT in the store (kernel-v3 ch.04 — no gate reads the
-    # findings cache): when all chunks of a multi-chunk plan are complete but
-    # that review ran Goals 1-3 only, end-of-cycle synthesis (Coherence,
-    # Design, the Records Pass) hasn't run.
-    # Advisory NOT blocking — chunk-mode reviews are valid mid-cycle, and the
-    # builder may legitimately defer the final review (e.g., next session).
-    # Reads the session work span, like the rest of the Critic gate family.
     # The session gate passed on the session's own work while files a sync
     # brought in stay unreviewed: say so in one line, so a pass that excused
     # something is never silent about what it excused, or about who still owes it.
@@ -4037,6 +4028,15 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
             file=sys.stderr,
         )
 
+    # Gate 2.5: Advisory mode gate — fires only when Gate 2 passed (composed
+    # coverage vouches for the current state). The mode is telemetry read from
+    # the latest review FACT in the store (kernel-v3 ch.04 — no gate reads the
+    # findings cache): when all chunks of a multi-chunk plan are complete but
+    # that review ran Goals 1-3 only, end-of-cycle synthesis (Coherence,
+    # Design, the Records Pass) hasn't run.
+    # Advisory NOT blocking — chunk-mode reviews are valid mid-cycle, and the
+    # builder may legitimately defer the final review (e.g., next session).
+    # Reads the session work span, like the rest of the Critic gate family.
     if critic_has_work and not critic_doc_only and not critic_would_block:
         mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(project_dir)
         if not mode_satisfied:

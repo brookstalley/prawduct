@@ -40,14 +40,18 @@ render them as one `CAUSE:` line after the `uncovered:` line. The causes are:
 It never raises. It renders `CAUSE: unavailable (<reason>)` when it cannot tell. When suite-coupled
 paths are uncommitted, the transfer near-miss remedy now gives a route that reaches the state: set
 them aside with `git stash push`, run and record the suite, re-run the gate, then `git stash pop`.
-No verdict changes.
+Both names of a staged rename are listed. When the index has deleted a path, which
+`git stash push -- <path>` refuses, the route sets the whole working tree aside instead. No verdict
+changes.
 
 **The Stop gate does not demand review of history the session did not write (#1098).** A
 relax-only third arm in `gates.session_review_verdict` uses a new
 `coverage_algebra.excused_gap_verdict` to find the session span's unreviewed intervals. When none
 of their judgeable files is one this session authored, the verdict is covered and a NOTE names the
 excused files. Authorship comes from the same reflog read the firing span uses, and when that read
-cannot be completed the verdict is unchanged. The arm relaxes only `uncovered`, never `blocked`, and
+cannot be completed the verdict is unchanged. Whenever the arm declines for a reason other than the
+session's own unreviewed files, the block's reason ends with `imported-history excuse not applied:`
+and the reason. The arm relaxes only `uncovered`, never `blocked`, and
 a blocker anywhere on the excused path still blocks. Every untracked file counts as authored, a
 file both authored and imported stays required, and its search cap can only deny. The PR gate is
 unchanged.

@@ -1016,19 +1016,31 @@ def _format_branch_spend(tally: dict, n: int) -> str:
 _CAUSE_PATHS_SHOWN = 3
 
 
-def _uncommitted_paths(project_dir: Path) -> "tuple[list[str], list[str]] | str":
-    """``(uncommitted, untracked)`` — every path the working tree holds against
-    HEAD, tracked edits and untracked files alike, and the untracked subset on
-    its own; or the failure reason as a string.
+def _uncommitted_paths(
+    project_dir: Path,
+) -> "tuple[list[str], list[str], list[str]] | str":
+    """``(uncommitted, untracked, index_deleted)`` — every path the working
+    tree holds against HEAD, tracked edits and untracked files alike; the
+    untracked subset on its own; and the paths the index has deleted; or the
+    failure reason as a string.
 
     Untracked files count because both evidence readers capture them: the
     Stop gate's target tree holds them, and a suite run records the tree it
-    met with them in it. The subset is kept apart because ``git stash push --
-    <path>`` refuses a path git does not track, so a remedy naming one needs
-    the flag that makes it run."""
+    met with them in it. The two subsets are kept apart because ``git stash
+    push -- <path>`` refuses both: a path git does not track without
+    ``--include-untracked``, and a path the index has deleted (``git rm``, the
+    old name of a ``git mv``) under any flag — so a remedy naming one of those
+    has to set the whole tree aside instead.
+
+    ``--no-renames``: porcelain ``diff`` honours ``diff.renames`` (on by
+    default), which would list a staged ``git mv a.py b.py`` as ``b.py`` alone,
+    and a remedy built from that list would leave the staged deletion of
+    ``a.py`` behind, so the tree would still not meet HEAD."""
     from . import evidence  # noqa: PLC0415 -- lazy, as this module's other evidence imports are
 
-    rc, out, err = evidence.run_git(project_dir, "diff", "--name-only", "-z", "HEAD")
+    rc, out, err = evidence.run_git(
+        project_dir, "diff", "--name-only", "--no-renames", "-z", "HEAD"
+    )
     if rc != 0:
         return f"uncommitted paths unreadable ({err.strip()[:80]})"
     tracked = [p for p in out.split("\0") if p]
@@ -1038,7 +1050,14 @@ def _uncommitted_paths(project_dir: Path) -> "tuple[list[str], list[str]] | str"
     if rc != 0:
         return f"untracked paths unreadable ({err.strip()[:80]})"
     untracked = [p for p in out.split("\0") if p and p not in tracked]
-    return tracked + untracked, untracked
+    rc, out, err = evidence.run_git(
+        project_dir, "diff", "--cached", "--name-only", "--no-renames",
+        "--diff-filter=D", "-z", "HEAD",
+    )
+    if rc != 0:
+        return f"index deletions unreadable ({err.strip()[:80]})"
+    index_deleted = [p for p in out.split("\0") if p]
+    return tracked + untracked, untracked, index_deleted
 
 
 def explain_uncovered(
@@ -1083,6 +1102,7 @@ def explain_uncovered(
          "base_moved": bool,
          "head_changed": [judgeable files],
          "uncommitted": [paths], "untracked": [paths],
+         "index_deleted": [paths],      # subsets of uncommitted
          "merge_base": str}             # absent when unavailable
 
     **``base_moved`` asks lineage, not trees.** The review's anchor commit
@@ -1118,6 +1138,7 @@ def _unexplained(reason: str) -> dict:
         "head_changed": [],
         "uncommitted": [],
         "untracked": [],
+        "index_deleted": [],
     }
 
 
@@ -1138,7 +1159,7 @@ def _explain_uncovered(
     dirty = _uncommitted_paths(project_dir)
     if isinstance(dirty, str):
         return _unexplained(dirty)
-    changed, untracked = dirty
+    changed, untracked, index_deleted = dirty
     if target == "working":
         uncommitted = coverage_algebra.judgeable_files(changed)
     else:
@@ -1153,6 +1174,7 @@ def _explain_uncovered(
         "head_changed": [],
         "uncommitted": uncommitted,
         "untracked": [p for p in untracked if p in uncommitted],
+        "index_deleted": [p for p in index_deleted if p in uncommitted],
         "merge_base": merge_base,
     }
 

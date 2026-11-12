@@ -180,10 +180,17 @@ class TestOutOfRemitFilesAreNotGated:
         assert "could not judge" not in result.stdout
         assert "ok: 1 judged changed file(s) covered" in result.stdout
 
-    def test_out_of_remit_note_falls_back_when_the_record_has_no_reason(
+    def test_out_of_remit_note_falls_back_to_a_verifier_neutral_reason(
         self, gated_repo: Path
     ):
-        """Evidence from a producer that emits the bucket but no reason."""
+        """Evidence from a producer that emits the bucket but no reason.
+
+        Renegotiated (Critic R-3, rev-20261112T014213Z): the fallback was the
+        Python floor's own reason ("not Python: the symbol-grep floor reads
+        only Python"), which told a language-native verifier's operator that
+        their files were "not Python". The field is verifier-generic, so the
+        gate's fallback names no verifier; the floor's reason lives only in
+        `bin/test-reference-verify`, which writes it into every record."""
         self._commit_code_and_ts(gated_repo)
         _write_evidence(
             gated_repo,
@@ -194,10 +201,14 @@ class TestOutOfRemitFilesAreNotGated:
         result = _run_gate(gated_repo)
 
         assert result.returncode == 0, result.stderr
-        assert (
-            "— not Python: the symbol-grep floor reads only Python; reported, "
-            "not gated" in result.stdout
-        )
+        note = [ln for ln in result.stdout.splitlines() if "changes_out_of_remit" in ln]
+        assert note == [
+            "note: 2 changed file(s) out of the verifier's remit "
+            "(changes_out_of_remit) — the verifier that wrote this record does "
+            "not read them, and the record gives no reason; reported, not gated "
+            "(level: referenced)."
+        ], result.stdout
+        assert "Python" not in note[0]
 
     def test_the_two_buckets_are_reported_under_their_own_counts(
         self, gated_repo: Path

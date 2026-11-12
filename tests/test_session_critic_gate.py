@@ -1150,6 +1150,201 @@ class TestHistoryThisSessionDidNotWrite:
         assert gates.check_cumulative_critic(repo) == 1
         assert "uncovered" in capsys.readouterr().err
 
+    # -- The arm's fail-open guards (Critic R-1, rev-20261112T014213Z) ------
+    #
+    # `_session_authored_paths` reads untracked files only through the list
+    # the arm passes it — its final `git diff HEAD` never lists one — so that
+    # list is the only thing keeping a new file the session wrote from reading
+    # as something a sync brought in.
+
+    def test_an_untracked_file_the_session_wrote_is_not_excused(self, tmp_path):
+        repo = _imported_history_session(tmp_path)
+        (repo / "x.py").write_text("x = 1\n")
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "imported" not in verdict
+        own = verdict["reason"].split("unreviewed files this session wrote: ")[1]
+        assert own.startswith("x.py"), verdict["reason"]
+        assert "b.py" not in own
+
+    def test_a_session_edit_to_an_imported_file_keeps_it_required(self, tmp_path):
+        """b.py arrived with the merge, then the session edited it: authorship
+        is per path, so the file is the session's and stays required."""
+        repo = _imported_history_session(tmp_path)
+        (repo / "b.py").write_text("b = 2  # the session's own edit\n")
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "imported" not in verdict
+        assert "unreviewed files this session wrote: b.py" in verdict["reason"]
+
+    def test_an_unlistable_untracked_set_declines_and_says_why(self, tmp_path, monkeypatch):
+        """The arm's own `ls-files` read failing leaves the verdict as before
+        the arm existed — and the reason says the excuse was not applied."""
+        repo = _imported_history_session(tmp_path)
+        real = gates.evidence.run_git
+
+        def _no_ls_files_in_the_arm(project_dir, *args, **kwargs):
+            caller = sys._getframe(1).f_code.co_name
+            if caller == "_imported_history_verdict" and args[:1] == ("ls-files",):
+                return 1, "", "simulated failure"
+            return real(project_dir, *args, **kwargs)
+
+        monkeypatch.setattr(gates.evidence, "run_git", _no_ls_files_in_the_arm)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "imported" not in verdict
+        assert self._decline(verdict) == "untracked files could not be listed", (
+            verdict["reason"]
+        )
+
+    # -- Why the arm declined (Critic R-5) ----------------------------------
+
+    _DECLINED = " — imported-history excuse not applied: "
+
+    @classmethod
+    def _decline(cls, verdict: dict) -> str:
+        """The one decline clause in a verdict's reason, up to the next
+        ` — ` (a transfer note may follow it)."""
+        reason = verdict["reason"]
+        assert reason.count(cls._DECLINED) == 1, reason
+        return reason.split(cls._DECLINED)[1].split(" — ")[0]
+
+    @pytest.mark.parametrize(
+        "command,reason",
+        [
+            ("rev-parse", "HEAD's tree could not be read"),
+            ("reflog", "the HEAD reflog could not be read"),
+            ("log", "the session's commits could not be listed"),
+            ("diff-tree", "the session's commits could not be diffed"),
+            ("diff", "the working tree could not be diffed against HEAD"),
+        ],
+    )
+    def test_a_failed_authorship_read_says_which_read_failed(
+        self, tmp_path, monkeypatch, command, reason
+    ):
+        repo = _imported_history_session(tmp_path)
+        real = gates.evidence.run_git
+
+        def _fail_in_the_authorship_read(project_dir, *args, **kwargs):
+            caller = sys._getframe(1).f_code.co_name
+            if caller == "_session_authored_paths" and args[:1] == (command,):
+                return 1, "", "simulated failure"
+            return real(project_dir, *args, **kwargs)
+
+        monkeypatch.setattr(gates.evidence, "run_git", _fail_in_the_authorship_read)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "imported" not in verdict
+        assert self._decline(verdict) == reason, verdict["reason"]
+
+    @pytest.mark.parametrize(
+        "rewrite,reason",
+        [
+            (
+                lambda sha, sel, subj: (sha, sel, "frobnicate: a git this reader predates"),
+                "a HEAD reflog subject this reader does not recognise "
+                "('frobnicate: a git this reader predates')",
+            ),
+            (
+                lambda sha, sel, subj: (sha, "HEAD@{yesterday}", subj),
+                "a HEAD reflog entry carries no timestamp",
+            ),
+        ],
+    )
+    def test_an_unreadable_reflog_entry_says_what_was_unreadable(
+        self, tmp_path, monkeypatch, rewrite, reason
+    ):
+        """The newest entry is rewritten, so the walk meets it first."""
+        repo = _imported_history_session(tmp_path)
+        real = gates.evidence.run_git
+
+        def _rewrite_newest(project_dir, *args, **kwargs):
+            rc, out, err = real(project_dir, *args, **kwargs)
+            if args[:1] == ("reflog",) and rc == 0:
+                lines = out.splitlines()
+                lines[0] = "\0".join(rewrite(*lines[0].split("\0")))
+                out = "\n".join(lines)
+            return rc, out, err
+
+        monkeypatch.setattr(gates.evidence, "run_git", _rewrite_newest)
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert self._decline(verdict) == reason, verdict["reason"]
+
+    def test_a_missing_session_start_says_so(self, tmp_path):
+        repo = _imported_history_session(tmp_path)
+        (repo / ".prawduct" / ".session-start").unlink()
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert self._decline(verdict) == (
+            "no readable .session-start stamp to bound the reflog walk"
+        ), verdict["reason"]
+
+    def test_a_reflog_that_misses_the_session_start_says_so(self, tmp_path):
+        repo = _imported_history_session(tmp_path)
+        (repo / ".prawduct" / ".session-start").write_text("2000-01-01T00:00:00Z")
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert self._decline(verdict) == (
+            "the HEAD reflog does not reach back to the session start"
+        ), verdict["reason"]
+
+    def test_no_diffable_interval_says_so(self, tmp_path, monkeypatch):
+        repo = _imported_history_session(tmp_path)
+        monkeypatch.setattr(
+            gates.coverage_algebra, "excused_gap_verdict",
+            lambda *a, **k: {"status": "uncovered", "gap": None},
+        )
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert self._decline(verdict) == (
+            "no interval between reviewed trees could be diffed"
+        ), verdict["reason"]
+
+    def test_the_search_cap_says_so(self, tmp_path, monkeypatch):
+        """A real search cut to zero pairs: the cap, not "nothing excusable",
+        is why the arm declined, and the message must say which."""
+        repo = _imported_history_session(tmp_path)
+        real = gates.coverage_algebra.excused_gap_verdict
+        monkeypatch.setattr(
+            gates.coverage_algebra, "excused_gap_verdict",
+            lambda *a, **k: real(*a, **k, max_pairs=0),
+        )
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert self._decline(verdict) == (
+            "the interval search stopped at its cap of "
+            f"{gates.coverage_algebra.EXCUSED_GAP_MAX_PAIRS} pairs"
+        ), verdict["reason"]
+
+    def test_a_session_no_sync_touched_adds_nothing(self, tmp_path):
+        """The control: HEAD's tree never moved, so there was nothing a sync
+        could have brought in — the arm stays silent rather than adding a
+        decline to every ordinary unreviewed session."""
+        repo = _session_repo(tmp_path)
+        (repo / "code.py").write_text("x = 2\n")
+        verdict = gates.session_review_verdict(repo)
+        assert verdict["status"] == "uncovered", verdict
+        assert "imported-history" not in verdict["reason"], verdict["reason"]
+
+    def test_the_stop_block_carries_the_decline(self, tmp_path, capsys):
+        repo = _imported_history_session(tmp_path)
+        prawduct = repo / ".prawduct"
+        (prawduct / "artifacts").mkdir(parents=True)
+        (prawduct / "artifacts" / "build-plan.md").write_text(
+            "# Build Plan\n\n## Status\n\n- [x] Chunk 01: a\n- [x] Chunk 02: b\n"
+        )
+        (prawduct / ".session-reflected").write_text(SHAPED_REFLECTION)
+        (prawduct / ".session-start").unlink()
+        rc = _hook.cmd_stop(repo, {})
+        err = capsys.readouterr().err
+        assert rc == 2, err
+        span_line = next(ln for ln in err.splitlines() if "imported-history" in ln)
+        assert span_line.lstrip().startswith("changes"), err
+        assert (
+            self._DECLINED + "no readable .session-start stamp to bound the reflog walk"
+        ) in span_line, err
+
     def test_the_stop_hook_says_what_it_excused_in_one_line(self, tmp_path, capsys):
         repo = _imported_history_session(tmp_path)
         prawduct = repo / ".prawduct"

@@ -79,13 +79,15 @@ _EVIDENCE_COVERAGE_FIELDS: dict[str, tuple[type, ...]] = {
 _EVIDENCE_COVERAGE_LEVELS = frozenset({"referenced", "executed"})
 # Optional fields — validated when present, never required. ``changes_unjudged``
 # (gate-soundness ch.1) lists changed files the evidence producer could not judge
-# (symbol-less Python, deleted; evidence that predates ``changes_out_of_remit``
-# also lists non-Python here); absent means empty, so product-authored evidence
-# and ``executed``-level verifiers that predate the field keep their existing
-# gate behavior. ``changes_out_of_remit`` (#682) lists changed non-Python files
-# the symbol-grep floor never read — out of scope by construction, not missing
-# evidence — and ``changes_out_of_remit_reason`` is the record's own statement
-# of why. The gate treats both lists identically (reported, never gated).
+# (symbol-less Python, deleted; evidence the Python floor wrote before
+# ``changes_out_of_remit`` existed also lists non-Python here); absent means
+# empty, so product-authored evidence and ``executed``-level verifiers that
+# predate the field keep their existing gate behavior. ``changes_out_of_remit``
+# (#682) lists changed paths outside the producing verifier's remit — files it
+# never reads, out of scope by construction rather than missing evidence (the
+# Python floor's case: every non-Python file) — and ``changes_out_of_remit_reason``
+# is the record's own statement of why. The gate treats both lists identically
+# (reported, never gated).
 _EVIDENCE_OPTIONAL_FIELDS: dict[str, tuple[type, ...]] = {
     "changes_unjudged": (list,),
     "changes_out_of_remit": (list,),
@@ -1377,7 +1379,11 @@ def _session_started_epoch(prawduct_dir: Path) -> "tuple[str, int] | None":
 
 
 def _session_authored_paths(
-    project_dir: Path, prawduct_dir: Path, base: str, untracked: "list[str]"
+    project_dir: Path,
+    prawduct_dir: Path,
+    base: str,
+    untracked: "list[str]",
+    why: "list[str] | None" = None,
 ) -> "set[str] | None":
     """The paths this session wrote, or ``None`` when that cannot be told —
     the caller then keeps the whole base-tree span.
@@ -1398,23 +1404,36 @@ def _session_authored_paths(
     ``None``: authorship narrows the span only on a reflog it fully read, so a
     gate loses a false fire and never a real one.
 
+    ``why``, when a list is passed, receives one line saying why authorship
+    could not be told, so a caller that declines on ``None`` can say why it
+    did. Nothing is appended when HEAD's tree has not moved since session start:
+    that is not a failure, only a session no sync touched. Callers that pass no
+    list get exactly the ``None`` they always did.
+
     Cost: one ``rev-parse`` when HEAD's tree has not moved since session start
     — the common case, which returns at once — else a reflog read, one ``log``,
     a batched ``diff-tree`` per kind of commit the session made, and one
     ``diff``.
     """
+    def _cannot_tell(reason: str) -> None:
+        if why is not None:
+            why.append(reason)
+        return None
+
     rc, head_tree, _err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
-    if rc != 0 or head_tree == base:
+    if rc != 0:
+        return _cannot_tell("HEAD's tree could not be read")
+    if head_tree == base:
         return None
     started = _session_started_epoch(prawduct_dir)
     if started is None:
-        return None
+        return _cannot_tell("no readable .session-start stamp to bound the reflog walk")
     stamp, started_at = started
     rc, out, _err = evidence.run_git(
         project_dir, "reflog", "show", "--date=unix", "--format=%H%x00%gd%x00%gs", "HEAD"
     )
     if rc != 0:
-        return None
+        return _cannot_tell("the HEAD reflog could not be read")
     commits: list[str] = []
     merges: list[str] = []
     reached_start = False
@@ -1422,26 +1441,29 @@ def _session_authored_paths(
         sha, selector, subject = (line.split("\0") + ["", ""])[:3]
         moved_at = re.search(r"@\{(\d+)\}$", selector)
         if not moved_at:
-            return None
+            return _cannot_tell("a HEAD reflog entry carries no timestamp")
         if int(moved_at.group(1)) < started_at:
             reached_start = True
             break
         kind = _classify_reflog_subject(subject)
         if kind is None:
-            return None
+            shown = subject if len(subject) <= 60 else subject[:57] + "..."
+            return _cannot_tell(
+                f"a HEAD reflog subject this reader does not recognise ({shown!r})"
+            )
         if kind == "authored":
             commits.append(sha)
         elif kind == "merge-commit":
             merges.append(sha)
     if not reached_start:
-        return None
+        return _cannot_tell("the HEAD reflog does not reach back to the session start")
     authored: set[str] = set(untracked)
     rc, out, _err = evidence.run_git(
         project_dir, "log", "--no-merges", f"--since={stamp}", "--format=", "--name-only",
         "-z", "HEAD",
     )
     if rc != 0:
-        return None
+        return _cannot_tell("the session's commits could not be listed")
     authored.update(p for p in out.split("\0") if p)
     for shas, flags in ((commits, ("-r", "--root")), (merges, ("--cc",))):
         if not shas:
@@ -1451,11 +1473,11 @@ def _session_authored_paths(
             *flags, input="\n".join(shas) + "\n",
         )
         if rc != 0:
-            return None
+            return _cannot_tell("the session's commits could not be diffed")
         authored.update(p for p in out.split("\0") if p)
     rc, out, _err = evidence.run_git(project_dir, "diff", "--name-only", "-z", "HEAD")
     if rc != 0:
-        return None
+        return _cannot_tell("the working tree could not be diffed against HEAD")
     authored.update(p for p in out.split("\0") if p)
     return authored
 
@@ -2008,23 +2030,30 @@ def _imported_history_verdict(
     Authorship is :func:`_session_authored_paths` — the read the firing span
     already trusts — with every untracked file counted as authored, since a
     sync brings in none. When it returns ``None`` (unrecognised or unreadable
-    reflog, no session start, HEAD's tree unmoved) ``verdict`` is returned
-    untouched: the arm narrows only on a read it fully completed. A path both
-    authored and imported is authored, so it stays required. A blocking finding
-    on any tree the excused path stands on still blocks.
+    reflog, no session start, HEAD's tree unmoved) ``verdict``'s status is
+    returned untouched: the arm narrows only on a read it fully completed. A
+    path both authored and imported is authored, so it stays required. A
+    blocking finding on any tree the excused path stands on still blocks.
 
-    Returns ``verdict`` unchanged, or a ``covered``/``blocked`` verdict carrying
-    ``imported`` (the excused files), or ``verdict`` with its ``reason`` naming
-    the unreviewed files this session did author."""
+    Returns ``verdict`` unchanged in status, or a ``covered``/``blocked``
+    verdict carrying ``imported`` (the excused files). An unchanged verdict's
+    ``reason`` names the unreviewed files this session did author, and says why
+    the arm declined whenever it declined for a reason other than "this session
+    wrote the gap" — an unreadable authorship read, an unlistable untracked set,
+    no interval that could be diffed, or the pair-search cap — so a builder
+    who synced and is still blocked can see that the excuse was tried and why it
+    did not apply. Silent only when HEAD's tree never moved, where no sync
+    brought anything in to excuse."""
     rc, out, _err = evidence.run_git(
         project_dir, "ls-files", "--others", "--exclude-standard", "-z"
     )
     if rc != 0:
-        return verdict
+        return _excuse_declined(verdict, "untracked files could not be listed")
     untracked = [p for p in out.split("\0") if p]
-    authored = _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+    why: list[str] = []
+    authored = _session_authored_paths(project_dir, prawduct_dir, base, untracked, why)
     if authored is None:
-        return verdict
+        return _excuse_declined(verdict, *why[:1])
     gapped = coverage_algebra.excused_gap_verdict(
         facts, base, target, diff_fn, key_fn,
         lambda files: not any(f in authored for f in files),
@@ -2047,6 +2076,28 @@ def _imported_history_verdict(
             f"{verdict.get('reason', 'no path')} — unreviewed files this session "
             f"wrote: {shown}"
         )
+    if gapped.get("capped"):
+        return _excuse_declined(
+            verdict,
+            f"the interval search stopped at its cap of "
+            f"{coverage_algebra.EXCUSED_GAP_MAX_PAIRS} pairs",
+        )
+    if not gapped.get("gap"):
+        return _excuse_declined(verdict, "no interval between reviewed trees could be diffed")
+    return verdict
+
+
+def _excuse_declined(verdict: dict, *reason: str) -> dict:
+    """``verdict`` with its ``reason`` saying why the imported-history arm did
+    not apply — the status untouched, so the explanation can never move a
+    verdict. No reason given (a stubbed authorship read) leaves it as it was."""
+    if not reason:
+        return verdict
+    verdict = dict(verdict)
+    verdict["reason"] = (
+        f"{verdict.get('reason', 'no path')} — imported-history excuse not "
+        f"applied: {reason[0]}"
+    )
     return verdict
 
 
@@ -2402,6 +2453,7 @@ def transfer_remedy(
     uncommitted: "list[str] | None" = None,
     *,
     untracked: "list[str] | None" = None,
+    index_deleted: "list[str] | None" = None,
 ) -> str:
     """The remedy prose for a base-advance transfer that did not grant.
 
@@ -2430,7 +2482,10 @@ def transfer_remedy(
     to set them aside, run and record against a tree that IS HEAD, re-run the
     gate, and restore them — safe because the PR gate's verdict never read those
     paths. ``untracked`` is the subset git does not track, which ``git stash
-    push -- <path>`` refuses without ``--include-untracked``. The Stop gate
+    push -- <path>`` refuses without ``--include-untracked``; ``index_deleted``
+    is the subset the index has deleted (a ``git rm``, a ``git mv``'s old name),
+    which it refuses under any flag — so with one present the route sets the
+    whole working tree aside, which also reaches HEAD. The Stop gate
     passes neither: its target is the working tree, so a run there does meet it.
 
     Returned as one paragraph without a severity prefix or indentation — each
@@ -2450,13 +2505,23 @@ def transfer_remedy(
         f"tree ({tests_reason})."
     )
     if uncommitted:
-        flag = "--include-untracked " if untracked else ""
+        flag = "--include-untracked" if untracked else ""
         paths = " ".join(shlex.quote(p) for p in uncommitted)
+        if index_deleted:
+            # `git stash push -- <path>` refuses a path the index deleted, so
+            # no pathspec names this set: the whole working tree goes aside.
+            deleted = " ".join(shlex.quote(p) for p in index_deleted)
+            aside = (
+                f"Set the whole working tree aside (`git stash push{' ' + flag if flag else ''}` "
+                f"— a path list cannot name {deleted}, which the index has "
+                "deleted and `git stash push -- <path>` refuses)"
+            )
+        else:
+            aside = f"Set them aside (`git stash push {flag + ' ' if flag else ''}-- {paths}`)"
         return (
             f"{lead} {len(uncommitted)} suite-coupled path(s) are uncommitted, so a "
             "suite run in this working tree records the working tree, not HEAD, and "
-            "cannot meet it. Set them aside (`git stash push "
-            f"{flag}-- {paths}`), run the suite, `prawduct-hook test-evidence "
+            f"cannot meet it. {aside}, run the suite, `prawduct-hook test-evidence "
             "record`, re-run the gate, then `git stash pop`: the coverage transfers "
             "and no review is needed. Re-running on the same committed HEAD is safe "
             "because this gate's verdict never read those paths."
@@ -3084,6 +3149,7 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
                 transfer_stale,
                 explained.get("uncommitted"),
                 untracked=explained.get("untracked"),
+                index_deleted=explained.get("index_deleted"),
             ),
             file=sys.stderr,
         )
@@ -3205,12 +3271,13 @@ def verify_coverage(project_dir: Path) -> int:
           missing/invalid, schema lacks F4a fields, git base unresolved).
 
     Gate-soundness ch.1: the gate only blocks on files its evidence producer
-    can vouch for. Files listed in ``changes_out_of_remit`` (non-Python — never in
-    the symbol-grep floor's scope) or ``changes_unjudged`` (symbol-less Python,
-    deleted — see ``bin/test-reference-verify``) and files absent from the
-    working tree (deleted on the branch) are reported informationally on
-    stdout, never as ``missing-coverage``, each bucket under its own note so
-    out-of-scope is not read as unjudged (#682). Before this split, the whole-branch
+    can vouch for. Files listed in ``changes_out_of_remit`` (outside the producing
+    verifier's remit — for the symbol-grep floor, every non-Python file) or
+    ``changes_unjudged`` (files it read and could not judge — for the floor,
+    symbol-less Python and deleted files; see ``bin/test-reference-verify``)
+    and files absent from the working tree (deleted on the branch) are reported
+    informationally on stdout, never as ``missing-coverage``, each bucket under
+    its own note so out-of-scope is not read as unjudged (#682). Before this split, the whole-branch
     comparison guaranteed false blockers on docs/config changes, which trained
     products to neutralize the gate (scriob 4ca5bd3) — an unsatisfiable gate
     is worse than no gate.
@@ -3315,8 +3382,11 @@ def verify_coverage(project_dir: Path) -> int:
         and f not in nonexecutable
     ]
     if out_of_remit_changed:
+        # The record says why its verifier did not read these; a record that
+        # does not gets the verifier-neutral fact, never one verifier's reason.
         why = reason if isinstance(reason, str) and reason else (
-            "not Python: the symbol-grep floor reads only Python"
+            "the verifier that wrote this record does not read them, and the "
+            "record gives no reason"
         )
         print(
             f"note: {len(out_of_remit_changed)} changed file(s) out of the "

@@ -230,12 +230,14 @@ consumer_digest:
 
 When true, the Critic requires every changed file the verifier can judge to appear in
 `.test-evidence.json`'s `changes_referenced` list. Files it cannot vouch for are reported, never
-gated, in two distinct buckets: `changes_out_of_remit` (non-Python files, which the symbol-grep floor
-never reads, with `changes_out_of_remit_reason` stating why in the record — out of scope by
-construction, **not** missing evidence) and `changes_unjudged` (symbol-less Python and deleted files,
-which the verifier looked at and found nothing to judge). With `changes_referenced` and
-`changes_unreferenced` the four partition the changed set. A record written before the split lists
-non-Python files in `changes_unjudged`; the gate reads both. The Critic also scales severity language
+gated, in two distinct buckets: `changes_out_of_remit` (changed paths outside the producing
+verifier's remit — files it never reads, with `changes_out_of_remit_reason` stating why in the
+record — out of scope by construction, **not** missing evidence) and `changes_unjudged` (files the
+verifier read and found nothing to judge). For the symbol-grep floor, out of remit is every
+non-Python file and unjudged is symbol-less Python and deleted files; a stronger verifier draws its
+own remit and says so in the reason. With `changes_referenced` and `changes_unreferenced` the four
+partition the changed set. A floor record written before the split lists non-Python files in
+`changes_unjudged`; the gate reads both. The Critic also scales severity language
 to the declared `coverage_level` (`referenced` floor vs. `executed` real). The reference verifier
 at `bin/test-reference-verify` emits the floor; products with non-trivial coverage concerns should
 plug in a stronger verifier. See `/prawduct:methodology building` "Test Discipline". Default off —

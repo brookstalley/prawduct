@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -146,6 +147,70 @@ class TestPrGateCause:
         assert rc == 1
         assert "uncommitted: scratch.py" in _cause_line(err)
         assert "git stash push --include-untracked -- scratch.py" in err
+
+    def test_a_staged_rename_lists_both_names_and_the_remedy_reaches(
+        self, tmp_path, capsys
+    ):
+        """Critic O-1: porcelain `git diff` honours `diff.renames`, so a staged
+        `git mv code.py moved.py` read as `moved.py` alone, and the stash route
+        left the staged deletion of `code.py` behind — the tree still did not
+        meet HEAD. Both names are now listed. And because `git stash push --
+        <path>` refuses a path the index deleted (git 2.54: "did not match any
+        file(s) known to git"), naming both would not run either: the route sets
+        the whole tree aside. Following it reaches, and the pop restores."""
+        repo, _pb, _ph = _advanced_base_repo(tmp_path)
+        _git(repo, "config", "diff.renames", "true")
+        _git(repo, "mv", "code.py", "moved.py")
+        _write_test_evidence(repo)  # the run met the renamed tree
+        rc, _out, err = _run_gate(repo, capsys)
+        assert rc == 1
+        cause = _cause_line(err)
+        assert "uncommitted: code.py, moved.py" in cause, cause
+        assert (
+            "Set the whole working tree aside (`git stash push` — a path list "
+            "cannot name code.py, which the index has deleted and `git stash "
+            "push -- <path>` refuses), run the suite"
+        ) in " ".join(err.split()), err
+        assert "git stash push -- code.py" not in err
+        assert "git stash push -- moved.py" not in err
+
+        head_before = _head(repo)
+        _git(repo, "stash", "push", "-q")
+        assert _git(repo, "status", "--porcelain", "--untracked-files=no") == ""
+        _write_test_evidence(repo)
+        rc, out, err = _run_gate(repo, capsys)
+        assert rc == 0, err
+        assert "transferred across base advance" in out
+        assert _head(repo) == head_before
+        _git(repo, "stash", "pop", "-q")
+        assert not (repo / "code.py").exists() and (repo / "moved.py").is_file()
+
+    def test_the_whole_tree_route_carries_the_untracked_flag_when_needed(self):
+        """The whole-tree route's other rendered branch: an untracked
+        suite-coupled path alongside a staged deletion needs the flag too."""
+        transfer = {"prior_fact_id": "rev-x", "files": ["code.py"]}
+        text = gates.transfer_remedy(
+            transfer, "no run met this tree", ["code.py", "new.py"],
+            untracked=["new.py"], index_deleted=["code.py"],
+        )
+        assert (
+            "Set the whole working tree aside (`git stash push --include-untracked` "
+            "— a path list cannot name code.py, which the index has deleted and "
+            "`git stash push -- <path>` refuses), run the suite"
+        ) in text, text
+
+    def test_a_staged_deletion_cannot_be_named_to_stash(self, tmp_path):
+        """The control behind the route above: the pathspec form the remedy
+        no longer prints is refused by git for a staged deletion, so a remedy
+        naming it would set nothing aside."""
+        repo, _pb, _ph = _advanced_base_repo(tmp_path)
+        _git(repo, "rm", "-q", "code.py")
+        proc = subprocess.run(
+            ["git", "stash", "push", "-q", "--", "code.py"],
+            cwd=str(repo), capture_output=True, text=True, timeout=15,
+        )
+        assert proc.returncode != 0, proc
+        assert _git(repo, "status", "--porcelain") == "D  code.py"
 
     def test_a_branch_with_no_review_says_so(self, tmp_path, capsys):
         repo = _branch_repo(tmp_path)

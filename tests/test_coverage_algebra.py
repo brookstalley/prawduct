@@ -1060,6 +1060,14 @@ class TestExcusedGapVerdict:
             facts, T0, T2, _diff(table), None, _not_any({"lib/a.py"}), max_pairs=0
         )
         assert verdict["status"] == "uncovered"
+        # The cap says it cut the search, so a caller can tell "nothing
+        # excusable" from "the search stopped" (Critic R-5); an uncapped
+        # search carries no `capped` key at all (test above pins the exact dict).
+        assert verdict["capped"] is True
+        uncapped = ca.excused_gap_verdict(
+            facts, T0, T2, _diff(table), None, lambda files: False
+        )
+        assert uncapped["status"] == "uncovered" and "capped" not in uncapped
 
     def test_the_key_form_agrees_with_the_pairwise_form(self):
         """Free edges from per-tree keys (the form every gate uses) reach the
