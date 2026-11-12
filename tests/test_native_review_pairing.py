@@ -217,24 +217,58 @@ class TestDispatchLine:
         loader.exec_module(module)
         return module
 
-    def _dispatch(self, hook, repo, monkeypatch, capsys, version) -> str:
+    def _dispatch(self, hook, repo, monkeypatch, capsys, version) -> "tuple[str, str]":
         monkeypatch.chdir(repo)
         monkeypatch.setattr(core, "PRAWDUCT_VERSION", version)
         rc = hook.cmd_critic_begin(
             repo, ["--mode", "cumulative", "--force", "--session-model", "claude-opus-5-5"]
         )
-        out = capsys.readouterr().out
-        assert rc == 0, out
-        return out
+        captured = capsys.readouterr()
+        assert rc == 0, captured.out + captured.err
+        return captured.out, captured.err
 
     def test_a_paired_dispatch_prints_the_native_line(self, hook, branch_repo, monkeypatch, capsys):
-        out = self._dispatch(hook, branch_repo, monkeypatch, capsys, DEV)
+        out, _err = self._dispatch(hook, branch_repo, monkeypatch, capsys, DEV)
         lines = [line for line in out.splitlines() if "native review paired" in line]
         assert len(lines) == 1, out
         assert "native_review.prompt" in lines[0]
         assert "general-purpose" in lines[0]
 
     def test_a_released_dispatch_prints_no_native_line(self, hook, branch_repo, monkeypatch, capsys):
-        out = self._dispatch(hook, branch_repo, monkeypatch, capsys, RELEASED)
+        out, err = self._dispatch(hook, branch_repo, monkeypatch, capsys, RELEASED)
         assert "dispatched" in out  # the dispatch itself happened
+        # Nothing new on either channel: dispatch notes go to stderr.
         assert "native review" not in out
+        assert "native review" not in err
+
+    def test_control_a_dev_opt_out_says_why_on_stderr(self, hook, branch_repo, monkeypatch, capsys):
+        """Control for the stderr half above: the channel does carry the note
+        when a development build's boundary review does not pair."""
+        (branch_repo / ".prawduct" / "project-state.yaml").write_text("native_review_pairing: false\n")
+        out, err = self._dispatch(hook, branch_repo, monkeypatch, capsys, DEV)
+        assert "native review paired" not in out
+        assert "native review not paired" in err
+
+
+class TestNativeTextDoesNotVoidTheReview:
+    """The wrapper writes the native text while the Critic's reviewers are still
+    running. Consolidation refuses a tree changed since dispatch, exempting only
+    prawduct's own session files by path — so the text's home must be one of
+    them, or every paired review is refused on the experiment's own output."""
+
+    def test_writing_the_native_text_leaves_the_dispatch_tree_unchanged(self, branch_repo, monkeypatch):
+        manifest = _begin(branch_repo, "cumulative", monkeypatch, DEV)["manifest"]
+        text = Path(manifest["native_review"]["text_path"])
+        text.parent.mkdir(parents=True, exist_ok=True)
+        text.write_text("Result:\n(none)\n")
+        assert cc.tree_changed_since_dispatch(branch_repo, manifest) == ("unchanged", [])
+
+    def test_control_a_product_file_written_mid_review_still_changes_it(self, branch_repo, monkeypatch):
+        """Control: the exemption is the text's directory, not every new file."""
+        manifest = _begin(branch_repo, "cumulative", monkeypatch, DEV)["manifest"]
+        (branch_repo / "src" / "new.py").write_text("y = 1\n")
+        status, paths = cc.tree_changed_since_dispatch(branch_repo, manifest)
+        assert status == "changed" and "src/new.py" in paths
+
+    def test_the_text_home_is_a_session_path(self):
+        assert f".prawduct/{cc.NATIVE_REVIEWS_DIRNAME}/" in core.GITIGNORE_ENTRIES

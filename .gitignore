@@ -61,6 +61,7 @@ incoming-bugs/
 # Prawduct session files
 .prawduct/.critic-partials/
 .prawduct/.critic-partials-archive/
+.prawduct/.native-reviews/
 
 # Runbook research raw captures (large; distilled state is in CHECKPOINT.md)
 .prawduct/research/**/raw/

@@ -99,6 +99,11 @@ GITIGNORE_ENTRIES = [
     ".prawduct/.critic-findings.json",
     ".prawduct/.critic-partials/",
     ".prawduct/.critic-partials-archive/",
+    # The paired native review's text (#1130), one file per Critic review. Its
+    # wrapper writes it while the reviewers still run, so it must be a session
+    # path: consolidation exempts these by path, and anything else written
+    # mid-review refuses the review as a changed tree.
+    ".prawduct/.native-reviews/",
     ".prawduct/.delegate-brief.md",
     ".prawduct/.governance-ledger.jsonl",
     ".prawduct/.handoff-notes.md",

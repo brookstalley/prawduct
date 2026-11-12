@@ -30,7 +30,9 @@ governed_by:
       - "derived views never authoritative → conforms; no gate reads the native record"
       - "a newer-schema fact is surfaced, never dropped → conforms, and is why the record is not an evidence-store fact (DECISION under Goals): the store travels between clones, and a released reader would block on a kind it does not know"
       - "two stores, two lifetimes → conforms; the native record is a per-clone measurement, so it lives in the per-clone ledger, never in the shared store of answers"
-      - "governance documents reach a terminal state; backlog title rules; backlog_service_repo → inapplicable because no document, issue or backlog read changes"
+      - "a governance document reaches a terminal state, never deleted → inapplicable because no plan or record is archived or deleted"
+      - "every backlog issue conforms to the title rules on every write path → inapplicable because no backlog write path changes"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable because no backlog read changes"
   - artifact: api-contract
     dispositions:
       - "whole-surface semantic versioning → conforms; the verbs ship at the plugin's version"
