@@ -191,3 +191,9 @@ fix. Recorded in `.prawduct/changes/read-cost-review.md`.
 **2026-11-11.** "yes merge then we'll clear and do requirements"
 On pull requests #1146 (the #1137 fix) and #1148 (the read-cost check): both merge to `develop`.
 The requirements for the seeded-defect check (#1147) are the next session's work.
+
+**2026-11-11.** "So the new dev version is improvef in most ways, but this is really hard for a human to parse: [a turn that listed its one ask, then closed `YOUR TURN · DO NOT CLEAR — … The one ask above is for you.`] ... if there ares asks for the user, it's confusing to say "don't clear, waiting on you, look above". Let's try to tune things so any actions required of the user are the last thing shown, and prominent."
+The close changes order: the one status line comes first, and any asks follow it as the turn's last
+block, under a fixed prominent header, so nothing points "above". The Stop hook's reading of the
+close learns that trailing block. Lands in `methodology/session-hygiene.md`, the session digest and
+`lib/standing_block.py` on `feature/asks-last`.
