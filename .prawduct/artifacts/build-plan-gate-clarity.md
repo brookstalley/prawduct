@@ -9,23 +9,35 @@ partition: "01 (Opus-class, high), 02+03 (one Opus-class builder, high; they sha
 governed_by:
   - artifact: nonfunctional-requirements
     dispositions:
-      - "review wall-clock is P0 → conforms; 01 takes a cost off every Stop that grows with the review-fact count, and 02 lets an operator skip a cumulative round they would otherwise run blind"
+      - "review wall-clock is P0 → conforms; 01 takes a cost off every Stop that grew with the review-fact count, and 02 lets an operator skip a cumulative round they would otherwise run blind"
       - "proportionality ratchets both ways → conforms; 03 removes a demand for coverage of history this session did not write, and the PR gate keeps the whole branch"
-      - "state-file growth is advisory, never a hard block → inapplicable because no state file's growth rule changes. If 01 adds a persisted memo, its eviction is bounded, and the chunk says how"
+      - "state-file growth is advisory, never a hard block → inapplicable because no state file's growth rule changes; 01 persists nothing"
       - "review rigor is stage-keyed → conforms; the boundary gate (PR) is unchanged, and only the session gate's span narrows"
   - artifact: architecture
     dispositions:
       - "an independent reviewer never mutates the session it reviews → inapplicable because no reviewer changes"
-      - "authority fails closed; advice fails soft → conforms; 01 denies on any diff that cannot be computed, a mode-only change still blocks, 02's explanation degrades to `CAUSE: unavailable (<reason>)` and never prints nothing, and 03 narrows only on an authorship read it fully completed"
+      - "authority fails closed; advice fails soft → conforms; 01 re-asks any pair git skips and denies on any diff it cannot compute, a mode-only change still blocks, 02's explanation degrades to `CAUSE: unavailable (<reason>)` and never prints nothing, and 03 narrows only on an authorship read it fully completed, with its search cap able only to deny"
       - "local-first → conforms; nothing reaches the network"
-      - "every fact has one home → conforms; 02 has one function explain the uncovered verdict for both gates, and 04 gives the out-of-remit reason one producer"
+      - "the plugin writes nothing into a governed repo except its own state → conforms; nothing new is written, and 04 changes only the shape of the evidence record the plugin already writes"
       - "written in Python, never specific to Python → conforms; 04 makes visible that non-Python paths are out of the symbol grep's remit rather than unjudged"
+      - "guides and reviews, never implements → conforms"
+      - "goals and verification bind, method is advice → conforms; 01 took neither route the issue named and recorded why"
+      - "every fact has one home → conforms; 02 has one function explain the uncovered verdict for both gates, and 04 gives the out-of-remit reason one producer"
   - artifact: data-model
     dispositions:
       - "verdicts computed from facts, no model in the write path → conforms"
       - "facts immutable and append-only → conforms; no fact is rewritten"
-      - "derived views never authoritative → conforms; 01's memo is a derived view whose miss costs time, never a verdict"
+      - "derived views never authoritative → conforms; 01 persists no view at all"
+      - "a governance document reaches a terminal state and is never deleted → inapplicable because no plan or record is deleted"
+      - "backlog issues conform to the title rules → inapplicable because no backlog write path changes"
       - "a newer-schema fact is surfaced, never dropped → inapplicable because no fact schema changes"
+      - "two stores, two lifetimes → inapplicable because neither store changes"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable because no backlog read changes"
+  - artifact: api-contract
+    dispositions:
+      - "whole-surface semantic versioning → conforms"
+      - "exit codes are the contract → conforms; no exit code changes, and 02 adds lines to stderr messages only"
+      - "additive-first evolution → exception; 04 narrows what `changes_unjudged` holds, recorded as a [DECISION] below; `changes_unchecked` stays as a deprecated alias, so nothing is removed"
 depends_on:
   - plugin/lib/coverage.py
   - plugin/lib/gates.py
