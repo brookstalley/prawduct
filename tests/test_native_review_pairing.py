@@ -11,6 +11,7 @@ has no block and the Critic dispatch is unchanged.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent / "plugin"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lib import contribution, core  # noqa: E402
+from lib import contribution, core, ledger, native_review  # noqa: E402
 from lib import critic_consolidate as cc  # noqa: E402
 
 DEV = "3.8.2-dev.1"
@@ -271,4 +272,225 @@ class TestNativeTextDoesNotVoidTheReview:
         assert status == "changed" and "src/new.py" in paths
 
     def test_the_text_home_is_a_session_path(self):
-        assert f".prawduct/{cc.NATIVE_REVIEWS_DIRNAME}/" in core.GITIGNORE_ENTRIES
+        assert f".prawduct/{native_review.DIRNAME}/" in core.GITIGNORE_ENTRIES
+
+
+# --- Chunk 02: the record, and the builder sees both lists -------------------
+
+THREE = """Result:
+(none)
+
+```json
+[
+  {"file": "a.py", "line": 3, "summary": "SECRET-SUMMARY-ONE", "failure_scenario": "x"},
+  {"file": "b.py", "line": 9, "summary": "SECRET-SUMMARY-TWO", "failure_scenario": "y"},
+  {"file": "c.py", "summary": "SECRET-SUMMARY-THREE", "failure_scenario": "z"}
+]
+```
+"""
+
+
+class TestParseFindings:
+    def test_a_json_array_wins_over_the_none_header(self):
+        assert native_review.parse_findings(THREE) == [
+            {"file": "a.py", "line": 3}, {"file": "b.py", "line": 9}, {"file": "c.py", "line": None},
+        ]
+
+    def test_none_alone_is_an_empty_run(self):
+        assert native_review.parse_findings("Result:\n(none)\n\nThe pass found nothing.") == []
+
+    def test_prose_is_not_countable(self):
+        """Control for the line above: prose with no ``(none)`` line and no array
+        is unknown, never a guessed zero."""
+        assert native_review.parse_findings("I looked at the diff and it seemed fine (none found).") is None
+
+    def test_an_array_of_non_objects_is_not_findings(self):
+        assert native_review.parse_findings("see [1, 2, 3] in the range") is None
+
+
+def _paired(repo: Path, monkeypatch) -> dict:
+    return _begin(repo, "cumulative", monkeypatch, DEV)
+
+
+def _ledger_events(repo: Path, kind: str) -> list[dict]:
+    path = repo / ".prawduct" / ".governance-ledger.jsonl"
+    if not path.is_file():
+        return []
+    events = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return [e for e in events if e.get("event") == kind]
+
+
+class TestRecord:
+    def test_dispatch_writes_the_sidecar_record_reads(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        sidecar = json.loads(native_review.sidecar_path(branch_repo / ".prawduct", result["id"]).read_text())
+        manifest = result["manifest"]
+        assert sidecar["review_id"] == result["id"]
+        assert sidecar["args"] == manifest["native_review"]["args"]
+        assert sidecar["head_tree"] == manifest["head_tree"]
+        assert sidecar["model"]  # the block's, else the session's the wrapper inherits
+
+    def test_record_appends_one_event_with_counts_and_no_text(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        rc, message = native_review.record(branch_repo, pd, result["id"])
+        assert rc == 0, message
+        assert "3 finding(s)" in message
+        [event] = _ledger_events(branch_repo, "review.native")
+        assert event["actor"]["role"] == "native"
+        review = event["review"]
+        assert review["critic_review_id"] == result["id"]
+        assert review["findings"] == [
+            {"file": "a.py", "line": 3}, {"file": "b.py", "line": 9}, {"file": "c.py", "line": None},
+        ]
+        assert review["findings_parsed"] is True
+        assert review["level"] == "high"
+        assert review["head_tree"] == result["manifest"]["head_tree"]
+        # The clock is code's: the dispatch stamp critic-begin wrote.
+        assert event["dispatched_at"] == result["manifest"]["native_review"]["dispatched_at"]
+        # No finding text in the ledger — not in the event, not anywhere in the file.
+        ledger_text = (pd / ".governance-ledger.jsonl").read_text()
+        assert "SECRET-SUMMARY" not in ledger_text
+        # No fact_id: the native row must never join the Critic's dispositions.
+        assert "fact_id" not in review
+
+    def test_record_is_idempotent(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        rc, message = native_review.record(branch_repo, pd, result["id"])
+        assert rc == 0 and "already recorded" in message
+        assert len(_ledger_events(branch_repo, "review.native")) == 1
+
+    def test_prose_records_as_not_countable(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text("It reads fine to me.")
+        rc, message = native_review.record(branch_repo, pd, result["id"])
+        assert rc == 0 and "not countable" in message
+        [event] = _ledger_events(branch_repo, "review.native")
+        assert event["review"]["findings_parsed"] is False
+
+    def test_record_works_after_consolidation_removed_the_manifest(self, branch_repo, monkeypatch):
+        """The native run may finish after the Critic consolidates, which deletes
+        the manifest — the sidecar is what record reads."""
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        cc.remove_partials(pd)
+        assert not cc.manifest_path(pd).exists()
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+
+    def test_nothing_to_record_is_refused_with_its_reason(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        rc, reason = native_review.record(branch_repo, pd, result["id"])
+        assert rc == 1 and "has not been written" in reason
+        rc, reason = native_review.record(branch_repo, pd, "rev-20990101T000000Z-deadbeef")
+        assert rc == 1 and "no paired native review" in reason
+        assert _ledger_events(branch_repo, "review.native") == []
+
+    @pytest.mark.parametrize("bad", ["../manifest", "rev-1/../../x", "", "rev-a.b"])
+    def test_an_id_that_could_leave_the_directory_is_refused(self, tmp_path, bad):
+        rc, reason = native_review.record(tmp_path, tmp_path, bad)
+        assert rc == 1 and "not a review id" in reason
+        rc, reason = native_review.show(tmp_path, bad)
+        assert rc == 1 and "not a review id" in reason
+
+
+class TestShow:
+    def test_show_prints_the_newest_text_by_default(self, tmp_path):
+        d = tmp_path / native_review.DIRNAME
+        d.mkdir()
+        old, new = d / "rev-1.md", d / "rev-2.md"
+        old.write_text("OLD TEXT")
+        new.write_text("NEW TEXT")
+        import os
+        os.utime(old, (1, 1))
+        rc, out = native_review.show(tmp_path)
+        assert rc == 0 and "NEW TEXT" in out and "OLD TEXT" not in out
+        rc, out = native_review.show(tmp_path, "rev-1")
+        assert rc == 0 and "OLD TEXT" in out
+
+    def test_a_missing_text_says_it_may_still_be_running(self, tmp_path):
+        rc, reason = native_review.show(tmp_path, "rev-9")
+        assert rc == 1 and "still be running" in reason
+
+
+class TestLedgerKind:
+    def test_review_native_cannot_be_hand_appended(self, tmp_path, capsys):
+        (tmp_path / ".prawduct").mkdir()
+        rc = ledger.ledger_append(tmp_path, ["--event", "review.native"])
+        assert rc == 1
+        assert "native-review record" in capsys.readouterr().err
+        assert "review.native" not in ledger._cli_appendable()
+
+    def test_review_stats_reads_the_native_event_as_its_own_role(self, branch_repo, monkeypatch):
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        out = subprocess.run(
+            [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "review-stats"],
+            cwd=str(branch_repo), capture_output=True, text=True, timeout=60,
+        )
+        assert out.returncode == 0, out.stderr
+        assert "native / " in out.stdout, out.stdout
+        assert "0 invalid payload(s)" in out.stdout and "0 unknown kind(s)" in out.stdout
+
+
+class TestNextAction:
+    """The builder's one travelling sentence names the native list (#1130 step 4)."""
+
+    def _consolidate(self, repo: Path, monkeypatch) -> dict:
+        result = _paired(repo, monkeypatch)
+        manifest = result["manifest"]
+        assert manifest["roster"] == ["reviewer"], manifest["roster"]
+        partial = {
+            "role": "reviewer", "goals": "1-7", "dispatch_id": result["id"],
+            "commit_reviewed": manifest["commit_reviewed"], "model": "opus",
+            "duration_seconds": 60, "findings": [], "summary": "clean",
+        }
+        (repo / manifest["rendezvous"]["reviewer"]["partial"]).write_text(json.dumps(partial))
+        return result
+
+    def _next_action(self, repo: Path) -> str:
+        return json.loads((repo / ".prawduct" / ".critic-findings.json").read_text())["next_action"]
+
+    def test_a_running_native_review_is_named(self, branch_repo, monkeypatch):
+        result = self._consolidate(branch_repo, monkeypatch)
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        sentence = self._next_action(branch_repo)
+        assert "native review" in sentence and "still running" in sentence
+        assert f"native-review show {result['id']}" in sentence
+
+    def test_a_landed_native_review_is_counted(self, branch_repo, monkeypatch):
+        result = self._consolidate(branch_repo, monkeypatch)
+        native_review.text_path(branch_repo / ".prawduct", result["id"]).write_text(THREE)
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        sentence = self._next_action(branch_repo)
+        assert "3 finding(s)" in sentence and "still running" not in sentence
+
+    def test_control_an_unpaired_review_says_nothing(self, branch_repo, monkeypatch):
+        (branch_repo / ".prawduct" / "project-state.yaml").write_text("native_review_pairing: false\n")
+        self._consolidate(branch_repo, monkeypatch)
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        assert "native review" not in self._next_action(branch_repo)
+
+
+class TestUntrackedFootprint:
+    def test_a_paired_review_leaves_nothing_for_git_to_see(self, branch_repo, monkeypatch):
+        """In a repo whose ``.gitignore`` knows nothing of the native reviews —
+        any repo before ``update-gitignore`` — the sidecar and the text stay out
+        of ``git status``, so no ``git add -A`` commits them."""
+        assert not (branch_repo / ".gitignore").exists()
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        status = _git(branch_repo, "status", "--porcelain", "--untracked-files=all")
+        assert ".native-reviews" not in status, status
+        # Control: the same status call does see an ordinary untracked file.
+        (pd / "note.txt").write_text("x")
+        assert ".prawduct/note.txt" in _git(branch_repo, "status", "--porcelain", "--untracked-files=all")

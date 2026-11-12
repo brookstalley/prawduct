@@ -2761,6 +2761,34 @@ def cmd_critic_consolidate(project_dir: Path, args: list[str] | None = None) -> 
     )
 
 
+def cmd_native_review(project_dir: Path, argv: list[str]) -> int:
+    """``native-review record <review id>`` | ``native-review show [<review id>]``.
+
+    The paired native review's record (#1130, ``lib/native_review.py``).
+    ``record`` is run by the wrapper a development build's boundary review
+    dispatches, once it has written the review's text: it appends one
+    ``review.native`` ledger event (exit 0, also when already recorded) or says
+    why there is nothing to record (exit 1). ``show`` prints a native review's
+    text, the newest by default (exit 0), or why it cannot (exit 1). Exit 2 on a
+    usage error."""
+    from lib import gitstate, native_review  # noqa: PLC0415 — lazy; the dispatcher seeded sys.path
+
+    usage = "usage: prawduct-hook native-review record <review id> | show [<review id>]"
+    op = argv[0] if argv else None
+    rest = argv[1:]
+    prawduct_dir = gitstate.get_prawduct_dir(project_dir)
+    if op == "record" and len(rest) == 1:
+        rc, message = native_review.record(project_dir, prawduct_dir, rest[0])
+    elif op == "show" and len(rest) <= 1:
+        rc, message = native_review.show(prawduct_dir, rest[0] if rest else None)
+    else:
+        shown = " ".join(argv) or "(no arguments)"
+        print(f"native-review: cannot read {shown!r} — {usage}", file=sys.stderr)
+        return 2
+    print(message, file=sys.stdout if rc == 0 else sys.stderr)
+    return rc
+
+
 def cmd_validate_partial(project_dir: Path, path: str | None) -> int:
     """Read-only: would consolidation accept this reviewer partial?
 
@@ -10726,6 +10754,7 @@ _USAGE = (
     "Usage: prawduct-hook "
     "{clear [--session-start|--force|--brief-only]|critic-begin --mode <m> [--chosen-by <rationale>] [--tier <t>] [--session-model <id>] [--scope <s>] [--chunks <id>[,<id>...]] [--force]|critic-end|critic-discard|"
     "critic-restore <review-id>|critic-consolidate|validate-partial <path>|"
+    "native-review record <review-id>|native-review show [<review-id>]|"
     "subagent-stop|"
     "stop|"
     "jurisdiction [--file <path>|<text...>] [--artifacts-only]|"
@@ -11251,6 +11280,8 @@ _EPHEMERAL_READ_ONLY_OPS = {
     # in `_ephemeral_command_writes`, not by this table. `new` and `bind` write
     # a plan.
     "plan": frozenset({"resolve", "status", "check-claims"}),
+    # `show` prints a native review's text; `record` appends the ledger event.
+    "native-review": frozenset({"show"}),
     # The one `evidence` read set the skew guard also reads. Its writes are
     # refused here on a narrower ground than this guard's usual one: none of
     # them can strand — the store, the notes ref and `.git/config` belong to
@@ -11847,6 +11878,8 @@ def _dispatch() -> int:
     elif command == "validate-partial":
         partial = sys.argv[2] if len(sys.argv) > 2 else None
         return cmd_validate_partial(project_dir, partial)
+    elif command == "native-review":
+        return cmd_native_review(project_dir, sys.argv[2:])
     elif command == "subagent-stop":
         return cmd_subagent_stop(project_dir, _read_stop_stdin())
     elif command == "jurisdiction":

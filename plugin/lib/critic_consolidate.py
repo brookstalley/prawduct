@@ -3062,9 +3062,6 @@ NATIVE_REVIEW_LEVEL = "high"
 #: a level the host reserves for an explicit request — ``max``, and ``ultra``,
 #: the cloud review. The validator refuses a manifest carrying one.
 NATIVE_REVIEW_FORBIDDEN = ("--fix", "--comment", "--post", "max", "ultra")
-#: Where each native review's text is kept, per clone and gitignored, one file
-#: per Critic review — not beside the partials, which the next dispatch archives.
-NATIVE_REVIEWS_DIRNAME = ".native-reviews"
 
 
 def native_review_pairing(
@@ -3106,9 +3103,19 @@ def native_review_prompt(review_id: str, worktree: str, args: str, text_path: st
         "background `sleep 900`, and stop it once the notification lands). Then write the "
         "review's complete text, everything after `Result:`, verbatim, to "
         f"`{text_path}` with the Write tool, and run "
-        f"`prawduct-hook native-review record {review_id}`. Edit nothing else and fix "
+        f"`{native_review_record_command(review_id)}`. Edit nothing else and fix "
         "nothing. Report one line: that command's output."
     )
+
+
+def native_review_record_command(review_id: str) -> str:
+    """The record command, naming the binary that ran this dispatch. The one on
+    PATH may be another build (a framework checkout runs its own), and the record
+    must be written by the code that wrote the sidecar it reads."""
+    from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    return f'python3 "{core.FRAMEWORK_DIR / "bin" / "prawduct-hook"}" native-review record {review_id}'
+
 
 
 def native_review_block(
@@ -3119,8 +3126,10 @@ def native_review_block(
     dispatches, derived here. ``model`` is the reviewers' model (null means
     the wrapper inherits the session's, as they do), because a comparison
     between instruments on different models measures the models."""
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
     args = f"{NATIVE_REVIEW_LEVEL} {base_commit}...{head_commit}"
-    text_path = str(Path(prawduct_dir) / NATIVE_REVIEWS_DIRNAME / f"{review_id}.md")
+    text_path = str(native_review.text_path(prawduct_dir, review_id))
     return {
         "skill": NATIVE_REVIEW_SKILL,
         "level": NATIVE_REVIEW_LEVEL,
@@ -4220,6 +4229,20 @@ def begin_review(
     superseded = _mark_cache_superseded(prawduct_dir, review_id)
     pdir.mkdir(parents=True, exist_ok=True)
     atomic_write_text(manifest_path(prawduct_dir), json.dumps(manifest, indent=2))
+    if "native_review" in manifest:
+        # The native run's own record, beside its text: the manifest is deleted
+        # when the Critic consolidates, which may be before the native run ends.
+        # Advice fails soft — an unwritable sidecar costs the experiment one
+        # record, never the Critic its review.
+        from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+        try:
+            native_review.write_dispatch(prawduct_dir, manifest, session_model)
+        except OSError as exc:
+            notes.append(
+                f"native review paired but its dispatch record was not written "
+                f"({exc.__class__.__name__}: {exc}); `native-review record` will refuse it"
+            )
 
     # Start this review's stopwatch — LAST, so the mark attests an interval a
     # reviewer actually spends. Every refusal above returns before here, and a
@@ -7330,6 +7353,11 @@ def consolidate(
         fact, price_sentence, carried, span, cost_sentence, rides_next_review, uncertified,
         store=store, not_waived=waiver_refusals,
     )
+    # The paired native review's list (#1130), named in the one sentence that
+    # reaches the builder however the review ran — so the builder works from both.
+    from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
+
+    record["next_action"] += native_review.next_action_clause(prawduct_dir, manifest)
     findings_path = prawduct_dir / ".critic-findings.json"
     atomic_write_text(findings_path, json.dumps(record, indent=2))
 

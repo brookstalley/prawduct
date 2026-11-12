@@ -102,6 +102,20 @@ experiment ends itself at #1130 step 7; worth revisiting earlier if a month's co
   token cost, because "no subagents are dispatched" stopped being true of a paired review.
 - 01: the template's state-file ceiling was raised by declaration, 12,000 → 12,100 bytes
   (`tests/test_plugin_init.py`), for the key's one-line hint; the template sat 3 bytes under it.
+- 01 (Critic round): `.prawduct/.native-reviews/` is a session path (`core.GITIGNORE_ENTRIES`, the
+  hook's mirror, a `/clear` survivor), because the wrapper writes there while the reviewers run and
+  consolidation exempts only session paths from its changed-tree refusal.
+- 02: `critic-begin` writes a sidecar beside the text (`native_review.write_dispatch`), and
+  `record` reads it, not the manifest — consolidation deletes the manifest, possibly before the
+  native run ends.
+- 02: the directory ignores itself (a `.gitignore` of `*` inside it), so a repo whose root
+  `.gitignore` predates the entry never shows a native review as untracked. Settled by "do it
+  right": the advisory alone would leave every un-reconciled repo one `git add -A` from committing it.
+- 02: the wrapper's record command names the binary that ran `critic-begin`
+  (`native_review_record_command`), not PATH's, so the sidecar's writer and reader are one build.
+- 02: the event's payload sits under `review` with a `findings` list of `{file, line}` and no
+  `fact_id`, so `review-stats` shows `native` as its own role and never joins it to the Critic's
+  dispositions.
 
 **Level:** High for Chunks 01-02: every host fact they use was measured. Medium for Chunk 03's
 overlap matcher: whether file-and-line proximity agrees with a reader's judgement of "the same
