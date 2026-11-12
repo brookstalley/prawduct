@@ -5869,9 +5869,10 @@ def fact_to_cache_record(
         # record verbatim — `review-stats --json` groups on it (`by_stage`).
         "stage": body.get("stage"),
         # Beside `stage`, for the same reader: the ledger's copy of this record
-        # is what a review-stats split by span groups on.
+        # is what `review-stats`'s `by_span` groups on, and counts full spans by.
         "span": body.get("span"),
         "bounded_from": body.get("bounded_from"),
+        "span_reason": body.get("span_reason"),
         "model": models[0] if models else None,
         "commit_reviewed": body.get("dispatch_commit"),
         "base_reviewed": body.get("base_reviewed"),

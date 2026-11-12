@@ -45,3 +45,11 @@ The reviewer's `Signals:` line ends `Span: bounded from <id>` or `Span: full` on
 record-lint and `test-status` still covering the whole bundle. `review-cycle.md` and the Critic
 skill describe the bounded repeat and the `full` override, and every sentence that said a
 cumulative always spans merge-base...HEAD now says when it does.
+
+### Measure (Chunk 04)
+
+`prawduct-hook review-stats` gains `by_span` (report schema 11): cumulative reviews grouped as
+`bounded` or `full`, both listed even at zero, with the `full` entry counting why each one ran
+full. A cumulative recorded before the field reads `full`, because nothing was bounded then. The
+measurement against the design's falsifier needs bounded rows from consumer repos, so it is filed
+for after the release.

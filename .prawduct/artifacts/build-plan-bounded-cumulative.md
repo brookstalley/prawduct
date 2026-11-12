@@ -250,5 +250,17 @@ are verified as the design's Build shape says. The full suite runs once, on the 
 
 - **Description:** The design's Build shape item 4. The change record goes in
   `.prawduct/changes/bounded-cumulative.md`, and one cumulative Critic names every chunk.
+  What ships here is the instrument: `review-stats` gains `by_span` (schema 11), which groups
+  cumulatives as bounded or full and counts why each full one ran full. `span_reason` rides the
+  findings cache, which the ledger copies. The measurement itself needs bounded rows from
+  consumers, which exist only after release, so it is filed as a backlog item with the method:
+  `review-stats --json` `by_span` and the yield tool with `--since <release>`. The Decision 6
+  revisit is filed with it.
 - **Type:** cumulative-final
 - **Depends on:** 03
+- **Deliverables:** `plugin/lib/telemetry.py`, `plugin/docs/governance-telemetry.md`,
+  `plugin/lib/critic_consolidate.py` (`span_reason` on the cache), `tests/test_review_stats.py`,
+  `tests/test_bounded_cumulative.py`, `.prawduct/changes/bounded-cumulative.md`.
+- **Done when:** `by_span` is pinned (keys, zero rows, a pre-field cumulative reads full, the
+  reasons, the human rendering); the measurement is filed; and one cumulative Critic names every
+  chunk with no blocking finding left.

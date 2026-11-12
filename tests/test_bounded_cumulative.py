@@ -426,6 +426,11 @@ class TestTheRecordAndTheGate:
         assert (body["span"], body["bounded_from"], body["span_reason"]) == (
             "full", None, gates.SPAN_FULL_NO_BOUNDARY_REVIEW
         )
+        # The reason reaches the ledger, which `review-stats`'s `by_span` counts.
+        ledger = repo / ".prawduct" / ".governance-ledger.jsonl"
+        (event,) = [json.loads(ln) for ln in ledger.read_text().splitlines()
+                    if json.loads(ln).get("event") == "review.critic"]
+        assert event["review"]["span_reason"] == gates.SPAN_FULL_NO_BOUNDARY_REVIEW
 
 
 class TestManifestValidation:
