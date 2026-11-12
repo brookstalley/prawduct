@@ -42,6 +42,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -1909,6 +1910,12 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
       session end, sending the builder to run exactly the cumulative round
       the transfer exists to remove. Conditions and their shape:
       :func:`_merge_base_verdict`.
+    - Both arms leave the session span uncovered, but the only interval no
+      review spans holds judgeable files this session did not author (a sync
+      brought them in) → covered, or blocked when a tree on that path still
+      carries a blocker, with an ``imported`` key naming the excused files.
+      Never when authorship cannot be read; never at the PR gate, which still
+      composes over the whole merge-base span. :func:`_imported_history_verdict`.
     """
     prawduct_dir = gitstate.get_prawduct_dir(project_dir)
     read = evidence.read_facts(project_dir)
@@ -1957,6 +1964,14 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
         ):
             verdict = mb_verdict
             base, base_source = mb_verdict["base"], "merge-base-fallback"
+    # The third arm: history this session did not write. Asked only of the
+    # session span (the marker's), only once both arms above left it uncovered,
+    # and only on an authorship read that fully completed — so it can turn an
+    # uncovered span covered or blocked, never the reverse.
+    if verdict["status"] == "uncovered" and base_source == "marker":
+        verdict = _imported_history_verdict(
+            project_dir, prawduct_dir, facts, base, target, diff_fn, key_fn, verdict
+        )
     # The near-miss and could-not-run notes are computed against the merge-base
     # span but carried onto whichever verdict is RETURNED, because that is the
     # one the Stop hook renders (as the `reason` in its block message) and this
@@ -1967,6 +1982,117 @@ def session_review_verdict(project_dir: Path, *, record_grants: bool = False) ->
         verdict["reason"] = f"{verdict.get('reason', 'no path')} — {transfer_note}"
     verdict.update({"base": base, "target": target, "base_source": base_source})
     return verdict
+
+
+def _imported_history_verdict(
+    project_dir: Path,
+    prawduct_dir: Path,
+    facts: list[dict],
+    base: str,
+    target: str,
+    diff_fn,
+    key_fn,
+    verdict: dict,
+) -> dict:
+    """The session gate's relax-only third arm: an uncovered session span
+    passes when the only interval no review spans holds judgeable files this
+    session did not author — history a pull, merge or branch switch brought in.
+
+    The session span (base tree → working tree) is the right span for the
+    session's OWN work, and the wrong one for what a sync imported: that was
+    written, and reviewed or not, on another branch, so demanding a review of
+    it here sends the builder to review work that is not theirs. The PR gate
+    still composes over the whole merge-base span, so nothing excused here
+    leaves a branch unreviewed at merge.
+
+    Authorship is :func:`_session_authored_paths` — the read the firing span
+    already trusts — with every untracked file counted as authored, since a
+    sync brings in none. When it returns ``None`` (unrecognised or unreadable
+    reflog, no session start, HEAD's tree unmoved) ``verdict`` is returned
+    untouched: the arm narrows only on a read it fully completed. A path both
+    authored and imported is authored, so it stays required. A blocking finding
+    on any tree the excused path stands on still blocks.
+
+    Returns ``verdict`` unchanged, or a ``covered``/``blocked`` verdict carrying
+    ``imported`` (the excused files), or ``verdict`` with its ``reason`` naming
+    the unreviewed files this session did author."""
+    rc, out, _err = evidence.run_git(
+        project_dir, "ls-files", "--others", "--exclude-standard", "-z"
+    )
+    if rc != 0:
+        return verdict
+    untracked = [p for p in out.split("\0") if p]
+    authored = _session_authored_paths(project_dir, prawduct_dir, base, untracked)
+    if authored is None:
+        return verdict
+    gapped = coverage_algebra.excused_gap_verdict(
+        facts, base, target, diff_fn, key_fn,
+        lambda files: not any(f in authored for f in files),
+    )
+    gap = gapped.get("gap") or {}
+    if gapped["status"] == "covered":
+        return {"status": "covered", "path": gapped["path"], "imported": gap["files"]}
+    if gapped["status"] == "blocked":
+        return {
+            "status": "blocked",
+            "path": gapped["path"],
+            "unresolved": gapped["unresolved"],
+            "imported": gap["files"],
+        }
+    own = [f for f in gap.get("files", []) if f in authored]
+    if own:
+        shown = ", ".join(own[:3]) + (f" (+{len(own) - 3} more)" if len(own) > 3 else "")
+        verdict = dict(verdict)
+        verdict["reason"] = (
+            f"{verdict.get('reason', 'no path')} — unreviewed files this session "
+            f"wrote: {shown}"
+        )
+    return verdict
+
+
+def session_uncovered_cause(project_dir: Path) -> str:
+    """The Stop gate's ``CAUSE:`` line for an ``uncovered`` session verdict —
+    the explanation the PR gate prints, asked of the same branch (merge-base →
+    HEAD, from the branch's own review rounds) and rendered for a gate whose
+    span is the working tree, so uncommitted judgeable paths are named as in
+    it.
+
+    Computed only when the Stop gate is about to print an uncovered block, not
+    inside :func:`session_review_verdict`: the session-start briefing reads that
+    verdict too, and would pay a lineage walk for an explanation it never
+    prints. Never raises, and never returns nothing — a failure anywhere is the
+    ``CAUSE: unavailable (<reason>)`` line."""
+    try:
+        read = evidence.read_facts(project_dir)
+        precheck = _store_precheck(read)
+        if precheck is not None:
+            return coverage.format_uncovered_cause(
+                {"status": "unavailable", "reason": precheck[1]}, gate="stop"
+            )
+        resolved = coverage.resolve_merge_base_tree(project_dir)
+        if resolved["status"] != "ok":
+            return coverage.format_uncovered_cause(
+                {"status": "unavailable", "reason": resolved.get("reason", "no merge-base")},
+                gate="stop",
+            )
+        rc, head_tree, err = evidence.run_git(project_dir, "rev-parse", "HEAD^{tree}")
+        if rc != 0 or not head_tree:
+            return coverage.format_uncovered_cause(
+                {"status": "unavailable", "reason": f"HEAD^{{tree}} unresolvable ({err})"},
+                gate="stop",
+            )
+        explained = coverage.explain_uncovered(
+            project_dir,
+            read.get("facts", []),
+            resolved["tree"],
+            head_tree,
+            resolved["merge_base"],
+            _cached_diff_fn(project_dir),
+            target="working",
+        )
+    except Exception as exc:  # prawduct:allow prawduct/broad-except -- advice must never crash the gate that renders it
+        explained = {"status": "unavailable", "reason": f"explanation crashed: {exc!r}"}
+    return coverage.format_uncovered_cause(explained, gate="stop")
 
 
 def _merge_base_verdict(
@@ -2270,7 +2396,13 @@ def _transfer_missing_input(transfer: dict) -> str:
     )
 
 
-def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
+def transfer_remedy(
+    transfer: dict,
+    tests_reason: "str | None",
+    uncommitted: "list[str] | None" = None,
+    *,
+    untracked: "list[str] | None" = None,
+) -> str:
     """The remedy prose for a base-advance transfer that did not grant.
 
     Both gates that attempt the transfer render this — the PR gate's `uncovered`
@@ -2290,6 +2422,17 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
       evidence the gap is genuine work, and saying so is the whole point: an
       unavailable check reading as a finding is the fail-open shape inverted.
 
+    ``uncommitted`` (the PR gate's only) names suite-coupled paths the working
+    tree holds against HEAD. With any of them present, "run the suite and
+    record" cannot reach the state: the run records the working tree, which
+    those paths make differ from HEAD on exactly what the suite match reads, so
+    the remedy repeated in this tree denies again. The route that reaches it is
+    to set them aside, run and record against a tree that IS HEAD, re-run the
+    gate, and restore them — safe because the PR gate's verdict never read those
+    paths. ``untracked`` is the subset git does not track, which ``git stash
+    push -- <path>`` refuses without ``--include-untracked``. The Stop gate
+    passes neither: its target is the working tree, so a run there does meet it.
+
     Returned as one paragraph without a severity prefix or indentation — each
     caller owns how it announces the line.
     """
@@ -2299,12 +2442,27 @@ def transfer_remedy(transfer: dict, tests_reason: "str | None") -> str:
             "that is not a finding that this gap is genuine work, only that the "
             "cheap check was unavailable" + _transfer_missing_input(transfer)
         )
-    return (
+    lead = (
         f"the branch's own diff is byte-identical to the span review "
         f"{transfer['prior_fact_id']} already covered ({len(transfer['files'])} "
         "judgeable file(s)), and the base advance touched none of them — the ONLY "
         "condition denying the transfer is that no saved suite run has met this "
-        f"tree ({tests_reason}). Run the suite and `prawduct-hook test-evidence "
+        f"tree ({tests_reason})."
+    )
+    if uncommitted:
+        flag = "--include-untracked " if untracked else ""
+        paths = " ".join(shlex.quote(p) for p in uncommitted)
+        return (
+            f"{lead} {len(uncommitted)} suite-coupled path(s) are uncommitted, so a "
+            "suite run in this working tree records the working tree, not HEAD, and "
+            "cannot meet it. Set them aside (`git stash push "
+            f"{flag}-- {paths}`), run the suite, `prawduct-hook test-evidence "
+            "record`, re-run the gate, then `git stash pop`: the coverage transfers "
+            "and no review is needed. Re-running on the same committed HEAD is safe "
+            "because this gate's verdict never read those paths."
+        )
+    return (
+        f"{lead} Run the suite and `prawduct-hook test-evidence "
         "record`, then re-run: the coverage transfers and no review is needed. The "
         "suite is what vouches for the reviewed diff meeting the advanced base — a "
         "run from earlier in this session does not, which is why timing is not what "
@@ -2727,6 +2885,7 @@ def _branch_coverage(
         "base_tree": base_tree,
         "head_tree": head_tree,
         "_verdict_fn": verdict_fn,
+        "_diff_fn": diff_fn,
     }
     verdict = verdict_fn(read.get("facts", []), base_tree, head_tree)
 
@@ -2893,20 +3052,41 @@ def _cumulative_critic_verdict(project_dir: Path, read: dict, cache) -> int:
     # question "is another round the right move" is answered differently on
     # round one than on round five, and the reader decides that before choosing
     # among the routes.
-    print(
-        coverage.format_branch_rounds(
-            coverage.count_branch_rounds(
-                project_dir, read.get("facts", []), resolved.get("merge_base", "")
-            )
-        ),
-        file=sys.stderr,
+    tally = coverage.count_branch_rounds(
+        project_dir, read.get("facts", []), resolved.get("merge_base", "")
     )
+    # WHY the span is uncovered, directly under the line saying THAT it is: the
+    # base advanced, the branch's committed head changed since its last review,
+    # an uncommitted file defeats the suite match, or no review exists. Each has
+    # a different remedy, and without this line the reader picks one blind. The
+    # tally is passed in so the lineage walk is paid once for both lines.
+    explained = coverage.explain_uncovered(
+        project_dir,
+        read.get("facts", []),
+        base_tree,
+        head_tree,
+        resolved.get("merge_base", ""),
+        answer["_diff_fn"],
+        target="head",
+        tally=tally,
+    )
+    print(coverage.format_uncovered_cause(explained, gate="pr"), file=sys.stderr)
+    print(coverage.format_branch_rounds(tally), file=sys.stderr)
     # Surfaced FIRST among the remedies for the reason the two NOTEs below are
     # surfaced before the generic route: the reader acts on the first one they
     # meet, and this is the cheapest of all of them — a suite run against a
     # review round.
     if transfer_stale is not None:
-        print(f"NOTE: {transfer_remedy(transfer, transfer_stale)}", file=sys.stderr)
+        print(
+            "NOTE: "
+            + transfer_remedy(
+                transfer,
+                transfer_stale,
+                explained.get("uncommitted"),
+                untracked=explained.get("untracked"),
+            ),
+            file=sys.stderr,
+        )
     elif coverage.classify_transfer(transfer) == "unavailable":
         print(f"NOTE: {transfer_remedy(transfer, None)}", file=sys.stderr)
     # COV-7K4N: a stale remote base (origin/<b> behind an ancestor-of-HEAD local

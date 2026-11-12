@@ -3985,9 +3985,20 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
                         "  This plan's last chunk is `Type: cumulative-final`:\n"
                         + _wrap_gate_prose(_critic_mode().LAST_CHUNK_BOUNDARY_STEP + ".")
                     )
+                # Why, directly under the line saying THAT the span is
+                # uncovered — the same explanation the PR gate prints, so a
+                # builder blocked here is not left to guess among a base
+                # advance, a changed head and an uncommitted file. Only for
+                # `uncovered`: an error status has no coverage to explain.
+                cause_line = (
+                    f"  {_gates().session_uncovered_cause(project_dir)}\n"
+                    if verdict_status == "uncovered"
+                    else ""
+                )
                 blockers.append(_attributed("critic",
                     "CRITIC REVIEW: no composed review coverage spans this session's\n"
                     f"  changes{span}: {detail}\n"
+                    + cause_line
                     + broken_binding_note
                     + last_chunk_note +
                     "  If you have completed a chunk, run `/prawduct:critic` now. It runs as an\n"
@@ -4009,6 +4020,23 @@ def cmd_stop(project_dir: Path, stop_input: dict | None = None) -> int:
     # Advisory NOT blocking — chunk-mode reviews are valid mid-cycle, and the
     # builder may legitimately defer the final review (e.g., next session).
     # Reads the session work span, like the rest of the Critic gate family.
+    # The session gate passed on the session's own work while files a sync
+    # brought in stay unreviewed: say so in one line, so a pass that excused
+    # something is never silent about what it excused, or about who still owes it.
+    imported = critic_verdict.get("imported") if not critic_would_block else None
+    if imported:
+        shown = ", ".join(imported[:3]) + (
+            f" (+{len(imported) - 3} more)" if len(imported) > 3 else ""
+        )
+        print("", file=sys.stderr)
+        print(
+            f"NOTE: the Critic gate judged this session's own work; {len(imported)} "
+            f"judgeable file(s) a sync brought in were not judged here ({shown}) — "
+            "the PR gate's merge-base span still requires review of any not "
+            "already on the base branch.",
+            file=sys.stderr,
+        )
+
     if critic_has_work and not critic_doc_only and not critic_would_block:
         mode_satisfied, mode_reason = _gates()._critic_session_satisfies_gate(project_dir)
         if not mode_satisfied:
