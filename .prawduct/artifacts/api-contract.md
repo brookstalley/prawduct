@@ -162,7 +162,9 @@ The CLI groups by responsibility. Every subcommand is read-only unless marked mu
   usage error (exit 1); a declared id outside the proposal is recorded with a `WARNING:` note;
   `--session-model <id>` is the model the dispatcher runs as, from which code answers the
   manifest's `reviewer_model` and prints it as a `reviewer model:` line — absent, the reviewer
-  ceiling is assumed and a note says so; `--tier` never moves it),
+  ceiling is assumed and a note says so; `--tier` never moves it; on a development build's
+  `cumulative`, a `native review paired` line tells the fork to dispatch the manifest's
+  `native_review` wrapper, and a dev cumulative that does not pair says why in a note),
   `critic-consolidate`
   (merge partials → evidence fact, mutating; reads the Critic's dispatch mark WITHOUT consuming it
   and writes the optional `dispatched_at` review-fact body key when the mark is this review's —

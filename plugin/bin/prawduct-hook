@@ -2449,6 +2449,11 @@ def cmd_critic_begin(project_dir: Path, argv: list[str]) -> int:
     from lib import model_tier  # noqa: PLC0415 — lazy; `_critic_consolidate` above seeded sys.path
 
     print(f"PRAWDUCT: {model_tier.reviewer_model_line(manifest.get('reviewer_model'))}")
+    # The paired native review (#1130), when code paired one: printed beside the
+    # reviewer model because the same dispatch message carries both.
+    native_line = consolidate.native_review_line(manifest)
+    if native_line:
+        print(f"PRAWDUCT: {native_line}")
     # PDT-WT9K: surface the resolved target so a wrong-tree review is obvious.
     base_ref = manifest.get("base_commit") or manifest.get("base_tree") or "?"
     print(

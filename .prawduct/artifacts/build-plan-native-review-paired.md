@@ -84,12 +84,22 @@ experiment ends itself at #1130 step 7; worth revisiting earlier if a month's co
 - [DECISION: keep the native text at `.prawduct/.native-reviews/<critic review id>.md`, gitignored,
   not beside the partials | #1130 says "beside the review's partials", but `critic-begin` archives
   the partials at the next review, and the monthly comparison needs every text | owner can veto]
-- Inferred: the level is `high`. `low` skips test files and reads only the diff; `medium` ran the
-  `high` recipe in 2.1.322. Put to the owner with this plan.
+- The level is `high` — owner ruling 2026-11-12, which also confirmed both DECISIONs above. `low`
+  skips test files and reads only the diff; `medium` ran the `high` recipe in 2.1.322.
 - Inferred: the opt-out key is `native_review_pairing: false` in `project-state.yaml`, default on
   for development builds, ignored on released builds.
 - Inferred: the dispatch rides the Critic coordinator, not the builder's main session — the
   pairing then fires on code's decision (`critic-begin`), not on the builder remembering.
+
+**Decisions made mid-build:**
+- 01: the dispatch instruction lives in the line `critic-begin` prints (`native_review_line`), not in
+  `SKILL.md` or `coordinator.md`. Prose there costs every Critic route, chunk reviews that never
+  pair included (`tests/test_reviewer_payload_budget.py` measured +93 to +149 tokens), while the
+  printed line reaches the fork at the moment it dispatches and only on reviews that pair. Settled
+  by the NFR norm that review unit-cost is P0. `SKILL.md`'s single-pass sentence was reworded at no
+  token cost, because "no subagents are dispatched" stopped being true of a paired review.
+- 01: the template's state-file ceiling was raised by declaration, 12,000 → 12,100 bytes
+  (`tests/test_plugin_init.py`), for the key's one-line hint; the template sat 3 bytes under it.
 
 **Level:** High for Chunks 01-02: every host fact they use was measured. Medium for Chunk 03's
 overlap matcher: whether file-and-line proximity agrees with a reader's judgement of "the same

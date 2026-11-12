@@ -201,10 +201,16 @@ def test_scaffolded_state_file_leaves_room_for_discovery(scaffolded: Path):
     so a fresh repo started at three quarters of the oversized-file ceiling and
     one honest discovery tripped it, asking the owner to judge text they never
     wrote. That reference lives in the plugin now; this keeps it from creeping
-    back: under 12 KB leaves discovery most of the default ceiling.
+    back: about 12 KB leaves discovery most of the default ceiling.
+
+    RAISED 2026-11-12, DECLARED: 12,000 → 12,100 bytes for one key's hint,
+    `native_review_pairing` (#1130). The template sat 3 bytes under the old
+    line, so any new key would have crossed it, and the cuts available were a
+    pointer the next reader needs. A hundred bytes leaves discovery's headroom
+    under the 40 KB oversized-file default where it was.
     """
     size = (scaffolded / ".prawduct" / "project-state.yaml").stat().st_size
-    assert size < 12_000, f"a fresh state file is {size} bytes before discovery writes anything"
+    assert size < 12_100, f"a fresh state file is {size} bytes before discovery writes anything"
 
 
 def test_name_detectable_by_briefing(scaffolded: Path):

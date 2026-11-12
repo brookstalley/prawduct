@@ -268,6 +268,9 @@ operator_verification_required: false
 # The most full review rounds one build-plan scope may buy; null disables it.
 review_round_budget: 6
 
+# Dev builds only; false opts out of the paired native review.
+# native_review_pairing: false
+
 # Advisory size thresholds:
 # oversized_file_threshold_kb: 40
 # evidence_store_threshold_mb: 50
