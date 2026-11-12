@@ -132,6 +132,17 @@ def paired_repo(tmp_path, monkeypatch):
     return repo, result["id"]
 
 
+def _rewrite_native_event(repo: Path, change) -> None:
+    ledger_path = repo / ".prawduct" / ".governance-ledger.jsonl"
+    lines = []
+    for line in ledger_path.read_text().splitlines():
+        event = json.loads(line)
+        if event.get("event") == "native.review":
+            change(event)
+        lines.append(json.dumps(event))
+    ledger_path.write_text("\n".join(lines) + "\n")
+
+
 def _branch_repo(tmp_path, pairing):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -193,3 +204,80 @@ class TestEndToEnd:
         assert compare.main([str(repo), "--transcripts", str(forks)]) == 0
         out = capsys.readouterr().out
         assert "over 1 fork(s)" in out and "recipes run: {'high': 1}" in out
+        # #1161: the model too, since the comparison assumes it matches the Critic's.
+        assert "models: {'claude-opus-5-5': 1}" in out
+        assert "WARNING" not in out
+
+    def test_a_fork_that_ran_another_recipe_is_flagged(self, paired_repo, tmp_path, capsys):
+        """#1161: the comparison assumes every native run was `high`; a fork whose
+        own prompt names another recipe breaks that, and the report says so."""
+        repo, _review_id = paired_repo
+        [pair] = compare.load_pairs(repo)
+        target = pair["native_event"]["native"]["args"].split(" ", 1)[1]
+        forks = tmp_path / "subagents"
+        forks.mkdir()
+        lines = [
+            {"type": "user", "timestamp": "2026-11-12T10:00:00Z",
+             "message": {"content": f"Review target: `{target}`\n\n`low effort → 1 diff pass`"}},
+            {"type": "assistant", "timestamp": "2026-11-12T10:00:05Z",
+             "message": {"model": "claude-sonnet-5-5", "usage": {"output_tokens": 1}}},
+        ]
+        (forks / "agent-y.jsonl").write_text("\n".join(json.dumps(x) for x in lines) + "\n")
+        assert compare.main([str(repo), "--transcripts", str(forks)]) == 0
+        out = capsys.readouterr().out
+        assert "WARNING: 1 fork(s) ran a recipe other than their run's recorded level: low 1" in out
+
+    def test_a_run_on_another_model_than_its_critic_review_is_flagged(self, paired_repo, capsys):
+        """The paired native review on #1161: the comparison assumes the two ran on
+        one model, so a pair that did not is named — compared by family, since the
+        Critic records `opus` where the native run records `claude-opus-5-5`."""
+        repo, review_id = paired_repo
+        assert compare.main([str(repo)]) == 0
+        assert "model mismatch" not in capsys.readouterr().out  # opus == claude-opus-5-5
+        _rewrite_native_event(repo, lambda e: e["actor"].update(model="claude-sonnet-5-5"))
+        assert compare.main([str(repo)]) == 0
+        out = capsys.readouterr().out
+        assert f"WARNING: 1 model mismatch(es): {review_id} (critic opus, native sonnet)" in out
+
+    def test_the_counts_are_checked_against_the_ledger(self, paired_repo, capsys):
+        """#1161 acceptance: compare reports the same counts as the ledger events —
+        checked by the script itself on every run, so a parse change that moves a
+        count is seen, not assumed."""
+        repo, review_id = paired_repo
+        assert compare.main([str(repo)]) == 0
+        assert "count check: 1 of 1 countable run(s) agree with the ledger" in capsys.readouterr().out
+        # Control: a text edited after it was recorded disagrees, and is named.
+        text = repo / ".prawduct" / ".native-reviews" / f"{review_id}.md"
+        text.write_text(json.dumps([{"file": "only.py", "line": 1, "summary": "s"}]))
+        assert compare.main([str(repo)]) == 0
+        out = capsys.readouterr().out
+        assert "count check: 0 of 1 countable run(s) agree with the ledger" in out
+        assert f"{review_id} (ledger 2, text 1)" in out
+
+    def test_the_check_names_a_run_whose_countability_changed(self, paired_repo, capsys):
+        """Boundary Critic on #1161 (and the paired native review's first finding):
+        a run the ledger counted whose text now parses as uncountable — exactly
+        what a parse change does — is a disagreement, not a skip."""
+        repo, review_id = paired_repo
+        text = repo / ".prawduct" / ".native-reviews" / f"{review_id}.md"
+        text.write_text("Result:\n(none)\n\nThe pass found two problems.")
+        assert compare.main([str(repo)]) == 0
+        out = capsys.readouterr().out
+        assert f"{review_id} (ledger 2, text not countable)" in out
+
+    def test_the_check_compares_which_findings_not_how_many(self, paired_repo, capsys):
+        repo, review_id = paired_repo
+        text = repo / ".prawduct" / ".native-reviews" / f"{review_id}.md"
+        text.write_text(json.dumps([
+            {"file": "src/app.py", "line": 1, "summary": "a"},
+            {"file": "elsewhere.py", "line": 4, "summary": "b"},  # same count, other file
+        ]))
+        assert compare.main([str(repo)]) == 0
+        out = capsys.readouterr().out
+        assert "count check: 0 of 1" in out and f"{review_id} (ledger 2, text 2, findings differ)" in out
+
+    def test_a_run_whose_text_is_missing_is_not_compared(self, paired_repo, capsys):
+        repo, review_id = paired_repo
+        (repo / ".prawduct" / ".native-reviews" / f"{review_id}.md").unlink()
+        assert compare.main([str(repo)]) == 0
+        assert "count check: 0 of 0 countable run(s)" in capsys.readouterr().out

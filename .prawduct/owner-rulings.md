@@ -27,6 +27,11 @@
 
      Newest first. Plain prose; nothing parses this file. -->
 
+**2026-11-12.** "and then 1161"
+Sent as #1130's PR was being opened: once that merge and the `../prawduct-live` advance are done,
+build #1161 (harden the native text parse before the first monthly comparison). Landed on
+`fix/native-review-parse`.
+
 **2026-11-12.** "1. yes PR and mege and push to prawduct-live"
 In reply to two asks at the end of #1130's build: open the PR and merge `feature/native-review-paired`
 to develop, then advance `../prawduct-live` to it — which turns the paired native review on in every

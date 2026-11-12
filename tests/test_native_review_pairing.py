@@ -308,6 +308,32 @@ class TestParseFindings:
         text = "(none)\n\nThe pass found one wrong condition in a.py and an unchecked None in b.py."
         assert native_review.parse_findings(text) is None
 
+    # #1161: a wrapper that keeps the `Result:` line puts the host's header on
+    # the SECOND line, where the first-line strip never looked.
+    def test_a_kept_result_line_does_not_hide_the_host_header(self):
+        text = "Result:\n(none)\n\nThe pass found one wrong condition in a.py."
+        assert native_review.parse_findings(text) is None
+
+    def test_a_result_line_and_header_on_one_line_is_still_the_header(self):
+        assert native_review.parse_findings("Result: (none)\n\nThe pass found a bug in a.py.") is None
+
+    @pytest.mark.parametrize("text", [
+        "Result:\n\n(none)\n\nThe pass found a bug in a.py.",   # a blank line between them
+        "Result: (none)\n\nThe pass found a bug in a.py.",       # one line
+        "\n\nResult:\n(none)\n\nThe pass found a bug in a.py.",  # leading blank lines
+    ])
+    def test_every_layout_of_the_header_is_the_header(self, text):
+        """The paired native review on #1161: the header's answer must not depend
+        on its layout — each of these is header plus prose, so not countable."""
+        assert native_review.parse_findings(text) is None
+
+    @pytest.mark.parametrize("text", ["Result:\n(none)\n", "Result: (none)\n", "Result:\n\n(none)"])
+    def test_every_layout_of_a_header_alone_is_an_empty_run(self, text):
+        assert native_review.parse_findings(text) == []
+
+    def test_a_kept_result_line_with_nothing_after_the_header_is_an_empty_run(self):
+        assert native_review.parse_findings("Result:\n(none)\n") == []
+
     def test_the_reviews_own_none_after_the_header_is_an_empty_run(self):
         assert native_review.parse_findings("(none)\n\nI read the diff once.\n\n(none)\n") == []
 
@@ -533,6 +559,24 @@ class TestNextAction:
         derived = cc.derive_branch_cache(pd, facts, [head])
         assert derived["status"] == "derived", derived
         assert "(3 finding(s))" in self._next_action(branch_repo)
+
+    def test_a_landed_text_that_is_not_countable_says_so(self, branch_repo, monkeypatch):
+        """#1161: "may still be running" is false once the text has landed; a text
+        that holds no countable answer says it landed and is not countable."""
+        result = self._consolidate(branch_repo, monkeypatch)
+        native_review.text_path(branch_repo / ".prawduct", result["id"]).write_text(
+            "(none)\n\nI looked at the diff; two things worried me."
+        )
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        sentence = self._next_action(branch_repo)
+        assert "(landed, not countable)" in sentence and "may still be running" not in sentence
+
+    def test_a_text_that_cannot_be_read_is_not_called_running(self, branch_repo, monkeypatch):
+        result = self._consolidate(branch_repo, monkeypatch)
+        native_review.text_path(branch_repo / ".prawduct", result["id"]).mkdir()  # exists, unreadable
+        assert cc.consolidate(branch_repo, trigger="explicit") == 0
+        sentence = self._next_action(branch_repo)
+        assert "(text unreadable)" in sentence and "may still be running" not in sentence
 
     def test_a_text_with_bad_bytes_neither_breaks_record_nor_consolidate(self, branch_repo, monkeypatch):
         """Boundary review R-7: the text is model output; one undecodable byte
