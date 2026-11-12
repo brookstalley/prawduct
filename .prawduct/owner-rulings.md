@@ -235,3 +235,12 @@ old-only blocking rate (about 7 in 114 on the 2026-11-11 dated reading, re-deriv
 **2026-11-11.** "4. Yes PR and merge both and update prawduct-live"
 `feature/bounded-cumulative` and `feature/asks-last` are opened as PRs into `develop` and merged, and the
 `prawduct-live` worktree (the lumens profile's plugin source) is advanced to the merged `develop`.
+
+**2026-11-12.** "yes to all of your recommendations" — answering four asks together:
+1. PR #1151 (`feature/gate-clarity`) syncs with `develop` and merges first, then #1152
+   (`feature/review-round-cost`) syncs with the result and merges. `../prawduct-live` is advanced once,
+   after both.
+2. Where #1152's protocol text no longer fits the reviewer payload ceilings that #890 set, its wording
+   is trimmed rather than the ceilings raised; a trim that would lose meaning comes back to the owner.
+3. PR #1118 (Codex Phase 1 spike) stays out of this batch.
+4. The merged local branch `worktree-agent-a76c0614686964c8c` is removed (done by `git-tidy --apply`).
