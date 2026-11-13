@@ -91,15 +91,38 @@ spend surprises; the sample rate is one constant.
   run lands (`tree_moved`), and `compare.py` warns on each run where it moved, rather than refusing
   the run: a moved tree is likely at the inner stage and still mostly comparable.
 - Inferred, the re-raise rule (#1165): a finding in paired review K is a re-raise candidate of an
-  earlier finding E when E is from an earlier paired review J in the same repo whose interval
-  overlaps K's (same non-null plan scope, else their commit ranges share a commit), E names one of
-  its files, and E is either a Critic finding of J with an `accept` or `file` disposition, or a
-  native finding of a boundary run of J (the builder saw it). A native finding of an inner run is
-  never E: the builder never saw it. Candidates go on the blind sheet as "same defect?"; the
-  confirmed ones are re-raises. Both instruments are measured, so the Critic's rate is the
+  earlier finding E when E is within K's reach (as amended mid-build, below: the Critic's own
+  prior-dispositions reach) and names one of the finding's files, and E is either a Critic finding
+  left accepted or filed, or a native finding of a boundary run (the builder saw it). A native
+  finding of an inner run is never E: the builder never saw it. Candidates go on the blind sheet;
+  the confirmed ones are re-raises. Both instruments are measured, so the Critic's rate is the
   baseline the native one is read against.
 - Inferred: #1130's stop condition counts boundary pairs only, as it did; inner pairs are reported
   beside it.
+
+**Decisions made mid-build:**
+- 01: `tree_moved` counts judgeable files only. Free surfaces (`.prawduct/` records, plain docs)
+  are written during any review — consolidation itself writes them — so counting them flagged every
+  run in a repo whose `.prawduct/` is tracked. Settled by "do it right": the warning exists to name
+  runs that read different code.
+- 01: the `review-cycle.md` manifest line was reworded to fit its recorded token count
+  (`tests/test_v5_methodology.py`), not raised.
+- 01: a run with every inner review forced to pair (`NATIVE_REVIEW_INNER_SAMPLE = 1`) over the
+  test files that dispatch a review passed, so no test depends on an inner review missing the
+  sample.
+- 02: the re-raise reach is the Critic's own prior-dispositions rule (`dispositions.
+  prior_dispositions`: same plan scope, any earlier review when K has none, and a cited file K
+  changes), replacing the planned commit-overlap rule. Measured in the end-to-end test: a bounded
+  cumulative never re-covers the earlier range's commits, while the native review reads whole
+  files, so commit overlap missed exactly the case #1165 asks about. Mirroring the rule the
+  Critic is handed also makes the Critic a fair baseline. Not settled by the goals: the owner
+  approved #1165 with "re-raise" undefined.
+- 02: a candidate offers every in-reach earlier finding on the file from the nearest review, and
+  the sheet asks whether the finding repeats one of them. Measured on the real pairs (2026-11-13):
+  the first-match form paired each later finding with whichever earlier finding came first on a
+  hot file, which would hide the one it repeats.
+- 02: a native finding matched to a Critic observation counts as shared in the goal table as well
+  as the severity table — the goal table had been calling those native-only.
 
 **Level:** Medium. The synthetic range rests on git semantics (three-dot diff over unreachable
 commits) that are certain, and on the native review accepting any commit range, which the boundary
@@ -151,16 +174,17 @@ recorded so far, whose boundary table must agree with the previous run's.
     observations, and tallies per Critic severity (blocking, warning, observation) as well as per
     goal, each split by stage (#1164).
   - The stop condition counts boundary pairs; inner pairs and wall clock are reported per stage.
-  - Re-raise candidates by the rule under Goals, on the blind sheet as "same defect?" items whose
-    key says which instrument re-raised and what kind of earlier finding it repeats; the report
-    prints candidate counts per instrument (#1165).
+  - Re-raise candidates by the rule under Goals, on the blind sheet as items asking whether the
+    finding repeats one of the earlier findings listed with it, whose key says which instrument
+    re-raised and what kind of earlier finding it repeats; the report prints candidate counts per
+    instrument (#1165).
   - A warning naming each run whose tree moved before it was recorded.
   - The README's monthly procedure and decision table read the new columns.
 - **Depends on:** 01
 - **Tests:** known-answer — a native finding matching only a Critic observation counts as shared
   under `observation`; an inner pair does not advance the stop condition; a native finding in a
-  later overlapping review naming an earlier accepted finding's file is a candidate, and one whose
-  earlier review does not overlap is not.
+  later review naming an in-reach earlier accepted finding's file is a candidate, and one out of
+  reach (another scope, or a file the later review does not change) is not.
 - **Done when:**
   1. Known-answer tests green, and the script run over the paired reviews recorded so far
   2. Committed
