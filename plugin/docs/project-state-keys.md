@@ -259,6 +259,12 @@ outside quotes begins a comment — quote it (`-k "not #slow"`) or wrap the invo
 test_command: uv run pytest --junit-xml={junit_xml} -q
 ```
 
+A repo whose tests run on testament (`.testament.toml` at its root) declares
+`test_command: testament run --junit-xml {junit_xml}` (or makes it one `test_commands` entry), so
+the recorder records the testament run rather than running the suite a second time locally. Where
+no declared command runs testament, the session-start advisory
+`testament-evidence:declared-command-skips-testament` says so.
+
 **`test_commands:`** — the multi-environment form (backend + web + mobile): one canonical
 invocation per environment, each run under the same rules as `test_command:` (shlex-split,
 mandatory `{junit_xml}`, an unquoted ` #` begins a comment); counts aggregate across all reports into ONE evidence

@@ -5422,16 +5422,13 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             # someone holding a report already, and a bare `record` for someone
             # who has not run yet. Naming only the first sent a caller who had
             # not run to run the suite BY HAND and come back, which is a second
-            # full suite run for evidence one command would have produced.
-            print(
-                "error: --from-counts cannot be combined with a declared "
-                "test_command/test_commands — the declared command(s) emit "
-                "JUnit. If you have already run them, ingest the report(s) "
-                "with repeated `--from-junit <report>` (no re-run, "
-                "machine-backed evidence). If you have not run them yet, bare "
-                "`test-evidence record` runs them and records in one step.",
-                file=sys.stderr,
-            )
+            # full suite run for evidence one command would have produced. In a
+            # repo on testament the caller has most likely just run `testament
+            # run`, so the text leads with the testament route there; one
+            # function owns which route leads.
+            from lib import testament_wiring_probes  # noqa: PLC0415 — lazy keeps top-level cheap
+
+            print(testament_wiring_probes.from_counts_refusal(project_dir), file=sys.stderr)
             return 2
 
     if no_rerun:
