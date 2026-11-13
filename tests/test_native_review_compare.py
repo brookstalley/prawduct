@@ -333,24 +333,38 @@ class TestReach:
     """A later review's reach is the Critic's own prior-dispositions rule: the
     same plan scope (any, when it has none), and a cited file it changes."""
 
-    def _review(self, rid, ts, scope=None):
-        return {"review_id": rid, "ts": ts, "scope": scope}
+    def _review(self, rid, seq, scope=None):
+        return {"review_id": rid, "seq": seq, "scope": scope}
 
     def test_the_same_plan_scope_is_in_reach(self):
-        assert compare.in_reach(self._review("J", "2026-11-01T00:00:00Z", "memo"),
-                                self._review("K", "2026-11-02T00:00:00Z", "memo"))
+        assert compare.in_reach(self._review("J", 1, "memo"), self._review("K", 2, "memo"))
 
     def test_another_scope_is_not(self):
-        assert not compare.in_reach(self._review("J", "2026-11-01T00:00:00Z", "a"),
-                                    self._review("K", "2026-11-02T00:00:00Z", "b"))
+        assert not compare.in_reach(self._review("J", 1, "a"), self._review("K", 2, "b"))
 
     def test_a_review_with_no_scope_reaches_every_earlier_one(self):
-        assert compare.in_reach(self._review("J", "2026-11-01T00:00:00Z", "a"),
-                                self._review("K", "2026-11-02T00:00:00Z", None))
+        assert compare.in_reach(self._review("J", 1, "a"), self._review("K", 2, None))
 
     def test_a_later_review_is_never_earlier(self):
-        assert not compare.in_reach(self._review("J", "2026-11-03T00:00:00Z", "memo"),
-                                    self._review("K", "2026-11-02T00:00:00Z", "memo"))
+        assert not compare.in_reach(self._review("J", 3, "memo"), self._review("K", 2, "memo"))
+        assert not compare.in_reach(self._review("J", 2, "memo"), self._review("K", 2, "memo"))
+
+    def test_earlier_is_store_order_not_the_timestamp(self, inner_pair, monkeypatch, capsys):
+        """Two reviews can consolidate in one second (a fast runner does), and a
+        timestamp comparison then finds nothing earlier. Pin it by stamping
+        every fact with one second."""
+        repo, _b, _i = inner_pair
+        real = compare.evidence.read_facts
+
+        def same_second(project_dir):
+            store = real(project_dir)
+            for fact in store.get("facts") or []:
+                fact["ts"] = "2026-11-13T00:00:00Z"
+            return store
+
+        monkeypatch.setattr(compare.evidence, "read_facts", same_second)
+        assert compare.main([str(repo)]) == 0
+        assert "re-raise candidates — native: 1 of 1" in capsys.readouterr().out
 
     def test_an_earlier_finding_on_a_file_the_later_review_does_not_change_is_out_of_reach(self):
         earlier = [{"review_id": "J", "settled": [(_critic("R-3", "g", "a.py"), "accepted")],

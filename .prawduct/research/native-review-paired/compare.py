@@ -126,8 +126,10 @@ def in_reach(j: dict, k: dict) -> bool:
     """Whether earlier review ``j``'s findings are within later review ``k``'s
     reach by work: ``j`` is earlier, and carries ``k``'s plan scope when ``k``
     has one — the half of ``prior_dispositions`` that is not the file test
-    (``reraise_candidates`` applies that one, per finding). Pure."""
-    if not (j.get("ts") and k.get("ts") and j["ts"] < k["ts"]):
+    (``reraise_candidates`` applies that one, per finding). "Earlier" is the
+    store's append order (``seq``), never the timestamp: stamps have one-second
+    resolution, and two reviews can land in one second. Pure."""
+    if not (isinstance(j.get("seq"), int) and isinstance(k.get("seq"), int) and j["seq"] < k["seq"]):
         return False
     return k.get("scope") is None or j.get("scope") == k.get("scope")
 
@@ -269,23 +271,23 @@ def reraises(repo: Path, pairs: list[dict]) -> "tuple[list[dict], dict]":
     def state_of(key):
         return dispositions.finding_state(key, disp, resolved)
 
-    facts = sorted((f for f in store.get("facts") or [] if f.get("kind") == "review" and f.get("ts")),
-                   key=lambda f: f["ts"])
+    # Store order is append order, which is what "earlier" means here.
+    facts = [f for f in store.get("facts") or [] if f.get("kind") == "review" and f.get("id")]
+    seq = {f["id"]: i for i, f in enumerate(facts)}
     paired = {p["review_id"]: p for p in pairs}
 
     def view(fact):
-        return {"review_id": fact["id"], "ts": fact["ts"], "scope": (fact.get("body") or {}).get("scope")}
+        return {"review_id": fact["id"], "seq": seq[fact["id"]],
+                "scope": (fact.get("body") or {}).get("scope")}
 
     candidates, exposed = [], {"critic": 0, "native": 0}
     for pair in pairs:
         k_fact = pair.get("critic_fact")
-        if k_fact is None or not k_fact.get("ts"):
+        if k_fact is None or k_fact.get("id") not in seq:
             continue
         k = view(k_fact)
         earlier = []
-        for j_fact in reversed(facts):
-            if j_fact["ts"] >= k["ts"]:
-                continue
+        for j_fact in reversed(facts[:k["seq"]]):
             j_pair = paired.get(j_fact["id"])
             offer = earlier_findings(
                 j_fact, state_of, (j_pair or {}).get("native_findings"),
