@@ -20,7 +20,7 @@ governed_by:
       - "written in Python, never specific to Python → conforms; the check keys on testament's manifest and the declared command's words, not on a language"
       - "guides and reviews, never implements → conforms; the product's test_command is the owner's to change"
       - "goals and verification bind, method is advice → conforms"
-      - "every fact has one home → conforms; one function answers whether a declared command runs testament, and both the probe and the refusal ask it"
+      - "every fact has one home → conforms; one function answers whether a declared command runs testament. The recorder resolves the declaration and hands it to the refusal; the probe resolves it by the recorder's rules through lib, pinned to the recorder by a parity test that drives the real hook on every disputed shape, as the hook's other mirrored readers are pinned"
   - artifact: data-model
     dispositions:
       - "verdicts computed from facts, no model in the write path → inapplicable because no verdict changes"
@@ -80,9 +80,21 @@ declared command doesn't run testament, and names the one-line fix. The recorder
   ceiling, and the example lives in `project-state-keys.md` and in the refusal itself, which is
   where an agent meets it. Settled by paying a prose ceiling in place, with the ceiling lowered to
   the new reading.
-- The predicate, the probe and the refusal text share one module, `testament_wiring_probes.py`,
+- The predicate, the probe and the refusal text share one module, `testament_evidence_probes.py`,
   which the hook imports lazily, as it does its other `lib` modules. Settled by "every fact has
   one home".
+- Review round. The first cut gave the declaration a second reader that disagreed with the
+  recorder's (an empty or doubly-declared `test_commands`). It also wrote texts that ignored the
+  declaration's form and size: one testament report offered as the whole of a three-command
+  suite, and a scalar fix for a list repo that the recorder would refuse. Now the recorder passes
+  its resolved declaration into the refusal. The probe's reader is pinned to the recorder by a
+  parity test, and every text is chosen from the key, the entry count and the `{junit_xml}`
+  placeholder. Settled by the product goal (evidence must not be recorded from part of the
+  suite) and by the recorder's existing mirror-plus-parity convention.
+- Review round. The module was renamed `testament_evidence_probes.py` to match its feature,
+  `testament-evidence`. `runs_testament` now also reads options before `run` and a quoted
+  `sh -c` string. Settled by the advisory's cost of a false fire (telling the owner to change a
+  command that already works).
 
 **Level:** High. The defect was observed in three sessions, and the downstream session
 confirmed the working route (`testament run --junit-xml`, then `--from-junit`).
@@ -102,11 +114,11 @@ this repo: the probe must return nothing here. The full suite runs once, at the 
   `--from-counts` refusal's text through it, and correct `building.md` and
   `project-state-keys.md`.
 - **Depends on:** none
-- **Deliverables:** new `plugin/lib/testament_wiring_probes.py` (the predicate, the probe and
+- **Deliverables:** new `plugin/lib/testament_evidence_probes.py` (the predicate, the probe and
   `register`); its registration in `plugin/lib/probe_families.py`; the refusal in
   `plugin/bin/prawduct-hook` leading with the testament route where testament is present;
   `plugin/methodology/building.md` and `plugin/docs/project-state-keys.md` stating what the
-  recorder accepts; new `tests/test_testament_wiring_probes.py`; the change fragment.
+  recorder accepts; new `tests/test_testament_evidence_probes.py`; the change fragment.
 - **Tests:** unit for the predicate (word-level matching, shlex failures, list and scalar
   declarations, no declaration); the probe's candidates and evidence; the refusal's text in
   each state through a subprocess run of the hook.

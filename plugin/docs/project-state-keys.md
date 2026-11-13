@@ -260,7 +260,8 @@ test_command: uv run pytest --junit-xml={junit_xml} -q
 ```
 
 A repo whose tests run on testament (`.testament.toml` at its root) declares
-`test_command: testament run --junit-xml {junit_xml}` (or makes it one `test_commands` entry), so
+`test_command: testament run --junit-xml {junit_xml}` (or makes that command the `test_commands` entry
+for the suite testament runs), so
 the recorder records the testament run rather than running the suite a second time locally. Where
 no declared command runs testament, the session-start advisory
 `testament-evidence:declared-command-skips-testament` says so.

@@ -57,7 +57,7 @@ def register_all() -> None:
     from .git_hygiene_probes import register as register_git_hygiene
     from .work_unit_probes import register as register_work_unit
     from .testament_cache_probes import register as register_testament_cache
-    from .testament_wiring_probes import register as register_testament_evidence
+    from .testament_evidence_probes import register as register_testament_evidence
 
     register_backlog()  # the backlog feature's probes (incl. legacy-backlog-format)
     register_upstream()  # upstream-bug-reporting receiving-side probe

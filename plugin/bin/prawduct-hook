@@ -5426,9 +5426,18 @@ def cmd_test_evidence(project_dir: Path, argv: list[str]) -> int:
             # repo on testament the caller has most likely just run `testament
             # run`, so the text leads with the testament route there; one
             # function owns which route leads.
-            from lib import testament_wiring_probes  # noqa: PLC0415 — lazy keeps top-level cheap
+            from lib import testament_evidence_probes  # noqa: PLC0415 — lazy keeps top-level cheap
 
-            print(testament_wiring_probes.from_counts_refusal(project_dir), file=sys.stderr)
+            # The declaration this command already resolved, so the refusal's text
+            # is chosen from what the recorder would run, not from a second read.
+            declared = testament_evidence_probes.Declared(
+                "test_commands" if test_commands else "test_command",
+                tuple(declared_commands),
+            )
+            print(
+                testament_evidence_probes.from_counts_refusal(project_dir, declared),
+                file=sys.stderr,
+            )
             return 2
 
     if no_rerun:
