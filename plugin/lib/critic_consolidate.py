@@ -3066,8 +3066,9 @@ NATIVE_REVIEW_LEVEL = "high"
 NATIVE_REVIEW_FORBIDDEN = ("--fix", "--comment", "--post", "max", "ultra")
 #: The inner reviews that pair, one in this many of them. Inner reviews are
 #: where most of the Critic's correctness reviewing happens, and pairing every
-#: one would roughly triple the experiment's spend; one in six still reaches
-#: #1130's sixty within its four weeks at the measured rate.
+#: one would roughly triple the experiment's spend; one in six collects an
+#: inner sample about the size of #1130's sixty boundary pairs within its four
+#: weeks at the measured rate. Inner pairs do not count toward #1130's stop.
 NATIVE_REVIEW_INNER_MODES = ("chunk", "verify-resolutions")
 NATIVE_REVIEW_INNER_SAMPLE = 6
 

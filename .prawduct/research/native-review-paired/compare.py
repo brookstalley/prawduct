@@ -25,16 +25,15 @@ A native finding is matched against the Critic's findings first and then its
 observations, since a defect the Critic rated an observation is one both raised.
 
 **A re-raise is a candidate, by file, and a proposal too.** A finding of a
-paired review K repeats an earlier finding E when E is within K's reach and
-names one of the finding's files. E is a Critic finding left accepted or filed,
-or a native finding of a boundary run — one the builder was shown; a native
-finding of an inner run never counts, since it was not put to the builder. K's
-reach is the Critic's own prior-dispositions rule (``dispositions.
-prior_dispositions``): earlier reviews of K's plan scope (any earlier review
-when K has none) whose finding cites a file K changes. So the native review is
-measured against exactly what the Critic is handed, and the Critic, measured
-the same way, is the baseline. The verifier confirms or rejects each candidate
-as "same defect?".
+paired review K may repeat an earlier finding E that names one of its files.
+The Critic's E are exactly the prior dispositions ``critic-begin`` would have
+handed K (``dispositions.prior_dispositions`` over the store as it stood before
+K: its scope, file and size rules included). The native E are the findings of
+earlier boundary runs, the ones put to the builder, under the same scope and
+file rules; an inner run's never count. So the native review is measured
+against what the Critic is handed, and the Critic, measured the same way, is
+the baseline. The verifier judges whether each candidate repeats one of the
+earlier findings listed with it.
 
 Reads the ledger, the evidence store and the per-clone native texts of each
 repo; writes only under ``--out``.
@@ -61,11 +60,6 @@ STOP_REVIEWS = 60
 NO_GOAL = "(no goal — the verifier names one)"
 OBSERVATION = "observation"
 SEVERITIES = ("blocking", "warning", OBSERVATION)
-#: Finding states an earlier review leaves for a later one to re-raise: the
-#: builder chose not to fix them. A fixed finding is gone from the code.
-SETTLED_STATES = {dispositions.STATE_ACCEPTED: "critic-accepted", dispositions.STATE_FILED: "critic-filed"}
-
-
 def match(critic: list[dict], native: list[dict], observations: "list[dict] | None" = None) -> dict:
     """Pair findings one to one: a native finding pairs with the first unpaired
     Critic finding whose ``files`` include its ``file``, else with the first
@@ -123,78 +117,68 @@ def tally_by_severity(staged: "list[tuple[str, dict]]") -> dict:
 
 
 def in_reach(j: dict, k: dict) -> bool:
-    """Whether earlier review ``j``'s findings are within later review ``k``'s
-    reach by work: ``j`` is earlier, and carries ``k``'s plan scope when ``k``
-    has one — the half of ``prior_dispositions`` that is not the file test
-    (``reraise_candidates`` applies that one, per finding). "Earlier" is the
-    store's append order (``seq``), never the timestamp: stamps have one-second
-    resolution, and two reviews can land in one second. Pure."""
+    """Whether earlier review ``j`` is within later review ``k``'s reach by
+    work: ``j`` is earlier, and carries ``k``'s plan scope when ``k`` has one —
+    ``prior_dispositions``' scope rule, applied to the earlier NATIVE findings
+    it has no record of. "Earlier" is the store's append order (``seq``), never
+    the timestamp: stamps have one-second resolution, and two reviews can land
+    in one second. Pure."""
     if not (isinstance(j.get("seq"), int) and isinstance(k.get("seq"), int) and j["seq"] < k["seq"]):
         return False
     return k.get("scope") is None or j.get("scope") == k.get("scope")
 
 
-def earlier_findings(fact: dict, state_of, native: "list[dict] | None", stage: str) -> dict:
-    """What review ``fact`` leaves for a later one to re-raise: its Critic
-    findings whose state (``state_of((review id, fid))``) is accepted or filed,
-    and — a boundary run only, the one put to the builder — its native findings."""
-    settled = []
-    for c in (fact.get("body") or {}).get("findings") or []:
-        state = state_of((fact.get("id"), c.get("fid")))
-        if state in SETTLED_STATES:
-            settled.append((c, state))
-    return {
-        "review_id": fact.get("id"),
-        "settled": settled,
-        "native_shown": list(native or []) if stage == "boundary" else [],
-    }
+def cites_a_changed_file(finding: dict, files_changed: "list[str] | None") -> bool:
+    """``prior_dispositions``' file rule: a finding is in reach when it cites a
+    file the later review changes — and every finding is, when the later
+    review names no files at all."""
+    changed = {f for f in files_changed or [] if isinstance(f, str) and f}
+    return not changed or bool(changed & _files_of(finding))
+
+
+def _files_of(f: dict) -> set:
+    return set(f.get("files") or ([f["file"]] if f.get("file") else []))
 
 
 def reraise_candidates(later: dict, earlier: list[dict]) -> list[dict]:
     """Each finding of ``later`` (``critic`` findings, ``native`` findings or
-    ``None``) that names a file an earlier review's left-standing finding names,
-    against the nearest such review (``earlier`` is nearest first, and already
-    narrowed by :func:`in_reach`). An earlier finding is in reach only when it
-    cites a file ``later`` changes (``files_changed``; absent, no file
-    narrowing), as ``prior_dispositions`` reaches it. One candidate per
-    finding, carrying EVERY such finding of that review — a file can hold
-    several, and offering only the first would hide the one it repeats. Pure."""
-    def files_of(f):
-        return set(f.get("files") or ([f["file"]] if f.get("file") else []))
-
-    changed = set(later["files_changed"]) if later.get("files_changed") is not None else None
+    ``None``) that names a file an earlier finding in reach names, against the
+    nearest earlier review holding one. ``earlier`` is nearest first, each
+    ``{"review_id", "options": [(finding, kind), ...]}``, already narrowed to
+    what is in reach. One candidate per finding, carrying EVERY matching finding
+    of that review — a file can hold several, and offering only the first would
+    hide the one it repeats. Pure."""
     out = []
     for by, findings in (("critic", later.get("critic") or []), ("native", later.get("native") or [])):
         for f in findings:
-            mine = files_of(f)
-            hit = None
+            mine = _files_of(f)
             for e in earlier:
-                options = [(c, SETTLED_STATES[state]) for c, state in e["settled"]]
-                options += [(n, "native") for n in e["native_shown"]]
-                matched = [(c, kind) for c, kind in options
-                           if mine & files_of(c) and (changed is None or changed & files_of(c))]
+                matched = [(c, kind) for c, kind in e["options"] if mine & _files_of(c)]
                 if matched:
-                    hit = (matched, e["review_id"])
+                    out.append({"by": by, "finding": f, "earlier": [c for c, _k in matched],
+                                "earlier_kind": "+".join(sorted({k for _c, k in matched})),
+                                "earlier_review": e["review_id"], "review": later.get("review_id")})
                     break
-            if hit:
-                out.append({"by": by, "finding": f, "earlier": [c for c, _k in hit[0]],
-                            "earlier_kind": "+".join(sorted({k for _c, k in hit[0]})),
-                            "earlier_review": hit[1], "review": later.get("review_id")})
     return out
 
 
 def tally_by_goal(matches: list[dict]) -> dict:
-    """``{goal: {shared, critic_only, native_only}}`` over many reviews'
-    matches. A native-only finding has no Critic goal until the verifier names
-    one, so it counts under :data:`NO_GOAL`."""
+    """``{goal: {shared, shared_observation, critic_only, native_only}}`` over
+    many reviews' matches. ``shared`` and ``critic_only`` count the Critic's
+    findings; a native finding matched to one of its observations counts apart,
+    in ``shared_observation``, because the observations it did not match are no
+    one's ``critic_only`` — folding them into ``shared`` alone would overstate
+    the overlap. A native-only finding has no Critic goal until the verifier
+    names one, so it counts under :data:`NO_GOAL`."""
     table: dict[str, dict[str, int]] = {}
 
     def bump(goal, key):
-        table.setdefault(goal or NO_GOAL, {"shared": 0, "critic_only": 0, "native_only": 0})[key] += 1
+        table.setdefault(goal or NO_GOAL, {"shared": 0, "shared_observation": 0,
+                                           "critic_only": 0, "native_only": 0})[key] += 1
 
     for m in matches:
         for c, _n in m["shared"]:
-            bump(c.get("goal"), "shared")
+            bump(c.get("goal"), "shared_observation" if c.get("severity") == OBSERVATION else "shared")
         for c in m["critic_only"]:
             bump(c.get("goal"), "critic_only")
         for _n in m["native_only"]:
@@ -262,49 +246,67 @@ def stage_of(pair: dict) -> str:
 
 def reraises(repo: Path, pairs: list[dict]) -> "tuple[list[dict], dict]":
     """Every re-raise candidate in ``repo``'s comparable pairs, and per
-    instrument how many findings were in a review that had an earlier one in
-    reach to repeat (the rate's denominator)."""
+    instrument how many findings were in a review that had an earlier finding
+    in reach to repeat (the rate's denominator).
+
+    The Critic's earlier findings in reach are exactly what ``critic-begin``
+    would have handed it: ``dispositions.prior_dispositions`` over the store as
+    it stood before the later review (its scope rule, file rule and limit
+    included), never a re-derivation of it. Earlier native findings, which no
+    disposition records, take the same scope and file rules; only a boundary
+    run's count, since only those were put to the builder."""
     store = evidence.read_facts(repo)
-    disp = dispositions.disposition_index(store)
-    resolved = dispositions.resolution_detail_index(store)
-
-    def state_of(key):
-        return dispositions.finding_state(key, disp, resolved)
-
-    # Store order is append order, which is what "earlier" means here.
-    facts = [f for f in store.get("facts") or [] if f.get("kind") == "review" and f.get("id")]
-    seq = {f["id"]: i for i, f in enumerate(facts)}
-    paired = {p["review_id"]: p for p in pairs}
-
-    def view(fact):
-        return {"review_id": fact["id"], "seq": seq[fact["id"]],
-                "scope": (fact.get("body") or {}).get("scope")}
+    all_facts = store.get("facts") or []
+    index = evidence.findings_index(store)
+    reviews = [(i, f) for i, f in enumerate(all_facts) if f.get("kind") == "review" and f.get("id")]
+    seq = {f["id"]: i for i, f in reviews}
+    scope_of = {f["id"]: (f.get("body") or {}).get("scope") for _i, f in reviews}
+    shown = {p["review_id"]: p.get("native_findings") or [] for p in pairs if p.get("stage") == "boundary"}
 
     candidates, exposed = [], {"critic": 0, "native": 0}
     for pair in pairs:
         k_fact = pair.get("critic_fact")
         if k_fact is None or k_fact.get("id") not in seq:
             continue
-        k = view(k_fact)
-        earlier = []
-        for j_fact in reversed(facts[:k["seq"]]):
-            j_pair = paired.get(j_fact["id"])
-            offer = earlier_findings(
-                j_fact, state_of, (j_pair or {}).get("native_findings"),
-                (j_pair or {}).get("stage", (j_fact.get("body") or {}).get("stage") or "boundary"),
-            )
-            if (offer["settled"] or offer["native_shown"]) and in_reach(view(j_fact), k):
-                earlier.append(offer)
-        if not earlier:
+        body = k_fact.get("body") or {}
+        k = {"review_id": k_fact["id"], "seq": seq[k_fact["id"]], "scope": body.get("scope")}
+        groups: dict[str, list] = {}
+        before = {**store, "facts": all_facts[:k["seq"]]}
+        for entry in dispositions.prior_dispositions(before, body.get("files_changed"), scope=k["scope"]).get("entries") or []:
+            finding = index.get((entry["review_id"], entry["fid"]))
+            if finding is not None:
+                groups.setdefault(entry["review_id"], []).append((finding, f"critic-{entry.get('action')}"))
+        for j_id, natives in shown.items():
+            if j_id in seq and in_reach({"seq": seq[j_id], "scope": scope_of[j_id]}, k):
+                options = [(n, "native") for n in natives if cites_a_changed_file(n, body.get("files_changed"))]
+                if options:
+                    groups.setdefault(j_id, []).extend(options)
+        if not groups:
             continue
-        later = {"review_id": pair["review_id"],
-                 "critic": (k_fact.get("body") or {}).get("findings") or [],
-                 "native": pair.get("native_findings") or [],
-                 "files_changed": (k_fact.get("body") or {}).get("files_changed")}
+        earlier = [{"review_id": rid, "options": groups[rid]}
+                   for rid in sorted(groups, key=lambda rid: seq.get(rid, -1), reverse=True)]
+        later = {"review_id": pair["review_id"], "critic": body.get("findings") or [],
+                 "native": pair.get("native_findings") or []}
         exposed["critic"] += len(later["critic"])
         exposed["native"] += len(later["native"])
         candidates += reraise_candidates(later, earlier)
     return candidates, exposed
+
+
+def outside_interval(pairs: list[dict]) -> dict:
+    """Per stage, ``(native findings on a file outside the Critic's
+    files_changed, native findings)``. The native review reads source beyond
+    the diff, so some are expected; a high share at the inner stage says it
+    reviewed more than the Critic's interval (its recipe can add ``git diff
+    HEAD`` on a dirty tree)."""
+    out: dict[str, list[int]] = {}
+    for p in pairs:
+        changed = set(((p.get("critic_fact") or {}).get("body") or {}).get("files_changed") or [])
+        row = out.setdefault(p["stage"], [0, 0])
+        for n in p.get("native_findings") or []:
+            row[1] += 1
+            row[0] += bool(changed) and n.get("file") not in changed
+    return {stage: tuple(v) for stage, v in sorted(out.items())}
 
 
 def unrecorded(repo: Path, recorded: "set[str]") -> "list[str]":
@@ -375,8 +377,11 @@ def blind_sheet(
     def critic_words(c):
         return {"files": c.get("files"), "text": f"{c.get('title', '')} — {c.get('recommendation', '')}"}
 
+    # No `line`: only native findings carry one, so it would tell the verifier
+    # which instrument raised what. The verifier finds the site from the file
+    # and the words.
     def native_words(n):
-        return {"files": [n.get("file")], "line": n.get("line"),
+        return {"files": [n.get("file")],
                 "text": f"{n.get('summary') or ''} — {n.get('failure_scenario') or ''}"}
 
     def words(f):
@@ -443,9 +448,9 @@ def main(argv: list[str]) -> int:
         # before it finished means it read something other than what the
         # Critic read.
         print(f"WARNING: {len(moved)} run(s) read a tree that moved before they landed: " + ", ".join(moved))
-    print("\nper Critic goal — shared / Critic only / native only:")
+    print("\nper Critic goal — shared / shared with an observation / Critic only / native only:")
     for goal, row in tally_by_goal(matches).items():
-        print(f"  {goal}: {row['shared']} / {row['critic_only']} / {row['native_only']}")
+        print(f"  {goal}: {row['shared']} / {row['shared_observation']} / {row['critic_only']} / {row['native_only']}")
     print("\nper stage and Critic severity — shared / Critic only:")
     for stage, row in tally_by_severity([(p["stage"], m) for p, m in zip(joined, matches)]).items():
         for severity, cell in row.items():
@@ -462,6 +467,8 @@ def main(argv: list[str]) -> int:
         critic_s = [s for s in (_seconds(p["critic_event"]) for p in in_stage) if s is not None]
         native_s = [s for s in (_seconds(p["native_event"]) for p in in_stage) if s is not None]
         print(f"wall clock, {stage} — Critic: {med(critic_s)}; native: {med(native_s)}")
+    for stage, (outside, total) in outside_interval(joined).items():
+        print(f"native findings on a file outside the Critic's interval, {stage}: {outside} of {total}")
     reraised, exposed = [], {"critic": 0, "native": 0}
     for repo in args.repos:
         repo = repo.resolve()

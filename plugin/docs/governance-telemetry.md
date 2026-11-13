@@ -54,9 +54,9 @@ kind-named key (`review` for `review.*`):
   each finding's `file` and `line` — never its text, which stays in `.prawduct/.native-reviews/` —
   and `findings_parsed` (false when the text held nothing countable); the paired review's `mode`
   and `stage`; `synthetic_range` (true when the range was named by unreachable commits because the
-  interval had no commit at one end); and `tree_moved` (true when a file in the reviewed interval
-  differed in the working tree by the time the run was recorded, `null` when it could not be
-  told). `dispatched_at` is the time
+  interval had no commit at one end); and `tree_moved` (true when a file in the reviewed interval,
+  outside `.prawduct/`, differed in the working tree by the time the run was recorded, `null` when
+  it could not be told). `dispatched_at` is the time
   `critic-begin` stamped. The kind sits outside `review.` and the payload under `native`, so a
   reader that takes `review.*` events as Critic reviews (older builds of this plugin included)
   skips it as unknown; `review-stats` reports it in its own `native_review` block, in no Critic
@@ -249,9 +249,12 @@ dispositions     {status: available, as_of} or {status: unavailable, reason}
                  — whether the evidence store could be joined (below)
 events_total     reportable review.* events (Critic reviews; native.review is
                  not one)
-native_review    {runs, duration_measured, countable_runs, findings} — a
-                 development build's paired native review runs (#1130),
-                 counted in no other key: a second instrument, not a review
+native_review    {runs, duration_measured, countable_runs, findings, by_stage}
+                 — a development build's paired native review runs (#1130),
+                 counted in no other key: a second instrument, not a review.
+                 by_stage (schema 14) holds the same four figures per stage of
+                 the paired Critic review (an event with no stage counts as
+                 boundary)
 skipped          {corrupt_lines, unknown_kinds, invalid_payloads}
 overall          one stat block (below)
 by_role_model_mode  [{role, model, mode, ...stat block}]

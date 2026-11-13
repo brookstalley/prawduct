@@ -73,7 +73,9 @@ from .timewindow import in_window, is_usable_bound
 #: consolidation's own waiver of a failure the base tree already had.
 #: Bumped to 13 when `native_review` joined the top level: the paired native
 #: review's runs (#1130), reported apart from every Critic aggregate.
-REPORT_SCHEMA_VERSION = 13
+#: Bumped to 14 when `native_review` gained `by_stage`: inner and boundary
+#: native runs, whose pooled median described neither (#1166).
+REPORT_SCHEMA_VERSION = 14
 
 #: The two review stages a `review.critic` record can carry (`stage`, written
 #: by `critic-begin` onto the manifest and carried through the fact and the
@@ -387,17 +389,34 @@ def _split_native(events: list[dict]) -> "tuple[list[dict], list[dict]]":
     return critic, native
 
 
+def _native_stage(event: dict) -> str:
+    """The stage of the Critic review a native run was paired with. An event
+    from before inner reviews paired carries none, and every run then was a
+    boundary one."""
+    stage = event["native"].get("stage")
+    return stage if isinstance(stage, str) and stage else "boundary"
+
+
 def _native_block(native: list[dict]) -> dict:
     """The paired native runs on their own: how many, how long (code-clocked
     from ``critic-begin``'s dispatch stamp), and the findings of the runs whose
-    text was countable."""
-    measured = [d for d in (_measured_duration(e) for e in native) if d is not None]
-    countable = [e for e in native if e["native"].get("findings_parsed") is True]
+    text was countable — over all runs, and per stage in ``by_stage``, since a
+    short inner run and a whole-bundle boundary run pooled into one median
+    describe neither."""
+    def figures(runs: list[dict]) -> dict:
+        measured = [d for d in (_measured_duration(e) for e in runs) if d is not None]
+        countable = [e for e in runs if e["native"].get("findings_parsed") is True]
+        return {
+            "runs": len(runs),
+            "duration_measured": _population(measured),
+            "countable_runs": len(countable),
+            "findings": sum(len(e["native"]["findings"]) for e in countable),
+        }
+
+    stages = sorted({_native_stage(e) for e in native})
     return {
-        "runs": len(native),
-        "duration_measured": _population(measured),
-        "countable_runs": len(countable),
-        "findings": sum(len(e["native"]["findings"]) for e in countable),
+        **figures(native),
+        "by_stage": {s: figures([e for e in native if _native_stage(e) == s]) for s in stages},
     }
 
 
@@ -972,19 +991,24 @@ def _fmt_remedies(remedies: dict) -> str:
 
 
 def _native_line(block: dict) -> "list[str]":
-    """The paired native runs' line, or nothing when there were none."""
+    """The paired native runs' lines, one per stage, or nothing when there were
+    none. A block written before the stage split has no ``by_stage``; its runs
+    were all boundary ones."""
     if not block.get("runs"):
         return []
-    duration = block["duration_measured"]
-    clocked = (
-        f"median {duration['median_seconds']}s over {duration['reviews']} clocked"
-        if duration["reviews"] else "none clocked"
-    )
-    return [
-        f"native review (paired, #1130; in no total here): {block['runs']} run(s) | "
-        f"duration {clocked} | {block['findings']} finding(s) over "
-        f"{block['countable_runs']} countable run(s)"
-    ]
+    lines = []
+    for stage, figures in (block.get("by_stage") or {"boundary": block}).items():
+        duration = figures["duration_measured"]
+        clocked = (
+            f"median {duration['median_seconds']}s over {duration['reviews']} clocked"
+            if duration["reviews"] else "none clocked"
+        )
+        lines.append(
+            f"native review, {stage} (paired, #1130; in no total here): {figures['runs']} run(s) | "
+            f"duration {clocked} | {figures['findings']} finding(s) over "
+            f"{figures['countable_runs']} countable run(s)"
+        )
+    return lines
 
 
 def _render_human(report: dict, ledger_rel: str) -> str:

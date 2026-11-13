@@ -411,8 +411,9 @@ unchanged: the native review runs beside its reviewers, blocks and rates nothing
 consolidation never waits for it. A boundary review's `NEXT-ACTION` names the native list; an
 inner one's does not, because a second unrated list beside an inner pass would manufacture
 rounds. Its text is kept per clone in `.prawduct/.native-reviews/`. An inner review of a working
-tree is handed to the native review as two unreachable commits over the reviewed trees, which
-`git gc` collects; no ref, index or file changes.
+tree is handed to the native review as a range whose working-tree end (and base, when no commit
+holds it) is an unreachable commit over the reviewed tree, which `git gc` collects; no ref, index
+or file changes.
 
 Set `native_review_pairing: false` to opt this repo out. Only an explicit `false` does: the
 pairing is the development build's default, so a misspelt value keeps it running rather than

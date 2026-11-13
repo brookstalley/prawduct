@@ -9,24 +9,35 @@ partition: "serial — 02 reads the record fields 01 adds (mode, stage, the rang
 governed_by:
   - artifact: architecture
     dispositions:
-      - "an independent reviewer never mutates the session it reviews → conforms; an inner review's range is named by writing two unreachable commit objects (`git commit-tree`) — no ref, index or working-tree change — and the native review still runs without `--fix`, `--comment` or `--post`"
+      - "an independent reviewer never mutates the session it reviews → conforms; an inner review's range is named by writing unreachable commit objects (`git commit-tree`) — no ref, index or working-tree change — and the native review still runs without `--fix`, `--comment` or `--post`"
       - "authority fails closed; advice fails soft → conforms; a range that cannot be named, a sample that misses, or a native run that never lands changes no gate and costs the Critic nothing"
-      - "every fact has one home → conforms; the pairing decision stays in `critic_consolidate.native_review_pairing`, the range in one new helper beside it, and the re-raise rule in `compare.py` alone"
+      - "local-first → conforms; the range is named in the git object database, the record stays a per-clone ledger line, and no network surface is added"
+      - "the plugin writes nothing into a governed repo except its own state → conforms; the only write outside `.prawduct/` is unreachable objects in the git object database, which every review's tree capture (`evidence.capture_tree`) already writes"
+      - "written in Python, never specific to Python → conforms; nothing reads a language — `tree_moved` excludes `.prawduct/` by path, not by file type"
       - "guides and reviews, never implements → conforms; measurement only"
+      - "goals and verification bind, method is advice → conforms; two planned methods were departed from and recorded under Decisions made mid-build (the re-raise reach, and the tree-moved predicate)"
+      - "every fact has one home → conforms; the pairing decision stays in `critic_consolidate.native_review_pairing`, the range in `native_review_range` beside it, and the re-raise reach calls `dispositions.prior_dispositions` rather than restating it"
   - artifact: nonfunctional-requirements
     dispositions:
       - "review wall-clock is P0 → conforms; nothing waits for the native run at any stage, and naming the range is two local git calls"
       - "review rigor is stage-keyed → conforms, and is why an inner run's findings are not put to the builder (DECISION under Goals): the inner stage blocks only on ships-broken, and a second unrated list beside a `verify-resolutions` pass would manufacture rounds"
       - "proportionality ratchets both ways; a control names its expected yield and emits it → conforms; the yield is the per-stage table `compare.py` prints, and the inner sample ends with #1130's stop"
+      - "state-file growth is advisory → conforms; about eighty more ledger lines and text files a month, under the ledger's existing size advisory"
   - artifact: data-model
     dispositions:
-      - "facts immutable and append-only → conforms; the `native.review` event gains fields, appended once per run as before"
       - "no model in a fact's write path → conforms; mode, stage, the range's kind and whether the tree moved are all derived by code"
+      - "facts immutable and append-only → conforms; the `native.review` event gains fields, appended once per run as before"
+      - "derived views never authoritative → conforms; no gate reads the native record or `review-stats`' native block"
+      - "a governance document reaches a terminal state → inapplicable because no plan or record is archived or deleted"
+      - "every backlog issue conforms to the title rules on every write path → inapplicable because no backlog write path changes"
       - "a newer-schema fact is surfaced, never dropped → inapplicable because the record stays a per-clone ledger event, not an evidence-store fact"
+      - "two stores, two lifetimes → conforms; the native record stays a per-clone measurement in the ledger, and `compare.py` reads the shared store's facts without writing them"
+      - "backlog_service_repo selects the authoritative backlog store → inapplicable because no backlog read changes"
   - artifact: api-contract
     dispositions:
-      - "additive-first evolution → conforms; the event gains fields and the manifest block appears on more modes, with no field removed or renamed"
+      - "whole-surface semantic versioning → conforms; no verb is added, and the changes ship at the plugin's version"
       - "exit codes are the contract → inapplicable because no verb or exit code changes"
+      - "additive-first evolution → conforms; the event and `review-stats`' `native_review` block gain keys (`by_stage`), the manifest block appears on more modes, and no field is removed or renamed"
 depends_on:
   - plugin/lib/critic_consolidate.py
   - plugin/lib/native_review.py
@@ -74,9 +85,9 @@ spend surprises; the sample rate is one constant.
 
 **Decisions made in planning:**
 - Inferred: sample one in six `chunk` and `verify-resolutions` reviews, chosen by the review id so
-  the choice is code's and reproducible. About eighty runs a month at the current rate, enough to
-  reach #1130's sixty within its four weeks. `final` reviews are not paired: they are rare and the
-  owner approved the two modes named.
+  the choice is code's and reproducible. About eighty runs a month at the current rate. `final` reviews are not paired: they are rare and the
+  owner approved the two modes named. The sample is sized to collect its own sixty or so; inner
+  pairs do not count toward #1130's stop.
 - Inferred: when either end of the interval has no commit, the range is named by two unreachable
   commits — the base tree's (or the real base commit) and the head tree's, parented on the base —
   so `git diff base...head` is exactly the Critic's interval. The commit message names the review
@@ -123,6 +134,20 @@ spend surprises; the sample rate is one constant.
   hot file, which would hide the one it repeats.
 - 02: a native finding matched to a Critic observation counts as shared in the goal table as well
   as the severity table — the goal table had been calling those native-only.
+
+- Boundary review (rev-20261113T182019Z-a4ff9ded) and its paired native run, all fixed in one
+  pass: `tree_moved` now excludes only `.prawduct/` (R-2 — the judgeable-only predicate answered
+  the coverage gate's question and missed reviewed docs); `review-stats` reports native runs per
+  stage (R-3, native 4); the validator's new refusals are pinned (R-1); the re-raise reach calls
+  `prior_dispositions` over the store as it stood before the later review instead of restating it,
+  which brings its limit and its empty-`files_changed` rule (native 2, 3); the goal table counts a
+  match to an observation in its own column (native 5); a sidecar that cannot be read keeps the
+  boundary clause (native 6); the blind sheet carries no `line`, which only native findings had
+  (native 9); `compare.py` prints how many native findings fall outside the Critic's interval per
+  stage, the cheap measurement of native 1 (its recipe may add `git diff HEAD` on a dirty tree),
+  to read at the Level step below.
+- Inferred correction: the inner sample's size is its own (about sixty inner pairs in four weeks);
+  inner pairs never count toward #1130's stop, which the planning bullet above implied (native 7).
 
 **Level:** Medium. The synthetic range rests on git semantics (three-dot diff over unreachable
 commits) that are certain, and on the native review accepting any commit range, which the boundary

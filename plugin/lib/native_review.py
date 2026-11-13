@@ -204,13 +204,13 @@ def _seconds_since(stamp) -> "float | None":
 
 
 def _tree_moved(project_dir: Path, sidecar: dict) -> "bool | None":
-    """Whether a judgeable file in the reviewed interval differs, in the working
-    tree now, from the tree the review read — the native review reads source
-    from the working tree, and a builder may fix a reviewed file before it
-    lands. Free surfaces (`.prawduct/` records, plain docs) are left out: the
-    builder writes those during any review. ``None`` when it cannot be told:
-    unknown, never "no"."""
-    from . import coverage_algebra, evidence  # noqa: PLC0415 — lazy, matching the lib's other imports
+    """Whether a file in the reviewed interval, outside ``.prawduct/``, differs
+    in the working tree now from the tree the review read — the native review
+    reads source and docs from the working tree, and a builder may fix one
+    before it lands. ``.prawduct/`` holds the records about the work, which
+    consolidation and the builder write during any review. ``None`` when it
+    cannot be told: unknown, never "no"."""
+    from . import evidence  # noqa: PLC0415 — lazy, matching the lib's other imports
 
     base, head = sidecar.get("base_tree"), sidecar.get("head_tree")
     if not (isinstance(base, str) and base and isinstance(head, str) and head):
@@ -223,7 +223,7 @@ def _tree_moved(project_dir: Path, sidecar: dict) -> "bool | None":
     if rc_a != 0 or rc_b != 0:
         return None
     both = (set(reviewed.split("\n")) & set(moved.split("\n"))) - {""}
-    return bool(coverage_algebra.judgeable_files(sorted(both)))
+    return any(not path.startswith(".prawduct/") for path in both)
 
 
 def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int, str]":
@@ -309,10 +309,13 @@ def next_action_clause(prawduct_dir: Path, review_id: "str | None") -> str:
     running", which the next session's briefing would repeat after it finished.
     It never says the native review gates anything, and says nothing for an
     inner run (the module docstring says why)."""
-    if not is_safe_id(review_id):
+    if not is_safe_id(review_id) or not sidecar_path(prawduct_dir, review_id).is_file():
         return ""
+    # Only a sidecar that SAYS inner silences the clause: one that exists and
+    # cannot be read still means a native list was dispatched, and the builder
+    # is owed the pointer to it.
     sidecar, _reason = _read_sidecar(prawduct_dir, review_id)
-    if sidecar is None or (sidecar.get("stage") or "boundary") != "boundary":
+    if sidecar is not None and (sidecar.get("stage") or "boundary") != "boundary":
         return ""
     command = f"`{SHOW_COMMAND} {review_id}`"
     unreadable = False

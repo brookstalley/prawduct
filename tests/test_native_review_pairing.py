@@ -227,6 +227,21 @@ class TestManifestValidation:
         ok, reason = cc.validate_manifest(manifest)
         assert not ok and key in reason
 
+    @pytest.mark.parametrize("key, bad", [("mode", "final"), ("mode", "bogus"), ("synthetic_range", "yes")])
+    def test_a_mode_that_does_not_pair_or_a_non_boolean_range_kind_is_refused(
+        self, branch_repo, monkeypatch, key, bad,
+    ):
+        manifest = self._manifest(branch_repo, monkeypatch)
+        manifest["native_review"][key] = bad
+        ok, reason = cc.validate_manifest(manifest)
+        assert not ok and f"native_review.{key}" in reason
+
+    @pytest.mark.parametrize("mode", ["cumulative", "chunk", "verify-resolutions"])
+    def test_control_every_mode_that_pairs_is_valid(self, branch_repo, monkeypatch, mode):
+        manifest = self._manifest(branch_repo, monkeypatch)
+        manifest["native_review"].update(mode=mode, synthetic_range=True)
+        assert cc.validate_manifest(manifest) == (True, "")
+
     def test_no_block_is_valid(self, branch_repo, monkeypatch):
         manifest = self._manifest(branch_repo, monkeypatch)
         del manifest["native_review"]
@@ -537,7 +552,10 @@ class TestLedgerKind:
             [sys.executable, str(ROOT / "bin" / "prawduct-hook"), "review-stats"],
             cwd=str(branch_repo), capture_output=True, text=True, timeout=60,
         ).stdout
-        assert "native review (paired, #1130; in no total here): 1 run(s)" in human, human
+        # Renegotiated with the inner sample: one line per stage, since pooled
+        # inner and boundary runs give a median that describes neither.
+        assert "native review, boundary (paired, #1130; in no total here): 1 run(s)" in human, human
+        assert after["native_review"]["by_stage"]["boundary"]["runs"] == 1
 
 
 class TestNextAction:
@@ -816,6 +834,32 @@ class TestInnerRecord:
         [event] = _ledger_events(branch_repo, "native.review")
         assert event["native"]["tree_moved"] is False
 
+    def test_an_edit_to_a_reviewed_doc_is_a_move(self, branch_repo, monkeypatch):
+        """The native review reads docs too: a plain doc in the interval, edited
+        before the run lands, is a move even though it is not judgeable."""
+        (branch_repo / "docs").mkdir()
+        (branch_repo / "docs/guide.md").write_text("one\n")
+        result = _inner(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        (branch_repo / "docs/guide.md").write_text("two\n")
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["tree_moved"] is True
+
+    def test_control_a_prawduct_record_written_during_the_run_is_not_a_move(self, branch_repo, monkeypatch):
+        """Consolidation and the builder write `.prawduct/` during any review;
+        this fixture tracks it (no `.gitignore`), so the record is in the
+        reviewed interval."""
+        (branch_repo / ".prawduct" / "notes.md").write_text("one\n")
+        result = _inner(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        (pd / "notes.md").write_text("two\n")
+        assert native_review.record(branch_repo, pd, result["id"])[0] == 0
+        [event] = _ledger_events(branch_repo, "native.review")
+        assert event["native"]["tree_moved"] is False
+
     def test_a_sidecar_from_before_the_inner_sample_records_as_boundary(self, branch_repo, monkeypatch):
         """A native run in flight across the upgrade has a sidecar with no mode
         or stage; every such run was a boundary pairing."""
@@ -845,8 +889,41 @@ class TestInnerRunIsNotPutToTheBuilder:
         rc, text = native_review.show(pd, result["id"])
         assert rc == 0 and "SECRET-SUMMARY-ONE" in text
 
+    def test_a_sidecar_that_cannot_be_read_still_names_the_list(self, branch_repo, monkeypatch):
+        """Only a sidecar that says inner silences the clause: one that exists
+        and cannot be read still means a native list was dispatched."""
+        result = _paired(branch_repo, monkeypatch)
+        pd = branch_repo / ".prawduct"
+        native_review.text_path(pd, result["id"]).write_text(THREE)
+        native_review.sidecar_path(pd, result["id"]).write_text("{truncated")
+        assert "(3 finding(s))" in native_review.next_action_clause(pd, result["id"])
+
     def test_control_a_boundary_run_adds_its_clause(self, branch_repo, monkeypatch):
         result = _paired(branch_repo, monkeypatch)
         pd = branch_repo / ".prawduct"
         native_review.text_path(pd, result["id"]).write_text(THREE)
         assert "(3 finding(s))" in native_review.next_action_clause(pd, result["id"])
+
+
+class TestReviewStatsByStage:
+    def _event(self, stage, seconds, findings):
+        native = {"findings": [{"file": "a.py", "line": 1}] * findings, "findings_parsed": True}
+        if stage is not None:
+            native["stage"] = stage
+        return {"event": "native.review", "native": native, "duration_seconds": seconds}
+
+    def test_inner_and_boundary_runs_are_reported_apart(self, monkeypatch):
+        from lib import telemetry
+
+        monkeypatch.setattr(telemetry, "_measured_duration", lambda e: e["duration_seconds"])
+        block = telemetry._native_block([
+            self._event("inner", 60, 1), self._event("boundary", 300, 4), self._event(None, 280, 2),
+        ])
+        assert block["runs"] == 3
+        # An event from before the stage was recorded is a boundary run.
+        assert block["by_stage"]["boundary"]["runs"] == 2
+        assert block["by_stage"]["boundary"]["findings"] == 6
+        assert block["by_stage"]["inner"]["runs"] == 1
+        assert block["by_stage"]["inner"]["duration_measured"]["median_seconds"] == 60
+        lines = telemetry._native_line(block)
+        assert [line.split(" (")[0] for line in lines] == ["native review, boundary", "native review, inner"]

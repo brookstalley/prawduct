@@ -16,12 +16,15 @@ and `build-plan-native-review-inner.md`. The host facts the design rests on are 
        python3 -I .prawduct/research/native-review-paired/compare.py <repo> [<repo> ...] \
            --out <scratch dir> [--transcripts <a session's subagents dir> ...]
 
-   It prints, per Critic goal, the findings both raised, only the Critic raised, and only the
-   native review raised; the same per stage and Critic severity (blocking, warning, observation —
+   It prints, per Critic goal, the findings both raised (and, apart, native findings matching a
+   Critic observation), only the Critic raised, and only the native review raised; the same per
+   stage and Critic severity (blocking, warning, observation —
    a native finding is matched against the Critic's observations too, since the Critic rated
    that defect, only lower); each instrument's wall clock per stage; native fork tokens when given
-   transcripts; each instrument's re-raise candidates; and progress toward the stop condition,
-   which counts boundary pairs only. With `--out` it writes `blind-sheet.json` and
+   transcripts; per stage, how many native findings name a file outside the Critic's interval (a
+   high share at the inner stage means the native review read more than the Critic did); each
+   instrument's re-raise candidates; and progress toward the stop condition, which counts boundary
+   pairs only. With `--out` it writes `blind-sheet.json` and
    `blind-key.json`. Read before the table: the `count check` line (each text against what the
    ledger recorded; a disagreement means the parse changed or a text was edited since) and every
    `WARNING` line the script prints. The comparison assumes each native run matched its Critic
@@ -33,8 +36,10 @@ and `build-plan-native-review-inner.md`. The host facts the design rests on are 
    "same defect?" for a pair the file match proposed, "real defect?" for a unique finding, and,
    for a native-only finding, which Critic goal it falls under; and, for a re-raise candidate,
    whether the finding repeats one of the earlier findings listed with it. A candidate is
-   proposed by file within the reach the Critic's own prior dispositions use (same plan scope,
-   cited file changed), so most are different defects; only the confirmed ones are re-raises.
+   proposed by file, against what the Critic would have been handed as prior dispositions (and
+   earlier boundary runs' native findings, by the same rules), so most are different defects; only
+   the confirmed ones are re-raises. No item carries a line number, since only native findings
+   have one.
 3. Join the answers to `blind-key.json` and fill in the decision table below.
 
 ## Decision table (#1130 step 6)

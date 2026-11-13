@@ -64,8 +64,16 @@ class TestTally:
             [_native("a.py"), _native("z.py")],
         )
         table = compare.tally_by_goal([m])
-        assert table["Nothing Is Broken"] == {"shared": 1, "critic_only": 1, "native_only": 0}
-        assert table[compare.NO_GOAL] == {"shared": 0, "critic_only": 0, "native_only": 1}
+        assert table["Nothing Is Broken"] == {"shared": 1, "shared_observation": 0, "critic_only": 1, "native_only": 0}
+        assert table[compare.NO_GOAL] == {"shared": 0, "shared_observation": 0, "critic_only": 0, "native_only": 1}
+
+    def test_a_match_to_an_observation_counts_apart_from_shared(self):
+        """Unmatched observations are no one's `critic_only`, so folding the
+        matched ones into `shared` alone would overstate the overlap."""
+        m = compare.match([_critic("R-1", "Nothing Is Broken", "a.py")], [_native("o.py")],
+                          observations=[_obs("O-1", "Nothing Is Broken", "o.py"), _obs("O-2", "Nothing Is Broken", "q.py")])
+        row = compare.tally_by_goal([m])["Nothing Is Broken"]
+        assert row == {"shared": 0, "shared_observation": 1, "critic_only": 1, "native_only": 0}
 
 
 class TestStopCondition:
@@ -96,7 +104,9 @@ class TestBlindSheet:
         for item in items:
             for words in (item.get("finding"), item.get("first"), item.get("second")):
                 if words is not None:
-                    assert set(words) <= {"files", "line", "text"}, words
+                    # No `line`: only native findings carry one, so it would
+                    # tell the verifier which instrument raised what.
+                    assert set(words) == {"files", "text"}, words
         # The key is where the source lives.
         assert sorted(v.get("source", "pair") for v in key.values()) == ["critic", "native", "pair"]
 
@@ -170,8 +180,9 @@ class TestEndToEnd:
         assert compare.main([str(repo), "--out", str(out)]) == 0
         printed = capsys.readouterr().out
         assert "1 recorded, 1 comparable" in printed
-        assert "Nothing Is Broken: 1 / 0 / 0" in printed
-        assert f"{compare.NO_GOAL}: 0 / 0 / 1" in printed
+        assert "Nothing Is Broken: 1 / 0 / 0 / 0" in printed
+        assert f"{compare.NO_GOAL}: 0 / 0 / 0 / 1" in printed
+        assert "outside the Critic's interval, boundary: 1 of 2" in printed
         items = json.loads((out / "blind-sheet.json").read_text())
         assert sorted(i["ask"] for i in items) == ["real defect? and which goal?", "same defect?"]
 
@@ -366,79 +377,56 @@ class TestReach:
         assert compare.main([str(repo)]) == 0
         assert "re-raise candidates — native: 1 of 1" in capsys.readouterr().out
 
-    def test_an_earlier_finding_on_a_file_the_later_review_does_not_change_is_out_of_reach(self):
-        earlier = [{"review_id": "J", "settled": [(_critic("R-3", "g", "a.py"), "accepted")],
-                    "native_shown": []}]
-        later = {"review_id": "K", "critic": [], "native": [_native("a.py")], "files_changed": ["b.py"]}
-        assert compare.reraise_candidates(later, earlier) == []
-        later["files_changed"] = ["a.py", "b.py"]
-        assert len(compare.reraise_candidates(later, earlier)) == 1
+    def test_the_file_rule_is_prior_dispositions_own(self):
+        """A finding is in reach when it cites a file the later review changes,
+        and every finding is when the later review names none — as
+        `prior_dispositions` treats an empty `files_changed`."""
+        assert compare.cites_a_changed_file(_native("a.py"), ["a.py", "b.py"])
+        assert not compare.cites_a_changed_file(_native("a.py"), ["b.py"])
+        assert compare.cites_a_changed_file(_native("a.py"), [])
+        assert compare.cites_a_changed_file(_native("a.py"), None)
 
 
 class TestReraiseCandidates:
-    def test_a_native_finding_on_an_accepted_findings_file_is_a_candidate(self):
-        earlier = [{"review_id": "J", "settled": [(dict(_critic("R-3", "g", "a.py")), "accepted")],
-                    "native_shown": []}]
+    def test_a_native_finding_on_an_earlier_findings_file_is_a_candidate(self):
+        earlier = [{"review_id": "J", "options": [(_critic("R-3", "g", "a.py"), "critic-accept")]}]
         later = {"review_id": "K", "critic": [], "native": [_native("a.py"), _native("b.py")]}
         [cand] = compare.reraise_candidates(later, earlier)
-        assert cand["by"] == "native" and cand["earlier_kind"] == "critic-accepted"
+        assert cand["by"] == "native" and cand["earlier_kind"] == "critic-accept"
         assert [e["fid"] for e in cand["earlier"]] == ["R-3"] and cand["finding"]["file"] == "a.py"
 
     def test_the_critic_is_measured_too_as_the_baseline(self):
-        earlier = [{"review_id": "J", "settled": [(dict(_critic("R-3", "g", "a.py")), "filed")],
-                    "native_shown": []}]
+        earlier = [{"review_id": "J", "options": [(_critic("R-3", "g", "a.py"), "critic-file")]}]
         later = {"review_id": "K", "critic": [_critic("R-1", "g", "a.py", "x.py")], "native": None}
         [cand] = compare.reraise_candidates(later, earlier)
-        assert (cand["by"], cand["earlier_kind"]) == ("critic", "critic-filed")
-
-    def test_an_earlier_native_finding_the_builder_saw_is_a_candidate(self):
-        earlier = [{"review_id": "J", "settled": [], "native_shown": [_native("a.py", 7)]}]
-        later = {"review_id": "K", "critic": [], "native": [_native("a.py", 9)]}
-        [cand] = compare.reraise_candidates(later, earlier)
-        assert cand["earlier_kind"] == "native"
+        assert (cand["by"], cand["earlier_kind"]) == ("critic", "critic-file")
 
     def test_every_earlier_finding_on_the_file_is_offered(self):
         """A file can hold several earlier findings; offering only the first
         would hide the one the later finding repeats."""
-        earlier = [{"review_id": "J", "settled": [(_critic("R-1", "g", "a.py"), "accepted"),
-                                                   (_critic("R-2", "g", "b.py"), "accepted")],
-                    "native_shown": [_native("a.py", 40)]}]
+        earlier = [{"review_id": "J", "options": [
+            (_critic("R-1", "g", "a.py"), "critic-accept"), (_critic("R-2", "g", "b.py"), "critic-accept"),
+            (_native("a.py", 40), "native"),
+        ]}]
         later = {"review_id": "K", "critic": [], "native": [_native("a.py", 41)]}
         [cand] = compare.reraise_candidates(later, earlier)
         assert [e.get("fid") or e.get("line") for e in cand["earlier"]] == ["R-1", 40]
-        assert cand["earlier_kind"] == "critic-accepted+native"
+        assert cand["earlier_kind"] == "critic-accept+native"
 
-    def test_one_candidate_per_later_finding(self):
+    def test_one_candidate_per_later_finding_against_the_nearest_review(self):
         earlier = [
-            {"review_id": "J2", "settled": [(_critic("R-1", "g", "a.py"), "accepted")], "native_shown": []},
-            {"review_id": "J1", "settled": [(_critic("R-2", "g", "a.py"), "accepted")], "native_shown": []},
+            {"review_id": "J2", "options": [(_critic("R-1", "g", "a.py"), "critic-accept")]},
+            {"review_id": "J1", "options": [(_critic("R-2", "g", "a.py"), "critic-accept")]},
         ]
         later = {"review_id": "K", "critic": [], "native": [_native("a.py")]}
         [cand] = compare.reraise_candidates(later, earlier)
-        assert cand["earlier_review"] == "J2"  # the nearest earlier review answers
+        assert cand["earlier_review"] == "J2"
 
     def test_control_another_file_is_no_candidate(self):
-        earlier = [{"review_id": "J", "settled": [(_critic("R-3", "g", "a.py"), "accepted")],
-                    "native_shown": [_native("a.py")]}]
+        earlier = [{"review_id": "J", "options": [(_critic("R-3", "g", "a.py"), "critic-accept"),
+                                                  (_native("a.py"), "native")]}]
         later = {"review_id": "K", "critic": [_critic("R-1", "g", "b.py")], "native": [_native("b.py")]}
         assert compare.reraise_candidates(later, earlier) == []
-
-
-class TestEarlierFindings:
-    def test_only_accepted_or_filed_findings_and_boundary_native_ones_count(self):
-        """A fixed finding cannot be re-raised by unchanged code, and an inner
-        run's native findings were never put to the builder."""
-        fact = {"id": "J", "body": {"findings": [
-            _critic("R-1", "g", "a.py"), _critic("R-2", "g", "b.py"), _critic("R-3", "g", "c.py"),
-        ]}}
-        states = {("J", "R-1"): "accepted", ("J", "R-2"): "fixed-verified", ("J", "R-3"): "filed"}
-        boundary = compare.earlier_findings(fact, lambda key: states.get(key, "open"),
-                                            native=[_native("n.py")], stage="boundary")
-        assert [c["fid"] for c, _s in boundary["settled"]] == ["R-1", "R-3"]
-        assert [n["file"] for n in boundary["native_shown"]] == ["n.py"]
-        inner = compare.earlier_findings(fact, lambda key: states.get(key, "open"),
-                                         native=[_native("n.py")], stage="inner")
-        assert inner["native_shown"] == []
 
 
 @pytest.fixture
@@ -532,3 +520,35 @@ class TestStages:
         [reraise] = [v for v in key.values() if v.get("reraise_by") and v["review"] == result["id"]]
         assert reraise == {"review": result["id"], "reraise_by": "native", "earlier_kind": "native",
                            "earlier_review": boundary_id}
+
+
+class TestCriticPriorsEndToEnd:
+    def test_an_accepted_critic_finding_is_offered_as_the_critic_was_handed_it(self, paired_repo, monkeypatch, capsys):
+        """The boundary review's warning on src/app.py is accepted; a later
+        sampled inner review changes src/app.py and its native run names it.
+        The earlier finding reaches it through `prior_dispositions` itself."""
+        import test_native_review_pairing as pairing  # noqa: PLC0415
+        from lib import dispositions  # noqa: PLC0415
+
+        repo, boundary_id = paired_repo
+        fid = json.loads((repo / ".prawduct" / ".critic-findings.json").read_text())["findings"][0]["fid"]
+        assert dispositions.record(repo, boundary_id, fid, "accept", reason="fine")["status"] == "recorded"
+        monkeypatch.setattr(pairing.cc, "native_review_sampled", lambda _id: True)
+        (repo / "src/app.py").write_text("x = 3\n")
+        result = pairing._begin(repo, "chunk", monkeypatch, pairing.DEV)
+        manifest = result["manifest"]
+        partial = {"role": "reviewer", "goals": "1-3", "dispatch_id": result["id"],
+                   "commit_reviewed": manifest["commit_reviewed"], "model": "opus",
+                   "duration_seconds": 30, "findings": [], "summary": "clean"}
+        (repo / manifest["rendezvous"]["reviewer"]["partial"]).write_text(json.dumps(partial))
+        assert pairing.cc.consolidate(repo, trigger="explicit") == 0
+        pd = repo / ".prawduct"
+        pairing.native_review.text_path(pd, result["id"]).write_text(json.dumps([
+            {"file": "src/app.py", "line": 1, "summary": "x again", "failure_scenario": "a"}]))
+        assert pairing.native_review.record(repo, pd, result["id"])[0] == 0
+        [inner] = [p for p in compare.load_pairs(repo) if p["review_id"] == result["id"]]
+        found, exposed = compare.reraises(repo, compare.load_pairs(repo))
+        [cand] = [c for c in found if c["review"] == result["id"]]
+        assert cand["earlier_kind"] == "critic-accept+native"  # the boundary run's native finding too
+        assert any(e.get("fid") == fid for e in cand["earlier"])
+        assert exposed["native"] >= 1 and inner["stage"] == "inner"
