@@ -404,10 +404,15 @@ gets `--force`d past every time is a budget set wrong.
 ## native_review_pairing (development builds only, on by default)
 
 Only a development build of the plugin (a `-dev` version) reads this key. There, every
-`cumulative` review also starts the host's native `/code-review` over the same range, at `high`,
-so the two reviews can be compared before any Critic goal is handed to it (#1130). The Critic is
+`cumulative` review, and one in six `chunk` and `verify-resolutions` reviews (chosen by review id),
+also starts the host's native `/code-review` over the same interval, at `high`, so the two
+reviews can be compared before any Critic goal is handed to it (#1130, #1166). The Critic is
 unchanged: the native review runs beside its reviewers, blocks and rates nothing, and
-consolidation never waits for it. Its text is kept per clone in `.prawduct/.native-reviews/`.
+consolidation never waits for it. A boundary review's `NEXT-ACTION` names the native list; an
+inner one's does not, because a second unrated list beside an inner pass would manufacture
+rounds. Its text is kept per clone in `.prawduct/.native-reviews/`. An inner review of a working
+tree is handed to the native review as two unreachable commits over the reviewed trees, which
+`git gc` collects; no ref, index or file changes.
 
 Set `native_review_pairing: false` to opt this repo out. Only an explicit `false` does: the
 pairing is the development build's default, so a misspelt value keeps it running rather than

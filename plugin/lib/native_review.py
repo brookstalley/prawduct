@@ -1,10 +1,11 @@
 """The paired native review's record (#1130).
 
-On a development build, ``critic-begin`` pairs every boundary review with the
-host's native ``/code-review`` over the same range (the pairing decision and the
-manifest block are ``critic_consolidate.native_review_pairing`` and
-``native_review_block``). This module is what happens to the native run after
-that:
+On a development build, ``critic-begin`` pairs every boundary review, and a
+sample of inner ``chunk`` and ``verify-resolutions`` reviews, with the host's
+native ``/code-review`` over the same interval (the pairing decision, the range
+and the manifest block are ``critic_consolidate.native_review_pairing``,
+``native_review_range`` and ``native_review_block``). This module is what
+happens to the native run after that:
 
 - **At dispatch** :func:`write_dispatch` writes a sidecar beside the text the
   wrapper will write. The manifest cannot carry the run's record: consolidation
@@ -14,10 +15,12 @@ that:
   ledger event — counts, the range, the clocked duration, the file and line of
   each finding, never the finding text (the text stays in the per-clone,
   gitignored file).
-- **When the Critic consolidates** :func:`next_action_clause` tells the builder,
-  in the same ``NEXT-ACTION`` sentence that already travels to them, that a
-  second list exists and how to read it — the builder works from both (#1130
-  step 4). It gates nothing.
+- **When a boundary review consolidates** :func:`next_action_clause` tells the
+  builder, in the same ``NEXT-ACTION`` sentence that already travels to them,
+  that a second list exists and how to read it — the builder works from both
+  (#1130 step 4). It gates nothing. An inner run's list is not put to the
+  builder: the boundary pairing puts the same code's native findings to them,
+  and a second unrated list beside an inner pass would manufacture rounds.
 
 The native review returns prose. At ``high`` its findings arrive as a JSON array
 (``file``, ``line``, ``summary``, ``failure_scenario``); an empty run prints
@@ -74,6 +77,9 @@ def write_dispatch(prawduct_dir: Path, manifest: dict, session_model: "str | Non
     block = manifest["native_review"]
     sidecar = {
         "review_id": manifest["id"],
+        "mode": block.get("mode", "cumulative"),
+        "stage": manifest.get("stage"),
+        "synthetic_range": bool(block.get("synthetic_range")),
         "level": block["level"],
         "args": block["args"],
         "model": block.get("model") or session_model,
@@ -197,6 +203,29 @@ def _seconds_since(stamp) -> "float | None":
     return round((datetime.now(timezone.utc) - then).total_seconds(), 1)
 
 
+def _tree_moved(project_dir: Path, sidecar: dict) -> "bool | None":
+    """Whether a judgeable file in the reviewed interval differs, in the working
+    tree now, from the tree the review read — the native review reads source
+    from the working tree, and a builder may fix a reviewed file before it
+    lands. Free surfaces (`.prawduct/` records, plain docs) are left out: the
+    builder writes those during any review. ``None`` when it cannot be told:
+    unknown, never "no"."""
+    from . import coverage_algebra, evidence  # noqa: PLC0415 — lazy, matching the lib's other imports
+
+    base, head = sidecar.get("base_tree"), sidecar.get("head_tree")
+    if not (isinstance(base, str) and base and isinstance(head, str) and head):
+        return None
+    capture = evidence.capture_tree(project_dir)
+    if capture.get("status") != "ok":
+        return None
+    rc_a, reviewed, _ = evidence.run_git(project_dir, "diff", "--name-only", base, head)
+    rc_b, moved, _ = evidence.run_git(project_dir, "diff", "--name-only", head, capture["tree"])
+    if rc_a != 0 or rc_b != 0:
+        return None
+    both = (set(reviewed.split("\n")) & set(moved.split("\n"))) - {""}
+    return bool(coverage_algebra.judgeable_files(sorted(both)))
+
+
 def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int, str]":
     """Append the native run's ``native.review`` ledger event. ``(0, message)``
     on an append or when it is already recorded; ``(1, reason)`` when there is
@@ -220,10 +249,14 @@ def record(project_dir: Path, prawduct_dir: Path, review_id: str) -> "tuple[int,
     if ledger.native_review_event_exists(prawduct_dir, review_id):
         return 0, f"native review {review_id} is already recorded; nothing appended"
     findings = parse_findings(text)
+    # A sidecar written before inner reviews paired carries no mode or stage;
+    # every run dispatched then was a boundary `cumulative`.
     payload = {
         "critic_review_id": review_id,
-        "mode": "cumulative",
-        "stage": "boundary",
+        "mode": sidecar.get("mode") or "cumulative",
+        "stage": sidecar.get("stage") or "boundary",
+        "synthetic_range": bool(sidecar.get("synthetic_range")),
+        "tree_moved": _tree_moved(project_dir, sidecar),
         "level": sidecar.get("level"),
         "args": sidecar.get("args"),
         "base_tree": sidecar.get("base_tree"),
@@ -274,8 +307,12 @@ def next_action_clause(prawduct_dir: Path, review_id: "str | None") -> str:
     landed and holds no countable answer; "text unreadable" when it exists and
     cannot be read; and otherwise that it may still be running — never "still
     running", which the next session's briefing would repeat after it finished.
-    It never says the native review gates anything."""
-    if not is_safe_id(review_id) or not sidecar_path(prawduct_dir, review_id).is_file():
+    It never says the native review gates anything, and says nothing for an
+    inner run (the module docstring says why)."""
+    if not is_safe_id(review_id):
+        return ""
+    sidecar, _reason = _read_sidecar(prawduct_dir, review_id)
+    if sidecar is None or (sidecar.get("stage") or "boundary") != "boundary":
         return ""
     command = f"`{SHOW_COMMAND} {review_id}`"
     unreadable = False

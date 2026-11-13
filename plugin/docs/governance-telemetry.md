@@ -52,7 +52,11 @@ kind-named key (`review` for `review.*`):
   by `native-review record` once the wrapper has saved the review's text, one per Critic review it
   was paired with (`native.critic_review_id`). Its `native` payload carries the range, the level,
   each finding's `file` and `line` — never its text, which stays in `.prawduct/.native-reviews/` —
-  and `findings_parsed` (false when the text held nothing countable). `dispatched_at` is the time
+  and `findings_parsed` (false when the text held nothing countable); the paired review's `mode`
+  and `stage`; `synthetic_range` (true when the range was named by unreachable commits because the
+  interval had no commit at one end); and `tree_moved` (true when a file in the reviewed interval
+  differed in the working tree by the time the run was recorded, `null` when it could not be
+  told). `dispatched_at` is the time
   `critic-begin` stamped. The kind sits outside `review.` and the payload under `native`, so a
   reader that takes `review.*` events as Critic reviews (older builds of this plugin included)
   skips it as unknown; `review-stats` reports it in its own `native_review` block, in no Critic

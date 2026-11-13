@@ -68,6 +68,7 @@ staleness" defect class this plan deletes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -3042,8 +3043,9 @@ def _proposed_chunks(
 
 # --- The paired native review (#1130) ------------------------------------------
 #
-# On a development build, every boundary review also runs the host's native
-# `/code-review` over the same range, so the two can be compared before any
+# On a development build, every boundary review — and a sample of the inner
+# `chunk` and `verify-resolutions` reviews — also runs the host's native
+# `/code-review` over the same interval, so the two can be compared before any
 # Critic goal is ceded to it. The Critic itself is unchanged: the native review
 # is a second instrument its dispatch starts beside the reviewers, it rates and
 # blocks nothing, and consolidation never waits for it. What the host does, as
@@ -3062,15 +3064,33 @@ NATIVE_REVIEW_LEVEL = "high"
 #: a level the host reserves for an explicit request — ``max``, and ``ultra``,
 #: the cloud review. The validator refuses a manifest carrying one.
 NATIVE_REVIEW_FORBIDDEN = ("--fix", "--comment", "--post", "max", "ultra")
+#: The inner reviews that pair, one in this many of them. Inner reviews are
+#: where most of the Critic's correctness reviewing happens, and pairing every
+#: one would roughly triple the experiment's spend; one in six still reaches
+#: #1130's sixty within its four weeks at the measured rate.
+NATIVE_REVIEW_INNER_MODES = ("chunk", "verify-resolutions")
+NATIVE_REVIEW_INNER_SAMPLE = 6
+
+
+def native_review_sampled(review_id: "str | None") -> bool:
+    """Whether an inner review falls in the sample — decided by its id, so the
+    same review always gets the same answer and no clock or random state picks
+    what is measured."""
+    if not isinstance(review_id, str) or not review_id:
+        return False
+    digest = hashlib.sha256(review_id.encode("utf-8")).hexdigest()
+    return int(digest, 16) % NATIVE_REVIEW_INNER_SAMPLE == 0
 
 
 def native_review_pairing(
-    prawduct_dir: Path, mode_token: str, *, version: "str | None" = None
+    prawduct_dir: Path, mode_token: str, *, version: "str | None" = None,
+    review_id: "str | None" = None,
 ) -> "tuple[bool, str]":
     """Whether this dispatch pairs a native review, and why not when it does
-    not. Pairs only a ``cumulative`` review, on a development build (``version``,
-    default the running plugin's), in a repo that has not set
-    ``native_review_pairing: false``.
+    not. Pairs every ``cumulative`` review, and a ``chunk`` or
+    ``verify-resolutions`` review whose id falls in the sample, on a development
+    build (``version``, default the running plugin's), in a repo that has not
+    set ``native_review_pairing: false``.
 
     Only an explicit ``false`` opts out: pairing is the development build's
     default, so a misspelt value keeps the measurement running rather than
@@ -3078,8 +3098,14 @@ def native_review_pairing(
     """
     from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
-    if mode_token != "cumulative":
-        return False, f"only a cumulative review pairs, and this is {mode_token}"
+    if mode_token in NATIVE_REVIEW_INNER_MODES:
+        if not native_review_sampled(review_id):
+            return False, f"not in the one-in-{NATIVE_REVIEW_INNER_SAMPLE} sample of {mode_token} reviews"
+    elif mode_token != "cumulative":
+        return False, (
+            "only a cumulative review and a sample of chunk and verify-resolutions "
+            f"reviews pair, and this is {mode_token}"
+        )
     if not core.is_dev_version(core.PRAWDUCT_VERSION if version is None else version):
         return False, "a released build never pairs"
     state, raw = core.read_scalar_yaml_key(
@@ -3118,14 +3144,64 @@ def native_review_record_command(review_id: str) -> str:
 
 
 
+#: Who the range's unreachable commits say made them. Passed explicitly, so
+#: naming a range never depends on the repo's or the user's git identity.
+_NATIVE_RANGE_IDENTITY = {
+    "GIT_AUTHOR_NAME": "prawduct", "GIT_AUTHOR_EMAIL": "prawduct@invalid",
+    "GIT_COMMITTER_NAME": "prawduct", "GIT_COMMITTER_EMAIL": "prawduct@invalid",
+}
+
+
+def native_review_range(
+    project_dir: Path, base_commit: "str | None", base_tree: "str | None",
+    head_commit: "str | None", head_tree: "str | None", review_id: str,
+) -> dict:
+    """The commit range the native review reads for this interval:
+    ``{"status": "ok", "base", "head", "synthetic"}`` or
+    ``{"status": "error", "reason"}``.
+
+    The native review takes a commit range, and an inner review usually reads a
+    working tree no commit holds. Then both ends are named by unreachable
+    commits — the base tree's (or the real base commit), and the head tree's
+    parented on it — so ``git diff base...head`` is exactly the interval the
+    Critic reads. They are objects only: no ref, index or file moves, and
+    ``git gc`` collects them; nothing reads them after the run."""
+    if base_commit and head_commit:
+        return {"status": "ok", "base": base_commit, "head": head_commit, "synthetic": False}
+    if not head_tree or not (base_commit or base_tree):
+        return {"status": "error", "reason": "the interval has no base or head to name as a range"}
+    env = {**os.environ, **_NATIVE_RANGE_IDENTITY}
+    message = f"prawduct: the tree Critic review {review_id} read"
+
+    def commit(tree: str, parent: "str | None") -> "tuple[str | None, str]":
+        args = ["commit-tree", "--no-gpg-sign", "-m", message]
+        if parent:
+            args += ["-p", parent]
+        rc, out, err = evidence.run_git(project_dir, *args, f"{tree}^{{tree}}", env=env)
+        return (out, "") if rc == 0 and out else (None, err or "git commit-tree printed nothing")
+
+    base = base_commit
+    if not base:
+        base, err = commit(base_tree, None)
+        if base is None:
+            return {"status": "error", "reason": f"the base tree could not be named: {err}"}
+    head, err = commit(head_tree, base)
+    if head is None:
+        return {"status": "error", "reason": f"the head tree could not be named: {err}"}
+    return {"status": "ok", "base": base, "head": head, "synthetic": True}
+
+
 def native_review_block(
     prawduct_dir: Path, review_id: str, worktree: str, base_commit: str,
-    head_commit: str, reviewer_model: "str | None",
+    head_commit: str, reviewer_model: "str | None", *, mode: str = "cumulative",
+    synthetic_range: bool = False,
 ) -> dict:
     """The manifest's ``native_review`` block: everything the coordinator
     dispatches, derived here. ``model`` is the reviewers' model (null means
     the wrapper inherits the session's, as they do), because a comparison
-    between instruments on different models measures the models."""
+    between instruments on different models measures the models. ``mode`` and
+    ``synthetic_range`` ride to the sidecar, so the record says what the run
+    was paired with."""
     from . import native_review  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
     args = f"{NATIVE_REVIEW_LEVEL} {base_commit}...{head_commit}"
@@ -3133,6 +3209,8 @@ def native_review_block(
     return {
         "skill": NATIVE_REVIEW_SKILL,
         "level": NATIVE_REVIEW_LEVEL,
+        "mode": mode,
+        "synthetic_range": synthetic_range,
         "args": args,
         "model": reviewer_model,
         "text_path": text_path,
@@ -3169,6 +3247,10 @@ def _validate_native_review(block) -> "tuple[bool, str]":
             return False, f"'native_review.{key}' must be a non-empty string"
     if block.get("model") is not None and not _nonempty_str(block.get("model")):
         return False, "'native_review.model' must be a non-empty string or null"
+    if block.get("mode", "cumulative") not in ("cumulative", *NATIVE_REVIEW_INNER_MODES):
+        return False, "'native_review.mode' must be a mode that pairs"
+    if not isinstance(block.get("synthetic_range", False), bool):
+        return False, "'native_review.synthetic_range' must be a boolean"
     tokens = block["args"].split()
     if tokens[0] != block["level"]:
         return False, "'native_review.args' must open with its level, explicitly"
@@ -4178,14 +4260,19 @@ def begin_review(
     # on code's answer and not on a skill remembering to. A development build's
     # boundary review that does not pair says why, since a silent skip reads as a
     # native review that never landed; a released build says nothing new.
-    paired, pairing_reason = native_review_pairing(prawduct_dir, mode_token)
-    if paired and base_commit and head_commit:
-        manifest["native_review"] = native_review_block(
-            prawduct_dir, review_id, manifest["worktree"], base_commit, head_commit,
-            manifest["reviewer_model"],
+    paired, pairing_reason = native_review_pairing(prawduct_dir, mode_token, review_id=review_id)
+    if paired:
+        named = native_review_range(
+            project_dir, base_commit, manifest.get("base_tree"), head_commit,
+            manifest.get("head_tree"), review_id,
         )
-    elif paired:
-        notes.append("native review not paired: the interval has no base or head commit to name as a range")
+        if named["status"] == "ok":
+            manifest["native_review"] = native_review_block(
+                prawduct_dir, review_id, manifest["worktree"], named["base"], named["head"],
+                manifest["reviewer_model"], mode=mode_token, synthetic_range=named["synthetic"],
+            )
+        else:
+            notes.append(f"native review not paired: {named['reason']}")
     else:
         from . import core  # noqa: PLC0415 — lazy, matching this module's other lib imports
 
