@@ -571,7 +571,9 @@ LAST_MEASURED_TOKENS = {
     # the clause it falsified, and the remedy's wording stays in code (one home).
     # Merged with develop on 2026-11-12 (bounded-cumulative and review-round-cost both landed): no new text; the reading is the
     # two branches' declared raises above, summed (within 1 token of tokenizer rounding). Ceiling one over it.
-    "methodology/building.md": 5408,
+    # -2 on 2026-11-13 (testament-evidence-wiring): the recorder sentence claimed `--from-counts`
+    # ingests beside a declared command, which the recorder refuses; the corrected sentence is shorter.
+    "methodology/building.md": 5406,
     # +26 on 2026-08-10: the Documentation-drift rule said "a pointer to a plan
     # resolves", which archival made false for the PATH form while leaving it true
     # for the scope form — a reviewer applying the old sentence waves through the
@@ -3931,7 +3933,8 @@ class TestBuildingMethodology:
         # RAISED 5368 -> 5405 (review-round-cost, #900, 2026-11-11) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5405 -> 5416 (review-round-cost Critic round, R-8) — see LAST_MEASURED_TOKENS. Declared.
         # RAISED 5360 -> 5409 (merge with develop, 2026-11-12): both branches' declared raises summed — see LAST_MEASURED_TOKENS.
-        assert tokens < 5409, f"building.md is ~{tokens} tokens, should be <5409"
+        # LOWERED 5409 -> 5407 (testament-evidence-wiring, 2026-11-13) with the reading's cut.
+        assert tokens < 5407, f"building.md is ~{tokens} tokens, should be <5407"
 
 
 # =============================================================================
